@@ -22,7 +22,7 @@ First, enter the following values to create a primary cluster on [GCP](../../con
 - Enter the set of regions: **Oregon**
 - Enter the replication factor: **3**
 - Change instance type: **n1-standard-8**
-- Add the following configuration flag for YB-Master and YB-TServer: `leader_failure_max_missed_heartbeat_periods = 10`. Since the the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+- Add the following configuration flag for YB-Master and YB-TServer: `leader_failure_max_missed_heartbeat_periods = 10`. Since the data is globally replicated, RPC latencies are higher. You can use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 

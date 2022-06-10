@@ -38,7 +38,7 @@ class SanityTest {
  public:
   explicit SanityTest(const std::string& path)
       : env_(Env::Default()), path_(path) {
-    env_->CreateDirIfMissing(path);
+    CHECK_OK(env_->CreateDirIfMissing(path));
   }
   virtual ~SanityTest() {}
 
@@ -49,7 +49,7 @@ class SanityTest {
     Options options = GetOptions();
     options.create_if_missing = true;
     std::string dbname = path_ + Name();
-    DestroyDB(dbname, options);
+    CHECK_OK(DestroyDB(dbname, options));
     DB* db = nullptr;
     Status s = DB::Open(options, dbname, &db);
     std::unique_ptr<DB> db_guard(db);

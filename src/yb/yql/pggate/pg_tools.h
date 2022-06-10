@@ -18,7 +18,7 @@
 #ifndef YB_YQL_PGGATE_PG_TOOLS_H_
 #define YB_YQL_PGGATE_PG_TOOLS_H_
 
-#include "yb/common/common.pb.h"
+#include "yb/common/transaction.pb.h"
 
 struct PgExecParameters;
 

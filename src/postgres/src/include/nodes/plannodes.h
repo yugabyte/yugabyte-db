@@ -99,6 +99,14 @@ typedef struct PlannedStmt
 	/* statement location in source string (copied from Query) */
 	int			stmt_location;	/* start location, or -1 if unknown */
 	int			stmt_len;		/* length in bytes; 0 means "rest of string" */
+
+	/* YB specific fields */
+
+	/*
+	 * Number of relations that are still referenced by the plan after
+	 * constraint exclusion and partition pruning.
+	 */
+	int		yb_num_referenced_relations;
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
@@ -240,8 +248,10 @@ typedef struct ModifyTable
 	Index		exclRelRTI;		/* RTI of the EXCLUDED pseudo relation */
 	List	   *exclRelTlist;	/* tlist of the EXCLUDED pseudo relation */
 
-	List	   *ybPushdownTlist; /* tlist for the pushed down SET expressions */
-	bool	   no_row_trigger; /* planner has checked no triggers apply */
+	List	   *ybPushdownTlist;	/* tlist for the pushdown SET expressions */
+	List	   *ybReturningColumns;	/* columns to fetch from DocDB */
+	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
+	bool		no_row_trigger; /* planner has checked no triggers apply */
 	List	   *no_update_index_list; /* OIDs of indexes to be aren't updated */
 } ModifyTable;
 

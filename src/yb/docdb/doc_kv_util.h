@@ -18,18 +18,15 @@
 
 #include <string>
 
-#include "yb/util/slice.h"
-
-#include "yb/common/hybrid_time.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/schema.h"
+#include "yb/common/hybrid_time.h"
+
 #include "yb/gutil/endian.h"
-#include "yb/util/decimal.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/kv_util.h"
-#include "yb/util/memcmpable_varint.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
-#include "yb/util/fast_varint.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {
@@ -42,21 +39,12 @@ constexpr int kEncodedKeyStrTerminatorSize = 2;
 // This is only used in unit tests as of 08/02/2016.
 bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const std::string &encoded_doc_key);
 
-// Decode a DocHybridTime stored in the end of the given slice.
-CHECKED_STATUS DecodeHybridTimeFromEndOfKey(const rocksdb::Slice &key, DocHybridTime *dest);
-
 // Given a DocDB key stored in RocksDB, validate the DocHybridTime size stored as the
 // last few bits of the final byte of the key, and ensure that the ValueType byte preceding that
 // encoded DocHybridTime is ValueType::kHybridTime.
-CHECKED_STATUS CheckHybridTimeSizeAndValueType(
+Status CheckHybridTimeSizeAndValueType(
     const rocksdb::Slice& key,
-    int* ht_byte_size_dest);
-
-// Consumes hybrid time from the given slice, decreasing the slice size by the hybrid time size.
-// Hybrid time is stored in a "key-appropriate" format (bits inverted for reverse sorting).
-// @param slice The slice holding RocksDB key bytes.
-// @param hybrid_time Where to store the hybrid time. Undefined in case of failure.
-yb::Status ConsumeHybridTimeFromKey(rocksdb::Slice* slice, DocHybridTime* hybrid_time);
+    size_t* ht_byte_size_dest);
 
 template <class Buffer>
 void AppendUInt16ToKey(uint16_t val, Buffer* dest) {
@@ -79,18 +67,13 @@ void AppendUInt64ToKey(uint64_t val, Buffer* dest) {
   dest->append(buf, sizeof(buf));
 }
 
-template <class Buffer>
-inline void AppendColumnIdToKey(ColumnId val, Buffer* dest) {
-  yb::util::FastAppendSignedVarIntToBuffer(val.rep(), dest);
-}
-
 // Encodes the given string by replacing '\x00' with "\x00\x01" and appends it to the given
 // destination string.
 void AppendZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
 
 // Encodes the given string by replacing '\xff' with "\xff\xfe" and appends it to the given
 // destination string.
-void AppendComplementZeroEncodedStrToKey(const string &s, KeyBuffer *dest);
+void AppendComplementZeroEncodedStrToKey(const std::string &s, KeyBuffer *dest);
 
 // Appends two zero characters to the given string. We don't add final end-of-string characters in
 // this function.
@@ -153,6 +136,14 @@ inline std::string ToShortDebugStr(const std::string& raw_str) {
 }
 
 Result<DocHybridTime> DecodeInvertedDocHt(Slice key_slice);
+
+constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
+    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
+
+// Puts inverted encoded doc hybrid time specified by input to buffer.
+// And returns slice to it.
+using DocHybridTimeWordBuffer = std::array<size_t, kMaxWordsPerEncodedHybridTimeWithValueType>;
+Slice InvertEncodedDocHT(const Slice& input, DocHybridTimeWordBuffer* buffer);
 
 }  // namespace docdb
 }  // namespace yb

@@ -7,11 +7,23 @@
 .cluster_action {
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-end;
+  flex-direction: column;
+
+  .configure-max-lag {
+    margin-right: 10px;
+    background-color: #FFF;
+    border: 1px solid #C8C8C8;
+  }
 }
 
 .cluster_support_text {
   text-align: right;
+  margin-top: 20px;
+  font-weight: lighter;
+  a {
+    text-decoration: underline;
+  }
 }
 
 .replication-list {
@@ -28,6 +40,23 @@
     color: $YB_TEXT_COLOR !important;
     margin-bottom: 20px;
 
+    .replication-meta-details {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      margin-top: 8px;
+
+      .replication-date {
+        font-size: 12px;
+        font-weight: 400;
+
+        .replication-label {
+          color: #9f9ea7;
+          margin-right: 10px;
+        }
+      }
+    }
+
     .list-group-item {
       border: none;
       border-bottom: 1px solid $YB_GRAY_HOVER;
@@ -39,30 +68,12 @@
       color: unset;
     }
 
-    .replication-date {
-      font-size: 13px;
-      font-weight: 400;
-
-      .replication-label {
-        opacity: 0.5;
-      }
-    }
-
     .replication-name {
       font-size: 18px;
       font-weight: 500;
       color: $YB_VIOLET_TEXT !important;
       margin-top: 6px;
       @include transition(0.35s);
-
-      .replication-target-universe {
-        font-size: 12px;
-        background: #c4c4c4;
-        border-radius: 8px;
-        padding: 6px;
-        color: #000;
-        margin-left: 10px;
-      }
     }
 
     .replication-name:hover {
@@ -72,7 +83,7 @@
 
     .replication-status {
       font-size: 16px;
-      margin-top: 10px;
+      text-align: end;
     }
   }
 
@@ -93,20 +104,18 @@
   }
 
   .replication-lag-details {
-    text-align: end;
-    font-weight: 500;
-
-    .lag-text {
-      text-align: right;
-    }
+    margin-top: 15px;
 
     .lag {
       margin-left: 14px;
 
       .lag-time {
-        color: green;
         font-size: 24px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
       }
+
     }
   }
 }
@@ -117,4 +126,59 @@
 
 .noPadding {
   padding: 0;
+}
+
+.noPaddingLeft {
+  padding-left: 0;
+}
+
+.noPaddingRight {
+  padding-right: 0;
+}
+
+.replication-cluster-graph {
+  display: flex;
+  align-items: center;
+}
+
+.replication-name-arrow {
+  border-radius: 50%;
+  border: 1px solid #d7dde1;
+  padding: 6px;
+  text-align: center;
+  width: 30px;
+  height: 30px;
+  display: inline-block;
+}
+
+.replication-name-card {
+  background: #ffffff;
+  border: 1px solid #d7dde1;
+  border-radius: 8px;
+  padding: 12px;
+
+  &.active {
+    background: #f7fafc;
+  }
+
+  .name-header {
+    font-size: 10px;
+    padding-top: 3px;
+    text-align: center;
+    color: #0b1117;
+    background: #e9eef2;
+    border-radius: 4px;
+    width: 50px;
+    height: 20px;
+  }
+
+  .cluster-name {
+    font-weight: 500;
+    font-size: 14px;
+    margin-top: 10px;
+  }
+}
+
+.center-align-text {
+  text-align: center;
 }

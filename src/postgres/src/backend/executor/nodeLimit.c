@@ -88,7 +88,12 @@ ExecLimit(PlanState *pstate)
 			switch_fallthrough();
 
 		case LIMIT_RESCAN:
-			pstate->state->yb_exec_params.limit_use_default = false;
+			/*
+			 * YB: If the limit is invalid (i.e. noCount = true), we need to
+			 * use the default limit in yb. Otherwise, we don't use the default
+			 * yb limit and use the one prescribed by this node.
+			 */
+			pstate->state->yb_exec_params.limit_use_default = node->noCount;
 
 			/*
 			 * If backwards scan, just return NULL without changing state.

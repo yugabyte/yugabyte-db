@@ -18,8 +18,6 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_CREATE_TYPE_H
 #define YB_YQL_CQL_QL_PTREE_PT_CREATE_TYPE_H
 
-#include "yb/common/schema.h"
-#include "yb/master/master.pb.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
@@ -41,7 +39,7 @@ class PTTypeField : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTTypeField(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
+                     YBLocationPtr loc,
                      const MCSharedPtr<MCString>& name,
                      const PTBaseType::SharedPtr& datatype);
   virtual ~PTTypeField();
@@ -58,7 +56,7 @@ class PTTypeField : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   const char *yb_name() const {
     return name_->c_str();
@@ -92,7 +90,7 @@ class PTCreateType : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTCreateType(MemoryContext *memctx,
-                YBLocation::SharedPtr loc,
+                YBLocationPtr loc,
                 const PTQualifiedName::SharedPtr& name,
                 const PTTypeFieldListNode::SharedPtr& fields,
                 bool create_if_not_exists);
@@ -110,7 +108,7 @@ class PTCreateType : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // column lists.

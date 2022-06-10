@@ -5,7 +5,7 @@
     {{ range .menu }}
     {{$.level}} {{.HasChildren}}
         {{ $.context.Scratch.Set "currentMenuEntry" . }}
-        {{ $absoluteLinkUrl := .URL | absURL | printf "%s" }}
+        {{ $absoluteLinkUrl := .Permalink | absURL | printf "%s" }}
         {{ $hasOrIsCurrent := eq $absoluteLinkUrl (substr $.context.Permalink 0 (len $absoluteLinkUrl)) }}
         <li {{ if $hasOrIsCurrent }}class="open"{{ end }}>
           {{ partial "nav_link" $.context }}

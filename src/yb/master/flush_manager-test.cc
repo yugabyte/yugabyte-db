@@ -13,11 +13,20 @@
 
 #include <algorithm>
 #include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
+
 #include "yb/integration-tests/cql_test_base.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/status.h"
 
 namespace yb {

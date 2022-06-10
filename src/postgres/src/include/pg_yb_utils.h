@@ -31,6 +31,7 @@
 #include "access/reloptions.h"
 #include "catalog/pg_database.h"
 #include "common/pg_yb_common.h"
+#include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
@@ -142,6 +143,11 @@ extern bool IsYBRelation(Relation relation);
 extern bool IsYBBackedRelation(Relation relation);
 
 /*
+ * Returns whether a relation is TEMP table
+ */
+extern bool YbIsTempRelation(Relation relation);
+
+/*
  * Returns whether a relation's attribute is a real column in the backing
  * YugaByte table. (It implies we can both read from and write to it).
  */
@@ -176,8 +182,13 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YBIsDatabaseColocated(Oid dbId);
-extern bool YBIsTableColocated(Oid dbId, Oid relationId);
+extern bool YbIsDatabaseColocated(Oid dbid);
+
+/*
+ * Whether non-system table is colocated (via database or a tablegroup).
+ * Returns false for nonexistent tables.
+ */
+extern bool YbIsUserTableColocated(Oid dbid, Oid relid);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -401,6 +412,12 @@ extern bool yb_enable_create_with_table_oid;
  */
 extern int yb_index_state_flags_update_delay;
 
+/*
+ * Enables expression pushdown.
+ * If true, planner sends supported expressions to DocDB for evaluation
+ */
+extern bool yb_enable_expression_pushdown;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -483,6 +500,20 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
+ * Fetch YBCPgTableDesc and YBCPgTableProperties for the given table.
+ *
+ * If allow_missing is true, existence precheck will be done and table
+ * missing in DocDB will result in desc set to NULL.
+ * Otherwise, DocDB will be queried unconditionally and the table missing
+ * will trigger an error.
+ */
+void
+YbGetTableDescAndProps(Oid table_oid,
+					   bool allow_missing,
+					   YBCPgTableDesc *desc,
+					   YBCPgTableProperties *props);
+
+/*
  * Check whether the given libc locale is supported in YugaByte mode.
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);
@@ -536,19 +567,52 @@ bool IsYbFdwUser(Oid member);
  * statement, they will not cause the actual modify statement to become a
  * cross shard operation.
  */
-extern const uint32 yb_funcs_safe_for_modify_fast_path[];
+extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
  * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
  */
-extern const int yb_funcs_safe_for_modify_fast_path_count;
+extern const int yb_funcs_safe_for_pushdown_count;
 
-/** 
- * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to 
+/**
+ * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
  * the current process in case the parent process dies. This is Linux-specific
  * and can only be done from the child process (the postmaster process). The
  * parent process here is yb-master or yb-tserver.
  */
 void YBSetParentDeathSignal();
+
+/**
+ * Return the relid to be used for the relation's storage in docDB.
+ * Ex: If we have swapped relation A with relation B, relation A's
+ * filenode has been set to relation B's OID.
+ */
+Oid YbGetStorageRelid(Relation relation);
+
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role.
+ */
+bool IsYbDbAdminUser(Oid member);
+
+/*
+ * Check whether the user ID is of a user who has the yb_db_admin role
+ * (excluding superusers).
+ */
+bool IsYbDbAdminUserNosuper(Oid member);
+
+/*
+ * Check unsupported system columns and report error.
+ */
+void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);
+
+/*
+ * Register system table for prefetching.
+ */
+void YbRegisterSysTableForPrefetching(int sys_table_id);
+
+/*
+ * Returns true if the relation is a non-system relation in the same region.
+ */
+bool YBCIsRegionLocal(Relation rel);
 
 #endif /* PG_YB_UTILS_H */

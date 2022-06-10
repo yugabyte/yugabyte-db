@@ -19,6 +19,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreatePrometheusSwamperConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMasters;
@@ -41,6 +42,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ImportedState;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -63,6 +65,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -86,6 +89,8 @@ public class ImportController extends AuthenticatedController {
   // Threadpool to run user submitted tasks.
   private final ExecutorService executor;
 
+  private final TaskExecutor taskExecutor;
+
   // Expected string for node exporter http request.
   private static final String NODE_EXPORTER_RESP = "Node Exporter";
 
@@ -98,12 +103,14 @@ public class ImportController extends AuthenticatedController {
   @Inject ConfigHelper configHelper;
 
   @Inject
-  public ImportController(PlatformExecutorFactory platformExecutorFactory) {
+  public ImportController(
+      PlatformExecutorFactory platformExecutorFactory, TaskExecutor taskExecutor) {
     // Initialize the tasks threadpool.
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("Import-Pool-%d").build();
     log.trace("Starting Import Thread Pool.");
     executor = platformExecutorFactory.createExecutor("import", namedThreadFactory);
+    this.taskExecutor = taskExecutor;
   }
 
   @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
@@ -118,7 +125,6 @@ public class ImportController extends AuthenticatedController {
     ImportUniverseFormData importForm = formData.get();
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
 
     if (importForm.singleStep) {
       importForm.currentState = State.BEGIN;
@@ -130,21 +136,42 @@ public class ImportController extends AuthenticatedController {
       if (res.status() != Http.Status.OK) {
         return res;
       }
-      return finishUniverseImport(importForm, customer, results);
+      res = finishUniverseImport(importForm, customer, results);
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              Objects.toString(results.universeUUID, null),
+              Audit.ActionType.Import,
+              Json.toJson(formData.rawData()));
+      return res;
     } else {
+      Result res;
       switch (importForm.currentState) {
         case BEGIN:
-          return importUniverseMasters(importForm, customer, results);
+          res = importUniverseMasters(importForm, customer, results);
+          break;
         case IMPORTED_MASTERS:
-          return importUniverseTservers(importForm, customer, results);
+          res = importUniverseTservers(importForm, customer, results);
+          break;
         case IMPORTED_TSERVERS:
-          return finishUniverseImport(importForm, customer, results);
+          res = finishUniverseImport(importForm, customer, results);
+          break;
         case FINISHED:
-          return PlatformResults.withData(results);
+          res = PlatformResults.withData(results);
+          break;
         default:
           throw new PlatformServiceException(
               BAD_REQUEST, "Unknown current state: " + importForm.currentState.toString());
       }
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Universe,
+              Objects.toString(results.universeUUID, null),
+              Audit.ActionType.Import,
+              Json.toJson(formData.rawData()));
+      return res;
     }
   }
 
@@ -204,7 +231,7 @@ public class ImportController extends AuthenticatedController {
     }
 
     if (!Util.isValidUniverseNameFormat(universeName)) {
-      throw new PlatformServiceException(BAD_REQUEST, Util.UNIV_NAME_ERROR_MESG);
+      throw new PlatformServiceException(BAD_REQUEST, Util.UNIVERSE_NAME_ERROR_MESG);
     }
 
     if (masterAddresses == null || masterAddresses.isEmpty()) {
@@ -590,10 +617,10 @@ public class ImportController extends AuthenticatedController {
    */
   private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
     // Submit the task, and get a future object.
-    Future<?> future = executor.submit(task);
     try {
+      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task), executor);
       // Wait for the task to complete.
-      future.get();
+      taskExecutor.waitForTask(taskUUID);
       // Indicate that this task executed successfully.
       results.checks.put(taskName, "OK");
     } catch (Exception e) {

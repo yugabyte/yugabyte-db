@@ -34,20 +34,21 @@
 
 #include <signal.h>
 #include <spawn.h>
-#include <dirent.h>
 
-#include <string>
-#include <vector>
-#include <mutex>
 #include <map>
+#include <mutex>
+#include <string>
 #include <unordered_set>
+#include <vector>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/enums.h"
-#include "yb/util/status.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -107,7 +108,7 @@ class Subprocess {
   // note that if the executable path was incorrect such that
   // exec() fails, this will still return Status::OK. You must
   // use Wait() to check for failure.
-  CHECKED_STATUS Start();
+  Status Start();
 
   // Wait for the subprocess to exit. The return value is the same as
   // that of the waitpid() syscall. Only call after starting.
@@ -124,7 +125,7 @@ class Subprocess {
   // itself as an argument, not a pointer to it, as is done in wait() and waitpid()!):
   // WCONTINUED, WCOREDUMP, WEXITSTATUS, WIFCONTINUED, WIFEXITED, WIFSIGNALED, WIFSTOPPED,
   // WNOHANG, WSTOPSIG, WTERMSIG, WUNTRACED.
-  CHECKED_STATUS Wait(int* ret);
+  Status Wait(int* ret);
 
   Result<int> Wait();
 
@@ -135,15 +136,15 @@ class Subprocess {
   // NOTE: unlike the standard wait(2) call, this may be called multiple
   // times. If the process has exited, it will repeatedly return the same
   // exit code.
-  CHECKED_STATUS WaitNoBlock(int* ret);
+  Status WaitNoBlock(int* ret);
 
   // Send a signal to the subprocess.
   // Note that this does not reap the process -- you must still Wait()
   // in order to reap it. Only call after starting.
-  CHECKED_STATUS Kill(int signal);
+  Status Kill(int signal);
 
   // Similar to Kill, but does not enforce that the process must be running.
-  CHECKED_STATUS KillNoCheckIfRunning(int signal);
+  Status KillNoCheckIfRunning(int signal);
 
   // Returns true if the process is running.
   bool IsRunning() const;
@@ -153,16 +154,16 @@ class Subprocess {
   // full path to the executable.
   // The returned Status will only be OK if all steps were successful and
   // the return code was 0.
-  static CHECKED_STATUS Call(const std::string& arg_str);
+  static Status Call(const std::string& arg_str);
 
   // Same as above, but accepts a vector that includes the path to the
   // executable as argv[0] and the arguments to the program in argv[1..n].
-  static CHECKED_STATUS Call(const std::vector<std::string>& argv);
+  static Status Call(const std::vector<std::string>& argv);
 
   // Same as above, but collects the output from the child process stdout into
   // the output parameter.
   // If read_stderr is set to true, stderr is collected instead.
-  static CHECKED_STATUS Call(
+  static Status Call(
       const std::vector<std::string>& argv,
       std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
 
@@ -186,7 +187,10 @@ class Subprocess {
 
   // Issues Start() then Wait() and collects the output from the child process
   // (stdout or stderr) into the output parameter.
-  CHECKED_STATUS Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
+  Status Call(std::string* output, StdFdTypes read_fds = StdFdTypes{StdFdType::kOut});
+
+  // Writes pid to cgroup specified by path
+  void AddPIDToCGroup(const string& path, pid_t pid);
 
  private:
 
@@ -196,15 +200,15 @@ class Subprocess {
     int child_stderr[2] = {-1, -1};
   };
 
-  CHECKED_STATUS StartWithForkExec() REQUIRES(state_lock_);
-  CHECKED_STATUS StartWithPosixSpawn() REQUIRES(state_lock_);
+  Status StartWithForkExec() REQUIRES(state_lock_);
+  Status StartWithPosixSpawn() REQUIRES(state_lock_);
 
   void SetFdShared(int stdfd, SubprocessStreamMode mode);
   int CheckAndOffer(int stdfd) const;
   int ReleaseChildFd(int stdfd);
-  CHECKED_STATUS DoWait(int* ret, int options);
+  Status DoWait(int* ret, int options);
   SubprocessState state() const;
-  CHECKED_STATUS KillInternal(int signal, bool must_be_running);
+  Status KillInternal(int signal, bool must_be_running);
 
   // Combine the existing environment with the overrides from env_, and return it as a vector
   // of name=value strings and a pointer array terminated with a null, referring to the vector,

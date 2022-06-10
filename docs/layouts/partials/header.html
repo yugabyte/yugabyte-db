@@ -10,7 +10,7 @@
         {{ partialCached "search" . }}
       </div>
       <button type="button" class="navbar-toggler collapsed" data-toggle="collapse" data-target=".navbar-collapse">
-        
+
         <i class="bar"></i>
         <i class="bar"></i>
         <i class="bar"></i>
@@ -24,8 +24,8 @@
             {{ partialCached "search" . }}
         </div>
         <div class="navbar-misc">
-          <a href="https://www.yugabyte.com/slack" target="_blank" class="navbar-link-btn">
-           <div id="download-button">  
+          <a href="{{ partialCached "slack-link" . }}" target="_blank" class="navbar-link-btn">
+           <div id="download-button">
               <span class="social-link-text">Join us on</span>
               <img id="slack-logo" width="80" height="30" src="/images/slack-logo-full.svg" alt="YugabyteDB Community Slack"/>
            </div>
@@ -43,7 +43,7 @@
         </div>
         <div class="navbar-misc mobile">
           <div>
-            <a href="https://www.yugabyte.com/slack" target="_blank">
+            <a href="{{ partialCached "slack-link" . }}" target="_blank">
               <i class="fab fa-slack"></i> Slack
             </a>
           </div>

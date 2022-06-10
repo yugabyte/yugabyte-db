@@ -13,35 +13,51 @@
 #ifndef YB_UTIL_FILE_UTIL_H
 #define YB_UTIL_FILE_UTIL_H
 
+#include <float.h>
+#include <string.h>
+
+#include <chrono>
+#include <cstdarg>
+#include <sstream>
 #include <string>
+#include <type_traits>
 
-#include "yb/rocksdb/env.h"
+#include <boost/mpl/and.hpp>
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/faststring.h"
 #include "yb/util/format.h"
 #include "yb/util/path_util.h"
-#include "yb/util/status_fwd.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 
 YB_STRONGLY_TYPED_BOOL(CreateIfMissing);
 YB_STRONGLY_TYPED_BOOL(UseHardLinks);
+YB_STRONGLY_TYPED_BOOL(RecursiveCopy);
 
 // TODO(unify_env): Temporary workaround until Env/Files from rocksdb and yb are unified
 // (https://github.com/yugabyte/yugabyte-db/issues/1661).
 
-// Following two functions returns OK if the file at `path` exists.
+// Following function returns OK if the file at `path` exists.
 // NotFound if the named file does not exist, the calling process does not have permission to
 //          determine whether this file exists, or if the path is invalid.
 // IOError if an IO Error was encountered.
 // Uses specified `env` environment implementation to do the actual file existence checking.
-inline CHECKED_STATUS FileExists(Env* env, const std::string& path) {
-  return env->FileExists(path) ? Status::OK() : STATUS(NotFound, "");
+inline Status CheckFileExistsResult(const Status& status) {
+  return status;
 }
 
-inline CHECKED_STATUS FileExists(rocksdb::Env* env, const std::string& path) {
-  return env->FileExists(path);
+inline Status CheckFileExistsResult(bool exists) {
+  return exists ? Status::OK() : STATUS(NotFound, "");
+}
+
+template <class Env>
+inline Status FileExists(Env* env, const std::string& path) {
+  return CheckFileExistsResult(env->FileExists(path));
 }
 
 using yb::env_util::CopyFile;
@@ -49,11 +65,12 @@ using yb::env_util::CopyFile;
 // Copies directory from `src_dir` to `dest_dir` using `env`.
 // use_hard_links specifies whether to create hard links instead of actual file copying.
 // create_if_missing specifies whether to create dest dir if doesn't exist or return an error.
+// recursive_copy specifies whether the copy should be recursive.
 // Returns error status in case of I/O errors.
 template <class TEnv>
-CHECKED_STATUS CopyDirectory(
+Status CopyDirectory(
     TEnv* env, const string& src_dir, const string& dest_dir, UseHardLinks use_hard_links,
-    CreateIfMissing create_if_missing) {
+    CreateIfMissing create_if_missing, RecursiveCopy recursive_copy = RecursiveCopy::kTrue) {
   RETURN_NOT_OK_PREPEND(
       FileExists(env, src_dir), Format("Source directory does not exist: $0", src_dir));
 
@@ -87,9 +104,12 @@ CHECKED_STATUS CopyDirectory(
       }
 
       if (env->DirExists(src_path)) {
-        RETURN_NOT_OK_PREPEND(
-            CopyDirectory(env, src_path, dest_path, use_hard_links, CreateIfMissing::kTrue),
-            Format("Cannot copy directory: $0", src_path));
+        if (recursive_copy) {
+          RETURN_NOT_OK_PREPEND(
+              CopyDirectory(env, src_path, dest_path, use_hard_links, CreateIfMissing::kTrue,
+                            RecursiveCopy::kTrue),
+              Format("Cannot copy directory: $0", src_path));
+        }
       } else {
         RETURN_NOT_OK_PREPEND(
             CopyFile(env, src_path, dest_path), Format("Cannot copy file: $0", src_path));

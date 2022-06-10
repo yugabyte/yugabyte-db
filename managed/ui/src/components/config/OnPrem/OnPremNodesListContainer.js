@@ -176,7 +176,8 @@ const validate = (values) => {
 
 const addNodeForm = reduxForm({
   form: 'AddNodeForm',
-  validate
+  validate,
+  asyncBlurFields: []
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(addNodeForm(OnPremNodesList));

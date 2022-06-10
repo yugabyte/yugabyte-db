@@ -214,14 +214,3 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
 }
 
 // Extern template definitions.
-
-#if defined(__GNUC__)
-#include <ext/hash_set>
-namespace __gnu_cxx {
-
-template class hash_set<std::string>;
-template class hash_map<std::string, std::string>;
-
-}  // namespace __gnu_cxx
-
-#endif

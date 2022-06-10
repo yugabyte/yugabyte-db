@@ -20,8 +20,9 @@
  *
  */
 
-#ifndef ROCKSDB_LITE
 #pragma once
+
+#ifndef ROCKSDB_LITE
 #include <exception>
 
 namespace rocksdb {

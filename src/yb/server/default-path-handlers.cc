@@ -43,6 +43,7 @@
 
 #include "yb/server/default-path-handlers.h"
 
+#include <sys/stat.h>
 
 #include <fstream>
 #include <functional>
@@ -67,20 +68,25 @@
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_int64(web_log_bytes, 1024 * 1024,
+DEFINE_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
 DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
 TAG_FLAG(web_log_bytes, runtime);
+
+DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
 
@@ -148,7 +154,7 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-// Registered to handle "/flags", and prints out all command-line flags and their values
+// Registered to handle "/varz", and prints out all command-line flags and their values.
 static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
@@ -157,6 +163,32 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
   (*output) << tags.pre_tag;
   std::vector<google::CommandLineFlagInfo> flag_infos;
   google::GetAllFlags(&flag_infos);
+
+  if (FLAGS_TEST_mini_cluster_mode) {
+    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
+    if (custom_varz_ptr != nullptr) {
+      map<string, string> varz;
+      SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
+
+      // Replace values for existing flags.
+      for (auto& flag_info : flag_infos) {
+        auto varz_it = varz.find(flag_info.name);
+        if (varz_it != varz.end()) {
+          flag_info.current_value  = varz_it->second;
+          varz.erase(varz_it);
+        }
+      }
+
+      // Add new flags.
+      for (auto const& flag : varz) {
+        google::CommandLineFlagInfo flag_info;
+        flag_info.name = flag.first;
+        flag_info.current_value = flag.second;
+        flag_infos.push_back(flag_info);
+      }
+    }
+  }
+
   for (const auto& flag_info : flag_infos) {
     (*output) << "--" << flag_info.name << "=";
     std::unordered_set<string> tags;
@@ -392,11 +424,12 @@ static void PathUsageHandler(FsManager* fsmanager,
       "<th>Total Space</th></tr>\n";
 
   Env* env = fsmanager->env();
-  for (const auto& path : fsmanager->GetDataRootDirs()) {
+  for (const auto& path : fsmanager->GetFsRootDirs()) {
     const auto stats = env->GetFilesystemStatsBytes(path);
     if (!stats.ok()) {
       LOG(WARNING) << stats.status();
-      *output << Format("  <tr><td>$0</td><td>NA</td><td>NA</td></tr>\n", path);
+      *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
+                        path, stats.status().message());
       continue;
     }
     const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);

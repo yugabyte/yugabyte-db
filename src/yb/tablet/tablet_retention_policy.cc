@@ -20,29 +20,25 @@
 #include <string>
 #include <vector>
 
+#include "yb/common/common_fwd.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/doc_ttl_util.h"
 
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/types.h"
+
 #include "yb/server/hybrid_clock.h"
 
-#include "yb/common/transaction.h"
-#include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/thread_annotations.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/write_batch.h"
+#include "yb/tablet/tablet_fwd.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/util/countdown_latch.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/locks.h"
-#include "yb/util/metrics.h"
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/logging.h"
 #include "yb/util/strongly_typed_bool.h"
 
 using namespace std::literals;
@@ -96,15 +92,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  std::shared_ptr<ColumnIds> deleted_before_history_cutoff = std::make_shared<ColumnIds>();
-  for (const auto& deleted_col : *metadata_.deleted_cols()) {
-    if (deleted_col.ht < history_cutoff) {
-      deleted_before_history_cutoff->insert(deleted_col.id);
-    }
-  }
-
-  return {history_cutoff, std::move(deleted_before_history_cutoff),
-          TableTTL(*metadata_.schema()),
+  return {history_cutoff, TableTTL(*metadata_.schema()),
           docdb::ShouldRetainDeleteMarkersInMajorCompaction(
               ShouldRetainDeleteMarkersInMajorCompaction())};
 }

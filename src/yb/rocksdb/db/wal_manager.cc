@@ -45,6 +45,8 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

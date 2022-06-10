@@ -21,12 +21,11 @@
 //
 // This code implements ARM atomics for architectures V6 and  newer.
 
-#ifndef BASE_AUXILIARY_ATOMICOPS_INTERNALS_ARM_V6PLUS_H_
-#define BASE_AUXILIARY_ATOMICOPS_INTERNALS_ARM_V6PLUS_H_
+#ifndef YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_ARM_V6PLUS_H
+#define YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_ARM_V6PLUS_H
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "yb/gutil/basictypes.h"  // For COMPILE_ASSERT
 
 // The LDREXD and STREXD instructions in ARM all v7 variants or above.  In v6,
 // only some variants support it.  For simplicity, we only use exclusive
@@ -386,7 +385,7 @@ inline Atomic64 Release_CompareAndSwap(volatile Atomic64* ptr,
   return NoBarrier_CompareAndSwap(ptr, old_value, new_value);
 }
 
-}  // namespace subtle ends
-}  // namespace base ends
+}  // namespace subtle
+}  // namespace base
 
-#endif  // BASE_AUXILIARY_ATOMICOPS_INTERNALS_ARM_V6PLUS_H_
+#endif  // YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_ARM_V6PLUS_H

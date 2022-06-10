@@ -29,16 +29,16 @@
 #define YB_ROCKSDB_UTIL_CODING_H
 
 #pragma once
+
 #include <stdint.h>
 #include <string.h>
 
 #include <algorithm>
 #include <string>
 
-#include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/port/port.h"
 
-#include "yb/util/coding_consts.h"
+#include "yb/util/cast.h"
 #include "yb/util/fast_varint.h"
 
 namespace rocksdb {

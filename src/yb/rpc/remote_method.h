@@ -34,11 +34,6 @@
 
 #include <string>
 
-#include <boost/functional/hash.hpp>
-
-#include "yb/rpc/rpc_header.pb.h"
-
-#include "yb/util/memory/memory_usage.h"
 #include "yb/util/slice.h"
 
 namespace yb {

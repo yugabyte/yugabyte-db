@@ -29,10 +29,10 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <gtest/gtest.h>
 
 #include "yb/util/hdr_histogram.h"
-#include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -78,7 +78,7 @@ TEST_F(HdrHistogramTest, TestCoordinatedOmission) {
   }
   ASSERT_EQ(loop_iters - (loop_iters / normal_value),
             hist.CountInBucketForValue(normal_value));
-  for (int i = interval; i <= interval * 10; i += interval) {
+  for (auto i = interval; i <= interval * 10; i += interval) {
     ASSERT_EQ(loop_iters / normal_value, hist.CountInBucketForValue(i));
   }
 }

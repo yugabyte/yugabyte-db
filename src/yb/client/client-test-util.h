@@ -36,8 +36,8 @@
 #include <vector>
 
 #include "yb/client/client_fwd.h"
-#include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 class Schema;

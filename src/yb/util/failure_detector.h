@@ -33,17 +33,28 @@
 #ifndef YB_UTIL_FAILURE_DETECTOR_H_
 #define YB_UTIL_FAILURE_DETECTOR_H_
 
+#include <stddef.h>
+
+#include <functional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
+
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/monotime.h"
 #include "yb/util/locks.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random.h"
-#include "yb/util/status_callback.h"
 
 namespace yb {
 class MonoDelta;
@@ -74,18 +85,18 @@ class FailureDetector : public RefCountedThreadSafe<FailureDetector> {
   //
   // Returns Status::AlreadyPresent() if a machine with 'name' is
   // already registered in this failure detector.
-  virtual CHECKED_STATUS Track(const std::string& name,
+  virtual Status Track(const std::string& name,
                        const MonoTime& now,
                        const FailureDetectedCallback& callback) = 0;
 
   // Stops tracking node with 'name'.
-  virtual CHECKED_STATUS UnTrack(const std::string& name) = 0;
+  virtual Status UnTrack(const std::string& name) = 0;
 
   // Return true iff the named entity is currently being tracked.
   virtual bool IsTracking(const std::string& name) = 0;
 
   // Records that a message from machine with 'name' was received at 'now'.
-  virtual CHECKED_STATUS MessageFrom(const std::string& name, const MonoTime& now) = 0;
+  virtual Status MessageFrom(const std::string& name, const MonoTime& now) = 0;
 
   // Checks the failure status of each tracked node. If the failure criteria is
   // met, the failure callback is invoked.
@@ -107,15 +118,15 @@ class TimedFailureDetector : public FailureDetector {
   explicit TimedFailureDetector(MonoDelta failure_period);
   virtual ~TimedFailureDetector();
 
-  virtual CHECKED_STATUS Track(const std::string& name,
+  virtual Status Track(const std::string& name,
                        const MonoTime& now,
                        const FailureDetectedCallback& callback) override;
 
-  virtual CHECKED_STATUS UnTrack(const std::string& name) override;
+  virtual Status UnTrack(const std::string& name) override;
 
   virtual bool IsTracking(const std::string& name) override;
 
-  virtual CHECKED_STATUS MessageFrom(const std::string& name, const MonoTime& now) override;
+  virtual Status MessageFrom(const std::string& name, const MonoTime& now) override;
 
   virtual void CheckForFailures(const MonoTime& now) override;
 
@@ -154,17 +165,17 @@ class RandomizedFailureMonitor {
   ~RandomizedFailureMonitor();
 
   // Starts the failure monitor.
-  CHECKED_STATUS Start();
+  Status Start();
 
   // Stops the failure monitor.
   void Shutdown();
 
   // Adds a failure detector to be monitored.
-  CHECKED_STATUS MonitorFailureDetector(const std::string& name,
+  Status MonitorFailureDetector(const std::string& name,
                                 const scoped_refptr<FailureDetector>& fd);
 
   // Unmonitors the failure detector with the specified name.
-  CHECKED_STATUS UnmonitorFailureDetector(const std::string& name);
+  Status UnmonitorFailureDetector(const std::string& name);
 
  private:
   typedef std::unordered_map<std::string, scoped_refptr<FailureDetector> > FDMap;

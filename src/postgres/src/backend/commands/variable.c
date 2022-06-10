@@ -600,7 +600,8 @@ assign_XactIsoLevel(const char *newval, void *extra)
 	XactIsoLevel = *((int *) extra);
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgSetTransactionIsolationLevel(XactIsoLevel));
+		HandleYBStatus(
+			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 	}
 }
 

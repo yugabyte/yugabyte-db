@@ -2,7 +2,6 @@
 title: Triggers
 linkTitle: Triggers
 description: Triggers in YSQL
-headcontent: Triggers in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -21,7 +20,7 @@ In YSQL, a function invoked automatically when an event associated with a table 
 
 You create a trigger by defining a function and then attaching this trigger function to a table. You can create a trigger at a row level or a statement level, depending on the number of times the trigger is to be invoked and when. For example, when executing an `UPDATE` statement that affects five rows, the row-level trigger is invoked five times, whereas the statement-level trigger is invoked only once. In addition, you can enable the trigger to be invoked before or after an event: when the trigger is invoked before an event, it may skip the operation for the current row or modify the row itself; if the trigger is invoked after the event, the trigger has access to all the changes.
 
-When YugabyteDB is being used by different applications, triggers allow you to keep the cross-functional behavior within the database that is performed automatically every time the table data is modified. In addition, triggers let you maintain data integrity rules that can only be implemented at the database level. 
+When YugabyteDB is being used by different applications, triggers allow you to keep the cross-functional behavior within the database that is performed automatically every time the table data is modified. In addition, triggers let you maintain data integrity rules that can only be implemented at the database level.
 
 When using triggers, it is important to be aware of their existence and understand their logic. Otherwise, it is difficult to predict the timing and effects of data changes.
 
@@ -32,7 +31,7 @@ Creating a trigger in YSQL is a two-step process: you start by creating a trigge
 The `CREATE FUNCTION` statement has the following syntax:
 
 ```sql
-CREATE FUNCTION trigger_function() 
+CREATE FUNCTION trigger_function()
 RETURNS TRIGGER LANGUAGE PLPGSQL
 AS $$
 BEGIN
@@ -46,8 +45,8 @@ $$
 The `CREATE TRIGGER` statement has the following syntax:
 
 ```sql
-CREATE TRIGGER tr_name 
-{BEFORE | AFTER} { event } 
+CREATE TRIGGER tr_name
+{BEFORE | AFTER} { event }
 ON tbl_name [FOR [EACH] { ROW | STATEMENT }]
        EXECUTE PROCEDURE trigger_function
 ```
@@ -65,11 +64,11 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees VALUES 
+INSERT INTO employees VALUES
 (1221, 'John Smith', 'Marketing'),
 (1222, 'Bette Davis', 'Sales'),
 (1223, 'Lucille Ball', 'Operations'),
-(1224, 'John Zimmerman', 'Sales'); 
+(1224, 'John Zimmerman', 'Sales');
 ```
 
 If an employee is transferred to a different department, the change is recorded in a table called `employee_dept_changes`, as shown in the following example:
@@ -86,15 +85,15 @@ CREATE TABLE employee_dept_changes (
 To start recording changes, you create a function called `record_dept_changes`, as shown in the following example:
 
 ```sql
-CREATE OR REPLACE FUNCTION record_dept_changes() 
+CREATE OR REPLACE FUNCTION record_dept_changes()
 RETURNS TRIGGER AS
 $$
-BEGIN 
-IF NEW.department <> OLD.department 
-THEN INSERT INTO employee_dept_changes(employee_no, name, department, changed_on) 
-VALUES(OLD.employee_no, OLD.name, OLD.department, now()); 
-END IF; 
-RETURN NEW; 
+BEGIN
+IF NEW.department <> OLD.department
+THEN INSERT INTO employee_dept_changes(employee_no, name, department, changed_on)
+VALUES(OLD.employee_no, OLD.name, OLD.department, now());
+END IF;
+RETURN NEW;
 END;
 $$
 LANGUAGE 'plpgsql';
@@ -102,18 +101,18 @@ LANGUAGE 'plpgsql';
 
 The preceding function inserts the old department along with the rest of the employee data into the `employee_dept_changes` table and adds the time of change if the employee's department changes.
 
-The following example demonstrates how to bind the trigger function to the `employees` table: 
+The following example demonstrates how to bind the trigger function to the `employees` table:
 
 ```sql
-CREATE TRIGGER dept_changes 
-BEFORE UPDATE ON employees 
-FOR EACH ROW 
+CREATE TRIGGER dept_changes
+BEFORE UPDATE ON employees
+FOR EACH ROW
 EXECUTE PROCEDURE record_dept_changes();
 ```
 
-The trigger name in the preceding example is `dept_changes`. The trigger function is automatically invoked before the value of the `department` column is updated. 
+The trigger name in the preceding example is `dept_changes`. The trigger function is automatically invoked before the value of the `department` column is updated.
 
-The following example updates the department for one of the employees from the `employees` table from Sales to Marketing: 
+The following example updates the department for one of the employees from the `employees` table from Sales to Marketing:
 
 ```sql
 UPDATE employees
@@ -132,7 +131,7 @@ employee_no | name                | department
 1224        | John Zimmerman      | Sales
 ```
 
-The following example retrieves all data from the `employee_dept_changes` table: 
+The following example retrieves all data from the `employee_dept_changes` table:
 
 ```sql
 SELECT * FROM employee_dept_changes;
@@ -155,11 +154,11 @@ The `DROP TRIGGER` statement allows you to delete the trigger from a table.
 The `DROP TRIGGER` statement has the following syntax:
 
 ```sql
-DROP TRIGGER [IF EXISTS] tr_name 
+DROP TRIGGER [IF EXISTS] tr_name
   ON tbl_name [ CASCADE | RESTRICT ];
 ```
 
-*tr_name* represents the trigger to be deleted if it exists. If you try to delete a non-existing trigger without using the `IF EXISTS` statement, the `DROP TRIGGER` statement results in an error, whereas using `IF EXISTS` to delete a non-existing trigger results in a notice. *tbl_name* represents the table associated with the trigger. The `CASCADE` option allows you to automatically delete objects that depend on the trigger and the `RESTRICT` option (default) allows you to refuse to delete the trigger if it has dependent objects.   
+*tr_name* represents the trigger to be deleted if it exists. If you try to delete a non-existing trigger without using the `IF EXISTS` statement, the `DROP TRIGGER` statement results in an error, whereas using `IF EXISTS` to delete a non-existing trigger results in a notice. *tbl_name* represents the table associated with the trigger. The `CASCADE` option allows you to automatically delete objects that depend on the trigger and the `RESTRICT` option (default) allows you to refuse to delete the trigger if it has dependent objects.
 
 The following example demonstrates how to delete the `dept_changes` trigger used in the examples from [Creating Triggers](#creating-triggers):
 
@@ -217,7 +216,7 @@ ALTER TABLE employees
 
 ## Using Event Triggers
 
-The main difference between regular triggers and event triggers is that the former capture data manipulation events on a single table, whereas the latter can capture data definition events on a database. 
+The main difference between regular triggers and event triggers is that the former capture data manipulation events on a single table, whereas the latter can capture data definition events on a database.
 
 The `CREATE EVENT TRIGGER` statement has he following syntax:
 
@@ -232,14 +231,14 @@ CREATE EVENT TRIGGER tr_name ON event
 The following example is based on examples from [Creating Triggers](#creating-triggers), except that the `record_dept_changes` function returns an event trigger instead of a regular trigger. The example shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
 
 ```sql
-CREATE OR REPLACE FUNCTION record_dept_changes() 
+CREATE OR REPLACE FUNCTION record_dept_changes()
 RETURNS EVENT_TRIGGER AS
 $$
-BEGIN 
-IF NEW.department <> OLD.department 
-THEN INSERT INTO employee_dept_changes(employee_no, name, department, changed_on) 
-VALUES(OLD.employee_no, OLD.name, OLD.department, now()); 
-END IF; 
+BEGIN
+IF NEW.department <> OLD.department
+THEN INSERT INTO employee_dept_changes(employee_no, name, department, changed_on)
+VALUES(OLD.employee_no, OLD.name, OLD.department, now());
+END IF;
 END;
 $$
 LANGUAGE 'plpgsql';

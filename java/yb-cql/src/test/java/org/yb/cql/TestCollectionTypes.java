@@ -14,6 +14,7 @@ package org.yb.cql;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.google.common.collect.ImmutableList;
 import org.junit.Test;
 import org.yb.client.TestUtils;
 
@@ -476,6 +477,16 @@ public class TestCollectionTypes extends BaseCQLTest {
         "{'a', 'b'}", "[1.0, 'y', 3.0]");
     runInvalidStmt(insert_stmt6);
 
+    // testing NULL in collections
+    for (List<String> values : Arrays.asList(Arrays.asList("{null : 'a'}", "{'a'}", "[1.0]"),
+                                             Arrays.asList("{1 : null}", "{'a'}", "[1.0]"),
+                                             Arrays.asList("{1 : 'a'}", "{null}", "[1.0]"),
+                                             Arrays.asList("{1 : 'a'}", "{'a'}", "[null]"))) {
+      runInvalidStmt(
+          String.format(insert_template, 1, 2, values.get(0), values.get(1), values.get(2)),
+          "null is not supported inside collections");
+    }
+
     //------------------------------------------------------------------------------------------
     // Testing Invalid Updates
     //------------------------------------------------------------------------------------------
@@ -510,6 +521,39 @@ public class TestCollectionTypes extends BaseCQLTest {
     String update_stmt7 = String.format(update_template, "vs", "{'x', 'y'}") +
         " IF vl < [1.0, 2.0, 4.0]";
     runInvalidStmt(update_stmt7);
+
+    // testing NULL in collections
+    update_template = "UPDATE " + tableName + " SET %s WHERE h = 1 and r = 1";
+    String update_template2 = "UPDATE " + tableName + " SET vm = {1:'a'} WHERE %s";
+
+    for (String expr : ImmutableList.of(
+        "vm = {null : 'a'}", "vm = {1 : null}", "vs = {null}", "vl = [null]")) {
+      runInvalidStmt(String.format(update_template, expr),
+                     "null is not supported inside collections");
+
+      runInvalidStmt(String.format(update_template2, expr),
+                     "null is not supported inside collections");
+    }
+
+    runInvalidStmt("UPDATE " + tableName + " SET vm = {1 : 'a'} WHERE h IN (1)",
+                   "Operator not supported for write operations");
+
+    runInvalidStmt("UPDATE " + tableName + " SET vs = { } IF vm = {}",
+                   "Missing partition key");
+
+    //------------------------------------------------------------------------------------------
+    // Testing Invalid Deletes
+    //------------------------------------------------------------------------------------------
+    String delete_stmt = "DELETE FROM " + tableName + " WHERE %s";
+
+    for (String expr : ImmutableList.of(
+        "vm = {null : 'a'}", "vm = {1 : null}", "vs = {null}", "vl = [null]")) {
+      runInvalidStmt(String.format(delete_stmt, expr),
+                     "null is not supported inside collections");
+    }
+
+    runInvalidStmt("DELETE FROM " + tableName + " IF h = 1",
+                   "syntax error, unexpected IF_P");
 
     // Done -- cleaning up
     dropTable(tableName);

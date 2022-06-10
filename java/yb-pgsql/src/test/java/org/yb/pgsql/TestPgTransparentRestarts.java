@@ -21,10 +21,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -66,11 +64,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
   private static final int PG_OUTPUT_BUFFER_SIZE_BYTES = 1024;
 
   /**
-   * Size of long strings to provoke read restart errors. This should be significantly larger than
-   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} to force buffer flushes - thus preventing YSQL from doing
-   * a transparent restart.
+   * Size of long strings to provoke read restart errors. This should be comparable to
+   * {@link #PG_OUTPUT_BUFFER_SIZE_BYTES} so as to force buffer flushes - thus preventing YSQL from
+   * doing a transparent restart.
    */
-  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES * 100;
+  private static final int LONG_STRING_LENGTH = PG_OUTPUT_BUFFER_SIZE_BYTES;
 
   /** Maximum value to insert in a table column {@code i} (minimum is 0) */
   private static final int MAX_INT_TO_INSERT = 5;
@@ -813,8 +811,8 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
    * expected to get read restart errors while running each of these threads.
    *
    * For the transactional SELECTs, we're only checking for restart read error on first operation.
-   * If it happens in the second, that's always valid. (TODO(Piyush): Once read restart are handled
-   * on a per statement level for READ COMMITTED, this will change)
+   * If it happens in the second, that's always valid (except for READ COMMITTED transactions since
+   * retries are handled on a per statement level in this isolation).
    */
   private abstract class ConcurrentInsertSelectTester<Stmt extends AutoCloseable>
       extends ConcurrentInsertQueryTester<Stmt>{
@@ -825,7 +823,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
         ConnectionBuilder cb,
         String valueToInsert,
         boolean expectRestartErrors) {
-      super(cb, valueToInsert, 500 /* numInserts */);
+      super(cb, valueToInsert, 250 /* numInserts */);
       this.expectRestartErrors = expectRestartErrors;
     }
 
@@ -915,7 +913,11 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
             " selectsWithSnapshotIsolation=" + selectsWithSnapshotIsolation +
             " selectsWithSerializable=" + selectsWithSerializable);
 
-        assertTrue(expectRestartErrors || selectsRestartRequired == 0);
+        assertTrue(
+          "expectRestartErrors=" + expectRestartErrors +
+            ", selectsRestartRequired=" + selectsRestartRequired,
+          (expectRestartErrors && selectsRestartRequired > 0) ||
+          (!expectRestartErrors && selectsRestartRequired == 0));
         assertTrue(expectRestartErrors || selectsWithConflictError == 0);
 
         if (onlyEmptyResults) {
@@ -942,6 +944,7 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
           int selectsFirstOpConflictDetected = 0;
           int txnsSucceeded = 0;
           int selectsWithAbortError = 0;
+          int commitOfTxnThatRequiresRestart = 0;
           boolean resultsAlwaysMatched = true;
 
           // We never expect SNAPSHOT ISOLATION/ READ COMMITTED transaction to result in "conflict"
@@ -967,7 +970,19 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
                 if (Thread.interrupted()) return; // Skips all post-loop checks
                 List<Row> rows2 = getRowList(executeQuery(stmt));
                 ++numCompletedOps;
-                selectTxnConn.commit();
+                try {
+                  selectTxnConn.commit();
+                } catch (Exception ex) {
+                  // TODO(Piyush): Once #11514 is fixed, we won't have to handle this rare
+                  // occurrence.
+                  if (ex.getMessage().contains(
+                        "Illegal state: Commit of transaction that requires restart is not " +
+                        "allowed")){
+                    commitOfTxnThatRequiresRestart++;
+                  } else {
+                    throw ex;
+                  }
+                }
                 assertTrue("Two SELECTs done within same transaction mismatch" +
                            ", " + isolation + " transaction isolation breach!",
                            rows1.equals(rows2) || (isolation == IsolationLevel.READ_COMMITTED));
@@ -1006,13 +1021,30 @@ public class TestPgTransparentRestarts extends BasePgSQLTest {
               " selectsSecondOpRestartRequired=" + selectsSecondOpRestartRequired +
               " selectsFirstOpConflictDetected=" + selectsFirstOpConflictDetected +
               " txnsSucceeded=" + txnsSucceeded +
-              " selectsWithAbortError=" + selectsWithAbortError);
+              " selectsWithAbortError=" + selectsWithAbortError +
+              " commitOfTxnThatRequiresRestart=" + commitOfTxnThatRequiresRestart);
 
-          // TODO(Piyush): Once we handle read restarts on a per statement level for READ COMMITTED,
-          // update the below assertion to ensure selectsSecondOpRestartRequired == 0 in that case.
-          assertTrue(
-            (!expectReadRestartErrors && selectsFirstOpRestartRequired == 0) ||
-            (expectReadRestartErrors && selectsFirstOpRestartRequired > 0));
+          if (expectReadRestartErrors) {
+            assertTrue(selectsFirstOpRestartRequired > 0 && selectsSecondOpRestartRequired > 0);
+          }
+          else {
+            assertTrue(selectsFirstOpRestartRequired == 0);
+            if (isolation == IsolationLevel.REPEATABLE_READ) {
+              // Read restart errors are retried transparently only for the first statement in the
+              // transaction
+              assertTrue(selectsSecondOpRestartRequired > 0);
+            } else if (isolation == IsolationLevel.READ_COMMITTED) {
+              // Read restarts retries are performed transparently for each statement in
+              // READ COMMITTED isolation
+              assertTrue(selectsSecondOpRestartRequired == 0);
+            } else if (isolation == IsolationLevel.SERIALIZABLE) {
+              // Read restarts can't occur in SERIALIZABLE isolation
+              assertTrue(selectsSecondOpRestartRequired == 0);
+            } else {
+              assertTrue(false); // Shouldn't reach here.
+            }
+          }
+
           assertTrue(
             (!expectConflictErrors && selectsFirstOpConflictDetected == 0) ||
             (expectConflictErrors && selectsFirstOpConflictDetected > 0));

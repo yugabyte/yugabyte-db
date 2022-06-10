@@ -36,17 +36,16 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/common/common.pb.h"
 
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
@@ -71,7 +70,6 @@ class SysCatalogTest : public YBTest {
     MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
   }
 
   void TearDown() override {
@@ -85,7 +83,6 @@ class SysCatalogTest : public YBTest {
   std::unique_ptr<Messenger> client_messenger_;
   std::unique_ptr<MiniMaster> mini_master_;
   Master* master_;
-  std::unique_ptr<MasterServiceProxy> proxy_;
 };
 
 const int64_t kLeaderTerm = 1;

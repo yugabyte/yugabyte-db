@@ -35,18 +35,22 @@
 #include <string>
 #include <unordered_map>
 
+#include <gtest/gtest.h>
+
 #include "yb/gutil/ref_counted.h"
-#include "yb/tserver/remote_bootstrap_session.h"
+
 #include "yb/tserver/remote_bootstrap.service.h"
+#include "yb/tserver/remote_bootstrap_session.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
 
 namespace yb {
+
 class FsManager;
+class Thread;
 
 namespace tserver {
 
@@ -57,6 +61,8 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   RemoteBootstrapServiceImpl(FsManager* fs_manager,
                              TabletPeerLookupIf* tablet_peer_lookup,
                              const scoped_refptr<MetricEntity>& metric_entity);
+
+  ~RemoteBootstrapServiceImpl();
 
   void BeginRemoteBootstrapSession(const BeginRemoteBootstrapSessionRequestPB* req,
                                    BeginRemoteBootstrapSessionResponsePB* resp,
@@ -93,13 +99,13 @@ class RemoteBootstrapServiceImpl : public RemoteBootstrapServiceIf {
   typedef std::unordered_map<std::string, SessionData> SessionMap;
 
   // Validate the data identifier in a FetchData request.
-  CHECKED_STATUS ValidateFetchRequestDataId(
+  Status ValidateFetchRequestDataId(
       const DataIdPB& data_id,
       RemoteBootstrapErrorPB::Code* app_error,
       const scoped_refptr<RemoteBootstrapSession>& session) const;
 
   // Destroy the specified remote bootstrap session.
-  CHECKED_STATUS DoEndRemoteBootstrapSession(
+  Status DoEndRemoteBootstrapSession(
       const std::string& session_id,
       bool session_suceeded,
       RemoteBootstrapErrorPB::Code* app_error)  REQUIRES(sessions_mutex_);

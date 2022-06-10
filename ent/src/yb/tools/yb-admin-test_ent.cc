@@ -13,13 +13,18 @@
 
 // Tests for the EE yb-admin command-line tool.
 
+#include <gflags/gflags.h>
+
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
+#include "yb/client/table.h"
+#include "yb/client/table_info.h"
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
-#include "yb/master/master.pb.h"
 #include "yb/master/master_backup.proxy.h"
+#include "yb/master/master_replication.proxy.h"
 
 #include "yb/rpc/secure_stream.h"
 
@@ -32,12 +37,18 @@
 
 #include "yb/util/date_time.h"
 #include "yb/util/env_util.h"
+#include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 DECLARE_string(certs_dir);
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
+DECLARE_int64(rpc_throttle_threshold_bytes);
+DECLARE_bool(parallelize_bootstrap_producer);
+DECLARE_bool(check_bootstrap_required);
 
 namespace yb {
 namespace tools {
@@ -55,16 +66,17 @@ using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
-using master::MasterBackupServiceProxy;
+using master::MasterBackupProxy;
+using master::MasterReplicationProxy;
 using master::SysCDCStreamEntryPB;
 using master::SysSnapshotEntryPB;
 using rpc::RpcController;
 
 class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
  protected:
-  Result<MasterBackupServiceProxy*> BackupServiceProxy() {
+  Result<MasterBackupProxy*> BackupServiceProxy() {
     if (!backup_service_proxy_) {
-      backup_service_proxy_.reset(new MasterBackupServiceProxy(
+      backup_service_proxy_.reset(new MasterBackupProxy(
           &client_->proxy_cache(),
           VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr())));
     }
@@ -101,9 +113,9 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return result;
   }
 
-  CHECKED_STATUS WaitForRestoreSnapshot() {
+  Status WaitForRestoreSnapshot() {
     return WaitFor([this]() -> Result<bool> {
-      auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
+      const auto document = VERIFY_RESULT(RunAdminToolCommandJson("list_snapshot_restorations"));
       auto it = document.FindMember("restorations");
       if (it == document.MemberEnd()) {
         LOG(INFO) << "No restorations";
@@ -125,7 +137,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   }
 
   Result<ListSnapshotsResponsePB> WaitForAllSnapshots(
-    MasterBackupServiceProxy* const alternate_proxy = nullptr) {
+    MasterBackupProxy* const alternate_proxy = nullptr) {
     auto proxy = alternate_proxy;
     if (!proxy) {
       proxy = VERIFY_RESULT(BackupServiceProxy());
@@ -150,7 +162,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
 
   Result<string> GetCompletedSnapshot(int num_snapshots = 1,
                                       int idx = 0,
-                                      MasterBackupServiceProxy* const proxy = nullptr) {
+                                      MasterBackupProxy* const proxy = nullptr) {
     auto resp = VERIFY_RESULT(WaitForAllSnapshots(proxy));
 
     if (resp.snapshots_size() != num_snapshots) {
@@ -182,6 +194,14 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
     return resp.restorations(0).entry().state();
   }
 
+  Result<string> GetRecentStreamId(MiniCluster* cluster) {
+    const int kStreamUuidLength = 32;
+    string output = VERIFY_RESULT(RunAdminToolCommand(cluster, "list_cdc_streams"));
+    string find_stream_id = "stream_id: \"";
+    string::size_type pos = output.find(find_stream_id);
+    return output.substr((pos + find_stream_id.size()), kStreamUuidLength);
+  }
+
   Result<size_t> NumTables(const string& table_name) const;
   void ImportTableAs(const string& snapshot_file, const string& keyspace, const string& table_name);
   void CheckImportedTable(
@@ -196,7 +216,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   void DoTestExportImportIndexSnapshot(Transactional transactional);
 
  private:
-  std::unique_ptr<MasterBackupServiceProxy> backup_service_proxy_;
+  std::unique_ptr<MasterBackupProxy> backup_service_proxy_;
 };
 
 TEST_F(AdminCliTest, TestNonTLS) {
@@ -638,18 +658,23 @@ TEST_F(AdminCliTest, TestFailedRestoration) {
 // Configures two clusters with clients for the producer and consumer side of xcluster replication.
 class XClusterAdminCliTest : public AdminCliTest {
  public:
+  virtual int num_tablet_servers() {
+    return 3;
+  }
+
   void SetUp() override {
     // Setup the default cluster as the consumer cluster.
     AdminCliTest::SetUp();
     // Only create a table on the consumer, producer table may differ in tests.
     CreateTable(Transactional::kTrue);
+    FLAGS_check_bootstrap_required = false;
 
     // Create the producer cluster.
-    opts.num_tablet_servers = 3;
+    opts.num_tablet_servers = num_tablet_servers();
     opts.cluster_id = kProducerClusterId;
     producer_cluster_ = std::make_unique<MiniCluster>(opts);
     ASSERT_OK(producer_cluster_->StartSync());
-    ASSERT_OK(producer_cluster_->WaitForTabletServerCount(3));
+    ASSERT_OK(producer_cluster_->WaitForTabletServerCount(num_tablet_servers()));
     producer_cluster_client_ = ASSERT_RESULT(producer_cluster_->CreateClient());
   }
 
@@ -658,6 +683,22 @@ class XClusterAdminCliTest : public AdminCliTest {
       producer_cluster_->Shutdown();
     }
     AdminCliTest::DoTearDown();
+  }
+
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid) {
+    auto proxy = std::make_shared<master::MasterReplicationProxy>(
+        &client_->proxy_cache(),
+        VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+
+    master::GetUniverseReplicationRequestPB req;
+    master::GetUniverseReplicationResponsePB resp;
+    return WaitFor([proxy, &req, &resp, producer_uuid]() -> Result<bool> {
+      req.set_producer_id(producer_uuid);
+      RpcController rpc;
+      Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
+
+      return resp.has_error();
+    }, 20s, "Waiting for universe to delete");
   }
 
  protected:
@@ -701,9 +742,9 @@ class XClusterAdminCliTest : public AdminCliTest {
     return Status::OK();
   }
 
-  Result<MasterBackupServiceProxy*> ProducerBackupServiceProxy() {
+  Result<MasterBackupProxy*> ProducerBackupServiceProxy() {
     if (!producer_backup_service_proxy_) {
-      producer_backup_service_proxy_.reset(new MasterBackupServiceProxy(
+      producer_backup_service_proxy_.reset(new MasterBackupProxy(
           &producer_cluster_client_->proxy_cache(),
           VERIFY_RESULT(producer_cluster_->GetLeaderMasterBoundRpcAddr())));
     }
@@ -716,7 +757,7 @@ class XClusterAdminCliTest : public AdminCliTest {
   MiniClusterOptions opts;
 
  private:
-  std::unique_ptr<MasterBackupServiceProxy> producer_backup_service_proxy_;
+  std::unique_ptr<MasterBackupProxy> producer_backup_service_proxy_;
 };
 
 TEST_F(XClusterAdminCliTest, TestSetupUniverseReplication) {
@@ -828,8 +869,8 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationFailsWithInvalidSchema)
                                                   producer_cluster_->GetMasterAddresses(),
                                                   producer_cluster_table->id() + "-BAD"));
 
-  // Verify that error message has relevant information.
-  ASSERT_TRUE(error_msg.find(producer_cluster_table->id() + "-BAD not found") != string::npos);
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
 
   // Now try with the correct table id.
   // Note that SetupUniverseReplication should call DeleteUniverseReplication to
@@ -885,6 +926,9 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
                                                   producer_cluster_table->id(),
                                                   "fake-bootstrap-id"));
 
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
+
   // Try to setup universe replication with fake producer master address.
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
@@ -892,12 +936,18 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
                                                   "fake-producer-address",
                                                   producer_cluster_table->id()));
 
-  // Try to setup universe replication with fake producer master address.
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
+
+  // Try to setup universe replication with fake producer table id.
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
                                                   kProducerClusterId,
                                                   producer_cluster_->GetMasterAddresses(),
                                                   "fake-producer-table-id"));
+
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
 
   // Test when producer and local table have different schema.
   client::TableHandle producer_cluster_table2;
@@ -914,11 +964,15 @@ TEST_F(XClusterAdminCliTest, TestSetupUniverseReplicationCleanupOnFailure) {
                                      client_.get(),
                                      &consumer_table2,
                                      kTableName2);
+
   ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
                                                   "setup_universe_replication",
                                                   kProducerClusterId,
                                                   producer_cluster_->GetMasterAddresses(),
                                                   producer_cluster_table2->id()));
+
+  // Wait for the universe to be cleaned up
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
 
   // Verify that the environment is cleaned up correctly after failure.
   // A valid call to SetupUniverseReplication after the failure should succeed
@@ -967,7 +1021,8 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
   string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
 
   // Check list_cdc_streams again for the table and the status INITIATED.
-  CheckTableIsBeingReplicated({producer_cluster_table->id()}, SysCDCStreamEntryPB::INITIATED);
+  ASSERT_OK(CheckTableIsBeingReplicated(
+      {producer_cluster_table->id()}, SysCDCStreamEntryPB::INITIATED));
 
   // Setup universe replication using the bootstrap_id
   ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
@@ -978,11 +1033,11 @@ TEST_F(XClusterAdminCliTest, TestListCdcStreamsWithBootstrappedStreams) {
 
 
   // Check list_cdc_streams again for the table and the status ACTIVE.
-  CheckTableIsBeingReplicated({producer_cluster_table->id()});
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
 
   // Try restarting the producer to ensure that the status persists.
   ASSERT_OK(producer_cluster_->RestartSync());
-  CheckTableIsBeingReplicated({producer_cluster_table->id()});
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_cluster_table->id()}));
 
   // Delete this universe so shutdown can proceed.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
@@ -1036,12 +1091,30 @@ TEST_F(XClusterAdminCliTest, TestRenameUniverseReplication) {
                                 new_replication_id,
                                 1));
 
+  // Also test that we can rename again.
+  std::string new_replication_id2 = "new_replication_id2";
+  ASSERT_OK(RunAdminToolCommand("alter_universe_replication",
+                                new_replication_id,
+                                "rename_id",
+                                new_replication_id2));
+
+  // Assert that using old universe ids fails.
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 kProducerClusterId,
+                                 1));
+  ASSERT_NOK(RunAdminToolCommand("set_universe_replication_enabled",
+                                 new_replication_id,
+                                 1));
+  // But using new correct name should succeed.
+  ASSERT_OK(RunAdminToolCommand("set_universe_replication_enabled",
+                                new_replication_id2,
+                                1));
+
   // Delete this universe so shutdown can proceed.
-  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id));
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", new_replication_id2));
   // Also delete second one too.
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", collision_id));
 }
-
 
 class XClusterAlterUniverseAdminCliTest : public XClusterAdminCliTest {
  public:
@@ -1156,6 +1229,263 @@ TEST_F(XClusterAlterUniverseAdminCliTest, TestAlterUniverseReplicationWithBootst
   ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id(), producer_table2->id()}));
 
   ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+// delete_cdc_stream tests
+TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithConsumerSetup) {
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id()));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id()}));
+
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(producer_cluster_.get()));
+
+  // Should fail as it should meet the conditions to be stopped.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(), "delete_cdc_stream", stream_id));
+  // Should pass as we force it.
+  ASSERT_OK(RunAdminToolCommand(producer_cluster_.get(), "delete_cdc_stream", stream_id,
+                                "force_delete"));
+  // Delete universe should fail as we've force deleted the stream.
+  ASSERT_NOK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication",
+                                kProducerClusterId,
+                                "ignore-errors"));
+}
+
+TEST_F(XClusterAdminCliTest, TestDeleteCDCStreamWithBootstrap) {
+  const int kStreamUuidLength = 32;
+  client::TableHandle producer_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_table);
+
+  string output = ASSERT_RESULT(RunAdminToolCommand(
+      producer_cluster_.get(), "bootstrap_cdc_producer", producer_table->id()));
+  // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
+  string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+
+  // Setup universe replication, this should only return once complete.
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_table->id(),
+                                bootstrap_id));
+  ASSERT_OK(CheckTableIsBeingReplicated({producer_table->id()}));
+
+  // Should fail as it should meet the conditions to be stopped.
+  ASSERT_NOK(RunAdminToolCommand(producer_cluster_.get(), "delete_cdc_stream", bootstrap_id));
+  // Delete should work fine from deleting from universe.
+  ASSERT_OK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+}
+
+TEST_F(AdminCliTest, TestDeleteCDCStreamWithCreateCDCStream) {
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), client_.get(), &table_);
+
+  // Create CDC stream
+  ASSERT_OK(RunAdminToolCommand(cluster_.get(),
+                                "create_cdc_stream",
+                                table_->id()));
+
+  string stream_id = ASSERT_RESULT(GetRecentStreamId(cluster_.get()));
+
+  // Should be deleted.
+  ASSERT_OK(RunAdminToolCommand(cluster_.get(), "delete_cdc_stream", stream_id));
+}
+
+TEST_F(XClusterAdminCliTest, TestFailedSetupUniverseWithDeletion) {
+  client::TableHandle producer_cluster_table;
+
+  // Create an identical table on the producer.
+  client::kv_table_test::CreateTable(
+      Transactional::kTrue, NumTablets(), producer_cluster_client_.get(), &producer_cluster_table);
+
+  string error_msg;
+  // Setup universe replication, this should only return once complete.
+  // First provide a non-existant table id.
+  // ASSERT_NOK since this should fail.
+  ASSERT_NOK(RunAdminToolCommandAndGetErrorOutput(&error_msg,
+                                                  "setup_universe_replication",
+                                                  kProducerClusterId,
+                                                  producer_cluster_->GetMasterAddresses(),
+                                                  producer_cluster_table->id() + "-BAD"));
+
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(kProducerClusterId));
+
+  // Universe should be deleted by BG cleanup
+  ASSERT_NOK(RunAdminToolCommand("delete_universe_replication", kProducerClusterId));
+
+  ASSERT_OK(RunAdminToolCommand("setup_universe_replication",
+                                kProducerClusterId,
+                                producer_cluster_->GetMasterAddresses(),
+                                producer_cluster_table->id()));
+  std::this_thread::sleep_for(5s);
+}
+
+TEST_F(AdminCliTest, TestSetPreferredZone) {
+  const std::string c1z1 = "c1.r1.z1";
+  const std::string c1z2 = "c1.r1.z2";
+  const std::string c2z1 = "c2.r1.z1";
+  const std::string c1z1_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  const std::string c1z2_json =
+      "{\"placementCloud\":\"c1\",\"placementRegion\":\"r1\",\"placementZone\":\"z2\"}";
+  const std::string c2z1_json =
+      "{\"placementCloud\":\"c2\",\"placementRegion\":\"r1\",\"placementZone\":\"z1\"}";
+  const std::string affinitized_leaders_json_Start = "\"affinitizedLeaders\"";
+  const std::string multi_affinitized_leaders_json_start =
+      "\"multiAffinitizedLeaders\":[{\"zones\":[";
+  const std::string json_end = "]}]";
+
+  ASSERT_OK(RunAdminToolCommand(
+      "modify_placement_info", strings::Substitute("$0,$1,$2", c1z1, c1z2, c2z1), 5, ""));
+
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", ""));
+  auto output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_EQ(output.find(multi_affinitized_leaders_json_start), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", c1z1));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", c1z1, c1z2, c2z1));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + "," + c2z1_json +
+          json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(output.find(multi_affinitized_leaders_json_start + c1z1_json + json_end), string::npos);
+
+  ASSERT_OK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:1", c1z1), c1z2));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:2", c1z2),
+      strings::Substitute("$0:3", c2z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "]},{\"zones\":[" + c1z2_json +
+          "]},{\"zones\":[" + c2z1_json + json_end),
+      string::npos);
+
+  ASSERT_OK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:1", c1z2),
+      strings::Substitute("$0:2", c2z1)));
+  output = ASSERT_RESULT(RunAdminToolCommand("get_universe_config"));
+  ASSERT_EQ(output.find(affinitized_leaders_json_Start), string::npos);
+  ASSERT_NE(
+      output.find(
+          multi_affinitized_leaders_json_start + c1z1_json + "," + c1z2_json + "]},{\"zones\":[" +
+          c2z1_json + json_end),
+      string::npos);
+
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:0", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:-13", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand("set_preferred_zones", strings::Substitute("$0:2", c1z1)));
+  ASSERT_NOK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:1", c1z1), strings::Substitute("$0:3", c1z2)));
+  ASSERT_NOK(RunAdminToolCommand(
+      "set_preferred_zones", strings::Substitute("$0:2", c1z1), strings::Substitute("$0:2", c1z2),
+      strings::Substitute("$0:3", c2z1)));
+}
+
+class XClusterAdminCliTest_Large : public XClusterAdminCliTest {
+ public:
+  int num_tablet_servers() override {
+    return 5;
+  }
+};
+
+TEST_F(XClusterAdminCliTest_Large, TestBootstrapProducerPerformance) {
+  // Skip this test in TSAN since the test will time out waiting
+  // for table creation to finish.
+  YB_SKIP_TEST_IN_TSAN();
+
+  const int table_count = 10;
+  const int tablet_count = 5;
+  const int expected_runtime_seconds = 15 * kTimeMultiplier;
+  const std::string keyspace = "my_keyspace";
+  std::vector<client::TableHandle> tables;
+
+  for (int i = 0; i < table_count; i++) {
+    client::TableHandle th;
+    tables.push_back(th);
+
+    // Build the table.
+    client::YBSchemaBuilder builder;
+    builder.AddColumn(kKeyColumn)->Type(INT32)->HashPrimaryKey()->NotNull();
+    builder.AddColumn(kValueColumn)->Type(INT32);
+
+    TableProperties table_properties;
+    table_properties.SetTransactional(true);
+    builder.SetTableProperties(table_properties);
+
+    const YBTableName table_name(YQL_DATABASE_CQL, keyspace,
+      Format("bootstrap_producer_performance_test_table_$0", i));
+    ASSERT_OK(producer_cluster_client_.get()->CreateNamespaceIfNotExists(
+      table_name.namespace_name(),
+      table_name.namespace_type()));
+
+    ASSERT_OK(tables.at(i).Create(
+      table_name, tablet_count, producer_cluster_client_.get(), &builder));
+  }
+
+  std::string table_ids = tables.at(0)->id();
+  for (size_t i = 1; i < tables.size(); ++i) {
+    table_ids += "," + tables.at(i)->id();
+  }
+
+  // Wait for load balancer to be idle until we call bootstrap_cdc_producer.
+  // This prevents TABLET_DATA_TOMBSTONED errors when we make rpc calls.
+  // Todo: need to improve bootstrap behaviour with load balancer.
+  ASSERT_OK(WaitFor(
+    [this, table_ids]() -> Result<bool> {
+      return producer_cluster_client_->IsLoadBalancerIdle();
+    },
+    MonoDelta::FromSeconds(120 * kTimeMultiplier),
+    "Waiting for load balancer to be idle"));
+
+  // Add delays to all rpc calls to simulate live environment.
+  FLAGS_TEST_yb_inbound_big_calls_parse_delay_ms = 5;
+  FLAGS_rpc_throttle_threshold_bytes = 0;
+  // Enable parallelized version of BootstrapProducer.
+  FLAGS_parallelize_bootstrap_producer = true;
+
+  // Check that bootstrap_cdc_producer returns within time limit.
+  ASSERT_OK(WaitFor(
+    [this, table_ids]() -> Result<bool> {
+      auto res = RunAdminToolCommand(producer_cluster_.get(),
+        "bootstrap_cdc_producer", table_ids);
+      return res.ok();
+    },
+    MonoDelta::FromSeconds(expected_runtime_seconds),
+    "Waiting for bootstrap_cdc_producer to complete"));
 }
 
 }  // namespace tools

@@ -20,12 +20,9 @@
 
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
 
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/convenience.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
 #include "yb/rocksdb/util/coding.h"
 
 namespace rocksdb {
@@ -263,14 +260,15 @@ Status DBWithTTLImpl::Write(const WriteOptions& opts, WriteBatch* updates) {
     explicit Handler(Env* env) : env_(env) {}
     WriteBatch updates_ttl;
     Status batch_rewrite_status;
-    virtual Status PutCF(uint32_t column_family_id, const Slice& key,
-                         const Slice& value) override {
+
+    Status PutCF(
+        uint32_t column_family_id, const SliceParts& key, const SliceParts& value) override {
       std::string value_with_ts;
-      Status st = AppendTS(value, &value_with_ts, env_);
+      Status st = AppendTS(value.TheOnlyPart(), &value_with_ts, env_);
       if (!st.ok()) {
         batch_rewrite_status = st;
       } else {
-        WriteBatchInternal::Put(&updates_ttl, column_family_id, key,
+        WriteBatchInternal::Put(&updates_ttl, column_family_id, key.TheOnlyPart(),
                                 value_with_ts);
       }
       return Status::OK();

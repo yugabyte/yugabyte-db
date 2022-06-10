@@ -190,7 +190,15 @@ button,
   border-radius: 2px;
 }
 
-.btn-copy {
+.btn-paste-w {
+  width: 45px !important;
+  &:after {
+    width: 45px !important;
+  }
+}
+
+.btn-copy,
+.btn-paste {
   text-transform: uppercase;
   font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
   vertical-align: baseline;
@@ -231,7 +239,8 @@ button,
   }
 }
 pre {
-  .btn-copy {
+  .btn-copy,
+  .btn-paste {
     position: absolute;
     right: 13px;
     top: 13px;
@@ -242,7 +251,8 @@ pre {
   }
 }
 
-.btn-copy-round {
+.btn-copy-round,
+.btn-paste-round {
   height: 24px;
   width: 24px;
   font-size: 13px;
@@ -271,7 +281,8 @@ pre {
   }
 }
 
-.btn-copy-inactive {
+.btn-copy-inactive,
+.btn-paste-inactive {
   &,
   &:focus {
     background-color: $YB_BACKGROUND;

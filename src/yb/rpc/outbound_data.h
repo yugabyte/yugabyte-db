@@ -14,13 +14,23 @@
 #ifndef YB_RPC_OUTBOUND_DATA_H
 #define YB_RPC_OUTBOUND_DATA_H
 
+#include <float.h>
+#include <stdint.h>
+
+#include <chrono>
 #include <memory>
+#include <sstream>
+#include <string>
+#include <type_traits>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/mpl/and.hpp>
 
 #include "yb/util/format.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/tostring.h"
+#include "yb/util/type_traits.h"
 
 namespace yb {
 

@@ -19,15 +19,28 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
+#include "yb/gutil/bind.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
+
+#include "yb/util/crypt.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using namespace std::literals;
 
@@ -255,6 +268,7 @@ void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& respons
     const CQLConnectionContext& context =
         static_cast<const CQLConnectionContext&>(call_->connection()->context());
     response->set_registered_events(context.registered_events());
+    response->set_rpc_queue_position(call_->GetRpcQueuePosition());
     SendResponse(*response);
   }
 }
@@ -875,7 +889,7 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash
     if (!ldap_auth_result.ok()) {
       return make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::SERVER_ERROR,
-          "Failed to authenticate using LDAP: " + yb::ToString(ldap_auth_result));
+          "Failed to authenticate using LDAP: " + ldap_auth_result.status().ToString());
     } else if (!*ldap_auth_result) {
       response = make_unique<ErrorResponse>(
           *request_, ErrorResponse::Code::BAD_CREDENTIALS,

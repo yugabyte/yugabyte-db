@@ -25,8 +25,10 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertState;
 import com.yugabyte.yw.models.Alert;
+import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MetricKey;
@@ -41,6 +43,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
 import org.junit.Before;
 import org.junit.Rule;
@@ -158,6 +162,41 @@ public class QueryAlertsTest extends FakeDBApplication {
   }
 
   @Test
+  public void testQueryAlertUnderMaintenanceWindow() {
+    String maintenanceWindowUuid = UUID.randomUUID().toString();
+    when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
+    ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
+    when(queryHelper.queryAlerts())
+        .thenReturn(
+            ImmutableList.of(
+                createAlertData(
+                    raisedTime,
+                    labels -> {
+                      labels.put(KnownAlertLabels.SEVERITY.labelName(), Severity.SEVERE.name());
+                      labels.put(
+                          KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS.labelName(),
+                          maintenanceWindowUuid);
+                    })));
+
+    queryAlerts.scheduleRunner();
+
+    AlertFilter alertFilter =
+        AlertFilter.builder()
+            .customerUuid(customer.getUuid())
+            .definitionUuid(definition.getUuid())
+            .build();
+    List<Alert> alerts = alertService.list(alertFilter);
+
+    Alert expectedAlert =
+        createAlert(raisedTime)
+            .setUuid(alerts.get(0).getUuid())
+            .setState(State.SUSPENDED)
+            .setLabel(KnownAlertLabels.MAINTENANCE_WINDOW_UUIDS, maintenanceWindowUuid);
+    copyNotificationFields(expectedAlert, alerts.get(0));
+    assertThat(alerts, contains(expectedAlert));
+  }
+
+  @Test
   public void testQueryAlertsMultipleSeverities() {
     when(queryHelper.isPrometheusManagementEnabled()).thenReturn(true);
     ZonedDateTime raisedTime = ZonedDateTime.parse("2018-07-04T20:27:12.60602144+02:00");
@@ -165,7 +204,11 @@ public class QueryAlertsTest extends FakeDBApplication {
         .thenReturn(
             ImmutableList.of(
                 createAlertData(raisedTime),
-                createAlertData(raisedTime, AlertConfiguration.Severity.WARNING)));
+                createAlertData(
+                    raisedTime,
+                    labels ->
+                        labels.put(
+                            KnownAlertLabels.SEVERITY.labelName(), Severity.WARNING.name()))));
 
     queryAlerts.scheduleRunner();
 
@@ -389,11 +432,13 @@ public class QueryAlertsTest extends FakeDBApplication {
   }
 
   private AlertData createAlertData(ZonedDateTime raisedTime) {
-    return createAlertData(raisedTime, AlertConfiguration.Severity.SEVERE);
+    return createAlertData(
+        raisedTime,
+        labels -> labels.put(KnownAlertLabels.SEVERITY.labelName(), Severity.SEVERE.name()));
   }
 
   private AlertData createAlertData(
-      ZonedDateTime raisedTime, AlertConfiguration.Severity severity) {
+      ZonedDateTime raisedTime, Consumer<Map<String, String>> labelMapModifier) {
     Map<String, String> labels = new HashMap<>();
     labels.put("customer_uuid", customer.getUuid().toString());
     labels.put("definition_uuid", definition.getUuid().toString());
@@ -402,7 +447,7 @@ public class QueryAlertsTest extends FakeDBApplication {
     labels.put("source_name", "Some Source");
     labels.put("source_uuid", universe.getUniverseUUID().toString());
     labels.put("definition_name", "Clock Skew Alert");
-    labels.put("severity", severity.name());
+    labelMapModifier.accept(labels);
     return AlertData.builder()
         .activeAt(raisedTime.withZoneSameInstant(ZoneId.of("UTC")))
         .annotations(ImmutableMap.of("summary", "Clock Skew Alert for universe Test is firing"))

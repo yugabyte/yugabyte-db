@@ -13,16 +13,21 @@
 
 #include "yb/tablet/tablet_component.h"
 
+#include "yb/common/index.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+
 namespace yb {
 namespace tablet {
 
-Result<Tablet::ScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
+Result<TabletScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
     DisableFlushOnShutdown disable_flush_on_shutdown) {
   return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
 }
 
-CHECKED_STATUS TabletComponent::CompleteShutdownRocksDBs(
-    Destroy destroy, Tablet::ScopedRWOperationPauses* ops_pauses) {
+Status TabletComponent::CompleteShutdownRocksDBs(
+    Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
   return tablet_.CompleteShutdownRocksDBs(destroy, ops_pauses);
 }
 

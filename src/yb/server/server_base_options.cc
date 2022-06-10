@@ -40,23 +40,27 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/thread/shared_mutex.hpp>
-
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/join.h"
+#include "yb/common/common_net.pb.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/rpc_header.pb.h"
+#include "yb/gutil/strings/join.h"
+
 #include "yb/master/master_defaults.h"
-#include "yb/util/shared_lock.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/util/faststring.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/status_format.h"
 
 // The following flags related to the cloud, region and availability zone that an instance is
 // started in. These are passed in from whatever provisioning mechanics start the servers. They
@@ -79,6 +83,8 @@ DEFINE_string(placement_uuid, "",
 DEFINE_int32(master_discovery_timeout_ms, 3600000,
              "Timeout for masters to discover each other during cluster creation/startup");
 TAG_FLAG(master_discovery_timeout_ms, hidden);
+
+DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
 namespace server {
@@ -138,16 +144,31 @@ ServerBaseOptions::ServerBaseOptions(const ServerBaseOptions& options)
       placement_cloud_(options.placement_cloud_),
       placement_region_(options.placement_region_),
       placement_zone_(options.placement_zone_) {
-  if (options.webserver_opts.bind_interface.empty()) {
+  CompleteWebserverOptions();
+  SetMasterAddressesNoValidation(options.GetMasterAddresses());
+}
+
+WebserverOptions& ServerBaseOptions::CompleteWebserverOptions() {
+  if (webserver_opts.bind_interface.empty()) {
     std::vector<HostPort> bind_addresses;
-    auto status = HostPort::ParseStrings(options.rpc_opts.rpc_bind_addresses, 0, &bind_addresses);
+    auto status = HostPort::ParseStrings(rpc_opts.rpc_bind_addresses, 0, &bind_addresses);
     LOG_IF(DFATAL, !status.ok()) << "Invalid rpc_bind_address "
-                                 << options.rpc_opts.rpc_bind_addresses << ": " << status;
+                                 << rpc_opts.rpc_bind_addresses << ": " << status;
     if (!bind_addresses.empty()) {
       webserver_opts.bind_interface = bind_addresses.at(0).host();
     }
   }
-  SetMasterAddressesNoValidation(options.GetMasterAddresses());
+
+  if (FLAGS_TEST_mini_cluster_mode &&  !fs_opts.data_paths.empty()) {
+    webserver_opts.TEST_custom_varz = "\nfs_data_dirs\n" + JoinStrings(fs_opts.data_paths, ",");
+  }
+
+  return webserver_opts;
+}
+
+std::string ServerBaseOptions::HostsString() {
+  return !server_broadcast_addresses.empty() ? server_broadcast_addresses
+                                             : rpc_opts.rpc_bind_addresses;
 }
 
 void ServerBaseOptions::SetMasterAddressesNoValidation(MasterAddressesPtr master_addresses) {
@@ -312,6 +333,14 @@ std::string MasterAddressesToString(const MasterAddresses& addresses) {
     }
     result += '}';
   }
+  return result;
+}
+
+CloudInfoPB GetPlacementFromGFlags() {
+  CloudInfoPB result;
+  result.set_placement_cloud(FLAGS_placement_cloud);
+  result.set_placement_region(FLAGS_placement_region);
+  result.set_placement_zone(FLAGS_placement_zone);
   return result;
 }
 

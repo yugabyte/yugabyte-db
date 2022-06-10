@@ -26,6 +26,7 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

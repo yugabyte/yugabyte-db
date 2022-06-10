@@ -1,18 +1,19 @@
 package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterTypes;
 
 @InterfaceAudience.Public
 public class GetUniverseReplicationResponse extends YRpcResponse {
-  private final Master.MasterErrorPB serverError;
-  private final Master.SysUniverseReplicationEntryPB info;
+  private final MasterTypes.MasterErrorPB serverError;
+  private final CatalogEntityInfo.SysUniverseReplicationEntryPB info;
 
   public GetUniverseReplicationResponse(
     long elapsedMillis,
     String tsUUID,
-    Master.MasterErrorPB serverError,
-    Master.SysUniverseReplicationEntryPB info) {
+    MasterTypes.MasterErrorPB serverError,
+    CatalogEntityInfo.SysUniverseReplicationEntryPB info) {
     super(elapsedMillis, tsUUID);
     this.serverError = serverError;
     this.info = info;
@@ -30,7 +31,7 @@ public class GetUniverseReplicationResponse extends YRpcResponse {
     return serverError.getStatus().getMessage();
   }
 
-  public Master.SysUniverseReplicationEntryPB info() {
+  public CatalogEntityInfo.SysUniverseReplicationEntryPB info() {
     return info;
   }
 }

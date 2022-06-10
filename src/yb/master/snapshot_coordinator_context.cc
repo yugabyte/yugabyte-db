@@ -21,6 +21,8 @@
 
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace master {
 
@@ -33,11 +35,11 @@ Result<ColumnId> MetadataColumnId(SnapshotCoordinatorContext* context) {
 } // namespace
 
 Result<docdb::KeyBytes> EncodedKey(
-    SysRowEntry::Type type, const Slice& id, SnapshotCoordinatorContext* context) {
-  docdb::DocKey doc_key({ docdb::PrimitiveValue::Int32(type),
-                          docdb::PrimitiveValue(id.ToBuffer()) });
+    SysRowEntryType type, const Slice& id, SnapshotCoordinatorContext* context) {
+  docdb::DocKey doc_key({ docdb::KeyEntryValue::Int32(type),
+                          docdb::KeyEntryValue(id.ToBuffer()) });
   docdb::SubDocKey sub_doc_key(
-      doc_key, docdb::PrimitiveValue(VERIFY_RESULT(MetadataColumnId(context))));
+      doc_key, docdb::KeyEntryValue::MakeColumnId(VERIFY_RESULT(MetadataColumnId(context))));
   return sub_doc_key.Encode();
 }
 

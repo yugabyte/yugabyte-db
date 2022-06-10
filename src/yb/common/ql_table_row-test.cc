@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <boost/functional/hash.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_expr.h"
@@ -53,7 +54,7 @@ TEST(QLTableRowTest, Random) {
     QLTableRow row;
     for (int j = kRowIterations; j-- > 0;) {
       row.Clear();
-      std::unordered_map<ColumnId, QLValuePB> map;
+      std::unordered_map<ColumnId, QLValuePB, boost::hash<ColumnId>> map;
       for (int m = kMutations; m-- > 0;) {
         ColumnId column_id(kFirstColumnIdRep + RandomUniformInt(0, kColumns));
         if (map.count(column_id)) {

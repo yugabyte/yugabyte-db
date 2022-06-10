@@ -36,11 +36,16 @@
 
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_index.h"
+
 #include "yb/gutil/algorithm.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/locks.h"
+#include "yb/util/metrics.h"
 #include "yb/util/random.h"
+#include "yb/util/status_log.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 
 // TODO: Semantics of the Log and Appender thread interactions changed and now multi-threaded
@@ -109,7 +114,7 @@ class MultiThreadedLogTest : public LogTestBase {
         std::lock_guard<simple_spinlock> lock_guard(lock_);
         for (int j = 0; j < num_ops; j++) {
           auto replicate = std::make_shared<ReplicateMsg>();
-          int32_t index = current_index_++;
+          auto index = current_index_++;
           OpIdPB* op_id = replicate->mutable_id();
           op_id->set_term(0);
           op_id->set_index(index);
@@ -117,9 +122,9 @@ class MultiThreadedLogTest : public LogTestBase {
           replicate->set_op_type(WRITE_OP);
           replicate->set_hybrid_time(clock_->Now().ToUint64());
 
-          tserver::WriteRequestPB* request = replicate->mutable_write_request();
-          AddTestRowInsert(index, 0, "this is a test insert", request);
-          request->set_tablet_id(kTestTablet);
+          tserver::WriteRequestPB request;
+          AddTestRowInsert(narrow_cast<int32_t>(index), 0, "this is a test insert", &request);
+          request.set_tablet_id(kTestTablet);
           batch_replicates.push_back(replicate);
         }
 
@@ -132,7 +137,7 @@ class MultiThreadedLogTest : public LogTestBase {
           entry_batch, batch_replicates, cb->AsStatusCallback()));
     }
     LOG_TIMING(INFO, strings::Substitute("thread $0 waiting to append and sync $1 batches",
-                                        thread_id, FLAGS_num_batches_per_thread)) {
+                                         thread_id, FLAGS_num_batches_per_thread)) {
       latch.Wait();
     }
     for (const Status& status : errors) {
@@ -160,7 +165,7 @@ class MultiThreadedLogTest : public LogTestBase {
 
 TEST_F(MultiThreadedLogTest, TestAppends) {
   BuildLog();
-  int start_current_id = current_index_;
+  auto start_current_id = current_index_;
   LOG_TIMING(INFO, strings::Substitute("inserting $0 batches($1 threads, $2 per-thread)",
                                       FLAGS_num_writer_threads * FLAGS_num_batches_per_thread,
                                       FLAGS_num_batches_per_thread, FLAGS_num_writer_threads)) {
@@ -169,9 +174,8 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
   ASSERT_OK(log_->Close());
 
   std::unique_ptr<LogReader> reader;
-  ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, kTestTablet,
+  ASSERT_OK(LogReader::Open(fs_manager_->env(), nullptr, "Log reader: ",
                             fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet),
-                            fs_manager_->uuid(),
                             nullptr, nullptr, &reader));
   SegmentSequence segments;
   ASSERT_OK(reader->GetSegmentsSnapshot(&segments));

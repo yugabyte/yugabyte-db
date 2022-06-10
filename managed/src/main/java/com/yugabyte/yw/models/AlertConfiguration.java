@@ -22,28 +22,40 @@ import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import io.ebean.ExpressionList;
+import io.ebean.FetchGroup;
 import io.ebean.Finder;
+import io.ebean.Junction;
 import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
+import io.ebean.Query;
 import io.ebean.annotation.DbJson;
+import io.ebean.annotation.Formula;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import javax.persistence.Transient;
 import javax.validation.Valid;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import lombok.Value;
 import lombok.experimental.Accessors;
+import org.apache.commons.collections.CollectionUtils;
 
 @Entity
 @Data
@@ -52,13 +64,22 @@ import lombok.experimental.Accessors;
 @ApiModel(description = "Alert configuration")
 public class AlertConfiguration extends Model {
 
+  private static final String RAW_FIELDS =
+      "uuid, customerUUID, name, description, createTime, "
+          + "targetType, target, thresholds, thresholdUnit, template, durationSec, active, "
+          + "destinationUUID, defaultDestination, maintenanceWindowUuids";
+
   public enum SortBy implements PagedQuery.SortByIF {
     uuid("uuid"),
     name("name"),
     active("active"),
     targetType("targetType"),
+    target("targetName"),
     createTime("createTime"),
-    template("template");
+    template("template"),
+    severity("severityIndex"),
+    destination("destinationName"),
+    alertCount("alertCount");
 
     private final String sortField;
 
@@ -141,6 +162,7 @@ public class AlertConfiguration extends Model {
   @DbJson
   @Column(columnDefinition = "Text", nullable = false)
   @ApiModelProperty(value = "Thresholds", accessMode = READ_WRITE)
+  @EqualsAndHashCode.Exclude
   private Map<Severity, AlertConfigurationThreshold> thresholds;
 
   @NotNull
@@ -161,7 +183,7 @@ public class AlertConfiguration extends Model {
   @ApiModelProperty(
       value = "Duration in seconds, while condition is met to raise an alert",
       accessMode = READ_WRITE)
-  private Integer durationSec = 15;
+  private Integer durationSec = 0;
 
   @NotNull
   @ApiModelProperty(value = "Is configured alerts raised or not", accessMode = READ_WRITE)
@@ -174,49 +196,174 @@ public class AlertConfiguration extends Model {
   @ApiModelProperty(value = "Is default destination used for this config", accessMode = READ_WRITE)
   private boolean defaultDestination;
 
+  @DbJson
+  @Column(nullable = false)
+  @ApiModelProperty(
+      value = "Maintenance window UUIDs, applied to this alert config",
+      accessMode = READ_ONLY)
+  private Set<UUID> maintenanceWindowUuids;
+
+  private static final String ALERT_COUNT_JOIN =
+      "left join "
+          + "(select _ac.uuid, count(*) as alert_count "
+          + "from alert_configuration _ac "
+          + "left join alert _a on _ac.uuid = _a.configuration_uuid "
+          + "where _a.state in ('ACTIVE', 'ACKNOWLEDGED') group by _ac.uuid"
+          + ") as _ac "
+          + "on _ac.uuid = ${ta}.uuid";
+
+  @Transient
+  @Formula(select = "alert_count", join = ALERT_COUNT_JOIN)
+  @EqualsAndHashCode.Exclude
+  Double alertCount;
+
+  private static final String TARGET_INDEX_JOIN =
+      "left join "
+          + "(select uuid, universe_name "
+          + "from ("
+          + "select uuid, "
+          + "universe_name, "
+          + "rank() OVER (PARTITION BY uuid ORDER BY universe_name asc) as rank "
+          + "from ("
+          + "select uuid, universe_names.name as universe_name "
+          + "from ("
+          + "(select uuid, replace(universe_uuid::text, '\"', '')::uuid as universe_uuid "
+          + "from ("
+          + "select uuid, json_array_elements(target::json->'uuids') as universe_uuid "
+          + "from alert_configuration "
+          + "where nullif(target::json->>'uuids', '') is not null"
+          + ") as tmp"
+          + ") as targets "
+          + "left join universe on targets.universe_uuid = universe.universe_uuid"
+          + ") as universe_names"
+          + ") as ranked_universe_names"
+          + ") as sorted_universe_names"
+          + ") as _un "
+          + "on _un.uuid = ${ta}.uuid";
+
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when target like '%\"all\":true%' then 'ALL'"
+              + " else _un.universe_name end)",
+      join = TARGET_INDEX_JOIN)
+  @EqualsAndHashCode.Exclude
+  @JsonIgnore
+  private String targetName;
+
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when thresholds like '%SEVERE%' then 2"
+              + " when thresholds like '%WARNING%' then 1"
+              + " else 0 end)")
+  @EqualsAndHashCode.Exclude
+  @JsonIgnore
+  private Integer severityIndex;
+
+  @Transient
+  @Formula(
+      select =
+          "(case"
+              + " when ${ta}.default_destination = true then 'Use default'"
+              + " when _ad.name is not null then _ad.name"
+              + " else 'No destination' end)",
+      join = "left join alert_destination as _ad on _ad.uuid = ${ta}.destination_uuid")
+  @EqualsAndHashCode.Exclude
+  @JsonIgnore
+  private String destinationName;
+
   private static final Finder<UUID, AlertConfiguration> find =
       new Finder<UUID, AlertConfiguration>(AlertConfiguration.class) {};
 
   public static ExpressionList<AlertConfiguration> createQueryByFilter(
       AlertConfigurationFilter filter) {
-    ExpressionList<AlertConfiguration> query =
-        find.query().setPersistenceContextScope(PersistenceContextScope.QUERY).where();
-    appendInClause(query, "uuid", filter.getUuids());
+    return createQueryByFilter(filter, QuerySettings.builder().build());
+  }
+
+  public static ExpressionList<AlertConfiguration> createQueryByFilter(
+      AlertConfigurationFilter filter, QuerySettings querySettings) {
+    Query<AlertConfiguration> query = find.query();
+
+    String fetchFields = RAW_FIELDS;
+    if (querySettings.isQueryTargetIndex()) {
+      fetchFields += ", targetName";
+    }
+    if (querySettings.isQueryDestinationIndex()) {
+      fetchFields += ", destinationName";
+    }
+    if (querySettings.isQueryCount()) {
+      fetchFields += ", alertCount";
+    }
+    FetchGroup<AlertConfiguration> fetchGroup =
+        FetchGroup.of(AlertConfiguration.class).select(fetchFields).build();
+    query.select(fetchGroup);
+
+    ExpressionList<AlertConfiguration> expression =
+        query.setPersistenceContextScope(PersistenceContextScope.QUERY).where();
+    appendInClause(expression, "uuid", filter.getUuids());
     if (filter.getCustomerUuid() != null) {
-      query.eq("customerUUID", filter.getCustomerUuid());
+      expression.eq("customerUUID", filter.getCustomerUuid());
     }
     if (filter.getName() != null) {
-      query.eq("name", filter.getName());
+      expression.ilike("name", "%" + filter.getName() + "%");
     }
     if (filter.getActive() != null) {
-      query.eq("active", filter.getActive());
+      expression.eq("active", filter.getActive());
     }
     if (filter.getTargetType() != null) {
-      query.eq("targetType", filter.getTargetType());
+      expression.eq("targetType", filter.getTargetType());
     }
-    if (filter.getTargetUuid() != null) {
-      query.like("target", "%%" + filter.getTargetUuid() + "%%");
+    if (filter.getTarget() != null) {
+      AlertConfigurationTarget filterTarget = filter.getTarget();
+      Junction<AlertConfiguration> orExpr = expression.or();
+      if (CollectionUtils.isNotEmpty(filterTarget.getUuids())) {
+        // All target always match particular UUID target
+        orExpr.like("target", "%\"all\":true%");
+        for (UUID target : filterTarget.getUuids()) {
+          orExpr.like("target", "%\"uuids\":%\"" + target + "\"%");
+        }
+      } else {
+        if (filterTarget.isAll()) {
+          orExpr.like("target", "%\"all\":true%");
+        } else {
+          orExpr.not().like("target", "%\"all\":true%");
+        }
+      }
+      expression.endOr();
     }
     if (filter.getTemplate() != null) {
-      query.eq("template", filter.getTemplate().name());
+      expression.eq("template", filter.getTemplate().name());
     }
     if (filter.getDestinationType() != null) {
       switch (filter.getDestinationType()) {
         case NO_DESTINATION:
-          query.eq("defaultDestination", false).isNull("destinationUUID");
+          expression.eq("defaultDestination", false).isNull("destinationUUID");
           break;
         case DEFAULT_DESTINATION:
-          query.eq("defaultDestination", true);
+          expression.eq("defaultDestination", true);
           break;
         case SELECTED_DESTINATION:
-          query.isNotNull("destinationUUID");
+          expression.isNotNull("destinationUUID");
           break;
       }
     }
     if (filter.getDestinationUuid() != null) {
-      query.eq("destinationUUID", filter.getDestinationUuid());
+      expression.eq("destinationUUID", filter.getDestinationUuid());
     }
-    return query;
+    if (filter.getSeverity() != null) {
+      expression.like("thresholds", "%\"" + filter.getSeverity().name() + "\"%");
+    }
+    if (filter.getSuspended() != null) {
+      if (filter.getSuspended()) {
+        expression.isNotNull("maintenanceWindowUuids");
+      } else {
+        expression.isNull("maintenanceWindowUuids");
+      }
+    }
+    return expression;
   }
 
   public AlertConfiguration generateUUID() {
@@ -227,6 +374,49 @@ public class AlertConfiguration extends Model {
   @JsonIgnore
   public boolean isNew() {
     return uuid == null;
+  }
+
+  @Transient
+  @JsonIgnore
+  public Set<UUID> getMaintenanceWindowUuidsSet() {
+    if (maintenanceWindowUuids == null) {
+      return Collections.emptySet();
+    }
+    return new TreeSet<>(maintenanceWindowUuids);
+  }
+
+  public AlertConfiguration addMaintenanceWindowUuid(UUID maintenanceWindowUuid) {
+    if (this.maintenanceWindowUuids == null) {
+      maintenanceWindowUuids = new TreeSet<>();
+    }
+    maintenanceWindowUuids.add(maintenanceWindowUuid);
+    return this;
+  }
+
+  public AlertConfiguration removeMaintenanceWindowUuid(UUID maintenanceWindowUuid) {
+    if (this.maintenanceWindowUuids == null) {
+      return this;
+    }
+    maintenanceWindowUuids.remove(maintenanceWindowUuid);
+    if (maintenanceWindowUuids.isEmpty()) {
+      // To make it easier to query for empty list in DB
+      this.maintenanceWindowUuids = null;
+    }
+    return this;
+  }
+
+  @Transient
+  @JsonIgnore
+  @EqualsAndHashCode.Include
+  /*
+    This is required, because Ebean creates ModifyAwareMap instead of regular HashMap while
+    reads object from DB. And equals with regular HashMap in just created config fails.
+  */
+  public Map<Severity, AlertConfigurationThreshold> thresholdsHashMap() {
+    if (thresholds == null) {
+      return null;
+    }
+    return new HashMap<>(thresholds);
   }
 
   public boolean configEquals(AlertConfiguration other) {
@@ -240,5 +430,13 @@ public class AlertConfiguration extends Model {
       return true;
     }
     return false;
+  }
+
+  @Value
+  @Builder
+  public static class QuerySettings {
+    boolean queryCount;
+    boolean queryTargetIndex;
+    boolean queryDestinationIndex;
   }
 }

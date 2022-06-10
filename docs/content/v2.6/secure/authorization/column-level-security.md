@@ -16,7 +16,7 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/authorization/ysql-grant-permissions" class="nav-link active">
+    <a href="/preview/secure/authorization/ysql-grant-permissions" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -48,13 +48,13 @@ yugabyte=#
 ```
 
 
-  
+
 
 Create a employee table and insert few sample rows
 
 
 ```
-yugabyte=# create table employees ( empno int, ename text, 
+yugabyte=# create table employees ( empno int, ename text,
            address text, salary int, account_number text );
 CREATE TABLE
 
@@ -223,7 +223,7 @@ yugabyte=> select empno, ename, address from employees;
 ```
 
 
-`ybadmin` will still be denied if user tries to access other columns, 
+`ybadmin` will still be denied if user tries to access other columns,
 
 
 ```

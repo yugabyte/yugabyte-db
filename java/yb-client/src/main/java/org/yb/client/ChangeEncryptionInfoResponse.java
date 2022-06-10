@@ -13,13 +13,14 @@
 
 package org.yb.client;
 
-import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 public class ChangeEncryptionInfoResponse extends YRpcResponse {
    // Error status indicates the tserver is not ready.
-   private  Master.MasterErrorPB serverError;
+   private  MasterTypes.MasterErrorPB serverError;
 
-   public ChangeEncryptionInfoResponse(long ellapsedMillis, String uuid, Master.MasterErrorPB  error) {
+   public ChangeEncryptionInfoResponse(
+       long ellapsedMillis, String uuid, MasterTypes.MasterErrorPB error) {
      super(ellapsedMillis, uuid);
      this.serverError = error;
    }

@@ -56,7 +56,6 @@
 // tracked value (1 hour), it would still maintain a resolution of 3.6 seconds
 // (or better).
 
-#include <cstdint>
 #include <iosfwd>
 #include <memory>
 
@@ -285,7 +284,7 @@ class AbstractHistogramIterator {
   virtual bool HasNext() const;
 
   // Returns the next element in the iteration.
-  CHECKED_STATUS Next(HistogramIterationValue* value);
+  Status Next(HistogramIterationValue* value);
 
   virtual double PercentileIteratedTo() const;
   virtual double PercentileIteratedFrom() const;

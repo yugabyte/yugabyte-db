@@ -1,6 +1,8 @@
 --
 -- Internal Subtransactions & Procedure Exception Handling
 --
+-- An error caught by the exception handler rolls back the changes made in the
+-- block body but not anything else.
 -- Test abort subtransaction upon error. Execute SELECT statement after
 -- each INSERT to avoid influence from operation buffering.
 CREATE TABLE subtrans_foo (k int PRIMARY KEY, v int UNIQUE);
@@ -36,7 +38,8 @@ SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
  1 | 42
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
+EXPLAIN (COSTS OFF)
+SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
               QUERY PLAN               
 ---------------------------------------
  Sort
@@ -52,7 +55,8 @@ SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 A
  1 | 42
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
+EXPLAIN (COSTS OFF)
+SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
                          QUERY PLAN                         
 ------------------------------------------------------------
  Sort
@@ -69,7 +73,8 @@ SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 
  1 | 42
 (1 row)
 
-EXPLAIN (COSTS OFF) SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
+EXPLAIN (COSTS OFF)
+SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
                          QUERY PLAN                          
 -------------------------------------------------------------
  Sort
@@ -78,4 +83,124 @@ EXPLAIN (COSTS OFF) SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtran
          Index Cond: (v > 0)
          Filter: (k > 0)
 (5 rows)
+
+-- Test that each buffering eligible operations are executed in the intended
+-- procedure block section.
+CREATE TABLE subtrans_test (k int PRIMARY KEY, v text NOT NULL);
+-- Single block
+INSERT INTO subtrans_test (k, v) VALUES (1, 'dog');
+DO $body$
+BEGIN
+	INSERT INTO subtrans_test (k, v) VALUES (2, 'cat');
+	INSERT INTO subtrans_test (k, v) VALUES (1, 'frog'); -- error
+	INSERT INTO subtrans_test (k, v) VALUES (3, 'bull');
+EXCEPTION WHEN unique_violation THEN
+	RAISE NOTICE 'caught unique violation';
+END;
+$body$;
+NOTICE:  caught unique violation
+SELECT * FROM subtrans_test ORDER BY 1;
+ k |  v  
+---+-----
+ 1 | dog
+(1 row)
+
+-- Nested block combinations
+-- Erroneous statement then error-free inner block
+TRUNCATE TABLE subtrans_test;
+INSERT INTO subtrans_test (k, v) VALUES (1, 'dog');
+DO $body$
+BEGIN
+	INSERT INTO subtrans_test (k, v) VALUES (2, 'cat');
+	INSERT INTO subtrans_test (k, v) VALUES (1, 'frog'); -- error
+	BEGIN
+		INSERT INTO subtrans_test (k, v) VALUES (3, 'bull');
+	EXCEPTION WHEN unique_violation THEN -- force subtransaction creation
+		RAISE NOTICE '*** FAILED ***';
+	END;
+	INSERT INTO subtrans_test (k, v) VALUES (4, 'bear');
+EXCEPTION WHEN unique_violation THEN
+	RAISE NOTICE 'caught unique violation';
+END;
+$body$;
+NOTICE:  caught unique violation
+SELECT * FROM subtrans_test ORDER BY 1;
+ k |  v  
+---+-----
+ 1 | dog
+(1 row)
+
+-- Error-free inner block then erroneous statement
+TRUNCATE TABLE subtrans_test;
+INSERT INTO subtrans_test (k, v) VALUES (1, 'dog');
+DO $body$
+BEGIN
+	INSERT INTO subtrans_test (k, v) VALUES (2, 'cat');
+	BEGIN
+		INSERT INTO subtrans_test (k, v) VALUES (3, 'bull');
+	EXCEPTION WHEN unique_violation THEN -- force subtransaction creation
+		RAISE NOTICE '*** FAILED ***';
+	END;
+	INSERT INTO subtrans_test (k, v) VALUES (4, 'bear');
+	INSERT INTO subtrans_test (k, v) VALUES (1, 'frog'); -- error
+EXCEPTION WHEN unique_violation THEN
+	RAISE NOTICE 'caught unique violation';
+END;
+$body$;
+NOTICE:  caught unique violation
+SELECT * FROM subtrans_test ORDER BY 1;
+ k |  v  
+---+-----
+ 1 | dog
+(1 row)
+
+-- Erroneous statement in the inner block
+TRUNCATE TABLE subtrans_test;
+INSERT INTO subtrans_test (k, v) VALUES (1, 'dog');
+DO $body$
+BEGIN
+	INSERT INTO subtrans_test (k, v) VALUES (2, 'cat');
+	BEGIN
+		INSERT INTO subtrans_test (k, v) VALUES (3, 'bull');
+		INSERT INTO subtrans_test (k, v) VALUES (1, 'frog'); -- error
+	EXCEPTION WHEN unique_violation THEN
+		RAISE NOTICE 'caught unique violation';
+	END;
+	INSERT INTO subtrans_test (k, v) VALUES (4, 'bear');
+EXCEPTION WHEN unique_violation THEN
+	RAISE NOTICE '*** FAILED ***';
+END;
+$body$;
+NOTICE:  caught unique violation
+SELECT * FROM subtrans_test ORDER BY 1;
+ k |  v   
+---+------
+ 1 | dog
+ 2 | cat
+ 4 | bear
+(3 rows)
+
+-- Erroneous statement in the inner block, caught by the outer block handler
+TRUNCATE TABLE subtrans_test;
+INSERT INTO subtrans_test (k, v) VALUES (1, 'dog');
+DO $body$
+BEGIN
+	INSERT INTO subtrans_test (k, v) VALUES (2, 'cat');
+	BEGIN
+		INSERT INTO subtrans_test (k, v) VALUES (3, 'bull');
+		INSERT INTO subtrans_test (k, v) VALUES (1, 'frog'); -- error
+	EXCEPTION WHEN not_null_violation THEN -- no matching handler
+		RAISE NOTICE '*** FAILED ***';
+	END;
+	INSERT INTO subtrans_test (k, v) VALUES (4, 'bear');
+EXCEPTION WHEN unique_violation THEN
+	RAISE NOTICE 'caught unique violation';
+END;
+$body$;
+NOTICE:  caught unique violation
+SELECT * FROM subtrans_test ORDER BY 1;
+ k |  v  
+---+-----
+ 1 | dog
+(1 row)
 

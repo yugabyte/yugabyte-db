@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.models.MetricConfig;
@@ -34,9 +35,9 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
   @Mock ApiHelper mockApiHelper;
 
-  @Mock YBMetricQueryComponent mockYBMetricQueryComponent;
-
+  private MetricUrlProvider metricUrlProvider;
   private MetricConfig validMetric;
+  private MetricConfig validRangeMetric;
 
   @Before
   public void setUp() {
@@ -50,6 +51,18 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
                 + "\"xaxis\": { \"type\": \"date\" }}}");
     validMetric = MetricConfig.create("valid_metric", configJson);
     validMetric.save();
+
+    JsonNode rangeConfigJson =
+        Json.parse(
+            "{\"metric\": \"our_valid_range_metric\", "
+                + "\"function\": \"avg_over_time|avg\", \"range\": true,"
+                + "\"filters\": {\"filter\": \"awesome\"},"
+                + "\"layout\": {\"title\": \"Awesome Metric\", "
+                + "\"xaxis\": { \"type\": \"date\" }}}");
+    validRangeMetric = MetricConfig.create("valid_range_metric", rangeConfigJson);
+    validRangeMetric.save();
+
+    metricUrlProvider = new MetricUrlProvider(mockAppConfig);
   }
 
   @Test
@@ -58,8 +71,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("start", "1479281737");
     params.put("queryKey", "valid_metric");
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(
-            mockAppConfig, mockApiHelper, params, new HashMap<>(), mockYBMetricQueryComponent);
+        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -107,19 +119,94 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
   }
 
   @Test
+  public void testWithValidRangeMetric() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            metricUrlProvider,
+            mockApiHelper,
+            params,
+            new HashMap<>(),
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setAggregation(MetricAggregation.MAX),
+            false);
+
+    JsonNode result = qe.call();
+    ArrayNode directUrls = (ArrayNode) result.get("directURLs");
+    assertEquals(directUrls.size(), 1);
+    assertEquals(
+        directUrls.get(0).asText(),
+        "foo://bar/graph?g0.expr=max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B0s%5D%29%29&g0.tab=0"
+            + "&g0.range_input=3600s&g0.end_input=");
+  }
+
+  @Test
+  public void testTopNodesQuery() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("end", "1479381737");
+    params.put("step", "60");
+    params.put("range", "3600");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            metricUrlProvider,
+            mockApiHelper,
+            params,
+            new HashMap<>(),
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setAggregation(MetricAggregation.MAX)
+                .setSplitTopNodes(2),
+            false);
+
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
+                + " {\"cpu\":\"system\",\"exported_instance\":\"instance1\"},"
+                + "\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
+                + " {\"cpu\":\"system\",\"exported_instance\":\"instance2\"},"
+                + "\"value\":[1479278137,\"0.04329469299783263\"]}]}}");
+
+    when(mockApiHelper.getRequest(eq("foo://bar/query"), anyMap(), anyMap()))
+        .thenReturn(Json.toJson(responseJson));
+
+    when(mockApiHelper.getRequest(eq("foo://bar/query_range"), anyMap(), anyMap()))
+        .thenReturn(Json.toJson(responseJson));
+
+    JsonNode result = qe.call();
+    ArrayNode topNodesQueryUrls = (ArrayNode) result.get("topNodesQueryURLs");
+    assertEquals(topNodesQueryUrls.size(), 1);
+    assertEquals(
+        topNodesQueryUrls.get(0).asText(),
+        "foo://bar/graph?g0.expr=topk%282%2C+max%28max_over_time%28our_valid_range_metric"
+            + "%7Bfilter%3D%22awesome%22%7D%5B3600s%5D%29%29+by+%28exported_instance%29%29&"
+            + "g0.tab=0&g0.range_input=100000s&g0.end_input=2016-11-17 11:22:17");
+    ArrayNode directUrls = (ArrayNode) result.get("directURLs");
+    assertEquals(directUrls.size(), 1);
+    assertEquals(
+        directUrls.get(0).asText(),
+        "foo://bar/graph?g0.expr=%28max%28max_over_time%28our_valid_range_metric"
+            + "%7Bfilter%3D%22awesome%22%2C+cpu%3D%22system%22%2C+exported_instance%3D%"
+            + "22instance1%22%7D%5B60s%5D%29%29+by+%28exported_instance%29%29+or+%28max"
+            + "%28max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome%22%2C+"
+            + "cpu%3D%22system%22%2C+exported_instance%3D%22instance2%22%7D%5B60s%5D%29%29+"
+            + "by+%28exported_instance%29%29&g0.tab=0&g0.range_input=100000s&g0."
+            + "end_input=2016-11-17 11:22:17");
+  }
+
+  @Test
   public void testWithInvalidMetric() throws Exception {
     HashMap<String, String> params = new HashMap<>();
     params.put("start", "1479281737");
     params.put("queryKey", "invalid_metric");
 
-    JsonNode responseJson =
-        Json.parse(
-            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
-                + " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]}]}}");
-
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(
-            mockAppConfig, mockApiHelper, params, new HashMap<>(), mockYBMetricQueryComponent);
+        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
     JsonNode result = qe.call();
 
     assertThat(
@@ -138,8 +225,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(
-            mockAppConfig, mockApiHelper, params, new HashMap<>(), mockYBMetricQueryComponent);
+        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -179,8 +265,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(
-            mockAppConfig, mockApiHelper, params, new HashMap<>(), mockYBMetricQueryComponent);
+        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -220,8 +305,7 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
     params.put("queryKey", "valid_metric");
 
     MetricQueryExecutor qe =
-        new MetricQueryExecutor(
-            mockAppConfig, mockApiHelper, params, new HashMap<>(), mockYBMetricQueryComponent);
+        new MetricQueryExecutor(metricUrlProvider, mockApiHelper, params, new HashMap<>());
 
     JsonNode responseJson =
         Json.parse(
@@ -236,59 +320,5 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
             IsNull.notNullValue(),
             IsEqual.equalTo(
                 "parse error at char 44: unexpected " + "\"{\" in aggregation, expected \")\"")));
-  }
-
-  @Test
-  public void testNativeMetrics() throws Exception {
-    when(mockAppConfig.getBoolean(eq("yb.metrics.useNative"), eq(false))).thenReturn(true);
-    HashMap<String, String> params = new HashMap<>();
-    params.put("start", "1479281737");
-    params.put("queryKey", "valid_metric");
-    MetricQueryExecutor qe =
-        new MetricQueryExecutor(
-            mockAppConfig, mockApiHelper, params, new HashMap<>(), mockYBMetricQueryComponent);
-
-    JsonNode responseJson =
-        Json.parse(
-            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
-                + " {\"cpu\":\"system\"},\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
-                + " {\"cpu\":\"system\"}, \"value\":[1479278137,\"0.04329469299783263\"]}]}}");
-
-    when(mockYBMetricQueryComponent.query(anyMap())).thenReturn(Json.toJson(responseJson));
-
-    JsonNode result = qe.call();
-    assertThat(
-        result.get("queryKey").asText(),
-        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("valid_metric")));
-
-    JsonNode data = result.get("data");
-    assertThat(data, AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
-    assertEquals(2, data.size());
-    for (int i = 0; i < data.size(); i++) {
-      assertThat(
-          data.get(i).get("name").asText(),
-          AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("system")));
-      assertThat(
-          data.get(i).get("type").asText(),
-          AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("scatter")));
-      assertThat(
-          data.get(i).get("x"),
-          AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
-      assertThat(
-          data.get(i).get("y"),
-          AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
-    }
-
-    JsonNode layout = result.get("layout");
-    assertThat(layout, AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
-    assertThat(
-        layout.get("title").asText(),
-        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("Awesome Metric")));
-    assertThat(
-        layout.get("xaxis"),
-        AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
-    assertThat(
-        layout.get("xaxis").get("type").asText(),
-        AllOf.allOf(IsNull.notNullValue(), IsEqual.equalTo("date")));
   }
 }

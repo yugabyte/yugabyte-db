@@ -18,15 +18,16 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
-
 #include <climits>
 
 #include <queue>
 #include <random>
 #include <utility>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/util/heap.h"
+#include "yb/rocksdb/util/testutil.h"
 
 #ifndef GFLAGS
 const int64_t FLAGS_iters = 100000;
@@ -45,7 +46,8 @@ namespace rocksdb {
 using HeapTestValue = uint64_t;
 using Params = std::tuple<size_t, HeapTestValue, int64_t>;
 
-class HeapTest : public ::testing::TestWithParam<Params> {
+class HeapTest : public RocksDBTest,
+                 public ::testing::WithParamInterface<Params> {
 };
 
 TEST_P(HeapTest, Test) {

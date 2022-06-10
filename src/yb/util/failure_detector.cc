@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/failure_detector.h"
 
 #include <mutex>
@@ -38,6 +39,7 @@
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -70,7 +72,7 @@ Status TimedFailureDetector::Track(const string& name,
     return STATUS(AlreadyPresent,
         Substitute("Node with name '$0' is already being monitored", name));
   }
-  ignore_result(node.release());
+  node.release();
   return Status::OK();
 }
 
@@ -182,7 +184,7 @@ Status RandomizedFailureMonitor::MonitorFailureDetector(const string& name,
 
 Status RandomizedFailureMonitor::UnmonitorFailureDetector(const string& name) {
   std::lock_guard<simple_spinlock> l(lock_);
-  int count = fds_.erase(name);
+  auto count = fds_.erase(name);
   if (PREDICT_FALSE(count == 0)) {
     return STATUS(NotFound, Substitute("Failure detector '$0' not found", name));
   }

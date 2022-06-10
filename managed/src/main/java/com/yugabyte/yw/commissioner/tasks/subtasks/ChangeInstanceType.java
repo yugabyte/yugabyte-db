@@ -8,11 +8,10 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class ChangeInstanceType extends NodeTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(PauseServer.class);
 
   @Inject
   protected ChangeInstanceType(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
@@ -33,7 +32,7 @@ public class ChangeInstanceType extends NodeTaskBase {
 
   @Override
   public void run() {
-    LOG.info(
+    log.info(
         "Running ChangeInstanceType against node {} to change its type from {} to {}",
         taskParams().nodeName,
         Universe.getOrBadRequest(taskParams().universeUUID)
@@ -42,9 +41,8 @@ public class ChangeInstanceType extends NodeTaskBase {
             .instance_type,
         taskParams().instanceType);
 
-    ShellResponse response =
-        getNodeManager()
-            .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams());
-    processShellResponse(response);
+    getNodeManager()
+        .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())
+        .processErrors();
   }
 }

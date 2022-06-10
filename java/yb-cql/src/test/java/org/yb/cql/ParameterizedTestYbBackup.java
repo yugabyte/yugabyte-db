@@ -20,6 +20,7 @@ import java.util.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized.Parameters;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -416,17 +417,19 @@ public class ParameterizedTestYbBackup extends BaseYbBackupTest {
     }
   }
 
-  public void testYCQLBackupIntoKeyspace(String... createBackupArgs) throws Exception {
+  public String testYCQLBackupIntoKeyspace(String... createBackupArgs) throws Exception {
     ig.setup();
     ig.check(DEFAULT_TEST_KEYSPACE, ValuesUpdateState.SOURCE);
-    YBBackupUtil.runYbBackupCreate(createBackupArgs);
+    String output = YBBackupUtil.runYbBackupCreate(createBackupArgs);
+    String backupDir = new JSONObject(output).getString("snapshot_url");
     ig.update(DEFAULT_TEST_KEYSPACE);
     ig.check(DEFAULT_TEST_KEYSPACE, ValuesUpdateState.UPDATED);
+    return backupDir;
   }
 
-  public void testYCQLRestoreIntoKeyspace(String keyspace,
+  public void testYCQLRestoreIntoKeyspace(String backupDir, String keyspace,
                                           String... restoreBackupArgs) throws Exception {
-    YBBackupUtil.runYbBackupRestore(restoreBackupArgs);
+    YBBackupUtil.runYbBackupRestore(backupDir, restoreBackupArgs);
     if (keyspace != DEFAULT_TEST_KEYSPACE) {
       ig.check(DEFAULT_TEST_KEYSPACE, ValuesUpdateState.UPDATED);
     }
@@ -439,12 +442,12 @@ public class ParameterizedTestYbBackup extends BaseYbBackupTest {
 
   public void testYCQLBackupAndRestoreIntoKeyspace(String keyspace,
                                                    String... createBackupArgs) throws Exception {
-    testYCQLBackupIntoKeyspace(createBackupArgs);
+    String backupDir = testYCQLBackupIntoKeyspace(createBackupArgs);
     if (keyspace == DEFAULT_TEST_KEYSPACE) {
-      testYCQLRestoreIntoKeyspace(keyspace);
+      testYCQLRestoreIntoKeyspace(backupDir, keyspace);
     } else {
       keyspace = ig.keyspacePrefix() + keyspace;
-      testYCQLRestoreIntoKeyspace(keyspace,
+      testYCQLRestoreIntoKeyspace(backupDir, keyspace,
                                   "--keyspace", keyspace);
     }
   }
@@ -453,95 +456,127 @@ public class ParameterizedTestYbBackup extends BaseYbBackupTest {
   public void testYCQLKeyspaceBackup() throws Exception {
     ig.tp = new TableProperties(TableProperties.TP_NON_TRANSACTIONAL);
     // Using keyspace name only to test full-keyspace backup.
+    String backupDir = YBBackupUtil.getTempBackupDir();
     testYCQLBackupAndRestoreIntoKeyspace(
         "ks2",
-        "--keyspace", DEFAULT_TEST_KEYSPACE);
+        "--keyspace", DEFAULT_TEST_KEYSPACE,
+        "--backup_location", backupDir);
   }
 
   @Test
   public void testYCQLKeyspaceBackup_Transactional() throws Exception {
     // Using keyspace name only to test full-keyspace backup.
+    String backupDir = YBBackupUtil.getTempBackupDir();
     testYCQLBackupAndRestoreIntoKeyspace(
         "ks3",
-        "--keyspace", DEFAULT_TEST_KEYSPACE);
+        "--keyspace", DEFAULT_TEST_KEYSPACE,
+        "--backup_location", backupDir);
   }
 
   @Test
   public void testYCQLTablesWithIndexesBackup() throws Exception {
     ig.tp = new TableProperties(TableProperties.TP_NON_TRANSACTIONAL);
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLBackupAndRestoreIntoKeyspace("ks4", ig.tables(DEFAULT_TEST_KEYSPACE));
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String[] tables = ig.tables(DEFAULT_TEST_KEYSPACE);
+    String[] createBackupArgs = Arrays.copyOf(tables, tables.length+2);
+    createBackupArgs[tables.length] = "--backup_location";
+    createBackupArgs[tables.length + 1] = backupDir;
+    testYCQLBackupAndRestoreIntoKeyspace("ks4", createBackupArgs);
   }
 
   @Test
   public void testYCQLTablesWithIndexesBackup_Transactional() throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-   testYCQLBackupAndRestoreIntoKeyspace("ks5", ig.tables(DEFAULT_TEST_KEYSPACE));
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String[] tables = ig.tables(DEFAULT_TEST_KEYSPACE);
+    String[] createBackupArgs = Arrays.copyOf(tables, tables.length+2);
+    createBackupArgs[tables.length] = "--backup_location";
+    createBackupArgs[tables.length + 1] = backupDir;
+    testYCQLBackupAndRestoreIntoKeyspace("ks5", createBackupArgs);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace() throws Exception {
     ig.tp = new TableProperties(TableProperties.TP_NON_TRANSACTIONAL);
     // Using keyspace name only to test full-keyspace backup.
+    String backupDir = YBBackupUtil.getTempBackupDir();
     testYCQLBackupAndRestoreIntoKeyspace(
         DEFAULT_TEST_KEYSPACE,
-        "--keyspace", DEFAULT_TEST_KEYSPACE);
+        "--keyspace", DEFAULT_TEST_KEYSPACE,
+        "--backup_location", backupDir);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalKeyspace_Transactional()
       throws Exception {
     // Using keyspace name only to test full-keyspace backup.
+    String backupDir = YBBackupUtil.getTempBackupDir();
     testYCQLBackupAndRestoreIntoKeyspace(
         DEFAULT_TEST_KEYSPACE,
-        "--keyspace", DEFAULT_TEST_KEYSPACE);
+        "--keyspace", DEFAULT_TEST_KEYSPACE,
+        "--backup_location", backupDir);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables() throws Exception {
     ig.tp = new TableProperties(TableProperties.TP_NON_TRANSACTIONAL);
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLBackupAndRestoreIntoKeyspace(DEFAULT_TEST_KEYSPACE, ig.tables(DEFAULT_TEST_KEYSPACE));
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String[] tables = ig.tables(DEFAULT_TEST_KEYSPACE);
+    String[] createBackupArgs = Arrays.copyOf(tables, tables.length+2);
+    createBackupArgs[tables.length] = "--backup_location";
+    createBackupArgs[tables.length + 1] = backupDir;
+    testYCQLBackupAndRestoreIntoKeyspace(DEFAULT_TEST_KEYSPACE, createBackupArgs);
   }
 
   @Test
   public void testYCQLBackupRestoringIntoOriginalTables_Transactional()
       throws Exception {
     // Using explicit keyspace/table pairs to test multi-table backup.
-    testYCQLBackupAndRestoreIntoKeyspace(DEFAULT_TEST_KEYSPACE, ig.tables(DEFAULT_TEST_KEYSPACE));
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String[] tables = ig.tables(DEFAULT_TEST_KEYSPACE);
+    String[] createBackupArgs = Arrays.copyOf(tables, tables.length+2);
+    createBackupArgs[tables.length] = "--backup_location";
+    createBackupArgs[tables.length + 1] = backupDir;
+    testYCQLBackupAndRestoreIntoKeyspace(DEFAULT_TEST_KEYSPACE, createBackupArgs);
   }
 
   @Test
   public void testBackupWithoutChecksumsRestoreWithoutChecksums() throws Exception {
     // Create backup without any checksums.
-    testYCQLBackupIntoKeyspace(
+
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    backupDir = testYCQLBackupIntoKeyspace("--backup_location", backupDir,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
     // Restore backup without any checksums, should succeed.
     testYCQLRestoreIntoKeyspace(
-        DEFAULT_TEST_KEYSPACE,
+        backupDir, DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
   }
 
   @Test
   public void testBackupWithChecksumsRestoreWithoutChecksums() throws Exception {
     // Create backup with checksums.
-    testYCQLBackupIntoKeyspace(
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    backupDir = testYCQLBackupIntoKeyspace("--backup_location", backupDir,
         "--keyspace", DEFAULT_TEST_KEYSPACE);
     // Restore backup without any checksum validation, should succeed.
     testYCQLRestoreIntoKeyspace(
-        DEFAULT_TEST_KEYSPACE,
+        backupDir, DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
   }
 
   @Test
   public void testBackupWithoutChecksumsRestoreWithChecksums() throws Exception {
     // Create backup without any checksums.
-    testYCQLBackupIntoKeyspace(
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    backupDir = testYCQLBackupIntoKeyspace("--backup_location", backupDir,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--disable_checksums");
     // Try to restore backup with checksum validation, should fail since there are no checksums.
     try {
       testYCQLRestoreIntoKeyspace(
-          DEFAULT_TEST_KEYSPACE,
+          backupDir, DEFAULT_TEST_KEYSPACE,
           "--keyspace", DEFAULT_TEST_KEYSPACE);
       fail("Backup restoring did not fail as expected");
     } catch (YBBackupException ex) {
@@ -560,11 +595,14 @@ public class ParameterizedTestYbBackup extends BaseYbBackupTest {
     ig.update(DEFAULT_TEST_KEYSPACE);
     ig.check(DEFAULT_TEST_KEYSPACE, ValuesUpdateState.UPDATED);
     // Perform the backup.
-    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", DEFAULT_TEST_KEYSPACE);
+    backupDir = new JSONObject(output).getString("snapshot_url");
     // Restore with the timestamp provided.
     // Check that we only restored the original tables and not the updated values.
     testYCQLRestoreIntoKeyspace(
-        DEFAULT_TEST_KEYSPACE,
+        backupDir, DEFAULT_TEST_KEYSPACE,
         "--keyspace", DEFAULT_TEST_KEYSPACE, "--restore_time", ts);
   }
 }

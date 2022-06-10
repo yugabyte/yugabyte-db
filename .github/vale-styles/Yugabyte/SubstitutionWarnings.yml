@@ -13,8 +13,6 @@ swap:
   config: configuration
   param: parameter
   params: parameters
-  pg: PostgreSQL
-  'postgres$': PostgreSQL
   repo: repository
   repos: repositories
   '(?:vscode|vs code)': '"Visual Studio Code"'

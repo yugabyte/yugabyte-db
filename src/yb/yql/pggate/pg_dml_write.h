@@ -30,13 +30,13 @@ class PgDmlWrite : public PgDml {
   virtual ~PgDmlWrite();
 
   // Prepare write operations.
-  virtual CHECKED_STATUS Prepare();
+  virtual Status Prepare();
 
   // Setup internal structures for binding values during prepare.
   void PrepareColumns();
 
   // force_non_bufferable flag indicates this operation should not be buffered.
-  CHECKED_STATUS Exec(bool force_non_bufferable = false);
+  Status Exec(bool force_non_bufferable = false);
 
   void SetIsSystemCatalogChange() {
     write_req_->set_is_ysql_catalog_change(true);
@@ -50,37 +50,47 @@ class PgDmlWrite : public PgDml {
     return rows_affected_count_;
   }
 
-  CHECKED_STATUS SetWriteTime(const HybridTime& write_time);
+  Status SetWriteTime(const HybridTime& write_time);
 
  protected:
   // Constructor.
   PgDmlWrite(PgSession::ScopedRefPtr pg_session,
              const PgObjectId& table_id,
-             bool is_single_row_txn = false);
+             bool is_single_row_txn,
+             bool is_region_local);
 
   // Allocate write request.
   void AllocWriteRequest();
 
   // Allocate column expression.
-  PgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
+  LWPgsqlExpressionPB *AllocColumnBindPB(PgColumn *col) override;
 
   // Allocate target for selected or returned expressions.
-  PgsqlExpressionPB *AllocTargetPB() override;
+  LWPgsqlExpressionPB *AllocTargetPB() override;
+
+  // Allocate protobuf for a qual in the write request's where_clauses list.
+  LWPgsqlExpressionPB *AllocQualPB() override;
+
+  // Allocate protobuf for a column reference in the write request's col_refs list.
+  LWPgsqlColRefPB *AllocColRefPB() override;
+
+  // Clear the write request's col_refs list.
+  void ClearColRefPBs() override;
 
   // Allocate column expression.
-  PgsqlExpressionPB *AllocColumnAssignPB(PgColumn *col) override;
+  LWPgsqlExpressionPB* AllocColumnAssignPB(PgColumn *col) override;
 
   // Protobuf code.
-  PgsqlWriteRequestPB *write_req_ = nullptr;
+  std::shared_ptr<LWPgsqlWriteRequestPB> write_req_;
 
   bool is_single_row_txn_ = false; // default.
 
   int32_t rows_affected_count_ = 0;
 
  private:
-  CHECKED_STATUS DeleteEmptyPrimaryBinds();
+  Status DeleteEmptyPrimaryBinds();
 
-  virtual std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const = 0;
+  virtual PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const = 0;
 };
 
 }  // namespace pggate

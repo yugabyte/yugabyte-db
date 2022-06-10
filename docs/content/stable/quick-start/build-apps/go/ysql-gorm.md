@@ -7,7 +7,7 @@ menu:
   stable:
     parent: build-apps
     name: Go
-    identifier: go-2
+    identifier: go-4
     weight: 552
 type: page
 isTocNested: true
@@ -15,10 +15,22 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-pgx/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PGX
+    </a>
+  </li>
   <li >
     <a href="../ysql-pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-pg/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PG
     </a>
   </li>
   <li >
@@ -35,7 +47,7 @@ showAsideToc: true
   </li>
 </ul>
 
-The following tutorial implements an an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
+The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
 
 - `users` table — the users of the e-commerce site
 - `products` table — the products being sold
@@ -110,12 +122,12 @@ The REST API server will start and listen for requests at `http://localhost:8080
 Create 2 users.
 
 ```sh
-$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
+$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 ```sh
-$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
+$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
@@ -208,17 +220,17 @@ $ curl http://localhost:8080/users
       "userId": 2,
       "firstName": "Tom",
       "lastName": "Stewart",
-      "email": "tstewart@yb.com"
+      "email": "tstewart@example.com"
     },
     {
       "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
-      "email": "jsmith@yb.com"
+      "email": "jsmith@example.com"
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -242,7 +254,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -259,7 +271,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -272,7 +284,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 15,
@@ -280,7 +292,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

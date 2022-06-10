@@ -22,7 +22,6 @@
 
 #pragma once
 
-#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -101,6 +100,10 @@ bool IsDecimal(const Slice& s);
 
 // Whether the string is "true"/"false" (case-insensitive)
 bool IsBoolean(const Slice& s);
+
+// Whether the string is 32 lowercase hex characters like the one used as an ID for namespaces,
+// (non-special) tables, tablegroups, etc.
+bool IsIdLikeUuid(const Slice& s);
 
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
@@ -184,6 +187,13 @@ inline void EnlargeBufferIfNeeded(std::string* buffer, const size_t new_capacity
   }
   buffer->reserve(new_capacity);
 }
+
+// Takes a vector of strings and treats each element as a list of items separated by the given set
+// of separator characters (only comma by default). Splits each string using these separators and
+// returns the combined list of all items.
+std::vector<std::string> SplitAndFlatten(
+    const std::vector<std::string>& input,
+    const char* separators = ",");
 
 }  // namespace yb
 

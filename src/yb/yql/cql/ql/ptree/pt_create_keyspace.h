@@ -37,7 +37,7 @@ class PTCreateKeyspace : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTCreateKeyspace(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
+                   YBLocationPtr loc,
                    const MCSharedPtr<MCString>& name,
                    bool create_if_not_exists,
                    const PTKeyspacePropertyListNode::SharedPtr& keyspace_properties);
@@ -54,7 +54,7 @@ class PTCreateKeyspace : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   bool create_if_not_exists() const {

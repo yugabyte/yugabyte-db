@@ -1,72 +1,162 @@
-// Copyright (c) YugaByte, Inc.
-
-import React, { Component } from 'react';
+import { cloneDeep, isEqual, map, sortBy } from 'lodash';
+import React, { Component } from 'react'
+import { Col, Row } from 'react-bootstrap';
 import { Link, withRouter } from 'react-router';
-import { cloneDeep, map, sortBy } from 'lodash';
-
-import { YBButton } from '../../common/forms/fields';
-import { Row, Col } from 'react-bootstrap';
+import { Field, reduxForm } from 'redux-form';
+import { isDefinedNotNull, isNonEmptyArray, isNonEmptyObject, pickArray } from '../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-
-import {
-  isNonEmptyArray,
-  isDefinedNotNull,
-  isEmptyObject,
-  pickArray,
-  isNonEmptyObject
-} from '../../../utils/ObjectUtils';
-import { YBConfirmModal } from '../../modals';
 import { DescriptionList } from '../../common/descriptors';
+import { YBButton, YBControlledSelectWithLabel } from '../../common/forms/fields';
+import { YBLoading } from '../../common/indicators';
 import { RegionMap, YBMapLegend } from '../../maps';
+import { YBConfirmModal } from '../../modals';
 import OnPremNodesListContainer from './OnPremNodesListContainer';
 
 const PROVIDER_TYPE = 'onprem';
 
-class OnPremSuccess extends Component {
+class NewOnPremSuccess extends Component {
+
   constructor(props) {
     super(props);
-    this.state = { manageInstances: false };
-  }
-
-  deleteProvider(uuid) {
-    this.props.deleteProviderConfig(uuid);
-  }
-
-  UNSAFE_componentWillMount() {
-    const { configuredProviders } = this.props;
-    const currentProvider = configuredProviders.data.find((provider) => provider.code === 'onprem');
-    if (isDefinedNotNull(currentProvider)) {
-      this.props.fetchConfiguredNodeList(currentProvider.uuid);
-      this.props.fetchInstanceTypeList(currentProvider.uuid);
+    this.state = {
+      currentProvider: undefined,
+      isLoading: true
     }
   }
-
-  getReadyState = (dataObject) => {
-    return getPromiseState(dataObject).isSuccess() || getPromiseState(dataObject).isEmpty();
-  };
-
-  handleManageNodesClick = () => {
-    this.setState({ manageInstances: true });
-  };
 
   showProviderView = () => {
     this.setState({ manageInstances: false });
   };
+  deleteProvider = async () => {
+    const { currentProvider } = this.state;
+    await this.props.deleteProviderConfig(currentProvider.uuid)
+    window.location.reload();
+  }
+  handleManageNodesClick = () => {
+    this.setState({ manageInstances: true });
+  };
 
-  UNSAFE_componentWillReceiveProps(nextProps) {
+  async fetchInstanceAndNodeList(currentProviderFromProps) {
+    const { currentProvider } = this.state;
+    if(!currentProvider && !currentProviderFromProps) return;
+    await this.props.fetchConfiguredNodeList(currentProviderFromProps ? currentProviderFromProps.uuid : currentProvider.uuid);
+    await this.props.fetchInstanceTypeList(currentProviderFromProps ? currentProviderFromProps.uuid : currentProvider.uuid);
+    this.updateJSONStore();
+  }
+
+  updateJSONStore() {
+
+    const { currentProvider } = this.state;
+
     const {
       accessKeys,
-      cloud: { nodeInstanceList, instanceTypes, onPremJsonFormData },
-      cloudBootstrap,
-      cloudBootstrap: {
-        data: { type, response }
+      cloud: { nodeInstanceList, instanceTypes },
+      configuredRegions,
+      selectedProviderUUID
+    } = this.props;
+    
+    if(!currentProvider) return;
+
+    const onPremRegions = configuredRegions.data.filter(
+      (configuredRegion) => configuredRegion.provider.uuid === selectedProviderUUID
+    );
+    let onPremAccessKey = {};
+    if (isNonEmptyArray(accessKeys.data)) {
+      onPremAccessKey = accessKeys.data.find(
+        (accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid
+      );
+    }
+    let keyJson = {};
+    if (isNonEmptyObject(onPremAccessKey) && onPremAccessKey.idKey && onPremAccessKey.keyInfo) {
+      const { idKey, keyInfo } = onPremAccessKey;
+      keyJson = {
+        code: idKey.keyCode,
+        privateKeyContent: keyInfo.privateKey,
+        sshUser: keyInfo.sshUser,
+        sshPort: keyInfo.sshPort,
+        airGapInstall: keyInfo.airGapInstall,
+        installNodeExporter: keyInfo.installNodeExporter,
+        nodeExporterUser: keyInfo.nodeExporterUser,
+        nodeExporterPort: keyInfo.nodeExporterPort,
+        preProvisionScript: keyInfo.provisionInstanceScript,
+        skipProvisioning: keyInfo.skipProvisioning
+      };
+    }
+
+    const jsonData = {
+      provider: {
+        name: currentProvider.name,
+        config: currentProvider.config,
+        uuid: currentProvider.uuid
       },
-      configuredProviders,
-      configuredRegions
-    } = nextProps;
+      key: keyJson,
+      regions: onPremRegions
+        .filter((region) => region.active === true)
+        .map((regionItem) => {
+          return {
+            code: regionItem.code,
+            longitude: regionItem.longitude,
+            latitude: regionItem.latitude,
+            uuid: regionItem.uuid,
+            zones: regionItem.zones
+              .filter((zoneItem) => zoneItem.active === true)
+              .map((zoneItem) => zoneItem.code)
+          };
+        }),
+      instanceTypes: instanceTypes.data.map((instanceTypeItem) => ({
+        instanceTypeCode: instanceTypeItem.instanceTypeCode,
+        numCores: instanceTypeItem.numCores,
+        memSizeGB: instanceTypeItem.memSizeGB,
+        volumeDetailsList: pickArray(instanceTypeItem.instanceTypeDetails.volumeDetailsList, [
+          'volumeSizeGB',
+          'volumeType',
+          'mountPath'
+        ])
+      })),
+      nodes: nodeInstanceList.data.map((nodeItem) => ({
+        ip: nodeItem.details.ip,
+        region: nodeItem.details.region,
+        zone: nodeItem.details.zone,
+        instanceType: nodeItem.details.instanceType
+      }))
+    };
+    this.props.setOnPremJsonData(jsonData);
+  }
+
+  componentDidMount() {
+
+    const { configuredProviders, selectedProviderUUID, universeList } = this.props;
+    const currentProvider = configuredProviders.data.find((provider) => provider.uuid === selectedProviderUUID);
+    this.props.setSelectedProvider(currentProvider.uuid);
+    this.setState({ currentProvider }, () => {
+      this.fetchInstanceAndNodeList();
+    });
+    if(!this.getReadyState(universeList)){
+      this.props.fetchUniverseList()
+    }
+  }
+
+  componentDidUpdate(prevProps) {
+    const { configuredProviders, configuredRegions, cloudBootstrap: {
+      data: { type, response },
+    },
+    cloud: { nodeInstanceList, instanceTypes }
+
+     } = this.props;
+     const {isLoading} = this.state;
 
     if (
-      cloudBootstrap !== this.props.cloudBootstrap &&
+      (this.props.selectedProviderUUID !== prevProps.selectedProviderUUID && this.props.selectedProviderUUID !== undefined)
+      || !isEqual(configuredRegions.data, prevProps.configuredRegions.data)
+    ) {
+      const currentProvider = configuredProviders.data.find((provider) => provider.uuid === this.props.selectedProviderUUID);
+      this.setState({ currentProvider, isLoading: true });
+      this.fetchInstanceAndNodeList(currentProvider);
+      // this.updateJSONStore()
+    }
+    
+    if (
+      prevProps.cloudBootstrap !== this.props.cloudBootstrap &&
       type === 'cleanup' &&
       isDefinedNotNull(response)
     ) {
@@ -74,91 +164,36 @@ class OnPremSuccess extends Component {
       this.props.fetchCloudMetadata();
     }
 
-    // setOnPremJSONFormData if not already set.
-    if (
-      isEmptyObject(onPremJsonFormData) &&
-      this.getReadyState(nodeInstanceList) &&
-      this.getReadyState(instanceTypes) &&
-      this.getReadyState(accessKeys)
-    ) {
-      const onPremRegions = configuredRegions.data.filter(
-        (configuredRegion) => configuredRegion.provider.code === PROVIDER_TYPE
-      );
-      const currentProvider = configuredProviders.data.find(
-        (provider) => provider.code === 'onprem'
-      );
-      let onPremAccessKey = {};
-      if (isNonEmptyArray(accessKeys.data)) {
-        onPremAccessKey = accessKeys.data.find(
-          (accessKey) => accessKey.idKey.providerUUID === currentProvider.uuid
-        );
+    if(isLoading){
+      if(this.getReadyState(instanceTypes) && this.getReadyState(nodeInstanceList)){
+        this.setState({isLoading: false}, ()=> {
+          this.updateJSONStore()
+        })
       }
-      let keyJson = {};
-      if (isNonEmptyObject(onPremAccessKey) && onPremAccessKey.idKey && onPremAccessKey.keyInfo) {
-        const { idKey, keyInfo } = onPremAccessKey;
-        keyJson = {
-          code: idKey.keyCode,
-          privateKeyContent: keyInfo.privateKey,
-          sshUser: keyInfo.sshUser,
-          sshPort: keyInfo.sshPort,
-          airGapInstall: keyInfo.airGapInstall,
-          installNodeExporter: keyInfo.installNodeExporter,
-          nodeExporterUser: keyInfo.nodeExporterUser,
-          nodeExporterPort: keyInfo.nodeExporterPort,
-          preProvisionScript: keyInfo.provisionInstanceScript,
-          skipProvisioning: keyInfo.skipProvisioning
-        };
-      }
-
-      const jsonData = {
-        provider: {
-          name: currentProvider.name,
-          config: currentProvider.config,
-          uuid: currentProvider.uuid
-        },
-        key: keyJson,
-        regions: onPremRegions
-          .filter((region) => region.active === true)
-          .map((regionItem) => {
-            return {
-              code: regionItem.code,
-              longitude: regionItem.longitude,
-              latitude: regionItem.latitude,
-              uuid: regionItem.uuid,
-              zones: regionItem.zones
-                .filter((zoneItem) => zoneItem.active === true)
-                .map((zoneItem) => zoneItem.code)
-            };
-          }),
-        instanceTypes: instanceTypes.data.map((instanceTypeItem) => ({
-          instanceTypeCode: instanceTypeItem.instanceTypeCode,
-          numCores: instanceTypeItem.numCores,
-          memSizeGB: instanceTypeItem.memSizeGB,
-          volumeDetailsList: pickArray(instanceTypeItem.instanceTypeDetails.volumeDetailsList, [
-            'volumeSizeGB',
-            'volumeType',
-            'mountPath'
-          ])
-        })),
-        nodes: nodeInstanceList.data.map((nodeItem) => ({
-          ip: nodeItem.details.ip,
-          region: nodeItem.details.region,
-          zone: nodeItem.details.zone,
-          instanceType: nodeItem.details.instanceType
-        }))
-      };
-      this.props.setOnPremJsonData(jsonData);
     }
-  }
 
+  }
+  getReadyState = (dataObject) => {
+    return getPromiseState(dataObject).isSuccess() || getPromiseState(dataObject).isEmpty();
+  };
+  setSelectedProvider = (e) => {
+    this.props.setSelectedProvider(e.target.value)
+  }
   render() {
     const {
       configuredRegions,
       configuredProviders,
       accessKeys,
       universeList,
+      setCreateProviderView,
+      selectedProviderUUID,
       cloud: { nodeInstanceList }
     } = this.props;
+    const {isLoading} = this.state;
+    
+    if(isLoading){
+      return <YBLoading />
+    }
 
     if (this.state.manageInstances) {
       return (
@@ -168,8 +203,9 @@ class OnPremSuccess extends Component {
         />
       );
     }
+
     const currentProvider = configuredProviders.data.find(
-      (provider) => provider.code === PROVIDER_TYPE
+      (provider) => provider.code === PROVIDER_TYPE && provider.uuid === selectedProviderUUID
     );
     if (!currentProvider) {
       return <span />;
@@ -185,7 +221,7 @@ class OnPremSuccess extends Component {
     });
 
     const onPremRegions = cloneDeep(
-      configuredRegions.data.filter((region) => region.provider.code === PROVIDER_TYPE)
+      configuredRegions.data.filter((region) => region.provider.uuid === selectedProviderUUID)
     );
     onPremRegions.forEach((region) => {
       region.zones.forEach((zone) => {
@@ -208,6 +244,7 @@ class OnPremSuccess extends Component {
       (universe) =>
         universe?.universeDetails?.clusters[0]?.userIntent.provider === currentProvider.uuid
     );
+    
     const buttons = (
       <span className="buttons pull-right">
         <YBButton
@@ -234,7 +271,7 @@ class OnPremSuccess extends Component {
         <YBConfirmModal
           name="delete-aws-provider"
           title={'Confirm Delete'}
-          onConfirm={this.deleteProvider.bind(this, currentProvider.uuid)}
+          onConfirm={this.deleteProvider}
           currentModal="deleteOnPremProvider"
           visibleModal={this.props.visibleModal}
           hideConfirmModal={this.props.hideDeleteProviderModal}
@@ -287,8 +324,37 @@ class OnPremSuccess extends Component {
       { name: 'SSH Key', data: keyPairName },
       { name: 'Instances', data: nodeItemObject }
     ];
+    const currentCloudProviders = configuredProviders?.data?.filter?.((provider) => provider.code === PROVIDER_TYPE) || [];
     return (
       <div className="provider-config-container">
+        <Row className="provider-row-flex" data-testid="change-or-add-provider">
+          <Col md={2}>
+            <Field
+              name="change.provider"
+              type="select"
+              component={YBControlledSelectWithLabel}
+              defaultValue={selectedProviderUUID}
+              label="Change provider"
+              onInputChanged={this.setSelectedProvider}
+              options={[
+                currentCloudProviders.map((cloudProvider) => (
+                  <option key={cloudProvider.uuid} value={cloudProvider.uuid}>
+                    {cloudProvider.name}
+                  </option>
+                ))
+              ]}
+            />
+          </Col>
+          <Col md={2} className="add-config-margin">
+            <div className="yb-field-group add-provider-col">
+              <YBButton
+                btnClass="btn btn-orange add-provider-config"
+                btnText="Add Configuration"
+                onClick={setCreateProviderView}
+              />
+            </div>
+          </Col>
+        </Row>
         <Row className="config-section-header">
           <Col md={12}>
             {buttons}
@@ -313,4 +379,6 @@ class OnPremSuccess extends Component {
   }
 }
 
-export default withRouter(OnPremSuccess);
+export default reduxForm({
+  form: 'onPremSuccess'
+})(withRouter(NewOnPremSuccess));

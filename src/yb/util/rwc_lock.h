@@ -133,6 +133,11 @@ class RWCLock {
   void UpgradeToCommitLock();
   void CommitUnlock();
 
+  // If write lock was acquired in one thread and then used in another thread the below method
+  // should be invoked in a new thread.
+  // Otherwise check will fail in debug mode.
+  void WriteLockThreadChanged();
+
  private:
   // Lock which protects reader_count_ and write_locked_.
   // Additionally, while the commit lock is held, the

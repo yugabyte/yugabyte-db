@@ -11,7 +11,8 @@
 // under the License.
 
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/master/catalog_entity_info.pb.h"
 
 using std::set;
 
@@ -33,11 +34,21 @@ bool TSDescriptor::IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_in
     return false;
   }
 
-  if (replication_info.affinitized_leaders_size() == 0) {
+  if (replication_info.affinitized_leaders_size() == 0 &&
+      replication_info.multi_affinitized_leaders_size() == 0) {
     // If there are no affinitized leaders, all ts can be leaders.
     return true;
   }
 
+  for (const auto& zone_set : replication_info.multi_affinitized_leaders()) {
+    for (const CloudInfoPB& cloud_info : zone_set.zones()) {
+      if (MatchesCloudInfo(cloud_info)) {
+        return true;
+      }
+    }
+  }
+
+  // Handle old un-updated config if any
   for (const CloudInfoPB& cloud_info : replication_info.affinitized_leaders()) {
     if (MatchesCloudInfo(cloud_info)) {
       return true;

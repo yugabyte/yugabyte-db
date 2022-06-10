@@ -17,8 +17,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <atomic>
 #include <string>
 #include <utility>
 
@@ -27,6 +25,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/util/string_util.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
@@ -34,7 +33,7 @@ namespace rocksdb {
 // But we'll probably replace it with boost::small_vector.
 using namespace std; // NOLINT
 
-class AutoVectorTest : public testing::Test {};
+class AutoVectorTest : public RocksDBTest {};
 const size_t kSize = 8;
 
 namespace {

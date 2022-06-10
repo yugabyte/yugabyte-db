@@ -1,14 +1,29 @@
 SET LOCAL yb_non_ddl_txn_for_sys_tables_allowed TO true;
 
 DO $$
+  DECLARE pg_version VARCHAR;
+  DECLARE platform VARCHAR;
+  DECLARE en_us_utf8 VARCHAR;
 BEGIN
+  -- The collation "en_US.utf8" on Linux is called "en_US.UTF-8" on Mac OS.
+  SELECT version() into pg_version;
+  platform = substr(pg_version, strpos(pg_version, ' on ') + 3);
+  platform = substr(platform, 1, strpos(platform, ', compiled by') - 1);
+  IF platform LIKE '%linux%' THEN
+    en_us_utf8 = 'en_US.utf8';
+  ELSIF platform LIKE '%apple%' THEN
+    en_us_utf8 = 'en_US.UTF-8';
+  ELSE
+    RAISE EXCEPTION 'unknown platform %', platform;
+  END IF;
+
   -- Instead of loading collations via pg_import_system_collations, we use PL/pgSQL to
   -- improve performance by doing direct inserts.
   IF NOT EXISTS (
     -- All the collations are batch inserted in a transaction so we only need to check one
     -- of them for existence.
     SELECT FROM pg_catalog.pg_collation
-      WHERE collname = 'en_US.utf8' AND collencoding = 6 AND collnamespace = 11
+      WHERE collname = en_us_utf8 AND collencoding = 6 AND collnamespace = 11
   ) THEN
     -- Use CTE (Common Table Expression) for temporary result set.
     WITH tmp_oids (pg_coll_oid) AS (
@@ -20,8 +35,8 @@ BEGIN
         collname, collnamespace, collowner, collprovider,
         collencoding, collcollate, collctype, collversion
       ) VALUES
-        ('en_US.utf8', 11, 10, 'c', 6, 'en_US.utf8', 'en_US.utf8', NULL),
-        ('en_US', 11, 10, 'c', 6, 'en_US.utf8', 'en_US.utf8', NULL),
+        (en_us_utf8, 11, 10, 'c', 6, en_us_utf8, en_us_utf8, NULL),
+        ('en_US', 11, 10, 'c', 6, en_us_utf8, en_us_utf8, NULL),
         ('und-x-icu', 11, 10, 'i', -1, 'und', 'und', '153.14'),
         ('af-x-icu', 11, 10, 'i', -1, 'af', 'af', '153.14.37'),
         ('af-NA-x-icu', 11, 10, 'i', -1, 'af-NA', 'af-NA', '153.14.37'),

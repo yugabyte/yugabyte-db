@@ -34,15 +34,21 @@
 
 #include <glog/logging.h>
 
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_round.h"
-#include "yb/server/hybrid_clock.h"
+#include "yb/consensus/log.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 #include "yb/util/trace.h"
 
 namespace yb {
@@ -52,16 +58,27 @@ using google::protobuf::RepeatedPtrField;
 using tserver::TabletServerErrorPB;
 
 template <>
-void RequestTraits<tserver::ChangeMetadataRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, tserver::ChangeMetadataRequestPB* request) {
+void RequestTraits<ChangeMetadataRequestPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, ChangeMetadataRequestPB* request) {
   replicate->set_allocated_change_metadata_request(request);
 }
 
 template <>
-tserver::ChangeMetadataRequestPB* RequestTraits<tserver::ChangeMetadataRequestPB>::MutableRequest(
+ChangeMetadataRequestPB* RequestTraits<ChangeMetadataRequestPB>::MutableRequest(
     consensus::ReplicateMsg* replicate) {
   return replicate->mutable_change_metadata_request();
 }
+
+ChangeMetadataOperation::ChangeMetadataOperation(
+    Tablet* tablet, log::Log* log, const ChangeMetadataRequestPB* request)
+    : ExclusiveSchemaOperation(tablet, request), log_(log) {
+}
+
+ChangeMetadataOperation::ChangeMetadataOperation(const ChangeMetadataRequestPB* request)
+    : ChangeMetadataOperation(nullptr, nullptr, request) {
+}
+
+ChangeMetadataOperation::~ChangeMetadataOperation() = default;
 
 void ChangeMetadataOperation::SetIndexes(const RepeatedPtrField<IndexInfoPB>& indexes) {
   index_map_.FromPB(indexes);
@@ -198,9 +215,9 @@ Status ChangeMetadataOperation::DoAborted(const Status& status) {
   return status;
 }
 
-CHECKED_STATUS SyncReplicateChangeMetadataOperation(
-    const tserver::ChangeMetadataRequestPB* req,
-    tablet::TabletPeer* tablet_peer,
+Status SyncReplicateChangeMetadataOperation(
+    const ChangeMetadataRequestPB* req,
+    TabletPeer* tablet_peer,
     int64_t term) {
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet_peer->tablet(), tablet_peer->log(), req);

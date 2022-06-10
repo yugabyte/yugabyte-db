@@ -11,17 +11,21 @@
 // under the License.
 //
 
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/snapshot_test_util.h"
+#include "yb/client/table.h"
 #include "yb/client/transaction.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/transaction_error.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master_backup.proxy.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/master/sys_catalog_constants.h"
 
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_retention_policy.h"
 #include "yb/tablet/tablet_snapshots.h"
 
@@ -71,7 +75,7 @@ class BackupTxnTest : public TransactionTestBase<MiniCluster> {
     TransactionTestBase::DoBeforeTearDown();
   }
 
-  CHECKED_STATUS WaitAllSnapshotsDeleted() {
+  Status WaitAllSnapshotsDeleted() {
     RETURN_NOT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
     // Check if deleted in DocDB.
     return WaitFor([this]() -> Result<bool> {
@@ -160,7 +164,7 @@ TEST_F(BackupTxnTest, PointInTimeBigSkipRestore) {
   auto session = CreateSession();
   ASSERT_OK(WriteRow(session, kKey, 0));
   auto hybrid_time = cluster_->mini_tablet_server(0)->server()->Clock()->Now();
-  for (size_t r = 1; r <= kNumWrites; ++r) {
+  for (int r = 1; r <= kNumWrites; ++r) {
     ASSERT_OK(WriteRow(session, kKey, r, WriteOpType::INSERT, client::Flush::kFalse));
     futures.push_back(session->FlushFuture());
   }
@@ -252,10 +256,7 @@ TEST_F(BackupTxnTest, Persistence) {
 
   LOG(INFO) << "Flush";
 
-  auto catalog_manager =
-      ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->catalog_manager();
-  tablet::TabletPeerPtr tablet_peer;
-  ASSERT_OK(catalog_manager->GetTabletPeer(master::kSysCatalogTabletId, &tablet_peer));
+  auto tablet_peer = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->tablet_peer();
   ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
 
   LOG(INFO) << "Second restart";
@@ -417,9 +418,9 @@ TEST_F(BackupTxnTest, FlushSysCatalogAndDelete) {
   ASSERT_NO_FATALS(WriteData());
   auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_));
 
-  for (int i = 0; i != cluster_->num_masters(); ++i) {
-    auto sys_catalog = cluster_->mini_master(i)->master()->catalog_manager()->sys_catalog();
-    ASSERT_OK(sys_catalog->tablet_peer()->tablet()->Flush(tablet::FlushMode::kSync));
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    auto tablet_peer = cluster_->mini_master(i)->tablet_peer();
+    ASSERT_OK(tablet_peer->tablet()->Flush(tablet::FlushMode::kSync));
   }
 
   ShutdownAllTServers(cluster_.get());
@@ -457,7 +458,7 @@ TEST_F(BackupTxnTest, Consistency) {
         for (int j = 0; j != kKeys; ++j) {
           ASSERT_OK(WriteRow(session, j, v, WriteOpType::INSERT, Flush::kFalse));
         }
-        auto status = session->Flush();
+        auto status = session->TEST_Flush();
         if (status.ok()) {
           status = txn->CommitFuture().get();
         }

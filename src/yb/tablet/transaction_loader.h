@@ -15,8 +15,11 @@
 #define YB_TABLET_TRANSACTION_LOADER_H
 
 #include <condition_variable>
+#include <thread>
 
 #include "yb/common/transaction.h"
+
+#include "yb/gutil/thread_annotations.h"
 
 #include "yb/docdb/docdb.h"
 

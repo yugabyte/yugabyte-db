@@ -29,7 +29,8 @@ export default class EncryptionKeyModal extends Component {
         data: { universeUUID, universeDetails }
       },
       setEncryptionKey,
-      handleSubmitKey
+      handleSubmitKey,
+      fetchCurrentUniverse
     } = this.props;
     const encryptionAtRestEnabled =
       universeDetails.encryptionAtRestConfig &&
@@ -37,6 +38,10 @@ export default class EncryptionKeyModal extends Component {
 
     // When both the encryption enabled and key values didn't change
     // we don't submit the form
+    if (values.enableEncryptionAtRest === false && encryptionAtRestEnabled === false) {
+      this.setState({ alertMessage: 'Note! No changes in configuration to submit.' });
+      return false;
+    }
     if (
       encryptionAtRestEnabled === values.enableEncryptionAtRest &&
       universeDetails.encryptionAtRestConfig.kmsConfigUUID === values.selectKMSProvider.value
@@ -49,12 +54,14 @@ export default class EncryptionKeyModal extends Component {
       key_op: values.enableEncryptionAtRest ? 'ENABLE' : 'DISABLE',
       kmsConfigUUID: values.enableEncryptionAtRest ? values.selectKMSProvider.value : null
     };
-
-    handleSubmitKey(setEncryptionKey(universeUUID, data));
+    setEncryptionKey(universeUUID, data).then((resp) => {
+      fetchCurrentUniverse(universeDetails.universeUUID);
+      handleSubmitKey(resp);
+    });
   };
 
   render() {
-    const { modalVisible, onHide, configList, currentUniverse } = this.props;
+    const { modalVisible, onHide, configList, currentUniverse, featureFlags } = this.props;
     const {
       data: { universeDetails }
     } = currentUniverse;
@@ -64,10 +71,16 @@ export default class EncryptionKeyModal extends Component {
     const labelText = currentUniverse.data.name
       ? `Enable Encryption-at-Rest for ${this.props.name}?`
       : 'Enable Encryption-at-Rest?';
-    const kmsOptions = configList?.data?.map((config) => ({
+    let kmsOptions = configList?.data?.map((config) => ({
       value: config.metadata.configUUID,
-      label: config.metadata.provider + ' - ' + config.metadata.name
+      label: config.metadata.provider + ' - ' + config.metadata.name,
+      id: config.metadata.provider
     }));
+
+    //feature flagging
+    const isHCVaultEnabled = featureFlags.test.enableHCVault || featureFlags.released.enableHCVault;
+    if (!isHCVaultEnabled) kmsOptions = kmsOptions.filter((config) => config.id !== 'HASHICORP');
+    //feature flagging
 
     const initialValues = {
       enableEncryptionAtRest: encryptionAtRestEnabled,
@@ -159,13 +172,13 @@ export default class EncryptionKeyModal extends Component {
                 </Row>
               )}
               {this.state.alertMessage && (
-                  <Row>
-                    <Col lg={11}>
-                      <Alert key={this.state.alertMessage} variant="warning" bsStyle="warning">
-                        {this.state.alertMessage}
-                      </Alert>
-                    </Col>
-                  </Row>
+                <Row>
+                  <Col lg={11}>
+                    <Alert key={this.state.alertMessage} variant="warning" bsStyle="warning">
+                      {this.state.alertMessage}
+                    </Alert>
+                  </Col>
+                </Row>
               )}
             </div>
           </YBModal>

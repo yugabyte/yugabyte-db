@@ -32,21 +32,21 @@
 
 #include "yb/master/ts_descriptor.h"
 
-#include <math.h>
-
-#include <mutex>
 #include <vector>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/catalog_manager_util.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/shared_lock.h"
+#include "yb/common/wire_protocol.pb.h"
 
+#include "yb/master/master_fwd.h"
+#include "yb/master/master_util.h"
+#include "yb/master/catalog_manager_util.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
 
 DEFINE_int32(tserver_unresponsive_timeout_ms, 60 * 1000,
              "The period of time that a Master can go without receiving a heartbeat from a "
@@ -253,34 +253,14 @@ CloudInfoPB TSDescriptor::GetCloudInfo() const {
   return ts_information_->registration().common().cloud_info();
 }
 
-template<typename Lambda>
-bool TSDescriptor::DoesRegistrationMatch(Lambda predicate) const {
-  TSRegistrationPB reg = GetRegistration();
-  if (std::find_if(reg.common().private_rpc_addresses().begin(),
-                   reg.common().private_rpc_addresses().end(),
-                   predicate) != reg.common().private_rpc_addresses().end()) {
-    return true;
-  }
-  if (std::find_if(reg.common().broadcast_addresses().begin(),
-                   reg.common().broadcast_addresses().end(),
-                   predicate) != reg.common().broadcast_addresses().end()) {
-    return true;
-  }
-  return false;
-}
-
 bool TSDescriptor::IsBlacklisted(const BlacklistSet& blacklist) const {
-  auto predicate = [&blacklist](const HostPortPB& rhs) {
-    return blacklist.count(HostPortFromPB(rhs)) > 0;
-  };
-  return DoesRegistrationMatch(predicate);
+  TSRegistrationPB reg = GetRegistration();
+  return yb::master::IsBlacklisted(reg.common(), blacklist);
 }
 
 bool TSDescriptor::IsRunningOn(const HostPortPB& hp) const {
-  auto predicate = [&hp](const HostPortPB& rhs) {
-    return rhs.host() == hp.host() && rhs.port() == hp.port();
-  };
-  return DoesRegistrationMatch(predicate);
+  TSRegistrationPB reg = GetRegistration();
+  return yb::master::IsRunningOn(reg.common(), hp);
 }
 
 Result<HostPort> TSDescriptor::GetHostPortUnlocked() const {
@@ -306,10 +286,12 @@ void TSDescriptor::UpdateMetrics(const TServerMetricsPB& metrics) {
   ts_metrics_.read_ops_per_sec = metrics.read_ops_per_sec();
   ts_metrics_.write_ops_per_sec = metrics.write_ops_per_sec();
   ts_metrics_.uptime_seconds = metrics.uptime_seconds();
+  ts_metrics_.path_metrics.clear();
   for (const auto& path_metric : metrics.path_metrics()) {
     ts_metrics_.path_metrics[path_metric.path_id()] =
         { path_metric.used_space(), path_metric.total_space() };
   }
+  ts_metrics_.disable_tablet_split_if_default_ttl = metrics.disable_tablet_split_if_default_ttl();
 }
 
 void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
@@ -328,6 +310,7 @@ void TSDescriptor::GetMetrics(TServerMetricsPB* metrics) {
     new_path_metric->set_used_space(path_metric.second.used_space);
     new_path_metric->set_total_space(path_metric.second.total_space);
   }
+  metrics->set_disable_tablet_split_if_default_ttl(ts_metrics_.disable_tablet_split_if_default_ttl);
 }
 
 bool TSDescriptor::HasTabletDeletePending() const {

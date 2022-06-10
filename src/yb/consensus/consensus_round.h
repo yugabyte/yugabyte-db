@@ -14,6 +14,10 @@
 #ifndef YB_CONSENSUS_CONSENSUS_ROUND_H
 #define YB_CONSENSUS_CONSENSUS_ROUND_H
 
+#include <stdint.h>
+
+#include <cstdint>
+
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/gutil/ref_counted.h"
@@ -35,11 +39,6 @@ class ConsensusRoundCallback {
   // Invoked when appropriate operation replication finished.
   virtual void ReplicationFinished(
       const Status& status, int64_t leader_term, OpIds* applied_op_ids) = 0;
-
-  // Utility method for failed replication.
-  void ReplicationFailed(const Status& status) {
-    ReplicationFinished(status, OpId::kUnknownTerm, /* applied_op_ids= */ nullptr);
-  }
 
   virtual ~ConsensusRoundCallback() = default;
 };
@@ -75,13 +74,15 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
     callback_ = callback_holder_.get();
   }
 
-  ConsensusRoundCallback* callback() const {
-    return callback_;
-  }
+  void NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id);
 
   // If a continuation was set, notifies it that the round has been replicated.
   void NotifyReplicationFinished(
       const Status& status, int64_t leader_term, OpIds* applied_op_ids);
+
+  void NotifyReplicationFailed(const Status& status) {
+    NotifyReplicationFinished(status, OpId::kUnknownTerm, /* applied_op_ids= */ nullptr);
+  }
 
   // Binds this round such that it may not be eventually executed in any term
   // other than 'term'.
@@ -98,7 +99,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   // preparing it. See KUDU-597 for details.
   //
   // If this round has not been bound to any term, this is a no-op.
-  CHECKED_STATUS CheckBoundTerm(int64_t current_term) const;
+  Status CheckBoundTerm(int64_t current_term) const;
 
   std::string ToString() const;
 
@@ -106,7 +107,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
   friend class RaftConsensusQuorumTest;
   friend class RefCountedThreadSafe<ConsensusRound>;
 
-  ~ConsensusRound() {}
+  ~ConsensusRound();
 
   Consensus* const consensus_;
   // This round's replicate message.
@@ -121,6 +122,7 @@ class ConsensusRound : public RefCountedThreadSafe<ConsensusRound> {
 
   ConsensusRoundCallback* callback_ = nullptr;
   std::unique_ptr<ConsensusRoundCallback> callback_holder_;
+  std::atomic<bool> callback_called{false};
 };
 
 }  // namespace consensus

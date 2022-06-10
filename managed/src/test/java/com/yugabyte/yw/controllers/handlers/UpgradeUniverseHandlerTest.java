@@ -3,7 +3,7 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import com.yugabyte.yw.commissioner.Commissioner;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -27,7 +27,7 @@ public class UpgradeUniverseHandlerTest {
     handler =
         new UpgradeUniverseHandler(
             commissioner,
-            Mockito.mock(KubernetesManager.class),
+            Mockito.mock(KubernetesManagerFactory.class),
             Mockito.mock(RuntimeConfigFactory.class));
   }
 

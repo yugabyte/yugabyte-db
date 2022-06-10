@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React from 'react';
-import { Row, Col } from 'react-bootstrap';
+import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
 
 import { isAvailable } from '../../../utils/LayoutUtils';
@@ -10,7 +10,7 @@ import { YBCost } from '../../common/descriptors';
 import { UniverseStatusContainer } from '..';
 import { CellLocationPanel } from './CellLocationPanel';
 import { CellResourcesPanel } from './CellResourcePanel';
-import {timeFormatter} from "../../../utils/TableFormatters";
+import { timeFormatter } from '../../../utils/TableFormatters';
 
 export const YBUniverseItem = (props) => {
   const {
@@ -27,7 +27,7 @@ export const YBUniverseItem = (props) => {
               <div className="universe-name-cell">{universe.name}</div>
             </Col>
             <Col sm={6} className="universe-create-date-container">
-              <div>Created: </div>
+              <div>Created:</div>
               {timeFormatter(universe.creationDate)}
             </Col>
           </Row>
@@ -36,6 +36,7 @@ export const YBUniverseItem = (props) => {
               currentUniverse={universe}
               showLabelText={true}
               refreshUniverseData={props.fetchUniverseMetadata}
+              showAlertsBadge={true}
             />
           </div>
         </div>

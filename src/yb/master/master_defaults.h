@@ -14,9 +14,7 @@
 #ifndef YB_MASTER_MASTER_DEFAULTS_H
 #define YB_MASTER_MASTER_DEFAULTS_H
 
-#include <set>
 #include <string>
-#include <utility>
 
 namespace yb {
 namespace master {
@@ -60,6 +58,12 @@ constexpr size_t kCdcCheckpointIdx = 2;
 static const char* const kCdcData = "data";
 static const char* const kCdcLastReplicationTime = "last_replication_time";
 constexpr size_t kCdcLastReplicationTimeIdx = 4;
+static const char* const kCdcStreamIdMappingTableName = "cdc_stream_id_mapping";
+constexpr size_t kCdcTabletIdIdxforStreamIdMap = 1;
+static const char* const kCdcDbStreamId = "db_stream_id";
+constexpr size_t kCdcDbStreamIdIdx = 0;
+static const char* const kCdcTableId = "table_id";
+constexpr size_t kCdcTableIdIdx = 3;
 
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
@@ -67,6 +71,11 @@ static const char* const kSystemAuthResourceRolePermissionsIndexTableName =
                   "resource_role_permissions_index";
 
 static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000000000";
+
+static const char* const kSecurityConfigType = "security-configuration";
+static const char* const kYsqlCatalogConfigType = "ysql-catalog-configuration";
+static const char* const kTransactionTablesConfigType = "transaction-tables-configuration";
+static const int32_t kDelayAfterFailoverSecs = 120;
 
 // Needs to be updated each time we add a new system namespace.
 static constexpr int kNumSystemNamespaces = 3;

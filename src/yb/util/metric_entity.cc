@@ -266,9 +266,9 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                                const vector<string>& requested_metrics,
-                                                const MetricPrometheusOptions& opts) const {
+Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
+                                        const vector<string>& requested_metrics,
+                                        const MetricPrometheusOptions& opts) const {
   bool select_all = MatchMetricInList(id(), requested_metrics);
 
   // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
@@ -282,10 +282,7 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     std::lock_guard<simple_spinlock> l(lock_);
     attrs = attributes_;
     external_metrics_cbs = external_prometheus_metrics_cbs_;
-    for (const MetricMap::value_type& val : metric_map_) {
-      const MetricPrototype* prototype = val.first;
-      const scoped_refptr<Metric>& metric = val.second;
-
+    for (const auto& [prototype, metric] : metric_map_) {
       if (select_all || MatchMetricInList(prototype->name(), requested_metrics)) {
         InsertOrDie(&metrics, prototype->name(), metric);
       }
@@ -317,6 +314,8 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+  } else if (strcmp(prototype_->name(), "drive") == 0) {
+    prometheus_attr["drive_path"] = attrs["drive_path"];
   } else {
     return Status::OK();
   }
@@ -327,7 +326,6 @@ CHECKED_STATUS MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   for (OrderedMetricMap::value_type& val : metrics) {
     WARN_NOT_OK(val.second->WriteForPrometheus(writer, prometheus_attr, opts),
                 Format("Failed to write $0 as Prometheus", val.first));
-
   }
   // Run the external metrics collection callback if there is one set.
   for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
@@ -411,6 +409,18 @@ scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
   if (!m) {
     m = new Counter(proto);
     InsertOrDie(&metric_map_, proto, m);
+  }
+  return m;
+}
+
+scoped_refptr<Counter> MetricEntity::FindOrCreateCounter(
+    std::unique_ptr<CounterPrototype> proto) {
+  CheckInstantiation(proto.get());
+  std::lock_guard<simple_spinlock> l(lock_);
+  auto m = down_cast<Counter*>(FindPtrOrNull(metric_map_, proto.get()).get());
+  if (!m) {
+    m = new Counter(std::move(proto));
+    InsertOrDie(&metric_map_, m->prototype(), m);
   }
   return m;
 }

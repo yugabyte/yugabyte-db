@@ -13,13 +13,12 @@
 #ifndef YB_UTIL_BACKGROUND_TASK_H
 #define YB_UTIL_BACKGROUND_TASK_H
 
-#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <memory>
-#include <mutex>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/status_fwd.h"
 
 namespace yb {
@@ -37,12 +36,12 @@ class BackgroundTask {
       std::chrono::milliseconds interval_msec = std::chrono::milliseconds(0));
   ~BackgroundTask();
 
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Wait for pending tasks and shut down
   void Shutdown();
 
-  CHECKED_STATUS Wake();
+  Status Wake();
 
  private:
   void Run();

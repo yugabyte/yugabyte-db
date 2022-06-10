@@ -1,6 +1,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
@@ -36,6 +37,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
 
   protected ShellResponse dummyShellResponse;
   protected ShellResponse preflightResponse;
+  protected ShellResponse listResponse;
 
   protected YBClient mockClient;
 
@@ -49,6 +51,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     dummyShellResponse.message = "true";
     preflightResponse = new ShellResponse();
     preflightResponse.message = "{\"test\": true}";
+    listResponse = new ShellResponse();
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
             invocation -> {
@@ -56,6 +59,21 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 NodeTaskParams params = invocation.getArgument(1);
                 NodeInstance.getByName(params.nodeName); // verify node is picked
                 return preflightResponse;
+              }
+              if (invocation.getArgument(0).equals(NodeManager.NodeCommandType.List)) {
+                NodeTaskParams params = invocation.getArgument(1);
+                if (params.nodeUuid == null) {
+                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                } else {
+                  listResponse.message =
+                      "{\"universe_uuid\":\""
+                          + params.universeUUID
+                          + "\", "
+                          + "\"node_uuid\": \""
+                          + params.nodeUuid
+                          + "\"}";
+                }
+                return listResponse;
               }
               return dummyShellResponse;
             });
@@ -94,22 +112,26 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
         Universe.saveDetails(
             result.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     if (providerType == Common.CloudType.onprem) {
-      String instanceType =
-          result.getUniverseDetails().nodeDetailsSet.iterator().next().cloudInfo.instance_type;
-      Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
-      for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
-        List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
-        nodeNames.add(node.nodeName);
-        onpremAzToNodes.put(node.azUuid, nodeNames);
-      }
-      Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
-      for (NodeDetails node : result.getUniverseDetails().nodeDetailsSet) {
-        NodeInstance nodeInstance = nodeMap.get(node.nodeName);
-        if (nodeInstance != null) {
-          node.nodeUuid = nodeInstance.getNodeUuid();
-        }
-      }
-      result.save();
+      Universe.saveDetails(
+          result.universeUUID,
+          u -> {
+            String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
+            Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
+            for (NodeDetails node : u.getNodes()) {
+              List<String> nodeNames = onpremAzToNodes.getOrDefault(node.azUuid, new ArrayList<>());
+              nodeNames.add(node.nodeName);
+              onpremAzToNodes.put(node.azUuid, nodeNames);
+            }
+            Map<String, NodeInstance> nodeMap =
+                NodeInstance.pickNodes(onpremAzToNodes, instanceType);
+            for (NodeDetails node : u.getNodes()) {
+              NodeInstance nodeInstance = nodeMap.get(node.nodeName);
+              if (nodeInstance != null) {
+                node.nodeUuid = nodeInstance.getNodeUuid();
+              }
+            }
+          },
+          false);
     }
 
     return result;

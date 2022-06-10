@@ -12,15 +12,16 @@
 //
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
 
 #include "yb/rpc/compressed_stream.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/tcp_stream.h"
-
 
 #include "yb/util/size_literals.h"
 
@@ -41,7 +42,7 @@ class CompressedStreamTest : public client::KeyValueTableTest<MiniCluster> {
     KeyValueTableTest::SetUp();
   }
 
-  CHECKED_STATUS CreateClient() override {
+  Status CreateClient() override {
     auto host = "127.0.0.52";
     client_ = VERIFY_RESULT(DoCreateClient(host, host));
     return Status::OK();
@@ -100,7 +101,7 @@ TEST_F(CompressedStreamTest, BigWrite) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddStringColumnValue(req, kValueColumn, kValue);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_OK(CheckOp(op.get()));
   }
 
@@ -109,7 +110,7 @@ TEST_F(CompressedStreamTest, BigWrite) {
     auto* const req = op->mutable_request();
     QLAddInt32HashValue(req, kKey);
     table_.AddColumns({kValueColumn}, req);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_OK(CheckOp(op.get()));
     auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
     ASSERT_EQ(rowblock->row_count(), 1);

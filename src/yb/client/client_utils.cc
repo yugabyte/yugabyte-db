@@ -13,29 +13,30 @@
 
 #include "yb/client/client_utils.h"
 
-#include "yb/client/client.h"
 #include <functional>
 #include <set>
 #include <string>
 #include <unordered_set>
 #include <vector>
+
+#include "yb/client/client.h"
+#include "yb/client/meta_cache.h"
+
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc.h"
-#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/secure.h"
+
 #include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/threadpool.h"
-#include "yb/client/meta_cache.h"
-#include "yb/client/table.h"
-
-
-#include "yb/server/secure.h"
 
 DECLARE_bool(TEST_running_test);
 
@@ -79,14 +80,10 @@ Result<std::vector<internal::RemoteTabletPtr>> FilterTabletsByHashPartitionKeyRa
                                                            partition_key_end));
   std::vector<internal::RemoteTabletPtr> filtered_results;
   for (const auto& remote_tablet : all_tablets) {
-    auto tablet_partition_start = remote_tablet->partition().partition_key_start();
-    auto tablet_partition_end = remote_tablet->partition().partition_key_end();
-    // Is this tablet at the start
-    bool start_condition = partition_key_start.empty() || tablet_partition_end.empty() ||
-                           tablet_partition_end > partition_key_start;
-    bool end_condition = partition_key_end.empty() || tablet_partition_start < partition_key_end;
-
-    if (start_condition && end_condition) {
+    if (PartitionSchema::GetOverlap(
+            remote_tablet->partition().partition_key_start(),
+            remote_tablet->partition().partition_key_end(), partition_key_start,
+            partition_key_end)) {
       filtered_results.push_back(remote_tablet);
     }
   }

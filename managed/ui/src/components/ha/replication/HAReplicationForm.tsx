@@ -5,7 +5,7 @@ import * as Yup from 'yup';
 import { Field, FieldProps, Form, Formik, FormikProps } from 'formik';
 import { toast } from 'react-toastify';
 import { YBButton, YBFormInput, YBSegmentedButtonGroup, YBToggle } from '../../common/forms/fields';
-import { YBCopyButton } from '../../common/descriptors';
+import { YBCopyButton, YBPasteButton } from '../../common/descriptors';
 import { api, QUERY_KEY } from '../../../redesign/helpers/api';
 import { HAConfig, HAReplicationSchedule } from '../../../redesign/helpers/dtos';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
@@ -141,15 +141,17 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
         {(formikProps) => {
           // workaround for outdated version of Formik to access form methods outside of <Formik>
           formik.current = formikProps;
-
+          const { instanceType } = formikProps.values;
           return (
             <Form role="form">
               <Grid fluid>
-                {formikProps.values.instanceType === HAInstanceTypes.Standby && !isEditMode && (
+                {instanceType === HAInstanceTypes.Standby && !isEditMode && (
                   <Row className="ha-replication-form__alert">
                     <Col xs={12}>
                       <Alert bsStyle="warning">
-                        Note: on standby instances you can only access the high availability configuration and other features won't be available until the configuration is deleted.
+                        Note: on standby instances you can only access the high availability
+                        configuration and other features won't be available until the configuration
+                        is deleted.
                       </Alert>
                     </Col>
                   </Row>
@@ -199,14 +201,18 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                         name="clusterKey"
                         type="text"
                         component={YBFormInput}
-                        disabled={
-                          isEditMode || formikProps.values.instanceType === HAInstanceTypes.Active
-                        }
+                        disabled={isEditMode || instanceType === HAInstanceTypes.Active}
                         className="ha-replication-form__input"
                       />
-                      <YBCopyButton text={formikProps.values.clusterKey} />
+                      {instanceType === HAInstanceTypes.Active ? (
+                        <YBCopyButton text={formikProps.values.clusterKey} />
+                      ) : (
+                        <YBPasteButton
+                          onPaste={(text: string) => formikProps.setFieldValue('clusterKey', text)}
+                        />
+                      )}
                     </div>
-                    {formikProps.values.instanceType === HAInstanceTypes.Active && (
+                    {instanceType === HAInstanceTypes.Active && (
                       <YBButton
                         btnClass="btn btn-orange ha-replication-form__generate-key-btn"
                         btnText="Generate Key"
@@ -218,7 +224,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                     <YBInfoTip
                       title="Replication Configuration"
                       content={`The key used to authenticate the High Availability cluster ${
-                        formikProps.values.instanceType === HAInstanceTypes.Standby
+                        instanceType === HAInstanceTypes.Standby
                           ? '(generated on active instance)'
                           : ''
                       }`}
@@ -226,7 +232,7 @@ export const HAReplicationForm: FC<HAReplicationFormProps> = ({
                   </Col>
                 </Row>
                 <div
-                  hidden={formikProps.values.instanceType === HAInstanceTypes.Standby}
+                  hidden={instanceType === HAInstanceTypes.Standby}
                   data-testid="ha-replication-config-form-schedule-section"
                 >
                   <Row className="ha-replication-form__row">

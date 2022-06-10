@@ -35,6 +35,13 @@ export function queryMetrics(queryParams) {
   };
 }
 
+export function getQueryMetrics(queryParams) {
+  const customerUUID = localStorage.getItem('customerId');
+  return axios
+    .post(`${ROOT_URL}/customers/${customerUUID}/metrics`, queryParams)
+    .then((resp) => resp.data);
+}
+
 export function queryMetricsSuccess(result, panelType) {
   return {
     type: QUERY_METRICS_SUCCESS,
@@ -61,4 +68,9 @@ export function togglePrometheusQuery() {
   return {
     type: TOGGLE_PROMETHEUS_QUERY
   };
+}
+
+export function getGrafanaJson() {
+  return axios
+    .get(`${ROOT_URL}/grafana_dashboard`);
 }

@@ -37,30 +37,43 @@
 #include <sys/types.h>
 
 #include <functional>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 #include <ev++.h>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/server_event.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
-#include "yb/util/net/socket.h"
 
 using namespace std::literals;
 
@@ -107,8 +120,8 @@ bool HasReactorStartedClosing(ReactorState state) {
   return state == ReactorState::kClosing || state == ReactorState::kClosed;
 }
 
-int32_t PatchReceiveBufferSize(int32_t receive_buffer_size) {
-  return std::max<int32_t>(
+size_t PatchReceiveBufferSize(size_t receive_buffer_size) {
+  return std::max<size_t>(
       64_KB, FLAGS_rpc_read_buffer_size ? FLAGS_rpc_read_buffer_size : receive_buffer_size);
 }
 
@@ -258,8 +271,8 @@ void Reactor::ShutdownInternal() {
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
   return RunOnReactorThread([metrics](Reactor* reactor) {
-    metrics->num_client_connections_ = reactor->client_conns_.size();
-    metrics->num_server_connections_ = reactor->server_conns_.size();
+    metrics->num_client_connections = reactor->client_conns_.size();
+    metrics->num_server_connections = reactor->server_conns_.size();
     return Status::OK();
   }, SOURCE_LOCATION());
 }
@@ -310,7 +323,7 @@ void Reactor::CheckReadyToStop() {
   DCHECK(IsCurrentThread());
 
   VLOG_WITH_PREFIX(4) << "Check ready to stop: " << thread_->ToString() << ", "
-          << "waiting connections: " << yb::ToString(waiting_conns_);
+                      << "waiting connections: " << waiting_conns_.size();
 
   if (VLOG_IS_ON(4)) {
     for (const auto& conn : waiting_conns_) {
@@ -548,7 +561,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     // originating address to be "public" also.
     address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
     boost::asio::ip::address_v4 outbound_address(address_bytes);
-    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    auto status = sock.SetReuseAddr(true);
+    if (status.ok()) {
+      status = sock.Bind(Endpoint(outbound_address, 0));
+    }
     LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                               << status;
   } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
@@ -556,7 +572,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      auto status = sock.SetReuseAddr(true);
+      if (status.ok()) {
+        status = sock.Bind(Endpoint(outbound_address, 0));
+      }
       LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                                 << status;
     }
@@ -586,7 +605,7 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
       this,
       std::move(stream),
       ConnectionDirection::CLIENT,
-      &messenger()->rpc_metrics(),
+      messenger()->rpc_metrics().get(),
       std::move(context));
 
   RETURN_NOT_OK(connection->Start(&loop_));
@@ -887,7 +906,7 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // ------------------------------------------------------------------------------------------------
 
 void Reactor::RegisterInboundSocket(
-    Socket *socket, int32_t receive_buffer_size, const Endpoint& remote,
+    Socket *socket, size_t receive_buffer_size, const Endpoint& remote,
     const ConnectionContextFactoryPtr& factory) {
   VLOG_WITH_PREFIX(3) << "New inbound connection to " << remote;
   receive_buffer_size = PatchReceiveBufferSize(receive_buffer_size);
@@ -909,7 +928,7 @@ void Reactor::RegisterInboundSocket(
   auto conn = std::make_shared<Connection>(this,
                                            std::move(*stream),
                                            ConnectionDirection::SERVER,
-                                           &messenger()->rpc_metrics(),
+                                           messenger()->rpc_metrics().get(),
                                            factory->Create(receive_buffer_size));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);

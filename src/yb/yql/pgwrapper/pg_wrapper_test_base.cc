@@ -12,11 +12,16 @@
 //
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
+
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/tostring.h"
+
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 using std::unique_ptr;
 
@@ -60,6 +65,20 @@ void PgWrapperTestBase::SetUp() {
 
   // TODO: fix cluster verification for PostgreSQL tables.
   DontVerifyClusterBeforeNextTearDown();
+}
+
+Result<TabletId> PgWrapperTestBase::GetSingleTabletId(const TableName& table_name) {
+  TabletId tablet_id_to_split;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    const auto ts = cluster_->tablet_server(i);
+    const auto tablets = VERIFY_RESULT(cluster_->GetTablets(ts));
+    for (const auto& tablet : tablets) {
+      if (tablet.table_name() == table_name) {
+        return tablet.tablet_id();
+      }
+    }
+  }
+  return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
 }
 
 namespace {

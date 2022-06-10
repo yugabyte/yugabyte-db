@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <string>
 #include <vector>
 
@@ -36,6 +37,7 @@
 
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"

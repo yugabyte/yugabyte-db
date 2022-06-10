@@ -38,6 +38,13 @@ CREATE TABLESPACE z WITH (replica_placement='{"num_replicas":3, "placement_block
 -- describe command
 \db
 
+CREATE TABLEGROUP grp TABLESPACE x;
+-- Fail, not empty
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLESPACE x;
+\set VERBOSITY default
+DROP TABLEGROUP grp;
+-- Should succeed, empty now
 DROP TABLESPACE x;
 DROP TABLESPACE y;
 
@@ -65,6 +72,16 @@ ALTER TABLESPACE regress_tblspace RESET (random_page_cost, effective_io_concurre
 
 -- create a schema we can use
 CREATE SCHEMA testschema;
+
+-- create a tablespace not satisfied by the cluster
+CREATE TABLESPACE invalid_tablespace WITH (replica_placement='{"num_replicas": 1, "placement_blocks":[{"cloud":"nonexistent","region":"nowhere","zone":"area51","min_num_replicas":1}]}');
+
+-- try using unsatisfiable tablespace
+CREATE TABLE testschema.foo (i int) TABLESPACE invalid_tablespace; -- fail
+CREATE TABLE testschema.foo (i int) TABLESPACE regress_tblspace;
+ALTER TABLE testschema.foo SET TABLESPACE invalid_tablespace; -- fail
+DROP TABLE testschema.foo;
+DROP TABLESPACE invalid_tablespace;
 
 -- try a table
 CREATE TABLE testschema.foo (i int) TABLESPACE regress_tblspace;
@@ -304,3 +321,62 @@ DROP TABLESPACE far;
 DROP TABLESPACE near;
 DROP TABLESPACE regionlocal;
 DROP TABLESPACE cloudlocal;
+
+-- Verify yb_db_admin role can use tablespace
+-- Create objects not owned by yb_db_admin
+CREATE TABLESPACE tblspace_other WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+CREATE TABLE tbl_other(x int, y int);
+SET SESSION ROLE yb_db_admin;
+-- Verify yb_db_admin role can CREATE tablespace
+CREATE TABLESPACE tblspace WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1}]}');
+-- Verify yb_db_admin role can CREATE table with tablespace
+CREATE TABLE tbl (x int, y int) TABLESPACE tblspace;
+DROP TABLE tbl;
+-- Verify yb_db_admin role can assign tablespace to tables
+ALTER TABLE tbl_other SET TABLESPACE tblspace_other;
+CREATE TABLE tbl (x int, y int);
+ALTER TABLE tbl SET TABLESPACE tblspace;
+DROP TABLE tbl;
+-- Verify yb_db_admin_role can assign tablespace to index
+CREATE TABLE tbl(x int, y int);
+CREATE INDEX idx ON tbl(x) TABLESPACE tblspace;
+CREATE INDEX idx2 ON tbl_other(x) TABLESPACE tblspace;
+-- Verify yb_db_admin role cannot ALTER tablespace
+ALTER TABLESPACE tblspace SET (random_page_cost = 1.0, seq_page_cost = 1.1);
+-- Verify yb_db_admin role can DROP tablespace
+DROP TABLE tbl;
+DROP TABLE tbl_other;
+DROP TABLESPACE tblspace;
+DROP TABLESPACE tblspace_other;
+
+-- Test leader_preference
+-- Empty leader_preference
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":}]}');
+
+-- Negative leader_preference
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":-1}]}');
+
+-- Zero as leader_preference
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":0}]}');
+
+-- No leader_preference 1
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":1, "placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":2}]}');
+
+-- No leader_preference 2
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
+
+-- No leader_preference 2 and no preference set
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1,"leader_preference":3}]}');
+
+-- Positive case
+-- Some zones with no leader_preference set
+CREATE TABLESPACE LP WITH (replica_placement='{"num_replicas":3, "placement_blocks":[{"cloud":"cloud1","region":"r1","zone":"z1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"r2", "zone":"z2", "min_num_replicas":1},{"cloud":"cloud2","region":"r2", "zone":"z3", "min_num_replicas":1}]}');
+-- Valid case
+CREATE TABLESPACE valid_tablespace WITH (replica_placement='{"num_replicas":2,"placement_blocks":[{"cloud":"cloud1","region":"region1","zone":"zone1","min_num_replicas":1,"leader_preference":1},{"cloud":"cloud2","region":"region2","zone":"zone2","min_num_replicas":1,"leader_preference":2}]}');
+CREATE TABLE foo (i int) TABLESPACE valid_tablespace;
+CREATE TABLE bar(i int);
+ALTER TABLE bar SET TABLESPACE valid_tablespace;
+DROP TABLE foo;
+DROP TABLE bar;
+DROP TABLESPACE valid_tablespace;
+DROP TABLESPACE LP;

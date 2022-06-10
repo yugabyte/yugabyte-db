@@ -13,13 +13,14 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <thread>
-#include <cmath>
+#include "yb/gutil/strings/substitute.h"
 
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/util/async_util.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/statement.h"
-#include "yb/gutil/strings/substitute.h"
+#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
 using std::unique_ptr;
@@ -60,14 +61,15 @@ TEST_F(TestQLStatement, TestExecutePrepareAfterTableDrop) {
 
   // Prepare a select statement.
   Statement stmt(processor->CurrentKeyspace(), "select * from t where h1 = 1;");
-  CHECK_OK(stmt.Prepare(processor));
+  CHECK_OK(stmt.Prepare(&processor->ql_processor()));
 
   // Drop table.
   EXEC_VALID_STMT("drop table t;");
 
   // Try executing the statement. Should return STALE_PREPARED_STATEMENT error.
   Synchronizer sync;
-  CHECK_OK(ExecuteAsync(&stmt, processor, Bind(&Synchronizer::StatusCB, Unretained(&sync))));
+  CHECK_OK(ExecuteAsync(
+      &stmt, &processor->ql_processor(), Bind(&Synchronizer::StatusCB, Unretained(&sync))));
   Status s = sync.Wait();
   CHECK(s.IsQLError() && GetErrorCode(s) == ErrorCode::STALE_METADATA)
       << "Expect STALE_METADATA but got " << s.ToString();
@@ -87,7 +89,27 @@ TEST_F(TestQLStatement, TestPrepareWithUnknownSystemTable) {
   // Prepare a select statement.
   Statement stmt("system", "select * from system.unknown_table;");
   PreparedResult::UniPtr result;
-  CHECK_OK(stmt.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
+  CHECK_OK(stmt.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  CHECK_EQ(result->table_name().ToString(), "");
+
+  LOG(INFO) << "Done.";
+}
+
+TEST_F(TestQLStatement, TestPrepareWithUnknownSystemTableAndUnknownField) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+
+  LOG(INFO) << "Running prepare for an unknown system table test.";
+
+  // Prepare a select statement.
+  Statement stmt("system", "select * from system.unknown_table where unknown_field = ?;");
+  PreparedResult::UniPtr result;
+  CHECK_OK(stmt.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
   CHECK_EQ(result->table_name().ToString(), "");
 
   LOG(INFO) << "Done.";
@@ -110,7 +132,8 @@ TEST_F(TestQLStatement, TestPKIndices) {
   Statement stmt(processor->CurrentKeyspace(),
                  "select * from test_pk_indices where h3 = ? and h1 = ? and h2 = ?;");
   PreparedResult::UniPtr result;
-  CHECK_OK(stmt.Prepare(processor, nullptr /* mem_tracker */, false /* internal */, &result));
+  CHECK_OK(stmt.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
 
   const std::vector<int64_t>& hash_col_indices = result->hash_col_indices();
   EXPECT_EQ(hash_col_indices.size(), 3);

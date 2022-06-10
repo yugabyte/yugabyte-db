@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog-test_base.h"
 
 namespace yb {
@@ -71,7 +73,7 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
 
 // Test the sys-catalog CDC stream basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
-  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+  SysCatalogTable* const sys_catalog = &master_->sys_catalog();
 
   auto loader = std::make_unique<TestCDCStreamLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
@@ -80,7 +82,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
   auto stream = make_scoped_refptr<CDCStreamInfo>("deadbeafdeadbeafdeadbeafdeadbeaf");
   {
     auto l = stream->LockForWrite();
-    l.mutable_data()->pb.set_table_id("test_table");
+    l.mutable_data()->pb.add_table_id("test_table");
     // Add the CDC stream.
     ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, stream));
     l.Commit();
@@ -103,7 +105,7 @@ TEST_F(SysCatalogTest, TestSysCatalogCDCStreamOperations) {
 
 // Test the sys-catalog universe replication basic operations (add, delete, visit).
 TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
-  SysCatalogTable* const sys_catalog = master_->catalog_manager()->sys_catalog();
+  SysCatalogTable* const sys_catalog = &master_->sys_catalog();
 
   auto loader = std::make_unique<TestUniverseReplicationLoader>();
   ASSERT_OK(sys_catalog->Visit(loader.get()));

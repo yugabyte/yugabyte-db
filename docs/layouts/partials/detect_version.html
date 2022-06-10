@@ -1,14 +1,14 @@
 {{ $context := . }}
 {{ $path := split .File.Dir "/" }}
 {{ $title := (index $path 0) }}
-{{ $title := cond (and (not $title) (eq .Type "search")) "latest" $title }}
+{{ $title := cond (and (not $title) (eq .Type "search")) "preview" $title }}
 {{ range $index,$value := .Site.Menus }}
   {{ if eq $index $title }}
     {{ $context.Scratch.Set "currentVersionMenu" $value }}
-    {{ if eq $index "latest" }}
-      {{ $context.Scratch.Set "currentVersionTitle" "v2.11 (latest)" }}
+    {{ if eq $index "preview" }}
+      {{ $context.Scratch.Set "currentVersionTitle" "v2.13 (preview)" }}
     {{ else if eq $index "stable" }}
-      {{ $context.Scratch.Set "currentVersionTitle" "v2.8 (stable)" }}
+      {{ $context.Scratch.Set "currentVersionTitle" "v2.12 (stable)" }}
     {{ else }}
       {{ $context.Scratch.Set "currentVersionTitle" $index }}
     {{ end }}

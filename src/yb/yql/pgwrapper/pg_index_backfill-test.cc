@@ -15,13 +15,27 @@
 #include <string>
 #include <vector>
 
-#include "yb/client/table.h"
-#include "yb/gutil/strings/join.h"
+#include "yb/client/table_info.h"
+
+#include "yb/common/schema.h"
+
 #include "yb/integration-tests/backfill-test-util.h"
+
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_error.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
@@ -192,13 +206,57 @@ void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 1);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  int actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
   ASSERT_EQ(actual_num_rows, num_rows);
 }
 
 // Make sure that backfill works.
 TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   TestSimpleBackfill();
+}
+
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(WaitForSplitsToComplete)) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  constexpr int kTimeoutSec = 3;
+  constexpr int kNumRows = 1000;
+  // Use 1 tablet so we guarantee we have a middle key to split by.
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
+
+  const TabletId tablet_to_split = ASSERT_RESULT(GetSingleTabletId(kTableName));
+  // Flush the data to generate SST files that can be split.
+  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kDatabaseName, kTableName));
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSec,
+      false /* is_compaction */));
+
+  // Create a split that will not complete until we set the test flag to true.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "true"));
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_to_split);
+  master::SplitTabletResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  rpc::RpcController controller;
+  ASSERT_OK(proxy.SplitTablet(req, &resp, &controller));
+
+  // The create index should fail while there is an ongoing split.
+  auto status = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName);
+  ASSERT_TRUE(status.message().ToBuffer().find("failed") != std::string::npos);
+
+  // Drop the index since we don't automatically clean it up.
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  // Allow the split to complete. We intentionally do not wait for the split to complete before
+  // trying to create the index again, to validate that in a normal case (in which we don't have
+  // a split that is stuck), the timeout on FLAGS_index_backfill_tablet_split_completion_timeout_sec
+  // is large enough to allow for splits to complete.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "false"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
 }
 
 // Make sure that partial indexes work for index backfill.
@@ -390,7 +448,7 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(NonexistentDelete)) {
 TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
   constexpr int kNumRows = 10000;
   TestLargeBackfill(kNumRows);
-  int expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
+  auto expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
   ASSERT_GE(actual_calls, expected_calls);
 }
@@ -687,12 +745,12 @@ TEST_F_EX(PgIndexBackfillTest,
     // Check number of DocDB indexes.  Normally, failed indexes should be cleaned up ("Table
     // transaction failed, deleting"), but in the event of an unexpected issue, they may not be.
     // (Not necessarily a fatal issue because the postgres schema is good.)
-    int num_docdb_indexes = table_info->index_map.size();
+    auto num_docdb_indexes = table_info->index_map.size();
     if (num_docdb_indexes > 1) {
       LOG(INFO) << "found " << num_docdb_indexes << " DocDB indexes";
       // These failed indexes not getting rolled back mean one less schema change each.  Therefore,
       // adjust the expected schema version.
-      int num_failed_docdb_indexes = num_docdb_indexes - 1;
+      auto num_failed_docdb_indexes = num_docdb_indexes - 1;
       expected_schema_version -= num_failed_docdb_indexes;
     }
 
@@ -791,16 +849,13 @@ TEST_F_EX(PgIndexBackfillTest,
 
   LOG(INFO) << "backfill table on " << this->kAuthDbName << " database";
   {
-    const std::string& host = pg_ts->bind_host();
-    const uint16_t port = pg_ts->pgsql_rpc_port();
-
-    PGConn auth_conn = ASSERT_RESULT(ConnectUsingString(Format(
-        "user=$0 password=$1 host=$2 port=$3 dbname=$4",
-        "yugabyte",
-        "yugabyte",
-        host,
-        port,
-        this->kAuthDbName)));
+    auto auth_conn = ASSERT_RESULT(PGConnBuilder({
+        .host = pg_ts->bind_host(),
+        .port = pg_ts->pgsql_rpc_port(),
+        .dbname = this->kAuthDbName,
+        .user = "yugabyte",
+        .password = "yugabyte"
+    }).Connect());
     ASSERT_OK(auth_conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
     ASSERT_OK(auth_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
   }
@@ -984,7 +1039,7 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
     return true;
   }
 
-  CHECKED_STATUS WaitForBackfillSafeTime(
+  Status WaitForBackfillSafeTime(
       const client::YBTableName& table_name, const std::string& index_name) {
     LOG(INFO) << "Waiting for pg_index indislive to be true";
     RETURN_NOT_OK(WaitFor(
@@ -1015,7 +1070,8 @@ class PgIndexBackfillSlow : public PgIndexBackfillTest {
     auto client = VERIFY_RESULT(cluster_->CreateClient());
     const std::string table_id = VERIFY_RESULT(
         GetTableIdByTableName(client.get(), table_name.namespace_name(), table_name.table_name()));
-    RETURN_NOT_OK(WaitForBackfillSafeTimeOn(cluster_->GetLeaderMasterProxy(), table_id));
+    RETURN_NOT_OK(WaitForBackfillSafeTimeOn(
+        cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>(), table_id));
 
     return Status::OK();
   }
@@ -1236,17 +1292,17 @@ TEST_F_EX(PgIndexBackfillTest,
 // thrown.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ---------------------------------
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   CREATE UNIQUE INDEX
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - indislive
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - indisready
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - backfill
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 //   - indisvalid
-//                                                INSERT a row to the indexed table
+//                                                INSERT row(s) to the indexed table
 // Particularly pay attention to the insert between indisready and backfill.  The insert
 // should cause a write to go to the index.  Backfill should choose a read time after this write, so
 // it should try to backfill this same row.  Rather than conflicting when we see the row already
@@ -1271,7 +1327,7 @@ TEST_F_EX(PgIndexBackfillTest,
         std::string msg = status.message().ToBuffer();
         const std::vector<std::string> allowed_msgs{
           "Errors occurred while reaching out to the tablet servers",
-          "Resource unavailable : RocksDB",
+          "Resource unavailable",
           "schema version mismatch",
           "Transaction aborted",
           "expired or aborted by a conflict",
@@ -1466,7 +1522,7 @@ TEST_F_EX(PgIndexBackfillTest,
   const Result<PGResultPtr>& result = conn_->FetchFormat(
       "SELECT count(*) FROM $0 WHERE j = 'a'", kTableName);
   if (result.ok()) {
-    int count = ASSERT_RESULT(GetInt64(result.get().get(), 0, 0));
+    auto count = ASSERT_RESULT(GetInt64(result.get().get(), 0, 0));
     ASSERT_EQ(count, 0);
   } else if (result.status().IsNetworkError()) {
     Status s = result.status();
@@ -1494,9 +1550,11 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Create connection to the same tablet server as the one running CREATE INDEX";
   PGConn same_ts_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   LOG(INFO) << "Create connection to a different tablet server from the one running CREATE INDEX";
-  PGConn diff_ts_conn = ASSERT_RESULT(PGConn::Connect(
-      HostPort(diff_ts->bind_host(), diff_ts->pgsql_rpc_port()),
-      kDatabaseName));
+  PGConn diff_ts_conn = ASSERT_RESULT(PGConnBuilder({
+    .host = diff_ts->bind_host(),
+    .port = diff_ts->pgsql_rpc_port(),
+    .dbname = kDatabaseName
+  }).Connect());
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));
@@ -1772,7 +1830,7 @@ TEST_F_EX(PgIndexBackfillTest,
   const std::string query = Format("SELECT COUNT(*) FROM $0 WHERE i > 0", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  int count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
+  auto count = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
   ASSERT_EQ(count, 2);
 }
 

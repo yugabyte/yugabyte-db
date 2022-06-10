@@ -21,15 +21,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/cache.h"
-
 #include <forward_list>
-#include <vector>
 #include <string>
-#include "yb/rocksdb/util/coding.h"
-#include "yb/util/string_util.h"
+#include <vector>
+
 #include <gtest/gtest.h>
+
+#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/util/coding.h"
+
+#include "yb/util/string_util.h"
 #include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 DECLARE_double(cache_single_touch_ratio);
 
@@ -50,7 +53,7 @@ static int DecodeValue(void* v) {
   return static_cast<int>(reinterpret_cast<uintptr_t>(v));
 }
 
-class CacheTest : public testing::Test {
+class CacheTest : public RocksDBTest {
  public:
   static CacheTest* current_;
 
@@ -663,7 +666,7 @@ void AssertCacheSizes(Cache *cache, size_t single_touch_count, size_t multi_touc
   ASSERT_EQ(usages[0].second, multi_touch_count);
 }
 
-CHECKED_STATUS InsertIntoCache(const std::shared_ptr<Cache>& cache, int key, int value,
+Status InsertIntoCache(const std::shared_ptr<Cache>& cache, int key, int value,
                                int query_id = CacheTest::kTestQueryId, int charge = 1,
                                Cache::Handle **handle = nullptr) {
   return cache->Insert(ToString(key), query_id, new Value(value), charge, &deleter, handle);

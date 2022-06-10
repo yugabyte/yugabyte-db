@@ -30,7 +30,8 @@
 // under the License.
 //
 
-#include <algorithm>
+#include "yb/consensus/replica_state.h"
+
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
@@ -38,21 +39,24 @@
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/replica_state.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/strcat.h"
+
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/casts.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
-#include "yb/util/thread_restrictions.h"
-#include "yb/util/enums.h"
-#include "yb/util/atomic.h"
 
 using namespace std::literals;
 
@@ -172,7 +176,7 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
     return STATUS(IllegalState, "Replica not in running state");
   }
 
-  if (PREDICT_FALSE(GetActiveRoleUnlocked() != RaftPeerPB::LEADER)) {
+  if (PREDICT_FALSE(GetActiveRoleUnlocked() != PeerRole::LEADER)) {
     return STATUS(IllegalState, "Replica not LEADER");
   }
   lock->swap(l);
@@ -190,24 +194,38 @@ LeaderState ReplicaState::GetLeaderState(bool allow_stale) const {
     }
   }
 
-  LeaderState result = {cache.status()};
-  if (result.status == LeaderStatus::LEADER_AND_READY) {
-    result.term = cache.extra_value();
-  } else {
-    if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
-      result.remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value());
-    }
-    result.MakeNotReadyLeader(result.status);
+  switch (cache.status()) {
+    case LeaderStatus::LEADER_AND_READY:
+      return LeaderState {
+        .status = cache.status(),
+        .term = static_cast<int64_t>(cache.extra_value()),
+        .remaining_old_leader_lease = MonoDelta(),
+      };
+    case LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
+      return LeaderState {
+        .status = cache.status(),
+        .term = OpId::kUnknownTerm,
+        .remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value()),
+      };
+    case LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
+      FALLTHROUGH_INTENDED;
+    case LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED:
+      FALLTHROUGH_INTENDED;
+    case LeaderStatus::NOT_LEADER:
+      return LeaderState {
+        .status = cache.status(),
+        .term = OpId::kUnknownTerm,
+        .remaining_old_leader_lease = MonoDelta(),
+      };
   }
-
-  return result;
+  FATAL_INVALID_ENUM_VALUE(LeaderStatus, cache.status());
 }
 
 LeaderState ReplicaState::GetLeaderStateUnlocked(
     LeaderLeaseCheckMode lease_check_mode, CoarseTimePoint* now) const {
   LeaderState result;
 
-  if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+  if (GetActiveRoleUnlocked() != PeerRole::LEADER) {
     return result.MakeNotReadyLeader(LeaderStatus::NOT_LEADER);
   }
 
@@ -247,7 +265,7 @@ Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_
     ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
     return STATUS_FORMAT(IllegalState,
                          "Replica $0 is not leader of this config. Role: $1. Consensus state: $2",
-                         peer_uuid_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()), cstate);
+                         peer_uuid_, PeerRole_Name(GetActiveRoleUnlocked()), cstate);
   }
 
   return state.CreateStatus();
@@ -300,7 +318,7 @@ ConsensusStatePB ReplicaState::ConsensusStateUnlocked(ConsensusConfigType type) 
   return cmeta_->ToConsensusStatePB(type);
 }
 
-RaftPeerPB::Role ReplicaState::GetActiveRoleUnlocked() const {
+PeerRole ReplicaState::GetActiveRoleUnlocked() const {
   DCHECK(IsLocked());
   return cmeta_->active_role();
 }
@@ -326,10 +344,17 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
   DCHECK(IsLocked());
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM),
                         "Invalid config to set as pending");
-  CHECK(!cmeta_->has_pending_config())
-      << "Attempt to set pending config while another is already pending! "
-      << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
-      << "Attempted new pending config: " << new_config.ShortDebugString();
+  if (!new_config.unsafe_config_change()) {
+    CHECK(!cmeta_->has_pending_config())
+        << "Attempt to set pending config while another is already pending! "
+        << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
+        << "Attempted new pending config: " << new_config.ShortDebugString();
+  } else if (cmeta_->has_pending_config()) {
+    LOG_WITH_PREFIX(INFO) << "Allowing unsafe config change even though there is a pending config! "
+                          << "Existing pending config: "
+                          << cmeta_->pending_config().ShortDebugString() << "; "
+                          << "New pending config: " << new_config.ShortDebugString();
+  }
   cmeta_->set_pending_config(new_config);
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
@@ -355,26 +380,34 @@ const RaftConfigPB& ReplicaState::GetPendingConfigUnlocked() const {
   return cmeta_->pending_config();
 }
 
-Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& committed_config) {
+Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& config_to_commit) {
   TRACE_EVENT0("consensus", "ReplicaState::SetCommittedConfigUnlocked");
   DCHECK(IsLocked());
-  DCHECK(committed_config.IsInitialized());
-  RETURN_NOT_OK_PREPEND(VerifyRaftConfig(committed_config, COMMITTED_QUORUM),
-                        "Invalid config to set as committed");
+  DCHECK(config_to_commit.IsInitialized());
+  RETURN_NOT_OK_PREPEND(
+      VerifyRaftConfig(config_to_commit, COMMITTED_QUORUM), "Invalid config to set as committed");
 
   // Compare committed with pending configuration, ensure they are the same.
-  // Pending will not have an opid_index, so ignore that field.
-  DCHECK(cmeta_->has_pending_config());
-  RaftConfigPB config_no_opid = committed_config;
-  config_no_opid.clear_opid_index();
-  const RaftConfigPB& pending_config = GetPendingConfigUnlocked();
-  // Quorums must be exactly equal, even w.r.t. peer ordering.
-  CHECK_EQ(GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString())
-      << Substitute("New committed config must equal pending config, but does not. "
-                    "Pending config: $0, committed config: $1",
-                    pending_config.ShortDebugString(), committed_config.ShortDebugString());
-
-  cmeta_->set_committed_config(committed_config);
+  // In the event of an unsafe config change triggered by an administrator,
+  // it is possible that the config being committed may not match the pending config
+  // because unsafe config change allows multiple pending configs to exist.
+  // Therefore we only need to validate that 'config_to_commit' matches the pending config
+  // if the pending config does not have its 'unsafe_config_change' flag set.
+  if (IsConfigChangePendingUnlocked()) {
+    const RaftConfigPB& pending_config = GetPendingConfigUnlocked();
+    if (!pending_config.unsafe_config_change()) {
+      // Pending will not have an opid_index, so ignore that field.
+      RaftConfigPB config_no_opid = config_to_commit;
+      config_no_opid.clear_opid_index();
+      // Quorums must be exactly equal, even w.r.t. peer ordering.
+      CHECK_EQ(GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString())
+          << Substitute(
+                 "New committed config must equal pending config, but does not. "
+                 "Pending config: $0, committed config: $1",
+                 pending_config.ShortDebugString(), config_to_commit.ShortDebugString());
+    }
+  }
+  cmeta_->set_committed_config(config_to_commit);
   cmeta_->clear_pending_config();
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
@@ -638,7 +671,7 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
       // because the active configuration affects the replication queue.
       // Do one last sanity check.
       Status s = CheckNoConfigChangePendingUnlocked();
-      if (PREDICT_FALSE(!s.ok())) {
+      if (PREDICT_FALSE(!s.ok() && !new_config.unsafe_config_change())) {
         s = s.CloneAndAppend(Format("New config: $0", new_config));
         LOG_WITH_PREFIX(INFO) << s;
         return s;
@@ -660,8 +693,26 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
     }
   } else if (op_type == WRITE_OP) {
     // Leader registers an operation with RetryableRequests even before assigning an op id.
-    if (mode == OperationMode::kFollower && !retryable_requests_.Register(round)) {
-      return STATUS(IllegalState, "Cannot register retryable request on follower");
+    if (mode == OperationMode::kFollower) {
+      auto result = retryable_requests_.Register(round);
+      const auto error_msg = "Cannot register retryable request on follower";
+      if (!result.ok()) {
+        // This can happen if retryable requests have been cleaned up on leader before the follower,
+        // see https://github.com/yugabyte/yugabyte-db/issues/11349.
+        // Just run cleanup in this case and retry.
+        VLOG_WITH_PREFIX(1) << error_msg << ": " << result.status()
+                            << ". Cleaning retryable requests";
+        auto min_op_id ATTRIBUTE_UNUSED = retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
+        result = retryable_requests_.Register(round);
+      }
+      if (!result.ok()) {
+        return result.status()
+            .CloneAndReplaceCode(Status::kIllegalState)
+            .CloneAndPrepend(error_msg);
+      }
+      if (!*result) {
+        return STATUS(IllegalState, error_msg);
+      }
     }
   } else if (op_type == SPLIT_OP) {
     const auto& split_request = round->replicate_msg()->split_request();
@@ -1044,7 +1095,7 @@ string ReplicaState::LogPrefix() const {
                     options_.tablet_id,
                     peer_uuid_,
                     role_and_term.second,
-                    RaftPeerPB::Role_Name(role_and_term.first));
+                    PeerRole_Name(role_and_term.first));
 }
 
 ReplicaState::State ReplicaState::state() const {
@@ -1062,7 +1113,7 @@ string ReplicaState::ToStringUnlocked() const {
   DCHECK(IsLocked());
   return Format(
       "Replica: $0, State: $1, Role: $2, Watermarks: {Received: $3 Committed: $4} Leader: $5",
-      peer_uuid_, state_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()),
+      peer_uuid_, state_, PeerRole_Name(GetActiveRoleUnlocked()),
       last_received_op_id_, last_committed_op_id_, last_received_op_id_current_leader_);
 }
 
@@ -1107,7 +1158,7 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
 
 template <class Policy>
 LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
-  DCHECK_EQ(GetActiveRoleUnlocked(), RaftPeerPB_Role_LEADER);
+  DCHECK_EQ(GetActiveRoleUnlocked(), PeerRole::LEADER);
 
   if (!policy.Enabled()) {
     return LeaderLeaseStatus::HAS_LEASE;
@@ -1301,7 +1352,7 @@ uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
 }
 
-bool ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
+Result<bool> ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
   return retryable_requests_.Register(round);
 }
 

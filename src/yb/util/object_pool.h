@@ -36,13 +36,16 @@
 
 #include <stdint.h>
 
-#include <thread>
 #include <functional>
+
+#if defined(__APPLE__)
+#include <thread>
+#else
+#include <sched.h>
+#endif
 
 #include <boost/container/stable_vector.hpp>
 #include <boost/lockfree/stack.hpp>
-
-#include <glog/logging.h>
 
 #include "yb/gutil/manual_constructor.h"
 #include "yb/gutil/sysinfo.h"
@@ -202,7 +205,7 @@ class ThreadSafeObjectPool {
                                 Deleter deleter = std::default_delete<T>())
       : factory_(std::move(factory)), deleter_(std::move(deleter)) {
     // Need the actual number of CPUs, so we do not use the Gflag value
-    auto num_cpus = base::RawNumCPUs();
+    size_t num_cpus = base::RawNumCPUs();
     pools_.reserve(num_cpus);
     while (pools_.size() != num_cpus) {
       pools_.emplace_back(50);

@@ -14,13 +14,14 @@
 #ifndef YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
 #define YB_ROCKSUTIL_ROCKSDB_ENCRYPTED_FILE_FACTORY_H
 
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/rocksdb/env.h"
 
 namespace yb {
 
-class HeaderManager;
-
-std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(std::unique_ptr<HeaderManager> header_manager);
+std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
+    std::unique_ptr<encryption::HeaderManager> header_manager);
 
 } // namespace yb
 

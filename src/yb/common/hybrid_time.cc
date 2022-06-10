@@ -32,6 +32,8 @@
 
 #include "yb/common/hybrid_time.h"
 
+#include <atomic>
+
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/date_time/c_local_time_adjustor.hpp>
 #include <boost/date_time/posix_time/time_formatters.hpp>
@@ -41,8 +43,6 @@
 #include "yb/util/result.h"
 
 using std::string;
-using strings::Substitute;
-using strings::SubstituteAndAppend;
 
 namespace yb {
 
@@ -136,7 +136,7 @@ MicrosTime HybridTime::CeilPhysicalValueMicros() const {
   return result;
 }
 
-Result<HybridTime> HybridTime::ParseHybridTime(string input) {
+Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
   boost::trim(input);
 
   HybridTime ht;

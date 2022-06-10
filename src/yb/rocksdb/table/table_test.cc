@@ -31,14 +31,15 @@
 #include <vector>
 
 #include <boost/optional.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/perf_context.h"
@@ -57,12 +58,18 @@
 #include "yb/rocksdb/table/plain_table_factory.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/compression.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+
+using namespace std::literals;
 
 DECLARE_double(cache_single_touch_ratio);
 
@@ -295,9 +302,8 @@ class TableConstructor: public Constructor {
     Reset();
     soptions.use_mmap_reads = ioptions.allow_mmap_reads;
     file_writer_.reset(test::GetWritableFileWriter(new test::StringSink()));
-    unique_ptr<TableBuilder> builder;
     IntTblPropCollectorFactories int_tbl_prop_collector_factories;
-    builder.reset(ioptions.table_factory->NewTableBuilder(
+    auto builder = ioptions.table_factory->NewTableBuilder(
         TableBuilderOptions(ioptions,
                             internal_comparator,
                             int_tbl_prop_collector_factories,
@@ -305,7 +311,7 @@ class TableConstructor: public Constructor {
                             CompressionOptions(),
                             /* skip_filters */ false),
         TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-        file_writer_.get()));
+        file_writer_.get());
     if (TEST_skip_writing_key_value_encoding_format) {
       dynamic_cast<BlockBasedTableBuilder*>(builder.get())
           ->TEST_skip_writing_key_value_encoding_format();
@@ -429,7 +435,9 @@ class MemTableConstructor: public Constructor {
     memtable_->Ref();
     int seq = 1;
     for (const auto& kv : kv_map) {
-      memtable_->Add(seq, kTypeValue, kv.first, kv.second);
+      Slice key(kv.first);
+      Slice value(kv.second);
+      memtable_->Add(seq, kTypeValue, SliceParts(&key, 1), SliceParts(&value, 1));
       seq++;
     }
     return Status::OK();
@@ -649,7 +657,7 @@ class FixedOrLessPrefixTransform : public SliceTransform {
   }
 };
 
-class HarnessTest : public testing::Test {
+class HarnessTest : public RocksDBTest {
  public:
   HarnessTest()
       : ioptions_(options_),
@@ -955,7 +963,7 @@ static bool Between(uint64_t val, uint64_t low, uint64_t high) {
 }
 
 // Tests against all kinds of tables
-class TableTest : public testing::Test {
+class TableTest : public RocksDBTest {
  public:
   const InternalKeyComparatorPtr& GetPlainInternalComparator(
       const Comparator* comp) {
@@ -976,7 +984,7 @@ class TableTest : public testing::Test {
 class GeneralTableTest : public TableTest {};
 class BlockBasedTableTest : public TableTest {};
 class PlainTableTest : public TableTest {};
-class TablePropertyTest : public testing::Test {};
+class TablePropertyTest : public RocksDBTest {};
 
 // This test serves as the living tutorial for the prefix scan of user collected
 // properties.
@@ -992,7 +1000,7 @@ TEST_F(TablePropertyTest, PrefixScanTest) {
                                 {"num.555.3", "3"}, };
 
   // prefixes that exist
-  for (const std::string& prefix : {"num.111", "num.333", "num.555"}) {
+  for (auto prefix : {"num.111"s, "num.333"s, "num.555"s}) {
     int num = 0;
     for (auto pos = props.lower_bound(prefix);
          pos != props.end() &&
@@ -1007,8 +1015,7 @@ TEST_F(TablePropertyTest, PrefixScanTest) {
   }
 
   // prefixes that don't exist
-  for (const std::string& prefix :
-       {"num.000", "num.222", "num.444", "num.666"}) {
+  for (auto prefix : {"num.000"s, "num.222"s, "num.444"s, "num.666"s}) {
     auto pos = props.lower_bound(prefix);
     ASSERT_TRUE(pos == props.end() ||
                 pos->first.compare(0, prefix.size(), prefix) != 0);
@@ -2231,7 +2238,7 @@ TEST_F(HarnessTest, RandomizedLongDB) {
 }
 #endif  // ROCKSDB_LITE
 
-class MemTableTest : public testing::Test {};
+class MemTableTest : public RocksDBTest {};
 
 TEST_F(MemTableTest, Simple) {
   InternalKeyComparator cmp(BytewiseComparator());
@@ -2432,7 +2439,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
   int index_block_restart_interval = GetParam();
 
   std::vector<boost::optional<KeyValueEncodingFormat>> formats_to_test;
-  for (const auto& format : kKeyValueEncodingFormatList) {
+  for (const auto& format : KeyValueEncodingFormatList()) {
     formats_to_test.push_back(format);
   }
   // Also test backward compatibility with SST files without
@@ -2493,11 +2500,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
   }
 }
 
-class PrefixTest : public testing::Test {
- public:
-  PrefixTest() : testing::Test() {}
-  ~PrefixTest() {}
-};
+class PrefixTest : public RocksDBTest {};
 
 namespace {
 // A simple PrefixExtractor that only works for test PrefixAndWholeKeyTest

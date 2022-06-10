@@ -40,21 +40,19 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <new>
+#include <shared_mutex>
 #include <vector>
 
 #include <boost/signals2/dummy_mutex.hpp>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
-#include "yb/util/alignment.h"
-#include "yb/util/slice.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace internal {
@@ -170,7 +168,11 @@ class ArenaBase {
   uint8_t *AddSlice(const Slice& value);
 
   // Same as above.
-  void * AddBytes(const void *data, size_t len);
+  void* AddBytes(const void *data, size_t len);
+
+  Slice DupSlice(const Slice& value) {
+    return Slice(AddSlice(value), value.size());
+  }
 
   // Handy wrapper for placement-new
   template<class T, class... Args>
@@ -201,7 +203,12 @@ class ArenaBase {
 
   // Allocate bytes, ensuring a specified alignment.
   // NOTE: alignment MUST be a power of two, or else this will break.
-  void* AllocateBytesAligned(const size_t size, const size_t alignment);
+  void* AllocateBytesAligned(size_t size, size_t alignment);
+
+  template <class T>
+  T* AllocateArray(size_t size) {
+    return static_cast<T*>(AllocateBytesAligned(size * sizeof(T), alignof(T)));
+  }
 
   // Removes all data from the arena. (Invalidates all pointers returned by
   // AddSlice and AllocateBytes). Does not cause memory allocation.
@@ -300,7 +307,7 @@ class ArenaAllocatorBase {
     CHECK_NOTNULL(arena_);
   }
 
-  pointer allocate(size_type n, std::allocator<void>::const_pointer /*hint*/ = 0) {
+  pointer allocate(size_type n) {
     return reinterpret_cast<T*>(arena_->AllocateBytesAligned(n * sizeof(T), alignof(T)));
   }
 
@@ -449,6 +456,14 @@ std::shared_ptr<TObject> ArenaBase<Traits>::ToShared(TObject *raw_ptr) {
 }
 
 } // namespace internal
+
+template <class Result, class Traits, class... Args>
+std::shared_ptr<Result> ArenaMakeShared(
+    const std::shared_ptr<internal::ArenaBase<Traits>>& arena, Args&&... args) {
+  auto result = arena->template NewObject<Result>(std::forward<Args>(args)...);
+  return std::shared_ptr<Result>(arena, result);
+}
+
 } // namespace yb
 
 template<class Traits>

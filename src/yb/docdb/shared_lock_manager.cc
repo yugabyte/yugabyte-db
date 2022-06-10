@@ -13,16 +13,20 @@
 
 #include "yb/docdb/shared_lock_manager.h"
 
+#include <array>
+#include <condition_variable>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include <boost/range/adaptor/reversed.hpp>
 #include <glog/logging.h>
 
-#include "yb/util/bytes_formatter.h"
+#include "yb/docdb/lock_batch.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
+#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/tostring.h"
 #include "yb/util/trace.h"
 
 using std::string;
@@ -62,7 +66,7 @@ std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
   for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
-      for (auto other_intent_type : kIntentTypeList) {
+      for (auto other_intent_type : IntentTypeList()) {
         if (IntentTypesConflict(intent_type, other_intent_type)) {
           result[idx] |= IntentTypeMask(other_intent_type);
         }
@@ -166,7 +170,7 @@ const std::array<LockState, kIntentTypeSetMapSize> kIntentTypeSetConflicts = Gen
 std::string SharedLockManager::ToString(const LockState& state) {
   std::string result = "{";
   bool first = true;
-  for (auto type : kIntentTypeList) {
+  for (auto type : IntentTypeList()) {
     if ((state & IntentTypeMask(type)) != 0) {
       if (first) {
         first = false;

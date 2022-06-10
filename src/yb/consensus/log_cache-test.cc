@@ -40,13 +40,18 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
+
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/bind_helpers.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -95,7 +100,7 @@ class LogCacheTest : public YBTest {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(log::Log::Open(log::LogOptions(),
                             kTestTablet,
@@ -273,7 +278,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
 
   // Verify the size is right. It's not exactly kPayloadSize because of in-memory
   // overhead, etc.
-  int size_with_one_msg = cache_->BytesUsed();
+  auto size_with_one_msg = cache_->BytesUsed();
   ASSERT_GT(size_with_one_msg, 300_KB);
   ASSERT_LT(size_with_one_msg, 500_KB);
 
@@ -282,7 +287,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_EQ(2, cache_->num_cached_ops());
 
-  int size_with_two_msgs = cache_->BytesUsed();
+  auto size_with_two_msgs = cache_->BytesUsed();
   ASSERT_GT(size_with_two_msgs, 2 * 300_KB);
   ASSERT_LT(size_with_two_msgs, 2 * 500_KB);
 
@@ -354,7 +359,7 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
   ASSERT_EQ(0, tracker->consumption());
 
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));
-  int size_with_one_msg = tracker->consumption();
+  auto size_with_one_msg = tracker->consumption();
 
   for (int i = 0; i < 10; i++) {
     ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));

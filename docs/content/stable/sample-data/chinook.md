@@ -17,7 +17,7 @@ The Chinook sample database for a digital media store can be used to explore and
 You can install and use the Chinook sample database using:
 
 - A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
-- A local installation of the YugabyteDB client shells that you use to connect to a cluster in Yugabyte Cloud. To connect to your Yugabyte Cloud cluster, refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell). To get started with Yugabyte Cloud, refer to [Get Started](../../yugabyte-cloud/cloud-basics/).
+- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick start](../../yugabyte-cloud/cloud-quickstart/).
 
 In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
@@ -28,7 +28,7 @@ The Chinook data model represents a digital media store, including tables for ar
 - Media-related data was created using real data from an Apple iTunes library.
 - Customer and employee information was created using fictitious names and addresses that can be located on Google maps, and other well formatted data (phone, fax, email, etc.)
 - Sales information was auto generated using random data for a four year period.
-  
+
 The Chinook sample database includes:
 
 - 11 tables
@@ -57,7 +57,7 @@ If you are using a local installation of YugabyteDB, run the `ysqlsh` command fr
 $ ./bin/ysqlsh
 ```
 
-If you are connecting to Yugabyte Cloud, run the connection string for your cluster from the the `yugabyte-client` root directory. Refer to [Connect via Client Shell](../../yugabyte-cloud/cloud-basics/connect-to-clusters/#connect-via-client-shell).
+If you are connecting to Yugabyte Cloud, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
 ### Create the Chinook database
 

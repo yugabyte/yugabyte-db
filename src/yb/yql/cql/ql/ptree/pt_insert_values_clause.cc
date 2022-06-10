@@ -17,11 +17,15 @@
 
 #include "yb/yql/cql/ql/ptree/pt_insert_values_clause.h"
 
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+
 namespace yb {
 namespace ql {
 
 PTInsertValuesClause::PTInsertValuesClause(MemoryContext* memctx,
-                                           YBLocation::SharedPtr loc,
+                                           YBLocationPtr loc,
                                            PTExprListNode::SharedPtr tuple)
     : PTCollection(memctx, loc),
       tuples_(memctx, loc) {
@@ -38,7 +42,7 @@ void PTInsertValuesClause::Prepend(const PTExprListNode::SharedPtr& tuple) {
   tuples_.Prepend(tuple);
 }
 
-CHECKED_STATUS PTInsertValuesClause::Analyze(SemContext* sem_context) {
+Status PTInsertValuesClause::Analyze(SemContext* sem_context) {
   return Status::OK();
 }
 

@@ -31,6 +31,8 @@
 //
 
 #include "yb/master/catalog_manager-test_base.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.pb.h"
 
 namespace yb {
 namespace master {
@@ -61,7 +63,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
 
   // Define & create the splits.
   vector<string> split_keys = {"a", "b", "c"};  // The keys we split on.
-  const int kNumSplits = split_keys.size();
+  const size_t kNumSplits = split_keys.size();
   const int kNumReplicas = 1;
 
   CreateTable(split_keys, kNumReplicas, true, table.get(), &tablets);
@@ -70,7 +72,7 @@ TEST(TableInfoTest, TestAssignmentRanges) {
             kNumReplicas) << "Invalid replicas for created table.";
 
   // Ensure they give us what we are expecting.
-  for (int i = 0; i <= kNumSplits; i++) {
+  for (size_t i = 0; i <= kNumSplits; i++) {
     // Calculate the tablet id and start key.
     const string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
@@ -263,34 +265,34 @@ TEST(TestCatalogManager, TestGetPlacementUuidFromRaftPeer) {
   ReplicationInfoPB replication_info;
   SetupClusterConfigWithReadReplicas({"a", "b", "c"}, {{"d"}}, &replication_info);
   consensus::RaftPeerPB raft_peer;
-  SetupRaftPeer(consensus::RaftPeerPB::VOTER, "a", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::VOTER, "a", &raft_peer);
   ASSERT_EQ(kLivePlacementUuid, ASSERT_RESULT(
       CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
-  SetupRaftPeer(consensus::RaftPeerPB::PRE_VOTER, "b", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::PRE_VOTER, "b", &raft_peer);
   ASSERT_EQ(kLivePlacementUuid, ASSERT_RESULT(
       CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
 
   // Test a observer peer is assigned to the rr placement.
-  SetupRaftPeer(consensus::RaftPeerPB::OBSERVER, "d", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::OBSERVER, "d", &raft_peer);
   ASSERT_EQ(Format(kReadReplicaPlacementUuidPrefix, 0), ASSERT_RESULT(
       CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
 
   // Now test multiple rr placements.
   SetupClusterConfigWithReadReplicas({"a", "b", "c"}, {{"d"}, {"e"}}, &replication_info);
-  SetupRaftPeer(consensus::RaftPeerPB::PRE_OBSERVER, "d", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::PRE_OBSERVER, "d", &raft_peer);
   ASSERT_EQ(Format(kReadReplicaPlacementUuidPrefix, 0), ASSERT_RESULT(
       CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
-  SetupRaftPeer(consensus::RaftPeerPB::OBSERVER, "e", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::OBSERVER, "e", &raft_peer);
   ASSERT_EQ(Format(kReadReplicaPlacementUuidPrefix, 1), ASSERT_RESULT(
       CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer)));
 
   // Test peer with invalid cloud info throws error.
-  SetupRaftPeer(consensus::RaftPeerPB::PRE_OBSERVER, "c", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::PRE_OBSERVER, "c", &raft_peer);
   ASSERT_NOK(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer));
 
   // Test cluster config with rr placements with same cloud info throws error.
   SetupClusterConfigWithReadReplicas({"a", "b", "c"}, {{"d"}, {"d"}}, &replication_info);
-  SetupRaftPeer(consensus::RaftPeerPB::OBSERVER, "d", &raft_peer);
+  SetupRaftPeer(consensus::PeerMemberType::OBSERVER, "d", &raft_peer);
   ASSERT_NOK(CatalogManagerUtil::GetPlacementUuidFromRaftPeer(replication_info, raft_peer));
 }
 
@@ -385,5 +387,167 @@ TEST(TestCatalogManager, CheckIfCanDeleteSingleTablet) {
   }
 }
 
-} // namespace master
+TEST(TestCatalogManager, TestSetPreferredZones) {
+  std::string z1 = "a", z2 = "b", z3 = "c";
+  CloudInfoPB ci1;
+  ci1.set_placement_cloud(default_cloud);
+  ci1.set_placement_region(default_region);
+  ci1.set_placement_zone(z1);
+  CloudInfoPB ci2(ci1);
+  ci2.set_placement_zone(z2);
+  CloudInfoPB ci3(ci1);
+  ci3.set_placement_zone(z3);
+
+  ReplicationInfoPB replication_default;
+  SetupClusterConfig({z1, z2, z3}, &replication_default);
+
+  {
+    LOG(INFO) << "Empty set";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+
+    ASSERT_OK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+    ASSERT_EQ(replication_info.affinitized_leaders_size(), 0);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 0);
+  }
+
+  {
+    LOG(INFO) << "Old behavior";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    *req.add_preferred_zones() = ci1;
+
+    ASSERT_OK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+    ASSERT_EQ(replication_info.affinitized_leaders_size(), 0);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), z1);
+  }
+
+  {
+    LOG(INFO) << "Both old and new behavior";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    *req.add_preferred_zones() = ci1;
+    *req.add_multi_preferred_zones()->add_zones() = ci1;
+
+    ASSERT_OK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+    ASSERT_EQ(replication_info.affinitized_leaders_size(), 0);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), z1);
+  }
+
+  {
+    LOG(INFO) << "Multiple priority level";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    *req.add_preferred_zones() = ci1;
+    auto p1 = req.add_multi_preferred_zones();
+    *p1->add_zones() = ci1;
+    *p1->add_zones() = ci2;
+    *req.add_multi_preferred_zones()->add_zones() = ci3;
+
+    ASSERT_OK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+    ASSERT_EQ(replication_info.affinitized_leaders_size(), 0);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 2);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones_size(), 2);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), z1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(1).placement_zone(), z2);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(1).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(1).zones(0).placement_zone(), z3);
+  }
+
+  {
+    LOG(INFO) << "Multiple priority level 2";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    *req.add_preferred_zones() = ci1;
+    *req.add_multi_preferred_zones()->add_zones() = ci1;
+    *req.add_multi_preferred_zones()->add_zones() = ci2;
+    *req.add_multi_preferred_zones()->add_zones() = ci3;
+
+    ASSERT_OK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+    ASSERT_EQ(replication_info.affinitized_leaders_size(), 0);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders_size(), 3);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(0).zones(0).placement_zone(), z1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(1).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(1).zones(0).placement_zone(), z2);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(2).zones_size(), 1);
+    ASSERT_EQ(replication_info.multi_affinitized_leaders(2).zones(0).placement_zone(), z3);
+  }
+
+  {
+    LOG(INFO) << "Missing priority level";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    *req.add_multi_preferred_zones()->add_zones() = ci1;
+    req.add_multi_preferred_zones();
+    *req.add_multi_preferred_zones()->add_zones() = ci2;
+
+    ASSERT_NOK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+  }
+
+  {
+    LOG(INFO) << "Duplicate entries in same priority";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    auto p1 = req.add_multi_preferred_zones();
+    *p1->add_zones() = ci1;
+    *p1->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+  }
+
+  {
+    LOG(INFO) << "Duplicate entries in same priority";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    auto p1 = req.add_multi_preferred_zones();
+    *p1->add_zones() = ci1;
+    *p1->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+  }
+
+  {
+    LOG(INFO) << "Duplicate entries in different priority";
+    ReplicationInfoPB replication_info = replication_default;
+    SetPreferredZonesRequestPB req;
+    *req.add_multi_preferred_zones()->add_zones() = ci1;
+    *req.add_multi_preferred_zones()->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::SetPreferredZones(&req, &replication_info));
+  }
+
+  {
+    LOG(INFO) << "Invalid leader zone";
+    ReplicationInfoPB replication_info;
+    SetupClusterConfig({z2, z3}, &replication_info);
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
+  }
+
+  {
+    LOG(INFO) << "Duplicate leader zone";
+    ReplicationInfoPB replication_info = replication_default;
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci1;
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci1;
+
+    ASSERT_NOK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
+  }
+
+  {
+    LOG(INFO) << "Valid leader zone";
+    ReplicationInfoPB replication_info = replication_default;
+    auto first_zone_set = replication_info.add_multi_affinitized_leaders();
+    *first_zone_set->add_zones() = ci1;
+    *first_zone_set->add_zones() = ci2;
+    *replication_info.add_multi_affinitized_leaders()->add_zones() = ci3;
+
+    ASSERT_OK(CatalogManagerUtil::CheckValidLeaderAffinity(replication_info));
+  }
+}
+}  // namespace master
 } // namespace yb

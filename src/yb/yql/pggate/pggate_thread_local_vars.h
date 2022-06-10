@@ -22,7 +22,7 @@
 #ifndef YB_YQL_PGGATE_PGGATE_THREAD_LOCAL_VARS_H
 #define YB_YQL_PGGATE_PGGATE_THREAD_LOCAL_VARS_H
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 
 namespace yb {
 namespace pggate {

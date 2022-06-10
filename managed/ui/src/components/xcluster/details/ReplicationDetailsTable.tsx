@@ -1,13 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch } from 'react-redux';
-import { openDialog } from '../../../actions/modal';
-import { fetchTablesInUniverse, getUniverseInfo } from '../../../actions/xClusterReplication';
+import { toast } from 'react-toastify';
+import { closeDialog, openDialog } from '../../../actions/modal';
+import {
+  editXClusterTables,
+  fetchTablesInUniverse,
+  fetchTaskUntilItCompletes,
+  getUniverseInfo
+} from '../../../actions/xClusterReplication';
 import { YBButton } from '../../common/forms/fields';
 import { IReplication, IReplicationTable } from '../IClusterReplication';
-import { GetCurrentLagForTable } from '../ReplicationUtils';
+import { formatBytes, GetCurrentLagForTable, YSQL_TABLE_TYPE } from '../ReplicationUtils';
+import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 
 import './ReplicationDetailsTable.scss';
 interface props {
@@ -16,6 +23,9 @@ interface props {
 
 export function ReplicationDetailsTable({ replication }: props) {
   const dispatch = useDispatch();
+  const queryClient = useQueryClient();
+
+  const [deleteTableDetails, setDeleteTableDetails] = useState<IReplicationTable>();
 
   const showAddTablesToClusterModal = () => {
     dispatch(openDialog('addTablesToClusterModal'));
@@ -29,6 +39,36 @@ export function ReplicationDetailsTable({ replication }: props) {
   const { data: universeInfo, isLoading: currentUniverseLoading } = useQuery(
     ['universe', replication.sourceUniverseUUID],
     () => getUniverseInfo(replication.sourceUniverseUUID)
+  );
+
+  const removeTableFromXCluster = useMutation(
+    (replication: IReplication) => {
+      return editXClusterTables(replication);
+    },
+    {
+      onSuccess: (resp, replication) => {
+        fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
+          if (!err) {
+            queryClient.invalidateQueries(['Xcluster', replication.uuid]);
+            dispatch(closeDialog());
+            toast.success(`"${deleteTableDetails?.tableName}" table removed successfully`);
+          } else {
+            toast.error(
+              <span className="alertMsg">
+                <i className="fa fa-exclamation-circle" />
+                <span>Task Failed.</span>
+                <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+                  View Details
+                </a>
+              </span>
+            );
+          }
+        });
+      },
+      onError: (err: any) => {
+        toast.error(err.response.data.error);
+      }
+    }
   );
 
   if (isTablesLoading || currentUniverseLoading) {
@@ -60,7 +100,7 @@ export function ReplicationDetailsTable({ replication }: props) {
               btnText={
                 <>
                   <i className="fa fa-plus" />
-                  Modify Tables
+                  Add Tables
                 </>
               }
             />
@@ -77,27 +117,77 @@ export function ReplicationDetailsTable({ replication }: props) {
               tableContainerClass="add-to-table-container"
             >
               <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-              <TableHeaderColumn dataField="tableName">Name</TableHeaderColumn>
-              <TableHeaderColumn dataField="tableType">Type</TableHeaderColumn>
-              <TableHeaderColumn dataField="keySpace">Keyspace</TableHeaderColumn>
-              <TableHeaderColumn dataField="sizeBytes">Size</TableHeaderColumn>
+              <TableHeaderColumn dataField="tableName" width="30%">
+                Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="tableType"
+                width="20%"
+                dataFormat={(cell) => {
+                  if (cell === YSQL_TABLE_TYPE) return 'YSQL';
+                  return 'YCQL';
+                }}
+              >
+                Type
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="keySpace" width="20%">
+                Keyspace
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="sizeBytes"
+                width="10%"
+                dataFormat={(cell) => formatBytes(cell)}
+              >
+                Size
+              </TableHeaderColumn>
               <TableHeaderColumn
                 dataFormat={(_cell, row) => (
                   <span className="lag-text">
                     <GetCurrentLagForTable
                       replicationUUID={replication.uuid}
-                      tableName={row.tableName}
+                      tableUUID={row.tableUUID}
                       nodePrefix={universeInfo?.data.universeDetails.nodePrefix}
                       enabled={isActiveTab}
+                      sourceUniverseUUID={replication.sourceUniverseUUID}
                     />
                   </span>
                 )}
               >
-                Current lag (ms)
+                Current lag
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="action"
+                width="10%"
+                dataFormat={(_, row) => (
+                  <YBButton
+                    btnText="Remove Table"
+                    onClick={() => {
+                      setDeleteTableDetails(row);
+                      dispatch(openDialog('DeleteReplicationTableModal'));
+                    }}
+                  />
+                )}
+                thStyle={{
+                  textAlign: 'center'
+                }}
+              >
+                Action
               </TableHeaderColumn>
             </BootstrapTable>
           </div>
         </Col>
+        <DeleteReplicactionTableModal
+          deleteTableName={deleteTableDetails?.tableName ?? ''}
+          onConfirm={() => {
+            removeTableFromXCluster.mutate({
+              ...replication,
+              tables: replication.tables.filter((t) => t !== deleteTableDetails!.tableUUID)
+            });
+          }}
+          onCancel={() => {
+            dispatch(closeDialog());
+          }}
+        />
       </Row>
     </>
   );

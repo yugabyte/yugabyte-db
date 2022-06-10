@@ -15,7 +15,7 @@ isTocNested: true
 ---
 
 ## Overview
-Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either either executed online or queued for deferred execution.
+Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
 
 ### Results at a glance (Amazon Web Services)
 | Warehouses| TPMC | Efficiency (approx) | Cluster Details
@@ -45,7 +45,6 @@ All nodes in the cluster were in the same zone. The benchmark VM was the same ty
 To download the TPC-C binaries, run the following commands.
 
 ```sh
-$ cd $HOME
 $ wget https://github.com/yugabyte/tpcc/releases/download/2.0/tpcc.tar.gz
 $ tar -zxvf tpcc.tar.gz
 $ cd tpcc

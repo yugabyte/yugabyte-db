@@ -237,6 +237,8 @@ def aggregate_test_reports(args: argparse.Namespace) -> None:
             os.path.realpath(args.yb_src_root)
         )
     }
+    if 'BUILD_URL' in os.environ:
+        top_level_details['build_url'] = os.environ['BUILD_URL']
 
     failure_only_report = dict(top_level_details)
     failure_only_report["failures"] = failure_reports

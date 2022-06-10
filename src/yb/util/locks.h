@@ -36,16 +36,17 @@
 #include <mutex>
 
 #include <glog/logging.h>
+
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/gutil/thread_annotations.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/spinlock.h"
 #include "yb/gutil/sysinfo.h"
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/util/errno.h"
 #include "yb/util/rw_semaphore.h"
-#include "yb/util/shared_lock.h"
 
 namespace yb {
 
@@ -253,48 +254,6 @@ class percpu_rwlock {
 
   int n_cpus_;
   padded_lock *locks_;
-};
-
-// Simple implementation of the SharedLock API, which is not available in
-// the standard library until C++14. Defers error checking to the underlying
-// mutex.
-
-template <typename Mutex>
-class shared_lock {
- public:
-  shared_lock()
-      : m_(nullptr) {
-  }
-
-  explicit shared_lock(Mutex& m) // NOLINT
-      : m_(&m) {
-    m_->lock_shared();
-  }
-
-  shared_lock(Mutex& m, std::try_to_lock_t t) // NOLINT
-      : m_(nullptr) {
-    if (m.try_lock_shared()) {
-      m_ = &m;
-    }
-  }
-
-  bool owns_lock() const {
-    return m_;
-  }
-
-  void swap(shared_lock& other) {
-    std::swap(m_, other.m_);
-  }
-
-  ~shared_lock() {
-    if (m_ != nullptr) {
-      m_->unlock_shared();
-    }
-  }
-
- private:
-  Mutex* m_;
-  DISALLOW_COPY_AND_ASSIGN(shared_lock<Mutex>);
 };
 
 template <class Container>

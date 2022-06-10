@@ -17,17 +17,21 @@
 #include <algorithm>
 #include <string>
 
-#include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/master_service.h"
-#include "yb/util/test_util.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/integration-tests/external_mini_cluster.h"
+
+#include "yb/master/master_ddl.proxy.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/result.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 
 Result<master::BackfillJobPB> GetBackfillJobs(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+    const master::MasterDdlProxy& proxy,
     const master::TableIdentifierPB &table_identifier) {
   master::GetBackfillJobsRequestPB req;
   master::GetBackfillJobsResponsePB resp;
@@ -36,7 +40,7 @@ Result<master::BackfillJobPB> GetBackfillJobs(
   rpc.set_timeout(MonoDelta::FromSeconds(kAdminRpcTimeout));
 
   req.mutable_table_identifier()->CopyFrom(table_identifier);
-  RETURN_NOT_OK(proxy->GetBackfillJobs(req, &resp, &rpc));
+  RETURN_NOT_OK(proxy.GetBackfillJobs(req, &resp, &rpc));
   if (resp.backfill_jobs_size() == 0) {
     return STATUS(NotFound, "No backfill job running yet");
   } else {
@@ -51,7 +55,8 @@ Result<master::BackfillJobPB> GetBackfillJobs(
     const client::YBTableName& table_name) {
   master::TableIdentifierPB table_identifier;
   table_name.SetIntoTableIdentifierPB(&table_identifier);
-  return GetBackfillJobs(cluster->master_proxy(), table_identifier);
+  return GetBackfillJobs(
+      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_identifier);
 }
 
 Result<master::BackfillJobPB> GetBackfillJobs(
@@ -61,11 +66,12 @@ Result<master::BackfillJobPB> GetBackfillJobs(
   if (!table_id.empty()) {
     table_identifier.set_table_id(table_id);
   }
-  return GetBackfillJobs(cluster->master_proxy(), table_identifier);
+  return GetBackfillJobs(
+      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_identifier);
 }
 
-CHECKED_STATUS WaitForBackfillSatisfyCondition(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+Status WaitForBackfillSatisfyCondition(
+    const master::MasterDdlProxy& proxy,
     const master::TableIdentifierPB& table_identifier,
     const std::function<Result<bool>(Result<master::BackfillJobPB>)>& condition,
     MonoDelta max_wait) {
@@ -77,8 +83,8 @@ CHECKED_STATUS WaitForBackfillSatisfyCondition(
       max_wait, "Waiting for backfill to satisfy condition.");
 }
 
-CHECKED_STATUS WaitForBackfillSatisfyCondition(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+Status WaitForBackfillSatisfyCondition(
+    const master::MasterDdlProxy& proxy,
     const client::YBTableName& table_name,
     const std::function<Result<bool>(Result<master::BackfillJobPB>)>& condition,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
@@ -87,8 +93,8 @@ CHECKED_STATUS WaitForBackfillSatisfyCondition(
   return WaitForBackfillSatisfyCondition(proxy, table_identifier, condition, max_wait);
 }
 
-CHECKED_STATUS WaitForBackfillSatisfyCondition(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+Status WaitForBackfillSatisfyCondition(
+    const master::MasterDdlProxy& proxy,
     const TableId& table_id,
     const std::function<Result<bool>(Result<master::BackfillJobPB>)>& condition,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
@@ -99,8 +105,8 @@ CHECKED_STATUS WaitForBackfillSatisfyCondition(
   return WaitForBackfillSatisfyCondition(proxy, table_identifier, condition, max_wait);
 }
 
-CHECKED_STATUS WaitForBackfillSafeTimeOn(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+Status WaitForBackfillSafeTimeOn(
+    const master::MasterDdlProxy& proxy,
     const master::TableIdentifierPB& table_identifier,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
   return WaitFor(
@@ -111,8 +117,8 @@ CHECKED_STATUS WaitForBackfillSafeTimeOn(
       max_wait, "waiting for backfill to get past GetSafeTime.");
 }
 
-CHECKED_STATUS WaitForBackfillSafeTimeOn(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+Status WaitForBackfillSafeTimeOn(
+    const master::MasterDdlProxy& proxy,
     const client::YBTableName& table_name,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
   master::TableIdentifierPB table_identifier;
@@ -120,8 +126,8 @@ CHECKED_STATUS WaitForBackfillSafeTimeOn(
   return WaitForBackfillSafeTimeOn(proxy, table_identifier, max_wait);
 }
 
-CHECKED_STATUS WaitForBackfillSafeTimeOn(
-    std::shared_ptr<master::MasterServiceProxy> proxy,
+Status WaitForBackfillSafeTimeOn(
+    const master::MasterDdlProxy& proxy,
     const TableId& table_id,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
   master::TableIdentifierPB table_identifier;
@@ -131,18 +137,20 @@ CHECKED_STATUS WaitForBackfillSafeTimeOn(
   return WaitForBackfillSafeTimeOn(proxy, table_identifier, max_wait);
 }
 
-CHECKED_STATUS WaitForBackfillSafeTimeOn(
+Status WaitForBackfillSafeTimeOn(
     ExternalMiniCluster* cluster,
     const client::YBTableName& table_name,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
-  return WaitForBackfillSafeTimeOn(cluster->master_proxy(), table_name, max_wait);
+  return WaitForBackfillSafeTimeOn(
+      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_name, max_wait);
 }
 
-CHECKED_STATUS WaitForBackfillSafeTimeOn(
+Status WaitForBackfillSafeTimeOn(
     ExternalMiniCluster* cluster,
     const TableId& table_id,
     MonoDelta max_wait = MonoDelta::FromSeconds(60)) {
-  return WaitForBackfillSafeTimeOn(cluster->master_proxy(), table_id, max_wait);
+  return WaitForBackfillSafeTimeOn(
+      cluster->GetMasterProxy<master::MasterDdlProxy>(), table_id, max_wait);
 }
 
 }  // namespace yb

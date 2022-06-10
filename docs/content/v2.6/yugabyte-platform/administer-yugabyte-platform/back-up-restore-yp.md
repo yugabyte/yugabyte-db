@@ -14,14 +14,14 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp" class="nav-link active">
+    <a href="/preview/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp" class="nav-link active">
       <i class="fas fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/administer-yugabyte-platform/back-up-restore-k8s" class="nav-link">
+    <a href="/preview/yugabyte-platform/administer-yugabyte-platform/back-up-restore-k8s" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -37,10 +37,10 @@ You can use the Yugabyte Platform backup script to back up an existing Yugabyte 
 
 To back up the Yugabyte Platform server, perform the following:
 
-- Copy the the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository using the following `wget` command:
+- Copy the Yugabyte Platform backup script `yb_platform_backup.sh` from the yugabyte-db repository using the following `wget` command:
 
     ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh 
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 - Run the `yb_platform_backup.sh` script using the `backup` command, as follows:
@@ -65,10 +65,10 @@ To back up the Yugabyte Platform server, perform the following:
 
 To restore the Yugabyte Platform content from your saved backup, perform the following:
 
-- Copy the the `yb_platform_backup.sh` script from the yugabyte-db repository using the following `wget` command:
+- Copy the `yb_platform_backup.sh` script from the yugabyte-db repository using the following `wget` command:
 
     ```sh
-    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh 
+    wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/managed/devops/bin/yb_platform_backup.sh
     ```
 
 - Copy the backup `.tar` file from your storage location.

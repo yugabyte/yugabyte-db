@@ -26,17 +26,17 @@
 #include <string>
 #include <utility>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include "yb/gutil/macros.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/block_based_filter_block.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -44,26 +44,29 @@
 #include "yb/rocksdb/table/block_hash_index.h"
 #include "yb/rocksdb/table/block_prefix_index.h"
 #include "yb/rocksdb/table/filter_block.h"
-#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
+#include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/table/index_reader.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/meta_blocks.h"
+#include "yb/rocksdb/table/table_properties_internal.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
-
+#include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 
-#include "yb/gutil/macros.h"
-
-#include "yb/util/logging.h"
 #include "yb/util/atomic.h"
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 namespace rocksdb {
@@ -312,7 +315,8 @@ void BlockBasedTable::SetupCacheKeyPrefix(Rep* rep,
   }
 }
 
-KeyValueEncodingFormat BlockBasedTable::GetKeyValueEncodingFormat(const BlockType block_type) {
+KeyValueEncodingFormat BlockBasedTable::GetKeyValueEncodingFormat(
+    const BlockType block_type) const {
   switch (block_type) {
     case BlockType::kData:
       return rep_->data_block_key_value_encoding_format;
@@ -322,7 +326,8 @@ KeyValueEncodingFormat BlockBasedTable::GetKeyValueEncodingFormat(const BlockTyp
   FATAL_INVALID_ENUM_VALUE(BlockType, block_type);
 }
 
-BlockBasedTable::FileReaderWithCachePrefix* BlockBasedTable::GetBlockReader(BlockType block_type) {
+BlockBasedTable::FileReaderWithCachePrefix* BlockBasedTable::GetBlockReader(
+    BlockType block_type) const {
   switch (block_type) {
     case BlockType::kData:
       return rep_->data_reader_with_cache_prefix.get();
@@ -416,6 +421,12 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
   SetupCacheKeyPrefix(rep, rep->base_reader_with_cache_prefix.get());
   unique_ptr<BlockBasedTable> new_table(new BlockBasedTable(rep));
 
+  // rep->data_index_iterator_state must be instantiated before the first call of
+  // `BlockBasedTable::CreateDataBlockIndexReader` which might happpen for PRELOAD_ON_OPEN.
+  const bool skip_filters_for_index = true;
+  rep->data_index_iterator_state = std::make_unique<BlockEntryIteratorState>(
+      new_table.get(), ReadOptions::kDefault, skip_filters_for_index, BlockType::kIndex);
+
   // Read meta index
   std::unique_ptr<Block> meta;
   std::unique_ptr<InternalIterator> meta_iter;
@@ -505,11 +516,6 @@ Status BlockBasedTable::Open(const ImmutableCFOptions& ioptions,
       }
     }
   }
-
-  // Filters are checked before seeking the index.
-  const bool skip_filters_for_index = true;
-  rep->data_index_iterator_state = std::make_unique<BlockEntryIteratorState>(
-      new_table.get(), ReadOptions::kDefault, skip_filters_for_index, BlockType::kIndex);
 
   *table_reader = std::move(new_table);
 
@@ -940,12 +946,14 @@ FilterBlockReader* BlockBasedTable::ReadFilterBlock(const BlockHandle& filter_ha
 
 Status BlockBasedTable::GetFixedSizeFilterBlockHandle(const Slice& filter_key,
     BlockHandle* filter_block_handle) const {
-  // Determine block of fixed-size bloom filter using filter index.
+  // Determine block of fixed-size bloom filter using filter index. It is expected `NewIterator()`
+  // is reusing `fiter` and not creating a new iterator (multi-level index case).
   BlockIter fiter;
-  rep_->filter_index_reader->NewIterator(&fiter,
+  RSTATUS_DCHECK(!rep_->filter_index_reader->NewIterator(&fiter,
       // Following parameters are ignored by BinarySearchIndexReader which we use as
       // filter_index_reader.
-      nullptr /* index_iterator_state */, true /* total_order_seek */);
+      /* index_iterator_state = */ nullptr, /* total_order_seek = */ true),
+      InternalError, "filter_index_reader->NewIterator() is supposed to reuse fiter");
   fiter.Seek(filter_key);
   if (fiter.Valid()) {
     Slice filter_block_handle_encoded = fiter.value();
@@ -1159,39 +1167,25 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   return new_iter;
 }
 
-// Convert an index iterator value (i.e., an encoded BlockHandle)
-// into an iterator over the contents of the corresponding block.
-// If input_iter is null, new a iterator
-// If input_iter is not null, update this iter and return it
-InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
-    const Slice& index_value, BlockType block_type, BlockIter* input_iter) {
-  PERF_TIMER_GUARD(new_table_block_iter_nanos);
-
+yb::Result<BlockBasedTable::CachableEntry<Block>> BlockBasedTable::RetrieveBlock(
+    const ReadOptions& ro, const Slice& index_value,
+    const BlockType block_type, const bool use_cache) {
   const bool no_io = (ro.read_tier == kBlockCacheTier);
   Cache* block_cache = rep_->table_options.block_cache.get();
-  Cache* block_cache_compressed =
-      rep_->table_options.block_cache_compressed.get();
+  Cache* block_cache_compressed = rep_->table_options.block_cache_compressed.get();
   CachableEntry<Block> block;
 
   BlockHandle handle;
   Slice input = index_value;
+
   // We intentionally allow extra stuff in index_value so that we
   // can add more features in the future.
-  Status s = handle.DecodeFrom(&input);
-
-  if (!s.ok()) {
-    if (input_iter != nullptr) {
-      input_iter->SetStatus(s);
-      return input_iter;
-    } else {
-      return NewErrorInternalIterator(s);
-    }
-  }
+  RETURN_NOT_OK(handle.DecodeFrom(&input));
 
   FileReaderWithCachePrefix* reader = GetBlockReader(block_type);
 
   // If either block cache is enabled, we'll try to read from it.
-  if (block_cache != nullptr || block_cache_compressed != nullptr) {
+  if (PREDICT_TRUE(use_cache) && (block_cache != nullptr || block_cache_compressed != nullptr)) {
     Statistics* statistics = rep_->ioptions.statistics;
     char cache_key[block_based_table::kCacheKeyBufferSize];
     char compressed_cache_key[block_based_table::kCacheKeyBufferSize];
@@ -1207,7 +1201,7 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
       ckey = GetCacheKey(reader->compressed_cache_key_prefix, handle, compressed_cache_key);
     }
 
-    s = GetDataBlockFromCache(
+    Status status = GetDataBlockFromCache(
         key, ckey, block_cache, block_cache_compressed, statistics, ro, &block,
         rep_->table_options.format_version, block_type, rep_->mem_tracker);
 
@@ -1215,58 +1209,72 @@ InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
       std::unique_ptr<Block> raw_block;
       {
         StopWatch sw(rep_->ioptions.env, statistics, READ_BLOCK_GET_MICROS);
-        s = block_based_table::ReadBlockFromFile(
+        RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
             reader->reader.get(), rep_->footer, ro, handle, &raw_block, rep_->ioptions.env,
-            rep_->mem_tracker, block_cache_compressed == nullptr);
+            rep_->mem_tracker, block_cache_compressed == nullptr));
       }
 
-      if (s.ok()) {
-        s = PutDataBlockToCache(key, ckey, block_cache, block_cache_compressed,
-                                ro, statistics, &block, raw_block.release(),
-                                rep_->table_options.format_version, rep_->mem_tracker);
-      }
+      RETURN_NOT_OK(PutDataBlockToCache(key, ckey, block_cache, block_cache_compressed,
+                                        ro, statistics, &block, raw_block.release(),
+                                        rep_->table_options.format_version, rep_->mem_tracker));
+      status = Status::OK();
     }
+
+    RETURN_NOT_OK(status);
   }
 
-  // Didn't get any data from block caches.
-  if (s.ok() && block.value == nullptr) {
-    if (no_io) {
-      // Could not read from block_cache and can't do IO
-      if (input_iter != nullptr) {
-        input_iter->SetStatus(ReturnNoIOError());
-        return input_iter;
-      } else {
-        return NewErrorInternalIterator(ReturnNoIOError());
-      }
-    }
-    std::unique_ptr<Block> block_value;
-    s = block_based_table::ReadBlockFromFile(
-        reader->reader.get(), rep_->footer, ro, handle, &block_value, rep_->ioptions.env,
-        rep_->mem_tracker);
-    if (s.ok()) {
-      block.value = block_value.release();
-    }
+  // Got data from block caches.
+  if (block.value) {
+    return block;
   }
 
-  InternalIterator* iter;
-  if (s.ok() && block.value != nullptr) {
-    iter = block.value->NewIterator(
+  // Could not read from block_cache and can't do IO.
+  if (no_io) {
+    return ReturnNoIOError();
+  }
+
+  std::unique_ptr<Block> block_value;
+  RETURN_NOT_OK(block_based_table::ReadBlockFromFile(
+      reader->reader.get(), rep_->footer, ro, handle, &block_value, rep_->ioptions.env,
+      rep_->mem_tracker));
+
+  block.value = block_value.release();
+  RSTATUS_DCHECK(block.value, Incomplete, "No data block"); // Not expected to happen.
+
+  return block;
+}
+
+yb::Result<std::unique_ptr<Block>> BlockBasedTable::RetrieveBlockFromFile(const ReadOptions& ro,
+    const Slice& index_value, const BlockType block_type) {
+  auto block = VERIFY_RESULT(RetrieveBlock(ro, index_value, block_type, /* use_cache = */ false));
+  CHECK(block.cache_handle == nullptr); // We requested no cache at previous command.
+  return std::unique_ptr<Block>(block.value);
+}
+
+InternalIterator* BlockBasedTable::NewDataBlockIterator(const ReadOptions& ro,
+    const Slice& index_value, BlockType block_type, BlockIter* input_iter) {
+  PERF_TIMER_GUARD(new_table_block_iter_nanos);
+
+  auto block = RetrieveBlock(ro, index_value, block_type);
+  if (block) {
+    InternalIterator* iter = block->value->NewIterator(
         rep_->comparator.get(), GetKeyValueEncodingFormat(block_type), input_iter);
-    if (block.cache_handle != nullptr) {
-      iter->RegisterCleanup(&ReleaseCachedEntry, block_cache,
-          block.cache_handle);
+    if (block->cache_handle) {
+      Cache* block_cache = rep_->table_options.block_cache.get();
+      iter->RegisterCleanup(&ReleaseCachedEntry, block_cache, block->cache_handle);
     } else {
-      iter->RegisterCleanup(&DeleteHeldResource<Block>, block.value, nullptr);
+      iter->RegisterCleanup(&DeleteHeldResource<Block>, block->value, nullptr);
     }
-  } else {
-    if (input_iter != nullptr) {
-      input_iter->SetStatus(s);
-      iter = input_iter;
-    } else {
-      iter = NewErrorInternalIterator(s);
-    }
+    return iter;
   }
-  return iter;
+
+  // Failure happened, return corresponding iterator with an error.
+  if (!input_iter) {
+    return NewErrorInternalIterator(block.status());
+  } else {
+    input_iter->SetStatus(block.status());
+    return input_iter;
+  }
 }
 
 // This will be broken if the user specifies an unusual implementation
@@ -1635,7 +1643,7 @@ Status BlockBasedTable::CreateDataBlockIndexReader(
             NotFound, "Missed table property $0 for multi-level binary-search index",
             BlockBasedTablePropertyNames::kNumIndexLevels);
       }
-      int num_levels = DecodeFixed32(pos->second.c_str());
+      const auto num_levels = DecodeFixed32(pos->second.c_str());
       auto result = MultiLevelIndexReader::Create(
           file, footer, num_levels, footer.index_handle(), env, comparator, rep_->mem_tracker);
       RETURN_NOT_OK(result);
@@ -1918,19 +1926,52 @@ yb::Result<std::string> BlockBasedTable::GetMiddleKey() {
     index_reader.Release(rep_->table_options.block_cache.get());
   });
 
-  const auto index_middle_key = VERIFY_RESULT(index_reader.value->GetMiddleKey());
-  std::unique_ptr<InternalIterator> iter(
-      NewIterator(ReadOptions::kDefault, nullptr, /* skip_filters =*/ true));
-  iter->Seek(index_middle_key);
-  if (!iter->Valid()) {
-    // There are no keys in SST that are >= index_middle_key. That means SST is empty or just have
-    // the single data block.
-    // For tablet splitting we don't need to handle such small files, but if needed for other cases
-    // we can update this function to return the middle key of the data block in case there is data
-    // in the SST.
-    return STATUS(Incomplete, "Empty or to small SST");
+  auto index_middle_key = index_reader.value->GetMiddleKey();
+  if (PREDICT_TRUE(index_middle_key.ok())) {
+    // Seek to a nearest data block key is required as index may contain non-existent key
+    std::unique_ptr<InternalIterator> iter(
+        NewIterator(ReadOptions::kDefault, nullptr, /* skip_filters = */ true));
+    iter->Seek(*index_middle_key);
+    if (!iter->Valid()) {
+      return STATUS(Incomplete, "Failed to locate a middle key in data SST file.");
+    }
+    return iter->key().ToBuffer();
   }
-  return iter->key().ToBuffer();
+
+  // Incomplete status might mean number of block entries is 0 or 1. Let's check the last case and
+  // try to manually locate a data block and retrieve it's middle key.
+  if (!index_middle_key.status().IsIncomplete()) {
+    return index_middle_key.status().CloneAndPrepend(
+        "Failed to locate a middle key in index SST file");
+  }
+
+  std::unique_ptr<InternalIterator> index_iter(NewIndexIterator(ReadOptions::kDefault));
+  RETURN_NOT_OK_PREPEND(index_iter->status(), "Index iterator creation failed");
+  index_iter->SeekToFirst();
+  RETURN_NOT_OK_PREPEND(index_iter->status(), "Failed to seek to first index entry");
+  if (!index_iter->Valid()) {
+    return STATUS(Incomplete, "Index iterator is not valid after SeekToFirst");
+  }
+
+  auto data_block = VERIFY_RESULT(
+      RetrieveBlockFromFile(ReadOptions::kDefault, index_iter->value(), BlockType::kData));
+  return data_block->GetMiddleKey(GetKeyValueEncodingFormat(BlockType::kData),
+      rep_->comparator.get(), MiddlePointPolicy::kMiddleHigh);
+}
+
+yb::Result<IndexReaderCleanablePtr> BlockBasedTable::TEST_GetIndexReader() {
+  auto index_reader = VERIFY_RESULT(GetIndexReader(ReadOptions::kDefault));
+  auto cache = rep_->table_options.block_cache;
+  IndexReaderCleanablePtr index_reader_ptr(index_reader.value, [=](IndexReader* value) mutable {
+    CHECK_EQ(index_reader.value, value);
+    if (index_reader.cache_handle) {
+      index_reader.Release(cache.get());
+    } else {
+      delete index_reader.value;
+      index_reader.value = nullptr;
+    }
+  });
+  return index_reader_ptr;
 }
 
 }  // namespace rocksdb

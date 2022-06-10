@@ -120,9 +120,10 @@ ADD_THIRDPARTY_LIB(protobuf
   SHARED_LIB "${PROTOBUF_SHARED_LIBRARY}")
 ADD_THIRDPARTY_LIB(protoc
   STATIC_LIB "${PROTOBUF_PROTOC_STATIC_LIBRARY}"
-  SHARED_LIB "${PROTOBUF_PROTOC_LIBRARY}"
+  SHARED_LIB "${PROTOBUF_PROTOC_SHARED_LIBRARY}"
   DEPS protobuf)
 find_package(YRPC REQUIRED)
+list(APPEND YB_BASE_LIBS protobuf)
 
 ## Snappy
 find_package(Snappy REQUIRED)
@@ -177,12 +178,16 @@ ADD_THIRDPARTY_LIB(hiredis STATIC_LIB "${HIREDIS_STATIC_LIB}")
 # Do not use tcmalloc for ASAN/TSAN but also temporarily for gcc8 and gcc9, because initdb crashes
 # with bad deallocation with those compilers. That needs to be properly investigated.
 if ("${YB_TCMALLOC_ENABLED}" STREQUAL "")
-  if ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
+  if (APPLE AND "${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "arm64")
+    message("Not using tcmalloc macOS arm64 (https://github.com/yugabyte/yugabyte-db/issues/10725)")
+    set(YB_TCMALLOC_ENABLED "0")
+  elseif ("${YB_BUILD_TYPE}" MATCHES "^(asan|tsan)$")
     set(YB_TCMALLOC_ENABLED "0")
     message("Not using tcmalloc due to build type ${YB_BUILD_TYPE}")
   else()
     set(YB_TCMALLOC_ENABLED "1")
-    message("Using tcmalloc due to build type ${YB_BUILD_TYPE}")
+    message("Using tcmalloc by default, build type is ${YB_BUILD_TYPE}, "
+            "architecture is ${CMAKE_SYSTEM_PROCESSOR}.")
   endif()
 else()
   if (NOT "${YB_TCMALLOC_ENABLED}" MATCHES "^[01]$")

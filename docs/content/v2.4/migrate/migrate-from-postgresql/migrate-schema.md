@@ -12,7 +12,7 @@ isTocNested: false
 showAsideToc: true
 ---
 
-To convert the PostgreSQL schema to YugabyteDB schema, the following changes need to be made. 
+To convert the PostgreSQL schema to YugabyteDB schema, the following changes need to be made.
 
 {{< tip title="Tip" >}}
 
@@ -65,9 +65,9 @@ Making colocation the default for all databases is [work in progress](https://gi
 
 ## Pre-split large tables
 
-For larger tables and indexes that are hash-sharded, specify the number of initial tablet splits desired as a part of the DDL statement of the table. This can be very beneficial to distribute the data of the table across multiple nodes right from the get go. An example of specifying the number of tablets at table creation time is shown [here](/latest/architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables).
+For larger tables and indexes that are hash-sharded, specify the number of initial tablet splits desired as a part of the DDL statement of the table. This can be very beneficial to distribute the data of the table across multiple nodes right from the get go. An example of specifying the number of tablets at table creation time is shown [here](/preview/architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables).
 
-For larger tables and indexes that are range-sharded and the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. This is especially beneficial for range sharded tables/indexes. Pre-split an index using the syntax shown [here](/latest/architecture/docdb-sharding/tablet-splitting/#range-sharded-tables).
+For larger tables and indexes that are range-sharded and the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. This is especially beneficial for range sharded tables/indexes. Pre-split an index using the syntax shown [here](/preview/architecture/docdb-sharding/tablet-splitting/#range-sharded-tables).
 
 ## Remove collation on columns
 
@@ -104,7 +104,7 @@ CREATE TABLE test1 (
 
 ## Optimize sequences (SERIAL)
 
-All sequences in your schema currently use a default `CACHE` value of 1. In a distributed DB, this will result in each `INSERT` performing extra RPC calls to generate new row ids, dramatically reducing write performance. 
+All sequences in your schema currently use a default `CACHE` value of 1. In a distributed DB, this will result in each `INSERT` performing extra RPC calls to generate new row ids, dramatically reducing write performance.
 
 Consider the following table as an example.
 
@@ -142,7 +142,7 @@ yugabyte=# SELECT pg_get_serial_sequence('contacts', 'contact_id');
 
 ### Option 2. Use `UUID`s instead of `SERIAL`
 
-The recommended option is to use UUIDs instead of the SERIAL data type. UUIDs are globally unique identifiers that can be generated on any node without requiring any global inter-node coordination. 
+The recommended option is to use UUIDs instead of the SERIAL data type. UUIDs are globally unique identifiers that can be generated on any node without requiring any global inter-node coordination.
 
 Some systems refer to this data type as a globally unique identifier, or GUID, instead.
 
@@ -165,7 +165,7 @@ CREATE TABLE contacts (
 
 ## Using `ysql_dump`
 
-The PostgreSQL utility, pg_dump, can be used to dump the schema of a database. However, this schema would need  to be slightly modified as described below. 
+The PostgreSQL utility, pg_dump, can be used to dump the schema of a database. However, this schema would need  to be slightly modified as described below.
 
 The [`ysql_dump`](../../../admin/ysql-dump) tool (a YugabyteDB-specific version of the `pg_dump` tool) can connect to an existing PostgreSQL database and export a YugabyteDB-friendly version of the schema and, therefore, includes some of the schema modifications described below. The other changes mentioned below would need to be manually performed since they depend on the use case.
 

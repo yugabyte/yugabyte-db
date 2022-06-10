@@ -29,9 +29,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/curl_util.h"
 
+#include <curl/curl.h>
+
 #include <vector>
+
+#include <glog/logging.h>
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/faststring.h"
 #include "yb/util/scope_exit.h"
@@ -93,7 +100,7 @@ Status EasyCurl::PostToURL(
 
 string EasyCurl::EscapeString(const string& data) {
   string escaped_str;
-  auto str = curl_easy_escape(curl_, data.c_str(), data.length());
+  auto str = curl_easy_escape(curl_, data.c_str(), narrow_cast<int>(data.length()));
   if (str) {
     escaped_str = str;
     curl_free(str);

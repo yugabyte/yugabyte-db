@@ -12,14 +12,13 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include <fstream>
 #include <vector>
-#include <map>
 
-#include "yb/common/ql_type.h"
+#include <glog/logging.h>
 
 #include "yb/bfpg/directory.h"
+#include "yb/common/ql_type.h"
 #include "yb/gutil/strings/substitute.h"
 
 using std::endl;
@@ -78,6 +77,7 @@ class BFCodegen {
             << "#define YB_UTIL_BFPG_GEN_OPCODES_H_" << endl
             << endl
             << "#include <unordered_map>" << endl
+            << "#include <string>" << endl
             << endl
             << kFileNamespace;
 
@@ -137,6 +137,7 @@ class BFCodegen {
             // Including header files.
             << "#include <iostream>" << endl
             << "#include <unordered_map>" << endl
+            << "#include <string>" << endl
             << "#include \"yb/bfpg/gen_opcodes.h\"" << endl
             << endl
             // Use namespaces.
@@ -170,10 +171,14 @@ class BFCodegen {
             << "#ifndef YB_UTIL_BFPG_GEN_OPERATOR_H_" << endl
             << "#define YB_UTIL_BFPG_GEN_OPERATOR_H_" << endl
             << endl
+            << "#include <vector>" << endl
+            << "#include <string>" << endl
+            << endl
             << "#include \"yb/bfpg/base_operator.h\"" << endl
             << "#include \"yb/bfpg/bfunc.h\"" << endl
-            << endl
-            << "#include <vector>" << endl
+            << "#include \"yb/bfpg/bfunc_convert.h\"" << endl
+            << "#include \"yb/bfpg/bfunc_standard.h\"" << endl
+            << "#include \"yb/util/status.h\"" << endl
             << endl
             // Use namespaces.
             << "using std::vector;" << endl
@@ -267,9 +272,9 @@ class BFCodegen {
           // If the caller used the kRefAndRaw option, we'll have to convert the params vector from
           // vector<object> to vector<object*>.
           param_pointer = "local_params";
-          foper_h << "    const int count = params->size();" << endl
-                  << "    std::vector<PType*> local_params(count);"
-                  << "    for (int i = 0; i < count; i++) {" << endl
+          foper_h << "    const auto count = params->size();" << endl
+                  << "    std::vector<PType*> local_params(count);" << endl
+                  << "    for (size_t i = 0; i < count; i++) {" << endl
                   << "      local_params[i] = &(*params)[i];" << endl
                   << "    }" << endl;
           foper_h << "    return " << entry.cpp_name() << "(";
@@ -318,6 +323,7 @@ class BFCodegen {
 
     ftable << kFileStart
            << "#include \"yb/bfpg/base_operator.h\"" << endl
+           << "#include \"yb/bfpg/directory.h\"" << endl
            << "#include \"yb/bfpg/gen_operator.h\"" << endl
            << endl
            << "#include <iostream>" << endl
@@ -370,7 +376,7 @@ class BFCodegen {
            << "const vector<std::function<Status(const std::vector<std::shared_ptr<PType>>&, "
            << "const std::shared_ptr<RType>&)>>" << endl
            << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncs = {" << endl;
-    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "Exec<PType, RType>," << endl;
     }
@@ -384,7 +390,7 @@ class BFCodegen {
            << "const vector<std::function<Status(const std::vector<PType*>&, RType*)>>"
            << endl
            << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRaw = {" << endl;
-    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "ExecRaw<PType, RType>," << endl;
     }
@@ -398,7 +404,7 @@ class BFCodegen {
            << "const vector<std::function<Status(std::vector<PType>*, RType*)>>"
            << endl
            << "    BFExecApi<PType, RType, CType, AType>::kBFExecFuncsRefAndRaw = {" << endl;
-    for (int op_index = 0; op_index < operator_ids_.size(); op_index++) {
+    for (size_t op_index = 0; op_index < operator_ids_.size(); op_index++) {
       const BFClassInfo& bfclass = operator_ids_[op_index];
       ftable << "  " << bfclass.class_name << "::" << "ExecRefAndRaw<PType, RType>," << endl;
     }

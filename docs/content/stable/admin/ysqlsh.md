@@ -24,13 +24,13 @@ The YugabyteDB SQL shell (`ysqlsh`) provides a CLI for interacting with Yugabyte
 
 If you prefer, you can install a standalone version using any of the following methods:
 
-* Using Docker:
+- Using Docker:
 
     ```sh
     docker run -it yugabytedb/yugabyte-client ysqlsh -h <hostname> -p <port>
     ```
 
-* Using Homebrew:
+- Using Homebrew:
 
     ```sh
     brew tap yugabyte/yugabytedb
@@ -38,7 +38,7 @@ If you prefer, you can install a standalone version using any of the following m
     ysqlsh
     ```
 
-* Using a shell script:
+- Using a shell script:
 
     ```sh
     wget -q -O - https://downloads.yugabyte.com/get_clients.sh | sh 
@@ -51,7 +51,7 @@ If you prefer, you can install a standalone version using any of the following m
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2-YB-2.0.0.0-b0)
 Type "help" for help.
 
@@ -102,7 +102,7 @@ Print failed SQL statements to standard error output. This is equivalent to sett
 
 Specifies that `ysqlsh` is to execute the given command string, *command*. This flag can be repeated and combined in any order with the `-f` flag. When either `-c` or `-f` is specified, `ysqlsh` does not read commands from standard input; instead it terminates after processing all the `-c` and `-f` flags in sequence.
 
-The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands within a `-c` flag. To achieve that, you could use repeated `-c` flags or pipe the string into `ysqlsh`, for example:
+The command (*command*) must be either a command string that is completely parsable by the server (that is, it contains no `ysqlsh`-specific features), or a single backslash (`\`) command. Thus, you cannot mix SQL and `ysqlsh` meta-commands in a `-c` flag. To achieve that, you could use repeated `-c` flags or pipe the string into `ysqlsh`, for example:
 
 ```plpgsql
 ysqlsh -c '\x' -c 'SELECT * FROM foo;'
@@ -215,7 +215,7 @@ Turn off printing of column names and result row count footers, etc. This is equ
 
 ##### -T *table_options*, --table-attr=*table_options*
 
-Specifies options to be placed within the HTML `table` tag. For details, see [`\pset tableattr`](#tableattr-or-t).
+Specifies options to be placed in the HTML `table` tag. For details, see [`\pset tableattr`](#tableattr-or-t).
 
 ##### -U *username*, --username=*username*
 
@@ -239,7 +239,7 @@ Note that this option will remain set for the entire session, and so it affects 
 
 Force `ysqlsh` to prompt for a password before connecting to a database.
 
-This option is never essential, since `ysqlsh` will automatically prompt for a password if the server demands password authentication. However, `ysqlsh` will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W` to avoid the extra connection attempt.
+This option is never essential, as `ysqlsh` will automatically prompt for a password if the server demands password authentication. However, `ysqlsh` will waste a connection attempt finding out that the server wants a password. In some cases it is worth typing `-W` to avoid the extra connection attempt.
 
 Note that this option will remain set for the entire session, and so it affects uses of the meta-command [`\connect`](#c-connect-reuse-previous-on-off-dbname-username-host-port-conninfo) as well as the initial connection attempt.
 
@@ -277,11 +277,25 @@ Show help about `ysqlsh` and exit. The optional *topic* parameter (defaulting to
 
 ### Connecting to a database
 
-`ysqlsh` is a regular YugabyteDB client application. In order to connect to a database you need to know the name of your target database, the host name and port number of the server, and what user name you want to connect as. `ysqlsh` can be told about those parameters using command-line options, namely `-d`, `-h`, `-p`, and `-U` respectively. If an argument is found that does not belong to any option it will be interpreted as the database name (or the user name, if the database name is already given). Not all of these options are required; there are useful defaults. If you omit the host name, `ysqlsh` will connect to the compiled-in default of `127.0.0.1` or  a Unix-domain socket to a server on the local host, or using TCP/IP to localhost on machines that don't have Unix-domain sockets. The default port number is compiled-in as `5433`. Since the database server uses the same default, you will not have to specify the port in most cases. The default username is compiled-in as `yugabyte`, as is the default database name.
+{{< note title="Yugabyte Cloud" >}}
+
+For information on connecting to a Yugabyte Cloud cluster using ysqlsh, refer to [Connect via client shells](../../yugabyte-cloud/cloud-connect/connect-client-shell/).
+
+{{< /note >}}
+
+To connect to a database, you need the following information:
+
+- the name of your target database
+- the host name and port number of the server
+- the user name you want to connect as
+
+You provide these parameters using the `-d`, `-h`, `-p`, and `-U` flags.
+
+Not all of these options are required; there are useful defaults. If you omit the host name, `ysqlsh` will connect to the compiled-in default of `127.0.0.1` or a Unix-domain socket to a server on the local host, or using TCP/IP to localhost on machines that don't have Unix-domain sockets. The default port number is compiled-in as `5433`. Because the database server uses the same default, you will not have to specify the port in most cases. The default username is compiled-in as `yugabyte`, as is the default database name. If an argument is found that does not belong to any option, it is interpreted as the database name (or the user name, if the database name is already given).
 
 {{< note title="Note" >}}
 
-Note that you cannot just connect to any database under any user name. Your database administrator should have informed you about your access rights.
+You can't just connect to any database under any user name. Your database administrator should have informed you of your access rights.
 
 {{< /note >}}
 
@@ -330,21 +344,29 @@ While C-style block comments are passed to the server for processing and removal
 
 ## Meta-commands
 
-Anything you enter in `ysqlsh` that begins with an unquoted backslash is a `ysqlsh` meta-command that is processed by `ysqlsh` itself. These commands make `ysqlsh` more useful for administration or scripting. Meta-commands are often called slash or backslash commands.
+Anything you enter in `ysqlsh` that begins with an unquoted backslash is a meta-command that is processed by `ysqlsh` itself. These commands make `ysqlsh` more useful for administration or scripting. Meta-commands are often called slash or backslash commands.
+
+{{< note title="Cloud shell" >}}
+
+For security reasons, the Yugabyte Cloud cloud shell only has access to a subset of meta-commands. With the exception of read-only access to the `/share` directory to load the sample datasets, commands that access the filesystem do not work in cloud shell.
+
+{{< /note >}}
 
 The format of a `ysqlsh` command is the backslash (`\`), followed immediately by a command verb, then any arguments. The arguments are separated from the command verb and each other by any number of whitespace characters.
 
-To include whitespace in an argument you can quote it with single quotes (`' '`). To include a single quote in an argument, write two single quotes within single-quoted text (`' ... '' ...'`). Anything contained in single quotes is furthermore subject to C-like substitutions for `\n` (new line), `\t` (tab), `\b` (backspace), `\r` (carriage return), `\f` (form feed), `\digits` (octal), and `\xdigits` (hexadecimal). A backslash preceding any other character within single-quoted text quotes that single character, whatever it is.
+To include whitespace in an argument you can quote it with single quotes (`' '`). To include a single quote in an argument, write two single quotes in single-quoted text (`' ... '' ...'`). Anything contained in single quotes is furthermore subject to C-like substitutions for `\n` (new line), `\t` (tab), `\b` (backspace), `\r` (carriage return), `\f` (form feed), `\digits` (octal), and `\xdigits` (hexadecimal). A backslash preceding any other character in single-quoted text quotes that single character, whatever it is.
 
-If an unquoted colon (`:`) followed by a `ysqlsh` variable name appears within an argument, it is replaced by the variable's value, as described in SQL Interpolation. The forms `:'variable_name'` and `:"variable_name"` described there work as well.
+If an unquoted colon (`:`) followed by a `ysqlsh` variable name appears in an argument, it is replaced by the variable's value, as described in SQL Interpolation. The forms `:'variable_name'` and `:"variable_name"` described there work as well.
 
-Within an argument, text that is enclosed in backquotes is taken as a command line that is passed to the shell. The output of the command (with any trailing newline removed) replaces the backquoted text. Within the text enclosed in backquotes, no special quoting or other processing occurs, except that appearances of :variable_name where variable_name is a `ysqlsh` variable name are replaced by the variable's value. Also, appearances of `:'variable_name'` are replaced by the variable's value suitably quoted to become a single shell command argument. (The latter form is almost always preferable, unless you are very sure of what is in the variable.) Because carriage return and line feed characters cannot be safely quoted on all platforms, the `:'variable_name'` form prints an error message and does not substitute the variable value when such characters appear in the value.
+In an argument, text that is enclosed in backquotes is taken as a command line that is passed to the shell. The output of the command (with any trailing newline removed) replaces the backquoted text. In the text enclosed in backquotes, no special quoting or other processing occurs, except that appearances of :variable_name where variable_name is a `ysqlsh` variable name are replaced by the variable's value. Also, appearances of `:'variable_name'` are replaced by the variable's value suitably quoted to become a single shell command argument. (The latter form is almost always preferable, unless you are very sure of what is in the variable.) Because carriage return and line feed characters cannot be safely quoted on all platforms, the `:'variable_name'` form prints an error message and does not substitute the variable value when such characters appear in the value.
 
-Some commands take an SQL identifier (such as a table name) as argument. These arguments follow the syntax rules of SQL: Unquoted letters are forced to lowercase, while double quotes (`"`) protect letters from case conversion and allow incorporation of whitespace into the identifier. Within double quotes, paired double quotes reduce to a single double quote in the resulting name. For example, `FOO"BAR"BAZ` is interpreted as `fooBARbaz`, and `"A weird"" name"` becomes `A weird" name`.
+Some commands take an SQL identifier (such as a table name) as argument. These arguments follow the syntax rules of SQL: Unquoted letters are forced to lowercase, while double quotes (`"`) protect letters from case conversion and allow incorporation of whitespace into the identifier. In double quotes, paired double quotes reduce to a single double quote in the resulting name. For example, `FOO"BAR"BAZ` is interpreted as `fooBARbaz`, and `"A weird"" name"` becomes `A weird" name`.
 
 Parsing for arguments stops at the end of the line, or when another unquoted backslash is found. An unquoted backslash is taken as the beginning of a new meta-command. The special sequence `\\` (two backslashes) marks the end of arguments and continues parsing SQL commands, if any. That way SQL statements and `ysqlsh` commands can be freely mixed on a line. But in any case, the arguments of a meta-command cannot continue beyond the end of the line.
 
-Many of the meta-commands act on the current query buffer. This is simply a buffer holding whatever SQL statement text has been typed but not yet sent to the server for execution. This will include previous input lines as well as any text appearing before the meta-command on the same line.
+Many of the meta-commands act on the current query buffer. This buffer holds whatever SQL statement text has been typed but not yet sent to the server for execution. This will include previous input lines as well as any text appearing before the meta-command on the same line.
+
+### Reference
 
 The following meta-commands are defined:
 
@@ -370,7 +392,7 @@ Examples:
 \C [ title ]
 ```
 
-Sets the title of any tables being printed as the result of a query or unset any such title. This command is equivalent to [`\pset title title`](#title-or-c). (The name of this command derives from “caption”, as it was previously only used to set the caption in an HTML table.)
+Sets the title of any tables being printed as the result of a query or unset any such title. This command is equivalent to [`\pset title title`](#title-or-c). (The name of this command derives from "caption", as it was previously only used to set the caption in an HTML table.)
 
 ##### \cd [ *directory* ]
 
@@ -392,7 +414,7 @@ Performs a frontend (client) copy. This is an operation that runs an SQL `COPY` 
 
 When program is specified, *command* is executed by `ysqlsh` and the data passed from or to *command* is routed between the server and the client. Again, the execution privileges are those of the local user, not the server, and no SQL superuser privileges are required.
 
-For `\copy ... from stdin`, data rows are read from the same source that issued the command, continuing until `\.` is read or the stream reaches EOF. This option is useful for populating tables in-line within a SQL script file. For `\copy ... to stdout`, output is sent to the same place as `ysqlsh` command output, and the COPY count command status is not printed (since it might be confused with a data row). To read or write `ysqlsh`'s standard input or output, regardless of the current command source or `\o` option, write from `pstdin` or to `pstdout`.
+For `\copy ... from stdin`, data rows are read from the same source that issued the command, continuing until `\.` is read or the stream reaches EOF. This option is useful for populating tables in-line in a SQL script file. For `\copy ... to stdout`, output is sent to the same place as `ysqlsh` command output, and the COPY count command status is not printed (as it might be confused with a data row). To read or write `ysqlsh`'s standard input or output, regardless of the current command source or `\o` option, write from `pstdin` or to `pstdout`.
 
 The syntax of this command is similar to that of the SQL `COPY` statement. All options other than the data source or destination are as specified for `COPY`. Because of this, special parsing rules apply to the `\copy` meta-command. Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\copy`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
@@ -414,7 +436,7 @@ Shows the copyright and distribution terms of PostgreSQL, which YugabyteDB is de
 
 ##### \crosstabview [ *colV* [ *colH* [ *colD* [ *sortcolH* ] ] ] ]
 
-Executes the current query buffer (like `\g`) and shows the results in a crosstab grid. The query must return at least three columns. The output column identified by *colV* becomes a vertical header and the output column identified by *colH* becomes a horizontal header. *colD* identifies the output column to display within the grid. *sortcolH* identifies an optional sort column for the horizontal header.
+Executes the current query buffer (like `\g`) and shows the results in a crosstab grid. The query must return at least three columns. The output column identified by *colV* becomes a vertical header and the output column identified by *colH* becomes a horizontal header. *colD* identifies the output column to display in the grid. *sortcolH* identifies an optional sort column for the horizontal header.
 
 Each column specification can be a column number (starting at `1`) or a column name. The usual SQL case folding and quoting rules apply to column names. If omitted, *colV* is taken as column 1 and *colH* as column 2. *colH* must differ from *colV*. If *colD* is not specified, then there must be exactly three columns in the query result, and the column that is neither *colV* nor *colH* is taken to be *colD*.
 
@@ -424,9 +446,9 @@ The horizontal header, displayed as the first row, contains the values found in 
 
 Inside the crosstab grid, for each distinct value `x` of *colH* and each distinct value `y` of *colV*, the cell located at the intersection (`x,y`) contains the value of the *colD* column in the query result row for which the value of *colH* is `x` and the value of *colV* is `y`. If there is no such row, the cell is empty. If there are multiple such rows, an error is reported.
 
-##### \d[S+] [ *pattern* ]
+##### \d[S+] [ [pattern](#patterns) ]
 
-For each relation (table, view, materialized view, index, sequence, or foreign table) or composite type matching the *pattern*, show all columns, their types, and any special attributes such as `NOT NULL` or defaults. Associated indexes, constraints, rules, and triggers are also shown. For foreign tables, the associated foreign server is shown as well. (“Matching the pattern” is defined in [Patterns](#patterns) below.)
+For each relation (table, view, materialized view, index, sequence, or foreign table) or composite type matching the *pattern*, show all columns, their types, and any special attributes such as `NOT NULL` or defaults. Associated indexes, constraints, rules, and triggers are also shown. For foreign tables, the associated foreign server is shown as well. ("Matching the pattern" is defined in [Patterns](#patterns) below.)
 
 For some types of relation, `\d` shows additional information for each column: column values for sequences, indexed expressions for indexes, and foreign data wrapper options for foreign tables.
 
@@ -440,23 +462,23 @@ If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE` whic
 
 {{< /note >}}
 
-##### \da[S] [ *pattern* ]
+##### \da[S] [ [pattern](#patterns) ]
 
 Lists aggregate functions, together with their return type and the data types they operate on. If *pattern* is specified, only aggregates whose names match the pattern are shown. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects.
 
-##### \dA[+] [ *pattern* ]
+##### \dA[+] [ [pattern](#patterns) ]
 
 Lists access methods. If *pattern* is specified, only access methods whose names match the pattern are shown. If `+` is appended to the command name, each access method is listed with its associated handler function and description.
 
-##### \dc[S+] [ *pattern* ]
+##### \dc[S+] [ [pattern](#patterns) ]
 
 Lists conversions between character-set encodings. If *pattern* is specified, only conversions whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If `+` is appended to the command name, each object is listed with its associated description.
 
-##### \dC[+] [ *pattern* ]
+##### \dC[+] [ [pattern](#patterns) ]
 
 Lists type casts. If *pattern* is specified, only casts whose source or target types match the pattern are listed. If `+` is appended to the command name, each object is listed with its associated description.
 
-##### \dd[S] [ *pattern* ]
+##### \dd[S] [ [pattern](#patterns) ]
 
 Shows the descriptions of objects of type constraint, operator class, operator family, rule, and trigger. All other comments may be viewed by the respective backslash commands for those object types.
 
@@ -464,31 +486,31 @@ Shows the descriptions of objects of type constraint, operator class, operator f
 
 Descriptions for objects can be created with the SQL [`COMMENT`](../../api/ysql/the-sql-language/statements/ddl_comment) statement.
 
-##### \dD[S+] [ *pattern* ]
+##### \dD[S+] [ [pattern](#patterns) ]
 
 Lists domains. If *pattern* is specified, only domains whose names match the pattern are shown. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If `+` is appended to the command name, each object is listed with its associated permissions and description.
 
-##### \ddp [ *pattern* ]
+##### \ddp [ [pattern](#patterns) ]
 
 Lists default access privilege settings. An entry is shown for each role (and schema, if applicable) for which the default privilege settings have been changed from the built-in defaults. If *pattern* is specified, only entries whose role name or schema name matches the pattern are listed.
 
 The [`ALTER DEFAULT PRIVILEGES`](../../api/ysql/the-sql-language/statements/dcl_alter_default_privileges) statement is used to set default access privileges. The meaning of the privilege display is explained under [`GRANT`](../../api/ysql/the-sql-language/statements/dcl_grant).
 
-##### \dE[S+], \di[S+], \dm[S+], \ds[S+], \dt[S+], \dv[S+] [ *pattern* ]
+##### \dE[S+], \di[S+], \dm[S+], \ds[S+], \dt[S+], \dv[S+] [ [pattern](#patterns) ]
 
-In this group of commands, the letters `E`, `i`, `m`, `s`, `t`, and `v` stand for foreign table, index, materialized view, sequence, table, and view, respectively. You can specify any or all of these letters, in any order, to obtain a listing of objects of these types. For example, `\dit` lists indexes and tables. If `+` is appended to the command name, each object is listed with its physical size on disk and its associated description, if any. If *pattern* is specified, only objects whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects.
+In this group of commands, the letters `E`, `i`, `m`, `s`, `t`, and `v` stand for foreign table, index, materialized view, sequence, table, and view, respectively. You can specify any or all of these letters, in any order, to obtain a listing of objects of these types. For example, `\dit` lists indexes and tables. If `+` is appended to the command name, each object is listed with its physical size on disk and its associated description, if any. If [pattern](#patterns) is specified, only objects whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects.
 
-##### \des[+] [ *pattern* ]
+##### \des[+] [ [pattern](#patterns) ]
 
-Lists foreign servers (mnemonic: “external servers”). If *pattern* is specified, only those servers whose name matches the pattern are listed. If the form \des+ is used, a full description of each server is shown, including the server's ACL, type, version, options, and description.
+Lists foreign servers (mnemonic: "external servers"). If *pattern* is specified, only those servers whose name matches the pattern are listed. If the form \des+ is used, a full description of each server is shown, including the server's ACL, type, version, options, and description.
 
-##### \det[+] [ *pattern* ]
+##### \det[+] [ [pattern](#patterns) ]
 
-Lists foreign tables (mnemonic: “external tables”). If *pattern* is specified, only entries whose table name or schema name matches the pattern are listed. If the form `\det+` is used, generic options and the foreign table description are also displayed.
+Lists foreign tables (mnemonic: "external tables"). If *pattern* is specified, only entries whose table name or schema name matches the pattern are listed. If the form `\det+` is used, generic options and the foreign table description are also displayed.
 
-##### \deu[+] [ *pattern* ]
+##### \deu[+] [ [pattern](#patterns) ]
 
-Lists user mappings (mnemonic: “external users”). If *pattern* is specified, only those mappings whose user names match the pattern are listed. If the form `\deu+` is used, additional information about each mapping is shown.
+Lists user mappings (mnemonic: "external users"). If *pattern* is specified, only those mappings whose user names match the pattern are listed. If the form `\deu+` is used, additional information about each mapping is shown.
 
 {{< note title="Caution" >}}
 
@@ -496,13 +518,13 @@ Lists user mappings (mnemonic: “external users”). If *pattern* is specified,
 
 {{< /note >}}
 
-##### \dew[+] [ *pattern* ]
+##### \dew[+] [ [pattern](#patterns) ]
 
-Lists foreign-data wrappers (mnemonic: “external wrappers”). If *pattern* is specified, only those foreign-data wrappers whose name matches the pattern are listed. If the form `\dew+` is used, the ACL, options, and description of the foreign-data wrapper are also shown.
+Lists foreign-data wrappers (mnemonic: "external wrappers"). If *pattern* is specified, only those foreign-data wrappers whose name matches the pattern are listed. If the form `\dew+` is used, the ACL, options, and description of the foreign-data wrapper are also shown.
 
-##### \df[antwS+] [ *pattern* ]
+##### \df[antwS+] [ [pattern](#patterns) ]
 
-Lists functions, together with their result data types, argument data types, and function types, which are classified as “agg” (aggregate), “normal”, “trigger”, or “window”. To display only functions of specific types, add the corresponding letters `a`, `n`, `t`, or `w` to the command. If *pattern* is specified, only functions whose names match the pattern are shown. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If the form `\df+` is used, additional information about each function is shown, including volatility, parallel safety, owner, security classification, access privileges, language, source code and description.
+Lists functions, together with their result data types, argument data types, and function types, which are classified as "agg" (aggregate), "normal", "trigger", or "window". To display only functions of specific types, add the corresponding letters `a`, `n`, `t`, or `w` to the command. If *pattern* is specified, only functions whose names match the pattern are shown. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If the form `\df+` is used, additional information about each function is shown, including volatility, parallel safety, owner, security classification, access privileges, language, source code, and description.
 
 {{< note title="Tip" >}}
 
@@ -510,47 +532,47 @@ To look up functions taking arguments or returning values of a specific data typ
 
 {{< /note >}}
 
-##### \dF[+] [ *pattern* ]
+##### \dF[+] [ [pattern](#patterns) ]
 
 Lists text search configurations. If *pattern* is specified, only configurations whose names match the pattern are shown. If the form `\dF+` is used, a full description of each configuration is shown, including the underlying text search parser and the dictionary list for each parser token type.
 
-##### \dFd[+] [ *pattern* ]
+##### \dFd[+] [ [pattern](#patterns) ]
 
 Lists text search dictionaries. If *pattern* is specified, only dictionaries whose names match the pattern are shown. If the form `\dFd+` is used, additional information is shown about each selected dictionary, including the underlying text search template and the option values.
 
-##### \dFp[+] [ *pattern* ]
+##### \dFp[+] [ [pattern](#patterns) ]
 
 Lists text search parsers. If *pattern* is specified, only parsers whose names match the pattern are shown. If the form `\dFp+` is used, a full description of each parser is shown, including the underlying functions and the list of recognized token types.
 
-##### \dFt[+] [ *pattern* ]
+##### \dFt[+] [ [pattern](#patterns) ]
 
 Lists text search templates. If *pattern* is specified, only templates whose names match the pattern are shown. If the form `\dFt+` is used, additional information is shown about each template, including the underlying function names.
 
-##### \dg[S+] [ *pattern* ]
+##### \dg[S+] [ [pattern](#patterns) ]
 
-Lists database roles. (Since the concepts of “users” and “groups” have been unified into “roles”, this command is now equivalent to `\du`.) By default, only user-created roles are shown; supply the `S` modifier to include system roles. If pattern is specified, only those roles whose names match the *pattern* are listed. If the form `\dg+` is used, additional information is shown about each role; currently this adds the comment for each role.
+Lists database roles. (Because the concepts of "users" and "groups" have been unified into "roles", this command is now equivalent to `\du`.) By default, only user-created roles are shown; supply the `S` modifier to include system roles. If pattern is specified, only those roles whose names match the *pattern* are listed. If the form `\dg+` is used, additional information is shown about each role; currently this adds the comment for each role.
 
 ##### \dl
 
 This is an alias for [`\lo_list`](#lo-list), which shows a list of large objects.
 
-##### \dL[S+] [ *pattern* ]
+##### \dL[S+] [ [pattern](#patterns) ]
 
 Lists procedural languages. If *pattern* is specified, only languages whose names match the pattern are listed. By default, only user-created languages are shown; supply the *S* modifier to include system objects. If *+* is appended to the command name, each language is listed with its call handler, validator, access privileges, and whether it is a system object.
 
-##### \dn[S+] [ *pattern* ]
+##### \dn[S+] [ [pattern](#patterns) ]
 
 Lists schemas (namespaces). If *pattern* is specified, only schemas whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If `+` is appended to the command name, each object is listed with its associated permissions and description, if any.
 
-##### \do[S+] [ *pattern* ]
+##### \do[S+] [ [pattern](#patterns) ]
 
 Lists operators with their operand and result types. If *pattern* is specified, only operators whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If `+` is appended to the command name, additional information about each operator is shown, currently just the name of the underlying function.
 
-##### \dO[S+] [ *pattern* ]
+##### \dO[S+] [ [pattern](#patterns) ]
 
 Lists collations. If *pattern* is specified, only collations whose names match the pattern are listed. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects. If `+` is appended to the command name, each collation is listed with its associated description, if any. Note that only collations usable with the current database's encoding are shown, so the results may vary in different databases of the same installation.
 
-##### \dp [ *pattern* ]
+##### \dp [ [pattern](#patterns) ]
 
 Lists tables, views, and sequences with their associated access privileges. If *pattern* is specified, only tables, views, and sequences whose names match the pattern are listed.
 
@@ -562,27 +584,27 @@ Lists defined configuration settings. These settings can be role-specific, datab
 
 The [`ALTER ROLE`](../../api/ysql/the-sql-language/statements/dcl_alter_role) and [`ALTER DATABASE`](../../api/ysql/the-sql-language/statements/ddl_alter_db) statements are used to define per-role and per-database configuration settings.
 
-##### \dRp[+] [ *pattern* ]
+##### \dRp[+] [ [pattern](#patterns) ]
 
 Lists replication publications. If *pattern* is specified, only those publications whose names match the pattern are listed. If `+` is appended to the command name, the tables associated with each publication are shown as well.
 
-##### \dRs[+] [ *pattern* ]
+##### \dRs[+] [ [pattern](#patterns) ]
 
 Lists replication subscriptions. If *pattern* is specified, only those subscriptions whose names match the pattern are listed. If `+` is appended to the command name, additional properties of the subscriptions are shown.
 
-##### \dT[S+] [ *pattern* ]
+##### \dT[S+] [ [pattern](#patterns) ]
 
 Lists data types. If *pattern* is specified, only types whose names match the pattern are listed. If `+` is appended to the command name, each type is listed with its internal name and size, its allowed values if it is an enum type, and its associated permissions. By default, only user-created objects are shown; supply a pattern or the `S` modifier to include system objects.
 
-##### \du[S+] [ *pattern* ]
+##### \du[S+] [ [pattern](#patterns) ]
 
-Lists database roles. (Since the concepts of “users” and “groups” have been unified into “roles”, this command is now equivalent to [`\dg`](#dg-s-pattern).) By default, only user-created roles are shown; supply the `S` modifier to include system roles. If `pattern` is specified, only those roles whose names match the pattern are listed. If the form `\du+` is used, additional information is shown about each role; currently this adds the comment for each role.
+Lists database roles. (Because the concepts of "users" and "groups" have been unified into "roles", this command is now equivalent to [`\dg`](#dg-s-pattern).) By default, only user-created roles are shown; supply the `S` modifier to include system roles. If `pattern` is specified, only those roles whose names match the pattern are listed. If the form `\du+` is used, additional information is shown about each role; currently this adds the comment for each role.
 
-##### \dx[+] [ *pattern* ]
+##### \dx[+] [ [pattern](#patterns) ]
 
 Lists installed extensions. If *pattern* is specified, only those extensions whose names match the pattern are listed. If the form `\dx+` is used, all the objects belonging to each matching extension are listed.
 
-##### \dy[+] [ *pattern* ]
+##### \dy[+] [ [pattern](#patterns) ]
 
 Lists event triggers. If *pattern* is specified, only those event triggers whose names match the pattern are listed. If `+` is appended to the command name, each object is listed with its associated description.
 
@@ -661,9 +683,9 @@ Sets the field separator for unaligned query output. The default is the vertical
 
 Sends the current query buffer to the server for execution. If an argument is given, the query's output is written to the named file *filename* or piped to the given shell command *command*, instead of displaying it as usual. The file or command is written to only if the query successfully returns zero or more tuples, not if the query fails or is a non-data-returning SQL statement.
 
-If the current query buffer is empty, the most recently sent query is re-executed instead. Except for that behavior, `\g` without an argument is essentially equivalent to a semicolon. A `\g` with argument is a “one-shot” alternative to the [`\o`](#o-out-filename-command) command.
+If the current query buffer is empty, the most recently sent query is re-executed instead. Except for that behavior, `\g` without an argument is essentially equivalent to a semicolon. A `\g` with argument is a "one-shot" alternative to the [`\o`](#o-out-filename-command) command.
 
-If the argument begins with `|`, then the entire remainder of the line is taken to be the *command* to execute, and neither variable interpolation nor backquote expansion are performed in it. The rest of the line is simply passed literally to the shell.
+If the argument begins with `|`, then the entire remainder of the line is taken to be the *command* to execute, and neither variable interpolation nor backquote expansion are performed in it. The rest of the line is passed literally to the shell.
 
 ##### \gexec
 
@@ -681,7 +703,7 @@ CREATE INDEX
 CREATE INDEX
 ```
 
-The generated queries are executed in the order in which the rows are returned, and left-to-right within each row if there is more than one column. `NULL` fields are ignored. The generated queries are sent literally to the server for processing, so they cannot be `ysqlsh` meta-commands nor contain `ysqlsh` variable references. If any individual query fails, execution of the remaining queries continues unless `ON_ERROR_STOP` is set. Execution of each query is subject to `ECHO` processing. (Setting [`ECHO`](#echo) to `all` or `queries` is often advisable when using `\gexec`.) Query logging, single-step mode, timing, and other query execution features apply to each generated query as well.
+The generated queries are executed in the order in which the rows are returned, and left-to-right in each row if there is more than one column. `NULL` fields are ignored. The generated queries are sent literally to the server for processing, so they cannot be `ysqlsh` meta-commands nor contain `ysqlsh` variable references. If any individual query fails, execution of the remaining queries continues unless `ON_ERROR_STOP` is set. Execution of each query is subject to `ECHO` processing. (Setting [`ECHO`](#echo) to `all` or `queries` is often advisable when using `\gexec`.) Query logging, single-step mode, timing, and other query execution features apply to each generated query as well.
 
 If the current query buffer is empty, the most recently sent query is re-executed instead.
 
@@ -784,7 +806,7 @@ SELECT
 
 The `\ir` command is similar to `\i`, but resolves relative file names differently. When executing in interactive mode, the two commands behave identically. However, when invoked from a script, `\ir` interprets file names relative to the directory in which the script is located, rather than the current working directory.
 
-##### \l[+] | \list[+] [ *pattern* ]
+##### \l[+] | \list[+] [ [pattern](#patterns) ]
 
 List the databases in the server and show their names, owners, character set encodings, and access privileges. If *pattern* is specified, only databases whose names match the pattern are listed. If `+` is appended to the command name, database sizes, and descriptions are also displayed. (Size information is only available for databases that the current user can connect to.)
 
@@ -802,7 +824,7 @@ Use [`\lo_list`](#lo-list) to find out the large object's OID.
 
 Stores the file into a YugabyteDB large object. Optionally, it associates the given comment with the object. Example:
 
-```
+```sql
 foo=> \lo_import '/home/peter/pictures/photo.xcf' 'a picture of me'
 lo_import 152801
 ```
@@ -825,13 +847,13 @@ To find out the large object's OID, use [`\lo_list`](#lo-list).
 
 {{< /note >}}
 
-##### \o | \out [ *filename* | |*command* ] 
+##### \o | \out [ *filename* | |*command* ]
 
 Arranges to save future query results to the file *filename* or pipe future results to the shell command *command*. If no argument is specified, the query output is reset to the standard output.
 
-If the argument begins with `|`, then the entire remainder of the line is taken to be the *command* to execute, and neither variable interpolation nor backquote expansion are performed in it. The rest of the line is simply passed literally to the shell.
+If the argument begins with `|`, then the entire remainder of the line is taken to be the *command* to execute, and neither variable interpolation nor backquote expansion are performed in it. The rest of the line is passed literally to the shell.
 
-“Query results” includes all tables, command responses, and notices obtained from the database server, as well as output of various backslash commands that query the database (such as `\d`); but not error messages.
+"Query results" includes all tables, command responses, and notices obtained from the database server, as well as output of various backslash commands that query the database (such as `\d`); but not error messages.
 
 {{< note title="Tip" >}}
 
@@ -871,11 +893,11 @@ Sets the target width for the `wrapped` format, and also the width limit for det
 
 ###### expanded (or x)
 
-If *value* is specified it must be either `on` or `off`, which will enable or disable expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns, with the column name on the left and the data on the right. This mode is useful if the data wouldn't fit on the screen in the normal “horizontal” mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
+If *value* is specified it must be either `on` or `off`, which will enable or disable expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns, with the column name on the left and the data on the right. This mode is useful if the data wouldn't fit on the screen in the normal "horizontal" mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
 
 ###### fieldsep
 
-Specifies the field separator to be used in unaligned output format. That way one can create, for example, tab- or comma-separated output, which other programs might prefer. To set a tab as field separator, run the command [`\pset fieldsep '\t'`](#fieldsep). The default field separator is `|` (a vertical bar).
+Specifies the field separator to be used in unaligned output format. That way, one can create, for example, tab- or comma-separated output, which other programs might prefer. To set a tab as field separator, run the command [`\pset fieldsep '\t'`](#fieldsep). The default field separator is `|` (a vertical bar).
 
 ###### fieldsep_zero
 
@@ -919,7 +941,7 @@ If *value* is specified, it must be either `on` or `off`, which will enable or d
 
 Controls use of a pager program for query and `ysqlsh` help output. If the environment variable `PAGER` is set, the output is piped to the specified program. Otherwise, a platform-dependent default (such as `more`) is used.
 
-When the `pager` option is `off`, the pager program is not used. When the `pager` option is `on`, the pager is used when appropriate, i.e., when the output is to a terminal and will not fit on the screen. The `pager` option can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a *value* toggles pager use `on` and `off`.
+When the `pager` option is `off`, the pager program is not used. When the `pager` option is `on`, the pager is used when appropriate, that is, when the output is to a terminal and will not fit on the screen. The `pager` option can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a *value* toggles pager use `on` and `off`.
 
 ###### pager_min_lines
 
@@ -1003,7 +1025,7 @@ This command is unrelated to the SQL `SET` statement.
 
 Sets the environment variable *name* to *value*, or if *value* is not supplied, unsets the environment variable. Example:
 
-```
+```sql
 testdb=> \setenv PAGER less
 testdb=> \setenv LESS -imx4F
 ```
@@ -1032,7 +1054,7 @@ Toggles the display of output column name headings and row count footer. This co
 
 ##### \T *table_options*
 
-Specifies attributes to be placed within the `table` tag in HTML output format. This command is equivalent to [`\pset tableattr <table_options>`](#tableattr-or-t).
+Specifies attributes to be placed in the `table` tag in HTML output format. This command is equivalent to [`\pset tableattr <table_options>`](#tableattr-or-t).
 
 ##### \timing [ on | off ]
 
@@ -1048,7 +1070,7 @@ Most variables that control `ysqlsh`'s behavior cannot be unset; instead, an `\u
 
 Writes the current query buffer to the file *filename* or pipes it to the shell command *command*. If the current query buffer is empty, the most recently executed query is written instead.
 
-If the argument begins with `|`, then the entire remainder of the line is taken to be the command to execute, and neither variable interpolation nor backquote expansion are performed in it. The rest of the line is simply passed literally to the shell.
+If the argument begins with `|`, then the entire remainder of the line is taken to be the command to execute, and neither variable interpolation nor backquote expansion are performed in it. The rest of the line is passed literally to the shell.
 
 ##### \watch [ *seconds* ]
 
@@ -1060,49 +1082,49 @@ If the current query buffer is empty, the most recently sent query is re-execute
 
 Sets or toggles expanded table formatting mode. As such, it is equivalent to [`\pset expanded`](#expanded-or-x).
 
-##### \z [ *pattern* ]
+##### \z [ [pattern](#patterns) ]
 
 Lists tables, views and sequences with their associated access privileges. If a *pattern* is specified, only tables, views, and sequences whose names match the pattern are listed.
 
-This is an alias for [`\dp (“display privileges”)`](#dp-pattern).
+This is an alias for [`\dp ("display privileges")`](#dp-pattern).
 
-##### \! [ *command* ]
+##### \\! [ *command* ]
 
 With no argument, escapes to a sub-shell; `ysqlsh` resumes when the sub-shell exits. With an argument, executes the shell command *command*.
 
-Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\!`, and neither variable interpolation nor backquote expansion are performed in the arguments. The rest of the line is simply passed literally to the shell.
+Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\!`, and neither variable interpolation nor backquote expansion are performed in the arguments. The rest of the line is passed literally to the shell.
 
-##### \? [ *topic* ]
+##### \\? [ *topic* ]
 
 Shows help information. The optional *topic* parameter (defaulting to `commands`) selects which part of `ysqlsh` is explained: `commands` describes psql's backslash commands; `options` describes the command-line options that can be passed to psql; and `variables` shows help about `ysqlsh` configuration variables.
 
-## Patterns
+### Patterns
 
-The various `\d` commands accept a *pattern* parameter to specify the object names to be displayed. In the simplest case, a pattern is just the exact name of the object. The characters within a pattern are normally folded to lower case, just as in SQL names; for example, `\dt FOO` will display the table named `foo`. As in SQL names, placing double quotes around a pattern stops folding to lower case. Should you need to include an actual double quote character in a pattern, write it as a pair of double quotes within a double-quote sequence; again this is in accord with the rules for SQL quoted identifiers. For example, `\dt "FOO""BAR"` will display the table named `FOO"BAR` (not `foo"bar`). Unlike the normal rules for SQL names, you can put double quotes around just part of a pattern, for instance `\dt FOO"FOO"BAR` will display the table named `fooFOObar`.
+The various `\d` commands accept a *pattern* parameter to specify the object names to be displayed. In the simplest case, a pattern is just the exact name of the object. The characters in a pattern are normally folded to lower case, just as in SQL names; for example, `\dt FOO` will display the table named `foo`. As in SQL names, placing double quotes around a pattern stops folding to lower case. Should you need to include an actual double quote character in a pattern, write it as a pair of double quotes in a double-quote sequence; again this is in accord with the rules for SQL quoted identifiers. For example, `\dt "FOO""BAR"` will display the table named `FOO"BAR` (not `foo"bar`). Unlike the normal rules for SQL names, you can put double quotes around just part of a pattern, for instance `\dt FOO"FOO"BAR` will display the table named `fooFOObar`.
 
 Whenever the *pattern* parameter is omitted completely, the `\d` commands display all objects that are visible in the current schema search path — this is equivalent to using `*` as the pattern. (An object is said to be visible if its containing schema is in the search path and no object of the same kind and name appears earlier in the search path. This is equivalent to the statement that the object can be referenced by name without explicit schema qualification.) To see all objects in the database regardless of visibility, use `*.*` as the pattern.
 
-Within a pattern, `*` matches any sequence of characters (including no characters) and `?` matches any single character. (This notation is comparable to Unix shell file name patterns.) For example, `\dt int*` displays tables whose names begin with `int`. But within double quotes, `*` and `?` lose these special meanings and are just matched literally.
+In a pattern, `*` matches any sequence of characters (including no characters) and `?` matches any single character. (This notation is comparable to Unix shell file name patterns.) For example, `\dt int*` displays tables whose names begin with `int`. But in double quotes, `*` and `?` lose these special meanings and are just matched literally.
 
-A pattern that contains a dot (`.`) is interpreted as a schema name pattern followed by an object name pattern. For example, `\dt foo*.*bar*` displays all tables whose table name includes bar that are in schemas whose schema name starts with foo. When no dot appears, then the pattern matches only objects that are visible in the current schema search path. Again, a dot within double quotes loses its special meaning and is matched literally.
+A pattern that contains a dot (`.`) is interpreted as a schema name pattern followed by an object name pattern. For example, `\dt foo*.*bar*` displays all tables whose table name includes bar that are in schemas whose schema name starts with foo. When no dot appears, then the pattern matches only objects that are visible in the current schema search path. Again, a dot in double quotes loses its special meaning and is matched literally.
 
-Advanced users can use regular-expression notations such as character classes, for example `[0-9]` to match any digit. All regular expression special characters work as specified, except for `.` which is taken as a separator as mentioned above, `*` which is translated to the regular-expression notation `.*`, `?` which is translated to `.`, and `$` which is matched literally. You can emulate these pattern characters at need by writing `?` for `.`, (`R+|`) for `R*`, or (`R|`) for `R?`. `$` is not needed as a regular-expression character because the pattern must match the whole name, unlike the usual interpretation of regular expressions (in other words, `$` is automatically appended to your pattern). Write `*` at the beginning and/or end if you don't wish the pattern to be anchored. Note that within double quotes, all regular expression special characters lose their special meanings and are matched literally. Also, the regular expression special characters are matched literally in operator name patterns (that is, the argument of `\do`).
+Advanced users can use regular-expression notations such as character classes, for example `[0-9]` to match any digit. All regular expression special characters work as specified, except for `.` which is taken as a separator as mentioned above, `*` which is translated to the regular-expression notation `.*`, `?` which is translated to `.`, and `$` which is matched literally. You can emulate these pattern characters at need by writing `?` for `.`, (`R+|`) for `R*`, or (`R|`) for `R?`. `$` is not needed as a regular-expression character because the pattern must match the whole name, unlike the usual interpretation of regular expressions (in other words, `$` is automatically appended to your pattern). Write `*` at the beginning and/or end if you don't wish the pattern to be anchored. Note that in double quotes, all regular expression special characters lose their special meanings and are matched literally. Also, the regular expression special characters are matched literally in operator name patterns (that is, the argument of `\do`).
 
 ## Advanced features
 
 ### Variables
 
-`ysqlsh` provides variable substitution features similar to common Linux command shells. Variables are simply name-value pairs, where the value can be any string of any length. The name must consist of letters (including non-Latin letters), digits, and underscores.
+`ysqlsh` provides variable substitution features similar to common Linux command shells. Variables are name-value pairs, where the value can be any string of any length. The name must consist of letters (including non-Latin letters), digits, and underscores.
 
 To set a variable, use the `ysqlsh` meta-command [`\set`](#set-name-value). For example,
 
-```
+```sql
 testdb=> \set foo bar
 ```
 
 sets the variable `foo` to the value `bar`. To retrieve the content of the variable, precede the name with a colon, for example:
 
-```
+```sql
 testdb=> \echo :foo
 bar
 ```
@@ -1113,7 +1135,7 @@ If you call [`\set`](#set-name-value) without a second argument, the variable is
 
 {{< note title="Note" >}}
 
-The arguments of [`\set`](#set-name-value) are subject to the same substitution rules as with other commands. Thus you can construct interesting references such as [`\set :foo 'something'`](#set-name-value) and get “soft links” or “variable variables” of Perl or PHP fame, respectively. Unfortunately (or fortunately?), there is no way to do anything useful with these constructs. On the other hand, [`\set bar :foo`](#set-name-value) is a perfectly valid way to copy a variable.
+The arguments of [`\set`](#set-name-value) are subject to the same substitution rules as with other commands. Thus you can construct interesting references such as [`\set :foo 'something'`](#set-name-value) and get "soft links" or "variable variables" of Perl or PHP fame, respectively. Unfortunately (or fortunately?), there is no way to do anything useful with these constructs. On the other hand, [`\set bar :foo`](#set-name-value) is a perfectly valid way to copy a variable.
 
 {{< /note >}}
 
@@ -1183,7 +1205,7 @@ This feature was shamelessly plagiarized from Bash.
 
 The file name that will be used to store the history list. If unset, the file name is taken from the PSQL_HISTORY environment variable. If that is not set either, the default is `~/.psql_history`. For example, putting:
 
-```
+```sql
 \set HISTFILE ~/.psql_history- :DBNAME
 ```
 
@@ -1273,7 +1295,7 @@ These variables are set at program start-up to reflect `ysqlsh`'s version, respe
 
 ### SQL interpolation
 
-A key feature of `ysqlsh` variables is that you can substitute (“interpolate”) them into regular SQL statements, as well as the arguments of meta-commands. Furthermore, `ysqlsh` provides facilities for ensuring that variable values used as SQL literals and identifiers are properly quoted. The syntax for interpolating a value without any quoting is to prepend the variable name with a colon (`:`). For example,
+A key feature of `ysqlsh` variables is that you can substitute ("interpolate") them into regular SQL statements, as well as the arguments of meta-commands. Furthermore, `ysqlsh` provides facilities for ensuring that variable values used as SQL literals and identifiers are properly quoted. The syntax for interpolating a value without any quoting is to prepend the variable name with a colon (`:`). For example,
 
 ```plpgsql
 testdb=> \set foo 'my_table'
@@ -1282,14 +1304,14 @@ testdb=> SELECT * FROM :foo;
 
 would query the table `my_table`. Note that this may be unsafe: the value of the variable is copied literally, so it can contain unbalanced quotes, or even backslash commands. You must make sure that it makes sense where you put it.
 
-When a value is to be used as an SQL literal or identifier, it is safest to arrange for it to be quoted. To quote the value of a variable as an SQL literal, write a colon followed by the variable name in single quotes. To quote the value as an SQL identifier, write a colon followed by the variable name in double quotes. These constructs deal correctly with quotes and other special characters embedded within the variable value. The previous example would be more safely written this way:
+When a value is to be used as an SQL literal or identifier, it is safest to arrange for it to be quoted. To quote the value of a variable as an SQL literal, write a colon followed by the variable name in single quotes. To quote the value as an SQL identifier, write a colon followed by the variable name in double quotes. These constructs deal correctly with quotes and other special characters embedded in the variable value. The previous example would be more safely written this way:
 
 ```plpgsql
 testdb=> \set foo 'my_table'
 testdb=> SELECT * FROM :"foo";
 ```
 
-Variable interpolation will not be performed within quoted SQL literals and identifiers. Therefore, a construction such as `':foo'` doesn't work to produce a quoted literal from a variable's value (and it would be unsafe if it did work, since it wouldn't correctly handle quotes embedded in the value).
+Variable interpolation will not be performed in quoted SQL literals and identifiers. Therefore, a construction such as `':foo'` doesn't work to produce a quoted literal from a variable's value (and it would be unsafe if it did work, as it wouldn't correctly handle quotes embedded in the value).
 
 One example use of this mechanism is to copy the contents of a file into a table column. First, load the file into a variable, and then interpolate the variable's value as a quoted string:
 
@@ -1300,7 +1322,7 @@ testdb=> INSERT INTO my_table VALUES (:'content');
 
 (Note that this still won't work if `my_file.txt` contains `NUL` bytes. `ysqlsh` does not support embedded `NUL` bytes in variable values.)
 
-Since colons can legally appear in SQL statements, an apparent attempt at interpolation (that is, `:name`, `:'name'`, or `:"name"`) is not replaced unless the named variable is currently set. In any case, you can escape a colon with a backslash to protect it from substitution.
+Because colons can legally appear in SQL statements, an apparent attempt at interpolation (that is, `:name`, `:'name'`, or `:"name"`) is not replaced unless the named variable is currently set. In any case, you can escape a colon with a backslash to protect it from substitution.
 
 The colon syntax for variables is standard SQL for embedded query languages, such as ECPG. The colon syntaxes for array slices and type casts are YugabyteDB extensions, which can sometimes conflict with the standard usage. The colon-quote syntax for escaping a variable's value as an SQL literal or identifier is a `ysqlsh` extension.
 
@@ -1364,11 +1386,11 @@ The value of the `ysqlsh` variable name. For details, see the section [Variables
 
 ##### %\`*command*\`
 
-The output of *command*, similar to ordinary “back-tick” substitution.
+The output of *command*, similar to ordinary "back-tick" substitution.
 
 ##### %[ ... %]
 
-Prompts can contain terminal control characters which, for example, change the color, background, or style of the prompt text, or change the title of the terminal window. In order for the line editing features of Readline to work properly, these non-printing control characters must be designated as invisible by surrounding them with `%[` and `%]`. Multiple pairs of these can occur within the prompt. For example:
+Prompts can contain terminal control characters which, for example, change the color, background, or style of the prompt text, or change the title of the terminal window. In order for the line editing features of Readline to work properly, these non-printing control characters must be designated as invisible by surrounding them with `%[` and `%]`. Multiple pairs of these can occur in the prompt. For example:
 
 ```plpgsql
 testdb=> \set PROMPT1 '%[%033[1;33;40m%]%n@%/%R%[%033[0m%]%# '
@@ -1388,7 +1410,7 @@ This feature was shamelessly plagiarized from `tcsh`.
 
 `ysqlsh` supports the Readline library for convenient line editing and retrieval. The command history is automatically saved when `ysqlsh` exits and is reloaded when `ysqlsh` starts up. Tab-completion is also supported, although the completion logic makes no claim to be an SQL parser. The queries generated by tab-completion can also interfere with other SQL statements, for example, the [`SET TRANSACTION ISOLATION LEVEL`](../../api/ysql/the-sql-language/statements/txn_set) statement. If for some reason you do not like the tab completion, you can turn it off by putting this in a file named `.inputrc` in your home directory:
 
-```
+```sh
 $if psql
 set disable-completion on
 $endif
@@ -1422,7 +1444,7 @@ When [`\e`](#e-edit-filename-line-number), [`\ef`](#ef-function-description-line
 
 **Examples:**
 
-```
+```sh
 PSQL_EDITOR_LINENUMBER_ARG='+'
 PSQL_EDITOR_LINENUMBER_ARG='--line '
 ```
@@ -1453,7 +1475,7 @@ This utility also uses the environment variables supported by `libpq`.
 
 Unless it is passed an `-X` option, `ysqlsh` attempts to read and execute commands from the system-wide startup file (`psqlrc`) and then the user's personal startup file (`~/.psqlrc`), after connecting to the database but before accepting normal commands. These files can be used to set up the client and the server to taste, typically with [`\set`](#set-name-value) and `SET` statements.
 
-The system-wide startup file is named `psqlrc` and is sought in the installation's “system configuration” directory, which is most reliably identified by running `pg_config --sysconfdir`. By default this directory will be `../etc/` relative to the directory containing the PostgreSQL executables. The name of this directory can be set explicitly using the `PGSYSCONFDIR` environment variable.
+The system-wide startup file is named `psqlrc` and is sought in the installation's "system configuration" directory, which is most reliably identified by running `pg_config --sysconfdir`. By default this directory will be `../etc/` relative to the directory containing the PostgreSQL executables. The name of this directory can be set explicitly using the `PGSYSCONFDIR` environment variable.
 
 The user's personal startup file is named `.psqlrc` and is sought in the invoking user's home directory. The location of the user's startup file can be set explicitly through the [`PSQLRC`](#psqlrc) environment variable.
 

@@ -13,22 +13,21 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
-#include "yb/util/countdown_latch.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/env_util.h"
-#include "yb/util/path_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/common/wire_protocol.h"
 
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-#include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/operations/change_metadata_operation.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env_util.h"
+#include "yb/util/flag_tags.h"
 
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
@@ -80,8 +79,11 @@ const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SN
 // InitialSysCatalogSnapshotWriter
 // ------------------------------------------------------------------------------------------------
 
+InitialSysCatalogSnapshotWriter::InitialSysCatalogSnapshotWriter() = default;
+InitialSysCatalogSnapshotWriter::~InitialSysCatalogSnapshotWriter() = default;
+
 void InitialSysCatalogSnapshotWriter::AddMetadataChange(
-    tserver::ChangeMetadataRequestPB metadata_change) {
+    tablet::ChangeMetadataRequestPB metadata_change) {
   initdb_metadata_changes_.push_back(std::move(metadata_change));
 }
 
@@ -94,7 +96,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
       JoinPathSegments(dest_path, kSysCatalogSnapshotRocksDbSubDir)));
 
   tserver::ExportedTabletMetadataChanges exported_tablet_metadata_changes;
-  for (int i = 0; i < initdb_metadata_changes_.size(); ++i) {
+  for (size_t i = 0; i < initdb_metadata_changes_.size(); ++i) {
     *exported_tablet_metadata_changes.add_metadata_changes() = std::move(
         initdb_metadata_changes_[i]);
   }
@@ -145,8 +147,7 @@ Status RestoreInitialSysCatalogSnapshot(
       Env::Default(),
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotTabletMetadataChangesFile),
       &tablet_metadata_changes));
-  for (const tserver::ChangeMetadataRequestPB& change_metadata_req :
-          tablet_metadata_changes.metadata_changes()) {
+  for (const auto& change_metadata_req : tablet_metadata_changes.metadata_changes()) {
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_metadata_req,
         sys_catalog_tablet_peer,
@@ -286,7 +287,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     LOG(INFO) << "Making YSQL system catalog table transactional: " << table_info.ToString();
 
     // Change table properties in tablet metadata.
-    tserver::ChangeMetadataRequestPB change_req;
+    tablet::ChangeMetadataRequestPB change_req;
     change_req.set_tablet_id(kSysCatalogTabletId);
     auto& add_table = *change_req.mutable_add_table();
     VERIFY_RESULT(sys_catalog->tablet_peer()->tablet_metadata()->GetTableInfo(table_id))->ToPB(

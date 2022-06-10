@@ -17,19 +17,20 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 #include "yb/tools/yb-admin_client.h"
 #include "yb/util/date_time.h"
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
-#include "yb/util/tostring.h"
 
 namespace yb {
 namespace tools {
 namespace enterprise {
 
-using std::cerr;
-using std::endl;
 using std::string;
 using std::vector;
 
@@ -59,7 +60,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
   super::RegisterCommandHandlers(client);
 
   std::string options = "";
-  for (auto flag : kListSnapshotsFlagList) {
+  for (auto flag : ListSnapshotsFlagList()) {
     options += Format(" [$0]", flag);
   }
   Register(
@@ -67,12 +68,12 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       [client](const CLIArguments& args) -> Status {
         EnumBitSet<ListSnapshotsFlag> flags;
 
-        for (int i = 0; i < args.size(); ++i) {
+        for (size_t i = 0; i < args.size(); ++i) {
           std::string uppercase_flag;
           ToUpperCase(args[i], &uppercase_flag);
 
           bool found = false;
-          for (auto flag : kListSnapshotsFlagList) {
+          for (auto flag : ListSnapshotsFlagList()) {
             if (uppercase_flag == ToString(flag)) {
               flags.Set(flag);
               found = true;
@@ -141,6 +142,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         // This is just a paranoid check, should never happen.
         if (tables.size() != 1 || !tables[0].has_namespace()) {
           return STATUS(InvalidArgument, "Expecting exactly one keyspace argument");
+        }
+        if (interval > retention) {
+          return STATUS(InvalidArgument, "Interval cannot be greater than retention");
+        }
+        if (tables[0].namespace_type() != YQL_DATABASE_CQL &&
+            tables[0].namespace_type() != YQL_DATABASE_PGSQL) {
+          return STATUS(
+              InvalidArgument, "Snapshot schedule can only be setup on YCQL or YSQL namespace");
         }
         return client->CreateSnapshotSchedule(tables[0], interval, retention);
       });
@@ -265,7 +274,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
 
         const string file_name = args[0];
         TypedNamespaceName keyspace;
-        int num_tables = 0;
+        size_t num_tables = 0;
         vector<YBTableName> tables;
 
         if (args.size() >= 2) {
@@ -276,7 +285,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
             tables.reserve(num_tables);
 
-            for (int i = 0; i < num_tables; ++i) {
+            for (size_t i = 0; i < num_tables; ++i) {
               tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
             }
           }
@@ -316,7 +325,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "set_preferred_zones", " <cloud.region.zone> [<cloud.region.zone>]...",
+      "set_preferred_zones", " <cloud.region.zone[:priority]> [<cloud.region.zone>[:priority]]...",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
@@ -424,16 +433,67 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "delete_cdc_stream", " <stream_id>",
+    "create_change_data_stream", " <namespace> [checkpoint_type]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() < 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+
+      std::string checkpoint_type = yb::ToString("IMPLICIT");
+      std::string uppercase_checkpoint_type;
+
+      if (args.size() > 1) {
+         ToUpperCase(args[1], &uppercase_checkpoint_type);
+         if (uppercase_checkpoint_type != yb::ToString("EXPLICIT")
+            && uppercase_checkpoint_type != yb::ToString("IMPLICIT")) {
+            return ClusterAdminCli::kInvalidArguments;
+         }
+         checkpoint_type = uppercase_checkpoint_type;
+      }
+
+      const string namespace_name = args[0];
+
+      const TypedNamespaceName database =
+        VERIFY_RESULT(ParseNamespaceName(args[0], YQL_DATABASE_PGSQL));
+      SCHECK_EQ(
+        database.db_type, YQL_DATABASE_PGSQL, InvalidArgument,
+        Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
+
+      RETURN_NOT_OK_PREPEND(client->CreateCDCSDKDBStream(database, checkpoint_type),
+                            Substitute("Unable to create CDC stream for database $0",
+                                       namespace_name));
+      return Status::OK();
+    });
+
+  Register(
+      "delete_cdc_stream", " <stream_id> [force_delete]",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const string stream_id = args[0];
-        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id),
+        bool force_delete = false;
+        if (args.size() >= 2 && args[1] == "force_delete") {
+          force_delete = true;
+        }
+        RETURN_NOT_OK_PREPEND(client->DeleteCDCStream(stream_id, force_delete),
             Substitute("Unable to delete CDC stream id $0", stream_id));
         return Status::OK();
       });
+
+  Register(
+    "delete_change_data_stream", " <db_stream_id>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() < 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+
+      const std::string db_stream_id = args[0];
+      RETURN_NOT_OK_PREPEND(client->DeleteCDCSDKDBStream(db_stream_id),
+                            Substitute("Unable to delete CDC database stream id $0",
+                                       db_stream_id));
+      return Status::OK();
+    });
 
   Register(
       "list_cdc_streams", " [table_id]",
@@ -446,6 +506,34 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
             Substitute("Unable to list CDC streams for table $0", table_id));
         return Status::OK();
       });
+
+  Register(
+    "list_change_data_streams", " [namespace]",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string namespace_name = args.size() == 1 ? args[0] : "";
+      string msg = (args.size() == 1)
+                       ? Substitute("Unable to list CDC streams for namespace $0", namespace_name)
+                       : "Unable to list CDC streams";
+
+      RETURN_NOT_OK_PREPEND(client->ListCDCSDKStreams(namespace_name), msg);
+      return Status::OK();
+    });
+
+  Register(
+    "get_change_data_stream_info", " <db_stream_id>",
+    [client](const CLIArguments& args) -> Status {
+      if (args.size() != 0 && args.size() != 1) {
+        return ClusterAdminCli::kInvalidArguments;
+      }
+      const string db_stream_id = args.size() == 1 ? args[0] : "";
+      RETURN_NOT_OK_PREPEND(client->GetCDCDBStreamInfo(db_stream_id),
+                            Substitute("Unable to list CDC stream info for database stream $0",
+                                       db_stream_id));
+      return Status::OK();
+    });
 
   Register(
       "setup_universe_replication",
@@ -566,7 +654,6 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         return Status::OK();
       });
 
-
   Register(
       "bootstrap_cdc_producer", " <comma_separated_list_of_table_ids>",
       [client](const CLIArguments& args) -> Status {
@@ -581,7 +668,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                               "Unable to bootstrap CDC producer");
         return Status::OK();
       });
-}
+}  // NOLINT -- a long function but that is OK
 
 }  // namespace enterprise
 }  // namespace tools

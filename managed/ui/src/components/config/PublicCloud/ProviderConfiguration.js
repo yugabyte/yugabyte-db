@@ -136,18 +136,16 @@ class ProviderConfiguration extends Component {
     if (configuredProviders.data) {
       currentProvider = configuredProviders.data.find((provider) => provider.code === providerType);
     }
-    let currentProviderTask = null;
+
     if (!_.isEqual(configuredProviders.data, prevProps.configuredProviders.data)) {
-      this.setState({ currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init' });
+      const currentCloudProviders = configuredProviders.data.filter(
+        (provider) => provider.code === providerType
+      );
+
+      this.setState({ currentView: isNonEmptyObject(currentProvider) ? 'result' : 'init', currentCloudProviders });
     }
 
-    if (
-      getPromiseState(configuredProviders).isEmpty() &&
-      !getPromiseState(prevProps.configuredProviders).isEmpty()
-    ) {
-      this.setState({ currentView: 'init' });
-    }
-
+    let currentProviderTask = null;
     if (
       customerTaskList &&
       isNonEmptyArray(customerTaskList.data) &&

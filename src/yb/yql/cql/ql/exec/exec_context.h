@@ -20,14 +20,19 @@
 #ifndef YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
 #define YB_YQL_CQL_QL_EXEC_EXEC_CONTEXT_H_
 
-#include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/ql_protocol_util.h"
-#include "yb/client/client.h"
+#include <string>
+
+#include <rapidjson/document.h>
+
 #include "yb/client/session.h"
+
+#include "yb/common/ql_protocol.pb.h"
+
+#include "yb/util/status_fwd.h"
+
+#include "yb/yql/cql/ql/exec/exec_fwd.h"
+#include "yb/yql/cql/ql/ptree/process_context.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 namespace yb {
 namespace ql {
@@ -76,11 +81,11 @@ class QueryPagingState {
                                               bool is_top_level_read_node);
 
   // Compose paging state to send to users.
-  CHECKED_STATUS ComposePagingStateForUser();
-  CHECKED_STATUS ComposePagingStateForUser(const QLPagingStatePB& child_state);
+  Status ComposePagingStateForUser();
+  Status ComposePagingStateForUser(const QLPagingStatePB& child_state);
 
   // Load the paging state in DocDB responses.
-  CHECKED_STATUS LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
+  Status LoadPagingStateFromDocdb(const RowsResult::SharedPtr& rows_result,
                                           int64_t number_of_new_rows,
                                           bool has_nested_query);
 
@@ -244,6 +249,8 @@ class TnodeContext {
  public:
   explicit TnodeContext(const TreeNode* tnode);
 
+  ~TnodeContext();
+
   // Returns the tree node of the statement being executed.
   const TreeNode* tnode() const {
     return tnode_;
@@ -285,7 +292,7 @@ class TnodeContext {
   }
 
   // Append rows result that was sent back by DocDB to this node.
-  CHECKED_STATUS AppendRowsResult(RowsResult::SharedPtr&& rows_result);
+  Status AppendRowsResult(RowsResult::SharedPtr&& rows_result);
 
   // Create CQL paging state based on user's information.
   // When calling YugaByte, users provide all info in StatementParameters including paging state.
@@ -293,7 +300,7 @@ class TnodeContext {
                                      bool is_top_level_select);
 
   // Clear paging state when the query reaches the end of scan.
-  CHECKED_STATUS ClearQueryState();
+  Status ClearQueryState();
 
   QueryPagingState *query_state() {
     return query_state_.get();
@@ -345,11 +352,8 @@ class TnodeContext {
   }
 
   // Access functions for child tnode context.
-  TnodeContext* AddChildTnode(const TreeNode* tnode) {
-    DCHECK(!child_context_);
-    child_context_ = std::make_unique<TnodeContext>(tnode);
-    return child_context_.get();
-  }
+  TnodeContext* AddChildTnode(const TreeNode* tnode);
+
   TnodeContext* child_context() {
     return child_context_.get();
   }
@@ -392,7 +396,7 @@ class TnodeContext {
   //      The counter state = top-level query counter state.
   //      User paging state = { Nested QueryPagingState::query_pb_,
   //                            Top-Level QueryPagingState::counter_pb_ }
-  CHECKED_STATUS ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
+  Status ComposeRowsResultForUser(const TreeNode* child_select_node, bool for_new_batches);
 
   const boost::optional<uint32_t>& hash_code_from_partition_key_ops() {
     return hash_code_from_partition_key_ops_;
@@ -453,18 +457,6 @@ class TnodeContext {
   boost::optional<uint32_t> max_hash_code_from_partition_key_ops_;
 };
 
-// Processing could take a while, we are rescheduling it to our thread pool, if not yet
-// running in it.
-class Rescheduler {
- public:
-  virtual bool NeedReschedule() = 0;
-  virtual void Reschedule(rpc::ThreadPoolTask* task) = 0;
-  virtual CoarseTimePoint GetDeadline() const = 0;
-
- protected:
-  ~Rescheduler() {}
-};
-
 // The context for execution of a statement. Inside the statement parse tree, there may be one or
 // more statement tnodes to be executed.
 class ExecContext : public ProcessContextBase {
@@ -483,9 +475,7 @@ class ExecContext : public ProcessContextBase {
   virtual ~ExecContext();
 
   // Returns the statement string being executed.
-  const std::string& stmt() const override {
-    return parse_tree_.stmt();
-  }
+  const std::string& stmt() const override;
 
   // Access function for parse_tree and params.
   const ParseTree& parse_tree() const {
@@ -505,7 +495,7 @@ class ExecContext : public ProcessContextBase {
 
   //------------------------------------------------------------------------------------------------
   // Start a distributed transaction.
-  CHECKED_STATUS StartTransaction(
+  Status StartTransaction(
       IsolationLevel isolation_level, QLEnv* ql_env, Rescheduler* rescheduler);
 
   // Is a transaction currently in progress?
@@ -519,10 +509,10 @@ class ExecContext : public ProcessContextBase {
   }
 
   // Prepare a child distributed transaction.
-  CHECKED_STATUS PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataPB* data);
+  Status PrepareChildTransaction(CoarseTimePoint deadline, ChildTransactionDataPB* data);
 
   // Apply the result of a child distributed transaction.
-  CHECKED_STATUS ApplyChildTransactionResult(const ChildTransactionResultPB& result);
+  Status ApplyChildTransactionResult(const ChildTransactionResultPB& result);
 
   // Commit the current distributed transaction.
   void CommitTransaction(CoarseTimePoint deadline, client::CommitCallback callback);

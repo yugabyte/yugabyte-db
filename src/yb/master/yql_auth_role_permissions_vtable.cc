@@ -11,12 +11,20 @@
 // under the License.
 //
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/permissions_manager.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
+
+#include <boost/asio/ip/address.hpp>
+
 #include "yb/common/common.pb.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/master/permissions_manager.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -29,9 +37,9 @@ YQLAuthRolePermissionsVTable::YQLAuthRolePermissionsVTable(const TableName& tabl
 
 Result<std::shared_ptr<QLRowBlock>> YQLAuthRolePermissionsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
   std::vector<scoped_refptr<RoleInfo>> roles;
-  master_->catalog_manager()->permissions_manager()->GetAllRoles(&roles);
+  catalog_manager().permissions_manager()->GetAllRoles(&roles);
   for (const auto& rp : roles) {
     auto l = rp->LockForRead();
     const auto& pb = l->pb;

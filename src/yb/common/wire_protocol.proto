@@ -40,8 +40,8 @@ package yb;
 
 option java_package = "org.yb";
 
-import "yb/common/common.proto";
-import "yb/consensus/metadata.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 
 // Error status returned by any RPC method.
 // Every RPC method which could generate an application-level error
@@ -83,6 +83,7 @@ message AppStatusPB {
     MERGE_IN_PROGRESS = 28;
     COMBINED_ERROR = 29;
     SNAPSHOT_TOO_OLD = 30;
+    DEPRECATED_HOST_UNREACHABLE = 31;
   }
 
   required ErrorCode code = 1;
@@ -147,5 +148,5 @@ message ServerEntryPB {
 
   // If an error has occurred earlier in the RPC call, the role
   // may be not be set.
-  optional consensus.RaftPeerPB.Role role = 4;
+  optional PeerRole role = 4;
 }

@@ -26,6 +26,20 @@
 #include "nodes/execnodes.h"
 #include "executor/tuptable.h"
 
+/**
+ * YSQL guc variables that can be used to enable non transactional writes.
+ * e.g. 'SET yb_disable_transactional_writes=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_disable_transactional_writes;
+
+/**
+ * YSQL guc variables that can be used to enable upsert mode for writes.
+ * e.g. 'SET yb_enable_upsert_mode=true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_enable_upsert_mode;
+
 //------------------------------------------------------------------------------
 // YugaByte modify table API.
 
@@ -41,6 +55,10 @@ typedef void (*yb_bind_for_write_function) (YBCPgStatement stmt,
 /*
  * Insert data into YugaByte table.
  * This function is equivalent to "heap_insert", but it sends data to DocDB (YugaByte storage).
+ *
+ * ybctid argument can be supplied to keep it consistent across shared inserts.
+ * If non-zero, it will be used instead of generation, otherwise it will be set
+ * to the generated value.
  */
 extern Oid YBCHeapInsert(TupleTableSlot *slot,
                          HeapTuple tuple,
@@ -48,31 +66,46 @@ extern Oid YBCHeapInsert(TupleTableSlot *slot,
 extern Oid YBCHeapInsertForDb(Oid dboid,
                               TupleTableSlot *slot,
                               HeapTuple tuple,
-                              EState *estate);
+                              EState *estate,
+                              Datum *ybctid);
 
 /*
  * Insert a tuple into a YugaByte table. Will execute within a distributed
  * transaction if the table is transactional (YSQL default).
+ *
+ * ybctid argument can be supplied to keep it consistent across shared inserts.
+ * If non-zero, it will be used instead of generation, otherwise it will be set
+ * to the generated value.
  */
 extern Oid YBCExecuteInsert(Relation rel,
                             TupleDesc tupleDesc,
-                            HeapTuple tuple);
+                            HeapTuple tuple,
+                            OnConflictAction onConflictAction);
 extern Oid YBCExecuteInsertForDb(Oid dboid,
                                  Relation rel,
                                  TupleDesc tupleDesc,
-                                 HeapTuple tuple);
+                                 HeapTuple tuple,
+                                 OnConflictAction onConflictAction,
+                                 Datum *ybctid);
 
 /*
  * Execute the insert outside of a transaction.
  * Assumes the caller checked that it is safe to do so.
+ *
+ * ybctid argument can be supplied to keep it consistent across shared inserts.
+ * If non-zero, it will be used instead of generation, otherwise it will be set
+ * to the generated value.
  */
 extern Oid YBCExecuteNonTxnInsert(Relation rel,
                                   TupleDesc tupleDesc,
-                                  HeapTuple tuple);
+                                  HeapTuple tuple,
+                                  OnConflictAction onConflictAction);
 extern Oid YBCExecuteNonTxnInsertForDb(Oid dboid,
                                        Relation rel,
                                        TupleDesc tupleDesc,
-                                       HeapTuple tuple);
+                                       HeapTuple tuple,
+                                       OnConflictAction onConflictAction,
+                                       Datum *ybctid);
 
 /*
  * Insert a tuple into the an index's backing YugaByte index table.
@@ -128,7 +161,8 @@ extern bool YBCExecuteUpdate(Relation rel,
 							 HeapTuple tuple,
 							 EState *estate,
 							 ModifyTableState *mtstate,
-							 Bitmapset *updatedCols);
+							 Bitmapset *updatedCols,
+							 bool canSetTag);
 
 /*
  * Replace a row in a YugaByte table by first deleting an existing row

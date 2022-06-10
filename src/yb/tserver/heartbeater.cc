@@ -42,53 +42,57 @@
 #include <vector>
 
 #include <boost/function.hpp>
-
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/common/common_flags.h"
+#include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/log_fwd.h"
+
+#include "yb/docdb/docdb.pb.h"
+
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/bind.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master_rpc.h"
-#include "yb/server/server_base.proxy.h"
-#include "yb/client/client.h"
-#include "yb/common/schema.h"
-#include "yb/common/transaction.h"
-#include "yb/consensus/log_fwd.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/rocksdb/db.h"
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/common/hybrid_time.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_kv_util.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/util/status.h"
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/gutil/atomicops.h"
-#include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
+
+#include "yb/master/master_heartbeat.proxy.h"
+#include "yb/master/master_rpc.h"
+#include "yb/master/master_types.pb.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/write_batch.h"
+
 #include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/hybrid_clock.h"
+#include "yb/server/server_base.proxy.h"
+
 #include "yb/tablet/tablet_options.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/enums.h"
-#include "yb/util/locks.h"
-#include "yb/util/metrics.h"
-#include "yb/util/slice.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/capabilities.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
+#include "yb/util/threadpool.h"
 
 using namespace std::literals;
 
@@ -108,10 +112,8 @@ DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
-DEFINE_bool(tserver_disable_heartbeat_test_only, false, "Should heartbeat be disabled");
-TAG_FLAG(tserver_disable_heartbeat_test_only, unsafe);
-TAG_FLAG(tserver_disable_heartbeat_test_only, hidden);
-TAG_FLAG(tserver_disable_heartbeat_test_only, runtime);
+DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
+TAG_FLAG(TEST_tserver_disable_heartbeat, runtime);
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
@@ -119,9 +121,6 @@ using google::protobuf::RepeatedPtrField;
 using yb::HostPortPB;
 using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
-using yb::master::ListMastersResponsePB;
-using yb::master::Master;
-using yb::master::MasterServiceProxy;
 using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
@@ -158,9 +157,9 @@ class Heartbeater::Thread {
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
-  CHECKED_STATUS DoHeartbeat();
-  CHECKED_STATUS TryHeartbeat();
-  CHECKED_STATUS SetupRegistration(master::TSRegistrationPB* reg);
+  Status DoHeartbeat();
+  Status TryHeartbeat();
+  Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
 
@@ -197,7 +196,7 @@ class Heartbeater::Thread {
   HostPort leader_master_hostport_;
 
   // Current RPC proxy to the leader master.
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterHeartbeatProxy> proxy_;
 
   // The most recent response from a heartbeat.
   master::TSHeartbeatResponsePB last_hb_response_;
@@ -339,7 +338,8 @@ Status Heartbeater::Thread::ConnectToMaster() {
   LOG_WITH_PREFIX(INFO) << "Connected to a leader master server at " << leader_master_hostport_;
 
   // Save state in the instance.
-  proxy_.reset(new MasterServiceProxy(&server_->proxy_cache(), leader_master_hostport_));
+  proxy_ = std::make_unique<master::MasterHeartbeatProxy>(
+      &server_->proxy_cache(), leader_master_hostport_);
   return Status::OK();
 }
 
@@ -495,6 +495,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
           SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
+    // Check whether the cluster is a producer of a CDC stream.
+    if (resp.has_xcluster_enabled_on_producer() &&
+        resp.xcluster_enabled_on_producer()) {
+      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+    }
+
     // At this point we know resp is a successful heartbeat response from the master so set it as
     // the last heartbeat response. This invalidates resp so we should use last_hb_response_ instead
     // below (hence using the nested scope for resp until here).
@@ -526,6 +532,14 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   // Update the master's YSQL catalog version (i.e. if there were schema changes for YSQL objects).
   if (last_hb_response_.has_ysql_catalog_version()) {
+    if (FLAGS_log_ysql_catalog_versions) {
+      VLOG_WITH_FUNC(1) << "got master catalog version: "
+                        << last_hb_response_.ysql_catalog_version()
+                        << ", breaking version: "
+                        << (last_hb_response_.has_ysql_last_breaking_catalog_version()
+                            ? Format("$0", last_hb_response_.ysql_last_breaking_catalog_version())
+                            : "(none)");
+    }
     if (last_hb_response_.has_ysql_last_breaking_catalog_version()) {
       server_->SetYSQLCatalogVersion(last_hb_response_.ysql_catalog_version(),
                                      last_hb_response_.ysql_last_breaking_catalog_version());
@@ -538,8 +552,8 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   RETURN_NOT_OK(server_->tablet_manager()->UpdateSnapshotsInfo(last_hb_response_.snapshots_info()));
 
-  if (last_hb_response_.has_txn_table_versions_hash()) {
-    server_->UpdateTxnTableVersionsHash(last_hb_response_.txn_table_versions_hash());
+  if (last_hb_response_.has_transaction_tables_version()) {
+    server_->UpdateTransactionTablesVersion(last_hb_response_.transaction_tables_version());
   }
 
   // Update the live tserver list.
@@ -551,8 +565,8 @@ Status Heartbeater::Thread::DoHeartbeat() {
     return STATUS(IOError, "failing all heartbeats for tests");
   }
 
-  if (PREDICT_FALSE(FLAGS_tserver_disable_heartbeat_test_only)) {
-    LOG_WITH_PREFIX(INFO) << "Heartbeat disabled for testing.";
+  if (PREDICT_FALSE(FLAGS_TEST_tserver_disable_heartbeat)) {
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Heartbeat disabled for testing.";
     return Status::OK();
   }
 

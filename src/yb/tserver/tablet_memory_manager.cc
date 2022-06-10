@@ -16,6 +16,7 @@
 #include "yb/consensus/log_cache.h"
 #include "yb/consensus/raft_consensus.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rocksdb/cache.h"
@@ -27,7 +28,9 @@
 
 #include "yb/util/background_task.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/status_log.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -164,7 +167,7 @@ TabletMemoryManager::TabletMemoryManager(
   ConfigureBackgroundTask(options);
 }
 
-CHECKED_STATUS TabletMemoryManager::Init() {
+Status TabletMemoryManager::Init() {
   if (background_task_) {
     RETURN_NOT_OK(background_task_->Init());
   }
@@ -299,7 +302,7 @@ void TabletMemoryManager::FlushTabletIfLimitExceeded() {
             << tablet_to_flush->OldestMutableMemtableWriteHybridTime();
         WARN_NOT_OK(
             tablet_to_flush->Flush(
-                tablet::FlushMode::kAsync, tablet::FlushFlags::kAll, flush_tick),
+                tablet::FlushMode::kAsync, tablet::FlushFlags::kAllDbs, flush_tick),
             Substitute("Flush failed on $0", peer_to_flush->tablet_id()));
         for (auto listener : TEST_listeners) {
           listener->StartedFlush(peer_to_flush->tablet_id());

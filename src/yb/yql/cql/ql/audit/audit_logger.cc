@@ -17,11 +17,14 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/random_generator.hpp>
 
 #include "yb/rpc/connection.h"
+
 #include "yb/util/date_time.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/string_util.h"
+
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
@@ -35,14 +38,8 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/format.h"
-#include "yb/util/result.h"
-#include "yb/util/status_format.h"
-#include "yb/util/string_util.h"
-#include "yb/util/type_traits.h"
 
 DEFINE_bool(ycql_enable_audit_log,
             false,
@@ -301,20 +298,20 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
       const auto& cast_node = static_cast<const PTDropStmt&>(tnode);
       // We only expect a handful of types here, same as Executor::ExecPTNode(const PTDropStmt*)
       switch (cast_node.drop_type()) {
-        case OBJECT_SCHEMA:
+        case ObjectType::SCHEMA:
           *keyspace = cast_node.name()->last_name().data();
           return &Type::DROP_KEYSPACE;
-        case OBJECT_INDEX:
+        case ObjectType::INDEX:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_INDEX;
-        case OBJECT_ROLE:
+        case ObjectType::ROLE:
           return &Type::DROP_ROLE;
-        case OBJECT_TABLE:
+        case ObjectType::TABLE:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_TABLE;
-        case OBJECT_TYPE:
+        case ObjectType::TYPE:
           *keyspace = cast_node.name()->first_name().data();
           *scope    = cast_node.name()->last_name().data();
           return &Type::DROP_TYPE;
@@ -381,23 +378,23 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
           break;
       }
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto& cast_node = static_cast<const PTGrantRevokeRole&>(tnode);
       // Scope is not used.
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
 
     case TreeNodeOpcode::kPTListNode: {
@@ -472,9 +469,9 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
   if (!regex_search(operation, m, pwd_start_regex)) {
     return operation;
   }
-  int pwd_start_idx = m.position() + m.length() - 1;
-  int pwd_length = -1;
-  for (int i = pwd_start_idx + 1; i < operation.length(); ++i) {
+  size_t pwd_start_idx = m.position() + m.length() - 1;
+  ssize_t pwd_length = -1;
+  for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
     if (operation[i] == '\'') {
       // If the next character is a quote too - this is an escaped quote.
       if (i < operation.length() - 1 && operation[i + 1] == '\'') {
@@ -494,7 +491,7 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
 }
 
 // Follows Cassandra's view format for prettified binary log.
-CHECKED_STATUS AddLogEntry(const LogEntry& e) {
+Status AddLogEntry(const LogEntry& e) {
   std::string str;
   str.reserve(512); // Some reasonable default that's expected to fit most of the audit records.
   str.append("AUDIT: ");
@@ -654,7 +651,7 @@ Result<LogEntry> AuditLogger::CreateLogEntry(const Type& type,
   return entry;
 }
 
-Status AuditLogger::StartBatchRequest(int statements_count,
+Status AuditLogger::StartBatchRequest(size_t statements_count,
                                       IsRescheduled is_rescheduled) {
   if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
@@ -668,7 +665,7 @@ Status AuditLogger::StartBatchRequest(int statements_count,
   // We cannot have sub-batches as only DMLs are allowed within a batch.
   SCHECK(batch_id_.empty(), InternalError, "Batch request mode is already active!");
 
-  batch_id_ = AsString(boost::uuids::random_generator()());
+  batch_id_ = AsString(batch_id_gen_());
 
   auto operation = Format("BatchId:[$0] - BATCH of [$1] statements", batch_id_, statements_count);
 

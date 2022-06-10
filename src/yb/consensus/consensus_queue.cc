@@ -32,16 +32,14 @@
 
 #include "yb/consensus/consensus_queue.h"
 
-#include <shared_mutex>
 #include <algorithm>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
-
-
-#include "yb/common/wire_protocol.h"
+#include <glog/logging.h>
 
 #include "yb/consensus/consensus_context.h"
 #include "yb/consensus/log_util.h"
@@ -50,12 +48,13 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/strcat.h"
+
+#include "yb/util/enums.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/locks.h"
@@ -64,21 +63,22 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/url-coding.h"
-#include "yb/util/enums.h"
 #include "yb/util/tostring.h"
+#include "yb/util/url-coding.h"
 
 using namespace std::literals;
 using namespace yb::size_literals;
 
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 
 // We expect that consensus_max_batch_size_bytes + 1_KB would be less than rpc_max_message_size.
 // Otherwise such batch would be rejected by RPC layer.
-DEFINE_int32(consensus_max_batch_size_bytes, 4_MB,
-             "The maximum per-tablet RPC batch size when updating peers.");
+DEFINE_uint64(consensus_max_batch_size_bytes, 4_MB,
+              "The maximum per-tablet RPC batch size when updating peers.");
 TAG_FLAG(consensus_max_batch_size_bytes, advanced);
 TAG_FLAG(consensus_max_batch_size_bytes, runtime);
 
@@ -113,6 +113,14 @@ DEFINE_int32(consensus_lagging_follower_threshold, 10,
 TAG_FLAG(consensus_lagging_follower_threshold, advanced);
 TAG_FLAG(consensus_lagging_follower_threshold, runtime);
 
+DEFINE_int64(cdc_intent_retention_ms, 4 * 3600 * 1000,
+             "Interval up to which CDC consumer's checkpoint is considered for retaining intents."
+             "If we haven't received an updated checkpoint from CDC consumer within the interval "
+             "specified by cdc_checkpoint_opid_interval, then CDC does not consider that "
+             "consumer while determining which op IDs to delete from the intent.");
+TAG_FLAG(cdc_intent_retention_ms, advanced);
+TAG_FLAG(cdc_intent_retention_ms, runtime);
+
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
@@ -120,12 +128,12 @@ namespace {
 
 constexpr const auto kMinRpcThrottleThresholdBytes = 16;
 
-static bool RpcThrottleThresholdBytesValidator(const char* flagname, int32_t value) {
+static bool RpcThrottleThresholdBytesValidator(const char* flagname, int64_t value) {
   if (value > 0) {
     if (value < kMinRpcThrottleThresholdBytes) {
       LOG(ERROR) << "Expect " << flagname << " to be at least " << kMinRpcThrottleThresholdBytes;
       return false;
-    } else if (value >= FLAGS_consensus_max_batch_size_bytes) {
+    } else if (implicit_cast<size_t>(value) >= FLAGS_consensus_max_batch_size_bytes) {
       LOG(ERROR) << "Expect " << flagname << " to be less than consensus_max_batch_size_bytes "
                  << "value (" << FLAGS_consensus_max_batch_size_bytes << ")";
       return false;
@@ -136,9 +144,7 @@ static bool RpcThrottleThresholdBytesValidator(const char* flagname, int32_t val
 
 } // namespace
 
-DECLARE_int32(rpc_throttle_threshold_bytes);
-__attribute__((unused))
-DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 
 namespace yb {
 namespace consensus {
@@ -171,7 +177,7 @@ std::string PeerMessageQueue::TrackedPeer::ToString() const {
       "is_last_exchange_successful: $5 needs_remote_bootstrap: $6 member_type: $7 "
       "num_sst_files: $8 last_applied: $9 }",
       uuid, is_new, last_received, next_index, last_known_committed_idx,
-      is_last_exchange_successful, needs_remote_bootstrap, RaftPeerPB::MemberType_Name(member_type),
+      is_last_exchange_successful, needs_remote_bootstrap, PeerMemberType_Name(member_type),
       num_sst_files, last_applied);
 }
 
@@ -308,7 +314,7 @@ void PeerMessageQueue::UntrackPeer(const string& uuid) {
 
 void PeerMessageQueue::CheckPeersInActiveConfigIfLeaderUnlocked() const {
   if (queue_state_.mode != Mode::LEADER) return;
-  unordered_set<string> config_peer_uuids;
+  std::unordered_set<std::string> config_peer_uuids;
   for (const RaftPeerPB& peer_pb : queue_state_.active_config->peers()) {
     InsertOrDie(&config_peer_uuids, peer_pb.permanent_uuid());
   }
@@ -429,7 +435,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
                                         ConsensusRequestPB* request,
                                         ReplicateMsgsHolder* msgs_holder,
                                         bool* needs_remote_bootstrap,
-                                        RaftPeerPB::MemberType* member_type,
+                                        PeerMemberType* member_type,
                                         bool* last_exchange_successful) {
   static constexpr uint64_t kSendUnboundedLogOps = std::numeric_limits<uint64_t>::max();
   DCHECK(request->ops().empty()) << request->ShortDebugString();
@@ -510,7 +516,17 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
     request->set_propagated_hybrid_time(now_ht.ToUint64());
 
     // NOTE: committed_op_id may be overwritten later.
-    queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
+    // In our system committed_op_id means that this operation was also applied.
+    // If we have operation that applied significant time, followers would not know that this
+    // operation is committed until it is applied in the leader.
+    // To address this issue we use majority_replicated_op_id, that is updated before apply.
+    // But we could use it only when its term matches current term, see Fig.8 in Raft paper.
+    if (queue_state_.majority_replicated_op_id.index > queue_state_.committed_op_id.index &&
+        queue_state_.majority_replicated_op_id.term == queue_state_.current_term) {
+      queue_state_.majority_replicated_op_id.ToPB(request->mutable_committed_op_id());
+    } else {
+      queue_state_.committed_op_id.ToPB(request->mutable_committed_op_id());
+    }
 
     request->set_caller_term(queue_state_.current_term);
     unreachable_time =
@@ -532,7 +548,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
     peer->current_retransmissions++;
 
-    if (peer->member_type == RaftPeerPB::VOTER) {
+    if (peer->member_type == PeerMemberType::VOTER) {
       is_voter = true;
     }
   }
@@ -566,7 +582,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
   // Otherwise, we grab requests from the log starting at the last_received point.
   if (!is_new && num_log_ops_to_send > 0) {
     // The batch of messages to send to the peer.
-    int max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSize();
+    auto max_batch_size = FLAGS_consensus_max_batch_size_bytes - request->ByteSizeLong();
     auto to_index = num_log_ops_to_send == kSendUnboundedLogOps ?
         0 : previously_sent_index + num_log_ops_to_send;
     auto result = ReadFromLogCache(previously_sent_index, to_index, max_batch_size, uuid);
@@ -653,7 +669,7 @@ Status PeerMessageQueue::RequestForPeer(const string& uuid,
 
 Result<ReadOpsResult> PeerMessageQueue::ReadFromLogCache(int64_t after_index,
                                                          int64_t to_index,
-                                                         int max_batch_size,
+                                                         size_t max_batch_size,
                                                          const std::string& peer_uuid,
                                                          const CoarseTimePoint deadline) {
   DCHECK_LT(FLAGS_consensus_max_batch_size_bytes + 1_KB, FLAGS_rpc_max_message_size);
@@ -723,7 +739,8 @@ Result<ReadOpsResult> PeerMessageQueue::ReadReplicatedMessagesForCDC(
         after_op_index, result.status());
   }
   if (result.ok()) {
-    result->have_more_messages |= pending_messages;
+    result->have_more_messages = HaveMoreMessages(result->have_more_messages.get() ||
+                                                  pending_messages);
   }
   return result;
 }
@@ -745,9 +762,9 @@ Status PeerMessageQueue::GetRemoteBootstrapRequestForPeer(const string& uuid,
     return STATUS(IllegalState, "Peer does not need to remotely bootstrap", uuid);
   }
 
-  if (peer->member_type == RaftPeerPB::VOTER || peer->member_type == RaftPeerPB::OBSERVER) {
+  if (peer->member_type == PeerMemberType::VOTER || peer->member_type == PeerMemberType::OBSERVER) {
     LOG(INFO) << "Remote bootstrapping peer " << uuid << " with type "
-              << RaftPeerPB::MemberType_Name(peer->member_type);
+              << PeerMemberType_Name(peer->member_type);
   }
 
   req->Clear();
@@ -855,14 +872,14 @@ struct GetInfiniteWatermarkForLocalPeer<Policy, false> {
 template <class Policy>
 typename Policy::result_type PeerMessageQueue::GetWatermark() {
   DCHECK(queue_lock_.is_locked());
-  const int num_peers_required = queue_state_.majority_size_;
+  const auto num_peers_required = queue_state_.majority_size_;
   if (num_peers_required == kUninitializedMajoritySize) {
     // We don't even know the quorum majority size yet.
     return Policy::NotEnoughPeersValue();
   }
   CHECK_GE(num_peers_required, 0);
 
-  const size_t num_peers = peers_map_.size();
+  const ssize_t num_peers = peers_map_.size();
   if (num_peers < num_peers_required) {
     return Policy::NotEnoughPeersValue();
   }
@@ -903,7 +920,7 @@ typename Policy::result_type PeerMessageQueue::GetWatermark() {
   }
 
   // We always assume that local peer has most recent information.
-  const size_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
+  const ssize_t num_responsive_peers = watermarks.size() + local_peer_infinite_watermark;
 
   if (num_responsive_peers < num_peers_required) {
     VLOG_WITH_PREFIX_UNLOCKED(2)
@@ -1107,7 +1124,7 @@ bool PeerMessageQueue::ResponseFromPeer(const std::string& peer_uuid,
       }
       peer->member_type = peer_pb.member_type();
     } else {
-      peer->member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+      peer->member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
     }
 
     // Application level errors should be handled elsewhere
@@ -1605,6 +1622,21 @@ void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
 Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
     int64_t max_allowed_index, OperationType op_type) {
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
+}
+
+Status ValidateFlags() {
+  // Normally we would have used
+  //   DEFINE_validator(rpc_throttle_threshold_bytes, &RpcThrottleThresholdBytesValidator);
+  // right after defining the rpc_throttle_threshold_bytes flag. However, this leads to a segfault
+  // in the LTO-enabled build, presumably due to indeterminate order of static initialization.
+  // Instead, we invoke this function from master/tserver main() functions when static
+  // initialization is already finished.
+  if (!RpcThrottleThresholdBytesValidator(
+      "rpc_throttle_threshold_bytes", FLAGS_rpc_throttle_threshold_bytes)) {
+    return STATUS(InvalidArgument, "Flag validation failed");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace consensus

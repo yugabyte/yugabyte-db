@@ -3,7 +3,6 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
@@ -47,7 +46,10 @@ public class SystemdUpgrade extends UpgradeTaskBase {
           taskParams().verifyParams(getUniverse());
 
           // Rolling Upgrade Systemd
-          createRollingUpgradeTaskFlow(this::createSystemdUpgradeTasks, nodes, false);
+          createRollingUpgradeTaskFlow(
+              (nodes1, processTypes) -> createSystemdUpgradeTasks(nodes1, getSingle(processTypes)),
+              nodes,
+              DEFAULT_CONTEXT);
 
           // Persist useSystemd changes
           createPersistSystemdUpgradeTask(true).setSubTaskGroupType(getTaskSubGroupType());
@@ -63,7 +65,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().clusters = getUniverse().getUniverseDetails().clusters;
 
     // Conditional Provisioning
-    createSetupServerTasks(nodes, true /* isSystemdUpgrade */)
+    createSetupServerTasks(nodes, p -> p.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
     UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
@@ -74,7 +76,7 @@ public class SystemdUpgrade extends UpgradeTaskBase {
     taskParams().setTxnTableWaitCountFlag = universeDetails.setTxnTableWaitCountFlag;
 
     // Conditional Configuring
-    createConfigureServerTasks(nodes, false, false, false, true /* isSystemdUpgrade */)
+    createConfigureServerTasks(nodes, params -> params.isSystemdUpgrade = true)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 }

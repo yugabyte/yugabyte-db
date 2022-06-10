@@ -2,17 +2,16 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.models.Universe;
-import lombok.extern.slf4j.Slf4j;
-
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import play.mvc.Http;
 
 @Slf4j
 public class ChangeAdminPassword extends UniverseTaskBase {
@@ -59,7 +58,18 @@ public class ChangeAdminPassword extends UniverseTaskBase {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;
         dbData.ycqlAdminUsername = taskParams().ycqlUserName;
         dbData.ycqlAdminPassword = taskParams().ycqlNewPassword;
-        ycqlQueryExecutor.updateAdminPassword(universe, dbData);
+        try {
+          // Check if the password already works.
+          ycqlQueryExecutor.validateAdminPassword(universe, dbData);
+          log.info("YCQL password is already updated");
+        } catch (PlatformServiceException e) {
+          if (e.getResult().status() == Http.Status.UNAUTHORIZED) {
+            log.info("Updating YCQL password");
+            ycqlQueryExecutor.updateAdminPassword(universe, dbData);
+          } else {
+            throw e;
+          }
+        }
       }
       if (taskParams().primaryCluster.userIntent.enableYSQL
           && taskParams().primaryCluster.userIntent.enableYSQLAuth) {
@@ -67,7 +77,18 @@ public class ChangeAdminPassword extends UniverseTaskBase {
         dbData.ysqlCurrAdminPassword = taskParams().ysqlCurrentPassword;
         dbData.ysqlAdminUsername = taskParams().ysqlUserName;
         dbData.ysqlAdminPassword = taskParams().ysqlNewPassword;
-        ysqlQueryExecutor.updateAdminPassword(universe, dbData);
+        try {
+          // Check if the password already works.
+          ysqlQueryExecutor.validateAdminPassword(universe, dbData);
+          log.info("YSQL password is already updated");
+        } catch (PlatformServiceException e) {
+          if (e.getResult().status() == Http.Status.UNAUTHORIZED) {
+            log.info("Updating YSQL password");
+            ysqlQueryExecutor.updateAdminPassword(universe, dbData);
+          } else {
+            throw e;
+          }
+        }
       }
 
     } catch (Exception e) {

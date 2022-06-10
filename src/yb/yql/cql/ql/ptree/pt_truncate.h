@@ -18,7 +18,6 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_TRUNCATE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_TRUNCATE_H_
 
-#include "yb/client/client.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
@@ -41,7 +40,7 @@ class PTTruncateStmt : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTTruncateStmt(MemoryContext *memctx,
-                 YBLocation::SharedPtr loc,
+                 YBLocationPtr loc,
                  PTQualifiedNameListNode::SharedPtr names);
   virtual ~PTTruncateStmt();
 
@@ -57,7 +56,7 @@ class PTTruncateStmt : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // Name of the table being truncated.

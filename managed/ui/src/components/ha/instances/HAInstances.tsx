@@ -12,7 +12,7 @@ import { DeleteModal } from '../modals/DeleteModal';
 import { PromoteInstanceModal } from '../modals/PromoteInstanceModal';
 import { BadgeInstanceType } from '../compounds/BadgeInstanceType';
 import './HAInstances.scss';
-import {timeFormatter} from "../../../utils/TableFormatters";
+import { timeFormatter } from '../../../utils/TableFormatters';
 
 const renderAddress = (cell: any, row: HAPlatformInstance): ReactElement => (
   <a href={row.address} target="_blank" rel="noopener noreferrer">
@@ -25,7 +25,7 @@ const renderInstanceType = (cell: HAPlatformInstance['is_leader']): ReactElement
   <BadgeInstanceType isActive={cell} />
 );
 
-const renderLastBackup = (cell: HAPlatformInstance['last_backup']): string =>
+const renderLastBackup = (cell: HAPlatformInstance['last_backup']): ReactElement | string =>
   cell ? timeFormatter(cell) : 'n/a';
 
 export const HAInstances: FC = () => {
@@ -78,7 +78,7 @@ export const HAInstances: FC = () => {
   }
 
   if (error) {
-    return <HAErrorPlaceholder error={error} />;
+    return <HAErrorPlaceholder error={error} configUUID={config?.uuid!}/>;
   }
 
   if (isNoHAConfigExists) {

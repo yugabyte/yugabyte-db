@@ -12,9 +12,11 @@
 // under the License.
 //
 //
-
 #include "yb/common/transaction.h"
 
+#include "yb/common/common.pb.h"
+
+#include "yb/util/result.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -26,8 +28,9 @@ namespace yb {
 
 YB_STRONGLY_TYPED_UUID_IMPL(TransactionId);
 
-const std::string kGlobalTransactionsTableName = "transactions";
+const char* kGlobalTransactionsTableName = "transactions";
 const std::string kMetricsSnapshotsTableName = "metrics";
+const std::string kTransactionTablePrefix = "transactions_";
 
 TransactionStatusResult::TransactionStatusResult(TransactionStatus status_, HybridTime status_time_)
     : TransactionStatusResult(status_, status_time_, AbortedSubTransactionSet()) {}
@@ -127,6 +130,22 @@ MonoDelta TransactionRpcTimeout() {
 CoarseTimePoint TransactionRpcDeadline() {
   return CoarseMonoClock::Now() + TransactionRpcTimeout();
 }
+
+TransactionOperationContext::TransactionOperationContext()
+    : transaction_id(TransactionId::Nil()), txn_status_manager(nullptr) {}
+
+TransactionOperationContext::TransactionOperationContext(
+    const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
+    : transaction_id(transaction_id_),
+      txn_status_manager(DCHECK_NOTNULL(txn_status_manager_)) {}
+
+TransactionOperationContext::TransactionOperationContext(
+    const TransactionId& transaction_id_,
+    SubTransactionMetadata&& subtransaction_,
+    TransactionStatusManager* txn_status_manager_)
+    : transaction_id(transaction_id_),
+      subtransaction(std::move(subtransaction_)),
+      txn_status_manager(DCHECK_NOTNULL(txn_status_manager_)) {}
 
 bool TransactionOperationContext::transactional() const {
   return !transaction_id.IsNil();

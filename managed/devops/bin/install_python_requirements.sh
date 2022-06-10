@@ -78,6 +78,10 @@ else
     pip_install "setuptools<45"
   fi
 
+  # faster pip install of yb-cassandra-driver without a full compilation
+  # https://docs.datastax.com/en/developer/python-driver/3.16/installation/
+  export CASS_DRIVER_NO_CYTHON=1
+
   pip_install -r "$FROZEN_REQUIREMENTS_FILE"
   log "Installing ybops package"
   install_ybops_package

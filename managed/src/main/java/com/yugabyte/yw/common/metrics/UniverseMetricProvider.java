@@ -12,9 +12,18 @@ package com.yugabyte.yw.common.metrics;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
+import com.yugabyte.yw.models.KmsHistory;
+import com.yugabyte.yw.models.KmsHistoryId.TargetType;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
@@ -23,6 +32,11 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 @Singleton
@@ -35,11 +49,20 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_PAUSED,
           PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
-          PlatformMetrics.UNIVERSE_NODE_FUNCTION);
+          PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+          PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAYS);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
     List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
+    Map<UUID, KmsHistory> activeEncryptionKeys =
+        KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY)
+            .stream()
+            .collect(Collectors.toMap(key -> key.uuid.targetUuid, Function.identity()));
+    Map<UUID, KmsConfig> kmsConfigMap =
+        KmsConfig.listAllKMSConfigs()
+            .stream()
+            .collect(Collectors.toMap(config -> config.configUUID, Function.identity()));
     for (Customer customer : Customer.getAll()) {
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
         MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
@@ -63,6 +86,23 @@ public class UniverseMetricProvider implements MetricsProvider {
                 universe,
                 PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
                 statusValue(universe.getUniverseDetails().backupInProgress)));
+        Double encryptionKeyExpiryDays =
+            getEncryptionKeyExpiryDays(
+                activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
+        if (encryptionKeyExpiryDays != null) {
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAYS,
+                  encryptionKeyExpiryDays));
+        }
+        universeGroup.metric(
+            createUniverseMetric(
+                customer,
+                universe,
+                PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
+                universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
 
         if (universe.getUniverseDetails().nodeDetailsSet != null) {
           for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
@@ -120,6 +160,17 @@ public class UniverseMetricProvider implements MetricsProvider {
                     nodeDetails.redisServerHttpPort,
                     "redis_export",
                     statusValue(nodeDetails.isRedisServer)));
+            boolean hasNodeExporter =
+                !CloudType.kubernetes.equals(universe.getNodeDeploymentMode(nodeDetails));
+            universeGroup.metric(
+                createNodeMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+                    ipAddress,
+                    nodeDetails.nodeExporterPort,
+                    "node_export",
+                    statusValue(hasNodeExporter)));
           }
         }
         universeGroup.cleanMetricFilter(
@@ -155,6 +206,35 @@ public class UniverseMetricProvider implements MetricsProvider {
         .setKeyLabel(KnownAlertLabels.INSTANCE, ipAddress + ":" + port)
         .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
         .setValue(value);
+  }
+
+  private Double getEncryptionKeyExpiryDays(KmsHistory activeKey, Map<UUID, KmsConfig> configMap) {
+    if (activeKey == null) {
+      return null;
+    }
+    KmsConfig kmsConfig = configMap.get(activeKey.configUuid);
+    if (kmsConfig == null) {
+      log.warn(
+          "Active universe {} key config {} is missing",
+          activeKey.uuid.targetUuid,
+          activeKey.configUuid);
+      return null;
+    }
+    if (kmsConfig.keyProvider != KeyProvider.HASHICORP) {
+      // For now only Hashicorp config expires.
+      return null;
+    }
+    ObjectNode credentials = EncryptionAtRestUtil.getAuthConfig(kmsConfig);
+    JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
+    if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
+      return null;
+    }
+    JsonNode keyTtlExpiryNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL_EXPIRY);
+    if (keyTtlExpiryNode == null) {
+      return null;
+    }
+    return (double)
+        TimeUnit.MILLISECONDS.toDays(keyTtlExpiryNode.asLong() - System.currentTimeMillis());
   }
 
   @Override

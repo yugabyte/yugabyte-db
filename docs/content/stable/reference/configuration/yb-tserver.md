@@ -184,18 +184,6 @@ The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
 
-##### --logemaillevel
-
-Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
-
-Default: `999`
-
-##### --logmailer
-
-The mailer used to send logging email messages.
-
-Default: `"/bin/mail"`
-
 ##### --logtostderr
 
 Write log messages to `stderr` instead of `logfiles`.
@@ -252,7 +240,7 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 
@@ -389,6 +377,18 @@ The unique identifier for the cluster.
 
 Default: `""`
 
+##### --force_global_transactions
+
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE` (see [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/#step-5-running-transactions)).
+
+{{< note title="Global transaction latency" >}}
+
+Avoid setting this flag when possible. All distributed transactions _can_ run without issue as global transactions, but you may have significantly higher latency when committing transactions, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. When necessary, it is preferable to selectively set the session variable `force_global_transaction = TRUE` rather than setting this flag.
+
+{{< /note >}}
+
+Default: `false`
+
 ---
 
 ### YSQL flags
@@ -499,13 +499,9 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `REPEATABLE READ`
+Default: `READ COMMITTED`<sup>$</sup>
 
-{{< note title="Note" >}}
-
-YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
-
-{{< /note >}}
+<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -615,11 +611,29 @@ Default: `11000`
 
 ### Performance flags
 
+Use the following two flags to select the SSTable compression type.
+
 ##### --enable_ondisk_compression
 
-Enable Snappy compression at the the cluster level.
+Enable SSTable compression at the cluster level.
 
 Default: `true`
+
+##### --compression_type
+
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Note" >}}
+
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
 
 ##### --regular_tablets_data_block_key_value_encoding
 
@@ -667,15 +681,17 @@ Default: `256MB`
 
 ### Network compression
 
-Use the following two gflags to configure RPC compression:
+Use the following two gflags to configure RPC compression.
 
 ##### --enable_stream_compression
 
-Controls whether YugabyteDB uses RPC compression. Valid values are `true` or `false`.
+Controls whether YugabyteDB uses RPC compression.
+
+Default: `true`
 
 ##### --stream_compression_algo
 
-Specifies which compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
 
 - 0: No compression (default value)
 - 1: Gzip
@@ -693,7 +709,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
 
     \
-    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the latest release series, this is all releases beyond 2.9.0.
+    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
 1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
 

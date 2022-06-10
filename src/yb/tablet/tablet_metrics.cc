@@ -31,7 +31,6 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/metrics.h"
 
 // Tablet-specific metrics.

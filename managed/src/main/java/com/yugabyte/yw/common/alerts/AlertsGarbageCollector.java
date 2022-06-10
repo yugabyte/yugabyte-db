@@ -6,6 +6,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.filters.AlertFilter;
+import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
 import java.time.Duration;
@@ -25,11 +26,15 @@ public class AlertsGarbageCollector {
 
   // Counter names
   private static final String ALERT_GC_COUNT = "ybp_alert_gc_count";
+  private static final String MAINTENANCE_WINDOW_GC_COUNT = "ybp_maintenance_window_gc_count";
   private static final String ALERT_GC_RUN_COUNT = "ybp_alert_gc_run_count";
 
   // Counters
   private static final Counter ALERT_GC_COUNTER =
       Counter.build(ALERT_GC_COUNT, "Number of garbage collected alerts")
+          .register(CollectorRegistry.defaultRegistry);
+  private static final Counter MAINTENANCE_WINDOW_GC_COUNTER =
+      Counter.build(MAINTENANCE_WINDOW_GC_COUNT, "Number of garbage collected maintenance windows")
           .register(CollectorRegistry.defaultRegistry);
   private static final Counter ALERT_GC_RUN_COUNTER =
       Counter.build(ALERT_GC_RUN_COUNT, "Number of alert GC runs")
@@ -40,22 +45,28 @@ public class AlertsGarbageCollector {
   static final String YB_ALERT_GC_RESOLVED_RETENTION_DURATION =
       "yb.alert.resolved_retention_duration";
 
+  @VisibleForTesting
+  static final String YB_MAINTENANCE_WINDOW_RETENTION_DURATION =
+      "yb.maintenance.retention_duration";
+
   private final Scheduler scheduler;
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutionContext executionContext;
   private final AlertService alertService;
+  private final MaintenanceService maintenanceService;
 
   @Inject
   public AlertsGarbageCollector(
       ExecutionContext executionContext,
       ActorSystem actorSystem,
       RuntimeConfigFactory runtimeConfigFactory,
-      AlertService alertService) {
-
+      AlertService alertService,
+      MaintenanceService maintenanceService) {
     this.scheduler = actorSystem.scheduler();
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.executionContext = executionContext;
     this.alertService = alertService;
+    this.maintenanceService = maintenanceService;
   }
 
   public void start() {
@@ -77,6 +88,11 @@ public class AlertsGarbageCollector {
 
   private void checkCustomer(Customer c) {
     ALERT_GC_RUN_COUNTER.inc();
+    cleanAlerts(c);
+    cleanMaintenanceWindows(c);
+  }
+
+  private void cleanAlerts(Customer c) {
     Date resolvedDateBefore = Date.from(Instant.now().minus(alertRetentionDuration(c)));
     AlertFilter filter =
         AlertFilter.builder()
@@ -87,9 +103,26 @@ public class AlertsGarbageCollector {
     ALERT_GC_COUNTER.inc(deleted);
   }
 
+  private void cleanMaintenanceWindows(Customer c) {
+    Date endTimeBefore = Date.from(Instant.now().minus(maintenanceWindowRetentionDuration(c)));
+    MaintenanceWindowFilter filter =
+        MaintenanceWindowFilter.builder()
+            .customerUuid(c.getUuid())
+            .endTimeBefore(endTimeBefore)
+            .build();
+    int deleted = maintenanceService.delete(filter);
+    MAINTENANCE_WINDOW_GC_COUNTER.inc(deleted);
+  }
+
   private Duration alertRetentionDuration(Customer customer) {
     return runtimeConfigFactory
         .forCustomer(customer)
         .getDuration(YB_ALERT_GC_RESOLVED_RETENTION_DURATION);
+  }
+
+  private Duration maintenanceWindowRetentionDuration(Customer customer) {
+    return runtimeConfigFactory
+        .forCustomer(customer)
+        .getDuration(YB_MAINTENANCE_WINDOW_RETENTION_DURATION);
   }
 }

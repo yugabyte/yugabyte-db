@@ -19,13 +19,29 @@ import string
 import sys
 import time
 
+from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
-  generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-  YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
-  DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
+    generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
+    get_public_key_content, \
+    YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+    DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
+    DEFAULT_SSH_USER
 from ansible_vault import Vault
 from ybops.utils import generate_rsa_keypair, scp_to_tmp
+
+
+class ConsoleLoggingErrorHandler(object):
+    def __init__(self, cloud):
+        self.cloud = cloud
+
+    def __call__(self, exception, args):
+        if args.search_pattern:
+            console_output = self.cloud.get_console_output(args)
+
+            if console_output:
+                logging.error("Dumping latest console output for {}:".format(args.search_pattern))
+                logging.error(console_output)
 
 
 class AbstractMethod(object):
@@ -40,6 +56,7 @@ class AbstractMethod(object):
         self.parser = base_command.parser
         # Set this to False if the respective method does not need credential validation.
         self.need_validation = True
+        self.error_handler = None
 
     def prepare(self):
         """Hook for setting up parser options.
@@ -74,7 +91,12 @@ class AbstractMethod(object):
             self.cloud.validate_credentials()
         self.cloud.init_cloud_api(args)
         self.preprocess_args(args)
-        self.callback(args)
+        try:
+            self.callback(args)
+        except BaseException as e:
+            if self.error_handler:
+                self.error_handler(e, args)
+            raise e
 
     def _cleanup_dir(self, path):
         for file in glob.glob("{}/*.*".format(path)):
@@ -143,6 +165,10 @@ class AbstractInstancesMethod(AbstractMethod):
                                  required=False,
                                  help="The machine image (e.g. an AMI on AWS) to install, "
                                       "this depends on the region.")
+        self.parser.add_argument("--boot_script", required=False,
+                                 help="Custom boot script to execute on the instance.")
+        self.parser.add_argument("--boot_script_token", required=False,
+                                 help="Custom boot script token in /etc/yb-boot-script-complete")
 
         mutex_group = self.parser.add_mutually_exclusive_group()
         mutex_group.add_argument("--num_volumes", type=int, default=0,
@@ -249,6 +275,184 @@ class AbstractInstancesMethod(AbstractMethod):
         return ssh_port_updated
 
 
+class VerifySSHConnection(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(VerifySSHConnection, self).__init__(base_command, "verify_node_ssh_access", True)
+
+    def add_extra_args(self):
+        super(VerifySSHConnection, self).add_extra_args()
+        self.parser.add_argument("--new_private_key_file",
+                                 required=True,
+                                 help="Private key file path of newly added \
+                                 key for verifying connection")
+
+    def callback(self, args):
+        if args.new_private_key_file == args.private_key_file:
+            print("Given old and new access keys " +
+                  "are the same, skipping.")
+            return
+        host_info = self.cloud.get_host_info(args)
+        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
+        ssh_retries = 3
+        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.private_key_file,
+                                      ssh_retries)
+        if oldKeyConnects:
+            print("SSH connection verification successful")
+            return
+        elif args.new_private_key_file is None:
+            raise YBOpsRuntimeError("SSH connection verification failed! \
+                Could not connect with given SSH key for instance: '{0}' \
+                    and no alternate new key provided".format(
+                args.search_pattern))
+        else:
+            # make SSH key rotation idempotent - it will move ahead if new key connects
+            newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                          args.custom_ssh_port,
+                                          args.ssh_user,
+                                          args.new_private_key_file,
+                                          ssh_retries)
+            if newKeyConnects:
+                print("New key already connects " +
+                      "whereas old key does not")
+                return
+            else:
+                raise YBOpsRuntimeError("SSH connection verification failed! " +
+                                        "Could not connect with old or new " +
+                                        "SSH key for instance: '{0}'".format(
+                                            args.search_pattern))
+
+
+class AddAuthorizedKey(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(AddAuthorizedKey, self).__init__(base_command, "add_authorized_key", True)
+
+    def add_extra_args(self):
+        super(AddAuthorizedKey, self).add_extra_args()
+        self.parser.add_argument("--public_key_content",
+                                 required=True,
+                                 help="Public key content to be added to authorized_keys of node")
+        self.parser.add_argument("--new_private_key_file",
+                                 required=True,
+                                 help="Private key file path of newly added \
+                                 key for verifying connection")
+
+    def callback(self, args):
+        if args.private_key_file == args.new_private_key_file:
+            print("Given old and new access keys" +
+                  " are the same, skipping.")
+            return
+        host_info = self.cloud.get_host_info(args)
+        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
+        ssh_retries = 3
+        # check connection before adding public key to make task idempotent
+        newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.new_private_key_file,
+                                      ssh_retries)
+        if newKeyConnects:
+            print("Given SSH key already exists " +
+                  "for user {} in instance: {}".format(
+                      args.ssh_user, args.search_pattern))
+            return
+
+        # add public new key
+        public_key_content = args.public_key_content
+        if args.public_key_content == "":
+            # public key is taken by parsing private key file in cases when
+            # a customer uploads only private key file
+            public_key_content = get_public_key_content(args.private_key_file)
+        updated_vars = {
+            "command": "add-authorized-key",
+            "public_key_content": public_key_content
+        }
+        self.update_ansible_vars_with_args(args)
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        updated_vars.update(self.extra_vars)
+        self.cloud.setup_ansible(args).run("edit_authorized_keys.yml", updated_vars)
+
+        # confirm connection with new key
+        newKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.new_private_key_file,
+                                      ssh_retries)
+        if newKeyConnects:
+            print("Add access key successful")
+        else:
+            raise YBOpsRuntimeError("Add authorized key failed! " +
+                                    "Could not connect with given " +
+                                    "SSH key for instance: '{0}'".format(
+                                        args.search_pattern))
+
+
+class RemoveAuthorizedKey(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(RemoveAuthorizedKey, self).__init__(base_command, "remove_authorized_key", True)
+
+    def add_extra_args(self):
+        super(RemoveAuthorizedKey, self).add_extra_args()
+        self.parser.add_argument("--public_key_content",
+                                 required=True,
+                                 help="Public key content to be removed from \
+                                     authorized_keys of node")
+        self.parser.add_argument("--old_private_key_file",
+                                 required=True,
+                                 help="Private key file path of key to be removed \
+                                 for verifying connection")
+
+    def callback(self, args):
+        if args.private_key_file == args.old_private_key_file:
+            print("Given old and new access keys " +
+                  "are the same, skipping.")
+            return
+        host_info = self.cloud.get_host_info(args)
+        ssh_details = get_ssh_host_port(host_info, args.custom_ssh_port, default_port=False)
+        ssh_retries = 3
+        # check connection before removing public key to make task idempotent
+        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.old_private_key_file,
+                                      ssh_retries)
+
+        if not oldKeyConnects:
+            print("SSH key already removed/does not " +
+                  "exist for instance: {}".format(
+                      args.search_pattern))
+            return
+
+        # remove public key
+        public_key_content = args.public_key_content
+        if args.public_key_content == "":
+            # public key is taken by parsing private key file in cases when
+            # a customer uploads only private key file
+            public_key_content = get_public_key_content(args.old_private_key_file)
+        updated_vars = {
+            "command": "remove-authorized-key",
+            "public_key_content": public_key_content
+        }
+        self.update_ansible_vars_with_args(args)
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        updated_vars.update(self.extra_vars)
+        self.cloud.setup_ansible(args).run("edit_authorized_keys.yml", updated_vars)
+
+        # confirm connection with old key does not work
+        oldKeyConnects = wait_for_ssh(ssh_details["ssh_host"],
+                                      args.custom_ssh_port,
+                                      args.ssh_user,
+                                      args.old_private_key_file,
+                                      ssh_retries)
+        if not oldKeyConnects:
+            print("Remove access key successful")
+        else:
+            raise YBOpsRuntimeError("Could not remove SSH key for instance: '{0}'".format(
+                args.search_pattern))
+
+
 class ReplaceRootVolumeMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(ReplaceRootVolumeMethod, self).__init__(base_command, "replace_root_volume")
@@ -261,7 +465,6 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
 
     def _replace_root_volume(self, args, host_info, current_root_volume):
         unmounted = False
-
         try:
             id = args.search_pattern
             logging.info("==> Stopping instance {}".format(id))
@@ -278,7 +481,7 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
             if unmounted:
                 self._mount_root_volume(host_info, current_root_volume)
         finally:
-            self.cloud.start_instance(host_info, 22)
+            self.cloud.start_instance(host_info, [22, args.custom_ssh_port])
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -306,6 +509,8 @@ class DestroyInstancesMethod(AbstractInstancesMethod):
             action="store_true",
             default=False,
             help="Delete the static public ip.")
+        self.parser.add_argument("--node_uuid", default=None,
+                                 help="The uuid of the instance to delete.")
 
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
@@ -322,6 +527,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(CreateInstancesMethod, self).__init__(base_command, "create")
         self.can_ssh = True
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def add_extra_args(self):
         """Setup the CLI options for creating instances.
@@ -347,9 +553,6 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  default=True,
                                  help="Delete the root volume on VM termination")
 
-        self.parser.add_argument("--boot_script", required=False,
-                                 help="Custom boot script to execute on the instance.")
-
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
         if host_info:
@@ -360,6 +563,31 @@ class CreateInstancesMethod(AbstractInstancesMethod):
         })
         self.update_ansible_vars_with_args(args)
         self.run_ansible_create(args)
+
+        if args.boot_script:
+            host_info = self.cloud.get_host_info(args)
+            self.extra_vars.update(
+                get_ssh_host_port(host_info, args.custom_ssh_port, default_port=True))
+            ssh_port_updated = self.update_open_ssh_port(args,)
+            use_default_port = not ssh_port_updated
+            logging.info(
+                'Waiting for the startup script to finish on {}'.format(args.search_pattern))
+
+            host_info = get_ssh_host_port(
+                self.wait_for_host(args, use_default_port),
+                args.custom_ssh_port,
+                default_port=use_default_port)
+            host_info['ssh_user'] = self.extra_vars.get("ssh_user", DEFAULT_SSH_USER)
+            retries = 0
+            while not self.cloud.wait_for_startup_script(args, host_info) and retries < 5:
+                retries += 1
+                time.sleep(2 ** retries)
+
+            # For clusters with secondary subnets, the start-up script is expected to fail.
+            if not args.cloud_subnet_secondary:
+                self.cloud.verify_startup_script(args, host_info)
+
+            logging.info('Startup script finished on {}'.format(args.search_pattern))
 
 
 class ProvisionInstancesMethod(AbstractInstancesMethod):
@@ -372,6 +600,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         self.create_method = None
         super(ProvisionInstancesMethod, self).__init__(base_command, "provision")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def preprocess_args(self, args):
         super(ProvisionInstancesMethod, self).preprocess_args(args)
@@ -400,8 +629,12 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  type=str.lower)
         self.parser.add_argument("--disable_custom_ssh", action="store_true",
                                  help="Disable running the ansible task for using custom SSH.")
-        self.parser.add_argument("--install_python", action="store_true", default=False,
-                                 help="Flag to set if host OS needs python installed for Ansible.")
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to set up chrony for NTP synchronization.")
+        self.parser.add_argument("--ntp_server", required=False, action="append",
+                                 help="NTP server to connect to.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -414,11 +647,25 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
                                                  default_port=True))
 
+        # Check if ssh port has already been updated
+        ssh_port_updated = self.update_open_ssh_port(args,)
+        use_default_port = not ssh_port_updated
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port,
+                                                 default_port=use_default_port))
+
         # Check if secondary subnet is present. If so, configure it.
         if host_info.get('secondary_subnet'):
+            # Wait for host to be ready to run ssh commands
+            self.wait_for_host(args, use_default_port)
             self.cloud.configure_secondary_interface(
                 args, self.extra_vars, self.cloud.get_subnet_cidr(args,
                                                                   host_info['secondary_subnet']))
+            # The bootscript might have failed due to no access to public internet
+            # Re-run it.
+            if args.boot_script:
+                # copy and run the script
+                self.cloud.execute_boot_script(args, self.extra_vars)
 
         if not args.skip_preprovision:
             self.preprovision(args)
@@ -436,6 +683,11 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"node_exporter_user": args.node_exporter_user})
         if args.remote_package_path:
             self.extra_vars.update({"remote_package_path": args.remote_package_path})
+        if args.pg_max_mem_mb:
+            self.extra_vars.update({"pg_max_mem_mb": args.pg_max_mem_mb})
+        if args.ntp_server:
+            self.extra_vars.update({"ntp_servers": args.ntp_server})
+        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
@@ -463,8 +715,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         use_default_port = not ssh_port_updated
         host_info = self.wait_for_host(args, default_port=use_default_port)
         ansible = self.cloud.setup_ansible(args)
-        if (args.install_python):
-            self.extra_vars["install_python"] = True
         ansible.run("preprovision.yml", self.extra_vars, host_info)
 
         if not args.disable_custom_ssh and use_default_port:
@@ -472,6 +722,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
 
 
 class CreateRootVolumesMethod(AbstractInstancesMethod):
+    """Superclass for create root volumes.
+    """
+
     def __init__(self, base_command):
         super(CreateRootVolumesMethod, self).__init__(base_command, "create_root_volumes")
         self.create_method = CreateInstancesMethod(self.base_command)
@@ -501,6 +754,20 @@ class CreateRootVolumesMethod(AbstractInstancesMethod):
 
         logging.info("==> Created volumes {}".format(output))
         print(json.dumps(output))
+
+
+class DeleteRootVolumesMethod(AbstractInstancesMethod):
+    """Superclass for deleting root volumes.
+    """
+
+    def __init__(self, base_command):
+        super(DeleteRootVolumesMethod, self).__init__(base_command, "delete_root_volumes")
+
+    def delete_volumes(self, tags):
+        pass
+
+    def callback(self, args):
+        self.delete_volumes(args)
 
 
 class ListInstancesMethod(AbstractInstancesMethod):
@@ -547,13 +814,36 @@ class UpdateDiskMethod(AbstractInstancesMethod):
     def callback(self, args):
         self.cloud.update_disk(args)
         host_info = self.cloud.get_host_info(args)
+        self.update_ansible_vars_with_args(args)
         ssh_options = {
             # TODO: replace with args.ssh_user when it's setup in the flow
-            "ssh_user": self.SSH_USER,
+            "ssh_user": self.extra_vars["ssh_user"],
             "private_key_file": args.private_key_file
         }
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         self.cloud.expand_file_system(args, ssh_options)
+
+
+class UpdateMountedDisksMethod(AbstractInstancesMethod):
+    """Superclass for updating fstab for disks, see PLAT-2547.
+    """
+
+    def __init__(self, base_command):
+        super(UpdateMountedDisksMethod, self).__init__(base_command, "update_mounted_disks")
+
+    def update_ansible_vars_with_args(self, args):
+        super(UpdateMountedDisksMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+
+    def callback(self, args):
+        # Need to verify that all disks are mounted by UUUID
+        host_info = self.cloud.get_host_info(args)
+        ansible = self.cloud.setup_ansible(args)
+        self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        ansible.playbook_args["remote_role"] = "mount_ephemeral_drives"
+        logging.debug(pprint(self.extra_vars))
+        ansible.run("remote_role.yml", self.extra_vars, host_info)
 
 
 class ChangeInstanceTypeMethod(AbstractInstancesMethod):
@@ -562,6 +852,13 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
 
     def __init__(self, base_command):
         super(ChangeInstanceTypeMethod, self).__init__(base_command, "change_instance_type")
+
+    def add_extra_args(self):
+        super(ChangeInstanceTypeMethod, self).add_extra_args()
+        self.parser.add_argument("--pg_max_mem_mb", type=int, default=0,
+                                 help="Max memory for postgress process.")
+        self.parser.add_argument("--air_gap", action="store_true",
+                                 default=False, help="Run airgapped install.")
 
     def prepare(self):
         super(ChangeInstanceTypeMethod, self).prepare()
@@ -572,7 +869,14 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
         if not host_info:
             raise YBOpsRuntimeError("Instance {} not found".format(args.search_pattern))
 
+        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
+        self.update_ansible_vars_with_args(args)
         self._resize_instance(args, self._host_info(args, host_info))
+
+    def update_ansible_vars_with_args(self, args):
+        super(ChangeInstanceTypeMethod, self).update_ansible_vars_with_args(args)
+        self.extra_vars["pg_max_mem_mb"] = args.pg_max_mem_mb
+        self.extra_vars["air_gap"] = args.air_gap
 
     def _validate_args(self, args):
         # Make sure "instance_type" exists in args
@@ -594,8 +898,11 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
                                     .format(repr(e)))
         finally:
-            self.cloud.start_instance(host_info, int(args.custom_ssh_port))
+            self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
             logging.info('Instance {} is started'.format(args.search_pattern))
+
+        # Make sure we are using the updated cgroup value if instance type is changing.
+        self.cloud.setup_ansible(args).run("setup-cgroup.yml", self.extra_vars, host_info)
 
 
 class CronCheckMethod(AbstractInstancesMethod):
@@ -632,17 +939,18 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
     def __init__(self, base_command):
         super(ConfigureInstancesMethod, self).__init__(base_command, "configure")
         self.supported_types = [self.YB_SERVER_TYPE]
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
 
     def prepare(self):
         super(ConfigureInstancesMethod, self).prepare()
 
         self.parser.add_argument('--package', default=None)
+        self.parser.add_argument('--num_releases_to_keep', type=int,
+                                 help="Number of releases to keep after upgrade.")
         self.parser.add_argument('--yb_process_type', default=None,
                                  choices=self.VALID_PROCESS_TYPES)
         self.parser.add_argument('--extra_gflags', default=None)
         self.parser.add_argument('--gflags', default=None)
-        self.parser.add_argument('--replace_gflags', action="store_true")
-        self.parser.add_argument('--add_default_gflags', default=None)
         self.parser.add_argument('--gflags_to_remove', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
@@ -741,8 +1049,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.package is not None:
             self.extra_vars["package"] = args.package
 
-        if args.add_default_gflags is not None:
-            self.extra_vars["add_default_gflags"] = args.add_default_gflags.strip()
+        if args.num_releases_to_keep is not None:
+            self.extra_vars["num_releases_to_keep"] = args.num_releases_to_keep
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
@@ -886,6 +1194,8 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 return
             if args.cert_rotate_action == "ROTATE_CERTS":
                 rotate_certs = True
+                # Clean up client certs to remove old cert traces
+                self.cloud.cleanup_client_certs(ssh_options)
 
         # Copying Server Certs
         logging.info("Copying certificates to {}.".format(args.search_pattern))
@@ -1113,6 +1423,9 @@ class AbstractAccessMethod(AbstractMethod):
         self.parser.add_argument("--key_file_path", required=True, help="Key file path")
         self.parser.add_argument("--public_key_file", required=False, help="Public key filename")
         self.parser.add_argument("--private_key_file", required=False, help="Private key filename")
+        self.parser.add_argument("--delete_remote", action="store_true", help="Delete from cloud")
+        self.parser.add_argument("--ignore_auth_failure", action="store_true",
+                                 help="Ignore cloud auth failure")
 
     def validate_key_files(self, args):
         public_key_file = args.public_key_file
@@ -1158,9 +1471,67 @@ class AccessDeleteKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         try:
-            self._delete_key_pair(args)
+            if (args.delete_remote):
+                self._delete_key_pair(args)
             self._cleanup_dir(args.key_file_path)
             print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
         except Exception as e:
             logging.error(e)
             print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
+
+
+class TransferXClusterCerts(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(TransferXClusterCerts, self).__init__(base_command, "transfer_xcluster_certs")
+        self.ssh_user = "yugabyte"  # Default ssh username.
+
+    def add_extra_args(self):
+        super(TransferXClusterCerts, self).add_extra_args()
+        self.parser.add_argument("--root_cert_path",
+                                 help="The path to the root cert of the source universe on "
+                                      "the Platform host")
+        self.parser.add_argument("--replication_config_name",
+                                 required=True,
+                                 help="The format of this name must be "
+                                      "[Source universe UUID]_[Config name]")
+        self.parser.add_argument("--producer_certs_dir",
+                                 help="The directory containing the certs on the target universe")
+        self.parser.add_argument("--action",
+                                 default="copy",
+                                 help="If true, the root certificate will be removed")
+
+    def _verify_params(self, args):
+        if len(args.replication_config_name.split("_", 1)) != 2:
+            raise YBOpsRuntimeError(
+                "--replication_config_name {} is not valid. It must have " +
+                "[Source universe UUID]_[Config name] format"
+                .format(args.replication_config_name))
+
+    def callback(self, args):
+        self._verify_params(args)
+        if args.ssh_user is not None:
+            self.ssh_user = args.ssh_user
+        host_info = self.cloud.get_host_info(args)
+        ssh_options = {
+            "ssh_user": self.ssh_user,
+            "private_key_file": args.private_key_file
+        }
+        ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+
+        # TODO: Add support for rotate certs
+        if args.action == "copy":
+            if args.root_cert_path is None:
+                raise YBOpsRuntimeError("--root_cert_path argument is missing")
+            self.cloud.copy_xcluster_root_cert(
+                ssh_options,
+                args.root_cert_path,
+                args.replication_config_name,
+                args.producer_certs_dir)
+        elif args.action == "remove":
+            self.cloud.remove_xcluster_root_cert(
+                ssh_options,
+                args.replication_config_name,
+                args.producer_certs_dir)
+        else:
+            raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
+                                    "or remove".format(args.action))

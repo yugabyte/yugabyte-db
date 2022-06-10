@@ -14,21 +14,20 @@
 #ifndef YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H
 #define YB_MASTER_TABLET_SPLIT_CANDIDATE_FILTER_H
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
 
-// Choosing a tablet to filter is based on two criteria:
-// 1. Is the tablet characteristically one which we know how to split?
-// 2. Given we *can* split the tablet, does it make sense to?
-// This class handles answering both of those questions.
 class TabletSplitCandidateFilterIf {
  public:
   virtual ~TabletSplitCandidateFilterIf() {}
 
-  // Returns OK status if the tablet is one which we know how to split.
-  virtual CHECKED_STATUS ValidateSplitCandidate(const TabletInfo& tablet_info) = 0;
+  // Table-level checks for whether we can split tablets in this table.
+  virtual bool IsCdcEnabled(const TableInfo& table_info) const = 0;
+  virtual Result<bool> IsTablePartOfSomeSnapshotSchedule(const TableInfo& table_info) = 0;
+
   // Returns true if we should split a tablet based on the provided drive_info.
   virtual bool ShouldSplitValidCandidate(
       const TabletInfo& tablet_info, const TabletReplicaDriveInfo& drive_info) const = 0;

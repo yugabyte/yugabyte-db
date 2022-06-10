@@ -1653,7 +1653,7 @@ describeOneTableDetails(const char *schemaname,
 
 	/* Get information about tablegroup (if any) */
 	printfPQExpBuffer(&tablegroupbuf,
-					  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup=(\\d*).*') AS tablegroup\n"
+					  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup_oid=(\\d*).*') AS tablegroup\n"
 					  "FROM pg_catalog.pg_class WHERE oid = '%s';",
 					  oid);
 
@@ -2350,7 +2350,7 @@ describeOneTableDetails(const char *schemaname,
 
 					/* Get information about tablegroup (if any) */
 					printfPQExpBuffer(&tablegroupbuf,
-									  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup=(\\d*).*') AS tablegroup\n"
+									  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup_oid=(\\d*).*') AS tablegroup\n"
 									  "FROM pg_catalog.pg_class WHERE relname = '%s';",
 									  PQgetvalue(result, i, 0));
 
@@ -4352,7 +4352,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							  ",\n  pg_catalog.obj_description(g.oid, 'pg_yb_tablegroup') AS \"%s\"",
 							  gettext_noop("Group Description"));
 			appendPQExpBuffer(&buf,
-							  ",\n  g.grptablespace AS \"%s\"",
+							  ",\n  ts.spcname AS \"%s\"",
 							  gettext_noop("Group Tablespace"));
 			appendPQExpBuffer(&buf,
 							  ",\n  g.grpoptions AS \"%s\",\n",
@@ -4415,7 +4415,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							  ",\n  pg_catalog.obj_description(g.oid, 'pg_yb_tablegroup') AS \"%s\"",
 							  gettext_noop("Description"));
 			appendPQExpBuffer(&buf,
-							  ",\n  g.grptablespace AS \"%s\"",
+							  ",\n  ts.spcname AS \"%s\"",
 							  gettext_noop("Tablespace"));
 			appendPQExpBuffer(&buf,
 							  ",\n  g.grpoptions AS \"%s\"",
@@ -4426,6 +4426,10 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 	appendPQExpBufferStr(&buf,
 						 "\nFROM pg_catalog.pg_yb_tablegroup g\n");
 
+	if (verbose)
+		appendPQExpBufferStr(&buf,
+							 "\nLEFT JOIN pg_catalog.pg_tablespace ts ON ts.oid = g.grptablespace\n");
+
 	// If 't' is included, need to do the join based on pg_class reloptions
 	if (showRelations)
 	{
@@ -4433,7 +4437,7 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							 "\nJOIN (SELECT oid, relname, relkind, relowner, unnest(pg_catalog.pg_class.reloptions) " \
 							 "AS relopt FROM pg_catalog.pg_class) c");
 		appendPQExpBufferStr(&buf,
-							 "\nON c.relopt LIKE CONCAT('%tablegroup=%', CAST(g.oid AS TEXT), '%')\n");
+							 "\nON c.relopt LIKE CONCAT('%tablegroup_oid=%', CAST(g.oid AS TEXT), '%')\n");
 	}
 
 	processSQLNamePattern(pset.db, &buf, pattern, false, false,

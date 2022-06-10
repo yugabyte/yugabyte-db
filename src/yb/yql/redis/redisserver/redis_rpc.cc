@@ -12,26 +12,27 @@
 // under the License.
 //
 //
+
 #include "yb/yql/redis/redisserver/redis_rpc.h"
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/redis_protocol.pb.h"
 
-#include "yb/yql/redis/redisserver/redis_encoding.h"
-#include "yb/yql/redis/redisserver/redis_parser.h"
-
 #include "yb/rpc/connection.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
-#include "yb/util/logging.h"
-#include "yb/util/size_literals.h"
-
 #include "yb/util/debug/trace_event.h"
-
+#include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/redis/redisserver/redis_encoding.h"
+#include "yb/yql/redis/redisserver/redis_parser.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -125,8 +126,7 @@ Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& conne
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = rpc::InboundCall::Create<RedisInboundCall>(
-      connection, data->size(), call_processed_listener());
+  auto call = rpc::InboundCall::Create<RedisInboundCall>(connection, data->size(), this);
 
   Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);
   if (!s.ok()) {
@@ -193,8 +193,8 @@ void RedisConnectionContext::Shutdown(const Status& status) {
 
 RedisInboundCall::RedisInboundCall(rpc::ConnectionPtr conn,
                                    size_t weight_in_bytes,
-                                   CallProcessedListener call_processed_listener)
-    : QueueableInboundCall(std::move(conn), weight_in_bytes, std::move(call_processed_listener)) {}
+                                   CallProcessedListener* call_processed_listener)
+    : QueueableInboundCall(std::move(conn), weight_in_bytes, call_processed_listener) {}
 
 RedisInboundCall::~RedisInboundCall() {
   Status status;
@@ -224,10 +224,7 @@ Status RedisInboundCall::ParseFrom(
 
   client_batch_.resize(commands);
   responses_.resize(commands);
-  ready_.reserve(commands);
-  for (size_t i = 0; i != commands; ++i) {
-    ready_.emplace_back(0);
-  }
+  ready_.resize(commands, 0);
   RedisParser parser(IoVecs(1, iovec{request_data_.data(), request_data_.size()}));
   size_t end_of_command = 0;
   for (size_t i = 0; i != commands; ++i) {
@@ -394,7 +391,7 @@ void RedisInboundCall::RespondFailure(rpc::ErrorStatusPB::RpcErrorCodePB error_c
 void RedisInboundCall::Respond(size_t idx, bool is_success, RedisResponsePB* resp) {
   // Did we set response for command at this index already?
   VLOG(2) << "Responding to '" << client_batch_[idx][0] << "' with " << resp->ShortDebugString();
-  if (ready_[idx].fetch_add(1, std::memory_order_relaxed) == 0) {
+  if (base::subtle::NoBarrier_AtomicIncrement(&ready_[idx], 1) == 1) {
     if (!is_success) {
       had_failures_.store(true, std::memory_order_release);
     }

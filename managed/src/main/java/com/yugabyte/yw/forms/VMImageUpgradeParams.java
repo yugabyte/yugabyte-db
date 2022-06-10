@@ -7,7 +7,6 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -17,16 +16,26 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = VMImageUpgradeParams.Converter.class)
 public class VMImageUpgradeParams extends UpgradeTaskParams {
 
+  public enum VmUpgradeTaskType {
+    VmUpgradeWithBaseImages,
+    VmUpgradeWithCustomImages,
+    None
+  }
+
   public Map<UUID, String> machineImages = new HashMap<>();
   public boolean forceVMImageUpgrade = false;
+  public String ybSoftwareVersion = null;
 
   @JsonIgnore public final Map<UUID, UUID> nodeToRegion = new HashMap<>();
+  @JsonIgnore public boolean isSoftwareUpdateViaVm = false;
+  @JsonIgnore public VmUpgradeTaskType vmUpgradeTaskType = VmUpgradeTaskType.None;
 
   public VMImageUpgradeParams() {}
 
@@ -46,24 +55,20 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
     }
 
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    vmUpgradeTaskType =
+        StringUtils.isNotBlank(ybSoftwareVersion)
+            ? VmUpgradeTaskType.VmUpgradeWithCustomImages
+            : VmUpgradeTaskType.VmUpgradeWithBaseImages;
+    isSoftwareUpdateViaVm =
+        (StringUtils.isNotBlank(ybSoftwareVersion)
+            && !ybSoftwareVersion.equals(userIntent.ybSoftwareVersion));
     CloudType provider = userIntent.providerType;
     if (!(provider == CloudType.gcp || provider == CloudType.aws)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
           "VM image upgrade is only supported for AWS / GCP, got: " + provider.toString());
     }
-
-    boolean hasEphemeralStorage = false;
-    if (provider == CloudType.gcp) {
-      if (userIntent.deviceInfo.storageType == PublicCloudConstants.StorageType.Scratch) {
-        hasEphemeralStorage = true;
-      }
-    } else {
-      if (universe.getUniverseDetails().getPrimaryCluster().isAwsClusterWithEphemeralStorage()) {
-        hasEphemeralStorage = true;
-      }
-    }
-    if (hasEphemeralStorage) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }

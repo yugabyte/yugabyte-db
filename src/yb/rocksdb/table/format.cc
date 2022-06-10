@@ -36,8 +36,11 @@
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/format.h"
+#include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status_format.h"
 #include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 
@@ -266,7 +269,7 @@ Status ReadFooterFromFile(
           footer(footer_),
           enforce_table_magic_number(enforce_table_magic_number_) {}
 
-    CHECKED_STATUS Validate(const Slice& read_result) const override {
+    Status Validate(const Slice& read_result) const override {
       // Check that we actually read the whole footer from the file. It may be that size isn't
       // correct.
       RETURN_NOT_OK(CheckSSTableFileSize(file, read_result.size()));
@@ -369,7 +372,7 @@ Status ReadBlock(
             handle(handle_),
             expected_read_size(expected_read_size_) {}
 
-      CHECKED_STATUS Validate(const Slice& read_result) const override {
+      Status Validate(const Slice& read_result) const override {
         if (read_result.size() != expected_read_size) {
           return STATUS_FORMAT(
               Corruption, "Truncated block read in file: $0, block handle: $1, expected size: $2",

@@ -12,13 +12,16 @@
 //
 
 #include "yb/integration-tests/cql_test_util.h"
+
 #include <cassandra.h>
 
 #include <thread>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -220,12 +223,12 @@ bool CassandraFuture::Ready() const {
   return cass_future_ready(future_.get());
 }
 
-CHECKED_STATUS CassandraFuture::Wait() {
+Status CassandraFuture::Wait() {
   cass_future_wait(future_.get());
   return CheckErrorCode();
 }
 
-CHECKED_STATUS CassandraFuture::WaitFor(MonoDelta duration) {
+Status CassandraFuture::WaitFor(MonoDelta duration) {
   if (!cass_future_wait_timed(future_.get(), duration.ToMicroseconds())) {
     return STATUS(TimedOut, "Future timed out");
   }
@@ -326,7 +329,7 @@ void DeleteSession::operator()(CassSession* session) const {
   }
 }
 
-CHECKED_STATUS CassandraSession::Connect(CassCluster* cluster) {
+Status CassandraSession::Connect(CassCluster* cluster) {
   cass_session_.reset(CHECK_NOTNULL(cass_session_new()));
   return CassandraFuture(cass_session_connect(cass_session_.get(), cluster)).Wait();
 }
@@ -339,7 +342,7 @@ Result<CassandraSession> CassandraSession::Create(CassCluster* cluster) {
   return result;
 }
 
-CHECKED_STATUS CassandraSession::Execute(const CassandraStatement& statement) {
+Status CassandraSession::Execute(const CassandraStatement& statement) {
   CassandraFuture future(cass_session_execute(
       cass_session_.get(), statement.cass_statement_.get()));
   return future.Wait();
@@ -366,7 +369,7 @@ CassandraFuture CassandraSession::ExecuteGetFuture(const string& query) {
   return ExecuteGetFuture(CassandraStatement(query));
 }
 
-CHECKED_STATUS CassandraSession::ExecuteQuery(const string& query) {
+Status CassandraSession::ExecuteQuery(const string& query) {
   LOG(INFO) << "Execute query: " << query;
   return Execute(CassandraStatement(query));
 }
@@ -376,7 +379,7 @@ Result<CassandraResult> CassandraSession::ExecuteWithResult(const string& query)
   return ExecuteWithResult(CassandraStatement(query));
 }
 
-CHECKED_STATUS CassandraSession::ExecuteBatch(const CassandraBatch& batch) {
+Status CassandraSession::ExecuteBatch(const CassandraBatch& batch) {
   return SubmitBatch(batch).Wait();
 }
 
@@ -444,7 +447,8 @@ CppCassandraDriver::CppCassandraDriver(
   cass_cluster_ = CHECK_NOTNULL(cass_cluster_new());
   CheckErrorCode(cass_cluster_set_contact_points(cass_cluster_, hosts_str.c_str()));
   CheckErrorCode(cass_cluster_set_port(cass_cluster_, port));
-  cass_cluster_set_request_timeout(cass_cluster_, kCassandraTimeOut.ToMilliseconds());
+  cass_cluster_set_request_timeout(
+      cass_cluster_, narrow_cast<uint32_t>(kCassandraTimeOut.ToMilliseconds()));
 
   // Setup cluster configuration: partitions metadata refresh timer = 3 seconds.
   cass_cluster_set_partition_aware_routing(
@@ -460,6 +464,19 @@ CppCassandraDriver::~CppCassandraDriver() {
   }
 
   LOG(INFO) << "Terminating driver - DONE";
+}
+
+void CppCassandraDriver::EnableTLS(const std::vector<std::string>& ca_certs) {
+  LOG(INFO) << "Enabling TLS...";
+
+  CassSsl* ssl = cass_ssl_new();
+  cass_ssl_set_verify_flags(ssl, CASS_SSL_VERIFY_PEER_CERT | CASS_SSL_VERIFY_PEER_IDENTITY);
+  for (const auto& ca_cert : ca_certs) {
+    CheckErrorCode(cass_ssl_add_trusted_cert(ssl, ca_cert.c_str()));
+  }
+
+  cass_cluster_set_ssl(cass_cluster_, ssl);
+  cass_ssl_free(ssl);
 }
 
 Result<CassandraSession> CppCassandraDriver::CreateSession() {

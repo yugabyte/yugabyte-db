@@ -10,17 +10,24 @@
 
 package com.yugabyte.yw.forms;
 
+import org.hibernate.validator.constraints.URL;
 import play.data.validation.Constraints;
 
 public class PlatformInstanceFormData {
+
   @Constraints.Required()
+  @Constraints.MaxLength(263) // "https://" + 255 for dns
   @Constraints.Pattern(
       message = "Must be prefixed with http:// or https://",
-      value = "\\b(?:http://|https://).+\\b")
-  @YugabyteConstraints.ValidURL()
+      value = "\\b(?:http://|https://).+(/|\\b)")
+  @URL
   public String address;
 
   @Constraints.Required() public boolean is_leader;
 
   @Constraints.Required() public boolean is_local;
+
+  public String getCleanAddress() {
+    return address.replaceAll("/$", "");
+  }
 }

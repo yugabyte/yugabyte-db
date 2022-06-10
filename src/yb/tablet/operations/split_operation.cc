@@ -15,11 +15,17 @@
 
 #include "yb/tablet/operations/split_operation.h"
 
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_error.h"
 #include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_splitter.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -27,13 +33,13 @@ namespace yb {
 namespace tablet {
 
 template <>
-void RequestTraits<tserver::SplitTabletRequestPB>::SetAllocatedRequest(
-    consensus::ReplicateMsg* replicate, tserver::SplitTabletRequestPB* request) {
+void RequestTraits<tablet::SplitTabletRequestPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, SplitTabletRequestPB* request) {
   replicate->set_allocated_split_request(request);
 }
 
 template <>
-tserver::SplitTabletRequestPB* RequestTraits<tserver::SplitTabletRequestPB>::MutableRequest(
+SplitTabletRequestPB* RequestTraits<SplitTabletRequestPB>::MutableRequest(
     consensus::ReplicateMsg* replicate) {
   return replicate->mutable_split_request();
 }
@@ -112,7 +118,8 @@ Status SplitOperation::DoAborted(const Status& status) {
 
 Status SplitOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Apply";
-  return tablet_splitter().ApplyTabletSplit(this, /* raft_log= */ nullptr);
+  return tablet_splitter().ApplyTabletSplit(
+      this, /* raft_log = */ nullptr, /* committed_raft_config = */ boost::none);
 }
 
 }  // namespace tablet

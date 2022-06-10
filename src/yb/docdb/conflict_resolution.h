@@ -20,9 +20,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/value_type.h"
-
-#include "yb/util/result.h"
+#include "yb/docdb/intent.h"
 
 namespace rocksdb {
 

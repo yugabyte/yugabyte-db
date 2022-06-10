@@ -30,6 +30,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyMap;
 import static org.mockito.Mockito.times;
@@ -83,12 +84,17 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
-  static String TMP_CHART_PATH = "/tmp/yugaware_tests/UniverseUiOnlyControllerTest/charts";
+  protected static final String FORBIDDEN_IP_1 = "1.2.3.4";
+  protected static final String FORBIDDEN_IP_2 = "2.3.4.5";
+
+  private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
   @Before
   public void setUp() {
     super.setUp();
     new File(TMP_CHART_PATH).mkdirs();
+    when(mockAppConfig.getString(eq("yb.security.forbidden_ips"), anyString()))
+        .thenReturn(FORBIDDEN_IP_1 + ", " + FORBIDDEN_IP_2);
   }
 
   @After
@@ -145,7 +151,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
     bodyJson.set("clusters", clustersJsonArray);
     Result result = assertPlatformException(() -> sendCreateRequest(bodyJson));
-    assertBadRequest(result, "Invalid universe name format, valid characters [a-zA-Z0-9-].");
+    assertBadRequest(
+        result,
+        "Invalid universe name format, regex used for validation is "
+            + "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$.");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -491,6 +500,56 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   @Test
+  // @formatter:off
+  @Parameters({
+    "2.8.0.0-b12, true",
+    "2.6.0.0-b1, false",
+    "2.12.1.0-b11, true",
+  })
+  // @formatter:on
+  public void testK8sUniverseCreateNewHelmNaming(String ybVersion, boolean newNamingStyle) {
+    when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
+    ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(Matchers.any(TaskType.class), expectedTaskParams.capture()))
+        .thenReturn(fakeTaskUUID);
+    when(mockReleaseManager.getReleaseByVersion(ybVersion))
+        .thenReturn(
+            ReleaseManager.ReleaseMetadata.create(ybVersion)
+                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-" + ybVersion + "-helm.tar.gz"));
+    createTempFile(
+        TMP_CHART_PATH, "ucctb_yugabyte-" + ybVersion + "-helm.tar.gz", "Sample helm chart data");
+
+    Provider p = ModelFactory.kubernetesProvider(customer);
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "small", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "K8sUniverseNewStyle")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("ybSoftwareVersion", ybVersion);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.kubernetes));
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    Result result = sendCreateRequest(bodyJson);
+    assertOk(result);
+    assertEquals(newNamingStyle, expectedTaskParams.getValue().useNewHelmNamingStyle);
+  }
+
+  @Test
   public void testUniverseCreateWithDisabledYedis() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(
@@ -558,11 +617,11 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockCommissioner.submit(
             Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
-    when(mockReleaseManager.getReleaseByVersion("1.0.0"))
+    when(mockReleaseManager.getReleaseByVersion("1.0.0.0"))
         .thenReturn(
-            ReleaseManager.ReleaseMetadata.create("1.0.0")
-                .withChartPath(TMP_CHART_PATH + "/yugabyte-1.0.0-helm.tar.gz"));
-    createTempFile(TMP_CHART_PATH, "yugabyte-1.0.0-helm.tar.gz", "Sample helm chart data");
+            ReleaseManager.ReleaseMetadata.create("1.0.0.0")
+                .withChartPath(TMP_CHART_PATH + "/ucctb_yugabyte-1.0.0.0-helm.tar.gz"));
+    createTempFile(TMP_CHART_PATH, "ucctb_yugabyte-1.0.0.0-helm.tar.gz", "Sample helm chart data");
 
     Provider p;
     switch (cloudType) {
@@ -604,7 +663,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
             .put("numNodes", 3)
             .put("provider", p.uuid.toString())
             .put("accessKeyCode", accessKeyCode)
-            .put("ybSoftwareVersion", "1.0.0");
+            .put("ybSoftwareVersion", "1.0.0.0");
     ArrayNode regionList = Json.newArray().add(r.uuid.toString());
     userIntentJson.set("regionList", regionList);
     ObjectNode deviceInfo =
@@ -849,8 +908,8 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         PublicCloudConstants.StorageType.UltraSSD_LRS,
         1,
         100,
-        null,
-        null,
+        3000,
+        125,
         null,
         null
       },
@@ -1045,6 +1104,28 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         null,
         null,
         "Number of volumes field is mandatory"
+      },
+      {
+        Common.CloudType.azu,
+        "c3.xlarge",
+        PublicCloudConstants.StorageType.UltraSSD_LRS,
+        1,
+        100,
+        null,
+        125,
+        null,
+        "Disk IOPS is mandatory for UltraSSD_LRS storage"
+      },
+      {
+        Common.CloudType.azu,
+        "c3.xlarge",
+        PublicCloudConstants.StorageType.UltraSSD_LRS,
+        1,
+        100,
+        3000,
+        null,
+        null,
+        "Disk throughput is mandatory for UltraSSD_LRS storage"
       },
       {
         Common.CloudType.azu,

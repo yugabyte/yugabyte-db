@@ -9,11 +9,17 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.yugabyte.yw.common.PlatformServiceException;
+
+import org.apache.commons.io.FileUtils;
+
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+
+import java.io.File;
+import java.nio.charset.Charset;
 import java.util.List;
 import java.util.UUID;
 import javax.persistence.Column;
@@ -43,6 +49,36 @@ public class AccessKey extends Model {
     @ApiModelProperty public Integer nodeExporterPort = 9300;
     @ApiModelProperty public String nodeExporterUser = "prometheus";
     @ApiModelProperty public boolean skipProvisioning = false;
+    @ApiModelProperty public boolean deleteRemote = true;
+    @ApiModelProperty public boolean setUpChrony = false;
+    @ApiModelProperty public List<String> ntpServers;
+
+    // Indicates whether the provider was created before or after PLAT-3009
+    // True if it was created after, else it was created before.
+    // Dictates whether or not to show the set up NTP option in the provider UI
+    @ApiModelProperty public boolean showSetUpChrony = false;
+  }
+
+  public static String getDefaultKeyCode(Provider provider) {
+    String sanitizedProviderName = provider.name.replaceAll("\\s+", "-").toLowerCase();
+    return String.format(
+        "yb-%s-%s_%s-key",
+        Customer.get(provider.customerUUID).code, sanitizedProviderName, provider.uuid);
+  }
+
+  @ApiModelProperty(required = false, hidden = true)
+  @JsonIgnore
+  public String getPublicKeyContent() {
+    String pubKeyPath = this.getKeyInfo().publicKey;
+    String publicKeyContent = "";
+    try {
+      File publicKeyFile = new File(pubKeyPath);
+      publicKeyContent = FileUtils.readFileToString(publicKeyFile, Charset.defaultCharset());
+    } catch (Exception e) {
+      String msg = "Reading public key content from " + pubKeyPath + " failed!";
+      throw new RuntimeException(msg, e);
+    }
+    return publicKeyContent;
   }
 
   @ApiModelProperty(required = true)

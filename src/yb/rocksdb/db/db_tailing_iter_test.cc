@@ -30,6 +30,8 @@
 #include "yb/rocksdb/db/forward_iterator.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/test_macros.h"
+
 namespace rocksdb {
 
 class DBTestTailingIterator : public DBTestBase {
@@ -191,7 +193,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
 
     if (i % 100 == 99) {
       ASSERT_OK(Flush(1));
-      dbfull()->TEST_WaitForCompact();
+      ASSERT_OK(dbfull()->TEST_WaitForCompact());
       if (i == 299) {
         file_iters_deleted = true;
       }
@@ -675,7 +677,7 @@ TEST_F(DBTestTailingIterator, ForwardIteratorVersionProperty) {
   ReadOptions read_options;
   read_options.tailing = true;
 
-  Put("foo", "bar");
+  ASSERT_OK(Put("foo", "bar"));
 
   uint64_t v1, v2, v3, v4;
   {
@@ -686,8 +688,8 @@ TEST_F(DBTestTailingIterator, ForwardIteratorVersionProperty) {
                                 &prop_value));
     v1 = static_cast<uint64_t>(std::atoi(prop_value.c_str()));
 
-    Put("foo1", "bar1");
-    Flush();
+    ASSERT_OK(Put("foo1", "bar1"));
+    ASSERT_OK(Flush());
 
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.super-version-number",
                                 &prop_value));

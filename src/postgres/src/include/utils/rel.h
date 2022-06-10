@@ -268,6 +268,7 @@ typedef struct StdRdOptions
 	/* YB additions. */
 	bool		colocated;
 	Oid 		tablegroup_oid;
+	Oid 		colocation_id;
 	Oid 		table_oid;
 	Oid 		row_type_oid;
 } StdRdOptions;
@@ -326,11 +327,11 @@ typedef struct StdRdOptions
 	 ((StdRdOptions *) (relation)->rd_options)->parallel_workers : (defaultpw))
 
 /*
- * RelationGetTablegroup
+ * RelationGetTablegroupOid
  *		Returns the relation's tablegroup reloption setting.
  *		Note multiple eval of argument!
  */
-#define RelationGetTablegroup(relation) \
+#define RelationGetTablegroupOid(relation) \
 	((relation)->rd_options ? \
 	 ((StdRdOptions *) (relation)->rd_options)->tablegroup_oid : 0)
 

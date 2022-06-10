@@ -34,9 +34,9 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
   -- As a consequence, array_ndims(iterator_array) is 1.
   -- Assume that array_ndims(iterand_arr) is 4.
   -- There are therefore (4 - 1) = 3 nested loops in this pseudocode.
-  for i in in array_lower(iterand_arr, 1)..array_upper(iterand_arr, 1) loop
-    for j in in array_lower(iterand_arr, 2)..array_upper(iterand_arr, 2) loop
-      for k in in array_lower(iterand_arr, 3)..array_upper(iterand_arr, 3) loop
+  for i in array_lower(iterand_arr, 1)..array_upper(iterand_arr, 1) loop
+    for j in array_lower(iterand_arr, 2)..array_upper(iterand_arr, 2) loop
+      for k in array_lower(iterand_arr, 3)..array_upper(iterand_arr, 3) loop
 
         the (i, j, k)th iterator_array is set to
           iterand_arr[i][j][k][ for all values the remaining 4th index ]
@@ -51,7 +51,7 @@ The PL/pgSQL `FOREACH` loop brings dedicated syntax for looping over the content
   -- As a consequence, array_ndims(iterator_array) is 3.
   -- Assume that array_ndims(iterand_arr) is 4.
   -- There is therefore (4 - 3) = 1 nested loop in this pseudocode.
-  for i in in array_lower(iterand_arr, 1)..array_upper(iterand_arr, 1) loop
+  for i in array_lower(iterand_arr, 1)..array_upper(iterand_arr, 1) loop
 
     the (i)th iterator_array is set to
       iterand_arr[i][ for all values the remaining 2nd, 3rd, and 4th indexes ]
@@ -264,7 +264,7 @@ FOREACH SLICE 2
 ```
 As the `assert` shows, the operand of the `SLICE` operator determines the dimensionality of the iterator slices.
 
-The next test uses `SLICE 1`: 
+The next test uses `SLICE 1`:
 
 ```plpgsql
 do $body$
@@ -365,13 +365,13 @@ unnest()
 
 ## Using FOREACH to iterate over the elements in an array of DOMAIN values
 
-You need to be aware of some special considerations to implement this scenario. [Using FOREACH with an array of DOMAINs](../array-of-domains/#using-foreach-with-an-array-of-domains), within the dedicated section [Using an array of DOMAIN values](../array-of-domains/) explains what you need to know. 
+You need to be aware of some special considerations to implement this scenario. [Using FOREACH with an array of DOMAINs](../array-of-domains/#using-foreach-with-an-array-of-domains), within the dedicated section [Using an array of DOMAIN values](../array-of-domains/) explains what you need to know.
 
 ## Using a wrapper PL/pgSQL table function to expose the SLICE operand as a formal parameter
 
 The fact that the `SLICE` operand must be a literal means that there are only two ways two parameterize this—and neither is satisfactory for real application code. Each uses a table function whose input is the iterand array and the value for the `SLICE` operand, and whose output is a `SETOF` iterator array values.
 
-- The first approach is to encapsulate some particular range of `SLICE` operand values in an ordinary statically defined function that uses a `CASE` statement to select the `FOREACH` loop that has the required `SLICE` operand literal. This is unsatisfactory because you have to decide the range of `SLICE` operand values that you'll support up front. 
+- The first approach is to encapsulate some particular range of `SLICE` operand values in an ordinary statically defined function that uses a `CASE` statement to select the `FOREACH` loop that has the required `SLICE` operand literal. This is unsatisfactory because you have to decide the range of `SLICE` operand values that you'll support up front.
 - The second approach overcomes the limitation of the up front determination of the supported range of `SLICE` operand values by encapsulating code in, a statically defined function, that in turn dynamically generates a function with the required`FOREACH` loop and `SLICE` operand value and that then invokes it dynamically. This is unsatisfactory because it's some effort to implement and test such an approach. But it's unsatisfactory mainly because of the performance cost that dynamic generation and execution brings.
 
 However, the requirements specification for real application code is unlikely to need more than one, or possibly just a few, specific values for the `SLICE` operand. Therefore, in overwhelming majority of practically important use cases, you can write exactly the code you need where you need it.

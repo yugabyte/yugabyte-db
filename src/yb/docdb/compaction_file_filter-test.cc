@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <cstddef>
-#include <future>
 #include <memory>
 #include <random>
 #include <string>
@@ -19,22 +19,22 @@
 #include <utility>
 #include <vector>
 
-#include <boost/uuid/nil_generator.hpp>
+#include "yb/common/common_fwd.h"
+#include "yb/common/schema.h"
 
 #include "yb/docdb/compaction_file_filter.h"
-
-#include "yb/common/common_fwd.h"
-#include "yb/docdb/doc_ttl_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/rocksdb/db.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
-#include "yb/util/test_macros.h"
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/docdb_compaction_context.h"
+#include "yb/docdb/primitive_value.h"
+
 #include "yb/rocksdb/compaction_filter.h"
+#include "yb/rocksdb/db/version_edit.h"
+
 #include "yb/util/monotime.h"
+#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(file_expiration_ignore_value_ttl);
 DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
@@ -97,7 +97,7 @@ rocksdb::FileMetaData CreateFile(rocksdb::UserFrontierPtr largest_frontier = nul
 std::vector<rocksdb::FileMetaData*> CreateFilePtrs(
     const std::vector<ConsensusFrontier>& frontiers) {
   auto file_ptrs = std::vector<rocksdb::FileMetaData*>(frontiers.size());
-  for (int i = 0; i < frontiers.size(); i++) {
+  for (size_t i = 0; i < frontiers.size(); i++) {
     file_ptrs[i] = new rocksdb::FileMetaData();
     *file_ptrs[i] = CreateFile(frontiers[i].Clone());
   }
@@ -124,7 +124,7 @@ void ExpirationFilterTest::TestFilterFilesAgainstResults(
     const std::vector<FilterDecision>& expected_results) {
   auto file_ptrs = CreateFilePtrs(frontiers);
   auto filter = filter_factory->CreateCompactionFileFilter(file_ptrs);
-  for(int i = 0; i < file_ptrs.size(); i++) {
+  for(size_t i = 0; i < file_ptrs.size(); i++) {
     auto result = filter->Filter(file_ptrs[i]);
     EXPECT_EQ(result, expected_results[i]);
   }
@@ -159,7 +159,7 @@ TEST_F(ExpirationFilterTest, TestExpirationNoTableTTL) {
   const auto future_time = current_time.AddSeconds(1000);
   const auto past_time = 1000_usec_ht;
   // Use maximum table TTL
-  const MonoDelta table_ttl_sec = Value::kMaxTtl;
+  const MonoDelta table_ttl_sec = ValueControlFields::kMaxTtl;
   // Check 1: File with maximum hybrid time and value non-expiration. (keep)
   auto expiry = ExpirationTime{kNoExpiration, HybridTime::kMax};
   EXPECT_EQ(TtlIsExpired(expiry, table_ttl_sec, current_time), false);

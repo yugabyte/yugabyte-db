@@ -14,12 +14,18 @@
 #include "yb/client/table.h"
 
 #include "yb/client/client.h"
+#include "yb/client/table_info.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/gutil/casts.h"
 
+#include "yb/master/master_client.pb.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
-#include "yb/util/status.h"
 
 DEFINE_int32(
     max_num_tablets_for_table, 5000,
@@ -28,30 +34,23 @@ DEFINE_int32(
 namespace yb {
 namespace client {
 
-Status YBTable::PBToClientTableType(
-    TableType table_type_from_pb,
-    YBTableType* client_table_type) {
+Result<YBTableType> PBToClientTableType(TableType table_type_from_pb) {
   switch (table_type_from_pb) {
     case TableType::YQL_TABLE_TYPE:
-      *client_table_type = YBTableType::YQL_TABLE_TYPE;
-      return Status::OK();
+      return YBTableType::YQL_TABLE_TYPE;
     case TableType::REDIS_TABLE_TYPE:
-      *client_table_type = YBTableType::REDIS_TABLE_TYPE;
-      return Status::OK();
+      return YBTableType::REDIS_TABLE_TYPE;
     case TableType::PGSQL_TABLE_TYPE:
-      *client_table_type = YBTableType::PGSQL_TABLE_TYPE;
-      return Status::OK();
+      return YBTableType::PGSQL_TABLE_TYPE;
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
-      *client_table_type = YBTableType::TRANSACTION_STATUS_TABLE_TYPE;
-      return Status::OK();
+      return  YBTableType::TRANSACTION_STATUS_TABLE_TYPE;
   }
 
-  *client_table_type = YBTableType::UNKNOWN_TABLE_TYPE;
-  return STATUS(InvalidArgument, strings::Substitute(
-    "Invalid table type from master response: $0", table_type_from_pb));
+  return STATUS_FORMAT(
+      InvalidArgument, "Invalid table type from master response: $0", table_type_from_pb);
 }
 
-TableType YBTable::ClientToPBTableType(YBTableType table_type) {
+TableType ClientToPBTableType(YBTableType table_type) {
   switch (table_type) {
     case YBTableType::YQL_TABLE_TYPE:
       return TableType::YQL_TABLE_TYPE;
@@ -70,7 +69,7 @@ TableType YBTable::ClientToPBTableType(YBTableType table_type) {
 }
 
 YBTable::YBTable(const YBTableInfo& info, VersionedTablePartitionListPtr partitions)
-    : info_(info), partitions_(std::move(partitions)) {
+    : info_(std::make_unique<YBTableInfo>(info)), partitions_(std::move(partitions)) {
 }
 
 YBTable::~YBTable() {
@@ -79,73 +78,73 @@ YBTable::~YBTable() {
 //--------------------------------------------------------------------------------------------------
 
 const YBTableName& YBTable::name() const {
-  return info_.table_name;
+  return info_->table_name;
 }
 
 YBTableType YBTable::table_type() const {
-  return info_.table_type;
+  return info_->table_type;
 }
 
 const string& YBTable::id() const {
-  return info_.table_id;
+  return info_->table_id;
 }
 
 const YBSchema& YBTable::schema() const {
-  return info_.schema;
+  return info_->schema;
 }
 
 const Schema& YBTable::InternalSchema() const {
-  return internal::GetSchema(info_.schema);
+  return internal::GetSchema(info_->schema);
 }
 
 const IndexMap& YBTable::index_map() const {
-  return info_.index_map;
+  return info_->index_map;
 }
 
 bool YBTable::IsIndex() const {
-  return info_.index_info != boost::none;
+  return info_->index_info != boost::none;
 }
 
 bool YBTable::IsUniqueIndex() const {
-  return info_.index_info.is_initialized() && info_.index_info->is_unique();
+  return info_->index_info.is_initialized() && info_->index_info->is_unique();
 }
 
 const IndexInfo& YBTable::index_info() const {
   static IndexInfo kEmptyIndexInfo;
-  if (info_.index_info) {
-    return *info_.index_info;
+  if (info_->index_info) {
+    return *info_->index_info;
   }
   return kEmptyIndexInfo;
 }
 
 bool YBTable::colocated() const {
-  return info_.colocated;
+  return info_->colocated;
 }
 
 const boost::optional<master::ReplicationInfoPB>& YBTable::replication_info() const {
-  return info_.replication_info;
+  return info_->replication_info;
 }
 
 std::string YBTable::ToString() const {
-  return strings::Substitute(
+  return Format(
       "$0 $1 IndexInfo: $2 IndexMap $3", (IsIndex() ? "Index Table" : "Normal Table"), id(),
       yb::ToString(index_info()), yb::ToString(index_map()));
 }
 
 const PartitionSchema& YBTable::partition_schema() const {
-  return info_.partition_schema;
+  return info_->partition_schema;
 }
 
 bool YBTable::IsHashPartitioned() const {
   // TODO(neil) After fixing github #5832, "partition_schema" must be used here.
   // return info_.partition_schema.IsHashPartitioning();
-  return info_.schema.num_hash_key_columns() > 0;
+  return info_->schema.num_hash_key_columns() > 0;
 }
 
 bool YBTable::IsRangePartitioned() const {
   // TODO(neil) After fixing github #5832, "partition_schema" must be used here.
   // return info_.partition_schema.IsRangePartitioning();
-  return info_.schema.num_hash_key_columns() == 0;
+  return info_->schema.num_hash_key_columns() == 0;
 }
 
 std::shared_ptr<const TablePartitionList> YBTable::GetPartitionsShared() const {
@@ -171,7 +170,7 @@ TablePartitionList YBTable::GetPartitionsCopy() const {
 
 int32_t YBTable::GetPartitionCount() const {
   SharedLock<decltype(mutex_)> lock(mutex_);
-  return partitions_->keys.size();
+  return narrow_cast<int32_t>(partitions_->keys.size());
 }
 
 int32_t YBTable::GetPartitionListVersion() const {
@@ -236,14 +235,14 @@ void YBTable::RefreshPartitions(YBClient* client, StdStatusCallback callback) {
   refresh_partitions_callbacks_.emplace_back(std::move(callback));
   if (!was_empty) {
     VLOG_WITH_FUNC(2) << Format(
-        "FetchPartitions is in progress for table $0 ($1), added callback", info_.table_name,
-        info_.table_id);
+        "FetchPartitions is in progress for table $0 ($1), added callback", info_->table_name,
+        info_->table_id);
     return;
   }
 
   VLOG_WITH_FUNC(2) << Format(
-      "Calling FetchPartitions for table $0 ($1)", info_.table_name, info_.table_id);
-  FetchPartitions(client, info_, [this](const FetchPartitionsResult& result) {
+      "Calling FetchPartitions for table $0 ($1)", info_->table_name, info_->table_id);
+  FetchPartitions(client, info_->table_id, [this](const FetchPartitionsResult& result) {
     if (!result.ok()) {
       InvokeRefreshPartitionsCallbacks(result.status());
       return;
@@ -277,15 +276,14 @@ bool YBTable::ArePartitionsStale() const {
 }
 
 void YBTable::FetchPartitions(
-    YBClient* client, std::reference_wrapper<const YBTableInfo> table_info,
-    FetchPartitionsCallback callback) {
+    YBClient* client, const TableId& table_id, FetchPartitionsCallback callback) {
   // TODO: fetch the schema from the master here once catalog is available.
   // TODO(tsplit): consider optimizing this to not wait for all tablets to be running in case
   // of some tablet has been split and post-split tablets are not yet running.
   client->GetTableLocations(
-      table_info.get().table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
+      table_id, /* max_tablets = */ std::numeric_limits<int32_t>::max(),
       RequireTabletsRunning::kTrue,
-      [table_info, callback = std::move(callback)]
+      [table_id, callback = std::move(callback)]
           (const Result<master::GetTableLocationsResponsePB*>& result) {
         if (!result.ok()) {
           callback(result.status());
@@ -294,8 +292,8 @@ void YBTable::FetchPartitions(
         const auto& resp = **result;
 
         VLOG_WITH_FUNC(2) << Format(
-            "Fetched partitions for table $0 ($1), found $2 tablets", table_info.get().table_name,
-            table_info.get().table_id, resp.tablet_locations_size());
+            "Fetched partitions for table $0, found $1 tablets",
+            table_id, resp.tablet_locations_size());
 
         auto partitions = std::make_shared<VersionedTablePartitionList>();
         partitions->version = resp.partition_list_version();
@@ -331,6 +329,12 @@ PartitionKeyPtr FindPartitionStart(
   return PartitionKeyPtr(versioned_partitions, &versioned_partitions->keys[idx]);
 }
 
+std::string VersionedTablePartitionList::ToString() const {
+  auto key_transform = [](const Slice& key) {
+    return key.ToDebugHexString();
+  };
+  return Format("{ version: $0 keys: $1 }", version, CollectionToString(keys, key_transform));
+}
 
 } // namespace client
 } // namespace yb

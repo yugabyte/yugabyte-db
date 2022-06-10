@@ -44,33 +44,33 @@
 
 #include <stddef.h>
 #include <string.h>  // for memcpy
+
 #include <algorithm>
+#include <cassert>
+#include <deque>
+#include <functional>
+#include <optional>
+#include <set>
+#include <vector>
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
+#include "yb/gutil/port.h"
+
 using std::copy;
 using std::max;
 using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <cassert>
-#include <deque>
 using std::deque;
-#include <functional>
 using std::binary_function;
 using std::less;
-#include <iterator>
 using std::back_insert_iterator;
 using std::iterator_traits;
-#include <memory>
-#include <string>
 using std::string;
-#include <vector>
 using std::vector;
-#include <set>
 
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/macros.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/algorithm.h"
 
 namespace yb {
 
@@ -469,7 +469,7 @@ class TemplatedElementDeleter : public BaseDeleter {
       : container_ptr_(ptr) {
   }
 
-  virtual ~TemplatedElementDeleter<STLContainer>() {
+  virtual ~TemplatedElementDeleter() {
     STLDeleteElements(container_ptr_);
   }
 
@@ -509,7 +509,7 @@ class TemplatedValueDeleter : public BaseDeleter {
       : container_ptr_(ptr) {
   }
 
-  virtual ~TemplatedValueDeleter<STLContainer>() {
+  virtual ~TemplatedValueDeleter() {
     STLDeleteValues(container_ptr_);
   }
 
@@ -536,30 +536,6 @@ class ValueDeleter {
   BaseDeleter *deleter_;
 
   DISALLOW_EVIL_CONSTRUCTORS(ValueDeleter);
-};
-
-
-// STLElementDeleter and STLValueDeleter are similar to ElementDeleter and
-// ValueDeleter, except that:
-// - The classes are templated, making them less convenient to use.
-// - Their destructors are not virtual, making them potentially more efficient.
-// New code should typically use ElementDeleter and ValueDeleter unless
-// efficiency is a large concern.
-
-template<class STLContainer> class STLElementDeleter {
- public:
-  STLElementDeleter<STLContainer>(STLContainer *ptr) : container_ptr_(ptr) {}
-  ~STLElementDeleter<STLContainer>() { STLDeleteElements(container_ptr_); }
- private:
-  STLContainer *container_ptr_;
-};
-
-template<class STLContainer> class STLValueDeleter {
- public:
-  STLValueDeleter<STLContainer>(STLContainer *ptr) : container_ptr_(ptr) {}
-  ~STLValueDeleter<STLContainer>() { STLDeleteValues(container_ptr_); }
- private:
-  STLContainer *container_ptr_;
 };
 
 
@@ -857,8 +833,7 @@ BinaryComposeBinary<F, G1, G2> BinaryCompose2(F f, G1 g1, G2 g2) {
 template <typename T, typename Alloc = std::allocator<T> >
 class STLCountingAllocator : public Alloc {
  public:
-  typedef typename Alloc::pointer pointer;
-  typedef typename Alloc::size_type size_type;
+  using size_type = typename Alloc::size_type;
 
   STLCountingAllocator() : bytes_used_(NULL) { }
   explicit STLCountingAllocator(int64* b) : bytes_used_(b) {}
@@ -870,23 +845,23 @@ class STLCountingAllocator : public Alloc {
         bytes_used_(x.bytes_used()) {
   }
 
-  pointer allocate(size_type n, std::allocator<void>::const_pointer hint = 0) {
+  T* allocate(size_type n) {
     assert(bytes_used_ != NULL);
     *bytes_used_ += n * sizeof(T);
-    return Alloc::allocate(n, hint);
+    return Alloc::allocate(n);
   }
 
-  void deallocate(pointer p, size_type n) {
+  void deallocate(T* p, size_type n) {
     Alloc::deallocate(p, n);
     assert(bytes_used_ != NULL);
     *bytes_used_ -= n * sizeof(T);
   }
 
   // Rebind allows an allocator<T> to be used for a different type
-  template <class U> struct rebind {
-    typedef STLCountingAllocator<U,
-                                 typename Alloc::template
-                                 rebind<U>::other> other;
+  template <class U>
+  struct rebind {
+    using other = STLCountingAllocator<
+        U, typename std::allocator_traits<Alloc>::template rebind_alloc<U>>;
   };
 
   int64* bytes_used() const { return bytes_used_; }
@@ -1010,6 +985,37 @@ bool Erase(const Value& value, Collection* collection) {
 
   collection->erase(it);
   return true;
+}
+
+template <class Collection1, class Collection2>
+void MoveCollection(Collection1* source, Collection2* destination) {
+  destination->reserve(destination->size() + source->size());
+  std::move(source->begin(), source->end(), std::back_inserter(*destination));
+}
+
+template <class Collection>
+void Unique(Collection* collection) {
+  collection->erase(std::unique(collection->begin(), collection->end()), collection->end());
+}
+
+template <class Key, class Value, class Map>
+void MakeAtMost(const Key& key, const Value& value, Map* map) {
+  auto it = map->find(key);
+  if (it == map->end()) {
+    map->emplace(key, value);
+  } else {
+    it->second = std::min(it->second, value);
+  }
+}
+
+template <class T>
+const T* OptionalToPointer(const std::optional<T>& opt) {
+  return opt ? &*opt : nullptr;
+}
+
+template <class T>
+T* OptionalToPointer(std::optional<T>* opt) {
+  return *opt ? &**opt : nullptr;
 }
 
 } // namespace yb

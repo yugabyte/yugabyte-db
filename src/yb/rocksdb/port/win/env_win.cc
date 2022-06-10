@@ -51,6 +51,8 @@
 #include <Rpc.h>  // For UUID generation
 #include <Windows.h>
 
+DECLARE_bool(never_fsync);
+
 namespace rocksdb {
 
 std::string GetWindowsErrSz(DWORD err) {
@@ -162,6 +164,9 @@ SSIZE_T pread(HANDLE hFile, char* src, size_t numBytes, uint64_t offset) {
 // to errno
 // is a sad business
 inline int fsync(HANDLE hFile) {
+  if (FLAGS_never_fsync) {
+    return 0;
+  }
   if (!FlushFileBuffers(hFile)) {
     return -1;
   }

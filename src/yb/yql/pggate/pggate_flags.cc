@@ -32,9 +32,6 @@ DEFINE_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
-DEFINE_string(pggate_proxy_bind_address, "",
-              "Address to which the PostgreSQL proxy server is bound.");
-
 DEFINE_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
@@ -53,9 +50,10 @@ DEFINE_uint64(ysql_prefetch_limit, 1024,
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
-DEFINE_int32(ysql_session_max_batch_size, 512,
-             "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
-             "services");
+DEFINE_uint64(ysql_session_max_batch_size, 512,
+              "Use session variable ysql_session_max_batch_size instead. "
+              "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
+              "services");
 
 DEFINE_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");
@@ -79,8 +77,7 @@ DEFINE_int32(ysql_output_buffer_size, 262144,
              "we're free to transparently restart operation in case of restart read error.");
 
 DEFINE_bool(ysql_enable_update_batching, true,
-            "Whether to enable batching of updates where possible. Currently update batching is "
-            "only supported for PGSQL procedures.");
+            "DEPRECATED. Feature has been removed");
 
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
@@ -136,3 +133,6 @@ DEFINE_bool(yb_enable_read_committed_isolation, false,
             "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
             "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
             "implementation instead.");
+
+DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
+             "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");

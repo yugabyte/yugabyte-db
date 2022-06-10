@@ -18,22 +18,13 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include <boost/uuid/nil_generator.hpp>
 
-#include "yb/rocksdb/db.h"
-
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/docdb_compaction_filter.h"
 #include "yb/docdb/in_mem_docdb.h"
-#include "yb/docdb/primitive_value.h"
 #include "yb/docdb/subdocument.h"
-#include "yb/tablet/tablet_metadata.h"
+
 #include "yb/util/strongly_typed_bool.h"
-#include "yb/util/test_util.h"
-#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace docdb {
@@ -65,10 +56,7 @@ extern const TransactionOperationContext kNonTransactionalOperationContext;
 
 // Generate a random primitive value.
 PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng);
-
-// Generate a random sequence of primitive values.
-std::vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng,
-                                                     int max_num = kMaxNumRandomDocKeyParts);
+ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder);
 
 // Generate a "minimal" DocKey.
 DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash);
@@ -108,19 +96,20 @@ class DocDBRocksDBFixture : public DocDBRocksDBUtil {
   // num_files_to_compact - number of files that should participate in the minor compaction
   // start_index - the index of the file to start with (0 = the oldest file, -1 = compact
   //               num_files_to_compact newest files).
-  void MinorCompaction(HybridTime history_cutoff, int num_files_to_compact, int start_index = -1);
+  void MinorCompaction(
+      HybridTime history_cutoff, size_t num_files_to_compact, ssize_t start_index = -1);
 
-  int NumSSTableFiles();
+  size_t NumSSTableFiles();
   StringVector SSTableFileNames();
 
-  CHECKED_STATUS InitRocksDBDir() override;
-  CHECKED_STATUS InitRocksDBOptions() override;
+  Status InitRocksDBDir() override;
+  Status InitRocksDBOptions() override;
   TabletId tablet_id() override;
-  CHECKED_STATUS FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
+  Status FormatDocWriteBatch(const DocWriteBatch& dwb, std::string* dwb_str);
 };
 
 // Perform a major compaction on the given database.
-CHECKED_STATUS FullyCompactDB(rocksdb::DB* rocksdb);
+Status FullyCompactDB(rocksdb::DB* rocksdb);
 
 class DocDBLoadGenerator {
  public:
@@ -135,6 +124,7 @@ class DocDBLoadGenerator {
                      int max_nesting_level = 10,
                      uint64 random_seed = kDefaultRandomSeed,
                      int verification_frequency = 100);
+  ~DocDBLoadGenerator();
 
   // Performs a random DocDB operation according to the configured options. This also verifies
   // the consistency of RocksDB-backed DocDB (which is close to the production codepath) with an
@@ -186,7 +176,7 @@ class DocDBLoadGenerator {
   // Removes all snapshots taken before the given hybrid_time. This is done to test history cleanup.
   void RemoveSnapshotsBefore(HybridTime ht);
 
-  int num_divergent_old_snapshot() { return divergent_snapshot_ht_and_cleanup_ht_.size(); }
+  size_t num_divergent_old_snapshot() { return divergent_snapshot_ht_and_cleanup_ht_.size(); }
 
   std::vector<std::pair<int, int>> divergent_snapshot_ht_and_cleanup_ht() {
     return divergent_snapshot_ht_and_cleanup_ht_;
@@ -204,7 +194,7 @@ class DocDBLoadGenerator {
   // intents.
   const ResolveIntentsDuringRead resolve_intents_;
 
-  std::vector<PrimitiveValue> possible_subkeys_;
+  std::vector<KeyEntryValue> possible_subkeys_;
   int iteration_;
   InMemDocDbState in_mem_docdb_;
 
@@ -240,7 +230,7 @@ class DocDBLoadGenerator {
   // invalid after history cleanup.
   void RecordSnapshotDivergence(const InMemDocDbState &snapshot, HybridTime cleanup_ht);
 
-  TransactionOperationContextOpt GetReadOperationTransactionContext();
+  TransactionOperationContext GetReadOperationTransactionContext();
 };
 
 // Used for pre-processing multi-line DocDB debug dump strings in tests.  Removes common indentation

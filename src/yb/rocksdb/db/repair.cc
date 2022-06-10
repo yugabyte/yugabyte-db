@@ -96,7 +96,11 @@
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
+#include "yb/rocksdb/table/table_reader.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+#include "yb/rocksdb/util/logging.h"
+
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

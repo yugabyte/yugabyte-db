@@ -12,9 +12,12 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.exceptions.InvalidQueryException;
+import com.datastax.driver.core.exceptions.SyntaxError;
 import com.datastax.driver.core.PreparedStatement;
-import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.google.common.collect.ImmutableList;
+
 import org.junit.Test;
 import org.yb.client.TestUtils;
 
@@ -1205,8 +1208,43 @@ public class TestCollectionExpressions extends BaseCQLTest {
         " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s)";
     session.execute(String.format(insertTemplate, 1, 1, "{2 : 'b', 3: 'c'}",
         "{1, 2}", "['x', 'y']"));
+
     assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+    assertQuery("SELECT * FROM " + tableName + " WHERE h IN (null)", "");
+    assertQuery("SELECT * FROM " + tableName + " WHERE h NOT IN (null)",
+                "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    for (String filter : ImmutableList.of("null, 1", "1, null, 2", "1, null")) {
+      assertQuery("SELECT * FROM " + tableName + " WHERE r IN (" + filter + ")",
+                  "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+    }
+
+    session.execute("INSERT INTO " + tableName + " (h, r) VALUES (2, 2)");
+
+    // Invalid statements.
+    runInvalidStmt("SELECT * FROM " + tableName + " IF h = 1",
+                   "Primary key column reference is not allowed in if clause");
+
+    for (String filter : ImmutableList.of(
+        "WHERE vm", "IF vm", "WHERE vs", "IF vs", "WHERE vl", "IF vl")) {
+      runInvalidStmt("SELECT * FROM " + tableName + " " + filter + " IN (null)",
+                     "Incomparable Datatypes. Cannot compare values of these datatypes");
+    }
+
+    for (String filter : ImmutableList.of("IN (1)", "NOT IN (1)")) {
+      runInvalidStmt("UPDATE " + tableName + " SET vm = {1:'a'} WHERE h " + filter,
+                     "Operator not supported for write operations");
+
+      runInvalidStmt("DELETE  FROM " + tableName + " WHERE h " + filter,
+                     "Operator not supported for write operations");
+    }
+
+    runInvalidStmt("UPDATE " + tableName + " SET vm = { } IF h = 1 AND r = 1",
+                   "Missing partition key");
+
+    runInvalidStmt("DELETE  FROM " + tableName + " IF h = 1 AND r = 1",
+                   "syntax error, unexpected IF_P");
 
     //----------------------------------------------------------------------------------------------
     // Testing Map.
@@ -1216,6 +1254,20 @@ public class TestCollectionExpressions extends BaseCQLTest {
                    "null is not supported inside collections");
     runInvalidStmt("UPDATE " + tableName + " SET vm = {null : 'a'} WHERE h = 1 AND r = 1",
                    "null is not supported inside collections");
+
+    runInvalidStmt("SELECT * FROM " + tableName + " WHERE vm[1] IN (null)",
+                   "Operator not supported for subscripted column");
+
+    assertQuery("SELECT * FROM " + tableName + " IF vm[1] IN (null)",
+                "Row[2, 2, NULL, NULL, NULL]");
+    assertQuery("SELECT * FROM " + tableName + " IF vm[1] IN ('a')",
+                "Row[1, 1, {1=a}, [1, 2], [x, y]]");
+
+    for (String filter : ImmutableList.of("null, 'a'", "'a', null, 'b'", "'a', null")) {
+      assertQuery("SELECT * FROM " + tableName + " IF vm[1] IN (" + filter + ")",
+                  "Row[1, 1, {1=a}, [1, 2], [x, y]]" +
+                  "Row[2, 2, NULL, NULL, NULL]");
+    }
 
     //----------------------------------------------------------------------------------------------
     // Testing Set.
@@ -1232,6 +1284,28 @@ public class TestCollectionExpressions extends BaseCQLTest {
                    "null is not supported inside collections");
 
     assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
+                "Row[1, 1, {1=a}, [3], [z]]");
+
+    runInvalidStmt("SELECT * FROM " + tableName + " WHERE vl[0] IN (null)",
+                   "Operator not supported for subscripted column");
+
+    assertQuery("SELECT * FROM " + tableName + " IF vl[0] IN (null)",
+                "Row[2, 2, NULL, NULL, NULL]");
+    assertQuery("SELECT * FROM " + tableName + " IF vl[0] IN ('z')",
+                "Row[1, 1, {1=a}, [3], [z]]");
+
+    for (String filter : ImmutableList.of("null, 'z'", "'z', null, 'y'", "'z', null")) {
+      assertQuery("SELECT * FROM " + tableName + " IF vl[0] IN (" + filter + ")",
+                  "Row[1, 1, {1=a}, [3], [z]]" +
+                  "Row[2, 2, NULL, NULL, NULL]");
+    }
+
+    assertQuery("SELECT * FROM " + tableName + " WHERE h NOT IN (null) IF vl[0] NOT IN (null)",
+                "Row[1, 1, {1=a}, [3], [z]]");
+    assertQuery("SELECT * FROM " + tableName + " WHERE h NOT IN (null) IF vl[0] IN (null)",
+                "Row[2, 2, NULL, NULL, NULL]");
+
+    assertQuery("SELECT * FROM " + tableName + " IF vl[0] IN ('z') AND vl[1] IN (null)",
                 "Row[1, 1, {1=a}, [3], [z]]");
 
     //----------------------------------------------------------------------------------------------
@@ -1257,6 +1331,54 @@ public class TestCollectionExpressions extends BaseCQLTest {
 
     assertQuery("SELECT * FROM test_frozen WHERE h = 1 AND r = 1",
                 "Row[1, 1, {1=a}, [3], [z]]");
+    assertQuery("SELECT * FROM test_frozen WHERE h NOT IN (null) IF vm NOT IN (null)",
+                "Row[1, 1, {1=a}, [3], [z]]");
+
+    session.execute("INSERT INTO test_frozen (h, r) VALUES (2, 2)");
+
+    for (String filter : ImmutableList.of(
+        "WHERE vm", "IF vm", "WHERE vs", "IF vs", "WHERE vl", "IF vl")) {
+      assertQuery("SELECT * FROM test_frozen " + filter + " IN (null)",
+                  "Row[2, 2, NULL, NULL, NULL]");
+    }
+
+    runInvalidStmt("SELECT * FROM test_frozen IF vm[1] IN (null)",
+                   "Columns with elementary types cannot take arguments");
+    runInvalidStmt("SELECT * FROM test_frozen IF vl[0] IN (null)",
+                   "Columns with elementary types cannot take arguments");
+  }
+
+  private void expectBindNullException(String stmtStr, String reason, String error,
+      Object... values) throws Exception {
+    PreparedStatement  stmt = session.prepare(stmtStr);
+    try {
+      stmt.bind(values);
+      fail("Bind statement \"" + stmtStr + "\" did not fail" +
+          (reason.isEmpty() ? "" : " due to " + reason));
+    } catch (java.lang.NullPointerException e) {
+      LOG.info("Expected exception", e);
+      if (!error.isEmpty()) {
+        assertTrue(e.getMessage().contains(error));
+      }
+    }
+  }
+
+  private void expectPrepareException(String stmtStr, Class<?> exClass, String error)
+      throws Exception {
+    try {
+      session.prepare(stmtStr);
+      fail("Prepare statement \"" + stmtStr + "\" did not fail");
+    } catch (Exception e) {
+      LOG.info("Expected exception", e);
+      if (e.getClass() == exClass) {
+        if (!error.isEmpty()) {
+          assertTrue(e.getMessage().contains(error));
+        }
+      } else {
+        fail("Unexpected exception: " + e.getClass().toString() +
+            " Expected: " + exClass.toString());
+      }
+    }
   }
 
   @Test
@@ -1271,63 +1393,191 @@ public class TestCollectionExpressions extends BaseCQLTest {
     assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",
                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
 
+    session.execute("INSERT INTO " + tableName + " (h, r) VALUES (2, 2)");
+
+    // Invalid statements.
+    for (String op : ImmutableList.of(" IN ", " NOT IN ")) {
+      for (String col : ImmutableList.of("h", "r")) {
+        // SELECT * FROM ... WHERE h/r IN/NOT IN (null)
+        String selectStmt = "SELECT * FROM " + tableName + " WHERE " + col + op + "(?)";
+        expectBindNullException(selectStmt, "Null value", "",
+            null); // Bind values
+
+        // SELECT * FROM ... IF h/r IN/NOT IN (1)
+        selectStmt = "SELECT * FROM " + tableName + " IF " + col + op + "(?)";
+        expectPrepareException(selectStmt, SyntaxError.class,
+            "Primary key column reference is not allowed in if clause");
+
+        // UPDATE ... SET vm = {1:'a'} WHERE h/r IN/NOT IN (1)
+        String updateStmt = "UPDATE " + tableName + " SET vm = {1:'a'} WHERE " + col + op + "(?)";
+        expectPrepareException(updateStmt, SyntaxError.class,
+            "Operator not supported for write operations");
+
+        // DELETE FROM ... WHERE h/r IN/NOT IN (1)
+        String deleteStmt = "DELETE FROM " + tableName + " WHERE " + col + op + "(?)";
+        expectPrepareException(deleteStmt, SyntaxError.class,
+            "Operator not supported for write operations");
+      }
+
+      // SELECT * FROM ... WHERE/IF vm/vs/vl IN/NOT IN (1)
+      for (String filter : ImmutableList.of(
+          "WHERE vm", "IF vm", "WHERE vs", "IF vs", "WHERE vl", "IF vl")) {
+        String selectStmt = "SELECT * FROM " + tableName + " " + filter + op + "(?)";
+        expectPrepareException(selectStmt, InvalidQueryException.class,
+            "Incomparable Datatypes. Cannot compare values of these datatypes");
+      }
+
+      // SELECT * FROM ... WHERE vm[2]/vl[0] IN/NOT IN (1)
+      for (String filter : ImmutableList.of("WHERE vm[2]", "WHERE vl[0]")) {
+        String selectStmt = "SELECT * FROM " + tableName + " " + filter + op + "(?)";
+        expectPrepareException(selectStmt, SyntaxError.class,
+            "Operator not supported for subscripted column");
+      }
+    }
+
+    // UPDATE ... SET vm = { } IF h = 1 AND r = 1
+    String updateStmt = "UPDATE " + tableName + " SET vm = { } IF h = ? AND r = ?";
+    expectPrepareException(updateStmt, SyntaxError.class,
+        "Missing partition key");
+
+    // DELETE FROM ... IF h = 1 AND r = 1
+    String deleteStmt = "DELETE FROM " + tableName + " IF h = ? AND r = ?";
+    expectPrepareException(deleteStmt, SyntaxError.class,
+        "syntax error, unexpected IF_P");
+
     //----------------------------------------------------------------------------------------------
     // Testing Map.
     //----------------------------------------------------------------------------------------------
     String insertStmt = "INSERT INTO " + tableName + " (h, r, vm) VALUES (?, ?, ?)";
-    PreparedStatement stmt = session.prepare(insertStmt);
 
+    // INSERT INTO ... (h, r, vm) VALUES (1, 1, {1:null})
     Map<Integer, String> mapWithNullValue = new HashMap<Integer, String>();
     mapWithNullValue.put(1, null);
-    try {
-      session.execute(stmt.bind(new Integer(1), new Integer(1), mapWithNullValue));
-      fail("Statement \"" + insertStmt + "\" did not fail with Null value in Map");
-    } catch (java.lang.NullPointerException e) {
-      LOG.info("Expected exception", e);
-      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
-    }
+    expectBindNullException(insertStmt, "Null value in Map", "Parameter value cannot be null",
+        new Integer(1), new Integer(1), mapWithNullValue); // Bind values
 
+    // INSERT INTO ... (h, r, vm) VALUES (1, 1, {null:'a'})
     Map<Integer, String> mapWithNullKey = new HashMap<Integer, String>();
     mapWithNullKey.put(null, "a");
-    try {
-      session.execute(stmt.bind(new Integer(1), new Integer(1), mapWithNullKey));
-      fail("Statement \"" + insertStmt + "\" did not fail with Null key in Map");
-    } catch (java.lang.NullPointerException e) {
-      LOG.info("Expected exception", e);
-      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
+    expectBindNullException(insertStmt, "Null key in Map", "Parameter value cannot be null",
+        new Integer(1), new Integer(1), mapWithNullKey); // Bind values
+
+    List<String> listWithNull = new LinkedList<>();
+    listWithNull.add(null);
+    // SELECT * FROM ... IF vm[2] IN/NOT IN (null)
+    for (String op : ImmutableList.of(" IN ", " NOT IN ")) {
+      String selectStmt = "SELECT * FROM " + tableName + " IF vm[2]" + op + "?";
+      expectBindNullException(selectStmt, "List with Null", "Parameter value cannot be null",
+          listWithNull); // Bind values
+
+      selectStmt = "SELECT * FROM " + tableName + " IF vm[2]" + op + "(?)";
+      expectBindNullException(selectStmt, "Null value", "",
+          null); // Bind values
     }
+
+    // SELECT * FROM ... IF vm[2] IN ('b')
+    String selectStmt = "SELECT * FROM " + tableName + " IF vm[2] IN (?)";
+    PreparedStatement stmt = session.prepare(selectStmt);
+    assertEquals(session.execute(stmt.bind(new String("b"))).one().toString(),
+                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    // UPDATE ... SET vm = {1 : 'a'} WHERE h = 3 AND r = 3
+    updateStmt = "UPDATE " + tableName + " SET vm = ? WHERE h = ? AND r = ?";
+    stmt = session.prepare(updateStmt);
+    Map<Integer, String> map = new HashMap<Integer, String>();
+    map.put(1, "a");
+    session.execute(stmt.bind(map, new Integer(3), new Integer(3)));
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 3 AND r = 3",
+                "Row[3, 3, {1=a}, NULL, NULL]");
+
+    // UPDATE ... SET vm = {1 : null} WHERE h = 4 AND r = 4
+    expectBindNullException(updateStmt, "Null value in Map", "Parameter value cannot be null",
+        mapWithNullValue, new Integer(4), new Integer(4)); // Bind values
+
+    // UPDATE ... SET vm = {null : 'a'} WHERE h = 4 AND r = 4
+    expectBindNullException(updateStmt, "Null key in Map", "Parameter value cannot be null",
+        mapWithNullKey, new Integer(4), new Integer(4)); // Bind values
 
     //----------------------------------------------------------------------------------------------
     // Testing Set.
     //----------------------------------------------------------------------------------------------
+    // INSERT INTO ... (h, r, vs) VALUES (1, 1, {null})
     insertStmt = "INSERT INTO " + tableName + " (h, r, vs) VALUES (?, ?, ?)";
-    stmt = session.prepare(insertStmt);
 
     Set<Integer> setWithNull = new HashSet<Integer>();
     setWithNull.add(null);
-    try {
-      session.execute(stmt.bind(new Integer(1), new Integer(1), setWithNull));
-      fail("Statement \"" + insertStmt + "\" did not fail with Null value in Set");
-    } catch (java.lang.NullPointerException e) {
-      LOG.info("Expected exception", e);
-      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
-    }
+    expectBindNullException(insertStmt, "Null value in Set", "Parameter value cannot be null",
+        new Integer(1), new Integer(1), setWithNull); // Bind values
+
+    // UPDATE ... SET vs = {1} WHERE h = 5 AND r = 5
+    updateStmt = "UPDATE " + tableName + " SET vs = ? WHERE h = ? AND r = ?";
+    stmt = session.prepare(updateStmt);
+    Set<Integer> set = new HashSet<Integer>();
+    set.add(1);
+    session.execute(stmt.bind(set, new Integer(5), new Integer(5)));
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 5 AND r = 5",
+                "Row[5, 5, NULL, [1], NULL]");
+
+    // UPDATE ... SET vm = {null} WHERE h = 6 AND r = 6
+    expectBindNullException(updateStmt, "Null value in Set", "Parameter value cannot be null",
+        setWithNull, new Integer(6), new Integer(6)); // Bind values
 
     //----------------------------------------------------------------------------------------------
     // Testing List.
     //----------------------------------------------------------------------------------------------
+    // INSERT INTO ... (h, r, vl) VALUES (1, 1, [null])
     insertStmt = "INSERT INTO " + tableName + " (h, r, vl) VALUES (?, ?, ?)";
-    stmt = session.prepare(insertStmt);
 
-    List<String> listWithNull = new LinkedList<>();
-    listWithNull.add(null);
-    try {
-      session.execute(stmt.bind(new Integer(1), new Integer(1), listWithNull));
-      fail("Statement \"" + insertStmt + "\" did not fail with Null value in List");
-    } catch (java.lang.NullPointerException e) {
-      LOG.info("Expected exception", e);
-      assertTrue(e.getMessage().contains("Parameter value cannot be null"));
+    expectBindNullException(insertStmt, "Null value in List", "Parameter value cannot be null",
+        new Integer(1), new Integer(1), listWithNull); // Bind values
+
+    // SELECT * FROM ... IF vl[0] IN/NOT IN (null)
+    for (String op : ImmutableList.of(" IN ", " NOT IN ")) {
+      selectStmt = "SELECT * FROM " + tableName + " IF vl[0]" + op + "?";
+      expectBindNullException(selectStmt, "List with Null", "Parameter value cannot be null",
+          listWithNull); // Bind values
+
+      selectStmt = "SELECT * FROM " + tableName + " IF vl[0]" + op + "(?)";
+      expectBindNullException(selectStmt, "Null value", "",
+          null); // Bind values
     }
+
+    // SELECT * FROM ... IF vl[0] IN ('x')
+    selectStmt = "SELECT * FROM " + tableName + " IF vl[0] IN (?)";
+    stmt = session.prepare(selectStmt);
+    assertEquals(session.execute(stmt.bind(new String("x"))).one().toString(),
+                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    // SELECT * FROM ... IF vl[0] IN ('x') AND vl[1] NOT IN ('F')
+    selectStmt = "SELECT * FROM " + tableName + " IF vl[0] IN (?) AND vl[1] NOT IN (?)";
+    stmt = session.prepare(selectStmt);
+    assertEquals(session.execute(stmt.bind(new String("x"), new String("F"))).one().toString(),
+                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    // SELECT * FROM ... WHERE h NOT IN (2) IF vl[0] IN ('x')
+    selectStmt = "SELECT * FROM " + tableName + " WHERE h NOT IN (?) IF vl[0] IN (?)";
+    stmt = session.prepare(selectStmt);
+    assertEquals(session.execute(stmt.bind(new Integer(2), new String("x"))).one().toString(),
+                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    // SELECT * FROM ... WHERE h IN (1) IF vl[0] NOT IN ('y')
+    selectStmt = "SELECT * FROM " + tableName + " WHERE h IN (?) IF vl[0] NOT IN (?)";
+    stmt = session.prepare(selectStmt);
+    assertEquals(session.execute(stmt.bind(new Integer(1), new String("y"))).one().toString(),
+                 "Row[1, 1, {2=b, 3=c}, [1, 2], [x, y]]");
+
+    // UPDATE ... SET vl = ['z'] WHERE h = 7 AND r = 7
+    updateStmt = "UPDATE " + tableName + " SET vl = ? WHERE h = ? AND r = ?";
+    stmt = session.prepare(updateStmt);
+    List<String> list = new LinkedList<>();
+    list.add("z");
+    session.execute(stmt.bind(list, new Integer(7), new Integer(7)));
+    assertQuery("SELECT * FROM " + tableName + " WHERE h = 7 AND r = 7",
+                "Row[7, 7, NULL, NULL, [z]]");
+
+    // UPDATE ... SET vl = [null] WHERE h = 8 AND r = 8
+    expectBindNullException(updateStmt, "List with Null", "Parameter value cannot be null",
+        listWithNull, new Integer(8), new Integer(8)); // Bind values
 
     // Check the row was not changed.
     assertQuery("SELECT * FROM " + tableName + " WHERE h = 1 AND r = 1",

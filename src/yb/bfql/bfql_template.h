@@ -19,12 +19,20 @@
 #ifndef YB_BFQL_BFQL_TEMPLATE_H_
 #define YB_BFQL_BFQL_TEMPLATE_H_
 
+#include <fcntl.h>
+
+#include <functional>
 #include <vector>
 
-#include "yb/util/logging.h"
 #include "yb/bfql/gen_opcodes.h"
 #include "yb/bfql/gen_operator.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/fault_injection.h"
+#include "yb/util/logging.h"
 
 namespace yb {
 namespace bfql {

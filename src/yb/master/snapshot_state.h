@@ -25,7 +25,10 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
-#include "yb/util/async_task_tracker.h"
+#include "yb/util/async_task_util.h"
+
+DECLARE_int64(max_concurrent_snapshot_rpcs);
+DECLARE_int64(max_concurrent_snapshot_rpcs_per_tserver);
 
 namespace yb {
 namespace master {
@@ -50,7 +53,8 @@ class SnapshotState : public StateWithTablets {
  public:
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
-      const tserver::TabletSnapshotOpRequestPB& request);
+      const tserver::TabletSnapshotOpRequestPB& request,
+      uint64_t throttle_limit = std::numeric_limits<int>::max());
 
   SnapshotState(
       SnapshotCoordinatorContext* context, const TxnSnapshotId& id,
@@ -72,7 +76,7 @@ class SnapshotState : public StateWithTablets {
     return schedule_id_;
   }
 
-  int version() const {
+  int64_t version() const {
     return version_;
   }
 
@@ -80,14 +84,18 @@ class SnapshotState : public StateWithTablets {
     return cleanup_tracker_;
   }
 
+  AsyncTaskThrottler& Throttler() {
+    return throttler_;
+  }
+
   Result<tablet::CreateSnapshotData> SysCatalogSnapshotData(
       const tablet::SnapshotOperation& operation) const;
 
   std::string ToString() const;
-  CHECKED_STATUS ToPB(SnapshotInfoPB* out);
-  CHECKED_STATUS ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
-  CHECKED_STATUS TryStartDelete();
+  Status ToPB(SnapshotInfoPB* out);
+  Status ToEntryPB(SysSnapshotEntryPB* out, ForClient for_client);
+  Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out);
+  Status TryStartDelete();
   void PrepareOperations(TabletSnapshotOperations* out);
   void SetVersion(int value);
   bool NeedCleanup() const;
@@ -96,7 +104,7 @@ class SnapshotState : public StateWithTablets {
 
  private:
   bool IsTerminalFailure(const Status& status) override;
-  CHECKED_STATUS CheckDoneStatus(const Status& status) override;
+  Status CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
   HybridTime snapshot_hybrid_time_;
@@ -108,6 +116,7 @@ class SnapshotState : public StateWithTablets {
   int64_t version_;
   bool delete_started_ = false;
   AsyncTaskTracker cleanup_tracker_;
+  AsyncTaskThrottler throttler_;
 };
 
 Result<docdb::KeyBytes> EncodedSnapshotKey(

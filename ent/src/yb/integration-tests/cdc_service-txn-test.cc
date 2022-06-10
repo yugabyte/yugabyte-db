@@ -26,13 +26,18 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 
+#include "yb/master/master_client.pb.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/logging.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(cdc_enable_replicate_intents);
@@ -256,7 +261,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
 
   // Commit transaction.
   ASSERT_OK(txn->CommitFuture().get());
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   auto checkpoint = change_resp.checkpoint();
 

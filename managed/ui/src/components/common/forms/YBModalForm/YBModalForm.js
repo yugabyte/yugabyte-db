@@ -2,9 +2,12 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { Modal } from 'react-bootstrap';
+import { Modal, Button } from 'react-bootstrap';
 import { YBButton } from '../fields';
 import { Formik } from 'formik';
+//Icons
+import { isFunction } from 'lodash';
+import BackIcon from './images/back.svg';
 
 export default class YBModalForm extends Component {
   render() {
@@ -21,7 +24,12 @@ export default class YBModalForm extends Component {
       footerAccessory,
       showCancelButton,
       className,
-      normalizeFooter
+      dialogClassName,
+      headerClassName,
+      normalizeFooter,
+      pullRightFooter,
+      showBackButton,
+      backBtnCallbackFn
     } = this.props;
 
     let footerButtonClass = '';
@@ -30,7 +38,13 @@ export default class YBModalForm extends Component {
     }
 
     return (
-      <Modal show={visible} onHide={onHide} bsSize={size} className={className}>
+      <Modal
+        show={visible}
+        onHide={onHide}
+        bsSize={size}
+        className={className}
+        dialogClassName={dialogClassName}
+      >
         <Formik
           initialValues={this.props.initialValues}
           validationSchema={this.props.validationSchema}
@@ -40,9 +54,24 @@ export default class YBModalForm extends Component {
           }}
         >
           {(props) => (
-            <form name={formName} onSubmit={props.handleSubmit}>
-              <Modal.Header closeButton>
-                <Modal.Title>{title}</Modal.Title>
+            <form
+              name={formName}
+              onSubmit={(e) => {
+                e.stopPropagation(); // to prevent parent form submission
+                props.handleSubmit(e);
+              }}
+            >
+              <Modal.Header className={headerClassName} closeButton>
+                <Modal.Title>
+                  {showBackButton && (
+                    <Button className="modal-back-btn">
+                      <img alt="Back" src={BackIcon} className="cursor-pointer" onClick={()=>{
+                        isFunction(backBtnCallbackFn) ? backBtnCallbackFn() : onHide()
+                      }} />
+                    </Button>
+                  )}
+                  {title}
+                </Modal.Title>
                 <div
                   className={`yb-alert-item
                     ${error ? '' : 'hide'}`}
@@ -57,9 +86,8 @@ export default class YBModalForm extends Component {
                 <Modal.Footer>
                   <div className={footerButtonClass}>
                     <YBButton
-                      btnClass={`btn btn-orange pull-right ${
-                        props.isSubmitting ? ' btn-is-loading' : ''
-                      }`}
+                      btnClass={`btn btn-orange pull-right ${props.isSubmitting ? ' btn-is-loading' : ''
+                        }`}
                       loading={props.isSubmitting}
                       btnText={submitLabel}
                       btnType="submit"
@@ -69,7 +97,7 @@ export default class YBModalForm extends Component {
                       <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />
                     )}
                     {footerAccessory && (
-                      <div className="pull-left modal-accessory">{footerAccessory}</div>
+                      <div className={`pull-${pullRightFooter ? 'right' : 'left'} modal-accessory`}>{footerAccessory}</div>
                     )}
                   </div>
                 </Modal.Footer>
@@ -94,12 +122,16 @@ YBModalForm.propTypes = {
   footerAccessory: PropTypes.object,
   showCancelButton: PropTypes.bool,
   initialValues: PropTypes.object,
-  validationSchema: PropTypes.object
+  validationSchema: PropTypes.object,
+  pullRightFooter: PropTypes.bool,
+  showBackButton: PropTypes.bool
 };
 
 YBModalForm.defaultProps = {
   visible: false,
   submitLabel: 'OK',
   cancelLabel: 'Cancel',
-  showCancelButton: false
+  showCancelButton: false,
+  pullRightFooter: false,
+  showBackButton: false
 };

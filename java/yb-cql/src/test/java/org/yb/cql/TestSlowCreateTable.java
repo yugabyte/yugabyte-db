@@ -49,7 +49,7 @@ public class TestSlowCreateTable extends BaseCQLTest {
       LOG.info("Expected exception:", ex);
       String errorMsg = ex.getCause().getMessage();
       if (!errorMsg.contains("Timed out waiting for Table Creation") &&
-          !errorMsg.contains("CreateTable timed out after deadline expired.")) {
+          !errorMsg.contains("CreateTable timed out after deadline expired, passed")) {
         fail("Unexpected error message '" + errorMsg + "'");
       }
     }

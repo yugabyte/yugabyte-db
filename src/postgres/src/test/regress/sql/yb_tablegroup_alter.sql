@@ -26,6 +26,7 @@ CREATE USER u2;
 CREATE TABLEGROUP alter_tgroup3 OWNER u1;
 CREATE TABLEGROUP alter_tgroup4 OWNER u1;
 CREATE TABLEGROUP alter_tgroup5;
+CREATE TABLEGROUP alter_tgroup6 OWNER u1;
 
 ALTER TABLEGROUP alter_tgroup3 OWNER TO u2;
 ALTER TABLEGROUP alter_tgroup4 OWNER TO u3; -- fail
@@ -38,3 +39,9 @@ ALTER TABLEGROUP alter_tgroup5 OWNER TO u1; -- fail
 
 \c db_alter_tablegroup u2
 DROP TABLEGROUP alter_tgroup3;
+
+\c db_alter_tablegroup yugabyte_test
+
+DROP USER u1; -- fails because u1 still owns alter_tgroup6
+ALTER TABLEGROUP alter_tgroup6 OWNER TO u2;
+DROP USER u1; -- succeeds

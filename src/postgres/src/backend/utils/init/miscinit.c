@@ -12,6 +12,8 @@
  *
  *-------------------------------------------------------------------------
  */
+
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include <sys/param.h>
@@ -716,8 +718,14 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 	/* Must have authenticated already, else can't make permission check */
 	AssertState(OidIsValid(AuthenticatedUserId));
 
-	if (userid != AuthenticatedUserId &&
-		!AuthenticatedUserIsSuperuser)
+	if ((userid != AuthenticatedUserId && !AuthenticatedUserIsSuperuser) &&
+		/*
+		* For YB Managed case, throw an error if:
+		* 1. Caller is not a yb_db_admin member
+		* 2. Caller is trying to set itself as yb_db_admin member or superuser.
+		*/
+		(!IsYbDbAdminUserNosuper(AuthenticatedUserId) ||
+		(IsYbDbAdminUserNosuper(AuthenticatedUserId) && superuser_arg(userid))))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to set session authorization")));

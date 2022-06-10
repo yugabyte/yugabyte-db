@@ -14,10 +14,12 @@
 #ifndef YB_UTIL_LOCKFREE_H
 #define YB_UTIL_LOCKFREE_H
 
-#include <glog/logging.h>
+#include <atomic>
+
+#include <boost/atomic.hpp>
 
 #include "yb/gutil/dynamic_annotations.h"
-#include "yb/util/atomic.h"
+#include "yb/util/atomic.h" // For IsAcceptableAtomicImpl
 
 namespace yb {
 

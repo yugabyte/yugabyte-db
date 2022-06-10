@@ -103,7 +103,7 @@ TxnId, HybridTime -> primary provisional record key
 
   This mapping allows us to find all provisional RocksDB records belonging to a particular
   transaction. This is used when cleaning up committed or aborted transactions. Note that
-  because multiple RocksDB key-value pairs belonging to primary provisional records can we written
+  because multiple RocksDB key-value pairs belonging to primary provisional records can be written
   for the same transaction with the same hybrid timestamp, we need to use an increasing counter 
   (which we call a *write ID*) at the end of the encoded representation of hybrid time in order to 
   obtain unique RocksDB keys for this reverse index. This write ID is shown as `.0`, `.1`, etc. in

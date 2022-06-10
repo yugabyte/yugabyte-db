@@ -17,16 +17,22 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.minicluster.RocksDBMetrics;
+
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 import org.yb.util.RegexMatcher;
+import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +45,8 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgSelect extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
-  private static int kMaxClockSkewMs = 500;
+  private static int kMaxClockSkewMs = 100;
+  private static int kRaftHeartbeatIntervalMs = 500;
 
   /**
    * @return flags shared between tablet server and initdb
@@ -48,6 +55,7 @@ public class TestPgSelect extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("max_clock_skew_usec", "" + kMaxClockSkewMs * 1000);
+    flagMap.put("raft_heartbeat_interval_ms", "" + kRaftHeartbeatIntervalMs);
     return flagMap;
   }
 
@@ -534,75 +542,191 @@ public class TestPgSelect extends BasePgSQLTest {
   }
 
   @Test
-  public void testCountConsistentPrefix() throws Exception {
+  public void testFollowerReadsRedirected() throws Exception {
     try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixcount(k int primary key)");
-      for (int i = 0; i < 100; i++) {
-        statement.execute(String.format("INSERT INTO consistentprefixcount(k) VALUES(%d)", i));
-      }
+      statement.execute("CREATE TABLE t(a int primary key) SPLIT INTO 9 TABLETS");
+      LOG.info("Start writing");
+      final int kRows = 100;
+      statement.execute(String.format("INSERT INTO t SELECT generate_series(1, %d)", kRows));
+      LOG.info("Done writing");
 
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      final long kFollowerReadStalenessLargeMs = 30000;
+
+      statement.execute("SET yb_debug_log_docdb_requests = true;");
       statement.execute("SET yb_read_from_followers = true;");
-      assertOneRow(statement, "SELECT count(*) FROM consistentprefixcount", 100L);
+      statement.execute("SET default_transaction_read_only = true;");
 
-      long count = getCountForTable("consistent_prefix_read_requests", "consistentprefixcount");
-      assertEquals(count, 3); // 3 tablets, 3 consistent prefix requests.
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessLargeMs);
+      final int kNumLoops = 100;
+      final int kJitterMs = 3 * kRaftHeartbeatIntervalMs / kNumLoops;
+      long count_reqs0 = getCountForTable("consistent_prefix_read_requests", "t");
+      for (int i = 0; i < kNumLoops; i++) {
+        statement.executeQuery(String.format("SELECT * from t where a = %d", 1 + (i % kRows)));
+        Thread.sleep(kJitterMs);
+      }
+      long count_reqs1 = getCountForTable("consistent_prefix_read_requests", "t");
+      LOG.info("Reading " + kNumLoops + " rows with large staleness. Had "
+               + (count_reqs1 - count_reqs0) + " requests.");
+      assertEquals(count_reqs1 - count_reqs0, kNumLoops);
+
+      final int kFollowerReadStalenessSmallMs = 300;
+      assertLessThan(kFollowerReadStalenessSmallMs, kRaftHeartbeatIntervalMs);
+      assertGreaterThan(kFollowerReadStalenessSmallMs, 2 * kMaxClockSkewMs);
+      statement.execute("SET yb_follower_read_staleness_ms = " + kFollowerReadStalenessSmallMs);
+      for (int i = 0; i < kNumLoops; i++) {
+        statement.executeQuery(String.format("SELECT * from t where a = %d", 1 + (i % kRows)));
+        Thread.sleep(kJitterMs);
+      }
+      long count_reqs2 = getCountForTable("consistent_prefix_read_requests", "t");
+      LOG.info("Reading " + kNumLoops + " rows with small staleness. Had "
+               + (count_reqs1 - count_reqs0) + " requests.");
+      assertGreaterThan(count_reqs2 - count_reqs1, (long)kNumLoops);
+
+      // required to clean up the table.
+      statement.execute("SET default_transaction_read_only = false;");
     }
+  }
+
+  public void doSelect(boolean use_ordered_by, boolean get_count, Statement statement,
+                       boolean enable_follower_read, List<Row> rows_list,
+                       long expected_num_tablet_requests) throws Exception {
+    String follower_read_setting = (enable_follower_read ? "on" : "off");
+    int row_count = rows_list.size();
+    LOG.info("Reading rows with follower reads " + follower_read_setting);
+    long old_count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+    long old_count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    if (get_count) {
+      assertOneRow(statement,
+                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                       + "SELECT count(*) FROM consistentprefix",
+                   row_count);
+    } else if (use_ordered_by) {
+      assertRowList(statement,
+                    "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                        + "SELECT * FROM consistentprefix ORDER BY k",
+                    rows_list);
+    } else {
+      assertRowSet(statement,
+                   "/*+ Set(transaction_read_only " + follower_read_setting + ") */ "
+                       + "SELECT * FROM consistentprefix k",
+                   new HashSet(rows_list));
+    }
+    long count_reqs = getCountForTable("consistent_prefix_read_requests", "consistentprefix");
+    assertEquals(count_reqs - old_count_reqs,
+                 !enable_follower_read ? 0 : expected_num_tablet_requests);
+    long count_rows = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefix");
+    assertEquals(count_rows - old_count_rows,
+                 !enable_follower_read || row_count == 0
+                     ? 0
+                     : (get_count ? expected_num_tablet_requests : row_count));
+
+  }
+
+  public void testConsistentPrefix(int kNumRows, boolean use_ordered_by, boolean get_count)
+      throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE consistentprefix(k int primary key)");
+
+      final int kNumRowsDeleted = 10;
+      final int kNumRowsUnchanged = kNumRows - kNumRowsDeleted;
+      ArrayList<Row> all_rows = new ArrayList<Row>();
+      ArrayList<Row> unchanged_rows = new ArrayList<Row>();
+      LOG.info("Start writing");
+      long startWriteMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRows; i++) {
+        statement.execute(String.format("INSERT INTO consistentprefix(k) VALUES(%d)", i));
+        all_rows.add(new Row(i));
+        if (i >= kNumRowsDeleted) {
+          unchanged_rows.add(new Row(i));
+        }
+      }
+      LOG.info("Done writing");
+      long doneWriteMs = System.currentTimeMillis();
+
+      Set<Row> expected_rows_set = new HashSet<Row>(all_rows);
+      Set<Row> expected_rows_unchanged_set = new HashSet<Row>(unchanged_rows);
+      final int kNumTablets = 3;
+      final int kNumRowsPerTablet = (int)Math.ceil(kNumRows / (1.0 * kNumTablets));
+      final int kNumTabletRequests = kNumTablets * (int)Math.ceil(kNumRowsPerTablet / 1024.0);
+      final long kOpDurationMs = BuildTypeUtil.adjustTimeout(2500);
+
+      Thread.sleep(kOpDurationMs);
+
+      statement.execute("SET yb_read_from_followers = true;");
+
+      // Set staleness so that the read happens before the initial writes have started.
+      long staleness_ms = System.currentTimeMillis() + kOpDurationMs - startWriteMs;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      doSelect(use_ordered_by, get_count, statement, true, Collections.emptyList(),
+               kNumTablets);
+
+
+      // Set staleness so that the read happens after the initial writes are done.
+      staleness_ms = System.currentTimeMillis() - doneWriteMs;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+
+      Connection write_connection = getConnectionBuilder().connect();
+      ArrayList<Statement> write_txns = new ArrayList<Statement>();
+      LOG.info("Start delete");
+      long startDeleteMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRowsDeleted; i++) {
+        write_txns.add(write_connection.createStatement());
+        Statement write_txn = write_txns.get(i);
+        write_txn.execute("START TRANSACTION");
+        write_txn.execute("DELETE FROM consistentprefix where k = " + i);
+      }
+      long writtenDeleteMs = System.currentTimeMillis();
+      Thread.sleep(kOpDurationMs);
+
+      doSelect(use_ordered_by, get_count, statement, false, all_rows, 0);
+
+      // Set staleness so the read happens after the initial writes are done. Before deletes start.
+      staleness_ms = System.currentTimeMillis() - (doneWriteMs + startDeleteMs) / 2;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+
+      long startCommitMs = System.currentTimeMillis();
+      for (int i = 0; i < kNumRowsDeleted; i++) {
+        Statement write_txn = write_txns.get(i);
+        write_txn.execute("COMMIT");
+      }
+      long committedDeleteMs = System.currentTimeMillis();
+      LOG.info("Done delete");
+      Thread.sleep(kOpDurationMs);
+
+      doSelect(use_ordered_by, get_count, statement, false, unchanged_rows, 0);
+
+      // Set staleness so that the read happens before deletes are committed.
+      staleness_ms = System.currentTimeMillis() - (writtenDeleteMs + startCommitMs) / 2;
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      doSelect(use_ordered_by, get_count, statement, true, all_rows, kNumTabletRequests);
+
+      // Set staleness so that the read happens after deletes are committed.
+      staleness_ms = System.currentTimeMillis() - (committedDeleteMs + kOpDurationMs / 2);
+      statement.execute("SET yb_follower_read_staleness_ms = " + staleness_ms);
+      LOG.info("Using staleness of " + staleness_ms + " ms.");
+      doSelect(use_ordered_by, get_count, statement, true, unchanged_rows, kNumTabletRequests);
+    }
+  }
+
+  @Test
+  public void testCountConsistentPrefix() throws Exception {
+    testConsistentPrefix(100, /* use_ordered_by */ false, /* get_count */ true);
   }
 
   @Test
   public void testOrderedSelectConsistentPrefix() throws Exception {
-    List<Row> expected_rows = new ArrayList<>();
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixorderedselect(k int primary key)");
-      for (int i = 0; i < 5000; i++) {
-        statement.execute(String.format(
-            "INSERT INTO consistentprefixorderedselect(k) VALUES(%d)", i));
-        expected_rows.add(new Row(i));
-      }
-
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      assertRowList(statement,
-          "SELECT * FROM consistentprefixorderedselect ORDER BY k", expected_rows);
-
-      long count = getCountForTable("consistent_prefix_read_requests",
-          "consistentprefixorderedselect");
-      // Max number of records per request is 1024, so we will need to issue two requests per
-      // tablet.
-      assertEquals(6, count);
-
-      count = getCountForTable("pgsql_consistent_prefix_read_rows",
-          "consistentprefixorderedselect");
-      assertEquals(5000, count);
-    }
+    testConsistentPrefix(5000, /* use_ordered_by */ true, /* get_count */ false);
   }
 
   @Test
   public void testSelectConsistentPrefix() throws Exception {
-    List<Row> expected_rows = new ArrayList<>();
-    try (Statement statement = connection.createStatement()) {
-      statement.execute("CREATE TABLE consistentprefixselect(k int primary key)");
-      for (int i = 0; i < 7000; i++) {
-        statement.execute(String.format("INSERT INTO consistentprefixselect(k) VALUES(%d)", i));
-        expected_rows.add(new Row(i));
-      }
-
-      statement.execute(
-          "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED");
-      statement.execute("SET yb_read_from_followers = true;");
-      statement.executeQuery("SELECT * from consistentprefixselect");
-
-      long count = getCountForTable("consistent_prefix_read_requests", "consistentprefixselect");
-      // Max number of records per request is 1024, so we will need to issue three requests per
-      // tablet.
-      assertEquals(9, count);
-
-      count = getCountForTable("pgsql_consistent_prefix_read_rows", "consistentprefixselect");
-      assertEquals(7000, count);
-    }
+    testConsistentPrefix(7000, /* use_ordered_by */ false, /* get_count */ false);
   }
 
   @Test
@@ -1008,6 +1132,208 @@ public class TestPgSelect extends BasePgSQLTest {
                                                 " AND (vr1 IS NULL))"));
       assertFalse("Expect DocDB to filter fully",
                   explainOutput.contains("Rows Removed by"));
+    }
+  }
+
+  private RocksDBMetrics assertFullDocDBFilter(Statement statement,
+    String query, String table_name) throws Exception {
+    RocksDBMetrics beforeMetrics = getRocksDBMetric(table_name);
+    String explainOutput = getExplainAnalyzeOutput(statement, query);
+        assertFalse("Expect DocDB to filter fully",
+                    explainOutput.contains("Rows Removed by"));
+    RocksDBMetrics afterMetrics = getRocksDBMetric(table_name);
+    return afterMetrics.subtract(beforeMetrics);
+  }
+
+  @Test
+  public void testPartialKeyScan() throws Exception {
+    String query = "CREATE TABLE sample_table(h INT, r1 INT, r2 INT, r3 INT, "
+                    + "v INT, PRIMARY KEY(h HASH, r1 ASC, r2 ASC, r3 DESC))";
+
+    try (Statement statement = connection.createStatement()) {
+        statement.execute(query);
+
+        // v has values from 1 to 100000 and the other columns are
+        // various digits of v as such
+        // h    r1  r2  r3      v
+        // 0    0   0   0       0
+        // 0    0   0   1       1
+        // ...
+        // 12   4   9   3      12493
+        // ...
+        // 100  0   0   0      100000
+        query = "INSERT INTO sample_table SELECT i/1000, (i/100)%10, " +
+                "(i/10)%10, i%10, i FROM generate_series(1, 100000) i";
+        statement.execute(query);
+
+        Set<Row> allRows = new HashSet<>();
+        for (int i = 1; i <= 100000; i++) {
+            allRows.add(new Row(i/1000, (i/100)%10, (i/10)%10, i%10, i));
+        }
+
+        // Select where hash code is specified and one range constraint
+        query = "SELECT * FROM sample_table WHERE h = 1 AND r3 < 6";
+
+        Set<Row> expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && r.getInt(3) < 6)
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are 10 * 10 total values for r1 and r2 that we have to look
+        // through. For each pair (r1, r2) we iterate through all values of
+        // r3 in [0, 6] and then seek to the next pair for (r1, r2). There
+        // are 10 * 10 such pairs. There is also an initial seek into the
+        // hash key, making the total 10 * 10 + 1 = 101. The actual seeks are
+        // as follows:
+        // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 6]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 1, 6]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 6]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 0, 6]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [9, 9, 6]), []))
+        assertEquals(101, metrics.seekCount);
+
+        // Select where hash code is specified, one range constraint
+        // and one option constraint on two separate columns.
+        // No constraint is specified for r2.
+        query = "SELECT * FROM sample_table WHERE " +
+                "h = 1 AND r1 < 2 AND r3 IN (2, 25, 8, 7, 23, 18)";
+        Integer[] r3FilterArray = {2, 25, 8, 7, 23, 18};
+        Set<Integer> r3Filter = new HashSet<Integer>();
+        r3Filter.addAll(Arrays.asList(r3FilterArray));
+
+        expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && r.getInt(1) < 2
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // For each of the 3 * 10 possible pairs of (r1, r2) we seek through
+        // 4 values of r3 (8, 7, 2, kHighest). We must have that seek to
+        // r3 = kHighest in order to get to the next value of (r1,r2).
+        // We also have one initial seek into the hash key, making the total
+        // number of seeks 3 * 10 * 4 + 1 = 121
+        // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, kHighest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 1, 8]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 9, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 9, kHighest]), []))
+        assertEquals(121, metrics.seekCount);
+
+        // Select where all keys have some sort of discrete constraint
+        // on them
+        query = "SELECT * FROM sample_table WHERE " +
+                "h = 1 AND r1 IN (1,2) AND r2 IN (2,3) " +
+                "AND r3 IN (2, 25, 8, 7, 23, 18)";
+
+        expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && (r.getInt(1) == 1
+                                            || r.getInt(1) == 2)
+                                        && (r.getInt(2) == 2
+                                            || r.getInt(2) == 3)
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are 2 possible values for r1 and 2 possible values for r2.
+        // There are 3 possible values for r3 (8, 7, 2). Remember that for
+        // each value of (r1, r2), we must seek to (r1, r2, 25) to get
+        // to the first row that has value of (r1, r2),
+        // resulting in 4 total seeks for each (r1, r2).
+        // Altogether there are 2 * 2 * 4 = 16 seeks.
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 3, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 2, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 2]), []))
+        assertEquals(16, metrics.seekCount);
+
+
+        // Select where two out of three columns have discrete constraints
+        // set up while the other one has no restrictions
+        query = "SELECT * FROM sample_table WHERE " +
+                "h = 1 AND r2 IN (2,3) AND r3 IN (2, 25, 8, 7, 23, 18)";
+
+        expectedRows = allRows.stream()
+                                .filter(r -> r.getInt(0) == 1
+                                        && (r.getInt(2) == 2
+                                            || r.getInt(2) == 3)
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+
+        // For each value of r1, we have two values of r2 to seek through and
+        // for each of those we have at most 6 values of r3 to seek through.
+        // In reality, we seek through 4 values of r3 for each (r1,r2) for
+        // the same reason as the previous test. After we've exhausted all
+        // possibilities for (r2,r3) for a given r1, we seek to (r1,kHighest)
+        // to seek to the next possible value of r1. Therefore, we seek
+        // 4 * 2 + 1 = 9 values for each r1.
+        // Note that there are 10 values of r1 to seek through and we do an
+        // initial seek into the hash code as usual. So in total, we have
+        // 10 * (4 * 2 + 1) + 1 = 10 * 9 + 1 = 91 seeks.
+        // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 2, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 25]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 8]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 7]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, 3, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [0, kHighest]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 25]), []))
+        // ...
+        // Seek(SubDocKey(DocKey(0x1210, [1], [9, kHighest]), []))
+        assertEquals(91, metrics.seekCount);
+
+        // Select where we have options for the hash code and discrete
+        // filters on two out of three range columns
+        query = "SELECT * FROM sample_table WHERE " +
+                "h IN (1,5) AND r2 IN (2,3) AND r3 IN (2, 25, 8, 7, 23, 18)";
+
+        expectedRows = allRows.stream()
+                                .filter(r -> (r.getInt(0) == 1
+                                            || r.getInt(0) == 5)
+                                        && (r.getInt(2) == 2
+                                            || r.getInt(2) == 3)
+                                        && r3Filter.contains(r.getInt(3)))
+                                .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // Note that in this case, YSQL sends two batches of requests
+        // to DocDB in parallel, one for each hash code option. So this
+        // should really just be double the number of seeks as
+        // SELECT * FROM sample_table WHERE h = 1 AND r2 IN (2,3)
+        // AND r3 IN (2, 25, 8, 7, 23, 18)
+        // We have 91 * 2 = 182 seeks
+        assertEquals(182, metrics.seekCount);
     }
   }
 

@@ -87,16 +87,29 @@ function mapStateToProps(state, ownProps) {
     if (isDefinedNotNull(primaryCluster)) {
       const masterGFlags = primaryCluster.userIntent.masterGFlags;
       const tserverGFlags = primaryCluster.userIntent.tserverGFlags;
+      const gFlagArray = [];
       if (isNonEmptyObject(masterGFlags)) {
-        initialValues.masterGFlags = Object.keys(masterGFlags).map((gFlagKey) => {
-          return { name: gFlagKey, value: masterGFlags[gFlagKey] };
+        Object.keys(masterGFlags).forEach((key) => {
+          const masterObj = {};
+          if (tserverGFlags.hasOwnProperty(key)) {
+            masterObj['TSERVER'] = tserverGFlags[key];
+          }
+          masterObj['Name'] = key;
+          masterObj['MASTER'] = masterGFlags[key];
+          gFlagArray.push(masterObj);
         });
       }
       if (isNonEmptyObject(tserverGFlags)) {
-        initialValues.tserverGFlags = Object.keys(tserverGFlags).map((gFlagKey) => {
-          return { name: gFlagKey, value: tserverGFlags[gFlagKey] };
+        Object.keys(tserverGFlags).forEach((key) => {
+          const tserverObj = {};
+          if (!masterGFlags.hasOwnProperty(key)) {
+            tserverObj['TSERVER'] = tserverGFlags[key];
+            tserverObj['Name'] = key;
+            gFlagArray.push(tserverObj);
+          }
         });
       }
+      initialValues.gFlags = gFlagArray;
     }
   }
   initialValues.ybSoftwareVersion = state.customer.softwareVersions[0];
@@ -108,17 +121,20 @@ function mapStateToProps(state, ownProps) {
   let certificates = [];
   const allCertificates = state.customer.userCertificates;
   if (getPromiseState(allCertificates).isSuccess()) {
-    const rootCert = allCertificates.data.find(
-      (item) => item.uuid === initialValues.tlsCertificate
-    );
-    // show custom certs with same root cert only
-    certificates = allCertificates.data.filter(
-      (item) => item.certType === 'CustomCertHostPath' && item.checksum === rootCert?.checksum
-    );
+    certificates = [
+      { label: 'Create New Certificate', uuid: null },
+      ...(allCertificates.data || [])
+    ];
   }
 
   const selector = formValueSelector(FORM_NAME);
-  const formValues = selector(state, 'upgradeOption', 'systemdValue', 'ybSoftwareVersion', 'tlsCertificate');
+  const formValues = selector(
+    state,
+    'upgradeOption',
+    'systemdValue',
+    'ybSoftwareVersion',
+    'tlsCertificate'
+  );
 
   return {
     modal: state.modal,
@@ -134,7 +150,8 @@ function mapStateToProps(state, ownProps) {
 
 const rollingUpgradeForm = reduxForm({
   form: FORM_NAME,
-  enableReinitialize: true // to reinitialize form every time the initialValues prop changes
+  enableReinitialize: true, // to reinitialize form every time the initialValues prop changes
+  keepDirtyOnReinitialize: true
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(rollingUpgradeForm(RollingUpgradeForm));

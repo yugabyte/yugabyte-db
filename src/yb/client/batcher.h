@@ -41,6 +41,7 @@
 #include "yb/client/transaction.h"
 
 #include "yb/common/consistent_read_point.h"
+#include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/macros.h"
@@ -48,14 +49,60 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
-#include "yb/util/debug-util.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/threadpool.h"
 
 namespace yb {
-
 namespace client {
 namespace internal {
+
+struct InFlightOpsGroup {
+  using Iterator = InFlightOps::const_iterator;
+
+  bool need_metadata = false;
+  const Iterator begin;
+  const Iterator end;
+
+  InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end);
+  std::string ToString() const;
+};
+
+struct InFlightOpsTransactionMetadata {
+  TransactionMetadata transaction;
+  boost::optional<SubTransactionMetadata> subtransaction;
+};
+
+struct InFlightOpsGroupsWithMetadata {
+  static const size_t kPreallocatedCapacity = 40;
+
+  boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
+  InFlightOpsTransactionMetadata metadata;
+};
+
+class TxnBatcherIf {
+ public:
+  // Ask transaction to expect `count` operations in future. I.e. Prepare will be called with such
+  // number of ops.
+  virtual void ExpectOperations(size_t count) = 0;
+
+  // Notifies transaction that specified ops were flushed with some status.
+  virtual void Flushed(
+      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time,
+      const Status& status) = 0;
+
+  // This function is used to init metadata of Write/Read request.
+  // If we don't have enough information, then the function returns false and stores
+  // the waiter, which will be invoked when we obtain such information.
+  virtual bool Prepare(
+      internal::InFlightOpsGroupsWithMetadata* ops_info,
+      ForceConsistentRead force_consistent_read,
+      CoarseTimePoint deadline,
+      Initial initial,
+      Waiter waiter) = 0;
+
+  virtual ~TxnBatcherIf() = default;
+};
 
 // Batcher state changes sequentially in the order listed below, with the exception that kAborted
 // could be reached from any state.
@@ -133,12 +180,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   // Return the number of buffered operations. These are only those operations which are
   // "corked" (i.e not yet flushed). Once Flush has been called, this returns 0.
-  int CountBufferedOperations() const;
-
-  // Return the number of operations successfully added, but not yet flushed.
-  // This differs from CountBufferedOperations that can decrease before flush due to tablet lookup
-  // errors after addition.
-  int GetAddedNotFlushedOperationsCount() const;
+  size_t CountBufferedOperations() const;
 
   // Flush any buffered operations. The callback will be called once there are no
   // more pending operations from this Batcher. If all of the operations succeeded,

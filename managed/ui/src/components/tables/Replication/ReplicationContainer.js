@@ -9,6 +9,8 @@ import {
   resetMetrics
 } from '../../../actions/graph';
 import {
+  fetchUniverseInfo,
+  fetchUniverseInfoResponse,
   getMasterLeader,
   getMasterLeaderResponse,
   resetMasterLeader
@@ -36,6 +38,11 @@ const mapDispatchToProps = (dispatch) => {
 
     resetMasterLeader: () => {
       dispatch(resetMasterLeader());
+    },
+    fetchCurrentUniverse: (universeUUID) => {
+      return dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
     }
   };
 };
@@ -43,11 +50,10 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state) {
   const { universe } = state;
   return {
-    currentCustomer: state.customer.currentCustomer,
+    customer: state.customer,
     graph: state.graph,
     universe
   };
 }
-
 
 export default connect(mapStateToProps, mapDispatchToProps)(Replication);

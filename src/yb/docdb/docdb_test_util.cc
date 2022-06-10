@@ -17,28 +17,30 @@
 #include <memory>
 #include <sstream>
 
-#include "yb/rocksdb/table.h"
-
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_value.h"
+
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/in_mem_docdb.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/rocksdb/db/filename.h"
+
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/env.h"
 #include "yb/util/path_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
-#include "yb/util/algorithm_util.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/db/filename.h"
 
 using std::endl;
 using std::make_shared;
@@ -67,7 +69,7 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     return HybridTime::kInvalid;
   }
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override {
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
     Fail();
     return boost::none;
   }
@@ -130,7 +132,7 @@ const TransactionOperationContext kNonTransactionalOperationContext = {
     TransactionId::Nil(), &kNonTransactionalStatusProvider
 };
 
-PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
+ValueRef GenRandomPrimitiveValue(RandomNumberGenerator* rng, QLValuePB* holder) {
   static vector<string> kFruit = {
       "Apple",
       "Apricot",
@@ -225,46 +227,71 @@ PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
   };
   switch ((*rng)() % 6) {
     case 0:
-      return PrimitiveValue(static_cast<int64_t>((*rng)()));
+      *holder = QLValue::Primitive(static_cast<int64_t>((*rng)()));
+      return ValueRef(*holder);
     case 1: {
       string s;
-      for (int j = 0; j < (*rng)() % 50; ++j) {
+      for (size_t j = 0; j < (*rng)() % 50; ++j) {
         s.push_back((*rng)() & 0xff);
       }
-      return PrimitiveValue(s);
+      *holder = QLValue::Primitive(s);
+      return ValueRef(*holder);
     }
-    case 2: return PrimitiveValue(ValueType::kNullLow);
-    case 3: return PrimitiveValue(ValueType::kTrue);
-    case 4: return PrimitiveValue(ValueType::kFalse);
-    case 5: return PrimitiveValue(kFruit[(*rng)() % kFruit.size()]);
+    case 2: return ValueRef(ValueEntryType::kNullLow);
+    case 3: return ValueRef(ValueEntryType::kTrue);
+    case 4: return ValueRef(ValueEntryType::kFalse);
+    case 5: {
+      *holder = QLValue::Primitive(kFruit[(*rng)() % kFruit.size()]);
+      return ValueRef(*holder);
+    }
   }
   LOG(FATAL) << "Should never get here";
-  return PrimitiveValue();  // to make the compiler happy
+  return ValueRef(ValueEntryType::kNullLow);  // to make the compiler happy
 }
 
+PrimitiveValue GenRandomPrimitiveValue(RandomNumberGenerator* rng) {
+  QLValuePB value_holder;
+  auto value_ref = GenRandomPrimitiveValue(rng, &value_holder);
+  if (value_ref.custom_value_type() != ValueEntryType::kInvalid) {
+    return PrimitiveValue(value_ref.custom_value_type());
+  }
+  return PrimitiveValue::FromQLValuePB(value_holder);
+}
+
+KeyEntryValue GenRandomKeyEntryValue(RandomNumberGenerator* rng) {
+  QLValuePB value_holder;
+  auto value_ref = GenRandomPrimitiveValue(rng, &value_holder);
+  if (value_ref.custom_value_type() != ValueEntryType::kInvalid) {
+    return KeyEntryValue(static_cast<KeyEntryType>(value_ref.custom_value_type()));
+  }
+  return KeyEntryValue::FromQLValuePB(value_holder, SortingType::kNotSpecified);
+}
 
 // Generate a vector of random primitive values.
-vector<PrimitiveValue> GenRandomPrimitiveValues(RandomNumberGenerator* rng, int max_num) {
-  vector<PrimitiveValue> result;
-  for (int i = 0; i < (*rng)() % (max_num + 1); ++i) {
-    result.push_back(GenRandomPrimitiveValue(rng));
+vector<KeyEntryValue> GenRandomKeyEntryValues(
+    RandomNumberGenerator* rng, int max_num = kMaxNumRandomDocKeyParts) {
+  vector<KeyEntryValue> result;
+  for (size_t i = 0; i < (*rng)() % (max_num + 1); ++i) {
+    result.push_back(GenRandomKeyEntryValue(rng));
   }
   return result;
 }
 
 DocKey CreateMinimalDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
-  return use_hash ? DocKey(static_cast<DocKeyHash>((*rng)()), std::vector<PrimitiveValue>(),
-      std::vector<PrimitiveValue>()) : DocKey();
+  return use_hash
+      ? DocKey(static_cast<DocKeyHash>((*rng)()), std::vector<KeyEntryValue>(),
+               std::vector<KeyEntryValue>())
+      : DocKey();
 }
 
 DocKey GenRandomDocKey(RandomNumberGenerator* rng, UseHash use_hash) {
   if (use_hash) {
     return DocKey(
         static_cast<uint32_t>((*rng)()),  // this is just a random value, not a hash function result
-        GenRandomPrimitiveValues(rng),
-        GenRandomPrimitiveValues(rng));
+        GenRandomKeyEntryValues(rng),
+        GenRandomKeyEntryValues(rng));
   } else {
-    return DocKey(GenRandomPrimitiveValues(rng));
+    return DocKey(GenRandomKeyEntryValues(rng));
   }
 }
 
@@ -282,8 +309,8 @@ vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, UseHash use_ha
   result.push_back(SubDocKey(CreateMinimalDocKey(rng, use_hash), HybridTime((*rng)())));
   for (int iteration = 0; iteration < num_keys; ++iteration) {
     result.push_back(SubDocKey(GenRandomDocKey(rng, use_hash)));
-    for (int i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
-      result.back().AppendSubKeysAndMaybeHybridTime(GenRandomPrimitiveValue(rng));
+    for (size_t i = 0; i < (*rng)() % (kMaxNumRandomSubKeys + 1); ++i) {
+      result.back().AppendSubKeysAndMaybeHybridTime(GenRandomKeyEntryValue(rng));
     }
     const IntraTxnWriteId write_id = static_cast<IntraTxnWriteId>(
         (*rng)() % 2 == 0 ? 0 : (*rng)() % 1000000);
@@ -304,7 +331,7 @@ void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   }
   // Save the DocDB debug dump as a string so we can check that we've properly restored the snapshot
   // in RestoreTo.
-  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb);
+  docdb_debug_dump_str = DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage());
 }
 
 void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
@@ -320,7 +347,7 @@ void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
     ASSERT_OK(rocksdb->Put(write_options, kv.first, kv.second));
   }
   ASSERT_OK(FullyCompactDB(rocksdb));
-  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb));
+  ASSERT_EQ(docdb_debug_dump_str, DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage()));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -337,7 +364,7 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
     : fixture_(fixture),
       doc_keys_(GenRandomDocKeys(&random_, use_hash, num_doc_keys)),
       resolve_intents_(resolve_intents),
-      possible_subkeys_(GenRandomPrimitiveValues(&random_, num_unique_subkeys)),
+      possible_subkeys_(GenRandomKeyEntryValues(&random_, num_unique_subkeys)),
       iteration_(1),
       deletion_chance_(deletion_chance),
       max_nesting_level_(max_nesting_level),
@@ -350,6 +377,8 @@ DocDBLoadGenerator::DocDBLoadGenerator(DocDBRocksDBFixture* fixture,
   // read.
   in_mem_docdb_.SetCaptureHybridTime(HybridTime::kMax);
 }
+
+DocDBLoadGenerator::~DocDBLoadGenerator() = default;
 
 void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   // Increment the iteration right away so we can return from the function at any time.
@@ -365,17 +394,17 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
 
   bool is_deletion = false;
   if (current_doc != nullptr &&
-      current_doc->value_type() != ValueType::kObject) {
+      current_doc->value_type() != ValueEntryType::kObject) {
     // The entire document is not an object, let's delete it.
     is_deletion = true;
   }
 
-  vector<PrimitiveValue> subkeys;
+  vector<KeyEntryValue> subkeys;
   if (!is_deletion) {
     // Add up to (max_nesting_level_ - 1) subkeys. Combined with the document key itself, this
     // gives us the desired maximum nesting level.
-    for (int j = 0; j < random_() % max_nesting_level_; ++j) {
-      if (current_doc != nullptr && current_doc->value_type() != ValueType::kObject) {
+    for (size_t j = 0; j < random_() % max_nesting_level_; ++j) {
+      if (current_doc != nullptr && current_doc->value_type() != ValueEntryType::kObject) {
         // We can't add any more subkeys because we've found a primitive subdocument.
         break;
       }
@@ -387,7 +416,8 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   }
 
   const DocPath doc_path(encoded_doc_key, subkeys);
-  const auto value = GenRandomPrimitiveValue(&random_);
+  QLValuePB value_holder;
+  const auto value = GenRandomPrimitiveValue(&random_, &value_holder);
   const HybridTime hybrid_time(current_iteration);
   last_operation_ht_ = hybrid_time;
 
@@ -405,10 +435,13 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   } else {
     DOCDB_DEBUG_LOG("Iteration $0: setting value at doc path $1 to $2",
                     current_iteration, doc_path.ToString(), value.ToString());
-    ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, value));
+    auto pv = value.custom_value_type() != ValueEntryType::kInvalid
+        ? PrimitiveValue(value.custom_value_type())
+        : PrimitiveValue::FromQLValuePB(value_holder);
+    ASSERT_OK(in_mem_docdb_.SetPrimitive(doc_path, pv));
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
-      DocDBDebugDump(rocksdb(), std::cerr, StorageDbType::kRegular);
+      DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(), StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);
@@ -420,7 +453,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
   ASSERT_OK(fixture_->WriteToRocksDB(dwb, hybrid_time));
   const SubDocument* const subdoc_from_mem = in_mem_docdb_.GetDocument(doc_key);
 
-  TransactionOperationContextOpt txn_op_context = GetReadOperationTransactionContext();
+  TransactionOperationContext txn_op_context = GetReadOperationTransactionContext();
 
   // In case we are asked to compact history, we read the document from RocksDB before and after the
   // compaction, and expect to get the same result in both cases.
@@ -516,7 +549,7 @@ void DocDBLoadGenerator::CheckIfOldestSnapshotIsStillValid(const HybridTime clea
 
 void DocDBLoadGenerator::VerifyRandomDocDbSnapshot() {
   if (!docdb_snapshots_.empty()) {
-    const int snapshot_idx = NextRandomInt(docdb_snapshots_.size());
+    const int snapshot_idx = NextRandomInt(narrow_cast<int>(docdb_snapshots_.size()));
     ASSERT_NO_FATALS(VerifySnapshot(docdb_snapshots_[snapshot_idx]));
   }
 }
@@ -583,11 +616,11 @@ void DocDBLoadGenerator::RecordSnapshotDivergence(const InMemDocDbState &snapsho
   }
 }
 
-TransactionOperationContextOpt DocDBLoadGenerator::GetReadOperationTransactionContext() {
+TransactionOperationContext DocDBLoadGenerator::GetReadOperationTransactionContext() {
   if (resolve_intents_) {
     return kNonTransactionalOperationContext;
   }
-  return boost::none;
+  return TransactionOperationContext();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -598,8 +631,8 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
   if (expected_str != debug_dump_str) {
     auto expected_lines = StringSplit(expected_str, '\n');
     auto actual_lines = StringSplit(debug_dump_str, '\n');
-    vector<int> mismatch_line_numbers;
-    for (int i = 0; i < std::min(expected_lines.size(), actual_lines.size()); ++i) {
+    vector<size_t> mismatch_line_numbers;
+    for (size_t i = 0; i < std::min(expected_lines.size(), actual_lines.size()); ++i) {
       if (expected_lines[i] != actual_lines[i]) {
         mismatch_line_numbers.push_back(i + 1);
       }
@@ -609,7 +642,7 @@ void DocDBRocksDBFixture::AssertDocDbDebugDumpStrEq(const string &expected) {
                << "\nActual DocDB contents:\n\n" << debug_dump_str << "\n"
                << "\nExpected # of lines: " << expected_lines.size()
                << ", actual # of lines: " << actual_lines.size()
-               << "\nLines not matching: " << yb::ToString(mismatch_line_numbers)
+               << "\nLines not matching: " << AsString(mismatch_line_numbers)
                << "\nPlease check if source files have trailing whitespace and remove it.";
 
     FAIL();
@@ -629,8 +662,8 @@ void DocDBRocksDBFixture::FullyCompactHistoryBefore(HybridTime history_cutoff) {
 
 void DocDBRocksDBFixture::MinorCompaction(
     HybridTime history_cutoff,
-    int num_files_to_compact,
-    int start_index) {
+    size_t num_files_to_compact,
+    ssize_t start_index) {
 
   ASSERT_OK(FlushRocksDbAndWait());
   SetHistoryCutoffHybridTime(history_cutoff);
@@ -651,7 +684,7 @@ void DocDBRocksDBFixture::MinorCompaction(
     ASSERT_LE(num_files_to_compact, files.size());
     vector<string> file_names;
     for (const auto& sst_meta : files) {
-      file_names.push_back(sst_meta.name);
+      file_names.push_back(sst_meta.Name());
     }
     SortByKey(file_names.begin(), file_names.end(), rocksdb::TableFileNameToNumber);
 
@@ -659,8 +692,9 @@ void DocDBRocksDBFixture::MinorCompaction(
       start_index = file_names.size() - num_files_to_compact;
     }
 
-    for (int i = 0; i < file_names.size(); ++i) {
-      if (start_index <= i && compaction_input_file_names.size() < num_files_to_compact) {
+    for (size_t i = 0; i < file_names.size(); ++i) {
+      if (implicit_cast<size_t>(start_index) <= i &&
+          compaction_input_file_names.size() < num_files_to_compact) {
         compaction_input_file_names.push_back(file_names[i]);
       } else {
         remaining_file_names.push_back(file_names[i]);
@@ -676,10 +710,17 @@ void DocDBRocksDBFixture::MinorCompaction(
               << "  files being compacted: " << yb::ToString(compaction_input_file_names) << "\n"
               << "  other files: " << yb::ToString(remaining_file_names);
 
+    auto minor_compaction = file_names.size() != compaction_input_file_names.size();
+    if (minor_compaction) {
+      delete_marker_retention_time_ = HybridTime::kMin;
+    }
     ASSERT_OK(regular_db_->CompactFiles(
         rocksdb::CompactionOptions(),
         compaction_input_file_names,
         /* output_level */ 0));
+    if (minor_compaction) {
+      delete_marker_retention_time_ = HybridTime::kMax;
+    }
     const auto sstables_after_compaction = SSTableFileNames();
     LOG(INFO) << "SSTable files after compaction: " << sstables_after_compaction.size()
               << " (" << yb::ToString(sstables_after_compaction) << ")";
@@ -696,7 +737,7 @@ void DocDBRocksDBFixture::MinorCompaction(
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   vector<string> files_after_compaction;
   for (const auto& sst_meta : cf_meta.levels[0].files) {
-    files_after_compaction.push_back(sst_meta.name);
+    files_after_compaction.push_back(sst_meta.Name());
   }
   const int64_t expected_resulting_num_files = initial_num_files - num_files_to_compact + 1;
   ASSERT_EQ(expected_resulting_num_files,
@@ -704,7 +745,7 @@ void DocDBRocksDBFixture::MinorCompaction(
       << "Files after compaction: " << yb::ToString(files_after_compaction);
 }
 
-int DocDBRocksDBFixture::NumSSTableFiles() {
+size_t DocDBRocksDBFixture::NumSSTableFiles() {
   rocksdb::ColumnFamilyMetaData cf_meta;
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   return cf_meta.levels[0].files.size();
@@ -715,7 +756,7 @@ StringVector DocDBRocksDBFixture::SSTableFileNames() {
   regular_db_->GetColumnFamilyMetaData(&cf_meta);
   StringVector files;
   for (const auto& sstable_meta : cf_meta.levels[0].files) {
-    files.push_back(sstable_meta.name);
+    files.push_back(sstable_meta.Name());
   }
   SortByKey(files.begin(), files.end(), rocksdb::TableFileNameToNumber);
   return files;

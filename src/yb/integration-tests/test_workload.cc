@@ -29,35 +29,44 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
+#include "yb/integration-tests/test_workload.h"
+
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-#include "yb/client/client.h"
-
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
-#include "yb/client/transaction_pool.h"
+#include "yb/client/table_info.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/macros.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
-#include "yb/util/env.h"
-#include "yb/util/tsan_util.h"
-#include "yb/integration-tests/test_workload.h"
+
 #include "yb/master/master_util.h"
+
+#include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
@@ -66,7 +75,6 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
@@ -136,7 +144,7 @@ class TestWorkload::State {
   }
 
  private:
-  CHECKED_STATUS Flush(client::YBSession* session, const TestWorkloadOptions& options);
+  Status Flush(client::YBSession* session, const TestWorkloadOptions& options);
   Result<client::YBTransactionPtr> MayBeStartNewTransaction(
       client::YBSession* session, const TestWorkloadOptions& options);
   Result<client::TableHandle> OpenTable(const TestWorkloadOptions& options);
@@ -187,7 +195,8 @@ Result<client::YBTransactionPtr> TestWorkload::State::MayBeStartNewTransaction(
     client::YBSession* session, const TestWorkloadOptions& options) {
   client::YBTransactionPtr txn;
   if (options.is_transactional()) {
-    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(options.isolation_level));
+    txn = VERIFY_RESULT(transaction_pool_->TakeAndInit(
+        options.isolation_level, TransactionRpcDeadline()));
     session->SetTransaction(txn);
   }
   return txn;
@@ -199,11 +208,14 @@ Result<client::TableHandle> TestWorkload::State::OpenTable(const TestWorkloadOpt
   // Loop trying to open up the table. In some tests we set up very
   // low RPC timeouts to test those behaviors, so this might fail and
   // need retrying.
-  Status s;
-  while (should_run_.load(std::memory_order_acquire)) {
-    s = table.Open(options.table_name, client_.get());
+  for(;;) {
+    auto s = table.Open(options.table_name, client_.get());
     if (s.ok()) {
       return table;
+    }
+    if (!should_run_.load(std::memory_order_acquire)) {
+      LOG(ERROR) << "Failed to open table: " << s;
+      return s;
     }
     if (options.timeout_allowed && s.IsTimedOut()) {
       SleepFor(MonoDelta::FromMilliseconds(50));
@@ -212,8 +224,6 @@ Result<client::TableHandle> TestWorkload::State::OpenTable(const TestWorkloadOpt
     LOG(FATAL) << "Failed to open table: " << s;
     return s;
   }
-  LOG(ERROR) << "Failed to open table: " << s;
-  return s;
 }
 
 void TestWorkload::State::WaitAllThreads() {
@@ -228,7 +238,9 @@ void TestWorkload::State::WaitAllThreads() {
 }
 
 void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
-  Random r(Env::Default()->gettid());
+  auto next_random = [rng = &ThreadLocalRandom()] {
+    return RandomUniformInt<int32_t>(rng);
+  };
 
   auto table_result = OpenTable(options);
   if (!table_result.ok()) {
@@ -256,7 +268,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
         // In this case we want to complete writing of keys_in_write_progress_, so we don't have
         // gaps after workload is stopped.
         std::lock_guard<std::mutex> lock(keys_in_write_progress_mutex_);
-        if (keys_in_write_progress_.size() == 0) {
+        if (keys_in_write_progress_.empty()) {
           break;
         }
       } else {
@@ -267,7 +279,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
     std::vector<client::YBqlWriteOpPtr> ops;
     ops.swap(retry_ops);
     const auto num_more_keys_to_insert = should_run ? options.write_batch_size - ops.size() : 0;
-    for (int i = 0; i < num_more_keys_to_insert; i++) {
+    for (size_t i = 0; i < num_more_keys_to_insert; i++) {
       if (options.pathological_one_row_enabled) {
         if (!pathological_one_row_inserted_) {
           if (++pathological_one_row_counter_ != 1) {
@@ -278,7 +290,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           auto update = table.NewUpdateOp();
           auto req = update->mutable_request();
           QLAddInt32HashValue(req, 0);
-          table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
+          table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
           if (options.ttl >= 0) {
             req->set_ttl(options.ttl * MonoTime::kMillisecondsPerSecond);
           }
@@ -299,10 +311,10 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
           key = ++next_key_;
         }
       } else {
-        key = options.pathological_one_row_enabled ? 0 : r.Next();
+        key = options.pathological_one_row_enabled ? 0 : next_random();
       }
       QLAddInt32HashValue(req, key);
-      table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), r.Next());
+      table.AddInt32ColumnValue(req, table.schema().columns()[1].name(), next_random());
       table.AddStringColumnValue(req, table.schema().columns()[2].name(), test_payload);
       if (options.ttl >= 0) {
         req->set_ttl(options.ttl);
@@ -314,7 +326,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
       session->Apply(op);
     }
 
-    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
     if (!flush_status.status.ok()) {
       VLOG(1) << "Flush error: " << AsString(flush_status.status);
       for (const auto& error : flush_status.errors) {
@@ -370,7 +382,7 @@ void TestWorkload::State::WriteThread(const TestWorkloadOptions& options) {
 }
 
 void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
-  Random r(Env::Default()->gettid());
+  Random r(narrow_cast<uint32_t>(Env::Default()->gettid()));
 
   auto table_result = OpenTable(options);
   if (!table_result.ok()) {
@@ -387,7 +399,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
     auto txn = CHECK_RESULT(MayBeStartNewTransaction(session.get(), options));
     auto op = table.NewReadOp();
     auto req = op->mutable_request();
-    const int64_t next_key = next_key_;
+    const int32_t next_key = next_key_;
     int32_t key;
     if (options.sequential_write) {
       if (next_key == 0) {
@@ -409,7 +421,7 @@ void TestWorkload::State::ReadThread(const TestWorkloadOptions& options) {
     }
     QLAddInt32HashValue(req, key);
     session->Apply(op);
-    const auto flush_status = session->FlushAndGetOpsErrors();
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
     const auto& s = flush_status.status;
     if (s.ok()) {
       if (op->response().status() == QLResponsePB::YQL_STATUS_OK) {
@@ -454,7 +466,7 @@ void TestWorkload::State::Setup(YBTableType table_type, const TestWorkloadOption
   client_ = CHECK_RESULT(cluster_->CreateClient(&client_builder));
   CHECK_OK(client_->CreateNamespaceIfNotExists(
       options.table_name.namespace_name(),
-      master::GetDatabaseTypeForTable(client::YBTable::ClientToPBTableType(table_type))));
+      master::GetDatabaseTypeForTable(client::ClientToPBTableType(table_type))));
 
   // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.

@@ -11,7 +11,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -45,14 +44,18 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   public void run() {
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
       taskParams().rootCA = universe.getUniverseDetails().rootCA;
+
+      // This value is used by subsequent calls to helper methods for
+      // creating KubernetesCommandExecutor tasks. This value cannot
+      // be changed once set during the Universe creation, so we don't
+      // allow users to modify it later during edit, upgrade, etc.
+      taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
 
       UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
       PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
@@ -79,6 +82,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
           createUpgradeTask(userIntent, universe, pi);
 
+          createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
+              .setSubTaskGroupType(getTaskSubGroupType());
+
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
           break;
@@ -96,16 +102,17 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      // Clear previous subtasks if any.
+      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be disabled,
       // so we enable it again in case of errors.
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
 
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       throw t;
     } finally {
@@ -143,7 +150,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       }
     }
 
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi);
+    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi, false);
 
     KubernetesPlacement placement = new KubernetesPlacement(pi);
 
@@ -152,13 +159,16 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
             pi,
             placement.masters,
             taskParams().nodePrefix,
             provider,
-            universeDetails.communicationPorts.masterRpcPort);
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
 
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
@@ -170,7 +180,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ybSoftwareVersion,
           taskParams().sleepAfterMasterRestartMillis,
           masterChanged,
-          tserverChanged);
+          tserverChanged,
+          newNamingStyle);
     }
     if (tserverChanged) {
       createLoadBalancerStateChangeTask(false /*enable*/)
@@ -185,7 +196,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           ybSoftwareVersion,
           taskParams().sleepAfterTServerRestartMillis,
           false /* master change is false since it has already been upgraded.*/,
-          tserverChanged);
+          tserverChanged,
+          newNamingStyle);
 
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
     }

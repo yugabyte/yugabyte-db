@@ -13,26 +13,26 @@
 #include "yb/common/ybc_util.h"
 
 #include <stdarg.h>
+
 #include <fstream>
 
 #include "yb/common/pgsql_error.h"
-#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/ybc-internal.h"
 
+#include "yb/gutil/stringprintf.h"
+
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
-
 #include "yb/util/net/net_util.h"
-
-#include "yb/gutil/stringprintf.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
+#include "yb/util/thread.h"
 
 using std::string;
 DEFINE_test_flag(string, process_info_dir, string(),
@@ -45,6 +45,16 @@ bool yb_non_ddl_txn_for_sys_tables_allowed = false;
 bool yb_format_funcs_include_yb_metadata = false;
 
 bool yb_force_global_transaction = false;
+
+bool suppress_nonpg_logs = false;
+
+bool yb_binary_restore = false;
+
+// If this is set in the user's session to a positive value, it will supersede the gflag
+// ysql_session_max_batch_size.
+int ysql_session_max_batch_size = 0;
+
+int ysql_max_in_flight_ops = 0;
 
 namespace yb {
 
@@ -111,7 +121,14 @@ Status InitGFlags(const char* argv0) {
   // Use InitGoogleLoggingSafeBasic() instead of InitGoogleLoggingSafe() to avoid calling
   // google::InstallFailureSignalHandler(). This will prevent interference with PostgreSQL's
   // own signal handling.
-  yb::InitGoogleLoggingSafeBasic(executable_path);
+  // Use InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs() over
+  // InitGoogleLoggingSafeBasic() when the "suppress_nonpg_logs" flag is set.
+  // This will suppress non-Postgres logs from the Postgres log file.
+  if (suppress_nonpg_logs) {
+    yb::InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(executable_path);
+  } else {
+    yb::InitGoogleLoggingSafeBasic(executable_path);
+  }
 
   if (VLOG_IS_ON(1)) {
     for (auto& flag_info : flag_infos) {
@@ -126,12 +143,6 @@ Status InitGFlags(const char* argv0) {
 
   return Status::OK();
 }
-
-} // anonymous namespace
-
-extern "C" {
-
-YBCStatus YBCStatus_OK = nullptr;
 
 // Wraps Status object created by YBCStatus.
 // Uses trick with AddRef::kFalse and DetachStruct, to avoid incrementing and decrementing
@@ -156,19 +167,7 @@ class StatusWrapper {
   Status status_;
 };
 
-bool YBCStatusIsOK(YBCStatus s) {
-  return StatusWrapper(s)->IsOk();
-}
-
-bool YBCStatusIsNotFound(YBCStatus s) {
-  return StatusWrapper(s)->IsNotFound();
-}
-
-bool YBCStatusIsDuplicateKey(YBCStatus s) {
-  return StatusWrapper(s)->IsAlreadyPresent();
-}
-
-uint32_t YBCStatusPgsqlError(YBCStatus s) {
+YBPgErrorCode FetchErrorCode(YBCStatus s) {
   StatusWrapper wrapper(s);
   const uint8_t* pg_err_ptr = wrapper->ErrorData(PgsqlErrorTag::kCategory);
   // If we have PgsqlError explicitly set, we decode it
@@ -191,16 +190,35 @@ uint32_t YBCStatusPgsqlError(YBCStatus s) {
           break;
         case TransactionErrorCode::kNone: FALLTHROUGH_INTENDED;
         default:
-          result = YBPgErrorCode::YB_PG_INTERNAL_ERROR;
+          break;
       }
     }
   }
-  return static_cast<uint32_t>(result);
+  return result;
+}
+
+} // anonymous namespace
+
+extern "C" {
+
+bool YBCStatusIsOK(YBCStatus s) {
+  return StatusWrapper(s)->IsOk();
+}
+
+bool YBCStatusIsNotFound(YBCStatus s) {
+  return StatusWrapper(s)->IsNotFound();
+}
+
+bool YBCStatusIsDuplicateKey(YBCStatus s) {
+  return StatusWrapper(s)->IsAlreadyPresent();
+}
+
+uint32_t YBCStatusPgsqlError(YBCStatus s) {
+  return to_underlying(FetchErrorCode(s));
 }
 
 uint16_t YBCStatusTransactionError(YBCStatus s) {
-  const TransactionError txn_err(*StatusWrapper(s));
-  return static_cast<uint16_t>(txn_err.value());
+  return to_underlying(TransactionError(*StatusWrapper(s)).value());
 }
 
 void YBCFreeStatus(YBCStatus s) {
@@ -219,29 +237,36 @@ const char* YBCStatusCodeAsCString(YBCStatus s) {
   return StatusWrapper(s)->CodeAsCString();
 }
 
-char* DupYBStatusMessage(YBCStatus status, bool message_only) {
+const char* BuildUniqueViolationMessage(
+    YBCStatus status, GetUniqueConstraintNameFn get_constraint_name) {
+  const auto rel_oid = RelationOidTag::Decode(
+      StatusWrapper(status)->ErrorData(RelationOidTag::kCategory));
+  return YBCPAllocStdString(Format(
+      "duplicate key value violates unique constraint \"$0\"",
+      (*get_constraint_name)(rel_oid)));
+}
+
+const char* BuildYBStatusMessage(YBCStatus status, GetUniqueConstraintNameFn get_constraint_name) {
+  if (FetchErrorCode(status) == YBPgErrorCode::YB_PG_UNIQUE_VIOLATION) {
+    return BuildUniqueViolationMessage(status, get_constraint_name);
+  }
   const char* const code_as_cstring = YBCStatusCodeAsCString(status);
   const size_t code_strlen = strlen(code_as_cstring);
   const size_t status_len = YBCStatusMessageLen(status);
   size_t sz = code_strlen + status_len + 3;
-  if (message_only) {
-    sz -= 2 + code_strlen;
-  }
-  char* const msg_buf = reinterpret_cast<char*>(YBCPAlloc(sz));
+  char* const msg_buf = static_cast<char*>(YBCPAlloc(sz));
   char* pos = msg_buf;
-  if (!message_only) {
-    memcpy(msg_buf, code_as_cstring, code_strlen);
-    pos += code_strlen;
-    *pos++ = ':';
-    *pos++ = ' ';
-  }
+  memcpy(msg_buf, code_as_cstring, code_strlen);
+  pos += code_strlen;
+  *pos++ = ':';
+  *pos++ = ' ';
   memcpy(pos, YBCStatusMessageBegin(status), status_len);
   pos[status_len] = 0;
   return msg_buf;
 }
 
 bool YBCIsRestartReadError(uint16_t txn_errcode) {
-  return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kReadRestartRequired);
+  return txn_errcode == to_underlying(TransactionErrorCode::kReadRestartRequired);
 }
 
 YBCStatus YBCInitGFlags(const char* argv0) {
@@ -249,7 +274,15 @@ YBCStatus YBCInitGFlags(const char* argv0) {
 }
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode) {
-  return txn_errcode == static_cast<uint16_t>(TransactionErrorCode::kConflict);
+  return txn_errcode == to_underlying(TransactionErrorCode::kConflict);
+}
+
+bool YBCIsTxnSkipLockingError(uint16_t txn_errcode) {
+  return txn_errcode == to_underlying(TransactionErrorCode::kSkipLocking);
+}
+
+uint16_t YBCGetTxnConflictErrorCode() {
+  return to_underlying(TransactionErrorCode::kConflict);
 }
 
 YBCStatus YBCInit(const char* argv0,

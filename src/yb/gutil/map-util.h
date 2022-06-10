@@ -77,20 +77,18 @@
 #ifndef YB_GUTIL_MAP_UTIL_H
 #define YB_GUTIL_MAP_UTIL_H
 
-#include <stddef.h>
+#include <set>
 #include <string>
-#include <utility>
-#include <tuple>
 #include <vector>
+
+#include <glog/logging.h>
 
 using std::make_pair;
 using std::pair;
 using std::string;
 using std::vector;
 
-#include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 
 //
 // Find*()
@@ -798,6 +796,21 @@ void AppendValuesFromMap(const MapContainer& map_container,
   for (const auto& entry : map_container) {
     value_container->push_back(entry.second);
   }
+}
+
+// Appends elements to the end of the container.
+template <class FromCollection, class ToType>
+void AppendValues(const FromCollection& from, std::vector<ToType>* const to) {
+  CHECK(to != NULL);
+  to->insert(to->end(), from.begin(), from.end());
+}
+
+// Inserts elements into the container, if the container doesn't already contain
+// an element with an equivalent key.
+template <class FromCollection, class ToType>
+void AppendValues(const FromCollection& from, std::set<ToType>* const to) {
+  CHECK(to != NULL);
+  to->insert(from.begin(), from.end());
 }
 
 #endif  // YB_GUTIL_MAP_UTIL_H

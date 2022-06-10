@@ -167,12 +167,6 @@ Default: `true`
 
 ### Logging flags
 
-##### --alsologtoemail
-
-Sends log messages to these email addresses in addition to logfiles.
-
-Default: `""`
-
 ##### --colorlogtostderr
 
 Color messages logged to `stderr` (if supported by terminal).
@@ -192,20 +186,6 @@ Default: `0`
 Buffer log messages for at most this many seconds.
 
 Default: `30`
-
-##### --logemaillevel
-
-Email log messages logged at this level, or higher.
-
-Values: `0` (all); `1` (WARN), `2` (ERROR), `3` (FATAL), `999` (none)
-
-Default: `999`
-
-##### --logmailer
-
-The mailer used to send logging email messages.
-
-Default: `"/bin/mail"
 
 ##### --logtostderr
 
@@ -275,7 +255,7 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds, is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
 

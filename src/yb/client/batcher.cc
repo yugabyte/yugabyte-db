@@ -45,25 +45,33 @@
 #include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/client.h"
 #include "yb/client/client_error.h"
-#include "yb/client/error_collector.h"
 #include "yb/client/error.h"
+#include "yb/client/error_collector.h"
 #include "yb/client/in_flight_op.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/rejection_score_source.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
 
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 // When this flag is set to false and we have separate errors for operation, then batcher would
 // report IO Error status. Otherwise we will try to combine errors from separate operation to
@@ -155,7 +163,7 @@ bool Batcher::HasPendingOperations() const {
   return !ops_.empty();
 }
 
-int Batcher::CountBufferedOperations() const {
+size_t Batcher::CountBufferedOperations() const {
   if (state_ == BatcherState::kGatheringOps) {
     return ops_.size();
   } else {
@@ -226,7 +234,7 @@ void Batcher::FlushAsync(
   // If YBSession retries previously failed ops within the same transaction, these ops are already
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
-    transaction->ExpectOperations(operations_count);
+    transaction->batcher_if().ExpectOperations(operations_count);
   }
 
   ops_queue_.reserve(ops_.size());
@@ -357,10 +365,11 @@ std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
         const Schema& schema = GetSchema(op.yb_op->table()->schema());
         const PartitionSchema& partition_schema = op.yb_op->table()->partition_schema();
         const auto msg = Format(
-            "Row $0 not in partition $1, partition key: $2",
+            "Row $0 not in partition $1, partition key: $2, tablet: $3",
             op.yb_op->ToString(),
             partition_schema.PartitionDebugString(partition, schema),
-            Slice(partition_key).ToDebugHexString());
+            Slice(partition_key).ToDebugHexString(),
+            op.tablet->tablet_id());
         LOG_WITH_PREFIX(DFATAL) << msg;
         op.error = STATUS(InternalError, msg);
       }
@@ -472,11 +481,21 @@ void Batcher::ExecuteOperations(Initial initial) {
     //
     // If transaction is not yet ready to do it, then it will notify as via provided when
     // it could be done.
-    if (!transaction->Prepare(
+    if (!transaction->batcher_if().Prepare(
         &ops_info_, force_consistent_read_, deadline_, initial,
         std::bind(&Batcher::TransactionReady, shared_from_this(), _1))) {
       return;
     }
+  } else if (force_consistent_read_ &&
+             ops_info_.groups.size() > 1 &&
+             read_point_ &&
+             !read_point_->GetReadTime()) {
+    // Read time is not set but consistent read from multiple tablets without
+    // transaction is required. Use current time as a read time.
+    // Note: read_point_ is null in case of initdb. Nothing to do in this case.
+    read_point_->SetCurrentReadTime();
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "Set current read time as a read time: "
+                                 << read_point_->GetReadTime();
   }
 
   if (state_ != BatcherState::kTransactionPrepare) {
@@ -605,7 +624,7 @@ void Batcher::Flushed(
       // See comments for YBTransaction::Impl::running_requests_ and
       // YBSession::AddErrorsAndRunCallback.
       // https://github.com/yugabyte/yugabyte-db/issues/7984.
-      transaction->Flushed(ops, flush_extra_result.used_read_time, status);
+      transaction->batcher_if().Flushed(ops, flush_extra_result.used_read_time, status);
     }
   }
   if (status.ok() && read_point_) {
@@ -655,15 +674,15 @@ void Batcher::ProcessWriteResponse(const WriteRpc &rpc, const Status &s) {
     // TODO: handle case where we get one of the more specific TS errors
     // like the tablet not being hosted?
 
-    if (err_pb.row_index() >= rpc.ops().size()) {
+    size_t row_index = err_pb.row_index();
+    if (row_index >= rpc.ops().size()) {
       LOG_WITH_PREFIX(ERROR) << "Received a per_row_error for an out-of-bound op index "
-                             << err_pb.row_index() << " (sent only "
-                             << rpc.ops().size() << " ops)";
+                             << row_index << " (sent only " << rpc.ops().size() << " ops)";
       LOG_WITH_PREFIX(ERROR) << "Response from tablet " << rpc.tablet().tablet_id() << ":\n"
-                 << rpc.resp().DebugString();
+                             << rpc.resp().DebugString();
       continue;
     }
-    shared_ptr<YBOperation> yb_op = rpc.ops()[err_pb.row_index()].yb_op;
+    shared_ptr<YBOperation> yb_op = rpc.ops()[row_index].yb_op;
     VLOG_WITH_PREFIX(1) << "Error on op " << yb_op->ToString() << ": "
                         << err_pb.error().ShortDebugString();
     rpc.ops()[err_pb.row_index()].error = StatusFromPB(err_pb.error());
@@ -686,6 +705,16 @@ std::string Batcher::LogPrefix() const {
   const void* self = this;
   return Format(
       "Batcher ($0), session ($1): ", self, static_cast<void*>(weak_session_.lock().get()));
+}
+
+InFlightOpsGroup::InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end)
+    : begin(group_begin), end(group_end) {
+}
+
+std::string InFlightOpsGroup::ToString() const {
+  return Format("{items: $0 need_metadata: $1}",
+                AsString(boost::make_iterator_range(begin, end)),
+                need_metadata);
 }
 
 }  // namespace internal

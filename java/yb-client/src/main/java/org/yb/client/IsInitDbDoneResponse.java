@@ -14,7 +14,7 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
@@ -23,7 +23,7 @@ public class IsInitDbDoneResponse extends YRpcResponse {
   private final boolean pgProcExists;
   private final boolean done;
   private final String initDbError;
-  private final Master.MasterErrorPB serverError;
+  private final MasterTypes.MasterErrorPB serverError;
 
   public IsInitDbDoneResponse(
       long elapsedMillis,
@@ -31,7 +31,7 @@ public class IsInitDbDoneResponse extends YRpcResponse {
       boolean pgProcExists,
       boolean done,
       String initDbError,
-      Master.MasterErrorPB serverError) {
+      MasterTypes.MasterErrorPB serverError) {
     super(elapsedMillis, masterUUID);
     this.pgProcExists = pgProcExists;
     this.done = done;
@@ -51,7 +51,7 @@ public class IsInitDbDoneResponse extends YRpcResponse {
     return initDbError;
   }
 
-  public Master.MasterErrorPB getServerError() {
+  public MasterTypes.MasterErrorPB getServerError() {
     return serverError;
   }
 

@@ -13,11 +13,18 @@
 
 #include "yb/client/table_creator.h"
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/client.h"
+#include "yb/client/table_info.h"
 
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/master_ddl.pb.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
@@ -27,7 +34,7 @@ namespace yb {
 namespace client {
 
 YBTableCreator::YBTableCreator(YBClient* client)
-  : client_(client) {
+  : client_(client), partition_schema_(new PartitionSchemaPB), index_info_(new IndexInfoPB) {
 }
 
 YBTableCreator::~YBTableCreator() {
@@ -39,7 +46,7 @@ YBTableCreator& YBTableCreator::table_name(const YBTableName& name) {
 }
 
 YBTableCreator& YBTableCreator::table_type(YBTableType table_type) {
-  table_type_ = YBTable::ClientToPBTableType(table_type);
+  table_type_ = ClientToPBTableType(table_type);
   return *this;
 }
 
@@ -66,13 +73,13 @@ YBTableCreator& YBTableCreator::is_pg_shared_table() {
 YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
   switch (hash_schema) {
     case YBHashSchema::kMultiColumnHash:
-      partition_schema_.set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
+      partition_schema_->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
       break;
     case YBHashSchema::kRedisHash:
-      partition_schema_.set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
+      partition_schema_->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
       break;
     case YBHashSchema::kPgsqlHash:
-      partition_schema_.set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
+      partition_schema_->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
       break;
   }
   return *this;
@@ -83,8 +90,8 @@ YBTableCreator& YBTableCreator::num_tablets(int32_t count) {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::colocated(const bool colocated) {
-  colocated_ = colocated;
+YBTableCreator& YBTableCreator::is_colocated_via_database(bool is_colocated_via_database) {
+  is_colocated_via_database_ = is_colocated_via_database;
   return *this;
 }
 
@@ -93,8 +100,23 @@ YBTableCreator& YBTableCreator::tablegroup_id(const std::string& tablegroup_id) 
   return *this;
 }
 
+YBTableCreator& YBTableCreator::colocation_id(ColocationId colocation_id) {
+  colocation_id_ = colocation_id;
+  return *this;
+}
+
 YBTableCreator& YBTableCreator::tablespace_id(const std::string& tablespace_id) {
   tablespace_id_ = tablespace_id;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::is_matview(bool is_matview) {
+  is_matview_ = is_matview;
+  return *this;
+}
+
+YBTableCreator& YBTableCreator::matview_pg_table_id(const std::string& matview_pg_table_id) {
+  matview_pg_table_id_ = matview_pg_table_id;
   return *this;
 }
 
@@ -121,7 +143,7 @@ YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::strin
 YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
                                                         int32_t num_buckets, int32_t seed) {
   PartitionSchemaPB::HashBucketSchemaPB* bucket_schema =
-    partition_schema_.add_hash_bucket_schemas();
+    partition_schema_->add_hash_bucket_schemas();
   for (const string& col_name : columns) {
     bucket_schema->add_columns()->set_name(col_name);
   }
@@ -134,7 +156,7 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
     const std::vector<std::string>& columns,
     const std::vector<std::string>& split_rows) {
   PartitionSchemaPB::RangeSchemaPB* range_schema =
-    partition_schema_.mutable_range_schema();
+    partition_schema_->mutable_range_schema();
   range_schema->Clear();
   for (const string& col_name : columns) {
     range_schema->add_columns()->set_name(col_name);
@@ -147,28 +169,27 @@ YBTableCreator& YBTableCreator::set_range_partition_columns(
 }
 
 YBTableCreator& YBTableCreator::replication_info(const master::ReplicationInfoPB& ri) {
-  replication_info_ = ri;
-  has_replication_info_ = true;
+  replication_info_ = std::make_unique<master::ReplicationInfoPB>(ri);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::indexed_table_id(const std::string& id) {
-  index_info_.set_indexed_table_id(id);
+  index_info_->set_indexed_table_id(id);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_local_index(bool is_local_index) {
-  index_info_.set_is_local(is_local_index);
+  index_info_->set_is_local(is_local_index);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_unique_index(bool is_unique_index) {
-  index_info_.set_is_unique(is_unique_index);
+  index_info_->set_is_unique(is_unique_index);
   return *this;
 }
 
 YBTableCreator& YBTableCreator::is_backfill_deferred(bool is_backfill_deferred) {
-  index_info_.set_is_backfill_deferred(is_backfill_deferred);
+  index_info_->set_is_backfill_deferred(is_backfill_deferred);
   return *this;
 }
 
@@ -178,7 +199,7 @@ YBTableCreator& YBTableCreator::skip_index_backfill(const bool skip_index_backfi
 }
 
 YBTableCreator& YBTableCreator::use_mangled_column_name(bool value) {
-  index_info_.set_use_mangled_column_name(value);
+  index_info_->set_use_mangled_column_name(value);
   return *this;
 }
 
@@ -198,7 +219,7 @@ YBTableCreator& YBTableCreator::TEST_use_old_style_create_request() {
 }
 
 Status YBTableCreator::Create() {
-  const char *object_type = index_info_.has_indexed_table_id() ? "index" : "table";
+  const char *object_type = index_info_->has_indexed_table_id() ? "index" : "table";
   if (table_name_.table_name().empty()) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Missing $0 name", object_type);
   }
@@ -225,7 +246,7 @@ Status YBTableCreator::Create() {
   req.set_name(table_name_.table_name());
   table_name_.SetIntoNamespaceIdentifierPB(req.mutable_namespace_());
   req.set_table_type(table_type_);
-  req.set_colocated(colocated_);
+  req.set_is_colocated_via_database(is_colocated_via_database_);
 
   if (!creator_role_name_.empty()) {
     req.set_creator_role_name(creator_role_name_);
@@ -244,17 +265,28 @@ Status YBTableCreator::Create() {
   if (!tablegroup_id_.empty()) {
     req.set_tablegroup_id(tablegroup_id_);
   }
+  if (colocation_id_ != kColocationIdNotSet) {
+    req.set_colocation_id(colocation_id_);
+  }
 
   if (!tablespace_id_.empty()) {
     req.set_tablespace_id(tablespace_id_);
+  }
+
+  if (is_matview_) {
+    req.set_is_matview(*is_matview_);
+  }
+
+  if (!matview_pg_table_id_.empty()) {
+    req.set_matview_pg_table_id(matview_pg_table_id_);
   }
 
   // Note that the check that the sum of min_num_replicas for each placement block being less or
   // equal than the overall placement info num_replicas is done on the master side and an error is
   // naturally returned if you try to create a table and the numbers mismatch. As such, it is the
   // responsibility of the client to ensure that does not happen.
-  if (has_replication_info_) {
-    req.mutable_replication_info()->CopyFrom(replication_info_);
+  if (replication_info_) {
+    req.mutable_replication_info()->CopyFrom(*replication_info_);
   }
 
   SchemaToPB(internal::GetSchema(*schema_), req.mutable_schema());
@@ -280,7 +312,7 @@ Status YBTableCreator::Create() {
   }
   req.set_num_tablets(num_tablets_);
 
-  req.mutable_partition_schema()->CopyFrom(partition_schema_);
+  req.mutable_partition_schema()->CopyFrom(*partition_schema_);
 
   if (!partitions_.empty()) {
     for (const auto& p : partitions_) {
@@ -290,18 +322,18 @@ Status YBTableCreator::Create() {
   }
 
   // Index mapping with data-table being indexed.
-  if (index_info_.has_indexed_table_id()) {
+  if (index_info_->has_indexed_table_id()) {
     if (!TEST_use_old_style_create_request_) {
-      req.mutable_index_info()->CopyFrom(index_info_);
+      req.mutable_index_info()->CopyFrom(*index_info_);
     }
 
     // For compatibility reasons, set the old fields just in case we have new clients talking to
     // old master server during rolling upgrade.
-    req.set_indexed_table_id(index_info_.indexed_table_id());
-    req.set_is_local_index(index_info_.is_local());
-    req.set_is_unique_index(index_info_.is_unique());
+    req.set_indexed_table_id(index_info_->indexed_table_id());
+    req.set_is_local_index(index_info_->is_local());
+    req.set_is_unique_index(index_info_->is_unique());
     req.set_skip_index_backfill(skip_index_backfill_);
-    req.set_is_backfill_deferred(index_info_.is_backfill_deferred());
+    req.set_is_backfill_deferred(index_info_->is_backfill_deferred());
   }
 
   auto deadline = CoarseMonoClock::Now() +

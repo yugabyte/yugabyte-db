@@ -15,7 +15,7 @@ import { isNonAvailable } from '../../../utils/LayoutUtils';
 
 import './AlertDestinationChannels.scss';
 import { toast } from 'react-toastify';
-import { createErrorMessage } from './AlertUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
 
 const prepareInitialValues = (values) => {
@@ -54,7 +54,7 @@ const prepareInitialValues = (values) => {
       initialValues['routingKey'] = values.params.routingKey;
       break;
     case 'WebHook':
-      initialValues['webhookURL'] = values.params.routingKey;
+      initialValues['webhookURL'] = values.params.webhookUrl;
       break;
     default:
       throw new Error(`Unknown Channel type ${values.params.channelType}`);

@@ -11,14 +11,23 @@
 // under the License.
 //
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include <gtest/gtest.h>
 
+#include "yb/integration-tests/cluster_itest_util.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/integration-tests/cluster_itest_util.h"
-#include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace integration_tests {
@@ -45,19 +54,12 @@ class YBTsCliITest : public YBTableTestBase {
   }
 
   int num_drives() override {
-    return 3;
+    return 2;
   }
 
   bool enable_ysql() override {
     // Do not create the transaction status table.
     return false;
-  }
-
-  void BeforeCreateTable() override {
-    ExternalTabletServer* ts = external_mini_cluster()->tablet_server(kServerIndex);
-    ts->Shutdown();
-    ASSERT_OK(ts->SetNumDrives(2));
-    ASSERT_OK(ts->Restart());
   }
 
   void WaitForTablet(const string& tablet_id) {
@@ -95,7 +97,7 @@ TEST_F(YBTsCliITest, MoveTablet) {
   ASSERT_OK(ts->SetNumDrives(3));
   ASSERT_OK(ts->Restart());
 
-  int max_count = 0;
+  size_t max_count = 0;
   // Look for TS with max number of tablets on one drive and get one tablet to try move it.
   for (const auto& drive_and_tablets : inspect->DrivesOnTS(kServerIndex)) {
     const vector<string>& tablets = drive_and_tablets.second;

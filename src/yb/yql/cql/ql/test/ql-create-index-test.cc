@@ -13,8 +13,8 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/test/ql-test-base.h"
-
 
 namespace yb {
 namespace master {
@@ -94,7 +94,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexDefaultName) {
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(name);"));
   // Get Index name from the Parse Tree and check it.
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource_name_idx");
@@ -103,7 +103,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexDefaultName) {
   // Test index over 2-3 columns.
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(name, surname);"));
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource_name_surname_idx");
@@ -112,7 +112,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexDefaultName) {
   // Check that the covering columns are not included into the index name.
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(surname, name) INCLUDE (kids);"));
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource_surname_name_idx");
@@ -120,7 +120,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexDefaultName) {
 
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource((surname, name), id);"));
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource_surname_name_id_idx");
@@ -148,7 +148,7 @@ TEST_F(TestQLCreateIndex, TestQLSpecialSymbolsInIndexDefaultName) {
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(\"Capital\");"));
   // Test Capital symbol.
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource_Capital_idx");
@@ -157,7 +157,7 @@ TEST_F(TestQLCreateIndex, TestQLSpecialSymbolsInIndexDefaultName) {
   // Test spaces.
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(\"Capital With Spaces\");"));
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource_CapitalWithSpaces_idx");
@@ -166,7 +166,7 @@ TEST_F(TestQLCreateIndex, TestQLSpecialSymbolsInIndexDefaultName) {
   // Test different unprintable symbols.
   EXEC_VALID_STMT(CreateIndexStmt("ON human_resource(\"!@#$%^&*-=+()[]{}<>/\\\\,.;:\"\"'\");"));
   {
-    TreeNode::SharedPtr root = processor->GetLastParseTree()->root();
+    TreeNodePtr root = processor->GetLastParseTreeRoot();
     ASSERT_EQ(TreeNodeOpcode::kPTCreateIndex, root->opcode());
     PTCreateIndex::SharedPtr node = std::static_pointer_cast<PTCreateIndex>(root);
     ASSERT_STREQ(node->name()->c_str(), "human_resource__idx");
@@ -217,7 +217,7 @@ TEST_F(TestQLCreateIndex, TestQLCreateIndexExpr) {
                                   "  with transactions = {'enabled':true};"));
   EXEC_VALID_STMT(CreateIndexStmt("jdx8 ON tab_escape"
                                   "  (\"C$_col->>'$J_attr'\"->>'\"J$_attr->>C$_col\"');"));
-}
+} // v1
 
 } // namespace ql
 } // namespace yb

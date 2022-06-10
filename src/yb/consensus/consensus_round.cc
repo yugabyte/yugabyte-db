@@ -10,14 +10,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/consensus_round.h"
 
-#include <glog/logging.h>
-
 #include "yb/consensus/consensus.pb.h"
-
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace consensus {
@@ -29,8 +27,23 @@ ConsensusRound::ConsensusRound(Consensus* consensus,
   DCHECK_NOTNULL(replicate_msg_.get());
 }
 
+ConsensusRound::~ConsensusRound() {
+  LOG_IF(DFATAL, callback_ && !callback_called)
+      << this << ": callback(" << callback_ << ")->ReplicationFinished() hasn't been called for "
+      << replicate_msg_->ShortDebugString();
+}
+
+void ConsensusRound::NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+  callback_->AddedToLeader(op_id, committed_op_id);
+}
+
 void ConsensusRound::NotifyReplicationFinished(
     const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
+  bool expected = false;
+  LOG_IF(DFATAL, !callback_called.compare_exchange_strong(expected, true))
+      << this
+      << ": callback(\" << callback_ << \")->ReplicationFinished() has been already called for "
+      << replicate_msg_->ShortDebugString();
   callback_->ReplicationFinished(status, leader_term, applied_op_ids);
 }
 

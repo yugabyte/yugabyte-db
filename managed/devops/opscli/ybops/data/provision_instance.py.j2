@@ -37,7 +37,10 @@ def construct_instance_command(args, is_preflight=False):
 
     if is_preflight:
         cmd.extend([
-            '--precheck_type', 'provision'
+            '--precheck_type', 'provision',
+            {%- if use_chrony %}
+            '--skip_ntp_check',
+            {%- endif %}
         ])
     else:
         cmd.extend([
@@ -46,6 +49,12 @@ def construct_instance_command(args, is_preflight=False):
             '--node_exporter_user', '{{ node_exporter_user }}',
             '--node_exporter_port', '{{ node_exporter_port }}',
             {%- endif %}
+            {%- if use_chrony %}
+            '--use_chrony',
+            {%- endif %}
+            {%- for server in ntp_server %}
+            '--ntp_server', '{{ server }}',
+            {%- endfor %}
         ])
 
     cmd.append('@@DEFAULT_NODE_NAME@@')

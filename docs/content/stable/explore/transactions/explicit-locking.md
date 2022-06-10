@@ -18,7 +18,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">
+    <a href="/preview/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -41,7 +41,7 @@ The types of row locks currently supported are:
 * `FOR SHARE`
 * `FOR KEY SHARE`
 
-The following example uses the `FOR UPDATE` row lock. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked. 
+The following example uses the `FOR UPDATE` row lock. First, a row is selected for update, thereby locking it, and subsequently updated. A concurrent transaction should not be able to abort this transaction by updating the value of that row after the row is locked.
 
 To try out this scenario, first create an example table with sample data, as follows:
 
@@ -73,7 +73,7 @@ yugabyte=# SELECT * from t WHERE k='k1' FOR UPDATE;
 (1 row)
 ```
 
-Before completing the transaction, try to update the same key in your other session using a simple update statement. 
+Before completing the transaction, try to update the same key in your other session using a simple update statement.
 
 ```sql
 yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
@@ -83,7 +83,7 @@ yugabyte=# UPDATE t SET v='v1.1' WHERE k='k1';
 ERROR:  Operation failed. Try again. xxx Conflicts with higher priority transaction: yyy
 ```
 
-This uses optimistic concurrency control, and fails. 
+This uses optimistic concurrency control, and fails.
 
 If you used optimistic concurrency control instead of an explicit row-lock to do the first transaction, then this update would succeed in some of the attempts and the first transaction would fail in those cases.
 

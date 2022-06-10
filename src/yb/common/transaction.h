@@ -16,32 +16,31 @@
 #ifndef YB_COMMON_TRANSACTION_H
 #define YB_COMMON_TRANSACTION_H
 
-#include <boost/container/small_vector.hpp>
-#include <boost/functional/hash.hpp>
-#include <boost/optional.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/nil_generator.hpp>
+#include <stdint.h>
 
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
+#include <functional>
+#include <iterator>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/functional/hash/hash.hpp>
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/transaction.pb.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
-#include "yb/util/async_util.h"
+#include "yb/gutil/template_util.h"
+
 #include "yb/util/enums.h"
-#include "yb/util/monotime.h"
-#include "yb/util/logging.h"
-#include "yb/util/result.h"
-#include "yb/util/strongly_typed_bool.h"
+#include "yb/util/math_util.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_uuid.h"
-#include "yb/util/tostring.h"
 #include "yb/util/uint_set.h"
-#include "yb/util/uuid.h"
-
-namespace rocksdb {
-
-class DB;
-
-}
 
 namespace yb {
 
@@ -121,7 +120,7 @@ struct StatusRequest {
 
 class RequestScope;
 
-struct CommitMetadata {
+struct TransactionLocalState {
   HybridTime commit_ht;
   AbortedSubTransactionSet aborted_subtxn_set;
 };
@@ -136,7 +135,7 @@ class TransactionStatusManager {
 
   // If this tablet is aware that this transaction has committed, returns the CommitMetadata for the
   // transaction. Otherwise, returns boost::none.
-  virtual boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) = 0;
+  virtual boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
 
   // Fetches status of specified transaction at specified time from transaction coordinator.
   // Callback would be invoked in any case.
@@ -181,7 +180,7 @@ class TransactionStatusManager {
 };
 
 // Utility class that invokes RegisterRequest on creation and UnregisterRequest on deletion.
-class RequestScope {
+class NODISCARD_CLASS RequestScope {
  public:
   RequestScope() noexcept : status_manager_(nullptr), request_id_(0) {}
 
@@ -250,27 +249,26 @@ struct SubTransactionMetadata {
 std::ostream& operator<<(std::ostream& out, const SubTransactionMetadata& metadata);
 
 struct TransactionOperationContext {
+  TransactionOperationContext();
+
   TransactionOperationContext(
-      const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_)
-      : transaction_id(transaction_id_),
-        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
+      const TransactionId& transaction_id_, TransactionStatusManager* txn_status_manager_);
 
   TransactionOperationContext(
       const TransactionId& transaction_id_,
       SubTransactionMetadata&& subtransaction_,
-      TransactionStatusManager* txn_status_manager_)
-      : transaction_id(transaction_id_),
-        subtransaction(std::move(subtransaction_)),
-        txn_status_manager(*(DCHECK_NOTNULL(txn_status_manager_))) {}
+      TransactionStatusManager* txn_status_manager_);
 
   bool transactional() const;
 
+  explicit operator bool() const {
+    return txn_status_manager != nullptr;
+  }
+
   TransactionId transaction_id;
   SubTransactionMetadata subtransaction;
-  TransactionStatusManager& txn_status_manager;
+  TransactionStatusManager* txn_status_manager;
 };
-
-typedef boost::optional<TransactionOperationContext> TransactionOperationContextOpt;
 
 inline std::ostream& operator<<(std::ostream& out, const TransactionOperationContext& context) {
   if (context.transactional()) {
@@ -296,6 +294,9 @@ struct TransactionMetadata {
   // Indicates whether this transaction is a local transaction or global transaction.
   TransactionLocality locality = TransactionLocality::GLOBAL;
 
+  // Former transaction status tablet that the transaction was using prior to a move.
+  TabletId old_status_tablet;
+
   static Result<TransactionMetadata> FromPB(const TransactionMetadataPB& source);
 
   void ToPB(TransactionMetadataPB* dest) const;
@@ -307,8 +308,10 @@ struct TransactionMetadata {
 
   std::string ToString() const {
     return Format(
-        "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4 }",
-        transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time);
+        "{ transaction_id: $0 isolation: $1 status_tablet: $2 priority: $3 start_time: $4"
+        " locality: $5 old_status_tablet: $6}",
+        transaction_id, IsolationLevel_Name(isolation), status_tablet, priority, start_time,
+        TransactionLocality_Name(locality), old_status_tablet);
   }
 };
 
@@ -323,8 +326,9 @@ std::ostream& operator<<(std::ostream& out, const TransactionMetadata& metadata)
 MonoDelta TransactionRpcTimeout();
 CoarseTimePoint TransactionRpcDeadline();
 
-extern const std::string kGlobalTransactionsTableName;
+extern const char* kGlobalTransactionsTableName;
 extern const std::string kMetricsSnapshotsTableName;
+extern const std::string kTransactionTablePrefix;
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 

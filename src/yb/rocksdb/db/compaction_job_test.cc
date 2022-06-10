@@ -28,6 +28,7 @@
 #include "yb/rocksdb/db/compaction_job.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/cache.h"
@@ -38,7 +39,9 @@
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
 #include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
@@ -79,7 +82,7 @@ void VerifyInitializationOfCompactionJobStats(
 }  // namespace
 
 // TODO(icanadi) Make it simpler once we mock out VersionSet
-class CompactionJobTest : public testing::Test {
+class CompactionJobTest : public RocksDBTest {
  public:
   CompactionJobTest()
       : env_(Env::Default()),
@@ -152,11 +155,15 @@ class CompactionJobTest : public testing::Test {
         env_, GenerateFileName(file_number), std::move(contents)));
 
     VersionEdit edit;
-    smallest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.min_int));
-    smallest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.min_string));
+    smallest_values.user_values.push_back(
+        test::MakeLeftBoundaryValue(user_values.min_left.AsSlice()));
+    smallest_values.user_values.push_back(
+        test::MakeRightBoundaryValue(user_values.min_right.AsSlice()));
     smallest_values.user_frontier = test::TestUserFrontier(smallest_values.seqno).Clone();
-    largest_values.user_values.push_back(test::MakeIntBoundaryValue(user_values.max_int));
-    largest_values.user_values.push_back(test::MakeStringBoundaryValue(user_values.max_string));
+    largest_values.user_values.push_back(
+        test::MakeLeftBoundaryValue(user_values.max_left.AsSlice()));
+    largest_values.user_values.push_back(
+        test::MakeRightBoundaryValue(user_values.max_right.AsSlice()));
     largest_values.user_frontier = test::TestUserFrontier(largest_values.seqno).Clone();
     edit.AddTestFile(level,
                      FileDescriptor(file_number, 0, 10, 10),
@@ -165,8 +172,8 @@ class CompactionJobTest : public testing::Test {
                      /* marked_for_compaction */ false);
 
     mutex_.Lock();
-    versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
-                           mutable_cf_options_, &edit, &mutex_);
+    ASSERT_OK(versions_->LogAndApply(versions_->GetColumnFamilySet()->GetDefault(),
+                                     mutable_cf_options_, &edit, &mutex_));
     mutex_.Unlock();
   }
 
@@ -395,17 +402,17 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   auto level1_files = cfd_->current()->storage_info()->LevelFiles(1);
   ASSERT_EQ(2, level0_files.size());
   ASSERT_EQ(0, level1_files.size());
-  auto min_int = std::min(test::GetBoundaryInt(level0_files[0]->smallest.user_values),
-                          test::GetBoundaryInt(level0_files[1]->smallest.user_values));
-  auto max_int = std::max(test::GetBoundaryInt(level0_files[0]->largest.user_values),
-                          test::GetBoundaryInt(level0_files[1]->largest.user_values));
-  ASSERT_LE(min_int, max_int);
+  auto min_left = std::min(test::GetBoundaryLeft(level0_files[0]->smallest.user_values),
+                           test::GetBoundaryLeft(level0_files[1]->smallest.user_values));
+  auto max_left = std::max(test::GetBoundaryLeft(level0_files[0]->largest.user_values),
+                           test::GetBoundaryLeft(level0_files[1]->largest.user_values));
+  ASSERT_LE(min_left, max_left);
 
-  auto min_string = std::min(test::GetBoundaryString(level0_files[0]->smallest.user_values),
-                             test::GetBoundaryString(level0_files[1]->smallest.user_values));
-  auto max_string = std::max(test::GetBoundaryString(level0_files[0]->largest.user_values),
-                             test::GetBoundaryString(level0_files[1]->largest.user_values));
-  ASSERT_LE(min_string, max_string);
+  auto min_right = std::min(test::GetBoundaryRight(level0_files[0]->smallest.user_values),
+                            test::GetBoundaryRight(level0_files[1]->smallest.user_values));
+  auto max_right = std::max(test::GetBoundaryRight(level0_files[0]->largest.user_values),
+                            test::GetBoundaryRight(level0_files[1]->largest.user_values));
+  ASSERT_LE(min_right, max_right);
   ASSERT_NO_FATAL_FAILURE(VerifyFrontier(*level0_files[0], 3, 4));
   ASSERT_NO_FATAL_FAILURE(VerifyFrontier(*level0_files[1], 1, 2));
 
@@ -418,10 +425,10 @@ TEST_F(CompactionJobTest, SeqNoTrackingWithFewDeletes) {
   ASSERT_EQ(1, level1_files.size());
   ASSERT_EQ(4, level1_files[0]->largest.seqno);
   ASSERT_EQ(0, level1_files[0]->smallest.seqno);  // kv's seq number gets zeroed out.
-  ASSERT_EQ(min_int, test::GetBoundaryInt(level1_files[0]->smallest.user_values));
-  ASSERT_EQ(max_int, test::GetBoundaryInt(level1_files[0]->largest.user_values));
-  ASSERT_EQ(min_string, test::GetBoundaryString(level1_files[0]->smallest.user_values));
-  ASSERT_EQ(max_string, test::GetBoundaryString(level1_files[0]->largest.user_values));
+  ASSERT_EQ(min_left, test::GetBoundaryLeft(level1_files[0]->smallest.user_values));
+  ASSERT_EQ(max_left, test::GetBoundaryLeft(level1_files[0]->largest.user_values));
+  ASSERT_EQ(min_right, test::GetBoundaryRight(level1_files[0]->smallest.user_values));
+  ASSERT_EQ(max_right, test::GetBoundaryRight(level1_files[0]->largest.user_values));
   ASSERT_NO_FATAL_FAILURE(VerifyFrontier(*level1_files[0], 1, 4));
 }
 

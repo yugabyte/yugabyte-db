@@ -15,7 +15,7 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/master/async_ts_rpc_tasks.h"
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/tserver/backup.pb.h"
@@ -25,7 +25,7 @@ namespace master {
 
 // Send the "Create/Restore/.. Tablet Snapshot operation" to the leader replica for the tablet.
 // Keeps retrying until we get an "ok" response.
-class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
+class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
  public:
   AsyncTabletSnapshotOp(
       Master* master,
@@ -62,6 +62,10 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
     callback_ = std::move(callback);
   }
 
+  void SetDbOid(int64_t db_oid) {
+    db_oid_ = db_oid;
+  }
+
  private:
   TabletId tablet_id() const override;
   TabletServerId permanent_uuid() const;
@@ -85,6 +89,7 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   SchemaPB schema_;
   google::protobuf::RepeatedPtrField<IndexInfoPB> indexes_;
   bool hide_ = false;
+  std::optional<int64_t> db_oid_ = std::nullopt;
 };
 
 } // namespace master

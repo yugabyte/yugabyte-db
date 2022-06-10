@@ -22,16 +22,15 @@
 
 #pragma once
 
-#include <string>
-#include <list>
-#include <vector>
-#include <set>
 #include <deque>
+#include <list>
+#include <set>
+#include <string>
+#include <vector>
 
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/filename.h"
-#include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/types.h"
@@ -184,6 +183,10 @@ class MemTableList {
   // Returns the total number of memtables in the list that haven't yet
   // been flushed and logged.
   int NumNotFlushed() const;
+
+  // Returns accumulated frontier from all tables.
+  // Initial value could be passed as `frontier`.
+  UserFrontierPtr GetFrontier(UserFrontierPtr frontier, UpdateUserValueType type);
 
   // Returns total number of memtables in the list that have been
   // completely flushed and logged.

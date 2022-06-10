@@ -29,12 +29,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
+
+#include "yb/tserver/tablet_server-test-base.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/thread.h"
 
 DEFINE_int32(num_inserter_threads, 8, "Number of inserter threads to run");
 DEFINE_int32(num_inserts_per_thread, 0, "Number of inserts from each thread");
@@ -99,9 +103,9 @@ void TSStressTest::InserterThread(int thread_idx) {
   start_latch_.Wait();
   LOG(INFO) << "Starting inserter thread " << thread_idx << " complete";
 
-  uint64_t max_rows = FLAGS_num_inserts_per_thread;
-  int start_row = thread_idx * max_rows;
-  for (int i = start_row; i < start_row + max_rows ; i++) {
+  uint32_t max_rows = FLAGS_num_inserts_per_thread;
+  auto start_row = thread_idx * max_rows;
+  for (auto i = start_row; i < start_row + max_rows ; i++) {
     MonoTime before = MonoTime::Now();
     InsertTestRowsRemote(thread_idx, i, 1);
     MonoTime after = MonoTime::Now();

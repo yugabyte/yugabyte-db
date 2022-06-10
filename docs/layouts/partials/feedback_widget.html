@@ -1,5 +1,5 @@
 <div class="feedback_widget">
-  
+
   <a class="btn-close"><i class="fas fa-close"></i></a>
   <div class="submit-replace">
     <div class="title">Help us improve our docs</div>
@@ -9,7 +9,7 @@
           <label for="exampleInputEmail1">Email address</label>
           <input type="hidden" id="action_type" name="action_type" value="docs-feedback">
           <input type="hidden" id="action_payload_from" name="action_payload[from]" value='footer'>
-          <input type="hidden" id="action_payload_feedback_url" name="action_payload[feedback_url]" value='{{ .URL }}'>
+          <input type="hidden" id="action_payload_feedback_url" name="action_payload[feedback_url]" value='{{ .Permalink }}'>
           <select class="form-control" id="feedback_subject" name="action_payload[feedback_subject]">
             <option value="Incorrect info">Incorrect info</option>
             <option value="Unclear info">Unclear info</option>
@@ -73,7 +73,7 @@
             case 6:
               textarea.attr("placeholder","I just want to share with you that...");
               break;
-          
+
             default:
               break;
           }
@@ -87,7 +87,7 @@
         if ($('#feedbackForm').length) {
           setupRegistrationForm('#feedbackForm', 'Thanks for your feedback!');
         }
-        
+
       });
-    
+
   </script>

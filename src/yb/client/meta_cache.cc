@@ -32,36 +32,56 @@
 
 #include "yb/client/meta_cache.h"
 
+#include <stdint.h>
+
+#include <atomic>
+#include <list>
+#include <memory>
 #include <shared_mutex>
-#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 #include <boost/optional/optional_io.hpp>
 #include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
+#include "yb/client/client_master_rpc.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
+#include "yb/client/yb_table_name.h"
 
-#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc.h"
+
+#include "yb/master/master_client.proxy.h"
+
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tserver/local_tablet_server.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/atomic.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
-#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
 
 using std::map;
@@ -86,9 +106,6 @@ DEFINE_int64(meta_cache_lookup_throttling_step_ms, 5,
 DEFINE_int64(meta_cache_lookup_throttling_max_delay_ms, 1000,
              "Max delay between calls during lookup throttling.");
 
-DEFINE_int64(reset_master_leader_timeout_ms, 15000,
-             "Timeout to reset master leader in milliseconds.");
-
 DEFINE_test_flag(bool, force_master_lookup_all_tablets, false,
                  "If set, force the client to go to the master for all tablet lookup "
                  "instead of reading from cache.");
@@ -104,12 +121,14 @@ METRIC_DEFINE_coarse_histogram(
   yb::MetricUnit::kMicroseconds,
   "Microseconds spent resolving DNS requests during MetaCache::InitProxy");
 
+DECLARE_string(placement_cloud);
+DECLARE_string(placement_region);
+
 namespace yb {
 
 using consensus::RaftPeerPB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
-using master::MasterServiceProxy;
 using master::TabletLocationsPB;
 using master::TabletLocationsPB_ReplicaPB;
 using master::TSInfoPB;
@@ -162,6 +181,8 @@ RemoteTabletServer::RemoteTabletServer(const string& uuid,
   LOG_IF(DFATAL, proxy && !IsLocal()) << "Local tserver has non-local proxy";
 }
 
+RemoteTabletServer::~RemoteTabletServer() = default;
+
 Status RemoteTabletServer::InitProxy(YBClient* client) {
   {
     SharedLock<rw_spinlock> lock(mutex_);
@@ -189,7 +210,7 @@ Status RemoteTabletServer::InitProxy(YBClient* client) {
 
   // TODO: if the TS advertises multiple host/ports, pick the right one
   // based on some kind of policy. For now just use the first always.
-  auto hostport = HostPortFromPB(DesiredHostPort(
+  auto hostport = HostPortFromPB(yb::DesiredHostPort(
       public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_,
       client->data_->cloud_info_pb_));
   CHECK(!hostport.host().empty());
@@ -217,20 +238,6 @@ bool RemoteTabletServer::IsLocal() const {
 
 const std::string& RemoteTabletServer::permanent_uuid() const {
   return uuid_;
-}
-
-const CloudInfoPB& RemoteTabletServer::cloud_info() const {
-  return cloud_info_pb_;
-}
-
-const google::protobuf::RepeatedPtrField<HostPortPB>&
-    RemoteTabletServer::public_rpc_hostports() const {
-  return public_rpc_hostports_;
-}
-
-const google::protobuf::RepeatedPtrField<HostPortPB>&
-    RemoteTabletServer::private_rpc_hostports() const {
-  return private_rpc_hostports_;
 }
 
 shared_ptr<TabletServerServiceProxy> RemoteTabletServer::proxy() const {
@@ -276,7 +283,58 @@ bool RemoteTabletServer::HasCapability(CapabilityId capability) const {
   return std::binary_search(capabilities_.begin(), capabilities_.end(), capability);
 }
 
+bool RemoteTabletServer::IsLocalRegion() const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return cloud_info_pb_.placement_cloud() == FLAGS_placement_cloud &&
+         cloud_info_pb_.placement_region() == FLAGS_placement_region;
+}
+
+LocalityLevel RemoteTabletServer::LocalityLevelWith(const CloudInfoPB& cloud_info) const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  if (!cloud_info_pb_.has_placement_region() || !cloud_info.has_placement_region() ||
+      cloud_info_pb_.placement_region() != cloud_info.placement_region()) {
+    return LocalityLevel::kNone;
+  }
+  if (!cloud_info_pb_.has_placement_zone() || !cloud_info.has_placement_zone() ||
+      cloud_info_pb_.placement_zone() != cloud_info.placement_zone()) {
+    return LocalityLevel::kRegion;
+  }
+  return LocalityLevel::kZone;
+}
+
+HostPortPB RemoteTabletServer::DesiredHostPort(const CloudInfoPB& cloud_info) const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return yb::DesiredHostPort(
+      public_rpc_hostports_, private_rpc_hostports_, cloud_info_pb_, cloud_info);
+}
+
+std::string RemoteTabletServer::TEST_PlacementZone() const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return cloud_info_pb_.placement_zone();
+}
+
+std::string ReplicasCount::ToString() {
+  return Format(
+      " live replicas $0, read replicas $1, expected live replicas $2, expected read replicas $3",
+      num_alive_live_replicas, num_alive_read_replicas,
+      expected_live_replicas, expected_read_replicas);
+}
+
 ////////////////////////////////////////////////////////////
+
+RemoteTablet::RemoteTablet(std::string tablet_id,
+                           Partition partition,
+                           boost::optional<PartitionListVersion> partition_list_version,
+                           uint64 split_depth,
+                           const TabletId& split_parent_tablet_id)
+    : tablet_id_(std::move(tablet_id)),
+      log_prefix_(Format("T $0: ", tablet_id_)),
+      partition_(std::move(partition)),
+      partition_list_version_(partition_list_version),
+      split_depth_(split_depth),
+      split_parent_tablet_id_(split_parent_tablet_id),
+      stale_(false) {
+}
 
 RemoteTablet::~RemoteTablet() {
   if (PREDICT_FALSE(FLAGS_TEST_verify_all_replicas_alive)) {
@@ -285,7 +343,7 @@ RemoteTablet::~RemoteTablet() {
     for (const auto& replica : replicas_) {
       if (replica.Failed()) {
         LOG_WITH_PREFIX(FATAL) << "Remote tablet server " << replica.ts->ToString()
-                               << " with role " << consensus::RaftPeerPB::Role_Name(replica.role)
+                               << " with role " << PeerRole_Name(replica.role)
                                << " is marked as failed";
       }
     }
@@ -402,7 +460,7 @@ void RemoteTablet::SetAliveReplicas(int alive_live_replicas, int alive_read_repl
 RemoteTabletServer* RemoteTablet::LeaderTServer() const {
   SharedLock<rw_spinlock> lock(mutex_);
   for (const RemoteReplica& replica : replicas_) {
-    if (!replica.Failed() && replica.role == RaftPeerPB::LEADER) {
+    if (!replica.Failed() && replica.role == PeerRole::LEADER) {
       return replica.ts;
     }
   }
@@ -493,9 +551,9 @@ void RemoteTablet::GetRemoteTabletServers(
         // Cannot update replica here directly because holding only shared lock on mutex.
         replica_updates.push_back(replica_update);
       } else {
-        if (replica.role == RaftPeerPB::READ_REPLICA) {
+        if (replica.role == PeerRole::READ_REPLICA) {
           num_alive_read_replicas++;
-        } else if (replica.role == RaftPeerPB::FOLLOWER || replica.role == RaftPeerPB::LEADER) {
+        } else if (replica.role == PeerRole::FOLLOWER || replica.role == PeerRole::LEADER) {
           num_alive_live_replicas++;
         }
       }
@@ -516,15 +574,26 @@ void RemoteTablet::GetRemoteTabletServers(
   }
 }
 
+bool RemoteTablet::IsLocalRegion() {
+  auto tservers = GetRemoteTabletServers(internal::IncludeFailedReplicas::kTrue);
+  for (const auto &tserver : tservers) {
+    LOG(INFO) << "TSERVER" << tserver->ToString();
+    if (!tserver->IsLocalRegion()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool RemoteTablet::MarkTServerAsLeader(const RemoteTabletServer* server) {
   bool found = false;
   std::lock_guard<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.ts == server) {
-      replica.role = RaftPeerPB::LEADER;
+      replica.role = PeerRole::LEADER;
       found = true;
-    } else if (replica.role == RaftPeerPB::LEADER) {
-      replica.role = RaftPeerPB::FOLLOWER;
+    } else if (replica.role == PeerRole::LEADER) {
+      replica.role = PeerRole::FOLLOWER;
     }
   }
   VLOG_WITH_PREFIX(3) << "Latest replicas: " << ReplicasAsStringUnlocked();
@@ -538,7 +607,7 @@ void RemoteTablet::MarkTServerAsFollower(const RemoteTabletServer* server) {
   std::lock_guard<rw_spinlock> lock(mutex_);
   for (RemoteReplica& replica : replicas_) {
     if (replica.ts == server) {
-      replica.role = RaftPeerPB::FOLLOWER;
+      replica.role = PeerRole::FOLLOWER;
       found = true;
     }
   }
@@ -609,15 +678,10 @@ void LookupCallbackVisitor::operator()(
 MetaCache::MetaCache(YBClient* client)
   : client_(client),
     master_lookup_sem_(FLAGS_max_concurrent_master_lookups),
-    log_prefix_(Format("MetaCache($0): ", static_cast<void*>(this))) {
+    log_prefix_(Format("MetaCache($0)(client_id: $1): ", static_cast<void*>(this), client_->id())) {
 }
 
 MetaCache::~MetaCache() {
-  Shutdown();
-}
-
-void MetaCache::Shutdown() {
-  rpcs_.Shutdown();
 }
 
 void MetaCache::SetLocalTabletServer(const string& permanent_uuid,
@@ -647,7 +711,7 @@ void MetaCache::UpdateTabletServerUnlocked(const master::TSInfoPB& pb) {
 // may be handled locally.
 //
 // Keeps a reference on the owning metacache while alive.
-class LookupRpc : public Rpc, public RequestCleanup {
+class LookupRpc : public internal::ClientMasterRpcBase, public RequestCleanup {
  public:
   LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
             const std::shared_ptr<const YBTable>& table,
@@ -661,31 +725,17 @@ class LookupRpc : public Rpc, public RequestCleanup {
   MetaCache* meta_cache() { return meta_cache_.get(); }
   YBClient* client() const { return meta_cache_->client_; }
 
-  void ResetMasterLeader(Retry retry);
-
   virtual void NotifyFailure(const Status& status) = 0;
 
-  std::shared_ptr<MasterServiceProxy> master_proxy() const {
-    return client()->data_->master_proxy();
-  }
-
   template <class Response>
-  void DoFinished(const Status& status, const Response& resp);
+  void DoProcessResponse(const Status& status, const Response& resp);
 
   // Subclasses can override VerifyResponse for implementing additional response checks. Called
   // from Finished if there are no errors passed in response.
-  virtual CHECKED_STATUS VerifyResponse() { return Status::OK(); }
-
-  std::string LogPrefix() const {
-    return yb::ToString(this) + ": ";
-  }
+  virtual Status VerifyResponse() { return Status::OK(); }
 
   int64_t request_no() const {
     return request_no_;
-  }
-
-  rpc::Rpcs::Handle* RpcHandle() {
-    return &retained_self_;
   }
 
   const std::shared_ptr<const YBTable>& table() const {
@@ -706,11 +756,7 @@ class LookupRpc : public Rpc, public RequestCleanup {
                                     ProcessedTablesMap::mapped_type* processed_table) = 0;
 
  private:
-  virtual void DoSendRpc() = 0;
-
-  void NewLeaderMasterDeterminedCb(const Status& status);
-
-  virtual CHECKED_STATUS ProcessTabletLocations(
+  virtual Status ProcessTabletLocations(
      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
      boost::optional<PartitionListVersion> table_partition_list_version) = 0;
 
@@ -729,19 +775,16 @@ class LookupRpc : public Rpc, public RequestCleanup {
 
   // Whether this lookup has acquired a master lookup permit.
   bool has_permit_ = false;
-
-  rpc::Rpcs::Handle retained_self_;
 };
 
 LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
                      const std::shared_ptr<const YBTable>& table,
                      int64_t request_no,
                      CoarseTimePoint deadline)
-    : Rpc(deadline, meta_cache->client_->messenger(), &meta_cache->client_->proxy_cache()),
+    : ClientMasterRpcBase(meta_cache->client_, deadline),
       request_no_(request_no),
       meta_cache_(meta_cache),
-      table_(table),
-      retained_self_(meta_cache_->rpcs_.InvalidHandle()) {
+      table_(table) {
   DCHECK(deadline != CoarseTimePoint());
 }
 
@@ -764,41 +807,22 @@ void LookupRpc::SendRpc() {
   // See YBClient::Data::SyncLeaderMasterRpc().
   auto now = CoarseMonoClock::Now();
   if (retrier().deadline() < now) {
-    Finished(STATUS(TimedOut, "timed out after deadline expired"));
+    Finished(STATUS_FORMAT(TimedOut, "Timed out after deadline expired, passed: $0",
+                           MonoDelta(now - retrier().start())));
     return;
   }
   mutable_retrier()->PrepareController();
 
-  DoSendRpc();
-}
-
-void LookupRpc::ResetMasterLeader(Retry retry) {
-  client()->data_->SetMasterServerProxyAsync(
-      retry ? retrier().deadline()
-            : CoarseMonoClock::now() + FLAGS_reset_master_leader_timeout_ms * 1ms,
-      false /* skip_resolution */,
-      true /* wait for leader election */,
-      retry ? std::bind(&LookupRpc::NewLeaderMasterDeterminedCb, this, _1)
-            : StdStatusCallback([](auto){}));
-}
-
-void LookupRpc::NewLeaderMasterDeterminedCb(const Status& status) {
-  if (status.ok()) {
-    mutable_retrier()->mutable_controller()->Reset();
-    SendRpc();
-  } else {
-    LOG_WITH_PREFIX(WARNING) << "Failed to determine new Master: " << status;
-    ScheduleRetry(status);
-  }
+  ClientMasterRpcBase::SendRpc();
 }
 
 namespace {
 
-CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
+Status GetFirstErrorForTabletById(const master::GetTabletLocationsResponsePB& resp) {
   return resp.errors_size() > 0 ? StatusFromPB(resp.errors(0).status()) : Status::OK();
 }
 
-CHECKED_STATUS GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
+Status GetFirstErrorForTabletById(const master::GetTableLocationsResponsePB& resp) {
   // There are no per-tablet lookup errors inside GetTableLocationsResponsePB.
   return Status::OK();
 }
@@ -813,57 +837,8 @@ boost::optional<PartitionListVersion> GetPartitionListVersion(const Response& re
 } // namespace
 
 template <class Response>
-void LookupRpc::DoFinished(const Status& status, const Response& resp) {
-  if (status.ok() && resp.has_error()) {
-    LOG_WITH_PREFIX(INFO)
-        << "Failed, got resp error " << master::MasterErrorPB::Code_Name(resp.error().code());
-  } else if (!status.ok()) {
-    LOG_WITH_PREFIX(INFO) << "Failed: " << status;
-  }
-
-  // Prefer early failures over controller failures.
-  Status new_status = status;
-  if (new_status.ok() &&
-      mutable_retrier()->HandleResponse(this, &new_status, rpc::RetryWhenBusy::kFalse)) {
-    return;
-  }
-
-  // Prefer controller failures over response failures.
-  if (new_status.ok() && resp.has_error()) {
-    new_status = StatusFromPB(resp.error().status());
-    if (resp.error().code() == master::MasterErrorPB::NOT_THE_LEADER ||
-        resp.error().code() == master::MasterErrorPB::CATALOG_MANAGER_NOT_INITIALIZED) {
-      if (client()->IsMultiMaster()) {
-        YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << "Leader Master has changed, re-trying...";
-        ResetMasterLeader(Retry::kTrue);
-      } else {
-        ScheduleRetry(new_status);
-      }
-      return;
-    }
-  }
-
-  if (new_status.IsTimedOut()) {
-    if (CoarseMonoClock::Now() < retrier().deadline()) {
-      YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1) << "Leader Master timed out, re-trying...";
-      ResetMasterLeader(Retry::kTrue);
-      return;
-    } else {
-      // Operation deadline expired during this latest RPC.
-      new_status = new_status.CloneAndPrepend("timed out after deadline expired");
-      ResetMasterLeader(Retry::kFalse);
-    }
-  }
-
-  if (new_status.IsNetworkError() || new_status.IsRemoteError()) {
-    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
-         << "Encountered a error from the Master: " << new_status << ", retrying...";
-    ResetMasterLeader(Retry::kTrue);
-    return;
-  }
-
-  auto retained_self = meta_cache_->rpcs_.Unregister(&retained_self_);
-
+void LookupRpc::DoProcessResponse(const Status& status, const Response& resp) {
+  auto new_status = status;
   if (new_status.ok()) {
     new_status = VerifyResponse();
   }
@@ -1076,25 +1051,7 @@ Status MetaCache::ProcessTabletLocations(
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           if (tablets_by_key) {
-            auto emplace_result = tablets_by_key->emplace(partition.partition_key_start(), remote);
-            if (!emplace_result.second) {
-              const auto& old_tablet = emplace_result.first->second;
-              if (old_tablet->split_depth() < remote->split_depth()) {
-                // Only replace with tablet of higher split_depth.
-                emplace_result.first->second = remote;
-              } else {
-                // If split_depth is the same - it should be the same tablet.
-                if (old_tablet->split_depth() == loc.split_depth()
-                    && old_tablet->tablet_id() != tablet_id) {
-                  const auto error_msg = Format(
-                      "Can't replace tablet $0 with $1 at partition_key_start $2, split_depth $3",
-                      old_tablet->tablet_id(), tablet_id, loc.partition().partition_key_start(),
-                      old_tablet->split_depth());
-                  LOG_WITH_PREFIX(DFATAL) << error_msg;
-                  // Just skip updating this tablet for release build.
-                }
-              }
-            }
+            (*tablets_by_key)[partition.partition_key_start()] = remote;
           }
           MaybeUpdateClientRequests(*remote);
         }
@@ -1143,8 +1100,9 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
   auto& tablet_requests = client_->data_->tablet_requests_;
   const auto requests_it = tablet_requests.find(tablet.split_parent_tablet_id());
   if (requests_it == tablet_requests.end()) {
-    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for tablet "
-                        << tablet.split_parent_tablet_id();
+    VLOG_WITH_PREFIX(2) << "Can't find request_id_seq for parent tablet "
+                        << tablet.split_parent_tablet_id()
+                        << " (split_depth: " << tablet.split_depth() - 1 << ")";
     // This can happen if client wasn't active (for example node was partitioned away) during
     // sequence of splits that resulted in `tablet` creation, so we don't have info about `tablet`
     // split parent.
@@ -1155,12 +1113,14 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
     tablet_requests.emplace(
         tablet.tablet_id(),
         YBClient::Data::TabletRequests {
-            .request_id_seq = kInitializeFromMinRunning
+            .request_id_seq = kInitializeFromMinRunning,
+            .running_requests = {}
         });
     return;
   }
   VLOG_WITH_PREFIX(2) << "Setting request_id_seq for tablet " << tablet.tablet_id()
-                      << " from tablet " << tablet.split_parent_tablet_id() << " to "
+                      << " (split_depth: " << tablet.split_depth() << ") from tablet "
+                      << tablet.split_parent_tablet_id() << " to "
                       << requests_it->second.request_id_seq;
   tablet_requests[tablet.tablet_id()].request_id_seq = requests_it->second.request_id_seq;
 }
@@ -1305,11 +1265,13 @@ class LookupByIdRpc : public LookupRpc {
   LookupByIdRpc(const scoped_refptr<MetaCache>& meta_cache,
                 const TabletId& tablet_id,
                 const std::shared_ptr<const YBTable>& table,
+                master::IncludeInactive include_inactive,
                 int64_t request_no,
                 CoarseTimePoint deadline,
                 int64_t lookups_without_new_replicas)
       : LookupRpc(meta_cache, table, request_no, deadline),
-        tablet_id_(tablet_id) {
+        tablet_id_(tablet_id),
+        include_inactive_(include_inactive) {
     if (lookups_without_new_replicas != 0) {
       send_delay_ = std::min(
           lookups_without_new_replicas * FLAGS_meta_cache_lookup_throttling_step_ms,
@@ -1335,15 +1297,16 @@ class LookupByIdRpc : public LookupRpc {
     LookupRpc::SendRpc();
   }
 
-  void DoSendRpc() override {
+  void CallRemoteMethod() override {
     // Fill out the request.
     req_.clear_tablet_ids();
     req_.add_tablet_ids(tablet_id_);
     if (table()) {
       req_.set_table_id(table()->id());
     }
+    req_.set_include_inactive(include_inactive_);
 
-    master_proxy()->GetTabletLocationsAsync(
+    master_client_proxy()->GetTabletLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupByIdRpc::Finished, this, Status::OK()));
   }
@@ -1363,8 +1326,12 @@ class LookupByIdRpc : public LookupRpc {
   }
 
  private:
-  void Finished(const Status& status) override {
-    DoFinished(status, resp_);
+  void ProcessResponse(const Status& status) override {
+    DoProcessResponse(status, resp_);
+  }
+
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
   }
 
   void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
@@ -1381,7 +1348,8 @@ class LookupByIdRpc : public LookupRpc {
 
   void NotifyFailure(const Status& status) override {
     meta_cache()->LookupByIdFailed(
-        tablet_id_, table(), GetPartitionListVersion(resp_), request_no(), status);
+        tablet_id_, table(), include_inactive_,
+        GetPartitionListVersion(resp_), request_no(), status);
   }
 
   Status ProcessTabletLocations(
@@ -1393,6 +1361,9 @@ class LookupByIdRpc : public LookupRpc {
 
   // Tablet to lookup.
   const TabletId tablet_id_;
+
+  // Whether or not to lookup inactive (hidden) tablets.
+  master::IncludeInactive include_inactive_;
 
   // Request body.
   master::GetTabletLocationsRequestPB req_;
@@ -1416,12 +1387,13 @@ class LookupFullTableRpc : public LookupRpc {
     return Format("LookupFullTableRpc($0, $1)", table()->name(), num_attempts());
   }
 
-  void DoSendRpc() override {
+  void CallRemoteMethod() override {
     // Fill out the request.
     req_.mutable_table()->set_table_id(table()->id());
+    req_.set_max_returned_locations(std::numeric_limits<int32_t>::max());
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
-    master_proxy()->GetTableLocationsAsync(
+    master_client_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupFullTableRpc::Finished, this, Status::OK()));
   }
@@ -1458,8 +1430,12 @@ class LookupFullTableRpc : public LookupRpc {
   }
 
  private:
-  void Finished(const Status& status) override {
-    DoFinished(status, resp_);
+  void ProcessResponse(const Status& status) override {
+    DoProcessResponse(status, resp_);
+  }
+
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
   }
 
   void CleanupRequest() override NO_THREAD_SAFETY_ANALYSIS {
@@ -1517,7 +1493,7 @@ class LookupByKeyRpc : public LookupRpc {
 
   const string& table_id() const { return table()->id(); }
 
-  void DoSendRpc() override {
+  void CallRemoteMethod() override {
     // Fill out the request.
     req_.mutable_table()->set_table_id(table()->id());
     req_.set_partition_key_start(*partition_group_start_.key);
@@ -1525,7 +1501,7 @@ class LookupByKeyRpc : public LookupRpc {
 
     // The end partition key is left unset intentionally so that we'll prefetch
     // some additional tablets.
-    master_proxy()->GetTableLocationsAsync(
+    master_client_proxy()->GetTableLocationsAsync(
         req_, &resp_, mutable_retrier()->mutable_controller(),
         std::bind(&LookupByKeyRpc::Finished, this, Status::OK()));
   }
@@ -1570,8 +1546,12 @@ class LookupByKeyRpc : public LookupRpc {
   }
 
  private:
-  void Finished(const Status& status) override {
-    DoFinished(status, resp_);
+  void ProcessResponse(const Status& status) override {
+    DoProcessResponse(status, resp_);
+  }
+
+  Status ResponseStatus() override {
+    return StatusFromResp(resp_);
   }
 
   Status VerifyResponse() override {
@@ -1716,7 +1696,7 @@ void MetaCache::LookupByKeyFailed(
   if (max_deadline != CoarseTimePoint()) {
     auto rpc = std::make_shared<LookupByKeyRpc>(
         this, table, partition_group_start, request_no, max_deadline);
-    rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+    client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
 
@@ -1739,14 +1719,17 @@ void MetaCache::LookupFullTableFailed(const std::shared_ptr<const YBTable>& tabl
 
   if (max_deadline != CoarseTimePoint()) {
     auto rpc = std::make_shared<LookupFullTableRpc>(this, table, request_no, max_deadline);
-    rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+    client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
 
 void MetaCache::LookupByIdFailed(
-    const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
+    const TabletId& tablet_id,
+    const std::shared_ptr<const YBTable>& table,
+    master::IncludeInactive include_inactive,
     const boost::optional<PartitionListVersion>& response_partition_list_version,
-    int64_t request_no, const Status& status) {
+    int64_t request_no,
+    const Status& status) {
   VLOG_WITH_PREFIX(1) << "Lookup for tablet " << tablet_id << ", failed with: " << status;
 
   CallbackNotifier notifier(status);
@@ -1783,8 +1766,9 @@ void MetaCache::LookupByIdFailed(
   }
 
   if (max_deadline != CoarseTimePoint()) {
-    auto rpc = std::make_shared<LookupByIdRpc>(this, tablet_id, table, request_no, max_deadline, 0);
-    rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+    auto rpc = std::make_shared<LookupByIdRpc>(
+        this, tablet_id, table, include_inactive, request_no, max_deadline, 0);
+    client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   }
 }
 
@@ -1966,7 +1950,7 @@ bool MetaCache::DoLookupTabletByKey(
       << "Started lookup for table: " << table->ToString()
       << ", partition_group_start: " << Slice(**partition_group_start).ToDebugHexString()
       << ", rpc: " << AsString(rpc);
-  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
 
@@ -2012,7 +1996,7 @@ bool MetaCache::DoLookupAllTablets(const std::shared_ptr<const YBTable>& table,
       << "Start lookup for table: " << table->ToString();
 
   auto rpc = std::make_shared<LookupFullTableRpc>(this, table, request_no, deadline);
-  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+  client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
 
@@ -2022,49 +2006,50 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback) {
   if (table->ArePartitionsStale()) {
-    table->RefreshPartitions(client_, [this, table, partition_key, deadline,
-                              callback = std::move(callback)](const Status& status) {
-      if (!status.ok()) {
-        callback(status);
-        return;
-      }
-      InvalidateTableCache(*table);
-      LookupTabletByKey(table, partition_key, deadline, std::move(callback));
-    });
+    RefreshTablePartitions(
+        std::bind(&MetaCache::LookupTabletByKey, this, table, partition_key, deadline, _1),
+        table, std::move(callback));
     return;
   }
 
   const auto table_partition_list = table->GetVersionedPartitions();
   const auto partition_start = client::FindPartitionStart(table_partition_list, partition_key);
   VLOG_WITH_PREFIX_AND_FUNC(5) << "Table: " << table->ToString()
-                    << ", partition_list_version: " << table_partition_list->version
+                    << ", table_partition_list: " << table_partition_list->ToString()
                     << ", partition_key: " << Slice(partition_key).ToDebugHexString()
                     << ", partition_start: " << Slice(*partition_start).ToDebugHexString();
 
   PartitionGroupStartKeyPtr partition_group_start;
-  if (DoLookupTabletByKey<SharedLock<boost::shared_mutex>>(
+  if (DoLookupTabletByKey<SharedLock<std::shared_timed_mutex>>(
           table, table_partition_list, partition_start, deadline, &callback,
           &partition_group_start)) {
     return;
   }
 
-  bool result = DoLookupTabletByKey<std::lock_guard<boost::shared_mutex>>(
+  bool result = DoLookupTabletByKey<std::lock_guard<std::shared_timed_mutex>>(
       table, table_partition_list, partition_start, deadline, &callback, &partition_group_start);
   LOG_IF(DFATAL, !result)
       << "Lookup was not started for table " << table->ToString()
       << ", partition_key: " << Slice(partition_key).ToDebugHexString();
 }
 
-void MetaCache::LookupAllTablets(const std::shared_ptr<const YBTable>& table,
+void MetaCache::LookupAllTablets(const std::shared_ptr<YBTable>& table,
                                  CoarseTimePoint deadline,
                                  LookupTabletRangeCallback callback) {
-  // We first want to check the cache in read-only mode, and only if we can't find anything
-  // do a lookup in write mode.
-  if (DoLookupAllTablets<SharedLock<boost::shared_mutex>>(table, deadline, &callback)) {
+  if (table->ArePartitionsStale()) {
+    RefreshTablePartitions(
+        std::bind(&MetaCache::LookupAllTablets, this, table, deadline, _1),
+        table, std::move(callback));
     return;
   }
 
-  bool result = DoLookupAllTablets<std::lock_guard<boost::shared_mutex>>(
+  // We first want to check the cache in read-only mode, and only if we can't find anything
+  // do a lookup in write mode.
+  if (DoLookupAllTablets<SharedLock<std::shared_timed_mutex>>(table, deadline, &callback)) {
+    return;
+  }
+
+  bool result = DoLookupAllTablets<std::lock_guard<std::shared_timed_mutex>>(
       table, deadline, &callback);
   LOG_IF(DFATAL, !result)
       << "Full table lookup was not started for table " << table->ToString();
@@ -2080,8 +2065,12 @@ RemoteTabletPtr MetaCache::LookupTabletByIdFastPathUnlocked(const TabletId& tabl
 
 template <class Lock>
 bool MetaCache::DoLookupTabletById(
-    const TabletId& tablet_id, const std::shared_ptr<const YBTable>& table,
-    CoarseTimePoint deadline, UseCache use_cache, LookupTabletCallback* callback) {
+    const TabletId& tablet_id,
+    const std::shared_ptr<const YBTable>& table,
+    master::IncludeInactive include_inactive,
+    CoarseTimePoint deadline,
+    UseCache use_cache,
+    LookupTabletCallback* callback) {
   RemoteTabletPtr tablet;
   auto scope_exit = ScopeExit([callback, &tablet] {
     if (tablet) {
@@ -2132,26 +2121,42 @@ bool MetaCache::DoLookupTabletById(
   VLOG_WITH_PREFIX_AND_FUNC(4) << "Start lookup for tablet " << tablet_id << ": " << request_no;
 
   auto rpc = std::make_shared<LookupByIdRpc>(
-      this, tablet_id, table, request_no, deadline, lookups_without_new_replicas);
-  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+      this, tablet_id, table, include_inactive, request_no, deadline, lookups_without_new_replicas);
+  client_->data_->rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
   return true;
 }
 
 void MetaCache::LookupTabletById(const TabletId& tablet_id,
                                  const std::shared_ptr<const YBTable>& table,
+                                 master::IncludeInactive include_inactive,
                                  CoarseTimePoint deadline,
                                  LookupTabletCallback callback,
                                  UseCache use_cache) {
   VLOG_WITH_PREFIX_AND_FUNC(5) << "(" << tablet_id << ", " << use_cache << ")";
 
   if (DoLookupTabletById<SharedLock<decltype(mutex_)>>(
-          tablet_id, table, deadline, use_cache, &callback)) {
+          tablet_id, table, include_inactive, deadline, use_cache, &callback)) {
     return;
   }
 
   auto result = DoLookupTabletById<std::lock_guard<decltype(mutex_)>>(
-      tablet_id, table, deadline, use_cache, &callback);
+      tablet_id, table, include_inactive, deadline, use_cache, &callback);
   LOG_IF(DFATAL, !result) << "Lookup was not started for tablet " << tablet_id;
+}
+
+template <class Func, class Callback>
+void MetaCache::RefreshTablePartitions(
+    Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback) {
+  table->RefreshPartitions(client_,
+      [this, func = std::move(func), table, callback = std::move(callback)](const Status& status) {
+    if (!status.ok()) {
+      callback(status);
+      return;
+    }
+    InvalidateTableCache(*table);
+    func(callback);
+  });
+  return;
 }
 
 void MetaCache::MarkTSFailed(RemoteTabletServer* ts,
@@ -2177,6 +2182,14 @@ void MetaCache::ReleaseMasterLookupPermit() {
   master_lookup_sem_.Release();
 }
 
+std::future<Result<internal::RemoteTabletPtr>> MetaCache::LookupTabletByKeyFuture(
+    const std::shared_ptr<YBTable>& table,
+    const PartitionKey& partition_key,
+    CoarseTimePoint deadline) {
+  return MakeFuture<Result<internal::RemoteTabletPtr>>([&](auto callback) {
+    this->LookupTabletByKey(table, partition_key, deadline, std::move(callback));
+  });
+}
 
 LookupDataGroup::~LookupDataGroup() {
   std::vector<LookupData*> leftovers;
@@ -2207,6 +2220,22 @@ void LookupDataGroup::Finished(
   LOG(INFO)
       << "Finished lookup for " << id.ToString() << ": " << request_no << ", while "
       << expected << " was running, could happen during tablet split";
+}
+
+TableData::TableData(const VersionedTablePartitionListPtr& partition_list_)
+    : partition_list(partition_list_) {
+  DCHECK_ONLY_NOTNULL(partition_list);
+}
+
+std::string VersionedPartitionStartKey::ToString() const {
+  return YB_STRUCT_TO_STRING(key, partition_list_version);
+}
+
+std::string RemoteReplica::ToString() const {
+  return Format("$0 ($1, $2)",
+                ts->permanent_uuid(),
+                PeerRole_Name(role),
+                Failed() ? "FAILED" : "OK");
 }
 
 } // namespace internal

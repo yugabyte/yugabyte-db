@@ -28,18 +28,18 @@ showAsideToc: true
 The tutorial assumes that you have:
 
 - installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](../../../../quick-start/).
-- have a 32-bit (x86) or 64-bit (x64) architecture machine.
-- have gcc 4.1.2 or later, clang 3.4 or later installed.
+- a 32-bit (x86) or 64-bit (x64) architecture machine.
+- gcc 4.1.2 or later, clang 3.4 or later installed.
 
 ## Install the libpq C driver
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
-  
+
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
 
-Alternatively, you can download the PostgreSQL binaries or build the driver from source as documented [here](https://www.postgresql.org/download/).
+Alternatively, you can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
 
 ## Create the sample C application
 

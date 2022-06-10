@@ -16,8 +16,8 @@ For on-premises deployments of YugabyteDB universes, you need to import nodes th
 
 
 
-1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/latest/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/latest/deploy/checklist/#running-on-public-clouds). 
-2. Install the prerequisites and verify the system resource limits as described in [system configuration](/latest/deploy/manual-deployment/system-config).
+1. Ensure that the YugabyteDB nodes conform to the requirements outlined in the [deployment checklist](/preview/deploy/checklist/). This checklist also gives an idea of [recommended instance types across public clouds](/preview/deploy/checklist/#running-on-public-clouds).
+2. Install the prerequisites and verify the system resource limits as described in [system configuration](/preview/deploy/manual-deployment/system-config).
 3. Need ssh access to the machine and root access (or ability to run sudo)
     *   This sudo user can require a password but having passwordless access is desirable for simplicity and ease of use.
 4. 3.Verify that you can `ssh` into this node (from your local machine if the node has a public address).
@@ -33,7 +33,7 @@ $ ssh -i your_private_key.pem ssh_user@node_ip
     *   Create the `prometheus:prometheus` user + group
 
 {{< tip title="Tip" >}}
-In case you’re using the LDAP directory for managing system users, then you can pre-provision yugabyte and prometheus users 
+In case you’re using the LDAP directory for managing system users, then you can pre-provision yugabyte and prometheus users
 
 *   `yugabyte` user should belong to the `yugabyte` group
 *   Set home dir for yugabyte user (default /home/yugabyte) and ensure the directory is owned by `yugabyte:yugabyte`. The home directory will be used in the cloud provider config step
@@ -44,7 +44,7 @@ In case you’re using the LDAP directory for managing system users, then you ca
 
 
 {{< tip title="Tip" >}}
-For any 3rd party cron scheduling tools, you can add these cron entries and disable Crontab. Disabling Crontab will create alerts after the universe creation that can be ignored. But you need to ensure cron jobs are set appropriately  for the platform to work as expected. 
+For any 3rd party cron scheduling tools, you can add these cron entries and disable Crontab. Disabling Crontab will create alerts after the universe creation that can be ignored. But you need to ensure cron jobs are set appropriately  for the platform to work as expected.
 
 ```
 # Ansible: cleanup core files hourly

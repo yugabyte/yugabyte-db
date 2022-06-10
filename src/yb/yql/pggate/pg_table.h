@@ -14,8 +14,15 @@
 #ifndef YB_YQL_PGGATE_PG_TABLE_H
 #define YB_YQL_PGGATE_PG_TABLE_H
 
+#include <memory>
+#include <vector>
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/util/result.h"
+
+#include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
-#include "yb/yql/pggate/pg_tabledesc.h"
 
 namespace yb {
 namespace pggate {
@@ -39,6 +46,10 @@ class PgTable {
 
   PgTableDesc& operator*() const {
     return *desc_;
+  }
+
+  const std::vector<PgColumn>& columns() const {
+    return *columns_;
   }
 
   std::vector<PgColumn>& columns() {

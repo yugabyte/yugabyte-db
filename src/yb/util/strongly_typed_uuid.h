@@ -16,14 +16,12 @@
 
 #include <random>
 
-#include <boost/functional/hash/hash.hpp>
-
-#include <boost/optional/optional.hpp>
+#include <boost/preprocessor/cat.hpp>
 
 #include "yb/gutil/endian.h"
 
-#include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
+#include "yb/util/slice.h"
 #include "yb/util/uuid.h"
 
 // A "strongly-typed UUID" tool. This is needed to prevent passing the wrong UUID as a
@@ -66,7 +64,7 @@ class StronglyTypedUuid {
   // In that case we'll have to spell out the class name, which will enforce readability.
   explicit StronglyTypedUuid(const Uuid& uuid) : uuid_(uuid) {}
 
-  StronglyTypedUuid<Tag>(uint64_t pb1, uint64_t pb2) {
+  StronglyTypedUuid(uint64_t pb1, uint64_t pb2) {
     pb1 = LittleEndian::FromHost64(pb1);
     pb2 = LittleEndian::FromHost64(pb2);
     memcpy(uuid_.data(), &pb1, sizeof(pb1));

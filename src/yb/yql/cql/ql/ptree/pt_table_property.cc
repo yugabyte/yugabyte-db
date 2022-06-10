@@ -11,19 +11,41 @@
 // under the License.
 //
 
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
+
 #include <set>
+
+#include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/client/schema.h"
 #include "yb/client/table.h"
 
-#include "yb/yql/cql/ql/ptree/pt_table_property.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/schema.h"
+#include "yb/common/table_properties_constants.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+
 namespace yb {
 namespace ql {
+
+namespace {
+
+const std::string kCompactionClassPrefix = "org.apache.cassandra.db.compaction.";
+
+}
 
 using strings::Substitute;
 using client::YBColumnSchema;
@@ -52,15 +74,15 @@ const std::map<std::string, PTTableProperty::KVProperty> PTTableProperty::kPrope
 };
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
-                                 YBLocation::SharedPtr loc,
+                                 YBLocationPtr loc,
                                  const MCSharedPtr<MCString>& lhs,
-                                 const PTExpr::SharedPtr& rhs)
+                                 const PTExprPtr& rhs)
     : PTProperty(memctx, loc, lhs, rhs),
       property_type_(PropertyType::kTableProperty) {}
 
 PTTableProperty::PTTableProperty(MemoryContext *memctx,
-                                 YBLocation::SharedPtr loc,
-                                 const PTExpr::SharedPtr& expr,
+                                 YBLocationPtr loc,
+                                 const PTExprPtr& expr,
                                  const PTOrderBy::Direction direction)
     : PTProperty(memctx, loc), order_expr_(expr), direction_(direction),
       property_type_(PropertyType::kClusteringOrder) {}
@@ -110,10 +132,15 @@ Status PTTableProperty::AnalyzeSpeculativeRetry(const string &val) {
   return STATUS(InvalidArgument, generic_error);
 }
 
-CHECKED_STATUS PTTableProperty::Analyze(SemContext *sem_context) {
+string PTTableProperty::name() const {
+  DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
+  return order_expr_->QLName();
+}
+
+Status PTTableProperty::Analyze(SemContext *sem_context) {
 
   if (property_type_ == PropertyType::kCoPartitionTable) {
-    RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, OBJECT_TABLE));
+    RETURN_NOT_OK(copartition_table_name_->AnalyzeName(sem_context, ObjectType::TABLE));
 
     bool is_system; // ignored
     MCVector<ColumnDesc> copartition_table_columns(sem_context->PTempMem());
@@ -285,10 +312,10 @@ void PTTableProperty::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << "Not yet avail";
 }
 
-CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
+Status PTTablePropertyListNode::Analyze(SemContext *sem_context) {
   // Set to ensure we don't have duplicate table properties.
   std::set<string> table_properties;
-  unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
+  std::unordered_map<string, PTTableProperty::SharedPtr> order_tnodes;
   vector<string> order_columns;
   for (PTTableProperty::SharedPtr tnode : node_list()) {
     if (tnode == nullptr) {
@@ -349,9 +376,9 @@ CHECKED_STATUS PTTablePropertyListNode::Analyze(SemContext *sem_context) {
       return sem_context->Error(tnode, msg.c_str(), ErrorCode::INVALID_TABLE_PROPERTY);
     }
     if (tnode->direction() == PTOrderBy::Direction::kASC) {
-      pc->set_sorting_type(ColumnSchema::SortingType::kAscending);
+      pc->set_sorting_type(SortingType::kAscending);
     } else if (tnode->direction() == PTOrderBy::Direction::kDESC) {
-      pc->set_sorting_type(ColumnSchema::SortingType::kDescending);
+      pc->set_sorting_type(SortingType::kDescending);
     }
     ++order_column_iter;
   }
@@ -414,10 +441,11 @@ Status PTTableProperty::SetTableProperty(yb::TableProperties *table_property) co
       break;
     case KVProperty::kNumTablets:
       int64_t val;
-      if (!GetIntValueFromExpr(rhs_, table_property_name, &val).ok()) {
-        return STATUS(InvalidArgument, Substitute("Invalid value for tablets"));
+      auto status = GetIntValueFromExpr(rhs_, table_property_name, &val);
+      if (!status.ok()) {
+        return status.CloneAndAppend("Invalid value for tablets");
       }
-      table_property->SetNumTablets(val);
+      table_property->SetNumTablets(trim_cast<int32_t>(val));
       break;
   }
   return Status::OK();
@@ -437,7 +465,7 @@ const std::map<string, PTTablePropertyMap::PropertyMapType> PTTablePropertyMap::
 };
 
 PTTablePropertyMap::PTTablePropertyMap(MemoryContext *memctx,
-                                       YBLocation::SharedPtr loc)
+                                       YBLocationPtr loc)
     : PTTableProperty(memctx, loc) {
   property_type_ = PropertyType::kTablePropertyMap;
   map_elements_ = TreeListNode<PTTableProperty>::MakeShared(memctx, loc);
@@ -446,7 +474,7 @@ PTTablePropertyMap::PTTablePropertyMap(MemoryContext *memctx,
 PTTablePropertyMap::~PTTablePropertyMap() {
 }
 
-CHECKED_STATUS PTTablePropertyMap::Analyze(SemContext *sem_context) {
+Status PTTablePropertyMap::Analyze(SemContext *sem_context) {
   // Verify we have a valid property name in the lhs.
   const auto &property_name = lhs_->c_str();
   auto iterator = kPropertyDataTypes.find(property_name);
@@ -541,11 +569,9 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
       }
       class_name = std::dynamic_pointer_cast<PTConstText>(tnode->rhs())->Eval()->c_str();
       if (class_name.find('.') == string::npos) {
-        if (class_name.length() < Compaction::kClassPrefixLen ||
-            class_name.substr(Compaction::kClassPrefixLen) !=
-            Compaction::kClassPrefix) {
+        if (!boost::starts_with(class_name, kCompactionClassPrefix)) {
           LOG(INFO) << "Inserting prefix into class name";
-          class_name.insert(0, Compaction::kClassPrefix);
+          class_name.insert(0, kCompactionClassPrefix);
         }
       }
       class_subproperties_iter = Compaction::kClassSubproperties.find(class_name);
@@ -683,13 +709,8 @@ Status PTTablePropertyMap::AnalyzeCompaction() {
   }
 
   if (!invalid_subproperties.empty()) {
-    string list = "[";
-    for (auto i = 0; i < invalid_subproperties.size() - 1; i++) {
-      list += (invalid_subproperties[i] + ", ");
-    }
-    list += (invalid_subproperties.back() + "]");
-    return STATUS(InvalidArgument,
-                  Substitute("Properties specified $0 are not understood by $1", list, class_name));
+    return STATUS_FORMAT(InvalidArgument, "Properties specified $0 are not understood by $1",
+                         invalid_subproperties, class_name);
   }
   return Status::OK();
 }

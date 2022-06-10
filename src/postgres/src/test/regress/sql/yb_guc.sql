@@ -52,3 +52,36 @@ EXPLAIN SELECT * FROM test_scan WHERE j = 1;
 EXPLAIN SELECT j FROM test_scan;
 set enable_indexonlyscan = off;
 EXPLAIN SELECT j FROM test_scan;
+
+-- SET LOCAL is restricted by a function SET option
+create or replace function myfunc(int) returns text as $$
+begin
+  set local work_mem = '2MB';
+  return current_setting('work_mem');
+end $$
+language plpgsql
+set work_mem = '1MB';
+
+select myfunc(0), current_setting('work_mem');
+
+-- test SET unrecognized parameter
+SET foo = false;  -- no such setting
+
+-- test setting a parameter with a registered prefix (plpgsql)
+SET plpgsql.extra_foo_warnings = false;  -- no such setting
+SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
+
+-- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
+SET SESSION AUTHORIZATION yb_db_admin;
+SHOW session_replication_role;
+SET session_replication_role TO replica;
+SHOW session_replication_role;
+RESET session_replication_role;
+SHOW session_replication_role;
+-- test `yb_db_admin` role cannot set and reset other PGC_SUSET variables
+SET track_functions TO TRACK_FUNC_PL;
+RESET track_functions;
+
+-- cleanup
+RESET foo;
+RESET plpgsql.extra_foo_warnings;

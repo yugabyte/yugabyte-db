@@ -39,6 +39,12 @@ showAsideToc: true
       YSQL - Spring Data JPA
     </a>
   </li>
+   <li>
+    <a href="../ysql-ebeans/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebeans
+    </a>
+  </li>
   <li>
     <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
@@ -100,12 +106,12 @@ $ mvn spring-boot:run
 Create 2 users.
 
 ```sh
-$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
+$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 ```sh
-$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
+$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
@@ -212,7 +218,7 @@ yugabyte=# SELECT * FROM orderline;
 ```
 
 ```output
- order_id                             | product_id | units 
+ order_id                             | product_id | units
 --------------------------------------+------------+-------
  45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
  f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
@@ -235,17 +241,17 @@ $ curl http://localhost:8080/users
       "userId": 2,
       "firstName": "Tom",
       "lastName": "Stewart",
-      "email": "tstewart@yb.com"
+      "email": "tstewart@example.com"
     },
     {
       "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
-      "email": "jsmith@yb.com"
+      "email": "jsmith@example.com"
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -269,7 +275,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -286,7 +292,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -299,7 +305,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 15,
@@ -307,7 +313,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

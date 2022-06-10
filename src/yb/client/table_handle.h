@@ -16,14 +16,15 @@
 
 #include <unordered_map>
 
+#include <boost/functional/hash.hpp>
 #include <boost/optional.hpp>
 
 #include "yb/client/client_fwd.h"
-#include "yb/common/schema.h"
+
+#include "yb/common/column_id.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
-#include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/util/async_util.h"
@@ -58,21 +59,21 @@ class TableRange;
 // Utility class for manually filling QL operations.
 class TableHandle {
  public:
-  CHECKED_STATUS Create(const YBTableName& table_name,
+  Status Create(const YBTableName& table_name,
                         int num_tablets,
                         YBClient* client,
                         YBSchemaBuilder* builder,
                         IndexInfoPB* index_info = nullptr);
 
-  CHECKED_STATUS Create(const YBTableName& table_name,
+  Status Create(const YBTableName& table_name,
                         int num_tablets,
                         const YBSchema& schema,
                         YBClient* client,
                         IndexInfoPB* index_info = nullptr);
 
-  CHECKED_STATUS Open(const YBTableName& table_name, YBClient* client);
+  Status Open(const YBTableName& table_name, YBClient* client);
 
-  CHECKED_STATUS Reopen();
+  Status Reopen();
 
   std::shared_ptr<YBqlWriteOp> NewWriteOp(QLWriteRequestPB::QLStmtType type) const;
 
@@ -140,7 +141,8 @@ class TableHandle {
 
  private:
   typedef std::unordered_map<std::string, yb::ColumnId> ColumnIdsMap;
-  typedef std::unordered_map<yb::ColumnId, const std::shared_ptr<QLType>> ColumnTypesMap;
+  using ColumnTypesMap = std::unordered_map<
+      yb::ColumnId, const std::shared_ptr<QLType>, boost::hash<yb::ColumnId>>;
 
   YBClient* client_;
   YBTablePtr table_;

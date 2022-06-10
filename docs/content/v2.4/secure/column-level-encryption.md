@@ -20,7 +20,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/secure/authorization/rbac-model" class="nav-link active">
+    <a href="/preview/secure/authorization/rbac-model" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -78,7 +78,7 @@ CREATE TABLE
 
 
 
-In this example, account numbers of `employees` table will be encrypted using` PGP_SYM_ENCRYPT` function. 
+In this example, account numbers of `employees` table will be encrypted using` PGP_SYM_ENCRYPT` function.
 
 
 ```
@@ -91,7 +91,7 @@ INSERT 0 1
 ```
 
 
-### Step 3. Verify column encryption 
+### Step 3. Verify column encryption
 
 Review the encrypted `account_number` data, as shown below
 
@@ -110,7 +110,7 @@ yugabyte=# select ename, account_number from employees limit 1;
 
 ### Step 4. Query using `PGP_SYM_DECRYPT`
 
-Decrypt the account numbers using `PGP_SYM_DECRYPT` function as shown here. In order to retrieve the encrypted column data, use `PGP_SYM_DECRYPT` function to decrypt the data. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query. 
+Decrypt the account numbers using `PGP_SYM_DECRYPT` function as shown here. In order to retrieve the encrypted column data, use `PGP_SYM_DECRYPT` function to decrypt the data. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query.
 
 
 To allow the decryption, the field name is also casted to the binary data type with the syntax: ` account_number:bytea`.
@@ -149,7 +149,7 @@ The example below walks through configuring YugabyteDB cluster with a new set of
     There is NO WARRANTY, to the extent permitted by law.
     ```
 
-* After going through configuration prompts, RSA key gets generated - 
+* After going through configuration prompts, RSA key gets generated -
 
 
     ```
@@ -248,7 +248,7 @@ yugabyte=# select ename, account_number from employees limit 1;
 
 ### Step 5. Query using `pgp_pub_decrypt`
 
-Use `pgp_pub_decrypt` and private key for decrypting column data. In order to retrieve the encrypted column data, use `pgp_pub_decrypt` function to decrypt the data and wrap the pgp private key with dearmor function to convert the private key into PGP ASCII-armor format. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query. 
+Use `pgp_pub_decrypt` and private key for decrypting column data. In order to retrieve the encrypted column data, use `pgp_pub_decrypt` function to decrypt the data and wrap the pgp private key with dearmor function to convert the private key into PGP ASCII-armor format. The Decryption function needs to be used in both SELECT and WHERE clause depending on the query.
 
 To allow the decryption, the field name is also casted to the binary data type with the syntax: ` account_number:bytea`.
 

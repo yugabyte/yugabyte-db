@@ -1049,8 +1049,8 @@ DETAIL:  column f1 of table foo depends on type c.cube
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 drop schema c;  -- fail, cube requires it
 ERROR:  cannot drop schema c because other objects depend on it
-DETAIL:  extension cube depends on schema c
-column f1 of table foo depends on type c.cube
+DETAIL:  column f1 of table foo depends on type c.cube
+extension cube depends on schema c
 HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 drop extension cube cascade;
 NOTICE:  drop cascades to column f1 of table foo

@@ -14,9 +14,13 @@
 #ifndef YB_TOOLS_ADMIN_TEST_BASE_H
 #define YB_TOOLS_ADMIN_TEST_BASE_H
 
+#include <rapidjson/document.h>
+
 #include "yb/integration-tests/ts_itest-base.h"
 
+#include "yb/util/result.h"
 #include "yb/util/string_util.h"
+#include "yb/util/subprocess.h"
 
 namespace yb {
 

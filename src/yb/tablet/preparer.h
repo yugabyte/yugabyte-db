@@ -16,10 +16,9 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/threadpool.h"
 
-DECLARE_int32(max_group_replicate_batch_size);
 DECLARE_int32(prepare_queue_max_size);
 
 namespace yb {
@@ -44,10 +43,10 @@ class Preparer {
   explicit Preparer(consensus::Consensus* consensus, ThreadPool* tablet_prepare_pool);
   ~Preparer();
 
-  CHECKED_STATUS Start();
+  Status Start();
   void Stop();
 
-  CHECKED_STATUS Submit(OperationDriver* txn_driver);
+  Status Submit(OperationDriver* txn_driver);
   ThreadPoolToken* PoolToken();
 
  private:

@@ -11,14 +11,19 @@
 // under the License.
 //
 
+#include <gtest/gtest.h>
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);
+DECLARE_bool(TEST_follower_pause_update_consensus_requests);
 
 namespace yb {
 namespace pgwrapper {
@@ -40,7 +45,7 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_SANITIZERS(EmptyUpdate)) {
 
 class PgTxnRF1Test : public PgTxnTest {
  public:
-  int NumTabletServers() override {
+  size_t NumTabletServers() override {
     return 1;
   }
 };
@@ -199,6 +204,103 @@ TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(ReadRecentSet)) {
   }
 
   thread_holder.WaitAndStop(30s);
+}
+
+// This test ensures that concurrent SELECT...FOR UPDATE queries to the same row perform conflict
+// resolution and intent writes in serial with each other. It does this by setting a sync point in
+// the write path code immediately after in-memory locks are acquired, which depends on a sync point
+// in the test which is only hit after the test thread has spawned multiple concurrent queries and
+// slept. In the time the test thread is sleeping, we expect the following sequence of events:
+// 1. One of the postgres sessions successfully acquires the locks, and is hanging on the sync point
+// 2. All other sessions are now blocked on the lock acquisition
+// 3. The test thread sleeps
+// 4. While the test thread is sleeping, some number of the sessions time out, returning error
+// 5. Test thread wakes up and hits the sync point, thereby releasing the first session that was
+//    waiting there with the locks.
+// 6. Among those which did not timeout, they should now perform conflict resolution in serial.
+//    These sessions will either
+//      (1) succeed and abort any txns which have written intents
+//      -or-
+//      (2) fail and return error status
+// 7. At the end of this, exactly one session should have successfully committed.
+//
+// If multiple sessions are allowed to acquire the same in-memory locks, then we will likely see
+// more than one of them succeed, as they will perform conflict resolution concurrently and not see
+// each others intents. This test therefore ensures with high likelihood that the in-memory locking
+// is working correctly for SELECT...FOR UPDATE queries.
+//
+// Important note -- sync point only works in debug mode. Non-debug test runs may not catch these
+// issues as reliably.
+TEST_F(PgTxnTest, YB_DISABLE_TEST_IN_TSAN(SelectForUpdateExclusiveRead)) {
+  constexpr int kNumThreads = 10;
+  constexpr int kNumSleepSeconds = 1;
+  TestThreadHolder thread_holder;
+
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.Execute("CREATE TABLE test (key INT NOT NULL PRIMARY KEY, value INT)"));
+  ASSERT_OK(setup_conn.Execute("INSERT INTO test SELECT generate_series(1, 5), 0"));
+
+  // Ensure that any request threads which are allowed to acquire a lock on the row read below wait
+  // until the SleepFor duration specified at this test's sync point to create the opportunity for
+  // a race.
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->LoadDependency({{
+    "PgTxnTest::SelectForUpdateExclusiveRead::SelectComplete",
+    "WriteQuery::DoExecute::PreparedDocWriteOps"
+  }});
+  SyncPoint::GetInstance()->EnableProcessing();
+#endif // NDEBUG
+
+  bool read_succeeded[kNumThreads] {};
+  std::vector<PGConn> conns;
+
+  for (int thread_idx = 0; thread_idx < kNumThreads; ++thread_idx) {
+    conns.emplace_back(ASSERT_RESULT(Connect()));
+    thread_holder.AddThreadFunctor([thread_idx, &read_succeeded, &conns] {
+      auto& conn = conns[thread_idx];
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+
+      // Each thread will try to acquire an exclusive lock on the same row. Only one thread should
+      // be able to acquire it at a given time. If the code being tested has the correct behavior,
+      // then we should expect one RPC thread to hold the lock for 10s while the others wait for
+      // the sync point in this test to be hit. Then, each RPC thread should proceed in serial after
+      // that, acquiring the lock and resolving conflicts.
+      auto res = conn.FetchValue<int>("SELECT value FROM test WHERE key=1 FOR UPDATE");
+
+      read_succeeded[thread_idx] = res.ok();
+      LOG(INFO) << "Thread read " << thread_idx << (res.ok() ? " succeeded" : " failed");
+    });
+  }
+
+  SleepFor(1s * kNumSleepSeconds * kTimeMultiplier);
+  TEST_SYNC_POINT("PgTxnTest::SelectForUpdateExclusiveRead::SelectComplete");
+
+  thread_holder.WaitAndStop(1s * kNumSleepSeconds * kTimeMultiplier);
+
+#ifndef NDEBUG
+  SyncPoint::GetInstance()->DisableProcessing();
+  SyncPoint::GetInstance()->ClearTrace();
+#endif // NDEBUG
+
+  bool found_success = false;
+  for (int thread_idx = 0; thread_idx < kNumThreads; ++thread_idx) {
+    // It's possible that two threads had a successful SELECT...FOR UPDATE if a later one was
+    // assigned higher priority. However, in that case, the earlier thread should not commit. In
+    // general, only one thread should have a successful read and a successful commit.
+    if (read_succeeded[thread_idx] && conns[thread_idx].CommitTransaction().ok()) {
+      LOG(INFO) << "Read succeeded on thread_idx " << thread_idx;
+      EXPECT_FALSE(found_success)
+          << "Found more than one thread with successful concurrent exclusive read.";
+      found_success = true;
+    }
+  }
+  // We expect one of the threads to have succeeded.
+  EXPECT_TRUE(found_success);
+
+  // Once the successful thread commits, we should be free to read the same row without conflict.
+  EXPECT_OK(setup_conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  EXPECT_OK(setup_conn.Fetch("SELECT * FROM test WHERE key=1 FOR UPDATE"));
+  EXPECT_OK(setup_conn.CommitTransaction());
 }
 
 } // namespace pgwrapper

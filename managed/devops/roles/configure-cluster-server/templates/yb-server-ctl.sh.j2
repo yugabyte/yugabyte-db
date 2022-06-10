@@ -165,6 +165,7 @@ esac
 if [ "$1" == "clean-instance" ]; then
   print_err_out "Cleaning instance `hostname`"
   rm -rf "{{ yb_home_dir }}"/*
+  rm -rf "{{ yb_home_dir }}"/.yugabytedb
   exit 0
 fi
 

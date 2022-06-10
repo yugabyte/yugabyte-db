@@ -16,8 +16,6 @@
 
 #include <openssl/ossl_typ.h>
 
-#include <vector>
-
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -65,8 +63,8 @@ class VarInt {
 
   // The input is expected to be of the form (-)?[0-9]+, whitespace is not allowed. Use this
   // after removing whitespace.
-  CHECKED_STATUS FromString(const std::string& input);
-  CHECKED_STATUS FromString(const char* cstr);
+  Status FromString(const std::string& input);
+  Status FromString(const char* cstr);
 
   static Result<VarInt> CreateFromString(const std::string& input);
 
@@ -166,16 +164,16 @@ class VarInt {
   // Convert the number to base 256 and encode each digit as a byte from high order to low order.
   // If negative x, encode 2^(8t) + x for the smallest value of t that ensures first bit is one.
   // If num_bytes is -1 then choose it based on number of digits in base 256
-  CHECKED_STATUS DecodeFromComparable(
+  Status DecodeFromComparable(
       const Slice& slice, size_t *num_decoded_bytes, size_t num_reserved_bits = 0);
 
-  CHECKED_STATUS DecodeFromComparable(const Slice& string);
+  Status DecodeFromComparable(const Slice& string);
 
   // Each byte in the encoding encodes two digits, and a continuation bit in the beginning.
   // The continuation bit is zero if and only if this is the last byte of the encoding.
   std::string EncodeToTwosComplement() const;
 
-  CHECKED_STATUS DecodeFromTwosComplement(const std::string& string);
+  Status DecodeFromTwosComplement(const std::string& string);
 
   const VarInt& Negate();
 

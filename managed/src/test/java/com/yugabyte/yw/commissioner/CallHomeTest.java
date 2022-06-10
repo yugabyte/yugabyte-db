@@ -73,6 +73,7 @@ public class CallHomeTest extends FakeDBApplication {
     when(mockEnvironment.isDev()).thenReturn(true);
     callHome =
         new CallHome(mockActorSystem, mockExecutionContext, mockCallHomeManager, mockEnvironment);
+    callHome.start();
     verify(mockActorSystem, times(0)).scheduler();
   }
 
@@ -81,6 +82,7 @@ public class CallHomeTest extends FakeDBApplication {
     when(mockEnvironment.isDev()).thenReturn(false);
     callHome =
         new CallHome(mockActorSystem, mockExecutionContext, mockCallHomeManager, mockEnvironment);
+    callHome.start();
     ArgumentCaptor<FiniteDuration> initialDelay = ArgumentCaptor.forClass(FiniteDuration.class);
     ArgumentCaptor<FiniteDuration> interval = ArgumentCaptor.forClass(FiniteDuration.class);
     ArgumentCaptor<Runnable> mockScheduleRunner = ArgumentCaptor.forClass(Runnable.class);

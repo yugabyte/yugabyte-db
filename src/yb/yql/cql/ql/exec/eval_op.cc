@@ -15,16 +15,18 @@
 
 #include "yb/yql/cql/ql/exec/executor.h"
 
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+
 namespace yb {
 namespace ql {
 
 using client::YBColumnSpec;
 
-CHECKED_STATUS Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb) {
+Status Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb) {
   return PTUMinusToPB(op_pt, op_pb->mutable_value());
 }
 
-CHECKED_STATUS Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb) {
+Status Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const_pb) {
   // Negate the value.
   if (op_pt->is_constant()) {
     RETURN_NOT_OK(PTConstToPB(op_pt->op1(), const_pb, true));
@@ -35,7 +37,7 @@ CHECKED_STATUS Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLValuePB *const
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
+Status Executor::PTJsonOperatorToPB(const PTJsonOperator::SharedPtr& json_pt,
                                             QLJsonOperationPB *op_pb) {
   switch (json_pt->json_operator()) {
     case JsonOperator::JSON_TEXT:

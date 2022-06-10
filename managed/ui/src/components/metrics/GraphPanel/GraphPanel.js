@@ -14,8 +14,9 @@ import {
   isNonEmptyString
 } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+import { YUGABYTE_TITLE } from '../../../config';
 
-const panelTypes = {
+export const panelTypes = {
   container: {
     title: 'Container',
     metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']
@@ -40,7 +41,8 @@ const panelTypes = {
       'tserver_rpcs_per_sec_per_node',
       'tserver_ops_latency',
       'tserver_handler_latency',
-      'tserver_threads',
+      'tserver_threads_running',
+      'tserver_threads_started',
       'tserver_consensus_rpcs_per_sec',
       'tserver_change_config',
       'tserver_remote_bootstraps',
@@ -71,6 +73,7 @@ const panelTypes = {
       'master_ts_heartbeats',
       'tserver_rpc_queue_size_master',
       'master_consensus_update',
+      'master_multiraft_consensus_update',
       'master_table_ops',
       'master_cpu_util_secs',
       'master_yb_rpc_connections'
@@ -96,14 +99,16 @@ const panelTypes = {
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
-      'docdb_transaction'
+      'docdb_transaction',
+      'docdb_transaction_pool_cache'
     ]
   },
   ysql_ops: {
     title: 'YSQL Ops and Latency',
     metrics: [
       'ysql_server_rpc_per_second',
-      'ysql_sql_latency'
+      'ysql_sql_latency',
+      'ysql_connections'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
@@ -141,10 +146,7 @@ const panelTypes = {
 
   sql: {
     title: 'YSQL Advanced',
-    metrics: [
-      'ysql_server_advanced_rpc_per_second',
-      'ysql_sql_advanced_latency'
-    ]
+    metrics: ['ysql_server_advanced_rpc_per_second', 'ysql_sql_advanced_latency']
   },
 
   cql: {
@@ -191,7 +193,8 @@ const panelTypes = {
       'lsm_rocksdb_compaction',
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
-      'docdb_transaction'
+      'docdb_transaction',
+      'docdb_transaction_pool_cache'
     ]
   }
 };
@@ -220,15 +223,23 @@ class GraphPanel extends Component {
   queryMetricsType = (graphFilter) => {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
+    const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === 'top') ? 1 : 0;
+    const metricsWithSettings = panelTypes[type].metrics.map((metric) =>
+     {
+        return {
+          metric: metric,
+          splitTopNodes: splitTopNodes
+        }
+     })
     const params = {
-      metrics: panelTypes[type].metrics,
+      metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
       end: endMoment.format('X')
     };
     if (isNonEmptyString(nodePrefix) && nodePrefix !== 'all') {
       params.nodePrefix = nodePrefix;
     }
-    if (isNonEmptyString(nodeName) && nodeName !== 'all') {
+    if (isNonEmptyString(nodeName) && nodeName !== 'all' && nodeName !== 'top') {
       params.nodeName = nodeName;
     }
     // In case of universe metrics , nodePrefix comes from component itself
@@ -272,7 +283,8 @@ class GraphPanel extends Component {
       type,
       selectedUniverse,
       insecureLoginToken,
-      graph: { metrics, prometheusQueryEnabled }
+      graph: { metrics, prometheusQueryEnabled },
+      customer: { currentUser }
     } = this.props;
 
     let panelData = <YBLoading />;
@@ -282,7 +294,7 @@ class GraphPanel extends Component {
       !(type === 'ycql_ops' || type === 'ysql_ops' || type === 'yedis_ops')
     ) {
       panelData = (
-        <div className="oss-unavailable-warning">Only available on Yugabyte Platform.</div>
+        <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
       );
     } else {
       if (Object.keys(metrics).length > 0 && isNonEmptyObject(metrics[type])) {
@@ -296,6 +308,7 @@ class GraphPanel extends Component {
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
               <MetricsPanel
+                currentUser={currentUser}
                 metricKey={metricKey}
                 key={idx}
                 metric={metrics[type][metricKey]}

@@ -14,9 +14,12 @@
 #ifndef YB_SERVER_TOTAL_MEM_WATCHER_H
 #define YB_SERVER_TOTAL_MEM_WATCHER_H
 
+#include <functional>
 #include <memory>
 
-#include "yb/util/status.h"
+#include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace server {
@@ -31,7 +34,7 @@ class TotalMemWatcher {
   virtual ~TotalMemWatcher();
 
   // Re-check the total memory usage and populate the internal state of this watcher object.
-  virtual CHECKED_STATUS Check() = 0;
+  virtual Status Check() = 0;
 
   // Determines whether the program should terminate based on the most recent check. Returns a
   // non-empty string with the termination reason if the program should terminate, or or an empty

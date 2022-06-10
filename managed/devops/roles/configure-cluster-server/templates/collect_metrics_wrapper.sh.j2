@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#
+# Copyright 2021 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+set -euo pipefail
+
+collect_metrics_script=({{ yb_home_dir }}/bin/collect_metrics.sh)
+filename=({{ yb_metrics_dir }}/node_metrics.prom)
+
+if [[ "$(id -u)" != "0" && "$USER" != "yugabyte" ]]; then
+  echo "This script must be run as root or yugabyte"
+  exit 1
+fi
+
+# Just call a script, generated and uploaded by health check process
+if [ -f $collect_metrics_script ]; then
+  /bin/bash $collect_metrics_script -o file -f $filename
+else
+  echo "Metric collection script $collect_metrics_script does not exist"
+  exit 1
+fi

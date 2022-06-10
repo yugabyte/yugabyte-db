@@ -12,13 +12,14 @@
 //
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 
+import com.yugabyte.util.PSQLException;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -401,5 +402,86 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     AlterCommand dropColumn = AlterCommand.DROP_COLUMN;
     runInsertTxnWithAlterOnUnrelatedResource(dropColumn, withCachedMetadata, executeDmlBeforeAlter);
     runInsertTxnWithAlterOnUnrelatedResource(dropColumn, withCachedMetadata, executeDmlAfterAlter);
+  }
+
+  @Test
+  public void testTransactionConflictErrorCode() throws Exception {
+    try (Connection conn1 = getConnectionBuilder().connect();
+         Statement stmt1 = conn1.createStatement();
+         Connection conn2 = getConnectionBuilder().connect();
+         Statement stmt2 = conn2.createStatement();
+         Connection conn3 = getConnectionBuilder().connect();
+         Statement stmt3 = conn3.createStatement()) {
+
+      stmt1.execute("CREATE TABLE p (a INT)");
+      stmt1.execute("INSERT INTO p VALUES (1)");
+
+      LOG.info("Test write before ALTER");
+      stmt2.execute("SELECT * FROM p");
+      stmt2.execute("BEGIN");
+      stmt2.execute("INSERT INTO p VALUES (2)");
+      stmt3.execute("ALTER TABLE p ADD COLUMN b TEXT");
+      try {
+        stmt2.execute("COMMIT");
+        fail("Write before ALTER did not fail");
+      } catch (PSQLException e) {
+        assertEquals(SERIALIZATION_FAILURE_PSQL_STATE, e.getSQLState());
+      }
+
+      LOG.info("Test write after ALTER");
+      stmt2.execute("SELECT * FROM p");
+      stmt2.execute("BEGIN");
+      stmt3.execute("ALTER TABLE p DROP COLUMN b");
+      try {
+        stmt2.execute("INSERT INTO p VALUES (2)");
+        fail("Write after ALTER did not fail");
+      } catch (PSQLException e) {
+        assertEquals(SERIALIZATION_FAILURE_PSQL_STATE, e.getSQLState());
+      }
+      stmt2.execute("COMMIT");
+
+      // Only testing select after ALTER because
+      // select before ALTER is treated as no op and
+      // thus does not cause transaction to abort
+      LOG.info("Test select after ALTER");
+      stmt2.execute("SELECT * FROM p");
+      stmt2.execute("BEGIN");
+      stmt3.execute("ALTER TABLE p ADD COLUMN b TEXT");
+      try {
+        stmt2.execute("SELECT * FROM p");
+        fail("Read after ALTER did not fail");
+      } catch (PSQLException e) {
+        assertEquals(SERIALIZATION_FAILURE_PSQL_STATE, e.getSQLState());
+      }
+      stmt2.execute("COMMIT");
+    }
+  }
+
+  @Test
+  public void testTransactionConflictErrorCodeOnOtherResource() throws Exception {
+    try (Connection conn1 = getConnectionBuilder().connect();
+        Statement stmt1 = conn1.createStatement();
+        Connection conn2 = getConnectionBuilder().connect();
+        Statement stmt2 = conn2.createStatement();
+        Connection conn3 = getConnectionBuilder().connect();
+        Statement stmt3 = conn3.createStatement()) {
+
+      LOG.info("Test select after ALTER on different resource");
+      stmt1.execute("CREATE TABLE test (a INT PRIMARY KEY, b INT, c INT)");
+      stmt1.execute("CREATE USER foo");
+
+      stmt2.execute("BEGIN");
+      stmt2.execute("INSERT INTO test VALUES (1,1,1)");
+
+      stmt3.execute("ALTER USER foo RENAME TO bar");
+      waitForTServerHeartbeat();
+      try {
+        stmt2.execute("INSERT INTO test VALUES (2,2,2)");
+        fail("Insert after ALTER on different resource did not fail");
+      } catch (PSQLException e) {
+        assertEquals(SERIALIZATION_FAILURE_PSQL_STATE, e.getSQLState());
+      }
+      stmt2.execute("COMMIT");
+    }
   }
 }

@@ -20,38 +20,41 @@
 
 #include <stdint.h>
 
+#include "yb/util/enums.h"
+
 namespace yb {
 namespace bfpg {
 
-enum class TSOpcode : int32_t {
-  kNoOp = 0,
+YB_DEFINE_ENUM(
+  TSOpcode,
+  ((kNoOp, 0))
 
-  kWriteTime,
-  kTtl,
+  (kWriteTime)
+  (kTtl)
 
-  kAvg,
-  kCount,
-  kMax,
-  kMin,
-  kSumInt8,
-  kSumInt16,
-  kSumInt32,
-  kSumInt64,
-  kSumFloat,
-  kSumDouble,
+  (kAvg)
+  (kCount)
+  (kMax)
+  (kMin)
+  (kSumInt8)
+  (kSumInt16)
+  (kSumInt32)
+  (kSumInt64)
+  (kSumFloat)
+  (kSumDouble)
 
-  kScalarInsert,
-  kMapExtend,
-  kMapRemove,
-  kSetExtend,
-  kSetRemove,
-  kListAppend,
-  kListPrepend,
-  kListRemove,
+  (kScalarInsert)
+  (kMapExtend)
+  (kMapRemove)
+  (kSetExtend)
+  (kSetRemove)
+  (kListAppend)
+  (kListPrepend)
+  (kListRemove)
 
   // Serialized YSQL/PG Expr Node.
-  kPgEvalExprCall,
-};
+  (kPgEvalExprCall)
+);
 
 bool IsAggregateOpcode(TSOpcode op);
 

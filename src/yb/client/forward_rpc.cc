@@ -11,15 +11,18 @@
 // under the License.
 //
 
-#include "yb/client/client.h"
-#include "yb/client/client-internal.h"
 #include "yb/client/forward_rpc.h"
+
+#include "yb/client/client.h"
 
 #include "yb/common/wire_protocol.h"
 
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/cast.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 using namespace std::placeholders;
 

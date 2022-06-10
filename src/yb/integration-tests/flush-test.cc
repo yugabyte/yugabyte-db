@@ -14,25 +14,31 @@
 #include <chrono>
 #include <regex>
 
-#include "yb/integration-tests/test_workload.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/schema.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/util/metrics.h"
-#include "yb/util/test_util.h"
 #include "yb/client/table.h"
+
+#include "yb/common/common.pb.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
 
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/memory_monitor.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/rpc/rpc_fwd.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_memory_manager.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -234,11 +240,11 @@ class FlushITest : public YBTest {
 
   void TestFlushPicksOldestInactiveTabletAfterCompaction(bool with_restart);
 
-  const size_t kServerLimitMB = 2;
+  const int32_t kServerLimitMB = 2;
   // Used to set memstore limit to value higher than server limit, so flushes are only being
   // triggered by memory monitor which we want to test.
-  const size_t kOverServerLimitMB = kServerLimitMB * 10;
-  const size_t kNumTablets = 3;
+  const int32_t kOverServerLimitMB = kServerLimitMB * 10;
+  const int kNumTablets = 3;
   const size_t kPayloadBytes = 8_KB;
   std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<TestWorkload> workload_;

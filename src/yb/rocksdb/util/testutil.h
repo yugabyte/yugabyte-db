@@ -27,8 +27,11 @@
 #pragma once
 #include <algorithm>
 #include <deque>
+#include <mutex>
 #include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/casts.h"
 
@@ -47,8 +50,16 @@
 
 #include "yb/util/slice.h"
 
+DECLARE_bool(never_fsync);
 namespace rocksdb {
 class SequentialFileReader;
+
+class RocksDBTest : public ::testing::Test {
+ public:
+  RocksDBTest() {
+    FLAGS_never_fsync = true;
+  }
+};
 
 namespace test {
 
@@ -246,7 +257,7 @@ class StringSource: public RandomAccessFile {
 
   yb::Result<uint64_t> Size() const override { return contents_.size(); }
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     total_reads_++;
     if (offset > contents_.size()) {
       return STATUS(InvalidArgument, "invalid Read offset");
@@ -665,20 +676,20 @@ TableFactory* RandomTableFactory(Random* rnd, int pre_defined = -1);
 std::string RandomName(Random* rnd, const size_t len);
 
 std::shared_ptr<BoundaryValuesExtractor> MakeBoundaryValuesExtractor();
-UserBoundaryValuePtr MakeIntBoundaryValue(int64_t value);
-UserBoundaryValuePtr MakeStringBoundaryValue(std::string value);
-int64_t GetBoundaryInt(const UserBoundaryValues& values);
-std::string GetBoundaryString(const UserBoundaryValues& values);
+UserBoundaryValue MakeLeftBoundaryValue(const Slice& value);
+UserBoundaryValue MakeRightBoundaryValue(const Slice& value);
+Slice GetBoundaryLeft(const UserBoundaryValues& values);
+Slice GetBoundaryRight(const UserBoundaryValues& values);
 
 struct BoundaryTestValues {
   void Feed(Slice key);
   void Check(const FileBoundaryValues<InternalKey>& smallest,
              const FileBoundaryValues<InternalKey>& largest);
 
-  int64_t min_int = std::numeric_limits<int64_t>::max();
-  int64_t max_int = std::numeric_limits<int64_t>::min();
-  std::string min_string;
-  std::string max_string;
+  UserBoundaryValue::Value min_left;
+  UserBoundaryValue::Value max_left;
+  UserBoundaryValue::Value min_right;
+  UserBoundaryValue::Value max_right;
 };
 
 // A test implementation of UserFrontier, wrapper over simple int64_t value.
@@ -699,9 +710,7 @@ class TestUserFrontier : public UserFrontier {
     return value_;
   }
 
-  std::string ToString() const override {
-    return yb::Format("{ value: $0 }", value_);
-  }
+  std::string ToString() const override;
 
   void ToPB(google::protobuf::Any* pb) const override {
     UserBoundaryValuePB value;
@@ -739,10 +748,11 @@ class TestUserFrontier : public UserFrontier {
 
   void FromOpIdPBDeprecated(const yb::OpIdPB& op_id) override {}
 
-  void FromPB(const google::protobuf::Any& pb) override {
+  Status FromPB(const google::protobuf::Any& pb) override {
     UserBoundaryValuePB value;
     pb.UnpackTo(&value);
     value_ = value.tag();
+    return Status::OK();
   }
 
   Slice Filter() const override {

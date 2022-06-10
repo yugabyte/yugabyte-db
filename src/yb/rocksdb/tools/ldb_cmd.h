@@ -34,6 +34,9 @@
 #include <vector>
 #include <map>
 
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
@@ -43,10 +46,8 @@
 #include "yb/rocksdb/tools/ldb_cmd_execute_result.h"
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
-#include "yb/util/header_manager_impl.h"
 #include "yb/util/slice.h"
 #include "yb/util/string_util.h"
-#include "yb/util/universe_key_manager.h"
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 using std::string;
@@ -244,7 +245,7 @@ class LDBCommand {
   /** List of command-line options valid for this command */
   const vector<string> valid_cmd_line_options_;
 
-  std::unique_ptr<yb::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> env_;
 
   bool ParseKeyValue(const string& line, string* key, string* value,
@@ -281,13 +282,13 @@ class LDBCommand {
       if(!s.ok()) {
         LOG(FATAL) << yb::Format("Could not read file at path $0: $1", key_path, s.ToString());
       }
-      auto res = yb::UniverseKeyManager::FromKey(key_id, yb::Slice(key_data));
+      auto res = yb::encryption::UniverseKeyManager::FromKey(key_id, yb::Slice(key_data));
       if (!res.ok()) {
         LOG(FATAL) << "Could not create universe key manager: " << res.status().ToString();
       }
       universe_key_manager_ = std::move(*res);
       env_ = yb::NewRocksDBEncryptedEnv(
-          yb::DefaultHeaderManager(universe_key_manager_.get()));
+          yb::encryption::DefaultHeaderManager(universe_key_manager_.get()));
     }
 
     itr = options.find(ARG_CF_NAME);

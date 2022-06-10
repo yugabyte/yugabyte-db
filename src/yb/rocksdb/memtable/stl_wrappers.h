@@ -19,14 +19,11 @@
 //
 #pragma once
 
-#include <map>
 #include <string>
 
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/memtablerep.h"
+
 #include "yb/util/slice.h"
-#include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/murmurhash.h"
 
 namespace rocksdb {
 namespace stl_wrappers {
@@ -45,5 +42,5 @@ struct Compare : private Base {
   }
 };
 
-}
-}
+} // namespace stl_wrappers
+} // namespace rocksdb

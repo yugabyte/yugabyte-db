@@ -5,7 +5,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
@@ -13,27 +13,38 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
+import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
-import com.yugabyte.yw.common.CertificateHelper;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -41,15 +52,21 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Configuration;
+import play.libs.Json;
 
 /**
  * Abstract base class for all tasks that create/edit the universe definition. These include the
@@ -79,6 +96,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     YSQLSERVER,
     REDISSERVER,
     EITHER
+  }
+
+  public enum PortType {
+    HTTP,
+    RPC
   }
 
   private Configuration appConfig;
@@ -112,6 +134,60 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * This sets the user intent from the task params to the universe in memory. Note that the changes
+   * are not saved to the DB in this method.
+   *
+   * @param universe
+   * @param isReadOnlyCreate
+   */
+  public static void setUserIntentToUniverse(
+      Universe universe, UniverseDefinitionTaskParams taskParams, boolean isReadOnlyCreate) {
+    // Persist the updated information about the universe.
+    // It should have been marked as being edited in lockUniverseForUpdate().
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    if (!universeDetails.updateInProgress) {
+      String msg = "Universe " + taskParams.universeUUID + " has not been marked as being updated.";
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+    if (!isReadOnlyCreate) {
+      universeDetails.nodeDetailsSet = taskParams.nodeDetailsSet;
+      universeDetails.nodePrefix = taskParams.nodePrefix;
+      universeDetails.useNewHelmNamingStyle = taskParams.useNewHelmNamingStyle;
+      universeDetails.universeUUID = taskParams.universeUUID;
+      universeDetails.allowInsecure = taskParams.allowInsecure;
+      universeDetails.rootAndClientRootCASame = taskParams.rootAndClientRootCASame;
+      Cluster cluster = taskParams.getPrimaryCluster();
+      if (cluster != null) {
+        universeDetails.rootCA = null;
+        universeDetails.clientRootCA = null;
+        if (EncryptionInTransitUtil.isRootCARequired(taskParams)) {
+          universeDetails.rootCA = taskParams.rootCA;
+        }
+        if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
+          universeDetails.clientRootCA = taskParams.clientRootCA;
+        }
+        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
+      } // else read only cluster edit mode.
+    } else {
+      // Combine the existing nodes with new read only cluster nodes.
+      universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
+    }
+    taskParams
+        .getReadOnlyClusters()
+        .forEach(
+            async -> {
+              // Update read replica cluster TLS params to be same as primary cluster
+              async.userIntent.enableNodeToNodeEncrypt =
+                  universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
+              async.userIntent.enableClientToNodeEncrypt =
+                  universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
+              universeDetails.upsertCluster(async.userIntent, async.placementInfo, async.uuid);
+            });
+    universe.setUniverseDetails(universeDetails);
+  }
+
+  /**
    * Writes all the user intent to the universe.
    *
    * @return
@@ -130,50 +206,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
-          // Persist the updated information about the universe.
-          // It should have been marked as being edited in lockUniverseForUpdate().
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String msg =
-                "Universe " + taskParams().universeUUID + " has not been marked as being updated.";
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
-          if (!isReadOnlyCreate) {
-            universeDetails.nodeDetailsSet = taskParams().nodeDetailsSet;
-            universeDetails.nodePrefix = taskParams().nodePrefix;
-            universeDetails.universeUUID = taskParams().universeUUID;
-            universeDetails.allowInsecure = taskParams().allowInsecure;
-            universeDetails.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-            Cluster cluster = taskParams().getPrimaryCluster();
-            if (cluster != null) {
-              universeDetails.rootCA = null;
-              universeDetails.clientRootCA = null;
-              if (CertificateHelper.isRootCARequired(taskParams())) {
-                universeDetails.rootCA = taskParams().rootCA;
-              }
-              if (CertificateHelper.isClientRootCARequired(taskParams())) {
-                universeDetails.clientRootCA = taskParams().clientRootCA;
-              }
-              universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
-            } // else read only cluster edit mode.
-          } else {
-            // Combine the existing nodes with new read only cluster nodes.
-            universeDetails.nodeDetailsSet.addAll(taskParams().nodeDetailsSet);
-          }
-          taskParams()
-              .getReadOnlyClusters()
-              .forEach(
-                  async -> {
-                    // Update read replica cluster TLS params to be same as primary cluster
-                    async.userIntent.enableNodeToNodeEncrypt =
-                        universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-                    async.userIntent.enableClientToNodeEncrypt =
-                        universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-                    universeDetails.upsertCluster(
-                        async.userIntent, async.placementInfo, async.uuid);
-                  });
-          universe.setUniverseDetails(universeDetails);
+          setUserIntentToUniverse(universe, taskParams(), isReadOnlyCreate);
         };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -328,7 +361,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       if (primaryCluster == null) {
         throw new IllegalStateException(
-            "Primary cluster not found in task nor universe {} " + universe.universeUUID);
+            String.format(
+                "Primary cluster not found in task for universe %s", universe.universeUUID));
       }
     }
 
@@ -398,6 +432,24 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
+  public void setCloudNodeUuids(Universe universe) {
+    // Set random node UUIDs for nodes in the cloud.
+    universe
+        .getUniverseDetails()
+        .clusters
+        .stream()
+        .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))
+        .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
+        .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+        .forEach(n -> n.nodeUuid = Util.generateNodeUUID(universe.universeUUID, n.nodeName));
+  }
+
+  // This reserves NodeInstances in the DB.
+  // TODO Universe creation can fail during locking after the reservation but it is ok, the task is
+  // not-retryable (updatingTaskUUID is not updated) and it forces user to delete the Universe. But
+  // instances will not be cleaned up because the Universe is not updated with the node names.
+  // Better fix will be to add Universe UUID column in the node_instance such that Universe destroy
+  // does not have to depend on the node names.
   public Map<String, NodeInstance> setOnpremData(Set<NodeDetails> nodes, String instanceType) {
     Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
     for (NodeDetails node : nodes) {
@@ -476,29 +528,37 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     PlacementInfoUtil.selectNumMastersAZ(pi, numTotalMasters);
   }
 
+  /**
+   * Return map of primary cluster gflags based on serverType
+   *
+   * @param taskType
+   */
+  public Map<String, String> getPrimaryClusterGFlags(ServerType taskType, Universe universe) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    return taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+  }
+
   public void createGFlagsOverrideTasks(Collection<NodeDetails> nodes, ServerType taskType) {
-    // Skip if no extra flags for MASTER in primary cluster.
-    if (taskType.equals(ServerType.MASTER)
-        && (taskParams().getPrimaryCluster() == null
-            || taskParams().getPrimaryCluster().userIntent.masterGFlags.isEmpty())) {
-      return;
-    }
+    createGFlagsOverrideTasks(
+        nodes,
+        taskType,
+        false /* isShell */,
+        VmUpgradeTaskType.None,
+        false /*ignoreUseCustomImageConfig*/);
+  }
 
-    // Skip if all clusters have no extra TSERVER flags. (No cluster has an extra TSERVER flag.)
-    if (taskType.equals(ServerType.TSERVER)
-        && taskParams().clusters.stream().allMatch(c -> c.userIntent.tserverGFlags.isEmpty())) {
-      return;
-    }
-
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServersGFlags", executor);
+  public void createGFlagsOverrideTasks(
+      Collection<NodeDetails> nodes,
+      ServerType taskType,
+      boolean isMasterInShellMode,
+      VmUpgradeTaskType vmUpgradeTaskType,
+      boolean ignoreUseCustomImageConfig) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Map<String, String> gflags = getPrimaryClusterGFlags(taskType, universe);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      Map<String, String> gflags =
-          taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
-      if (gflags == null || gflags.isEmpty()) {
-        continue;
-      }
-
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       // Set the device information (numVolumes, volumeSize, etc.)
       params.deviceInfo = userIntent.deviceInfo;
@@ -509,6 +569,38 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
+      // Sets the isMaster field
+      params.isMaster = node.isMaster;
+      params.enableYSQL = userIntent.enableYSQL;
+      params.enableYCQL = userIntent.enableYCQL;
+      params.enableYCQLAuth = userIntent.enableYCQLAuth;
+      params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+      // Update gflags conf file for shell mode.
+      params.isMasterInShellMode = isMasterInShellMode;
+      params.vmUpgradeTaskType = vmUpgradeTaskType;
+      params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+
+      // The software package to install for this cluster.
+      params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+      params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+      params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
+      params.allowInsecure = universe.getUniverseDetails().allowInsecure;
+      params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
+      params.rootCA = universe.getUniverseDetails().rootCA;
+      params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+      params.enableYEDIS = userIntent.enableYEDIS;
+
+      // Development testing variable.
+      params.itestS3PackagePath = taskParams().itestS3PackagePath;
+
+      UUID custUUID = Customer.get(universe.customerId).uuid;
+      params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+
       // Add task type
       params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
       params.setProperty("processType", taskType.toString());
@@ -517,16 +609,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
 
-    if (subTaskGroup.getNumTasks() == 0) {
+    if (subTaskGroup.getSubTaskCount() == 0) {
       return;
     }
 
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
+
   /**
    * Creates a task list to update tags on the nodes.
    *
@@ -534,7 +627,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param deleteTags : csv version of keys of tags to be deleted, if any.
    */
   public void createUpdateInstanceTagsTasks(Collection<NodeDetails> nodes, String deleteTags) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       params.type = NodeManager.NodeCommandType.Tags;
@@ -549,10 +642,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create and add a task for this node.
       InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.Provisioning);
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
   /**
@@ -561,7 +654,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be updated.
    */
   public SubTaskGroup createUpdateDiskSizeTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("InstanceActions", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("InstanceActions", executor);
     for (NodeDetails node : nodes) {
       InstanceActions.Params params = new InstanceActions.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -589,9 +682,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create and add a task for this node.
       InstanceActions task = createTask(InstanceActions.class);
       task.initialize(params);
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -602,7 +695,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createStartTServersTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleClusterServerCtl", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
     for (NodeDetails node : nodes) {
       AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -623,35 +717,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
       // Add it to the task list.
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForMasterLeader", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("WaitForMasterLeader", executor);
     WaitForMasterLeader task = createTask(WaitForMasterLeader.class);
     WaitForMasterLeader.Params params = new WaitForMasterLeader.Params();
     params.universeUUID = taskParams().universeUUID;
     task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /**
-   * Creates a task list to wait for a minimum number of tservers to heartbeat to the master leader.
-   */
-  public SubTaskGroup createWaitForTServerHeartBeatsTask() {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("WaitForTServerHeartBeats", executor);
-    WaitForTServerHeartBeats task = createTask(WaitForTServerHeartBeats.class);
-    WaitForTServerHeartBeats.Params params = new WaitForTServerHeartBeats.Params();
-    params.universeUUID = taskParams().universeUUID;
-    task.initialize(params);
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -672,14 +753,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createFailedPrecheckTask(
       Map<String, String> failedNodes, boolean reserveNodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("PrecheckNode", executor);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("PrecheckNode", executor);
     PrecheckNode.Params params = new PrecheckNode.Params();
     params.failedNodeNamesToError = failedNodes;
     params.reserveNodes = reserveNodes;
     PrecheckNode failedCheck = createTask(PrecheckNode.class);
     failedCheck.initialize(params);
-    subTaskGroup.addTask(failedCheck);
-    subTaskGroupQueue.add(subTaskGroup);
+    subTaskGroup.addSubTask(failedCheck);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -721,6 +802,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.placementUuid = node.placementUuid;
     // Add the node name.
     params.nodeName = node.nodeName;
+    // Set the node UUID.
+    params.nodeUuid = node.nodeUuid;
     // Add the universe uuid.
     params.universeUUID = taskParams().universeUUID;
     // Pick one of the subnets in a round robin fashion.
@@ -742,27 +825,28 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes, boolean isSystemdUpgrade) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleSetupServer", executor);
+      Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
-      params.isSystemdUpgrade = isSystemdUpgrade;
+      paramsCustomizer.accept(params);
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
       ansibleSetupServer.initialize(params);
       // Add it to the task list.
-      subTaskGroup.addTask(ansibleSetupServer);
+      subTaskGroup.addSubTask(ansibleSetupServer);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, false /* isSystemdUpgrade */);
+    return createSetupServerTasks(nodes, x -> {});
   }
 
   /**
@@ -771,7 +855,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createCreateServerTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleCreateServer", executor);
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleCreateServer", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -781,9 +866,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
       ansibleCreateServer.initialize(params);
       // Add it to the task list.
-      subTaskGroup.addTask(ansibleCreateServer);
+      subTaskGroup.addSubTask(ansibleCreateServer);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -793,39 +878,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * package.
    *
    * @param nodes : a collection of nodes that need to be created
-   * @param isMasterInShellMode : true if we are configuring a master node in shell mode
+   * @param paramsCustomizer : customizer for AnsibleConfigureServers.Params
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes, boolean isMasterInShellMode) {
-    return createConfigureServerTasks(nodes, isMasterInShellMode, false /* updateMasterAddrs */);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes, boolean isMasterInShellMode, boolean updateMasterAddrsOnly) {
-    return createConfigureServerTasks(
-        nodes,
-        isMasterInShellMode,
-        updateMasterAddrsOnly /* updateMasterAddrs */,
-        false /* isMaster */);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes,
-      boolean isMasterInShellMode,
-      boolean updateMasterAddrsOnly,
-      boolean isMaster) {
-    return createConfigureServerTasks(
-        nodes, isMasterInShellMode, updateMasterAddrsOnly, isMaster, false /* isSystemdUpgrade */);
-  }
-
-  public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes,
-      boolean isMasterInShellMode,
-      boolean updateMasterAddrsOnly,
-      boolean isMaster,
-      boolean isSystemdUpgrade) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleConfigureServers", executor);
+      Collection<NodeDetails> nodes, Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleConfigureServers", executor);
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -839,14 +898,12 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
       // Sets the isMaster field
-      params.isMaster = node.isMaster;
       params.enableYSQL = userIntent.enableYSQL;
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
 
       // Set if this node is a master in shell mode.
-      params.isMasterInShellMode = isMasterInShellMode;
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       // Set the InstanceType
@@ -861,7 +918,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.clientRootCA = taskParams().clientRootCA;
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
-      params.isSystemdUpgrade = isSystemdUpgrade;
+      paramsCustomizer.accept(params);
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -871,13 +928,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
       params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
       // Set if updating master addresses only.
-      params.updateMasterAddrsOnly = updateMasterAddrsOnly;
-      if (updateMasterAddrsOnly) {
+      if (params.updateMasterAddrsOnly) {
         params.type = UpgradeTaskParams.UpgradeTaskType.GFlags;
-        if (isMaster) {
+        if (params.isMaster) {
           params.setProperty("processType", ServerType.MASTER.toString());
+          params.gflags = getPrimaryClusterGFlags(ServerType.MASTER, universe);
         } else {
           params.setProperty("processType", ServerType.TSERVER.toString());
+          params.gflags = getPrimaryClusterGFlags(ServerType.TSERVER, universe);
         }
       }
       // Create the Ansible task to get the server info.
@@ -885,9 +943,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       task.initialize(params);
       task.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
-      subTaskGroup.addTask(task);
+      subTaskGroup.addSubTask(task);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -899,8 +957,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @return subtask group
    */
   public SubTaskGroup createServerInfoTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("AnsibleUpdateNodeInfo", executor);
-
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleUpdateNodeInfo", executor);
     for (NodeDetails node : nodes) {
       NodeTaskParams params = new NodeTaskParams();
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
@@ -918,9 +976,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ansibleFindCloudHost.initialize(params);
       ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
       // Add it to the task list.
-      subTaskGroup.addTask(ansibleFindCloudHost);
+      subTaskGroup.addSubTask(ansibleFindCloudHost);
     }
-    subTaskGroupQueue.add(subTaskGroup);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
@@ -937,6 +995,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       throw new IllegalStateException("Should not have any masters before create task is run.");
     }
 
+    // TODO(bhavin192): should we have check for useNewHelmNamingStyle
+    // being changed later at some point during edit?
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     for (Cluster cluster : taskParams().clusters) {
@@ -960,30 +1020,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
   }
 
-  /**
-   * Adds default gflags depending on settings in UserIntent. Currently contains only flags for
-   * TServers.
-   */
-  protected void addDefaultGFlags(UserIntent userIntent) {
-    if (userIntent.enableYEDIS) {
-      userIntent.tserverGFlags.put(
-          "redis_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.redisServerHttpPort));
-    } else {
-      userIntent.tserverGFlags.put("start_redis_proxy", "false");
-    }
-    if (userIntent.enableYCQL) {
-      userIntent.tserverGFlags.put(
-          "cql_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.yqlServerHttpPort));
-    }
-    if (userIntent.enableYSQL) {
-      userIntent.tserverGFlags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParams().communicationPorts.ysqlServerHttpPort));
-    }
-  }
-
   /*
    * Setup a configure task to update the masters list in the conf files of all
    * servers.
@@ -996,7 +1032,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     tserverNodes.add(addedNode);
     masterNodes.add(addedNode);
     // Configure all tservers to update the masters list as well.
-    createConfigureServerTasks(tserverNodes, false /* isShell */, true /* updateMasterAddr */)
+    createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     // Update the master addresses in memory.
     createSetFlagInMemoryTasks(
@@ -1009,7 +1045,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Change the master addresses in the conf file for the all masters to reflect
     // the changes.
     createConfigureServerTasks(
-            masterNodes, false /* isShell */, true /* updateMasterAddrs */, true /* isMaster */)
+            masterNodes,
+            params -> {
+              params.updateMasterAddrsOnly = true;
+              params.isMaster = true;
+            })
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     createSetFlagInMemoryTasks(
             masterNodes,
@@ -1033,8 +1073,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     }
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
     Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+    UserIntent userIntent = cluster.userIntent;
+    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+    Boolean rootCARequired =
+        EncryptionInTransitUtil.isRootCARequired(userIntent, rootAndClientRootCASame);
+    Boolean clientRootCARequired =
+        EncryptionInTransitUtil.isClientRootCARequired(userIntent, rootAndClientRootCASame);
+
     for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus = performPreflightCheck(cluster, currentNode);
+      String preflightStatus =
+          performPreflightCheck(
+              cluster,
+              currentNode,
+              rootCARequired ? taskParams().rootCA : null,
+              clientRootCARequired ? taskParams().clientRootCA : null);
       if (preflightStatus != null) {
         failedNodes.put(currentNode.nodeName, preflightStatus);
       }
@@ -1057,5 +1109,530 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
     return failedNodes.isEmpty();
+  }
+
+  /**
+   * Finds the given list of nodes in the universe. The lookup is done by the node name.
+   *
+   * @param universe Universe to which the node belongs.
+   * @param nodes Set of nodes to be searched.
+   * @return stream of the matching nodes.
+   */
+  public Stream<NodeDetails> findNodesInUniverse(Universe universe, Set<NodeDetails> nodes) {
+    // Node names to nodes in Universe map to find.
+    Map<String, NodeDetails> nodesInUniverseMap =
+        universe
+            .getUniverseDetails()
+            .nodeDetailsSet
+            .stream()
+            .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
+    // Locate the given node in the Universe by using the node name.
+    return nodes
+        .stream()
+        .map(
+            node -> {
+              String nodeName = node.getNodeName();
+              NodeDetails nodeInUniverse = nodesInUniverseMap.get(nodeName);
+              if (nodeInUniverse == null) {
+                log.warn(
+                    "Node {} is not found in the Universe {}",
+                    nodeName,
+                    universe.getUniverseUUID());
+              }
+              return nodeInUniverse;
+            })
+        .filter(Objects::nonNull);
+  }
+
+  /**
+   * The methods performs the following in order:
+   *
+   * <p>1. Filters out nodes that do not exist in the given Universe, 2. Finds nodes matching the
+   * given node state only if ignoreNodeStatus is set to false. Otherwise, it ignores the given node
+   * state, 3. Consumer callback is invoked with the nodes found in 2. 4. If the callback is invoked
+   * because of some nodes in 2, the method returns true.
+   *
+   * <p>The method is used to find nodes in a given state and perform subsequent operations on all
+   * the nodes without state checking to mimic fall-through case because node states differ by only
+   * one if any subtask operation fails (mix of completed and failed).
+   *
+   * @param universe the Universe to which the nodes belong.
+   * @param nodes subset of the universe nodes on which the filters are applied.
+   * @param ignoreNodeStatus the flag to ignore the node status.
+   * @param nodeStatus the status to be matched against.
+   * @param consumer the callback to be invoked with the filtered nodes.
+   * @return true if some nodes are found to invoke the callback.
+   */
+  public boolean applyOnNodesWithStatus(
+      Universe universe,
+      Set<NodeDetails> nodes,
+      boolean ignoreNodeStatus,
+      NodeStatus nodeStatus,
+      Consumer<Set<NodeDetails>> consumer) {
+    boolean wasCallbackRun = false;
+    Set<NodeDetails> filteredNodes =
+        findNodesInUniverse(universe, nodes)
+            .filter(
+                n -> {
+                  if (ignoreNodeStatus) {
+                    log.info("Ignoring node status check");
+                    return true;
+                  }
+                  NodeStatus currentNodeStatus = NodeStatus.fromNode(n);
+                  log.info(
+                      "Expected node status {}, found {} for node {}",
+                      nodeStatus,
+                      currentNodeStatus,
+                      n.getNodeName());
+                  return currentNodeStatus.equalsIgnoreNull(nodeStatus);
+                })
+            .collect(Collectors.toSet());
+    if (CollectionUtils.isNotEmpty(filteredNodes)) {
+      consumer.accept(filteredNodes);
+      wasCallbackRun = true;
+    }
+    return wasCallbackRun;
+  }
+
+  /** Sets the task params from the DB. */
+  public void fetchTaskDetailsFromDB() {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    taskParams = Json.fromJson(taskInfo.getTaskDetails(), UniverseDefinitionTaskParams.class);
+  }
+
+  /**
+   * Update the task details for the task info in the DB.
+   *
+   * @param taskParams the given task params(details).
+   */
+  public void updateTaskDetailsInDB(UniverseDefinitionTaskParams taskParams) {
+    getRunnableTask().setTaskDetails(RedactingService.filterSecretFields(Json.toJson(taskParams)));
+  }
+
+  /**
+   * Returns nodes from a given set of nodes that belong to a given cluster.
+   *
+   * @param uuid the cluster UUID.
+   * @param nodes the given nodes.
+   * @return
+   */
+  public static Set<NodeDetails> getNodesInCluster(UUID uuid, Collection<NodeDetails> nodes) {
+    return nodes.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  // Create preflight node check tasks for on-prem nodes in the cluster and add them to the
+  // SubTaskGroup.
+  private void createPreflightNodeCheckTasks(
+      SubTaskGroup subTaskGroup, Cluster cluster, Set<NodeDetails> nodesToBeProvisioned) {
+    if (cluster.userIntent.providerType == CloudType.onprem) {
+      for (NodeDetails node : nodesToBeProvisioned) {
+        PreflightNodeCheck.Params params = new PreflightNodeCheck.Params();
+        UserIntent userIntent = cluster.userIntent;
+        params.nodeName = node.nodeName;
+        params.deviceInfo = userIntent.deviceInfo;
+        params.azUuid = node.azUuid;
+        params.universeUUID = taskParams().universeUUID;
+        UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
+            params.communicationPorts, node);
+        params.extraDependencies.installNodeExporter =
+            taskParams().extraDependencies.installNodeExporter;
+        PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+    }
+  }
+
+  /**
+   * Create preflight node check tasks for on-prem nodes in the universe if the nodes are in
+   * ToBeAdded state.
+   *
+   * @param universe the universe
+   * @param clusters the clusters
+   */
+  public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
+    Set<Cluster> onPremClusters =
+        clusters
+            .stream()
+            .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
+            .collect(Collectors.toSet());
+    if (onPremClusters.isEmpty()) {
+      return;
+    }
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("SetNodeStatus", executor);
+    for (Cluster cluster : onPremClusters) {
+      Set<NodeDetails> nodesToProvision =
+          PlacementInfoUtil.getNodesToProvision(taskParams().getNodesInCluster(cluster.uuid));
+      applyOnNodesWithStatus(
+          universe,
+          nodesToProvision,
+          false,
+          NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+          filteredNodes -> {
+            createPreflightNodeCheckTasks(subTaskGroup, cluster, filteredNodes);
+          });
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  /**
+   * Creates subtasks to create a set of server nodes. As the tasks are not idempotent, node states
+   * are checked to determine if some tasks must be run or skipped. This state checking is ignored
+   * if ignoreNodeStatus is true.
+   *
+   * @param universe universe to which the nodes belong.
+   * @param nodesToBeCreated nodes to be created.
+   * @param ignoreNodeStatus ignore checking node status before creating subtasks if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
+   */
+  public boolean createCreateNodeTasks(
+      Universe universe,
+      Set<NodeDetails> nodesToBeCreated,
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
+
+    // Determine the starting state of the nodes and invoke the callback if
+    // ignoreNodeStatus is not set.
+    boolean isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeCreated,
+            ignoreNodeStatus,
+            NodeStatus.builder().nodeState(NodeState.ToBeAdded).build(),
+            filteredNodes -> {
+              createSetNodeStatusTasks(
+                      filteredNodes, NodeStatus.builder().nodeState(NodeState.Adding).build())
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+            });
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeCreated,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.Adding).build(),
+            filteredNodes -> {
+              createCreateServerTasks(filteredNodes)
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+            });
+
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeCreated,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.InstanceCreated).build(),
+            filteredNodes -> {
+              createServerInfoTasks(filteredNodes)
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+            });
+
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeCreated,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.Provisioned).build(),
+            filteredNodes -> {
+              createSetupServerTasks(
+                      filteredNodes, p -> p.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig)
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+            });
+    return isNextFallThrough;
+  }
+
+  /**
+   * Creates subtasks to configure a set of server nodes. As the tasks are not idempotent, node
+   * states are checked to determine if some tasks must be run or skipped. This state checking is
+   * ignored if ignoreNodeStatus is true.
+   *
+   * @param universe universe to which the nodes belong.
+   * @param nodesToBeConfigured nodes to be configured.
+   * @param isShellMode configure nodes in shell mode if true.
+   * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
+   */
+  public boolean createConfigureNodeTasks(
+      Universe universe,
+      Set<NodeDetails> nodesToBeConfigured,
+      boolean isShellMode,
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
+
+    // Determine the starting state of the nodes and invoke the callback if
+    // ignoreNodeStatus is not set.
+    boolean isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeConfigured,
+            ignoreNodeStatus,
+            NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
+            filteredNodes -> {
+              createConfigureServerTasks(
+                      filteredNodes,
+                      params -> {
+                        params.isMasterInShellMode = isShellMode;
+                        params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+                      })
+                  .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+            });
+
+    isNextFallThrough =
+        applyOnNodesWithStatus(
+            universe,
+            nodesToBeConfigured,
+            isNextFallThrough,
+            NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
+            filteredNodes -> {
+              Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
+              if (primaryCluster != null) {
+                Set<NodeDetails> primaryClusterNodes =
+                    getNodesInCluster(primaryCluster.uuid, filteredNodes);
+                if (!primaryClusterNodes.isEmpty()) {
+                  // Override master (on primary cluster only) and tserver flags as necessary.
+                  // These are idempotent operations.
+                  createGFlagsOverrideTasks(
+                      primaryClusterNodes,
+                      ServerType.MASTER,
+                      isShellMode,
+                      VmUpgradeTaskType.None,
+                      ignoreUseCustomImageConfig);
+                }
+              }
+              createGFlagsOverrideTasks(
+                  nodesToBeConfigured,
+                  ServerType.TSERVER,
+                  false /* isShell */,
+                  VmUpgradeTaskType.None,
+                  ignoreUseCustomImageConfig);
+              // All necessary nodes are created. Data moving will coming soon.
+              createSetNodeStatusTasks(
+                      filteredNodes,
+                      NodeStatus.builder().nodeState(NodeState.ToJoinCluster).build())
+                  .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+            });
+    return isNextFallThrough;
+  }
+
+  /**
+   * Creates subtasks to provision a set of server nodes. As the tasks are not idempotent, node
+   * states are checked to determine if some tasks must be run or skipped. This state checking is
+   * ignored if ignoreNodeStatus is true.
+   *
+   * @param universe universe to which the nodes belong.
+   * @param nodesToBeProvisioned nodes to be provisioned.
+   * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
+   */
+  public boolean createProvisionNodeTasks(
+      Universe universe,
+      Set<NodeDetails> nodesToBeProvisioned,
+      boolean isShellMode,
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
+    boolean isFallThrough =
+        createCreateNodeTasks(
+            universe, nodesToBeProvisioned, ignoreNodeStatus, ignoreUseCustomImageConfig);
+    return createConfigureNodeTasks(
+        universe, nodesToBeProvisioned, isShellMode, isFallThrough, ignoreUseCustomImageConfig);
+  }
+
+  /**
+   * Creates subtasks to start master processes on the nodes.
+   *
+   * @param nodesToBeStarted nodes on which master processes are to be started.
+   */
+  public void createStartMasterProcessTasks(Set<NodeDetails> nodesToBeStarted) {
+    // No check done for state as the operations are idempotent.
+    // Creates the YB cluster by starting the masters in the create mode.
+    createStartMasterTasks(nodesToBeStarted)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Wait for new masters to be responsive.
+    createWaitForServersTasks(nodesToBeStarted, ServerType.MASTER)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * Creates subtasks to start tserver processes on the nodes.
+   *
+   * @param nodesToBeStarted nodes on which tserver processes are to be started.
+   */
+  public void createStartTserverProcessTasks(Set<NodeDetails> nodesToBeStarted) {
+    // No check done for state as the operations are idempotent.
+    // Creates the YB cluster by starting the masters in the create mode.
+    createStartTServersTasks(nodesToBeStarted)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Wait for new masters to be responsive.
+    createWaitForServersTasks(nodesToBeStarted, ServerType.TSERVER)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * Updates a master node with master addresses. It can happen before the master process is started
+   * or later.
+   *
+   * @param universe universe to which the nodes belong.
+   * @param nodesToBeConfigured nodes to be configured.
+   * @param isShellMode configure nodes in shell mode if true.
+   * @param ignoreNodeStatus ignore node status if it is set.
+   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
+   */
+  public boolean createConfigureMasterTasks(
+      Universe universe,
+      Set<NodeDetails> nodesToBeConfigured,
+      boolean isShellMode,
+      boolean ignoreNodeStatus,
+      boolean ignoreUseCustomImageConfig) {
+    return applyOnNodesWithStatus(
+        universe,
+        nodesToBeConfigured,
+        false,
+        NodeStatus.builder().masterState(MasterState.ToStart).build(),
+        nodeDetails -> {
+          createConfigureServerTasks(
+                  nodeDetails,
+                  params -> {
+                    params.isMasterInShellMode = isShellMode;
+                    params.updateMasterAddrsOnly = true;
+                    params.isMaster = true;
+                    params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+                  })
+              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        });
+  }
+
+  /**
+   * Creates a task to delete a read only cluster info from the universe and adds the task to the
+   * task queue.
+   *
+   * @param clusterUUID uuid of the read-only cluster to be removed.
+   */
+  public SubTaskGroup createDeleteClusterFromUniverseTask(UUID clusterUUID) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
+    DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    params.clusterUUID = clusterUUID;
+    // Create the task to delete cluster ifo.
+    DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
+   * Installs software for the specified type of processes on a set of nodes.
+   *
+   * @param nodes a collection of nodes to be processed.
+   * @param processType type of a processes for the installation - MASTER or TSERVER
+   * @param softwareVersion software version to install, if null - takes version from the universe
+   *     userIntent
+   */
+  public void createSoftwareInstallTasks(
+      List<NodeDetails> nodes, ServerType processType, String softwareVersion) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.InstallingSoftware, taskParams().nodePrefix);
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    for (NodeDetails node : nodes) {
+      subTaskGroup.addSubTask(
+          getAnsibleConfigureServerTask(
+              node, processType, UpgradeTaskSubType.Install, softwareVersion));
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  protected AnsibleConfigureServers getAnsibleConfigureServerTask(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskSubType taskSubType,
+      String softwareVersion) {
+    AnsibleConfigureServers.Params params =
+        getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
+    if (softwareVersion == null) {
+      UserIntent userIntent =
+          getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+      params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    } else {
+      params.ybSoftwareVersion = softwareVersion;
+    }
+    AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+    task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    return task;
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
+    AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
+    UserIntent userIntent =
+        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+    Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
+    // Set the device information (numVolumes, volumeSize, etc.)
+    params.deviceInfo = userIntent.deviceInfo;
+    // Add the node name.
+    params.nodeName = node.nodeName;
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    // Add the az uuid.
+    params.azUuid = node.azUuid;
+    // Add in the node placement uuid.
+    params.placementUuid = node.placementUuid;
+    // Sets the isMaster field
+    params.isMaster = node.isMaster;
+    params.enableYSQL = userIntent.enableYSQL;
+    params.enableYCQL = userIntent.enableYCQL;
+    params.enableYCQLAuth = userIntent.enableYCQLAuth;
+    params.enableYSQLAuth = userIntent.enableYSQLAuth;
+
+    // The software package to install for this cluster.
+    params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    // Set the InstanceType
+    params.instanceType = node.cloudInfo.instance_type;
+    params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
+    params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
+
+    params.allowInsecure = taskParams().allowInsecure;
+    params.setTxnTableWaitCountFlag = taskParams().setTxnTableWaitCountFlag;
+    params.enableYEDIS = userIntent.enableYEDIS;
+
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    UUID custUUID = Customer.get(universe.customerId).uuid;
+    params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
+    params.rootCA = universe.getUniverseDetails().rootCA;
+    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+    params.rootAndClientRootCASame = universe.getUniverseDetails().rootAndClientRootCASame;
+
+    // Add testing flag.
+    params.itestS3PackagePath = taskParams().itestS3PackagePath;
+    // Add task type
+    params.type = type;
+    params.setProperty("processType", processType.toString());
+    params.setProperty("taskSubType", taskSubType.toString());
+    params.gflags = gflags;
+    if (userIntent.providerType.equals(CloudType.onprem)) {
+      params.instanceType = node.cloudInfo.instance_type;
+    }
+
+    return params;
   }
 }

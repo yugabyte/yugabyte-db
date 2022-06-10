@@ -19,6 +19,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.doNothing;
@@ -84,10 +85,11 @@ public class ImportControllerTest extends CommissionerBaseTest {
     mockTabletSIs.add(si);
     when(mockResponse.getTabletServersList()).thenReturn(mockTabletSIs);
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.listTabletServers()).thenReturn(mockResponse);
       doNothing().when(mockClient).waitForMasterLeader(anyLong());
     } catch (Exception e) {
-      e.printStackTrace();
+      fail();
     }
   }
 
@@ -285,7 +287,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Could not parse host:port from masterAddresseses: incorrect_format");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
@@ -300,12 +302,12 @@ public class ImportControllerTest extends CommissionerBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Valid universe uuid needs to be set.");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 
   @Test
-  public void testFailedMasterImport() {
-    when(mockClient.waitForServer(any(), anyLong())).thenThrow(IllegalStateException.class);
+  public void testFailedMasterImport() throws Exception {
+    when(mockClient.waitForMaster(any(), anyLong())).thenThrow(IllegalStateException.class);
     String url = "/api/customers/" + customer.uuid + "/universes/import";
     ObjectNode bodyJson =
         Json.newObject().put("universeName", "importUniv").put("masterAddresses", MASTER_ADDRS);
@@ -313,7 +315,7 @@ public class ImportControllerTest extends CommissionerBaseTest {
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
-    assertInternalServerError(result, "java.lang.RuntimeException: WaitForServer");
+    assertInternalServerError(result, "WaitForServer");
     JsonNode resultJson = Json.parse(contentAsString(result));
     String univUUID = resultJson.get("error").get("universeUUID").asText();
     assertNotNull(univUUID);
@@ -326,6 +328,6 @@ public class ImportControllerTest extends CommissionerBaseTest {
     assertEquals(universe.getUniverseDetails().importedState, ImportedState.STARTED);
     assertEquals(universe.getUniverseDetails().capability, Capability.READ_ONLY);
     assertFalse(universe.getUniverseDetails().isUniverseEditable());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(0, customer.uuid);
   }
 }

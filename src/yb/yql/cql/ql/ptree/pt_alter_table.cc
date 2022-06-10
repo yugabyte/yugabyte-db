@@ -16,9 +16,18 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+
 #include "yb/client/table.h"
 
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/logging.h"
+
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -26,7 +35,7 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTAlterTable::PTAlterTable(MemoryContext *memctx,
-                           YBLocation::SharedPtr loc,
+                           YBLocationPtr loc,
                            PTQualifiedName::SharedPtr name,
                            const PTListNode::SharedPtr &commands)
   : TreeNode(memctx, loc),
@@ -40,10 +49,10 @@ PTAlterTable::PTAlterTable(MemoryContext *memctx,
 PTAlterTable::~PTAlterTable() {
 }
 
-CHECKED_STATUS PTAlterTable::Analyze(SemContext *sem_context) {
+Status PTAlterTable::Analyze(SemContext *sem_context) {
   // Populate internal table_ variable.
   bool is_system_ignored = false;
-  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, ObjectType::TABLE));
 
   // Permissions check happen in LookupTable if flag use_cassandra_authentication is enabled.
   RETURN_NOT_OK(sem_context->LookupTable(name_->ToTableName(), name_->loc(), true /* write_table */,
@@ -75,7 +84,7 @@ void PTAlterTable::PrintSemanticAnalysisResult(SemContext *sem_context) {
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << *loc_ << "):\n" << sem_output;
 }
 
-CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
+Status PTAlterTable::AppendModColumn(SemContext *sem_context,
                                              PTAlterColumnDefinition *column) {
   // Make sure column already exists and isn't key column.
   if (column->old_name() != nullptr) {
@@ -123,12 +132,12 @@ CHECKED_STATUS PTAlterTable::AppendModColumn(SemContext *sem_context,
   return Status::OK();
 }
 
-CHECKED_STATUS PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTTableProperty *prop) {
+Status PTAlterTable::AppendAlterProperty(SemContext *sem_context, PTTableProperty *prop) {
   mod_props_.push_back(prop);
   return Status::OK();
 }
 
-CHECKED_STATUS PTAlterTable::ToTableProperties(TableProperties *table_properties) const {
+Status PTAlterTable::ToTableProperties(TableProperties *table_properties) const {
   DCHECK_ONLY_NOTNULL(table_.get());
   // Init by values from the current table properties.
   *DCHECK_NOTNULL(table_properties) = table_->schema().table_properties();
@@ -157,7 +166,7 @@ PTAlterColumnDefinition::PTAlterColumnDefinition(MemoryContext *memctx,
 PTAlterColumnDefinition::~PTAlterColumnDefinition() {
 }
 
-CHECKED_STATUS PTAlterColumnDefinition::Analyze(SemContext *sem_context) {
+Status PTAlterColumnDefinition::Analyze(SemContext *sem_context) {
   if (name_ != nullptr) {
     RETURN_NOT_OK(name_->Analyze(sem_context));
   }

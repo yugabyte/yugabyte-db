@@ -156,7 +156,7 @@ TEST_F(ThreadTest, TestThreadRestrictions_IO) {
   // Disallow IO - doing IO should crash the process.
   ASSERT_DEATH({
       ThreadRestrictions::SetIOAllowed(false);
-      ignore_result(Env::Default()->FileExists("/"));
+      Env::Default()->FileExists("/");
     },
     "Function marked as IO-only was called from a thread that disallows IO");
 }

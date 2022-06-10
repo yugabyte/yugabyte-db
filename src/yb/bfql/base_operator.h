@@ -26,7 +26,7 @@
 
 #include <memory>
 
-#include "yb/bfql/directory.h"
+#include "yb/bfql/bfdecl.h"
 #include "yb/bfql/gen_opcodes.h"
 
 namespace yb {

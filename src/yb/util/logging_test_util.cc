@@ -9,6 +9,7 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
+
 #include "yb/util/logging_test_util.h"
 
 #include "yb/util/result.h"
@@ -18,7 +19,7 @@ namespace yb {
 
 const char* StringWaiterLogSink::kWaitingMessage = "Waiting for log record";
 
-CHECKED_STATUS StringWaiterLogSink::WaitFor(MonoDelta timeout) {
+Status StringWaiterLogSink::WaitFor(MonoDelta timeout) {
   constexpr auto kInitialWaitPeriod = 100ms;
   const auto message = Format("$0 '$1'...", kWaitingMessage, string_to_wait_);
   LOG(INFO) << message;

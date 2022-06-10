@@ -24,7 +24,7 @@ Note that the YB-Master is highly available as it forms a Raft group with its pe
 
 ### Coordination of universe-wide admin operations
 
-Examples of such operations are user-issued `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE` requests, as well as a creating a backup of a table. The YB-Master performs these operations with a guarantee that the operation is propagated to all tablets irrespective of the state of the YB-TServers hosting these tablets. This is essential because a YB-TServer failure while one of these universe-wide operations is in progress cannot affect the outcome of the operation by failing to apply it on some tablets.
+Examples of such operations are user-issued `CREATE TABLE`, `ALTER TABLE`, and `DROP TABLE` requests, as well as creating a backup of a table. The YB-Master performs these operations with a guarantee that the operation is propagated to all tablets irrespective of the state of the YB-TServers hosting these tablets. This is essential because a YB-TServer failure while one of these universe-wide operations is in progress cannot affect the outcome of the operation by failing to apply it on some tablets.
 
 ### Storage of system metadata
 

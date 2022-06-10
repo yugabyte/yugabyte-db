@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.util.YBTestRunnerNonTsanOnly;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -305,7 +305,7 @@ public class TestPgRangePresplit extends BasePgSQLTest {
     }
     // Check index was splitted into 3 tablets
     YBClient client = miniCluster.getClient();
-    List<Master.ListTablesResponsePB.TableInfo> tables =
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
             client.getTablesList("test_ab_idx").getTableInfoList();
     assertEquals(1, tables.size());
     String tableUuid = tables.get(0).getId().toStringUtf8();
@@ -346,7 +346,7 @@ public class TestPgRangePresplit extends BasePgSQLTest {
     }
     // Check index was splitted into 3 tablets
     YBClient client = miniCluster.getClient();
-    List<Master.ListTablesResponsePB.TableInfo> tables =
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
       client.getTablesList("test_ab_idx").getTableInfoList();
     assertEquals(1, tables.size());
     String tableUuid = tables.get(0).getId().toStringUtf8();

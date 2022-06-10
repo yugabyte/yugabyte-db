@@ -22,14 +22,8 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"
-
-#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -37,10 +31,17 @@
 
 #include "yb/tserver/tserver_fwd.h"
 
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
-#include "yb/util/metrics.h"
-#include "yb/util/opid.h"
-#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <class T>
+class RepeatedPtrField;
+}
+}
+
 
 namespace yb {
 namespace tablet {
@@ -64,7 +65,7 @@ class TransactionCoordinatorContext {
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      tserver::TransactionStatePB* request) = 0;
+      TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
@@ -92,7 +93,7 @@ class TransactionCoordinator {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term;
-    const tserver::TransactionStatePB& state;
+    const TransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
 
@@ -100,10 +101,10 @@ class TransactionCoordinator {
   };
 
   // Process new transaction state.
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    const tserver::TransactionStatePB& state;
+    const TransactionStatePB& state;
     const OpId& op_id;
 
     std::string ToString() const;
@@ -125,7 +126,7 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response);
 

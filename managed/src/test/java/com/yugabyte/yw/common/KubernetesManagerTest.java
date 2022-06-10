@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyMap;
 import static org.mockito.Matchers.anyString;
@@ -38,7 +39,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Mock play.Configuration mockAppConfig;
 
-  @InjectMocks KubernetesManager kubernetesManager;
+  @InjectMocks ShellKubernetesManager kubernetesManager;
 
   Provider defaultProvider;
   Customer defaultCustomer;
@@ -75,7 +76,7 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   private void runCommand(
       KubernetesCommandExecutor.CommandType commandType, String ybSoftwareVersion) {
-    ShellResponse response = new ShellResponse();
+    ShellResponse response = ShellResponse.create(0, "{}");
     when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
 
     int numOfCalls = 1;
@@ -105,7 +106,6 @@ public class KubernetesManagerTest extends FakeDBApplication {
         break;
       case VOLUME_DELETE:
         kubernetesManager.deleteStorage(configProvider, "demo-universe", "demo-namespace");
-        numOfCalls = 2;
         break;
     }
 
@@ -296,22 +296,21 @@ public class KubernetesManagerTest extends FakeDBApplication {
                 "--namespace",
                 "demo-namespace",
                 "-l",
-                "app=yb-master,release=demo-universe"),
-            ImmutableList.of(
-                "kubectl",
-                "delete",
-                "pvc",
-                "--namespace",
-                "demo-namespace",
-                "-l",
-                "app=yb-tserver,release=demo-universe")),
+                "release=demo-universe")),
         command.getAllValues());
     assertEquals(config.getValue(), configProvider);
   }
 
   @Test
   public void getMasterServiceIPs() {
-    kubernetesManager.getServiceIPs(configProvider, "demo-universe", true);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    Throwable exception =
+        assertThrows(
+            RuntimeException.class,
+            () ->
+                kubernetesManager.getPreferredServiceIP(
+                    configProvider, "demo-az1", "demo-universe", true, false));
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -319,17 +318,24 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "kubectl",
             "get",
             "svc",
-            "yb-master-service",
             "--namespace",
             "demo-universe",
+            "-l",
+            "release=demo-az1,app=yb-master,service-type!=headless",
             "-o",
-            "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"),
+            "json"),
         command.getValue());
+    assertEquals(
+        "There must be exactly one Master or TServer endpoint service, got 0",
+        exception.getMessage());
   }
 
   @Test
   public void getTserverServiceIPs() {
-    kubernetesManager.getServiceIPs(configProvider, "demo-universe", false);
+    ShellResponse response = ShellResponse.create(0, "{\"items\": [{\"kind\": \"Service\"}]}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getPreferredServiceIP(
+        configProvider, "demo-az2", "demo-universe", false, true);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -337,16 +343,19 @@ public class KubernetesManagerTest extends FakeDBApplication {
             "kubectl",
             "get",
             "svc",
-            "yb-tserver-service",
             "--namespace",
             "demo-universe",
+            "-l",
+            "release=demo-az2,app.kubernetes.io/name=yb-tserver,service-type!=headless",
             "-o",
-            "jsonpath={.spec.clusterIP}|{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}"),
+            "json"),
         command.getValue());
   }
 
   @Test
   public void getServices() {
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
     kubernetesManager.getServices(configProvider, "demo-universe", "demo-ns");
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
@@ -366,7 +375,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getNodeInfos() {
-    kubernetesManager.runGetNodeInfos(configProvider);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getNodeInfos(configProvider);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(ImmutableList.of("kubectl", "get", "nodes", "-o", "json"), command.getValue());
@@ -374,7 +385,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getSecret() {
-    kubernetesManager.runGetSecret(configProvider, "pull-sec", "test-ns");
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getSecret(configProvider, "pull-sec", "test-ns");
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(
@@ -385,7 +398,9 @@ public class KubernetesManagerTest extends FakeDBApplication {
 
   @Test
   public void getSecretWithoutNamespace() {
-    kubernetesManager.runGetSecret(configProvider, "pull-sec", null);
+    ShellResponse response = ShellResponse.create(0, "{}");
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    kubernetesManager.getSecret(configProvider, "pull-sec", null);
     Mockito.verify(shellProcessHandler, times(1))
         .run(command.capture(), (Map<String, String>) config.capture(), description.capture());
     assertEquals(

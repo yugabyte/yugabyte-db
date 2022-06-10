@@ -18,15 +18,18 @@
 
 #include <functional>
 #include <memory>
+#include <set>
+#include <utility>
 #include <vector>
 
-#include <boost/function.hpp>
-#include <boost/range/iterator_range.hpp>
+#include <boost/function/function_fwd.hpp>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 template <class T>
@@ -41,6 +44,7 @@ class RejectionScoreSource;
 typedef std::shared_ptr<RejectionScoreSource> RejectionScoreSourcePtr;
 
 class YBClient;
+class YBClientBuilder;
 
 class YBError;
 typedef std::vector<std::unique_ptr<YBError>> CollectedErrors;
@@ -51,9 +55,6 @@ typedef std::shared_ptr<YBTransaction> YBTransactionPtr;
 class YBqlOp;
 class YBqlReadOp;
 class YBqlWriteOp;
-typedef std::shared_ptr<YBqlOp> YBqlOpPtr;
-typedef std::shared_ptr<YBqlReadOp> YBqlReadOpPtr;
-typedef std::shared_ptr<YBqlWriteOp> YBqlWriteOpPtr;
 
 class YBPgsqlOp;
 class YBPgsqlReadOp;
@@ -67,6 +68,7 @@ class YBSession;
 typedef std::shared_ptr<YBSession> YBSessionPtr;
 struct FlushStatus;
 using FlushCallback = boost::function<void(FlushStatus*)>;
+using CommitCallback = boost::function<void(const Status&)>;
 
 class YBTable;
 typedef std::shared_ptr<YBTable> YBTablePtr;
@@ -84,18 +86,31 @@ class TransactionPool;
 class YBColumnSpec;
 class YBLoggingCallback;
 class YBMetaDataCache;
+class YBNamespaceAlterer;
 class YBSchema;
 class YBTableAlterer;
 class YBTableCreator;
 class YBTableName;
 class UniverseKeyClient;
 
+struct ChildTransactionData;
+struct VersionedTablePartitionList;
 struct YBTableInfo;
 struct YBTabletServer;
 struct YBTabletServerPlacementInfo;
+struct YBqlWriteHashKeyComparator;
+struct YBqlWritePrimaryKeyComparator;
 
-typedef std::function<void(std::vector<const TabletId*>*)> LocalTabletFilter;
+using LocalTabletFilter = std::function<void(std::vector<const TabletId*>*)>;
+using VersionedTablePartitionListPtr = std::shared_ptr<const VersionedTablePartitionList>;
+using TabletServersInfo = std::vector<YBTabletServerPlacementInfo>;
+using YBqlOpPtr = std::shared_ptr<YBqlOp>;
+using YBqlReadOpPtr = std::shared_ptr<YBqlReadOp>;
+using YBqlWriteOpPtr = std::shared_ptr<YBqlWriteOp>;
 
+enum class YBTableType;
+
+YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
@@ -103,15 +118,19 @@ YB_STRONGLY_TYPED_BOOL(UseCache);
 namespace internal {
 
 class AsyncRpc;
+class TxnBatcherIf;
 class GetTableSchemaRpc;
+class GetTablegroupSchemaRpc;
 class GetColocatedTabletSchemaRpc;
 class LookupRpc;
 class MetaCache;
+class PermissionsCache;
+class ReadRpc;
 class TabletInvoker;
 class WriteRpc;
 
 struct InFlightOp;
-typedef boost::iterator_range<std::vector<InFlightOp>::iterator> InFlightOps;
+struct InFlightOpsGroupsWithMetadata;
 
 class RemoteTablet;
 typedef scoped_refptr<RemoteTablet> RemoteTabletPtr;
@@ -132,7 +151,6 @@ typedef std::function<void(const Result<internal::RemoteTabletPtr>&)> LookupTabl
 typedef std::function<void(const Result<std::vector<internal::RemoteTabletPtr>>&)>
         LookupTabletRangeCallback;
 typedef std::function<void(const Result<CDCStreamId>&)> CreateCDCStreamCallback;
-
 class AsyncClientInitialiser;
 
 } // namespace client

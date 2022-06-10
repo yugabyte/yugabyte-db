@@ -10,16 +10,17 @@
 
 from ybops.cloud.common.command import InstanceCommand, QueryCommand, AccessCommand, \
     NetworkCommand
-from ybops.cloud.common.method import ConfigureInstancesMethod, \
+from ybops.cloud.common.method import AddAuthorizedKey, ConfigureInstancesMethod, \
     ListInstancesMethod, AccessCreateVaultMethod, InitYSQLMethod, UpdateDiskMethod, \
-    CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod
+    CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
+    VerifySSHConnection, RemoveAuthorizedKey
 from ybops.cloud.gcp.method import GcpCreateInstancesMethod, GcpProvisionInstancesMethod, \
     GcpQueryRegionsMethod, GcpQueryZonesMethod, GcpQueryInstanceTypesMethod, \
     GcpQueryCurrentHostMethod, GcpQueryPreemptibleInstanceMethod, GcpDestroyInstancesMethod, \
     GcpAccessAddKeyMethod, GcpNetworkBootstrapMethod, GcpNetworkQueryMethod, \
     GcpNetworkCleanupMethod, GcpQueryVpcMethod, GcpCreateRootVolumesMethod, \
     GcpReplaceRootVolumeMethod, GcpChangeInstanceTypeMethod, GcpPauseInstancesMethod, \
-    GcpResumeInstancesMethod
+    GcpResumeInstancesMethod, GcpUpdateMountedDisksMethod, GcpDeleteRootVolumesMethod
 
 
 class GcpInstanceCommand(InstanceCommand):
@@ -32,6 +33,7 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(GcpProvisionInstancesMethod(self))
         self.add_method(GcpCreateInstancesMethod(self))
         self.add_method(GcpCreateRootVolumesMethod(self))
+        self.add_method(GcpDeleteRootVolumesMethod(self))
         self.add_method(GcpReplaceRootVolumeMethod(self))
         self.add_method(GcpDestroyInstancesMethod(self))
         self.add_method(ListInstancesMethod(self))
@@ -42,6 +44,11 @@ class GcpInstanceCommand(InstanceCommand):
         self.add_method(GcpChangeInstanceTypeMethod(self))
         self.add_method(GcpPauseInstancesMethod(self))
         self.add_method(GcpResumeInstancesMethod(self))
+        self.add_method(GcpUpdateMountedDisksMethod(self))
+        self.add_method(TransferXClusterCerts(self))
+        self.add_method(VerifySSHConnection(self))
+        self.add_method(AddAuthorizedKey(self))
+        self.add_method(RemoveAuthorizedKey(self))
 
 
 class GcpQueryCommand(QueryCommand):

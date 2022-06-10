@@ -71,7 +71,7 @@ You must have the Docker runtime installed on your localhost. Follow the links b
 Pull the YugabyteDB container.
 
 ```sh
-$ docker pull yugabytedb/yugabyte
+$ docker pull yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}
 ```
 
 {{<tip title="Next step" >}}

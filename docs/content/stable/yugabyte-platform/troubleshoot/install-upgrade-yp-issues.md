@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Here are some common issues encountered during installing or upgrading Yugabyte Platform. If you don't find an answer, contact Yugabyte Support.
+Here are some common issues encountered during installing or upgrading Yugabyte Platform. If you don't find an answer, contact [Yugabyte Support](https://support.yugabyte.com).
 
-## SELinux turned on the Yugabyte Platform host
+## Firewall turned on the Yugabyte Platform host
 
-If your host has SELinux turned on, then Docker Engine might not be able to connect with the host. To open the ports using firewall exceptions, run the following command.
+If your host has firewall managed by firewalld turned on, then Docker Engine might not be able to connect with the host. To open the ports using firewall exceptions, run the following command.
 
 ```sh
 sudo firewall-cmd --zone=trusted --add-interface=docker0
@@ -41,7 +41,7 @@ Create mount paths on the nodes with private IP addresses: `10.1.13.150`, `10.1.
 for IP in 10.1.12.103 10.1.12.104 10.1.12.105; do ssh $IP mkdir -p /mnt/data0; done
 ```
 
-## SELinux turned on for nodes
+## Firewall turned on for nodes
 
 Add firewall exceptions on the nodes with private IP addresses: `10.1.13.150`, `10.1.13.151`, `10.1.13.152`.
 

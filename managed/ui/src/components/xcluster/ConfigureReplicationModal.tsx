@@ -1,22 +1,28 @@
 import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { YBFormInput, YBFormSelect, YBInputField } from '../common/forms/fields';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import * as Yup from 'yup';
+import { toast } from 'react-toastify';
+import _ from 'lodash';
 
-import './ConfigureReplicationModal.scss';
+import { YBFormInput, YBFormSelect, YBInputField } from '../common/forms/fields';
 import { YBModalForm } from '../common/forms';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { IReplicationTable } from './IClusterReplication';
 import { YBLoading } from '../common/indicators';
 import {
   createXClusterReplication,
   fetchTablesInUniverse,
+  fetchTaskUntilItCompletes,
   fetchUniversesList
 } from '../../actions/xClusterReplication';
+import { YSQL_TABLE_TYPE } from './ReplicationUtils';
+import { isNonEmptyArray } from '../../utils/ObjectUtils';
+import { getUniverseStatus, universeState } from '../universes/helpers/universeHelpers';
 
-import { useMutation, useQuery, useQueryClient } from 'react-query';
-import * as Yup from 'yup';
-import { toast } from 'react-toastify';
+import { IReplicationTable } from './IClusterReplication';
+
+import './ConfigureReplicationModal.scss';
 
 const validationSchema = Yup.object().shape({
   name: Yup.string().required('Replication name is required'),
@@ -42,6 +48,15 @@ interface Props {
   currentUniverseUUID: string;
 }
 
+// TODO: Would be nice to start adding interfaces for all the nested fields in Universe
+//       as when need them and move all the universe types to a common folder
+interface Universe {
+  name: string;
+  universeUUID: string;
+  universeDetails: {};
+  state?: typeof universeState[keyof typeof universeState];
+}
+
 export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
   const queryClient = useQueryClient();
@@ -55,9 +70,22 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
       );
     },
     {
-      onSuccess: () => {
+      onSuccess: (resp) => {
         onHide();
-        queryClient.invalidateQueries('universe');
+        fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
+          if (err) {
+            toast.error(
+              <span className="alertMsg">
+                <i className="fa fa-exclamation-circle" />
+                <span>Replication creation failed.</span>
+                <a href={`/tasks/${resp.data.taskUUID}`} rel="noopener noreferrer" target="_blank">
+                  View Details
+                </a>
+              </span>
+            );
+          }
+          queryClient.invalidateQueries('universe');
+        });
       },
       onError: (err: any) => {
         toast.error(err.response.data.error);
@@ -65,8 +93,9 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
     }
   );
 
-  const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universeList'], () =>
-    fetchUniversesList().then((res) => res.data)
+  const { data: universeList, isLoading: isUniverseListLoading } = useQuery<Universe[]>(
+    ['universeList'],
+    () => fetchUniversesList().then((res) => res.data)
   );
 
   const { data: tables, isLoading: isTablesLoading } = useQuery(
@@ -83,6 +112,13 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
     targetUniverseUUID: undefined,
     tables: []
   };
+  // Add universe status field
+  if (_.isObject(universeList) && isNonEmptyArray(universeList)) {
+    universeList.forEach((universe) => {
+      const universeStatus = getUniverseStatus(universe);
+      universe.state = universeStatus.state;
+    });
+  }
 
   return (
     <YBModalForm
@@ -96,6 +132,10 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
         if (currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
         } else {
+          if (values['tables'].length === 0) {
+            toast.error('Configuration must have at least one table');
+            return;
+          }
           addReplication.mutateAsync(values).then(() => {
             setCurrentStep(0);
           });
@@ -127,24 +167,40 @@ export function TargetUniverseForm({
   currentUniverseUUID
 }: {
   isEdit: boolean;
-  universeList: { name: string; universeUUID: string }[];
+  universeList: Universe[];
   initialValues: {};
   currentUniverseUUID: string;
 }) {
   return (
     <>
       <Row>
-        <Col lg={12}>
-          <Field name="name" placeholder="Replication name" component={YBFormInput} />
+        {!isEdit && (
+          <Col lg={12} className="replication-help-text">
+            1. Select the target universe you want to use for this replication
+          </Col>
+        )}
+      </Row>
+      <Row>
+        <Col lg={8}>
+          <Field
+            name="name"
+            placeholder="Replication name"
+            label="Replication Name"
+            component={YBFormInput}
+          />
         </Col>
       </Row>
       <Row>
-        <Col lg={12}>
+        <Col lg={8}>
           <Field
             name="targetUniverseUUID"
             component={YBFormSelect}
             options={universeList
-              .filter((universe) => universe.universeUUID !== currentUniverseUUID)
+              .filter(
+                (universe) =>
+                  universe.universeUUID !== currentUniverseUUID &&
+                  universe.state === universeState.GOOD
+              )
               .map((universe) => {
                 return {
                   label: universe.name,
@@ -194,6 +250,11 @@ function SelectTablesForm({
 
   return (
     <div className="select-tables-form">
+      <Row>
+        <Col lg={12} className="replication-help-text noMarginButton">
+          2. Select the tables you want to replicate
+        </Col>
+      </Row>
       <Row className="info-search">
         <Col lg={8}>List of common tables across source and target universe</Col>
         <Col lg={4}>
@@ -227,10 +288,25 @@ function SelectTablesForm({
             }}
           >
             <TableHeaderColumn dataField="tableUUID" hidden isKey={true} />
-            <TableHeaderColumn dataField="tableName">Table Name</TableHeaderColumn>
-            <TableHeaderColumn dataField="tableType">Type</TableHeaderColumn>
-            <TableHeaderColumn dataField="keySpace">Keyspace</TableHeaderColumn>
-            <TableHeaderColumn dataField="sizeBytes">Size</TableHeaderColumn>
+            <TableHeaderColumn dataField="tableName" width="50%">
+              Table Name
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="tableType"
+              width="20%"
+              dataFormat={(cell) => {
+                if (cell === YSQL_TABLE_TYPE) return 'YSQL';
+                return 'YCQL';
+              }}
+            >
+              Type
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="keySpace" width="20%">
+              Keyspace
+            </TableHeaderColumn>
+            <TableHeaderColumn dataField="sizeBytes" width="10%">
+              Size
+            </TableHeaderColumn>
           </BootstrapTable>
         </Col>
       </Row>

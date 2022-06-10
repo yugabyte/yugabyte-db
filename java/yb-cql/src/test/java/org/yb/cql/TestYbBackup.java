@@ -16,6 +16,7 @@ import java.util.*;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,9 +47,12 @@ public class TestYbBackup extends BaseYbBackupTest {
     runInvalidStmt("insert into test_tbl (i, j, k, l, m, n) values (1, 2, 1, 2, 2, 2);");
     runInvalidStmt("insert into test_tbl (i, j, k, l, m, n) values (1, 1, 2, 2, 2, 2);");
 
-    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", DEFAULT_TEST_KEYSPACE);
+    backupDir = new JSONObject(output).getString("snapshot_url");
     session.execute("insert into test_tbl (i, j, k, l, m, n) values (2, 2, 2, 1, 1, 1);");
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ks6");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ks6");
 
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl;",
                 "Row[1, 1, 1, 1, 1, 1]" +
@@ -88,14 +92,17 @@ public class TestYbBackup extends BaseYbBackupTest {
                       "values (" + s + ", '{\"a\":{\"b\":\"b" + s + "\"},\"c\":" + s + "}');");
     }
 
-    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE);
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", DEFAULT_TEST_KEYSPACE);
+    backupDir = new JSONObject(output).getString("snapshot_url");
 
     assertQuery("select count(*) from " + DEFAULT_TEST_KEYSPACE + ".test_json_tbl;",
                 "Row[2000]");
     session.execute("insert into test_json_tbl (h, j) " +
                     "values (9999, '{\"a\":{\"b\":\"b9999\"},\"c\":9999}');");
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ks7");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ks7");
 
     assertQuery("select count(*) from " + DEFAULT_TEST_KEYSPACE + ".test_json_tbl;",
                 "Row[2001]");
@@ -128,10 +135,13 @@ public class TestYbBackup extends BaseYbBackupTest {
     }
 
     session.execute("alter table test_tbl drop a;");
-    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
+    backupDir = new JSONObject(output).getString("snapshot_url");
     session.execute("insert into test_tbl (h, b) values (9999, 8.9)");
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ks1");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ks1");
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where h=1", "Row[1, 3.14]");
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where h=2000",
                 "Row[2000, 2002.14]");
@@ -157,18 +167,21 @@ public class TestYbBackup extends BaseYbBackupTest {
                       ", " + String.valueOf(2.14 + (float)i) + ")"); // b
     }
 
-    YBBackupUtil.runYbBackupCreate("--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
+    String backupDir = YBBackupUtil.getTempBackupDir();
+    String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,
+        "--keyspace", DEFAULT_TEST_KEYSPACE, "--table", "test_tbl");
+    backupDir = new JSONObject(output).getString("snapshot_url");
     session.execute("alter table test_tbl drop a;");
     session.execute("insert into test_tbl (h, b) values (9999, 8.9)");
 
     try {
-      YBBackupUtil.runYbBackupRestore();
+      YBBackupUtil.runYbBackupRestore(backupDir);
       fail("Backup restoring did not fail as expected");
     } catch (YBBackupException ex) {
       LOG.info("Expected exception", ex);
     }
 
-    YBBackupUtil.runYbBackupRestore("--keyspace", "ks1");
+    YBBackupUtil.runYbBackupRestore(backupDir, "--keyspace", "ks1");
 
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where h=1", "Row[1, 3.14]");
     assertQuery("select * from " + DEFAULT_TEST_KEYSPACE + ".test_tbl where h=2000",

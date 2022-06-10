@@ -17,21 +17,28 @@
 
 #include <glog/logging.h>
 
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/util/string_util.h"
+#include "yb/common/common.pb.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/value.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/docdb/value_type.h"
+
+#include "yb/rocksdb/compaction_filter.h"
+
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/transaction_participant.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/logging.h"
+#include "yb/util/string_util.h"
 
 DEFINE_uint64(aborted_intent_cleanup_ms, 60000, // 1 minute by default, 1 sec for testing
              "Duration in ms after which to check if a transaction is aborted.");
 
-DEFINE_int32(aborted_intent_cleanup_max_batch_size, 256, // Cleanup 256 transactions at a time
-             "Number of transactions to collect for possible cleanup.");
+DEFINE_uint64(aborted_intent_cleanup_max_batch_size, 256, // Cleanup 256 transactions at a time
+              "Number of transactions to collect for possible cleanup.");
 
 DEFINE_int32(external_intent_cleanup_secs, 60 * 60 * 24, // 24 hours by default
              "Duration in secs after which to cleanup external intents.");
@@ -153,7 +160,8 @@ rocksdb::FilterDecision DocDBIntentsCompactionFilter::Filter(
 Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTransactionMetadata(
     const Slice& key, const Slice& existing_value) {
   TransactionMetadataPB metadata_pb;
-  if (!metadata_pb.ParseFromArray(existing_value.cdata(), existing_value.size())) {
+  if (!metadata_pb.ParseFromArray(
+          existing_value.cdata(), narrow_cast<int>(existing_value.size()))) {
     return STATUS(IllegalState, "Failed to parse transaction metadata");
   }
   uint64_t write_time = metadata_pb.metadata_write_time();
@@ -171,15 +179,15 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
 Result<rocksdb::FilterDecision>
 DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   Slice key_slice = key;
-  RETURN_NOT_OK_PREPEND(key_slice.consume_byte(ValueTypeAsChar::kExternalTransactionId),
+  RETURN_NOT_OK_PREPEND(key_slice.consume_byte(KeyEntryTypeAsChar::kExternalTransactionId),
                         "Could not decode external transaction byte");
   // Ignoring transaction id result since function just returns kKeep or kDiscard.
-  ignore_result(VERIFY_RESULT_PREPEND(
-      DecodeTransactionId(&key_slice), "Could not decode external transaction id"));
+  RETURN_NOT_OK_PREPEND(
+      DecodeTransactionId(&key_slice), "Could not decode external transaction id");
   auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
       DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
   auto write_time_micros = doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
-  auto delta_micros = compaction_start_time_ - write_time_micros;
+  int64_t delta_micros = compaction_start_time_ - write_time_micros;
   if (delta_micros >
       GetAtomicFlag(&FLAGS_external_intent_cleanup_secs) * MonoTime::kMicrosecondsPerSecond) {
     return rocksdb::FilterDecision::kDiscard;

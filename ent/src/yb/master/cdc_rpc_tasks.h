@@ -16,14 +16,11 @@
 
 #include <stdlib.h>
 
-#include "yb/client/client.h"
-#include "yb/client/table.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/entity_ids.h"
-#include "yb/master/master.proxy.h"
+#include <google/protobuf/repeated_field.h>
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/common/entity_ids.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {

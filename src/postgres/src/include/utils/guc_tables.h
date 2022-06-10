@@ -23,6 +23,7 @@ enum config_type
 {
 	PGC_BOOL,
 	PGC_INT,
+	PGC_OID,
 	PGC_REAL,
 	PGC_STRING,
 	PGC_ENUM
@@ -32,6 +33,7 @@ union config_var_val
 {
 	bool		boolval;
 	int			intval;
+	Oid			oidval;
 	double		realval;
 	char	   *stringval;
 	int			enumval;
@@ -202,6 +204,22 @@ struct config_int
 	GucShowHook show_hook;
 	/* variable fields, initialized at runtime: */
 	int			reset_val;
+	void	   *reset_extra;
+};
+
+struct config_oid
+{
+	struct config_generic gen;
+	/* constant fields, must be set correctly in initial value: */
+	Oid		   *variable;
+	Oid			boot_val;
+	Oid			min;
+	Oid			max;
+	GucOidCheckHook check_hook;
+	GucOidAssignHook assign_hook;
+	GucShowHook show_hook;
+	/* variable fields, initialized at runtime: */
+	Oid			reset_val;
 	void	   *reset_extra;
 };
 

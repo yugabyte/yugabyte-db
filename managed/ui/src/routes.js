@@ -24,6 +24,7 @@ import UniverseDetail from './pages/UniverseDetail';
 import Universes from './pages/Universes';
 import { Tasks, TasksList, TaskDetail } from './pages/tasks';
 import Alerts from './pages/Alerts';
+import Backups from './pages/Backups';
 import UniverseConsole from './pages/UniverseConsole';
 import Metrics from './pages/Metrics';
 import DataCenterConfiguration from './pages/DataCenterConfiguration';
@@ -39,7 +40,6 @@ import { EditUniverse } from './redesign/universe/EditUniverse';
 import { Administration } from './pages/Administration';
 import ToggleFeaturesInTest from './pages/ToggleFeaturesInTest';
 import { ReplicationDetails } from './components/xcluster';
-
 
 /**
  * Redirects to base url if no queryParmas is set else redirects to path set in queryParam
@@ -90,6 +90,15 @@ const autoLogin = (params) => {
     search: ''
   });
   browserHistory.push('/');
+};
+
+export const setCookiesFromLocalStorage = () => {
+  const storageItems = ['authToken', 'apiToken', 'customerId', 'userId', 'asdfasd'];
+  storageItems.forEach((item) => {
+    if (localStorage.getItem(item)) {
+      Cookies.set(item, localStorage.getItem(item));
+    }
+  });
 };
 
 /**
@@ -228,7 +237,10 @@ export default (store) => {
           </Route>
           <Route path="/universes/:uuid/:tab" component={UniverseDetail} />
           <Route path="/universes/:uuid/tables/:tableUUID" component={TableDetail} />
-          <Route path="/universes/:uuid/replication/:replicationUUID" component={ReplicationDetails} />
+          <Route
+            path="/universes/:uuid/replication/:replicationUUID"
+            component={ReplicationDetails}
+          />
         </Route>
 
         {/* ------------------------------------------------------------------------*/}
@@ -253,6 +265,7 @@ export default (store) => {
           <Route path="/config/:tab/:section/:uuid" component={DataCenterConfiguration} />
         </Route>
         <Route path="/alerts" component={Alerts} />
+        <Route path="/backups" component={Backups} />
         <Route path="/help" component={Help} />
         <Route path="/profile" component={Profile} />
         <Route path="/profile/:tab" component={Profile} />

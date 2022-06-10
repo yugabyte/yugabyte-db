@@ -22,11 +22,13 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/table/block_based_filter_block.h"
+
 #include <algorithm>
 
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+
 #include "yb/util/string_util.h"
 
 namespace rocksdb {

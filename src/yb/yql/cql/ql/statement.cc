@@ -15,7 +15,12 @@
 
 #include "yb/yql/cql/ql/statement.h"
 
+#include "yb/util/result.h"
+
+#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
 #include "yb/yql/cql/ql/ql_processor.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {

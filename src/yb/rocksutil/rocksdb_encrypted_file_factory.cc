@@ -13,10 +13,10 @@
 
 #include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
-#include "yb/util/cipher_stream.h"
-#include "yb/util/header_manager.h"
-#include "yb/util/encrypted_file.h"
-#include "yb/util/encryption_util.h"
+#include "yb/encryption/cipher_stream.h"
+#include "yb/encryption/encrypted_file.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager.h"
 
 namespace yb {
 
@@ -24,14 +24,14 @@ namespace yb {
 class EncryptedSequentialFile : public SequentialFileWrapper {
  public:
   static Status Create(std::unique_ptr<rocksdb::SequentialFile>* result,
-                       HeaderManager* header_manager,
+                       encryption::HeaderManager* header_manager,
                        std::unique_ptr<rocksdb::SequentialFile> underlying_seq,
                        std::unique_ptr<rocksdb::RandomAccessFile> underlying_ra) {
     result->reset();
-    std::unique_ptr<BlockAccessCipherStream> stream;
+    std::unique_ptr<encryption::BlockAccessCipherStream> stream;
     uint32_t header_size;
 
-    const auto file_encrypted = VERIFY_RESULT(GetEncryptionInfoFromFile<uint8_t>(
+    const auto file_encrypted = VERIFY_RESULT(encryption::GetEncryptionInfoFromFile<uint8_t>(
         header_manager, underlying_ra.get(), &stream, &header_size));
     if (!file_encrypted) {
       *result = std::move(underlying_seq);
@@ -46,7 +46,7 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
 
   // Default constructor.
   EncryptedSequentialFile(std::unique_ptr<rocksdb::SequentialFile> file,
-                          std::unique_ptr<BlockAccessCipherStream> stream)
+                          std::unique_ptr<encryption::BlockAccessCipherStream> stream)
       : SequentialFileWrapper(std::move(file)), stream_(std::move(stream)) {}
 
   ~EncryptedSequentialFile() {}
@@ -55,7 +55,7 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
     if (!scratch) {
       return STATUS(InvalidArgument, "scratch argument is null.");
     }
-    uint8_t* buf = static_cast<uint8_t*>(EncryptionBuffer::Get()->GetBuffer(n));
+    uint8_t* buf = static_cast<uint8_t*>(encryption::EncryptionBuffer::Get()->GetBuffer(n));
     RETURN_NOT_OK(SequentialFileWrapper::Read(n, result, buf));
     RETURN_NOT_OK(stream_->Decrypt(offset_, *result, scratch));
     *result = Slice(scratch, result->size());
@@ -70,7 +70,7 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
   }
 
  private:
-  std::unique_ptr<BlockAccessCipherStream> stream_;
+  std::unique_ptr<encryption::BlockAccessCipherStream> stream_;
   uint64_t offset_ = 0;
 };
 
@@ -78,15 +78,15 @@ class EncryptedSequentialFile : public SequentialFileWrapper {
 class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
  public:
   static Status Create(std::unique_ptr<rocksdb::WritableFile>* result,
-                       HeaderManager* header_manager,
+                       encryption::HeaderManager* header_manager,
                        std::unique_ptr<rocksdb::WritableFile> underlying) {
-    return CreateWritableFile<RocksDBEncryptedWritableFile>(
+    return encryption::CreateWritableFile<RocksDBEncryptedWritableFile>(
         result, header_manager, std::move(underlying));
   }
 
   // Default constructor.
   RocksDBEncryptedWritableFile(std::unique_ptr<rocksdb::WritableFile> file,
-                               std::unique_ptr<BlockAccessCipherStream> stream,
+                               std::unique_ptr<encryption::BlockAccessCipherStream> stream,
                                uint32_t header_size)
       : WritableFileWrapper(std::move(file)), stream_(std::move(stream)),
         header_size_(header_size) {}
@@ -95,7 +95,7 @@ class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
 
   Status Append(const Slice& data) override {
     if (data.size() > 0) {
-      char* buf = static_cast<char*>(EncryptionBuffer::Get()->GetBuffer(data.size()));
+      char* buf = static_cast<char*>(encryption::EncryptionBuffer::Get()->GetBuffer(data.size()));
       RETURN_NOT_OK(stream_->Encrypt(GetFileSize() - header_size_, data, buf));
       RETURN_NOT_OK(WritableFileWrapper::Append(Slice(buf, data.size())));
     }
@@ -103,7 +103,7 @@ class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
   }
 
  private:
-  std::unique_ptr<yb::BlockAccessCipherStream> stream_;
+  std::unique_ptr<encryption::BlockAccessCipherStream> stream_;
   uint32_t header_size_;
 };
 
@@ -111,7 +111,8 @@ class RocksDBEncryptedWritableFile : public rocksdb::WritableFileWrapper {
 class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
  public:
   explicit RocksDBEncryptedFileFactory(
-      rocksdb::RocksDBFileFactory* factory, std::unique_ptr<HeaderManager> header_manager) :
+      rocksdb::RocksDBFileFactory* factory,
+      std::unique_ptr<encryption::HeaderManager> header_manager) :
       RocksDBFileFactoryWrapper(factory),
       header_manager_(std::move(header_manager)) {
     VLOG(1) << "Created RocksDB encrypted env";
@@ -125,7 +126,7 @@ class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
                              const rocksdb::EnvOptions& options) override {
     std::unique_ptr<rocksdb::RandomAccessFile> underlying;
     RETURN_NOT_OK(RocksDBFileFactoryWrapper::NewRandomAccessFile(fname, &underlying, options));
-    return EncryptedRandomAccessFile::Create(
+    return encryption::EncryptedRandomAccessFile::Create(
         result, header_manager_.get(), std::move(underlying));
   }
 
@@ -158,7 +159,7 @@ class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
     RETURN_NOT_OK(RocksDBFileFactoryWrapper::NewSequentialFile(
         fname, &underlying, rocksdb::EnvOptions()));
 
-    *size -= VERIFY_RESULT(GetHeaderSize(underlying.get(), header_manager_.get()));
+    *size -= VERIFY_RESULT(encryption::GetHeaderSize(underlying.get(), header_manager_.get()));
     return Status::OK();
   }
 
@@ -167,11 +168,11 @@ class RocksDBEncryptedFileFactory : public rocksdb::RocksDBFileFactoryWrapper {
   }
 
  private:
-  std::unique_ptr<HeaderManager> header_manager_;
+  std::unique_ptr<encryption::HeaderManager> header_manager_;
 };
 
 std::unique_ptr<rocksdb::Env> NewRocksDBEncryptedEnv(
-    std::unique_ptr<HeaderManager> header_manager) {
+    std::unique_ptr<encryption::HeaderManager> header_manager) {
   auto file_factory = rocksdb::Env::DefaultFileFactory();
   auto encrypted_file_factory = std::make_unique<RocksDBEncryptedFileFactory>(
       file_factory, std::move(header_manager));

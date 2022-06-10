@@ -28,55 +28,44 @@ class PrometheusWriter {
 
   virtual ~PrometheusWriter();
 
-  template<typename T>
-  CHECKED_STATUS WriteSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value,
-      AggregationFunction aggregation_function) {
+  // Write to the a single metric entry for non-table level metrics.
+  template <typename T>
+  Status WriteSingleEntryNonTable(
+      const MetricEntity::AttributeMap& attr, const std::string& name, const T& value) {
     auto it = attr.find("table_id");
     if (it != attr.end()) {
-      // For tablet level metrics, we roll up on the table level.
-      if (per_table_attributes_.find(it->second) == per_table_attributes_.end()) {
-        // If it's the first time we see this table, create the aggregate structures.
-        per_table_attributes_[it->second] = attr;
-        per_table_values_[it->second][name] = value;
-      } else {
-        switch (aggregation_function) {
-          case kSum:
-            per_table_values_[it->second][name] += value;
-            break;
-          case kMax:
-            per_table_values_[it->second][name] = std::max(per_table_values_[it->second][name],
-                                                           static_cast<double>(value));
-            break;
-          default:
-            InvalidAggregationFunction(aggregation_function);
-            break;
-        }
-      }
-    } else {
-      // For non-tablet level metrics, export them directly.
-      RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
+      return STATUS(
+          InvalidArgument, "Expect no table_id in attr argument when calling this function.");
     }
+
+    RETURN_NOT_OK(FlushSingleEntry(attr, name, value));
     return Status::OK();
   }
 
-  CHECKED_STATUS FlushAggregatedValues(const uint32_t& max_tables_metrics_breakdowns,
-                                       std::string priority_regex);
+  Status WriteSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
+      AggregationFunction aggregation_function);
+
+  Status FlushAggregatedValues(
+      uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex);
 
  private:
   friend class MetricsTest;
   // FlushSingleEntry() was a function template with type of "value" as template
   // var T. To allow NMSWriter to override FlushSingleEntry(), the type of "value"
   // has been instantiated to int64_t.
-  virtual CHECKED_STATUS FlushSingleEntry(const MetricEntity::AttributeMap& attr,
-                                          const std::string& name, const int64_t& value);
+  virtual Status FlushSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value);
 
   void InvalidAggregationFunction(AggregationFunction aggregation_function);
 
-  // Map from table_id to attributes
-  std::map<std::string, MetricEntity::AttributeMap> per_table_attributes_;
-  // Map from table_id to map of metric_name to value
-  std::map<std::string, std::map<std::string, double>> per_table_values_;
+  struct TableData {
+    MetricEntity::AttributeMap attributes;
+    std::map<std::string, int64_t> values;
+  };
+
+  // Map from table_id to table data.
+  std::map<std::string, TableData> tables_;
   // Output stream
   std::stringstream* output_;
   // Timestamp for all metrics belonging to this writer instance.
@@ -92,15 +81,14 @@ class NMSWriter : public PrometheusWriter {
   explicit NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics);
 
  private:
-  CHECKED_STATUS FlushSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name,
-      const int64_t& value) override;
+  Status FlushSingleEntry(
+      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value) override;
 
   // Output
   // Map from table_id to map of metric_name to value
-  EntityMetricsMap* table_metrics_;
+  EntityMetricsMap& table_metrics_;
   // Map from metric_name to value
-  MetricsMap* server_metrics_;
+  MetricsMap& server_metrics_;
 };
 
 } // namespace yb

@@ -117,7 +117,7 @@ class MultiThreadTest {
 
   int64_t num_operations_;
   // This is rounded down to the nearest even number
-  int32_t num_threads_;
+  int64_t num_threads_;
   thread_vec_t threads_;
 };
 

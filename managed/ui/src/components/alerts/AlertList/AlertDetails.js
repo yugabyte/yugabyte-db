@@ -1,7 +1,12 @@
 import React, { Component } from 'react';
-import { Row, Col, Label, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
+import { Row, Col, ButtonGroup, DropdownButton, MenuItem }
+ from 'react-bootstrap';
 import './AlertDetails.scss';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
+import { getSeverityLabel } from './AlertUtils';
+import moment from 'moment';
+
+import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
 
 const findValueforlabel = (labels, labelToFind) => {
   const label = labels.find((l) => l.name === labelToFind);
@@ -22,21 +27,29 @@ const getSourceName = (alertDetails) => {
   );
 };
 
-function getSeverityLabel(severity) {
-  let labelType = '';
-  switch (severity) {
-    case 'SEVERE':
-      labelType = 'danger';
-      break;
-    case 'RESOLVED':
-      labelType = 'success';
-      break;
-    case 'WARNING':
-    default:
-      labelType = 'warning';
+
+const getAlertExpressionLink = (alertDetails) => {
+  if (!alertDetails.alertExpressionUrl) {
+    // Just in case we get alert without Prometheus URL.
+    // Shouldn't happen though.
+    return "";
   }
-  return <Label bsStyle={labelType}>{severity}</Label>;
-}
+  var url = new URL(alertDetails.alertExpressionUrl);
+  url.hostname = window.location.hostname;
+  return (
+    <a
+      target="_blank"
+      rel="noopener noreferrer"
+      href={url.href}>
+      <img
+        className="prometheus-link-icon"
+        alt="Alert expression graph in Prometheus"
+        src={prometheusIcon}
+        width="25"
+      />
+    </a>
+  );
+};
 
 export default class AlertDetails extends Component {
   shouldComponentUpdate(nextProps) {
@@ -66,58 +79,64 @@ export default class AlertDetails extends Component {
             <div className="side-panel__title">Alert Details</div>
           </div>
           <div className="side-panel__content">
-            <Row>
-              <Col className="alert-label noLeftPadding" xs={12} md={12} lg={12}>
-                <h6 className="alert-label-header">Name</h6>
-                <div title={alertDetails.name} className="alert-label-value">
-                  {alertDetails.name}
-                </div>
-              </Col>
-            </Row>
-            <Row>
-              <Col
-                lg={12}
-                className="alert-label noLeftPadding noMarginBottom"
-              >
-                <h6 className="alert-label-header">DESCRIPTION</h6>
-                <div className="alert-label-message">{alertDetails.message}</div>
-              </Col>
-              <Col lg={12} className="noLeftPadding">
+            <div className='panel-highlight'>
+              <Row>
+                <Col className="alert-label no-left-padding" xs={10} md={10} lg={10}>
+                  <h6 className="alert-label-header">Source</h6>
+                  <div className="alert-label-value">{getSourceName(alertDetails)}</div>
+                </Col>
+                <Col lg={2} md={2} xs={2}>
                 {getSeverityLabel(alertDetails.severity)}
-              </Col>
-            </Row>
+                </Col>
+              </Row>
+              <Row>
+                <Col className="alert-label no-left-padding" xs={10} md={10} lg={10}>
+                  <h6 className="alert-label-header">Name</h6>
+                  <div title={alertDetails.name} className="alert-label-value">
+                    {alertDetails.name}
+                  </div>
+                </Col>
+                <Col lg={2} md={2} xs={2}>
+                {getAlertExpressionLink(alertDetails)}
+                </Col>
+              </Row>
+              <Row>
+                <Col
+                  lg={12}
+                  className="alert-label no-left-padding no-margin-bottom"
+                >
+                  <h6 className="alert-label-header">DESCRIPTION</h6>
+                  <div className="alert-label-message">{alertDetails.message}</div>
+                </Col>
+              </Row>
+            </div>
+            <div className='panel-highlight marginTop'>
             <Row>
-              <Col lg={12} className="noLeftPadding">
-                <Row className="marginTop">
-                  <Col className="alert-label noLeftPadding" xs={12} md={12} lg={12}>
-                    <h6 className="alert-label-header">Source</h6>
-                    <div className="alert-label-value">{getSourceName(alertDetails)}</div>
-                  </Col>
-                </Row>
+              <Col lg={12} className="no-padding">
                 <Row>
-                  <Col className="alert-label noLeftPadding" xs={6} md={6} lg={3}>
+                  <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
                     <h6 className="alert-label-header">Start</h6>
                     <div label={alertDetails.createTime} className="alert-label-value">
-                      {alertDetails.createTime}
+                      {moment(alertDetails.createTime).toString()}
                     </div>
                   </Col>
-                  <Col className="alert-label noLeftPadding" xs={6} md={6} lg={3}>
+                  <Col className="alert-label no-padding" xs={6} md={6} lg={6}>
                     <h6 className="alert-label-header">End</h6>
                     <div label={alertDetails.acknowledgedTime} className="alert-label-value">
-                      {alertDetails.resolvedTime ?? '-'}
+                      {alertDetails.resolvedTime ? moment(alertDetails.resolvedTime).toString() : '-'}
                     </div>
                   </Col>
                 </Row>
               </Col>
             </Row>
             <Row className="marginTop">
-              <Col lg={3} className="alert-label noLeftPadding">
+              <Col lg={6} className="alert-label no-padding">
                 <h5 className="alert-label-header">status</h5>
 
                 <div className="alert-label-value">{alertDetails.state}</div>
               </Col>
               {alertDetails.state === 'ACTIVE' && !isReadOnly && (
-                <Col lg={3} className="noLeftPadding">
+                <Col lg={6} className="no-padding">
                   <ButtonGroup>
                     <DropdownButton id="alert-mark-as-button" title="Mark as">
                       <MenuItem
@@ -134,8 +153,9 @@ export default class AlertDetails extends Component {
                 </Col>
               )}
             </Row>
+            </div>
             <Row className="marginTop">
-              <Col lg={12} className="noLeftPadding">
+              <Col lg={12} className="no-left-padding">
                 <h5>History</h5>
                 <div className="alert-history">
                   <ul>

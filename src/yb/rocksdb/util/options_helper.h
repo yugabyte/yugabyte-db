@@ -24,9 +24,9 @@
 #pragma once
 
 #include <string>
-#include <stdexcept>
 #include <vector>
 
+#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"

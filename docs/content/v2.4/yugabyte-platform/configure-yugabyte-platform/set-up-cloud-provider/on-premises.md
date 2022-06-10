@@ -15,42 +15,42 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link active">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -81,7 +81,7 @@ To provision on-prem nodes with YugabyteDB, the Yugabyte Platform requires SSH a
 
 #### SSH Port
 
-Port number of ssh client connections. 
+Port number of ssh client connections.
 
 #### Manually Provision Nodes
 
@@ -96,7 +96,7 @@ If any of the items from this checklist are true, you need to provision the node
 #### SSH Key
 Ensure that the SSH key is pasted correctly (Supported format is RSA).
 
-#### Air Gap install 
+#### Air Gap install
 If enabled, the installation will run in an air-gapped mode without expecting any internet access.
 
 #### Use Hostnames
@@ -109,10 +109,10 @@ Specifies the home directory of yugabyte user. The default value is /home/yugaby
 This is the port number (default value 9300) for the Node Exporter. You can override this to specify a different port.
 
 #### Install Node Exporter
-Whether to install or skip installing Node Exporter. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation. 
+Whether to install or skip installing Node Exporter. You can skip this step if you have Node Exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
 
 #### Node Exporter User
-You can override the default prometheus user. This is useful when a user is pre-provisioned (in case user creation is disabled) on nodes. If overridden, the installer will check if the user exists and will create the user if it doesn't. 
+You can override the default prometheus user. This is useful when a user is pre-provisioned (in case user creation is disabled) on nodes. If overridden, the installer will check if the user exists and will create the user if it doesn't.
 
 ### Provision the YugabyteDB nodes {#provision-the-yugabytedb-nodes}
 
@@ -168,7 +168,7 @@ After finishing the cloud provider configuration, click on “Manage Instances�
 This step is only required if you set “Manually Provision Nodes” to true otherwise, you need to skip this step.
 {{< /note >}}
 
-Follow these steps for manually provisioning each node by executing the pre-provisioning python script. 
+Follow these steps for manually provisioning each node by executing the pre-provisioning python script.
 
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-6.png)
@@ -181,7 +181,7 @@ Follow these steps for manually provisioning each node by executing the pre-prov
     ```
 
 
-3. Copy/paste the python script prompted in the UI and substitute for a node IP address and mount points. 
+3. Copy/paste the python script prompted in the UI and substitute for a node IP address and mount points.
     1. (Optional) Use `--ask_password `flag if sudo user requires password authentication
 
 
@@ -197,4 +197,4 @@ Wait for the script to finish with the SUCCESS status.
 
 4. Repeat step 3 for every node that will participate in the universe
 
-You’re finished configuring your on-premises cloud provider, and now you can proceed to universe creation. 
+You’re finished configuring your on-premises cloud provider, and now you can proceed to universe creation.

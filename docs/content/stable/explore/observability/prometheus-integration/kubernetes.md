@@ -1,13 +1,13 @@
 ---
 title: Prometheus Integration
 headerTitle: Prometheus Integration
-linkTitle: Prometheus Integration 
+linkTitle: Prometheus Integration
 description: Learn about exporting YugabyteDB metrics and monitoring the cluster with Prometheus.
 menu:
   stable:
     identifier: observability-4-kubernetes
     parent: explore-observability
-    weight: 240
+    weight: 235
 isTocNested: true
 showAsideToc: true
 ---
@@ -15,28 +15,28 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/observability/prometheus-integration/macos" class="nav-link">
+    <a href="/preview/explore/observability/prometheus-integration/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/prometheus-integration/linux" class="nav-link">
+    <a href="/preview/explore/observability/prometheus-integration/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/observability/prometheus-integration/docker" class="nav-link">
+    <a href="/preview/explore/observability/prometheus-integration/docker" class="nav-link">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 <!--
   <li >
-    <a href="/latest/explore/observability-kubernetes" class="nav-link active">
+    <a href="/preview/explore/observability-kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>

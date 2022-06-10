@@ -102,6 +102,18 @@ extern const char *YBGetCurrentRegion();
 extern const char *YBGetCurrentZone();
 
 /**
+ * Returns a null-terminated string representing the uuid of the
+ * placement this process is running on.
+ */
+extern const char *YBGetCurrentUUID();
+
+/**
+ * Returns a null-terminated string representing the metric node
+ * name that this process is associated with.
+ */
+extern const char *YBGetCurrentMetricNodeName();
+
+/**
  * Returns whether COLLATION support is enabled.
  */
 extern bool YBIsCollationEnabled();
@@ -111,6 +123,8 @@ extern bool YBIsCollationEnabled();
  * returns -1 if the configuration was not found.
  */
 extern int YBGetMaxClockSkewUsec();
+
+extern int YBGetYsqlOutputBufferSize();
 
 /**
  * Test only constant. When set to true initdb imports default collation

@@ -5,6 +5,7 @@ import { Link, withRouter, browserHistory } from 'react-router';
 import { Grid, DropdownButton, MenuItem, Tab, Alert } from 'react-bootstrap';
 import Measure from 'react-measure';
 import { mouseTrap } from 'react-mousetrap';
+
 import { CustomerMetricsPanel } from '../../metrics';
 import { RollingUpgradeFormContainer } from '../../../components/common/forms';
 import {
@@ -25,7 +26,6 @@ import { ListTablesContainer, ListBackupsContainer, ReplicationContainer } from 
 import { QueriesViewer } from '../../queries';
 import { isEmptyObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import {
-  isOnpremUniverse,
   isKubernetesUniverse,
   isPausableUniverse,
   isUniverseType
@@ -40,16 +40,19 @@ import { YBMenuItem } from './compounds/YBMenuItem';
 import { MenuItemsContainer } from './compounds/MenuItemsContainer';
 import {
   isNonAvailable,
-  isEnabled,
   isDisabled,
   isNotHidden,
   getFeatureState
 } from '../../../utils/LayoutUtils';
-import './UniverseDetail.scss';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
+import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
+import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
+import { YBTag } from '../../common/YBTag';
 
-const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d'];
+import './UniverseDetail.scss';
+
+const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
 
 export const isEphemeralAwsStorageInstance = (instanceType) => {
   return INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY.includes(instanceType?.split?.('.')[0]);
@@ -89,14 +92,18 @@ class UniverseDetail extends Component {
       }
     }
 
-    this.props.bindShortcut(['ctrl+e', 'e'], this.onEditUniverseButtonClick);
+    this.props.bindShortcut(['ctrl+e'], this.onEditUniverseButtonClick);
 
     if (this.props.location.pathname !== '/universes/create') {
       let uuid = this.props.uuid;
       if (typeof this.props.universeSelectionId !== 'undefined') {
         uuid = this.props.universeUUID;
       }
-      this.props.getUniverseInfo(uuid);
+      this.props.getUniverseInfo(uuid).then((response) => {
+        const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
+        const providerUUID = primaryCluster?.userIntent?.provider;
+        this.props.fetchSupportedReleases(providerUUID);
+      });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
         // Get alerts instead of Health
@@ -105,6 +112,7 @@ class UniverseDetail extends Component {
         this.props.getHealthCheck(uuid);
       }
     }
+    this.props.fetchRunTimeConfigs();
   }
 
   componentDidUpdate(prevProps) {
@@ -134,7 +142,7 @@ class UniverseDetail extends Component {
 
   isCurrentUniverseDeleteTask = (uuid) => {
     return this.props.tasks.customerTaskList.filter(
-      (task) => task.targetUUID === uuid && task.type === 'Delete'
+      (task) => task.targetUUID === uuid && task.type === 'Delete' && task.target === 'Universe'
     );
   };
 
@@ -172,26 +180,24 @@ class UniverseDetail extends Component {
     this.props.router.push(currentLocation);
   };
 
-  handleSubmitManageKey = (response) => {
-    response.then((res) => {
-      if (res.payload.isAxiosError) {
-        this.setState({
-          showAlert: true,
-          alertType: 'danger',
-          alertMessage: res.payload.message
-        });
-      } else {
-        this.setState({
-          showAlert: true,
-          alertType: 'success',
-          alertMessage:
-            JSON.parse(res.payload.config.data).key_op === 'ENABLE'
-              ? 'Encryption key has been set!'
-              : 'Encryption-at-Rest has been disabled!'
-        });
-      }
-      setTimeout(() => this.setState({ showAlert: false }), 3000);
-    });
+  handleSubmitManageKey = (res) => {
+    if (res.payload.isAxiosError) {
+      this.setState({
+        showAlert: true,
+        alertType: 'danger',
+        alertMessage: res.payload.message
+      });
+    } else {
+      this.setState({
+        showAlert: true,
+        alertType: 'success',
+        alertMessage:
+          JSON.parse(res.payload.config.data).key_op === 'ENABLE'
+            ? 'Encryption key has been set!'
+            : 'Encryption-at-Rest has been disabled!'
+      });
+    }
+    setTimeout(() => this.setState({ showAlert: false }), 3000);
 
     this.props.closeModal();
   };
@@ -208,13 +214,16 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse },
+      universe: { currentUniverse, supportedReleases },
       location: { query, pathname },
       showSoftwareUpgradesModal,
+      showVMImageUpgradeModal,
       showTLSConfigurationModal,
       showRollingRestartModal,
       showUpgradeSystemdModal,
+      showThirdpartyUpgradeModal,
       showRunSampleAppsModal,
+      showSupportBundleModal,
       showGFlagsModal,
       showManageKeyModal,
       showDeleteUniverseModal,
@@ -223,9 +232,11 @@ class UniverseDetail extends Component {
       updateBackupState,
       closeModal,
       customer,
-      customer: { currentCustomer },
+      customer: { currentCustomer, currentUser, runtimeConfigs },
       params: { tab },
-      featureFlags
+      featureFlags,
+      providers,
+      accessKeys
     } = this.props;
     const { showAlert, alertType, alertMessage } = this.state;
     const universePaused = universe?.currentUniverse?.data?.universeDetails?.universePaused;
@@ -242,6 +253,17 @@ class UniverseDetail extends Component {
       getPromiseState(currentUniverse).isSuccess() &&
       isUniverseType(currentUniverse.data, 'kubernetes');
 
+    const providerUUID = primaryCluster?.userIntent?.provider;
+    const provider = providers.data.find((provider) => provider.uuid === providerUUID);
+
+    var onPremSkipProvisioning = false;
+    if (provider && provider.code === 'onprem') {
+      const onPremKey = accessKeys.data.find(
+        (accessKey) => accessKey.idKey.providerUUID === provider.uuid
+      );
+      onPremSkipProvisioning = onPremKey?.keyInfo.skipProvisioning;
+    }
+
     const type =
       pathname.indexOf('edit') < 0
         ? 'Create'
@@ -255,7 +277,12 @@ class UniverseDetail extends Component {
       return <UniverseFormContainer type="Create" />;
     }
 
-    if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
+    if (
+      getPromiseState(currentUniverse).isLoading() ||
+      getPromiseState(currentUniverse).isInit() ||
+      getPromiseState(supportedReleases).isLoading() ||
+      getPromiseState(supportedReleases).isInit()
+    ) {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
@@ -296,18 +323,6 @@ class UniverseDetail extends Component {
       currentCustomer.data.features,
       'universes.details.overview.manageEncryption'
     );
-
-    // enable edit TLS menu item for onprem universes with rootCA of a "CustomCertHostPath" type
-    if (isEnabled(editTLSAvailability)) {
-      if (isOnpremUniverse(currentUniverse.data) && Array.isArray(customer.userCertificates.data)) {
-        const rootCert = customer.userCertificates.data.find(
-          (item) => item.uuid === currentUniverse.data.universeDetails.rootCA
-        );
-        if (rootCert?.certType !== 'CustomCertHostPath') editTLSAvailability = 'disabled';
-      } else {
-        editTLSAvailability = 'disabled';
-      }
-    }
 
     const defaultTab = isNotHidden(currentCustomer.data.features, 'universes.details.overview')
       ? 'overview'
@@ -377,6 +392,7 @@ class UniverseDetail extends Component {
                 width={width}
                 nodePrefixes={nodePrefixes}
                 isKubernetesUniverse={isItKubernetesUniverse}
+                visibleModal={visibleModal}
               />
             </div>
           </Tab.Pane>
@@ -405,13 +421,11 @@ class UniverseDetail extends Component {
             unmountOnExit={true}
             disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
           >
-            {
-              featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-                <Replication currentUniverseUUID={currentUniverse.data.universeUUID}/>
-              ): (
-                <ReplicationContainer />
-              )
-            }
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <Replication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
           </Tab.Pane>
         ),
 
@@ -430,6 +444,10 @@ class UniverseDetail extends Component {
               isCommunityEdition={!!customer.INSECURE_apiToken}
               fetchCustomerTasks={this.props.fetchCustomerTasks}
               refreshUniverseData={this.getUniverseInfo}
+              abortCurrentTask={this.props.abortCurrentTask}
+              hideTaskAbortModal={this.props.hideTaskAbortModal}
+              showTaskAbortModal={this.props.showTaskAbortModal}
+              visibleModal={visibleModal}
             />
           </Tab.Pane>
         )
@@ -441,13 +459,24 @@ class UniverseDetail extends Component {
             isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
               <Tab.Pane
                 eventKey={'backups'}
-                tabtitle="Backups"
+                tabtitle={
+                  <>
+                    Backups
+                    {(featureFlags.test['backupv2'] || featureFlags.released['backupv2']) && (
+                      <YBTag>Beta</YBTag>
+                    )}
+                  </>
+                }
                 key="backups-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
               >
-                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
+                  <UniverseLevelBackup />
+                ) : (
+                  <ListBackupsContainer currentUniverse={currentUniverse.data} />
+                )}
               </Tab.Pane>
             ),
 
@@ -460,7 +489,11 @@ class UniverseDetail extends Component {
                 unmountOnExit={true}
                 disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
               >
-                <UniverseHealthCheckList universe={universe} currentCustomer={currentCustomer} />
+                <UniverseHealthCheckList
+                  universe={universe}
+                  currentCustomer={currentCustomer}
+                  currentUser={currentUser}
+                />
               </Tab.Pane>
             )
           ])
@@ -503,6 +536,10 @@ class UniverseDetail extends Component {
         ? showToggleBackupModal()
         : updateBackupState(currentUniverse.data.universeUUID, !takeBackups);
     };
+
+    const enableThirdpartyUpgrade =
+      featureFlags.test['enableThirdpartyUpgrade'] ||
+      featureFlags.released['enableThirdpartyUpgrade'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -558,10 +595,21 @@ class UniverseDetail extends Component {
                           )}
                         </YBMenuItem>
                       )}
-
+                      {!universePaused &&
+                        runtimeConfigs &&
+                        getPromiseState(runtimeConfigs).isSuccess() &&
+                        runtimeConfigs.data.configEntries.find(
+                          (c) => c.key === 'yb.upgrade.vmImage'
+                        ).value === 'true' && (
+                          <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
+                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                              Upgrade VM Image
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        )}
                       {!universePaused && !useSystemd && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={updateInProgress || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -573,7 +621,20 @@ class UniverseDetail extends Component {
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-
+                      {!universePaused && enableThirdpartyUpgrade && (
+                        <YBMenuItem
+                          disabled={updateInProgress}
+                          onClick={showThirdpartyUpgradeModal}
+                          availability={getFeatureState(
+                            currentCustomer.data.features,
+                            'universes.details.overview.thirdpartyUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade 3rd-party Software
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
+                      )}
                       {!isReadOnlyUniverse &&
                         !universePaused &&
                         isNotHidden(
@@ -668,6 +729,31 @@ class UniverseDetail extends Component {
                         />
                       )}
 
+                      {(featureFlags.test['supportBundle'] ||
+                        featureFlags.released['supportBundle']) && (
+                        <>
+                          <MenuItem divider />
+                          {!universePaused && (
+                            <UniverseSupportBundle
+                              currentUniverse={currentUniverse.data}
+                              modal={modal}
+                              closeModal={closeModal}
+                              button={
+                                <YBMenuItem
+                                  disabled={updateInProgress}
+                                  onClick={showSupportBundleModal}
+                                >
+                                  <YBLabelWithIcon icon="fa fa-file-archive-o">
+                                    Support Bundles <YBTag>Beta</YBTag>
+                                  </YBLabelWithIcon>
+                                </YBMenuItem>
+                              }
+                            />
+                          )}
+                          <MenuItem divider />
+                        </>
+                      )}
+
                       {!universePaused && (
                         <YBMenuItem
                           disabled={updateInProgress}
@@ -695,9 +781,10 @@ class UniverseDetail extends Component {
                       <MenuItem divider />
 
                       {/* TODO:
-                      1. For now, we're enabling the Pause Universe for providerType==='aws'
-                      only. This functionality needs to be enabled for all the cloud
-                      providers and once that's done this condition needs to be removed.
+                      1. For now, we're enabling the Pause Universe for providerType one of
+                      'aws', 'gcp' or 'azu' only. This functionality needs to be enabled for
+                      all the cloud providers and once that's done this condition needs
+                      to be removed.
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
 
@@ -760,8 +847,10 @@ class UniverseDetail extends Component {
             showModal &&
             (visibleModal === 'gFlagsModal' ||
               visibleModal === 'softwareUpgradesModal' ||
+              visibleModal === 'vmImageUpgradeModal' ||
               visibleModal === 'tlsConfigurationModal' ||
               visibleModal === 'rollingRestart' ||
+              visibleModal === 'thirdpartyUpgradeModal' ||
               visibleModal === 'systemdUpgrade')
           }
           onHide={closeModal}

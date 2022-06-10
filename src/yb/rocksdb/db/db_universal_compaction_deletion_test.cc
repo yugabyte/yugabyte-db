@@ -12,7 +12,10 @@
 //
 
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/util/testutil.h"
+
 #include "yb/util/path_util.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;
@@ -119,14 +122,14 @@ class DBTestUniversalCompactionDeletion : public DBTestBase {
     return options;
   }
 
-  CHECKED_STATUS WaitForNumFilesCreated(const std::string& desc, size_t num_files) {
+  Status WaitForNumFilesCreated(const std::string& desc, size_t num_files) {
     return yb::LoggedWaitFor(
         [this, num_files] { return file_create_listener_->NumFilesCreated() >= num_files; },
         kWaitTimeout, desc);
   }
 
   template <class FilePathsContainer>
-  CHECKED_STATUS WaitFilePathsDeleted(
+  Status WaitFilePathsDeleted(
       FilePathsContainer file_paths, const std::string& description) {
     RETURN_NOT_OK_PREPEND(
         yb::LoggedWaitFor(
@@ -145,11 +148,11 @@ class DBTestUniversalCompactionDeletion : public DBTestBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitLiveFilesDeleted(
+  Status WaitLiveFilesDeleted(
       const std::vector<LiveFileMetaData>& files, const std::string& description) {
     std::vector<std::string> file_paths;
     for (const auto& file : files) {
-      file_paths.push_back(dbname_ + file.name);
+      file_paths.push_back(dbname_ + file.Name());
     }
     return WaitFilePathsDeleted(std::move(file_paths), description);
   }
@@ -251,10 +254,10 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesMinPendingOutput) {
     std::vector<LiveFileMetaData> live_files;
     db_->GetLiveFilesMetaData(&live_files);
     for (auto file : live_files) {
-      input_files_2.insert(file.name);
+      input_files_2.insert(file.Name());
     }
     for (auto file : live_files_1) {
-      input_files_2.erase(file.name);
+      input_files_2.erase(file.Name());
     }
   }
 
@@ -267,7 +270,7 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesMinPendingOutput) {
 
   LOG(INFO) << "Resuming compaction (1)  ...";
   file_create_listener_->ResumeFileName(compaction_1_output);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 }
 
 // This reproduces an issue where we delete compacted files too late because when they were
@@ -327,7 +330,7 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
         std::vector<LiveFileMetaData> files;
         db_->GetLiveFilesMetaData(&files);
         for (auto file : files) {
-          if (file.name == '/' + compaction_1_output) {
+          if (file.Name() == '/' + compaction_1_output) {
             return true;
           }
         }
@@ -345,7 +348,7 @@ TEST_F(DBTestUniversalCompactionDeletion, DeleteObsoleteFilesDelayedByScheduledC
 
   const auto compaction_3_output = file_create_listener_->GetLastCreatedFileName();
   file_create_listener_->ResumeFileName(compaction_3_output);
-  dbfull()->TEST_WaitForCompact();
+  ASSERT_OK(dbfull()->TEST_WaitForCompact());
 }
 
 }  // namespace rocksdb

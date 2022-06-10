@@ -21,12 +21,14 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 namespace tserver {
 
 namespace {
 
-CHECKED_STATUS AddDirToSnapshotFiles(
+Status AddDirToSnapshotFiles(
     const std::string& dir, const std::string& prefix, const std::string& snapshot_id,
     google::protobuf::RepeatedPtrField<tablet::SnapshotFilePB>* out) {
   auto files = VERIFY_RESULT_PREPEND(

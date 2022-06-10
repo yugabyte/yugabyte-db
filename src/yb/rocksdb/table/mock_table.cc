@@ -22,12 +22,16 @@
 
 #include "yb/rocksdb/table/mock_table.h"
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/get_context.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
+
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 namespace mock {
@@ -89,7 +93,7 @@ Status MockTableFactory::NewTableReader(
   return Status::OK();
 }
 
-TableBuilder* MockTableFactory::NewTableBuilder(
+std::unique_ptr<TableBuilder> MockTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
     WritableFileWriter* base_file, WritableFileWriter* data_file) const {
   // This table factory doesn't support separate files for metadata and data, because tests using
@@ -99,7 +103,7 @@ TableBuilder* MockTableFactory::NewTableBuilder(
 
   uint32_t id = GetAndWriteNextID(base_file);
 
-  return new MockTableBuilder(id, &file_system_);
+  return std::make_unique<MockTableBuilder>(id, &file_system_);
 }
 
 Status MockTableFactory::CreateMockTable(Env* env, const std::string& fname,

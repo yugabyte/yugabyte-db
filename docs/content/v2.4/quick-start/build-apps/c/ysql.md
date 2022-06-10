@@ -15,7 +15,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/build-apps/c/ysql" class="nav-link active">
+    <a href="/preview/quick-start/build-apps/c/ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -34,7 +34,7 @@ The tutorial assumes that you have:
 ## Install the libpq C driver
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
-  
+
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
@@ -154,5 +154,5 @@ You should see the following output:
 ```
 Created table employee
 Inserted data (1, 'John', 35, 'C')
-Query returned: John 35 C 
+Query returned: John 35 C
 ```

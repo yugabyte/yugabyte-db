@@ -20,18 +20,7 @@ namespace yb {
 
 class Status;
 
-#ifdef YB_HEADERS_NO_STUBS
-#define CHECKED_STATUS MUST_USE_RESULT ::yb::Status
-#else
-// Only for the build using client headers. MUST_USE_RESULT is undefined in that case.
-#define CHECKED_STATUS ::yb::Status
-#endif
-
-#ifdef __clang__
 #define NODISCARD_CLASS [[nodiscard]] // NOLINT
-#else
-#define NODISCARD_CLASS // NOLINT
-#endif
 
 template<class TValue>
 class NODISCARD_CLASS Result;

@@ -3,7 +3,9 @@ package com.yugabyte.yw.models;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static play.mvc.Http.Status.NOT_FOUND;
 
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
@@ -11,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
@@ -20,6 +23,8 @@ import org.slf4j.LoggerFactory;
 @Entity
 public class RuntimeConfigEntry extends Model {
   private static final Logger LOG = LoggerFactory.getLogger(RuntimeConfigEntry.class);
+  private static final Set<String> sensitiveKeys =
+      ImmutableSet.of("yb.security.ldap.ldap_service_account_password", "yb.security.secret");
 
   @EmbeddedId private final RuntimeConfigEntryKey idKey;
 
@@ -85,7 +90,9 @@ public class RuntimeConfigEntry extends Model {
   private static RuntimeConfigEntry upsertInternal(
       UUID uuid, String path, String value, Runnable ensure) {
     RuntimeConfigEntry config = get(uuid, path);
-    LOG.debug("Setting {} value to: {}", path, value);
+    String logValue =
+        sensitiveKeys.contains(path) ? CommonUtils.getMaskedValue(path, value) : value;
+    LOG.debug("Setting {} value to: {}", path, logValue);
 
     if (config == null) {
       ensure.run();

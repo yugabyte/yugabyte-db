@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshot-ysql" class="nav-link">
+    <a href="/preview/manage/backup-restore/snapshot-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/manage/backup-restore/snapshots-ycql" class="nav-link active">
+    <a href="/preview/manage/backup-restore/snapshots-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -258,7 +258,7 @@ Table being imported: ydb.test_tb
 Table type: index (attaching to the old table id cb612f9693fb40b6beeaa159078effd0)
 Table being imported: ydb.test_tb_name
 Successfully applied snapshot.
-Object           	Old ID                           	New ID                          
+Object           	Old ID                           	New ID
 Keyspace         	485a915f8f794308a6f39398040fada8 	6e407151f7ba41cf991f68dfdd5248b9
 Table            	cb612f9693fb40b6beeaa159078effd0 	5550206e25d140698be031154a805823
 Tablet 0         	6a2bf658a3ea47f0ba2515ce484096ad 	4da0ca52f96e4ed88f071196890550fd
@@ -281,7 +281,7 @@ Using these IDs, you can restore the previous `.snapshot` folders to the new pat
 
 {{< note title="Note" >}}
 
-For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster. 
+For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
 {{< /note >}}
 

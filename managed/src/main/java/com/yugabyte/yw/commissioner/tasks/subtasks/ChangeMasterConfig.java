@@ -16,13 +16,14 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.time.Duration;
-
+import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ChangeConfigResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
+import org.yb.util.ServerInfo;
 
 @Slf4j
 public class ChangeMasterConfig extends AbstractTaskBase {
@@ -47,6 +48,8 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     // Use hostport to remove a master from quorum, when this is set. No errors are rethrown
     // as this is best effort.
     public boolean useHostPort = false;
+    // Check if the operation is already performed before it is done again.
+    public boolean checkBeforeChange = true;
   }
 
   @Override
@@ -98,13 +101,39 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     YBClientService.Config config = new YBClientService.Config(masterAddresses, certificate);
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
     YBClient client = ybService.getClientWithConfig(config);
+
+    // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
+    // The ipToUse is the address that we need to add to the config.
+    // The ipForPlatform is the address that the platform uses to connect to the host.
+    boolean hasSecondaryIp =
+        node.cloudInfo.secondary_private_ip != null
+            && !node.cloudInfo.secondary_private_ip.equals("null");
+    boolean shouldUseSecondary =
+        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("false");
+    String ipToUse =
+        hasSecondaryIp && shouldUseSecondary
+            ? node.cloudInfo.secondary_private_ip
+            : node.cloudInfo.private_ip;
+    String ipForPlatform = node.cloudInfo.private_ip;
     try {
+      // The call changeMasterConfig is not idempotent. The client library internally keeps retrying
+      // for a long time until it gives up if the node is already added or removed.
+      // This optional check ensures that changeMasterConfig is not invoked if the operation is
+      // already done for the node.
+
+      if (taskParams().checkBeforeChange
+          && isChangeMasterConfigDone(client, node, isAddMasterOp, ipToUse)) {
+        log.info(
+            "Config change (add={}) is already done for node {}({}:{})",
+            isAddMasterOp,
+            node.nodeName,
+            node.cloudInfo.private_ip,
+            node.masterRpcPort);
+        return;
+      }
       response =
           client.changeMasterConfig(
-              node.cloudInfo.private_ip,
-              node.masterRpcPort,
-              isAddMasterOp,
-              taskParams().useHostPort);
+              ipForPlatform, node.masterRpcPort, isAddMasterOp, taskParams().useHostPort, ipToUse);
     } catch (Exception e) {
       String msg =
           "Error "
@@ -112,7 +141,7 @@ public class ChangeMasterConfig extends AbstractTaskBase {
               + " while performing change config on node "
               + node.nodeName
               + ", host:port = "
-              + node.cloudInfo.private_ip
+              + ipToUse
               + ":"
               + node.masterRpcPort;
       log.error(msg, e);
@@ -130,6 +159,28 @@ public class ChangeMasterConfig extends AbstractTaskBase {
     if (response != null && response.hasError()) {
       String msg = "ChangeConfig response has error " + response.errorMessage();
       log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
+
+  private boolean isChangeMasterConfigDone(
+      YBClient client, NodeDetails node, boolean isAddMasterOp, String ipToUse) {
+    try {
+      ListMastersResponse response = client.listMasters();
+      List<ServerInfo> servers = response.getMasters();
+      boolean anyMatched = servers.stream().anyMatch(s -> s.getHost().equals(ipToUse));
+      return anyMatched == isAddMasterOp;
+    } catch (Exception e) {
+      String msg =
+          "Error "
+              + e.getMessage()
+              + " while performing list masters for node "
+              + node.nodeName
+              + ", host:port = "
+              + ipToUse
+              + ":"
+              + node.masterRpcPort;
+      log.error(msg, e);
       throw new RuntimeException(msg);
     }
   }

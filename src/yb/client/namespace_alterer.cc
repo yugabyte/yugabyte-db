@@ -15,6 +15,8 @@
 
 #include "yb/client/client-internal.h"
 
+#include "yb/master/master_ddl.pb.h"
+
 namespace yb {
 namespace client {
 

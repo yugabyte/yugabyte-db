@@ -12,8 +12,21 @@
 //
 
 #include <memory>
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+
+#include "yb/common/ql_type.h"
+
+#include "yb/client/client.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/varint.h"
+
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_create_table.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/pt_table_property.h"
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 namespace yb {
 namespace ql {
@@ -22,6 +35,7 @@ using std::make_shared;
 using std::string;
 using strings::Substitute;
 using std::dynamic_pointer_cast;
+using namespace std::literals;
 
 class QLTestAnalyzer: public QLTestBase {
  public:
@@ -39,8 +53,8 @@ class QLTestAnalyzer: public QLTestBase {
 
     TreeNode::SharedPtr root = parse_tree->root();
     CHECK_EQ(TreeNodeOpcode::kPTSelectStmt, root->opcode());
-    PTSelectStmt::SharedPtr pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
-    PTSelectStmt::SharedPtr pt_child_select = pt_select_stmt->child_select();
+    auto pt_select_stmt = std::static_pointer_cast<PTSelectStmt>(root);
+    auto pt_child_select = pt_select_stmt->child_select();
     EXPECT_EQ(pt_child_select != nullptr, use_index) << select_stmt;
     EXPECT_EQ(pt_child_select != nullptr && pt_child_select->covers_fully(), covers_fully)
         << select_stmt;
@@ -405,6 +419,13 @@ TEST_F(QLTestAnalyzer, TestIndexSelection) {
   EXPECT_OK(processor->Run("CREATE INDEX i7 ON t ((h2, h1), c1) INCLUDE (c2);"));
 
   client::YBTableName table_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "t");
+  // Wait for read permissions on all indexes.
+  for (int i = 1; i <= 7; ++i) {
+    client::YBTableName index_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, Format("i$0", i));
+    EXPECT_OK(client_->WaitUntilIndexPermissionsAtLeast(table_name,
+                                                        index_name,
+                                                        INDEX_PERM_READ_WRITE_AND_DELETE));
+  }
   processor->RemoveCachedTableDesc(table_name);
 
   // Should select from the indexed table.

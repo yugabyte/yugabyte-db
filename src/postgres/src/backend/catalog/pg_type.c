@@ -131,7 +131,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace, Oid ownerId)
 	tup = heap_form_tuple(tupDesc, values, nulls);
 
 	/* Use binary-upgrade override for pg_type.oid? */
-	if (IsBinaryUpgrade)
+	if (IsBinaryUpgrade || yb_binary_restore)
 	{
 		if (!OidIsValid(binary_upgrade_next_pg_type_oid))
 			ereport(ERROR,
@@ -474,7 +474,7 @@ TypeCreate(Oid newTypeOid,
 			elog(ERROR, "shared relations must have an explicit type OID");
 
 		/* Use binary-upgrade override for pg_type.oid, if supplied. */
-		else if (IsBinaryUpgrade)
+		else if (IsBinaryUpgrade || yb_binary_restore)
 		{
 			if (!OidIsValid(binary_upgrade_next_pg_type_oid))
 				ereport(ERROR,

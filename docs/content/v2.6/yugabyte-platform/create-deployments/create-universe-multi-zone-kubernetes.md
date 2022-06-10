@@ -15,13 +15,13 @@ showAsideToc: true
   <ul class="nav nav-tabs-alt nav-tabs-yb">
 
 <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link">
+    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link">
       <i class="fas fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link active">
+    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -29,11 +29,11 @@ Generic</a>
 
 </ul>
 
-This section describes how to create a YugabyteDB universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider. 
+This section describes how to create a YugabyteDB universe in one geographic region across multiple availability zones using Kubernetes as a cloud provider.
 
 ## Prerequisites
 
-Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** page that you should be able to see if you use Yugabyte Platform to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
+Before you start creating a universe, ensure that you performed steps described in [Configure the Kubernetes cloud provider](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/). The following illustration shows the **Managed Kubernetes Service configs** page that you should be able to see if you use Yugabyte Platform to navigate to **Configs > Cloud Provider Configuration > Infrastructure > Managed Kubernetes Service**:
 
 ![img](/images/yb-platform/kubernetes-config1.png)
 
@@ -57,17 +57,17 @@ To start, click **Create Universe** and complete the first two fields of the **C
 
 Complete the rest of the **Cloud Configuration** section as follows:
 
-- Use the **Region** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region. 
+- Use the **Region** field to select the region. This enables the **Availability Zones** option that allows you to see zones belonging to that region.
 
 - Provide the value in the **Pods** field. This value should be equal to or greater than the replication factor. The default value is 3. When this value is supplied, the pods are automatically placed across all the availability zones to guarantee the maximum availability.
 
-- In the **Replication Factor** field, define the replication factor. The default is 3. 
+- In the **Replication Factor** field, define the replication factor. The default is 3.
 
   ![img](/images/yb-platform/kubernetes-config5.png)
 
 Complete the **Instance Configuration** section as follows:
 
-- Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer pods. The default is Small (4 Cores & 7.5GB RAM). You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-the-region-and-zones)).
+- Use the **Instance Type** field to select the CPU and memory combination, as per needs to allocate the YB-TServer pods. The default is Small (4 Cores & 7.5GB RAM). You can override this setting when you configure the Kubernetes cloud provider (see [Configuring the region and zones](/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-the-region-and-zones)).
 
 - In the **Volume Info** field, specify the number of volumes multiplied by size. The default is 1*100GB.
 
@@ -95,13 +95,13 @@ Complete the **Advanced** section as follows:
 
 Complete the **G-Flags** section as follows:
 
-- Use the **Master** fields to specify YugabyteDB Masters parameters, one parameter per field (see [YB Master Configuration Flags](/latest/reference/configuration/yb-master/#configuration-flags) for details).
+- Use the **Master** fields to specify YugabyteDB Masters parameters, one parameter per field (see [YB Master Configuration Flags](/preview/reference/configuration/yb-master/#configuration-flags) for details).
 
-- Use the **T-Server** fields to specify the YugabyteDB T-Servers parameters, one parameter per field (see [YB T-Server Configuration Flags](/latest/reference/configuration/yb-tserver/#configuration-flags) for details).
+- Use the **T-Server** fields to specify the YugabyteDB T-Servers parameters, one parameter per field (see [YB T-Server Configuration Flags](/preview/reference/configuration/yb-tserver/#configuration-flags) for details).
 
   ![img](/images/yb-platform/kubernetes-config8.png)
 
-Accept default values for all of the remaining fields. 
+Accept default values for all of the remaining fields.
 
 The following illustration shows the completed **Cloud Configuration** page:
 
@@ -139,4 +139,4 @@ You can create a connection to a pod as follows:
 
 ## Connect to the universe
 
-For information on how to connect to the universe from the Kubernetes cluster as well as remotely, see [Connecting YugabyteDB Clusters](/latest/deploy/kubernetes/clients/#connecting-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
+For information on how to connect to the universe from the Kubernetes cluster as well as remotely, see [Connecting YugabyteDB Clusters](/preview/deploy/kubernetes/clients/#connecting-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).

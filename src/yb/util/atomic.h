@@ -37,8 +37,9 @@
 #include <atomic>
 #include <thread>
 
-#include <boost/type_traits/make_signed.hpp>
 #include <boost/atomic.hpp>
+#include <boost/type_traits/make_signed.hpp>
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/macros.h"
@@ -381,7 +382,7 @@ AtomicUniquePtr<T> MakeAtomicUniquePtr(Args&&... args) {
 template <class T>
 T GetAtomicFlag(T* flag) {
   std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
-  return atomic_flag.load(std::memory_order::memory_order_relaxed);
+  return atomic_flag.load(std::memory_order::relaxed);
 }
 
 template <class U, class T>

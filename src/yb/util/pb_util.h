@@ -81,14 +81,14 @@ enum CreateMode {
 };
 
 // See MessageLite::AppendToString
-void AppendToString(const MessageLite &msg, faststring *output);
+Status AppendToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::AppendPartialToString
-void AppendPartialToString(const MessageLite &msg, faststring *output);
-void AppendPartialToString(const MessageLite &msg, std::string *output);
+Status AppendPartialToString(const MessageLite &msg, faststring *output);
+Status AppendPartialToString(const MessageLite &msg, std::string *output);
 
 // See MessageLite::SerializeToString.
-void SerializeToString(const MessageLite &msg, faststring *output);
+Status SerializeToString(const MessageLite &msg, faststring *output);
 
 // See MessageLite::ParseFromZeroCopyStream
 // TODO: change this to return Status - differentiate IO error from bad PB
@@ -96,7 +96,7 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile);
 
 // Similar to MessageLite::ParseFromArray, with the difference that it returns
 // Status::kCorruption if the message could not be parsed.
-Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length);
+Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length);
 
 template<class T>
 Result<T> ParseFromSlice(const Slice& slice) {
@@ -212,14 +212,14 @@ class WritablePBContainerFile {
   //
   // 'msg' need not be populated; its type is used to "lock" the container
   // to a particular protobuf message type in Append().
-  CHECKED_STATUS Init(const google::protobuf::Message& msg);
+  Status Init(const google::protobuf::Message& msg);
 
   // Writes a protobuf message to the container, beginning with its size
   // and ending with its CRC32 checksum.
-  CHECKED_STATUS Append(const google::protobuf::Message& msg);
+  Status Append(const google::protobuf::Message& msg);
 
   // Asynchronously flushes all dirty container data to the filesystem.
-  CHECKED_STATUS Flush();
+  Status Flush();
 
   // Synchronizes all dirty container data to the filesystem.
   //
@@ -227,10 +227,10 @@ class WritablePBContainerFile {
   // container file was provided during construction, we don't know whether
   // it was created or reopened, and parent directory synchronization is
   // only needed in the former case.
-  CHECKED_STATUS Sync();
+  Status Sync();
 
   // Closes the container.
-  CHECKED_STATUS Close();
+  Status Close();
 
  private:
   FRIEND_TEST(TestPBUtil, TestPopulateDescriptorSet);
@@ -245,7 +245,7 @@ class WritablePBContainerFile {
 
   // Serialize the contents of 'msg' into 'buf' along with additional metadata
   // to aid in deserialization.
-  CHECKED_STATUS AppendMsgToBuffer(const google::protobuf::Message& msg, faststring* buf);
+  Status AppendMsgToBuffer(const google::protobuf::Message& msg, faststring* buf);
 
   bool closed_;
 
@@ -266,20 +266,20 @@ class ReadablePBContainerFile {
   ~ReadablePBContainerFile();
 
   // Reads the header information from the container and validates it.
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Reads a protobuf message from the container, validating its size and
   // data using a CRC32 checksum.
-  CHECKED_STATUS ReadNextPB(google::protobuf::Message* msg);
+  Status ReadNextPB(google::protobuf::Message* msg);
 
   // Dumps any unread protobuf messages in the container to 'os'. Each
   // message's DebugString() method is invoked to produce its textual form.
   //
   // If 'oneline' is true, prints each message on a single line.
-  CHECKED_STATUS Dump(std::ostream* os, bool oneline);
+  Status Dump(std::ostream* os, bool oneline);
 
   // Closes the container.
-  CHECKED_STATUS Close();
+  Status Close();
 
   // Expected PB type and schema for each message to be read.
   //
@@ -301,7 +301,7 @@ class ReadablePBContainerFile {
   //
   // If 'eofOK' is EOF_OK, an EOF is returned as-is. Otherwise, it is
   // considered to be an invalid short read and returned as an error.
-  CHECKED_STATUS ValidateAndRead(size_t length, EofOK eofOK,
+  Status ValidateAndRead(size_t length, EofOK eofOK,
                                  Slice* result, std::unique_ptr<uint8_t[]>* scratch);
 
   size_t offset_;

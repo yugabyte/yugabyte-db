@@ -36,7 +36,7 @@
 #include <vector>
 #include <mutex>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/common_fwd.h"
 #include "yb/fs/fs_manager.h"
 #include "yb/server/webserver_options.h"
 #include "yb/server/rpc_server.h"
@@ -101,6 +101,10 @@ class ServerBaseOptions {
 
   ServerBaseOptions(const ServerBaseOptions& options);
 
+  WebserverOptions& CompleteWebserverOptions();
+
+  std::string HostsString();
+
  protected:
   explicit ServerBaseOptions(int default_port);
 
@@ -121,7 +125,7 @@ class ServerBaseOptions {
   mutable std::mutex master_addresses_mtx_;
 };
 
-CHECKED_STATUS DetermineMasterAddresses(
+Status DetermineMasterAddresses(
     const std::string& master_addresses_flag_name, const std::string& master_addresses_flag,
     uint64_t master_replication_factor, MasterAddresses* master_addresses,
     std::string* master_addresses_resolved_str);
@@ -129,6 +133,8 @@ CHECKED_STATUS DetermineMasterAddresses(
 std::string MasterAddressesToString(const MasterAddresses& addresses);
 
 Result<std::vector<Endpoint>> ResolveMasterAddresses(const MasterAddresses& master_addresses);
+
+CloudInfoPB GetPlacementFromGFlags();
 
 } // namespace server
 } // namespace yb

@@ -37,7 +37,8 @@
 #include "yb/tserver/tablet_server-test-base.h"
 
 #include "yb/client/table_handle.h"
-#include "yb/client/table.h"
+
+#include "yb/util/random.h"
 
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(consensus_rpc_timeout_ms);
@@ -88,11 +89,11 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // but then actually tries to the get the committed consensus configuration to make sure.
   itest::TServerDetails* GetLeaderReplicaOrNull(const std::string& tablet_id);
 
-  CHECKED_STATUS GetLeaderReplicaWithRetries(const std::string& tablet_id,
+  Status GetLeaderReplicaWithRetries(const std::string& tablet_id,
                                              itest::TServerDetails** leader,
                                              int max_attempts = 100);
 
-  CHECKED_STATUS GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
+  Status GetTabletLeaderUUIDFromMaster(const std::string& tablet_id,
                                                std::string* leader_uuid);
 
   itest::TServerDetails* GetReplicaWithUuidOrNull(const std::string& tablet_id,
@@ -104,7 +105,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 
   // Removes a set of servers from the replicas_ list.
   // Handy for controlling who to validate against after killing servers.
-  void PruneFromReplicas(const unordered_set<std::string>& uuids);
+  void PruneFromReplicas(const std::unordered_set<std::string>& uuids);
 
   void GetOnlyLiveFollowerReplicas(const std::string& tablet_id,
                                    std::vector<itest::TServerDetails*>* followers);
@@ -113,14 +114,14 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   int64_t GetFurthestAheadReplicaIdx(const std::string& tablet_id,
                                      const std::vector<itest::TServerDetails*>& replicas);
 
-  CHECKED_STATUS ShutdownServerWithUUID(const std::string& uuid);
+  Status ShutdownServerWithUUID(const std::string& uuid);
 
-  CHECKED_STATUS RestartServerWithUUID(const std::string& uuid);
+  Status RestartServerWithUUID(const std::string& uuid);
 
   // Since we're fault-tolerant we might mask when a tablet server is
   // dead. This returns Status::IllegalState() if fewer than 'num_tablet_servers'
   // are alive.
-  CHECKED_STATUS CheckTabletServersAreAlive(int num_tablet_servers);
+  Status CheckTabletServersAreAlive(size_t num_tablet_servers);
 
   void TearDown() override;
 
@@ -135,11 +136,9 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   void BuildAndStart(const std::vector<std::string>& ts_flags = std::vector<std::string>(),
                      const std::vector<std::string>& master_flags = std::vector<std::string>());
 
-  void AssertAllReplicasAgree(int expected_result_count);
+  void AssertAllReplicasAgree(size_t expected_result_count);
 
-  client::YBTableType table_type() {
-    return client::YBTableType::YQL_TABLE_TYPE;
-  }
+  client::YBTableType table_type();
 
  protected:
   std::unique_ptr<ExternalMiniCluster> cluster_;

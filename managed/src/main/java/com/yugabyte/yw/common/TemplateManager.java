@@ -48,7 +48,9 @@ public class TemplateManager extends DevopsBase {
       boolean passwordlessSudoAccess,
       boolean installNodeExporter,
       Integer nodeExporterPort,
-      String nodeExporterUser) {
+      String nodeExporterUser,
+      boolean setUpChrony,
+      List<String> ntpServers) {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
 
@@ -87,6 +89,16 @@ public class TemplateManager extends DevopsBase {
       commandArgs.add(nodeExporterUser);
     }
 
+    if (setUpChrony) {
+      commandArgs.add("--use_chrony");
+      if (ntpServers != null && !ntpServers.isEmpty()) {
+        for (String server : ntpServers) {
+          commandArgs.add("--ntp_server");
+          commandArgs.add(server);
+        }
+      }
+    }
+
     JsonNode result =
         execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
 
@@ -97,6 +109,8 @@ public class TemplateManager extends DevopsBase {
       keyInfo.installNodeExporter = installNodeExporter;
       keyInfo.nodeExporterPort = nodeExporterPort;
       keyInfo.nodeExporterUser = nodeExporterUser;
+      keyInfo.setUpChrony = setUpChrony;
+      keyInfo.ntpServers = ntpServers;
       accessKey.setKeyInfo(keyInfo);
       accessKey.save();
     } else {

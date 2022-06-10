@@ -14,15 +14,15 @@
 #ifndef YB_CLIENT_SESSION_H
 #define YB_CLIENT_SESSION_H
 
+#include <future>
 #include <unordered_set>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/error.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/hybrid_time.h"
 
-#include "yb/util/async_util.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
@@ -122,8 +122,6 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
 
   void SetDeadline(CoarseTimePoint deadline);
 
-  CHECKED_STATUS ReadSync(std::shared_ptr<YBOperation> yb_op);
-
   // TODO: add "doAs" ability here for proxy servers to be able to act on behalf of
   // other users, assuming access rights.
 
@@ -131,12 +129,10 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // Applied operations just added to the session and waits to be flushed.
   void Apply(YBOperationPtr yb_op);
-  CHECKED_STATUS ApplyAndFlush(YBOperationPtr yb_op);
 
   bool IsInProgress(YBOperationPtr yb_op) const;
 
   void Apply(const std::vector<YBOperationPtr>& ops);
-  CHECKED_STATUS ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
 
   // Flush any pending writes.
   //
@@ -174,8 +170,13 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // For FlushAsync, 'callback' must remain valid until it is invoked.
   void FlushAsync(FlushCallback callback);
   std::future<FlushStatus> FlushFuture();
-  CHECKED_STATUS Flush();
-  FlushStatus FlushAndGetOpsErrors();
+
+  // For production code use async variants of the following functions instead.
+  FlushStatus TEST_FlushAndGetOpsErrors();
+  Status TEST_Flush();
+  Status TEST_ApplyAndFlush(YBOperationPtr yb_op);
+  Status TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops);
+  Status TEST_ReadSync(std::shared_ptr<YBOperation> yb_op);
 
   // Abort the unflushed or in-flight operations in the session.
   void Abort();
@@ -184,7 +185,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   // Returns Status::IllegalState() if 'force' is false and there are still pending
   // operations. If 'force' is true batcher_ is aborted even if there are pending
   // operations.
-  CHECKED_STATUS Close(bool force = false);
+  Status Close(bool force = false);
 
   // Return true if there are operations which have not yet been delivered to the
   // cluster. This may include buffered operations (i.e those that have not yet been
@@ -198,7 +199,7 @@ class YBSession : public std::enable_shared_from_this<YBSession> {
   //
   // Note that this is different than TEST_HasPendingOperations() above, which includes
   // operations which have been sent and not yet responded to.
-  int TEST_CountBufferedOperations() const;
+  size_t TEST_CountBufferedOperations() const;
 
   // Returns true if this session has not flushed operations.
   bool HasNotFlushedOperations() const;

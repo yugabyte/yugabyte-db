@@ -15,47 +15,47 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
       <i class="fab fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
       <i class="fab fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link active">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/latest/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
       <i class="fas fa-building"></i>
       On-premises
     </a>
@@ -63,15 +63,11 @@ showAsideToc: true
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using the Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page highlights the need to configure at least one cloud provider, as per the following illustration:
-
-![Configure Cloud Provider](/images/ee/configure-cloud-provider.png)
+This document describes how to configure the Kubernetes provider for YugabyteDB universes using Yugabyte Platform. If no cloud providers are configured in the Yugabyte Platform console yet, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
-### Kubernetes
-
-If you plan to run YugabyteDB universes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. The Yugabyte Platform uses those credentials to automatically provision and de-provision the pods that run Yugabyte.
+To run YugabyteDB universes on Kubernetes, all you need to provide in the Yugabyte Platform console is your Kubernetes provider credentials. Yugabyte Platform uses those credentials to automatically provision and de-provision the pods that run YugabyteDB.
 
 Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
@@ -80,11 +76,9 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file.
+This is the ServiceAccount whose secret can be used to generate a `kubeconfig` file. This account:
 
-This account:
-
-- Should not be deleted once it is in use by the platform.
+- Should not be deleted once it is in use by Yugabyte Platform.
 - `namespace` in the ServiceAccount creation command can be replaced by the desired namespace in which to install YugabyteDB.
 
 Run the following `kubectl` command to apply the YAML file:
@@ -95,16 +89,16 @@ kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/y
 
 Expect the following output:
 
-```
+```output
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-You need to grant access to this ServiceAccount using ClusterRoles and Roles as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
+You need to grant access to this ServiceAccount using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
 Ensure that you have replaced the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
 
 The tasks you can perform depend on your access level.
 
-**Global Admin** can grant broad cluster level admin access by executing the following command:
+Global Admin can grant broad cluster level admin access by executing the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
@@ -112,7 +106,7 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
   | kubectl apply -n <namespace> -f -
 ```
 
-**Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
+Global Restricted can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
@@ -122,7 +116,16 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-g
 
 This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
-**Namespace Admin** can grant namespace level admin access by using the following command:
+Validate the service account using the following command:
+
+```sh
+kubectl auth can-i \
+    --as yugabyte-platform-universe-management \
+    {get|create|delete|list} \
+    {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+```
+
+Namespace Admin can grant namespace-level admin access by using the following command:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
@@ -132,14 +135,33 @@ curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-n
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
 
-**Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
+Validate the service account using the following command:
 
-For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces.
+```sh
+kubectl auth can-i \
+    --as yugabyte-platform-universe-management \
+    {get|create|delete|list|patch} \
+    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
+```
+
+Namespace Restricted can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
+
+For example, if your goal is to allow the platform software to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
   | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
   | kubectl apply -n <namespace> -f -
+```
+
+Validate the service account using the following command:
+
+```sh
+kubectl auth can-i \
+    --as yugabyte-platform-universe-management \
+    --namespace {namespace} \
+    {get|delete|list} \
+    {poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
 ### `kubeconfig` file for a Kubernetes cluster
@@ -160,7 +182,7 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
     The following output should appear:
 
-    ```
+    ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
     ```
 
@@ -168,12 +190,12 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
 ## Select the Kubernetes service
 
-You can use the Pivotal Container Service or Managed Kubernetes Service. 
+You can use the Pivotal Container Service or Managed Kubernetes Service.
 
-Select the tab for the service you are using, as per the following illustration:
+Select the tab for the service you are using, as per the following illustration:<br><br>
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
-Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default).
+Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default):
 
 <img title="K8s Configuration -- empty" alt="K8s Configuration -- empty" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-empty.png" />
 
@@ -193,7 +215,7 @@ The following illustration shows the completed form:
 
 <img title="K8s Configuration -- filled" alt="K8s Configuration -- filled" class="expandable-image" src="/images/ee/k8s-setup/k8s-configure-filled.png" />
 
-## Configure the region and zones
+## Configure region and zones
 
 Continue configuring your Kubernetes provider by clicking **Add Region** and completing the **Add new region** dialog, as follows:
 
@@ -218,7 +240,7 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
         app: "yb-master"
         ports:
           ui: "7000"
-    
+
       - name: "yb-tserver-service"
         type: "LoadBalancer"
         annotations:
@@ -231,17 +253,17 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     ```
 
   - Overrides to disable LoadBalancer:
-  
+
     ```yml
     enableLoadBalancer: False
     ```
-  
+
   - Overrides to change the cluster domain name:
-  
+
     ```yml
     domainName: my.cluster
     ```
-  
+
   - Overrides to add annotations at StatefulSet-level:
 
     ```yml
@@ -251,7 +273,7 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     ```
 
   - Overrides to add custom resource allocation for YB master and TServer pods and it overrides the instance types selected in the Yugabyte universe creation flow:
-  
+
     ```yml
     resource:
       master:
@@ -276,12 +298,59 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
     istioCompatibility: enabled: true
     ```
 
+  - Overrides to publish Node-IP as the server broadcast address.
+
+    By default, Master and T-Server pod fully-qualified domain names (FQDNs) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YugabyteDB TServer pods are deployed, add the following YAML to each zone override configuration:
+
+    ```yml
+    tserver:
+      extraEnv:
+      - name: NODE_IP
+        valueFrom:
+          fieldRef:
+            fieldPath: status.hostIP
+      serverBroadcastAddress: "$(NODE_IP)"
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-tserver"
+            topologyKey: kubernetes.io/hostname
+
+    # Required to esure that the Kubernetes FQDNs are used for
+    # internal communication between the nodes and node-to-node
+    # TLS certificates are validated correctly.
+
+    gflags:
+      master:
+        use_private_ip: cloud
+      tserver:
+        use_private_ip: cloud
+
+    serviceEndpoints:
+      - name: "yb-master-ui"
+        type: LoadBalancer
+        app: "yb-master"
+        ports:
+          http-ui: "7000"
+
+      - name: "yb-tserver-service"
+        type: NodePort
+        externalTrafficPolicy: "Local"
+        app: "yb-tserver"
+        ports:
+          tcp-yql-port: "9042"
+          tcp-yedis-port: "6379"
+          tcp-ysql-port: "5433"
+    ```
+
+
 Continue configuring your Kubernetes provider by clicking **Add Zone** and notice that there are might be multiple zones, as per the following illustration:
 
 <img title="K8s Configuration -- region" alt="K8s Configuration -- region" class="expandable-image" src="/images/ee/k8s-setup/k8s-add-region-flow.png" />
 
 Finally, click **Add Region**, and then click **Save** to save the configuration. If successful, you will be redirected to the table view of all configurations.
-
-## Next step
-
-You are now ready to create YugabyteDB universes, as described in the next section.

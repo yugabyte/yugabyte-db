@@ -20,6 +20,8 @@
 
 namespace yb {
 
+class Slice;
+
 // Postgres object identifier (OID).
 typedef uint32_t PgOid;
 static constexpr PgOid kPgInvalidOid = 0;
@@ -32,41 +34,30 @@ struct PgObjectId {
 
   PgObjectId(PgOid db_oid, PgOid obj_oid)
       : database_oid(db_oid), object_oid(obj_oid) {}
+
   PgObjectId()
       : database_oid(kPgInvalidOid), object_oid(kPgInvalidOid) {}
-  explicit PgObjectId(const TableId& table_id) {
-    auto res = GetPgsqlDatabaseOidByTableId(table_id);
-    if (res.ok()) {
-      database_oid = res.get();
-    }
-    res = GetPgsqlTableOid(table_id);
-    if (res.ok()) {
-      object_oid = res.get();
-    } else {
-      // Reset the previously set database_oid.
-      database_oid = kPgInvalidOid;
-    }
-  }
+
+  explicit PgObjectId(const TableId& table_id);
+  explicit PgObjectId(const Slice& table_id);
 
   bool IsValid() const {
     return database_oid != kPgInvalidOid && object_oid != kPgInvalidOid;
   }
 
-  TableId GetYBTableId() const {
+  TableId GetYbTableId() const {
     return GetPgsqlTableId(database_oid, object_oid);
   }
 
-  TablegroupId GetYBTablegroupId() const {
+  TablegroupId GetYbTablegroupId() const {
     return GetPgsqlTablegroupId(database_oid, object_oid);
   }
 
-  TablespaceId GetYBTablespaceId() const {
+  TablespaceId GetYbTablespaceId() const {
     return GetPgsqlTablespaceId(object_oid);
   }
 
-  std::string ToString() const {
-    return Format("{$0, $1}", database_oid, object_oid);
-  }
+  std::string ToString() const;
 
   bool operator== (const PgObjectId& other) const {
     return database_oid == other.database_oid && object_oid == other.object_oid;
@@ -88,6 +79,11 @@ struct PgObjectId {
   template <class PB>
   static PgObjectId FromPB(const PB& pb) {
     return PgObjectId(pb.database_oid(), pb.object_oid());
+  }
+
+  template <class PB>
+  static TableId GetYbTableIdFromPB(const PB& pb) {
+    return FromPB(pb).GetYbTableId();
   }
 };
 

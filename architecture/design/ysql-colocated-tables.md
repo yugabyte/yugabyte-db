@@ -42,7 +42,7 @@ In this scenario, only the few large tables would need to be sharded and scaled 
 **Example:** An IoT use case, where one table records the data from the IoT devices while there are a number of other tables that store data pertaining to user identity, device profiles, privacy, etc.
 
 ### 3. Scaling the number of databases, each database with a small dataset
-There may be scenarios where the number of databases grows rapidly, while the dataset of each dataset is small. This is characteristic of a microservices-oriented architecture, where each microservice needs its own database. These microservices are hosted in dev, test, staging, production and other environments. The net result is a lot of small databases, and the need to be able to scale the number of databases hosted. Colocated tables allow for the entire dataset in each database to be hosted in one tablet, enabling scalability of the number of databases in a cluster by simply adding more nodes.
+There may be scenarios where the number of databases grows rapidly, while the dataset of each database is small. This is characteristic of a microservices-oriented architecture, where each microservice needs its own database. These microservices are hosted in dev, test, staging, production and other environments. The net result is a lot of small databases, and the need to be able to scale the number of databases hosted. Colocated tables allow for the entire dataset in each database to be hosted in one tablet, enabling scalability of the number of databases in a cluster by simply adding more nodes.
 
 **Example:** Multi-tenant SaaS services where one database is created per customer. As new customers are rapidly on-boarded, it becomes necessary to add more databases quickly while maintaining high-availability and fault-tolerance of each database.
 
@@ -136,8 +136,6 @@ Today, there is one RocksDB created per tablet. This RocksDB only has data for a
 
 1. Use single RocksDB for the entire tablet (i.e. for all tables).
 1. Use multiple RocksDBs with one RocksDB per table.
-
-More analysis on this can be found here.
 
 We decided to use single RocksDB for entire tablet. This is because:
 

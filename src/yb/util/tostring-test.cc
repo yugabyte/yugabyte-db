@@ -12,8 +12,10 @@
 // under the License.
 //
 //
+
 #include <deque>
 #include <list>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -22,6 +24,7 @@
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/stringpiece.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/tostring.h"
 #include "yb/util/uuid.h"

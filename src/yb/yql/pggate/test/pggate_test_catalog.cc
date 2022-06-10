@@ -15,8 +15,15 @@
 
 #include <chrono>
 
-#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::chrono_literals;
 
@@ -37,10 +44,15 @@ TEST_F(PggateTestCatalog, TestDml) {
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
-                                       false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, true /* colocated */,
+                                       false /* is_shared_table */,
+                                       true /* if_not_exist */,
+                                       false /* add_primary_key */,
+                                       true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       false /* is_matview */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "company_id", ++col_count,
                                              DataType::INT64, false, true));
@@ -59,8 +71,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -113,8 +125,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -161,7 +173,7 @@ TEST_F(PggateTestCatalog, TestDml) {
   // Check result.
   int col_index = 0;
   CHECK_EQ(values[col_index++], 0);  // compid : int64
-  int32_t empid = values[col_index++];  // empid : int32
+  int32_t empid = narrow_cast<int32_t>(values[col_index++]);  // empid : int32
   CHECK_EQ(empid, 1) << "Unexpected result for compid column";
   CHECK_EQ(values[col_index++], empid);  // dependent_count : int16
   CHECK_EQ(values[col_index++], 100 + empid);  // project_count : int32
@@ -181,8 +193,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -222,7 +234,7 @@ TEST_F(PggateTestCatalog, TestDml) {
     // Check result.
     col_index = 0;
     CHECK_EQ(values[col_index++], 0);  // compid : int64
-    empid = values[col_index++];  // empid : int32
+    empid = narrow_cast<int32_t>(values[col_index++]);  // empid : int32
     CHECK_EQ(values[col_index++], empid);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + empid);  // project_count : int32
 
@@ -239,8 +251,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // UPDATE ----------------------------------------------------------------------------------------
   // Allocate new update.
-  CHECK_YBC_STATUS(YBCPgNewUpdate(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewUpdate(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -293,8 +305,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -334,8 +346,8 @@ TEST_F(PggateTestCatalog, TestDml) {
 
     // Check result.
     col_index = 0;
-    int32_t compid = values[col_index++];  // id : int32
-    empid = values[col_index++];  // empid : int32
+    int32_t compid = narrow_cast<int32_t>(values[col_index++]);  // id : int32
+    empid = narrow_cast<int32_t>(values[col_index++]);  // empid : int32
     CHECK_EQ(compid, 0);
     if (empid%2 == 0) {
       // Check if EVEN rows stays the same as inserted.
@@ -384,18 +396,23 @@ TEST_F(PggateTestCatalog, TestCopydb) {
   LOG(INFO) << "Create database with source database";
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, "pg_catalog", tabname,
                                        kDefaultDatabaseOid, tab_oid,
-                                       false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, true /* colocated */,
+                                       false /* is_shared_table */,
+                                       true /* if_not_exist */,
+                                       false /* add_primary_key */,
+                                       true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       false /* is_matview */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "key", 1, DataType::INT32, false, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "value", 2, DataType::INT32, false, false));
   CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
   pg_stmt = nullptr;
 
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   YBCPgExpr expr_key;
   YBCPgExpr expr_value;
@@ -432,8 +449,8 @@ TEST_F(PggateTestCatalog, TestCopydb) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Select from from test table in the new database";
-  CHECK_YBC_STATUS(YBCPgNewSelect(copy_db_oid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(copy_db_oid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;

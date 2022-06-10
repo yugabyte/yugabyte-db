@@ -16,7 +16,16 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/util/result.h"
+
+#include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_update.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
 
 namespace yb {
 namespace ql {
@@ -25,7 +34,7 @@ using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
+Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
                                         QLReferencedColumnsPB *columns_pb) {
   // Write a list of columns to be read before executing the statement.
   const MCSet<int32>& column_refs = tnode->column_refs();
@@ -40,7 +49,7 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
 
   for (const ColumnArg& col : column_args) {

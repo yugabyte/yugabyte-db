@@ -36,9 +36,6 @@ export default class RestoreBackup extends Component {
 
       if (values.backupList) {
         payload.backupList = values.backupList;
-      } else if (values.restoreToTableName !== initialValues.restoreToTableName) {
-        payload.tableName = values.restoreToTableName;
-        payload.keyspace = values.restoreToKeyspace;
       } else if (values.restoreToKeyspace !== initialValues.restoreToKeyspace) {
         payload.keyspace = values.restoreToKeyspace;
       }
@@ -130,15 +127,6 @@ export default class RestoreBackup extends Component {
     const isUniverseBackup =
       hasBackupInfo && Array.isArray(backupInfo.backupList) && backupInfo.backupList.length;
 
-    // Disable table field if multi-table backup
-    const isMultiTableBackup =
-      hasBackupInfo &&
-      (isUniverseBackup ||
-        (backupInfo.tableNameList && backupInfo.tableNameList.length > 1) ||
-        (backupInfo.keyspace &&
-          (!backupInfo.tableNameList || !backupInfo.tableNameList.length) &&
-          !backupInfo.tableUUID));
-
     const kmsConfigInfoContent =
       'This field is optional and should only be specified if backup was from universe encrypted at rest';
 
@@ -205,7 +193,7 @@ export default class RestoreBackup extends Component {
           <Field
             name="restoreToTableName"
             component={YBFormInput}
-            disabled={isMultiTableBackup}
+            disabled={true}
             label={'Table'}
           />
           {(featureFlags.test?.addRestoreTimeStamp ||

@@ -279,6 +279,12 @@ static int	Shutdown = NoShutdown;
 
 static bool FatalError = false; /* T if recovering from backend crash */
 
+static bool YbCrashWhileLockIntermediateState = false; /* Crashed before fully acquiring a lock */
+
+#ifdef __linux__
+static char *YbBackendOomScoreAdj = NULL;
+#endif
+
 /*
  * We use a simple state machine to control startup, shutdown, and
  * crash recovery (which is rather like shutdown followed by startup).
@@ -1671,6 +1677,13 @@ ServerLoop(void)
 	bool yb_enabled = YBIsEnabledInPostgresEnvVar();
 #endif
 
+#ifdef __linux__
+	if (getenv("FLAGS_yb_backend_oom_score_adj") != NULL)
+	{
+		YbBackendOomScoreAdj = strdup(getenv("FLAGS_yb_backend_oom_score_adj"));
+	}
+#endif
+
 	for (;;)
 	{
 		fd_set		rmask;
@@ -2880,6 +2893,32 @@ reaper(SIGNAL_ARGS)
 	while ((pid = waitpid(-1, &exitstatus, WNOHANG)) > 0)
 	{
 		/*
+		 * We perform the following tasks when a process crashes
+		 * 1. If no locks are held during a crash, we avoid postmaster restarts.
+		 * 2. If any lock has been acquired or is in the process of being
+		 *    acquired we take a conservative approach and restart the
+		 *    postmaster.
+		 */
+
+		int i;
+		for (i = 0; i < ProcGlobal->allProcCount; i++)
+		{
+			PGPROC	   *proc = &ProcGlobal->allProcs[i];
+			/*
+			 * We take a conservative approach and restart the postmaster if
+			 * a process dies while holding a lock.
+			 */
+			if (pid == proc->pid && proc->ybAnyLockAcquired)
+			{
+				YbCrashWhileLockIntermediateState = true;
+				ereport(LOG,
+						(errmsg("terminating active server processes due to backend crash while "
+						"acquiring LWLock")));
+				break;
+			}
+		}
+
+		/*
 		 * Check if this child was a startup process.
 		 */
 		if (pid == StartupPID)
@@ -2950,6 +2989,7 @@ reaper(SIGNAL_ARGS)
 			 */
 			StartupStatus = STARTUP_NOT_RUNNING;
 			FatalError = false;
+			YbCrashWhileLockIntermediateState = false;
 			Assert(AbortStartTime == 0);
 			ReachedNormalRunning = true;
 			pmState = PM_RUN;
@@ -3168,6 +3208,17 @@ reaper(SIGNAL_ARGS)
 		 * Else do standard backend child cleanup.
 		 */
 		CleanupBackend(pid, exitstatus);
+		if (!YbCrashWhileLockIntermediateState && !FatalError)
+		{
+			/*
+			 * Since this is not a fatal crash, we are pursuing a clean exit. All
+			 * we need to do is to clear the pgstat entry of the dead backend
+			 * pid. In case of postmaster restart, it is unnecessary as all the
+			 * shared memory state will be reset.
+			 */
+			yb_pgstat_clear_entry_pid(pid);
+
+		}
 	}							/* loop over pending child-death reports */
 
 	/*
@@ -3391,8 +3442,17 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	 * clutter log.
 	 */
 	take_action = !FatalError && Shutdown != ImmediateShutdown;
-	if (YBIsEnabledInPostgresEnvVar()) {
-		take_action = take_action && YBShouldRestartAllChildrenIfOneCrashes();
+	/*
+	 * If we enable the flag yb_pg_terminate_child_backend to false, it means
+	 * that if a child has crashed in a safe state, we need not do a postmaster
+	 * restart. We check for that condition in determine if we need to restart
+	 * postmaster (the variable take_action determines that).
+	 */
+	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes())
+	{
+		take_action = take_action && YbCrashWhileLockIntermediateState;
+		if (YbCrashWhileLockIntermediateState)
+			YbCrashWhileLockIntermediateState = false;
 	}
 
 	if (take_action)
@@ -3609,6 +3669,8 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		allow_immediate_pgstat_restart();
 	}
 
+	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() && !take_action)
+		return;
 	/* We do NOT restart the syslogger */
 
 	if (Shutdown != ImmediateShutdown)
@@ -4168,6 +4230,34 @@ BackendStartup(Port *port)
 #ifdef EXEC_BACKEND
 	if (!bn->dead_end)
 		ShmemBackendArrayAdd(bn);
+#endif
+
+#ifdef __linux__
+	char file_name[64];
+	snprintf(file_name, sizeof(file_name), "/proc/%d/oom_score_adj", pid);
+	FILE * fPtr;
+	fPtr = fopen(file_name, "w");
+
+    /*
+	 * oom_score_adj varies from -1000 to 1000. The lower the value, the lower
+	 * the chance that it's going to be killed. Here, we are setting low priority
+	 * (YbBackendOomScoreAdj) for postgres connections so that during out of
+	 * memory, postgres connections are killed first. We do that be setting a
+	 * high oom_score_adj value for the postgres connection.
+	 */
+	if(fPtr == NULL)
+	{
+		int saved_errno = errno;
+		ereport(LOG,
+			(errcode_for_file_access(),
+				errmsg("error %d: %s, unable to open file %s", saved_errno,
+				strerror(saved_errno), file_name)));
+	}
+	else
+	{
+		fputs(YbBackendOomScoreAdj, fPtr);
+		fclose(fPtr);
+	}
 #endif
 
 	return STATUS_OK;

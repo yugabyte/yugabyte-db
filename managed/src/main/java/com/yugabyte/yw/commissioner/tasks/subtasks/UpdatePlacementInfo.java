@@ -30,11 +30,11 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.Common;
+import org.yb.CommonNet.CloudInfoPB;
 import org.yb.client.AbstractModifyMasterClusterConfig;
 import org.yb.client.ProtobufHelper;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
 public class UpdatePlacementInfo extends UniverseTaskBase {
@@ -99,7 +99,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     }
 
     public void generatePlacementInfoPB(
-        Master.PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
+        CatalogEntityInfo.PlacementInfoPB.Builder placementInfoPB, Cluster cluster) {
       PlacementInfo placementInfo = cluster.placementInfo;
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
@@ -108,12 +108,13 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
           for (PlacementAZ placementAz : placementRegion.azList) {
             AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
             // Create the cloud info object.
-            Common.CloudInfoPB.Builder ccb = Common.CloudInfoPB.newBuilder();
+            CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
                 .setPlacementRegion(region.code)
                 .setPlacementZone(az.code);
 
-            Master.PlacementBlockPB.Builder pbb = Master.PlacementBlockPB.newBuilder();
+            CatalogEntityInfo.PlacementBlockPB.Builder pbb =
+                CatalogEntityInfo.PlacementBlockPB.newBuilder();
             // Set the cloud info.
             pbb.setCloudInfo(ccb);
             // Set the minimum number of replicas in this PlacementAZ.
@@ -128,7 +129,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     }
 
     public void addAffinitizedPlacements(
-        Master.ReplicationInfoPB.Builder replicationInfoPB, PlacementInfo placementInfo) {
+        CatalogEntityInfo.ReplicationInfoPB.Builder replicationInfoPB,
+        PlacementInfo placementInfo) {
       for (PlacementCloud placementCloud : placementInfo.cloudList) {
         Provider cloud = Provider.find.byId(placementCloud.uuid);
         for (PlacementRegion placementRegion : placementCloud.regionList) {
@@ -136,7 +138,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
           for (PlacementAZ placementAz : placementRegion.azList) {
             AvailabilityZone az = AvailabilityZone.find.byId(placementAz.uuid);
             // Create the cloud info object.
-            Common.CloudInfoPB.Builder ccb = Common.CloudInfoPB.newBuilder();
+            CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
                 .setPlacementRegion(region.code)
                 .setPlacementZone(az.code);
@@ -149,24 +151,26 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
     }
 
     @Override
-    public Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
+    public CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+        CatalogEntityInfo.SysClusterConfigEntryPB config) {
       Universe universe = Universe.getOrBadRequest(universeUUID);
 
-      Master.SysClusterConfigEntryPB.Builder configBuilder =
-          Master.SysClusterConfigEntryPB.newBuilder(config);
+      CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+          CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
 
       // Clear the replication info, as it is no longer valid.
-      Master.ReplicationInfoPB.Builder replicationInfoPB =
+      CatalogEntityInfo.ReplicationInfoPB.Builder replicationInfoPB =
           configBuilder.clearReplicationInfo().getReplicationInfoBuilder();
       // Build the live replicas from the replication info.
-      Master.PlacementInfoPB.Builder placementInfoPB = replicationInfoPB.getLiveReplicasBuilder();
+      CatalogEntityInfo.PlacementInfoPB.Builder placementInfoPB =
+          replicationInfoPB.getLiveReplicasBuilder();
       // Create the placement info for the universe.
       PlacementInfo placementInfo = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
       generatePlacementInfoPB(placementInfoPB, universe.getUniverseDetails().getPrimaryCluster());
 
       List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
       for (Cluster cluster : readOnlyClusters) {
-        Master.PlacementInfoPB.Builder placementInfoReadPB =
+        CatalogEntityInfo.PlacementInfoPB.Builder placementInfoReadPB =
             replicationInfoPB.addReadReplicasBuilder();
         generatePlacementInfoPB(placementInfoReadPB, cluster);
       }
@@ -176,7 +180,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
       // Add in any black listed nodes of tablet servers.
       if (blacklistNodes != null) {
-        Master.BlacklistPB.Builder blacklistBuilder = configBuilder.getServerBlacklistBuilder();
+        CatalogEntityInfo.BlacklistPB.Builder blacklistBuilder =
+            configBuilder.getServerBlacklistBuilder();
         for (String nodeName : blacklistNodes) {
           NodeDetails node = universe.getNode(nodeName);
           if (node.isTserver && node.cloudInfo.private_ip != null) {
@@ -188,7 +193,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
         blacklistBuilder.build();
       }
 
-      Master.SysClusterConfigEntryPB newConfig = configBuilder.build();
+      CatalogEntityInfo.SysClusterConfigEntryPB newConfig = configBuilder.build();
       log.info(
           "Updating cluster config, old config = [{}], new config = [{}]",
           config.toString(),

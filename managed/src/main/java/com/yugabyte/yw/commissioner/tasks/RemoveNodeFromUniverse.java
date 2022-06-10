@@ -11,11 +11,11 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -54,8 +54,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
     boolean hitException = false;
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -67,19 +65,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeDetails.NodeState.Live
-          && currentNode.state != NodeDetails.NodeState.ToBeRemoved
-          && currentNode.state != NodeDetails.NodeState.ToJoinCluster
-          && currentNode.state != NodeDetails.NodeState.Stopped) {
-        String msg =
-            "Node "
-                + taskParams().nodeName
-                + " is not in Live/ToJoinCluster/ToBeRemoved/Stopped states, but is in "
-                + currentNode.state
-                + ", so cannot be removed.";
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
+      currentNode.validateActionOnState(NodeActionType.REMOVE);
 
       preTaskActions();
 
@@ -97,15 +83,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Removing)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
-      boolean instanceAlive = false;
-      try {
-        instanceAlive = instanceExists(taskParams());
-      } catch (Exception e) {
-        log.info(
-            "Instance {} in universe {} not found, assuming dead",
-            taskParams().nodeName,
-            universe.name);
-      }
+      boolean instanceAlive = instanceExists(taskParams());
 
       if (instanceAlive) {
         // Remove the master on this node from master quorum and update its state from YW DB,
@@ -187,6 +165,10 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
+      // Update the master addresses on the target universes whose source universe belongs to
+      // this task.
+      createXClusterConfigUpdateMasterAddressesTask();
+
       // Remove its tserver status in DB.
       createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
@@ -203,20 +185,22 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       hitException = true;
       throw t;
     } finally {
-      // Reset the state, on any failure, so that the actions can be retried.
-      if (currentNode != null && hitException) {
-        setNodeState(taskParams().nodeName, currentNode.state);
+      try {
+        // Reset the state, on any failure, so that the actions can be retried.
+        if (currentNode != null && hitException) {
+          setNodeState(taskParams().nodeName, currentNode.state);
+        }
+      } finally {
+        // Mark the update of the universe as done. This will allow future edits/updates to the
+        // universe to happen.
+        unlockUniverseForUpdate();
       }
-
-      // Mark the update of the universe as done. This will allow future edits/updates to the
-      // universe to happen.
-      unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
   }

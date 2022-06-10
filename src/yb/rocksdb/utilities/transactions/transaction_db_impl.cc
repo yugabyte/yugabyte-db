@@ -23,10 +23,8 @@
 #include "yb/rocksdb/utilities/transactions/transaction_db_impl.h"
 
 #include <string>
-#include <unordered_set>
 #include <vector>
 
-#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/utilities/transaction_db.h"

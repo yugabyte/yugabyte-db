@@ -17,16 +17,24 @@
 
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
 #include "yb/consensus/consensus.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -36,7 +44,7 @@ DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_uint64(transaction_status_tablet_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_bool(transaction_disable_heartbeat_in_tests);
-DECLARE_double(TEST_transaction_ignore_applying_probability_in_tests);
+DECLARE_double(TEST_transaction_ignore_applying_probability);
 DECLARE_string(time_source);
 DECLARE_int32(intents_flush_max_delay_ms);
 DECLARE_int32(load_balancer_max_concurrent_adds);
@@ -71,7 +79,7 @@ int32_t ValueForTransactionAndIndex(size_t transaction, size_t index, const Writ
 }
 
 void SetIgnoreApplyingProbability(double value) {
-  SetAtomicFlag(value, &FLAGS_TEST_transaction_ignore_applying_probability_in_tests);
+  SetAtomicFlag(value, &FLAGS_TEST_transaction_ignore_applying_probability);
 }
 
 void SetDisableHeartbeatInTests(bool value) {
@@ -128,6 +136,14 @@ template <class MiniClusterType>
 void TransactionTestBase<MiniClusterType>::CreateTable() {
   KeyValueTableTest<MiniClusterType>::CreateTable(
       Transactional(GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL));
+}
+
+template <class MiniClusterType>
+Status TransactionTestBase<MiniClusterType>::CreateTable(const Schema& schema) {
+  Schema new_schema { schema };
+  new_schema.mutable_table_properties()->SetTransactional(
+      GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
+  return KeyValueTableTest<MiniClusterType>::CreateTable(new_schema);
 }
 
 template <class MiniClusterType>
@@ -226,7 +242,7 @@ void TransactionTestBase<MiniClusterType>::VerifyRows(
   for (size_t r = 0; r != kNumRows; ++r) {
     ops.push_back(ReadRow(session, KeyForTransactionAndIndex(transaction, r), column));
   }
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
   for (size_t r = 0; r != kNumRows; ++r) {
     SCOPED_TRACE(Format("Row: $0, key: $1", r, KeyForTransactionAndIndex(transaction, r)));
     auto& op = ops[r];
@@ -263,7 +279,7 @@ void TransactionTestBase<MiniClusterType>::VerifyData(
 
 template <>
 bool TransactionTestBase<MiniCluster>::HasTransactions() {
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto* tablet_manager = cluster_->mini_tablet_server(i)->server()->tablet_manager();
     auto peers = tablet_manager->GetTabletPeers();
     for (const auto& peer : peers) {
@@ -295,7 +311,7 @@ template <>
 bool TransactionTestBase<MiniCluster>::CheckAllTabletsRunning() {
   bool result = true;
   size_t count = 0;
-  for (int i = 0; i != cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
     if (i == 0) {
       count = peers.size();

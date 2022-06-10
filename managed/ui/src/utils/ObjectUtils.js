@@ -2,6 +2,7 @@
 
 import { getClusterByType } from './UniverseUtils';
 import _ from 'lodash';
+import { timeFormatterISO8601 } from './TableFormatters';
 
 export function get(obj, path, defaultValue) {
   return _.get(obj, path, defaultValue);
@@ -59,6 +60,7 @@ export function sortByLengthOfArrayProperty(array, propertyName) {
   function arrayLengthComparator(item) {
     return item[propertyName] ? item[propertyName].length : 0;
   }
+
   return _.sortBy(array, arrayLengthComparator);
 }
 
@@ -95,7 +97,9 @@ export function areIntentsEqual(userIntent1, userIntent2) {
     isDefinedNotNull(userIntent2) &&
     _.isEqual(userIntent1.numNodes, userIntent2.numNodes) &&
     _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort()) &&
-    _.isEqual(userIntent1.deviceInfo, userIntent2.deviceInfo) &&
+    // there was a bug with storageClass absent on server
+    _.isEqual(_.omit(userIntent1.deviceInfo, ['storageClass']),
+              _.omit(userIntent2.deviceInfo, ['storageClass'])) &&
     _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor) &&
     _.isEqual(userIntent1.provider, userIntent2.provider) &&
     _.isEqual(userIntent1.universeName, userIntent2.universeName) &&
@@ -330,6 +334,23 @@ export function divideYAxisByThousand(dataArray) {
   return dataArray;
 }
 
+// Function to convert the time values in x-axis of metrics panels to a specific timezone
+//  as a workaround. Plotly does not support specifying timezones in layout.
+export function timeFormatXAxis(dataArray, timezone = null) {
+  for (let counter = 0; counter < dataArray.length; counter++) {
+    if (isNonEmptyArray(dataArray[counter].x)) {
+      for (let idx = 0; idx < dataArray[counter].x.length; idx++) {
+        dataArray[counter].x[idx] = timeFormatterISO8601(
+          dataArray[counter].x[idx],
+          undefined,
+          timezone
+        );
+      }
+    }
+  }
+  return dataArray;
+}
+
 // FIXME: Deprecated. Change all references to use isNonEmptyArray instead.
 export const isValidArray = isNonEmptyArray;
 
@@ -338,3 +359,20 @@ export const isValidArray = isNonEmptyArray;
 // FIXME: this alias is only kept here for backward compatibility
 // FIXME: and should be removed after changing all existing uses.
 export const isValidObject = isDefinedNotNull;
+
+export const createErrorMessage = (payload) => {
+  const structuredError = payload?.response?.data?.error;
+  if (structuredError) {
+    if (typeof structuredError == 'string') {
+      return structuredError;
+    }
+    const message = Object.keys(structuredError)
+      .map((fieldName) => {
+        const messages = structuredError[fieldName];
+        return fieldName + ': ' + messages.join(', ');
+      })
+      .join('\n');
+    return message;
+  }
+  return payload.message;
+}

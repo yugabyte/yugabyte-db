@@ -5467,6 +5467,13 @@ get_actual_variable_range(PlannerInfo *root, VariableStatData *vardata,
 	rte = root->simple_rte_array[rel->relid];
 	Assert(rte->rtekind == RTE_RELATION);
 
+	/*
+	 * In case of a YB relation attempt to peek at an index means RPC request,
+	 * that is unaffordable at planning time.
+	 */
+	if (IsYBRelationById(rte->relid))
+		return false;
+
 	/* Search through the indexes to see if any match our problem */
 	foreach(lc, rel->indexlist)
 	{

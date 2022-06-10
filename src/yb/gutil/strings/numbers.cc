@@ -28,20 +28,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <iomanip>
 #include <limits>
-using std::numeric_limits;
-#include <string>
 #include <sstream>
-using std::string;
 
+#include <glog/logging.h>
+
+#include "yb/gutil/casts.h"
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strtoint.h"
 #include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/gutil/strtoint.h"
+
+using std::numeric_limits;
+using std::string;
+
 
 // Reads a <double> in *text, which may not be whitespace-initiated.
 // *len is the length, or -1 if text is '\0'-terminated, which is more
@@ -55,11 +58,11 @@ using std::string;
 // the last symbol seen was a '.', which will be ignored. This is
 // useful in case that an initial '-' or final '.' would have another
 // meaning (as a separator, e.g.).
-static inline bool EatADouble(const char** text, int* len, bool allow_question,
+static inline bool EatADouble(const char** text, ssize_t* len, bool allow_question,
                               double* val, bool* initial_minus,
                               bool* final_period) {
   const char* pos = *text;
-  int rem = *len;  // remaining length, or -1 if null-terminated
+  ssize_t rem = *len;  // remaining length, or -1 if null-terminated
 
   if (pos == nullptr || rem == 0)
     return false;
@@ -122,7 +125,7 @@ static inline bool EatADouble(const char** text, int* len, bool allow_question,
 // *text is null-terminated. If update is false, don't alter *text and
 // *len. If null_ok, then update must be false, and, if text has no
 // more chars, then return '\1' (arbitrary nonzero).
-static inline char EatAChar(const char** text, int* len,
+static inline char EatAChar(const char** text, ssize_t* len,
                             const char* acceptable_chars,
                             bool update, bool null_ok) {
   assert(!(update && null_ok));
@@ -144,7 +147,7 @@ static inline char EatAChar(const char** text, int* len,
 
 // Parse an expression in 'text' of the form: <comparator><double> or
 // <double><sep><double> See full comments in header file.
-bool ParseDoubleRange(const char* text, int len, const char** end,
+bool ParseDoubleRange(const char* text, ssize_t len, const char** end,
                       double* from, double* to, bool* is_currency,
                       const DoubleRangeOptions& opts) {
   const double from_default = opts.dont_modify_unbounded ? *from : -HUGE_VAL;
@@ -251,7 +254,7 @@ bool ParseDoubleRange(const char* text, int len, const char** end,
                               && EatAChar(&text, &len, "$", true, false);
     bool second_double_seen = EatADouble(
       &text, &len, opts.allow_unbounded_markers, to, nullptr, nullptr);
-    if (opts.num_required_bounds > double_seen + second_double_seen)
+    if (opts.num_required_bounds > static_cast<uint32_t>(double_seen + second_double_seen))
       return false;
     if (second_dollar_seen && !second_double_seen) {
       --text;
@@ -316,7 +319,7 @@ int32 ParseLeadingInt32Value(const char *str, int32 deflt) {
   } else if (value < numeric_limits<int32>::min()) {
     value = numeric_limits<int32>::min();
   }
-  return (error == str) ? deflt : value;
+  return (error == str) ? deflt : narrow_cast<int32>(value);
 }
 
 uint32 ParseLeadingUInt32Value(const char *str, uint32 deflt) {
@@ -338,7 +341,7 @@ uint32 ParseLeadingUInt32Value(const char *str, uint32 deflt) {
       value = numeric_limits<uint32>::max();
     }
     // Within these limits, truncation to 32 bits handles negatives correctly.
-    return (error == str) ? deflt : value;
+    return (error == str) ? deflt : narrow_cast<uint32>(value);
   }
 }
 
@@ -360,7 +363,7 @@ int32 ParseLeadingDec32Value(const char *str, int32 deflt) {
   } else if (value < numeric_limits<int32>::min()) {
     value = numeric_limits<int32>::min();
   }
-  return (error == str) ? deflt : value;
+  return (error == str) ? deflt : narrow_cast<int32>(value);
 }
 
 uint32 ParseLeadingUDec32Value(const char *str, uint32 deflt) {
@@ -382,7 +385,7 @@ uint32 ParseLeadingUDec32Value(const char *str, uint32 deflt) {
       value = numeric_limits<uint32>::max();
     }
     // Within these limits, truncation to 32 bits handles negatives correctly.
-    return (error == str) ? deflt : value;
+    return (error == str) ? deflt : narrow_cast<uint32>(value);
   }
 }
 
@@ -1055,7 +1058,7 @@ char* FastUInt64ToBufferLeft(uint64 u64, char* buffer) {
 
   uint64 top_11_digits = u64 / 1000000000;
   buffer = FastUInt64ToBufferLeft(top_11_digits, buffer);
-  u = u64 - (top_11_digits * 1000000000);
+  u = narrow_cast<uint32>(u64 - (top_11_digits * 1000000000));
 
   digits = u / 10000000;  // 10,000,000
   DCHECK_LT(digits, 100);
@@ -1161,7 +1164,7 @@ int AutoDigitStrCmp(const char* a, size_t alen,
         return 1;
       } else {
         // Same lengths, so compare digit by digit
-        for (int i = 0; i < aindex-astart; i++) {
+        for (size_t i = 0; i < aindex-astart; i++) {
           if (a[astart+i] < b[bstart+i]) {
             return -1;
           } else if (a[astart+i] > b[bstart+i]) {
@@ -1269,6 +1272,17 @@ char* DoubleToBuffer(double value, char* buffer) {
   // this assert.
   COMPILE_ASSERT(DBL_DIG < 20, DBL_DIG_is_too_big);
 
+  if (value == std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "inf", kDoubleToBufferSize);
+    return buffer;
+  } else if (value == -std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "-inf", kDoubleToBufferSize);
+    return buffer;
+  } else if (isnan(value)) {
+    strncpy(buffer, "nan", kDoubleToBufferSize);
+    return buffer;
+  }
+
   int snprintf_result =
     snprintf(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG, value);
 
@@ -1276,13 +1290,21 @@ char* DoubleToBuffer(double value, char* buffer) {
   // larger than the precision we asked for.
   DCHECK(snprintf_result > 0 && snprintf_result < kDoubleToBufferSize);
 
-  if (strtod(buffer, nullptr) != value) {
-    snprintf_result =
+  // We need to make parsed_value volatile in order to force the compiler to
+  // write it out to the stack.  Otherwise, it may keep the value in a
+  // register, and if it does that, it may keep it as a long double instead
+  // of a double.  This long double may have extra bits that make it compare
+  // unequal to "value" even though it would be exactly equal if it were
+  // truncated to a double.
+  volatile double parsed_value = strtod(buffer, NULL);
+  if (parsed_value != value) {
+    int snprintf_result =
       snprintf(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG+2, value);
 
     // Should never overflow; see above.
     DCHECK(snprintf_result > 0 && snprintf_result < kDoubleToBufferSize);
   }
+
   return buffer;
 }
 
@@ -1293,6 +1315,17 @@ char* FloatToBuffer(float value, char* buffer) {
   // this assert.
   COMPILE_ASSERT(FLT_DIG < 10, FLT_DIG_is_too_big);
 
+  if (value == std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "inf", kFloatToBufferSize);
+    return buffer;
+  } else if (value == -std::numeric_limits<double>::infinity()) {
+    strncpy(buffer, "-inf", kFloatToBufferSize);
+    return buffer;
+  } else if (isnan(value)) {
+    strncpy(buffer, "nan", kFloatToBufferSize);
+    return buffer;
+  }
+
   int snprintf_result =
     snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG, value);
 
@@ -1302,12 +1335,13 @@ char* FloatToBuffer(float value, char* buffer) {
 
   float parsed_value;
   if (!safe_strtof(buffer, &parsed_value) || parsed_value != value) {
-    snprintf_result =
-      snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG+2, value);
+    int snprintf_result =
+      snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG+3, value);
 
     // Should never overflow; see above.
     DCHECK(snprintf_result > 0 && snprintf_result < kFloatToBufferSize);
   }
+
   return buffer;
 }
 

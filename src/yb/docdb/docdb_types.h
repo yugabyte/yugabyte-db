@@ -15,6 +15,7 @@
 #define YB_DOCDB_DOCDB_TYPES_H_
 
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {

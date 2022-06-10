@@ -22,7 +22,7 @@ So, for the `yb-15-node-actions-n3` node, you can use the **Actions** drop-down 
 
 ![Remove Node Actions](/images/ee/node-actions-removed.png)
 
-Note that there is no `MASTER/TSERVER` shown for that node. If that node was the `Master Leader`, then a Raft election will move it to another node quickly. Similar leader elections happen for tablets for which this node was the the leader tablet server.
+Note that there is no `MASTER/TSERVER` shown for that node. If that node was the `Master Leader`, then a Raft election will move it to another node quickly. Similar leader elections happen for tablets for which this node was the leader tablet server.
 
 ### Release a node instance
 

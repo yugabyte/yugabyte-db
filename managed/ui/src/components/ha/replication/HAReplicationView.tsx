@@ -142,6 +142,6 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({ config, schedule
       </Grid>
     );
   } else {
-    return <HAErrorPlaceholder error="Can't find an HA instance with is_local = true" />;
+    return <HAErrorPlaceholder error="Can't find an HA instance with is_local = true" configUUID={config.uuid} />;
   }
 };

@@ -2,23 +2,29 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static java.util.regex.Pattern.CASE_INSENSITIVE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.GFlagDetails;
 import com.yugabyte.yw.common.GFlagsValidation;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.forms.GFlagsValidationParams.GFlagsValidationRequest;
-import com.yugabyte.yw.forms.GFlagsValidationParams.GFlagsValidationResponse;
+import com.yugabyte.yw.forms.GFlagsValidationFormData;
+import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagValidationDetails;
+import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagsValidationRequest;
+import com.yugabyte.yw.forms.GFlagsValidationFormData.GFlagsValidationResponse;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,12 +35,20 @@ public class GFlagsValidationHandler {
 
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidationHandler.class);
 
+  public static final Set<String> GFLAGS_FILTER_TAGS = ImmutableSet.of("experimental", "hidden");
+
+  public static final Set<Pattern> GFLAGS_FILTER_PATTERN =
+      ImmutableSet.of(
+          Pattern.compile("^.*_test.*$", CASE_INSENSITIVE),
+          Pattern.compile("^.*test_.*$", CASE_INSENSITIVE));
+
   public List<GFlagDetails> listGFlags(
       String version, String gflag, String serverType, Boolean mostUsedGFlags) throws IOException {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList =
         gflagsValidation.extractGFlags(version, serverType, mostUsedGFlags);
+    gflagsList = filterGFlagsList(gflagsList);
     if (StringUtils.isEmpty(gflag)) {
       return gflagsList;
     }
@@ -47,26 +61,36 @@ public class GFlagsValidationHandler {
     return result;
   }
 
-  public GFlagsValidationResponse validateGFlags(String version, GFlagsValidationRequest gflags)
-      throws IOException {
+  public List<GFlagsValidationResponse> validateGFlags(
+      String version, GFlagsValidationFormData gflags) throws IOException {
     validateVersionFormat(version);
-    if (gflags.masterGFlags == null || gflags.tserverGFlags == null) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Either master and tserver gflags cannot be null");
+
+    if (gflags.gflagsList == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Please provide a valid list of gflags.");
     }
 
-    GFlagsValidationResponse validationResponse = new GFlagsValidationResponse();
-    // Check if there is any errors in tserver gflags
-    List<GFlagDetails> masterGFlagsList =
-        gflagsValidation.extractGFlags(version, ServerType.MASTER.toString(), false);
-    validationResponse.masterGFlags = checkGFlagsError(gflags.masterGFlags, masterGFlagsList);
+    // extract master gflags metadata.
+    Map<String, GFlagDetails> masterGflagsMap =
+        gflagsValidation
+            .extractGFlags(version, ServerType.MASTER.toString(), false)
+            .stream()
+            .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
+    // extract tserver gflags metadata.
+    Map<String, GFlagDetails> tserverGflagsMap =
+        gflagsValidation
+            .extractGFlags(version, ServerType.TSERVER.toString(), false)
+            .stream()
+            .collect(Collectors.toMap(gflag -> gflag.name, Function.identity()));
 
-    // Check if there is any errors in tserver gflags
-    List<GFlagDetails> tserverGFlagsList =
-        gflagsValidation.extractGFlags(version, ServerType.TSERVER.toString(), false);
-    validationResponse.tserverGFlags = checkGFlagsError(gflags.tserverGFlags, tserverGFlagsList);
-
-    return validationResponse;
+    List<GFlagsValidationResponse> validationResponseArrayList = new ArrayList<>();
+    for (GFlagsValidationRequest gflag : gflags.gflagsList) {
+      GFlagsValidationResponse validationResponse = new GFlagsValidationResponse();
+      validationResponse.name = gflag.name;
+      validationResponse.masterResponse = checkGflags(gflag, ServerType.MASTER, masterGflagsMap);
+      validationResponse.tserverResponse = checkGflags(gflag, ServerType.TSERVER, tserverGflagsMap);
+      validationResponseArrayList.add(validationResponse);
+    }
+    return validationResponseArrayList;
   }
 
   public GFlagDetails getGFlagsMetadata(String version, String serverType, String gflag)
@@ -74,42 +98,35 @@ public class GFlagsValidationHandler {
     validateServerType(serverType);
     validateVersionFormat(version);
     List<GFlagDetails> gflagsList = gflagsValidation.extractGFlags(version, serverType, false);
-    for (GFlagDetails flag : gflagsList) {
-      if (flag.name.equals(gflag)) {
-        return flag;
-      }
-    }
-    throw new PlatformServiceException(BAD_REQUEST, gflag + " is not present in metadata.");
+    return gflagsList
+        .stream()
+        .filter(flag -> flag.name.equals(gflag))
+        .findFirst()
+        .orElseThrow(
+            () ->
+                new PlatformServiceException(BAD_REQUEST, gflag + " is not present in metadata."));
   }
 
-  private Map<String, Map<String, String>> checkGFlagsError(
-      Map<String, String> gflags, List<GFlagDetails> gflagsList) throws IOException {
-    Map<String, Map<String, String>> errorObject = new HashMap<>();
-    for (Map.Entry<String, String> userGFlag : gflags.entrySet()) {
-      boolean found = false;
-      Map<String, String> errorSource = new HashMap<>();
-      for (GFlagDetails flag : gflagsList) {
-        if (flag.name.equals(userGFlag.getKey())) {
-          String errorMsg = checkValueType(userGFlag.getValue(), flag.type);
-          if (!errorMsg.isEmpty()) {
-            errorSource.put("type", errorMsg);
-          }
-          found = true;
-          break;
-        }
+  private GFlagValidationDetails checkGflags(
+      GFlagsValidationRequest gflag, ServerType serverType, Map<String, GFlagDetails> gflags) {
+    GFlagValidationDetails validationDetails = new GFlagValidationDetails();
+    GFlagDetails gflagDetails = gflags.get(gflag.name);
+    if (gflagDetails != null) {
+      validationDetails.exist = true;
+      if (serverType == ServerType.MASTER) {
+        validationDetails.error = checkValueType(gflag.masterValue, gflagDetails.type);
+      } else {
+        validationDetails.error = checkValueType(gflag.tserverValue, gflagDetails.type);
       }
-      if (!found) {
-        errorSource.put(
-            "name", userGFlag.getKey() + " is not present as per current " + "metadata");
-      }
-      // set empty object for gflag indicating no error detected.
-      errorObject.put(userGFlag.getKey(), errorSource);
     }
-    return errorObject;
+    return validationDetails;
   }
 
   private String checkValueType(String inputValue, String expectedType) {
-    String errorString = "";
+    String errorString = null;
+    if (inputValue == null) {
+      return errorString;
+    }
     switch (expectedType) {
       case "bool":
         if (!(inputValue.equals("true") || inputValue.equals("false"))) {
@@ -150,11 +167,12 @@ public class GFlagsValidationHandler {
 
   /** Checks the db version format */
   private void validateVersionFormat(String version) throws PlatformServiceException {
-    Pattern pattern = Pattern.compile("^((\\d+).(\\d+).(\\d+).(\\d+)(?:-[a-z]+)?(\\d+)?)$");
+    Pattern pattern = Pattern.compile("^((\\d+).(\\d+).(\\d+).(\\d+)(?:-[a-zA-Z0-9]+)*)$");
     Matcher matcher = pattern.matcher(version);
     if (!matcher.matches()) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Incorrect version format. Valid formats: 1.1.1.1 or 1.1.1.1-b1");
+          BAD_REQUEST,
+          "Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote");
     }
   }
 
@@ -164,5 +182,23 @@ public class GFlagsValidationHandler {
         .contains(serverType)) {
       throw new PlatformServiceException(BAD_REQUEST, "Given server type is not valid");
     }
+  }
+
+  private List<GFlagDetails> filterGFlagsList(List<GFlagDetails> gflagsList) {
+    return gflagsList
+        .stream()
+        .filter(
+            flag ->
+                !GFLAGS_FILTER_PATTERN
+                        .stream()
+                        .anyMatch(
+                            regexMatcher ->
+                                !StringUtils.isEmpty(flag.name)
+                                    && regexMatcher.matcher(flag.name).find())
+                    && !GFLAGS_FILTER_TAGS
+                        .stream()
+                        .anyMatch(
+                            tags -> !StringUtils.isEmpty(flag.tags) && flag.tags.contains(tags)))
+        .collect(Collectors.toList());
   }
 }

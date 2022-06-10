@@ -39,42 +39,56 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/async_initializer.h"
+#include "yb/client/client.h"
+
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/consensus/consensus_meta.h"
+
+#include "yb/gutil/bind.h"
+
+#include "yb/master/master_fwd.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/flush_manager.h"
-#include "yb/master/master_util.h"
-#include "yb/master/master.pb.h"
-#include "yb/master/master.service.h"
+#include "yb/master/master-path-handlers.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_service.h"
 #include "yb/master/master_tablet_service.h"
-#include "yb/master/master-path-handlers.h"
+#include "yb/master/master_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/service_pool.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/server/rpc_server.h"
+
 #include "yb/tablet/maintenance_manager.h"
+
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/remote_bootstrap_service.h"
 #include "yb/tserver/tablet_service.h"
 #include "yb/tserver/tserver_shared_mem.h"
-#include "yb/tserver/remote_bootstrap_service.h"
+
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/shared_lock.h"
-#include "yb/client/async_initializer.h"
 
 DEFINE_int32(master_rpc_timeout_ms, 1500,
              "Timeout for retrieving master registration over RPC.");
 TAG_FLAG(master_rpc_timeout_ms, experimental);
 
+DEFINE_int32(master_yb_client_default_timeout_ms, 60000,
+             "Default timeout for the YBClient embedded into the master.");
+
 METRIC_DEFINE_entity(cluster);
 
+using namespace std::literals;
 using std::min;
 using std::shared_ptr;
 using std::vector;
@@ -121,6 +135,7 @@ DEFINE_test_flag(string, master_extra_list_host_port, "",
 
 DECLARE_int64(inbound_rpc_memory_limit);
 
+DECLARE_int32(master_ts_rpc_timeout_ms);
 namespace yb {
 namespace master {
 
@@ -131,8 +146,8 @@ Master::Master(const MasterOptions& opts)
     catalog_manager_(new enterprise::CatalogManager(this)),
     path_handlers_(new MasterPathHandlers(this)),
     flush_manager_(new FlushManager(this, catalog_manager())),
+    init_future_(init_status_.get_future()),
     opts_(opts),
-    registration_initialized_(false),
     maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
     metric_entity_cluster_(METRIC_ENTITY_cluster.Instantiate(metric_registry_.get(),
                                                              "yb.cluster")),
@@ -162,7 +177,9 @@ Status Master::Init() {
 
   RETURN_NOT_OK(ThreadPoolBuilder("init").set_max_threads(1).Build(&init_pool_));
 
-  RETURN_NOT_OK(RpcAndWebServerBase::Init());
+  RETURN_NOT_OK(DbServerBase::Init());
+
+  RETURN_NOT_OK(fs_manager_->ListTabletIds());
 
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
@@ -171,43 +188,42 @@ Status Master::Init() {
     shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
-  async_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
-      "master_client", 0 /* num_reactors */,
-      // TODO: use the correct flag
-      60, // FLAGS_tserver_yb_client_default_timeout_ms / 1000,
+  cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+      "cdc_state_client",
+      default_client_timeout(),
       "" /* tserver_uuid */,
       &options(),
       metric_entity(),
       mem_tracker(),
       messenger());
-  async_client_init_->builder()
+  cdc_state_client_init_->builder()
       .set_master_address_flag_name("master_addresses")
-      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_ts_rpc_timeout_ms))
       .AddMasterAddressSource([this] {
-    std::vector<std::string> result;
-    consensus::ConsensusStatePB state;
-    auto status = catalog_manager_->GetCurrentConfig(&state);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to get current config: " << status;
-      return result;
-    }
-    for (const auto& peer : state.config().peers()) {
-      std::vector<std::string> peer_addresses;
-      for (const auto& list : {peer.last_known_private_addr(), peer.last_known_broadcast_addr()}) {
-        for (const auto& entry : list) {
-          peer_addresses.push_back(HostPort::FromPB(entry).ToString());
-        }
-      }
-      if (!peer_addresses.empty()) {
-        result.push_back(JoinStrings(peer_addresses, ","));
-      }
-    }
-    return result;
+    return catalog_manager_->GetMasterAddresses();
   });
-  async_client_init_->Start();
+  cdc_state_client_init_->Start();
 
   state_ = kInitialized;
   return Status::OK();
+}
+
+MonoDelta Master::default_client_timeout() {
+  return std::chrono::milliseconds(FLAGS_master_yb_client_default_timeout_ms);
+}
+
+const std::string& Master::permanent_uuid() const {
+  static std::string empty_uuid;
+  return empty_uuid;
+}
+
+void Master::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+  async_client_init->builder()
+      .set_master_address_flag_name("master_addresses")
+      .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
+      .AddMasterAddressSource([this] {
+        return catalog_manager_->GetMasterAddresses();
+  });
 }
 
 Status Master::Start() {
@@ -218,9 +234,14 @@ Status Master::Start() {
 }
 
 Status Master::RegisterServices() {
-  std::unique_ptr<ServiceIf> master_service(new MasterServiceImpl(this));
-  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(FLAGS_master_svc_queue_length,
-                                                     std::move(master_service)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterAdminService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClientService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterClusterService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDclService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterDdlService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
 
   std::unique_ptr<ServiceIf> master_tablet_service(
       new MasterTabletServiceImpl(master_tablet_server_.get(), this));
@@ -242,8 +263,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
       FLAGS_master_svc_queue_length,
       std::make_unique<tserver::PgClientServiceImpl>(
-          client_future(), std::bind(&Master::TransactionPool, this),
-          metric_entity(),
+          client_future(), clock(), std::bind(&Master::TransactionPool, this), metric_entity(),
           &messenger()->scheduler())));
 
   return Status::OK();
@@ -262,7 +282,7 @@ Status Master::StartAsync() {
 
   RETURN_NOT_OK(maintenance_manager_->Init());
   RETURN_NOT_OK(RegisterServices());
-  RETURN_NOT_OK(RpcAndWebServerBase::Start());
+  RETURN_NOT_OK(DbServerBase::Start());
 
   // Now that we've bound, construct our ServerRegistrationPB.
   RETURN_NOT_OK(InitMasterRegistration());
@@ -280,7 +300,7 @@ void Master::InitCatalogManagerTask() {
   if (!s.ok()) {
     LOG(ERROR) << ToString() << ": Unable to init master catalog manager: " << s.ToString();
   }
-  init_status_.Set(s);
+  init_status_.set_value(s);
 }
 
 Status Master::InitCatalogManager() {
@@ -295,7 +315,7 @@ Status Master::InitCatalogManager() {
 Status Master::WaitForCatalogManagerInit() {
   CHECK_EQ(state_, kRunning);
 
-  return init_status_.Get();
+  return init_future_.get();
 }
 
 Status Master::WaitUntilCatalogManagerIsLeaderAndReadyForTests(const MonoDelta& timeout) {
@@ -330,6 +350,7 @@ void Master::Shutdown() {
     auto started = catalog_manager_->StartShutdown();
     LOG_IF(DFATAL, !started) << name << " catalog manager shutdown already in progress";
     async_client_init_->Shutdown();
+    cdc_state_client_init_->Shutdown();
     RpcAndWebServerBase::Shutdown();
     catalog_manager_->CompleteShutdown();
     LOG(INFO) << name << " shutdown complete.";
@@ -341,25 +362,25 @@ void Master::Shutdown() {
 }
 
 Status Master::GetMasterRegistration(ServerRegistrationPB* reg) const {
-  if (!registration_initialized_.load(std::memory_order_acquire)) {
+  auto* registration = registration_.get();
+  if (!registration) {
     return STATUS(ServiceUnavailable, "Master startup not complete");
   }
-  reg->CopyFrom(registration_);
+  reg->CopyFrom(*registration);
   return Status::OK();
 }
 
 Status Master::InitMasterRegistration() {
-  CHECK(!registration_initialized_.load());
+  CHECK(!registration_.get());
 
-  ServerRegistrationPB reg;
-  RETURN_NOT_OK(GetRegistration(&reg));
-  registration_.Swap(&reg);
-  registration_initialized_.store(true);
+  auto reg = std::make_unique<ServerRegistrationPB>();
+  RETURN_NOT_OK(GetRegistration(reg.get()));
+  registration_.reset(reg.release());
 
   return Status::OK();
 }
 
-Status Master::ResetMemoryState(const RaftConfigPB& config) {
+Status Master::ResetMemoryState(const consensus::RaftConfigPB& config) {
   LOG(INFO) << "Memory state set to config: " << config.ShortDebugString();
 
   auto master_addr = std::make_shared<server::MasterAddresses>();
@@ -412,7 +433,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
     ServerEntryPB local_entry;
     local_entry.mutable_instance_id()->CopyFrom(catalog_manager_->NodeInstance());
     RETURN_NOT_OK(GetMasterRegistration(local_entry.mutable_registration()));
-    local_entry.set_role(IsShellMode() ? RaftPeerPB::NON_PARTICIPANT : RaftPeerPB::LEADER);
+    local_entry.set_role(IsShellMode() ? PeerRole::NON_PARTICIPANT : PeerRole::LEADER);
     masters->push_back(local_entry);
     return Status::OK();
   }
@@ -464,7 +485,7 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 
 Status Master::InformRemovedMaster(const HostPortPB& hp_pb) {
   HostPort hp(hp_pb.host(), hp_pb.port());
-  MasterServiceProxy proxy(proxy_cache_.get(), hp);
+  MasterClusterProxy proxy(proxy_cache_.get(), hp);
   RemovedMasterUpdateRequestPB req;
   RemovedMasterUpdateResponsePB resp;
   rpc::RpcController controller;
@@ -501,16 +522,32 @@ scoped_refptr<Histogram> Master::GetMetric(
 
 Status Master::GoIntoShellMode() {
   maintenance_manager_->Shutdown();
-  RETURN_NOT_OK(catalog_manager()->GoIntoShellMode());
+  RETURN_NOT_OK(catalog_manager_impl()->GoIntoShellMode());
   return Status::OK();
 }
 
-const std::shared_future<client::YBClient*>& Master::client_future() const {
-  return async_client_init_->get_client_future();
+scoped_refptr<MetricEntity> Master::metric_entity_cluster() {
+  return metric_entity_cluster_;
 }
 
 client::LocalTabletFilter Master::CreateLocalTabletFilter() {
   return client::LocalTabletFilter();
+}
+
+CatalogManagerIf* Master::catalog_manager() const {
+  return catalog_manager_.get();
+}
+
+SysCatalogTable& Master::sys_catalog() const {
+  return *catalog_manager_->sys_catalog();
+}
+
+PermissionsManager& Master::permissions_manager() {
+  return *catalog_manager_->permissions_manager();
+}
+
+EncryptionManager& Master::encryption_manager() {
+  return catalog_manager_->encryption_manager();
 }
 
 } // namespace master

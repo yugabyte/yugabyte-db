@@ -33,27 +33,30 @@
 #include "yb/fs/fs_manager.h"
 
 #include <map>
+#include <set>
 #include <unordered_set>
 
 #include <boost/algorithm/string/predicate.hpp>
-
+#include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 
 #include "yb/fs/fs.pb.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
-#include "yb/util/metrics.h"
+#include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/path_util.h"
@@ -82,6 +85,13 @@ DEFINE_test_flag(bool, simulate_fs_create_failure, false,
                  "Simulate failure during initial creation of fs during the first time "
                  "process creation.");
 
+METRIC_DEFINE_entity(drive);
+
+METRIC_DEFINE_counter(drive, drive_fault,
+                      "Drive Fault. Tablet Server isn't able to read/write on this drive.",
+                      yb::MetricUnit::kUnits,
+                      "Drive Fault. Tablet Server isn't able to read/write on this drive.");
+
 using google::protobuf::Message;
 using yb::env_util::ScopedFileDeleter;
 using std::map;
@@ -89,7 +99,6 @@ using std::unordered_set;
 using strings::Substitute;
 
 namespace yb {
-
 // ==========================================================================
 //  FS Paths
 // ==========================================================================
@@ -97,15 +106,29 @@ const char *FsManager::kWalDirName = "wals";
 const char *FsManager::kWalFileNamePrefix = "wal";
 const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
-const char *FsManager::kRaftGroupMetadataDirName = "tablet-meta";
 const char *FsManager::kDataDirName = "data";
-const char *FsManager::kCorruptedSuffix = ".corrupted";
-const char *FsManager::kInstanceMetadataFileName = "instance";
-const char *FsManager::kFsLockFileName = "fs-lock";
-const char *FsManager::kConsensusMetadataDirName = "consensus-meta";
-const char *FsManager::kLogsDirName = "logs";
 
-static const char* const kTmpInfix = ".tmp";
+namespace {
+
+const char kRaftGroupMetadataDirName[] = "tablet-meta";
+const char kInstanceMetadataFileName[] = "instance";
+const char kFsLockFileName[] = "fs-lock";
+const char kConsensusMetadataDirName[] = "consensus-meta";
+const char kLogsDirName[] = "logs";
+const char kTmpInfix[] = ".tmp";
+const char kCheckFileTemplate[] = "check.XXXXXX";
+const char kSecureCertsDirName[] = "certs";
+const char kPrefixMetricId[] = "drive:";
+
+std::string DataDir(const std::string& root, const std::string& server_type) {
+  return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kDataDirName);
+}
+
+std::string WalDir(const std::string& root, const std::string& server_type) {
+  return JoinPathSegments(GetServerTypeDataPath(root, server_type), FsManager::kWalDirName);
+}
+
+} // namespace
 
 FsManagerOpts::FsManagerOpts()
     : read_only(false) {
@@ -128,7 +151,7 @@ FsManager::FsManager(Env* env, const string& root_path, const std::string& serve
       wal_fs_roots_({ root_path }),
       data_fs_roots_({ root_path }),
       server_type_(server_type),
-      metric_entity_(nullptr),
+      metric_registry_(nullptr),
       initted_(false) {
 }
 
@@ -139,7 +162,7 @@ FsManager::FsManager(Env* env,
       wal_fs_roots_(opts.wal_paths),
       data_fs_roots_(opts.data_paths),
       server_type_(opts.server_type),
-      metric_entity_(opts.metric_entity),
+      metric_registry_(opts.metric_registry),
       parent_mem_tracker_(opts.parent_mem_tracker),
       initted_(false) {
 }
@@ -207,7 +230,7 @@ Status FsManager::Init() {
     canonicalized_wal_fs_roots_.insert(FindOrDie(canonicalized_roots, wal_fs_root));
   }
   if (!data_fs_roots_.empty()) {
-    canonicalized_metadata_fs_root_ = FindOrDie(canonicalized_roots, data_fs_roots_[0]);
+    canonicalized_default_fs_root_ = FindOrDie(canonicalized_roots, data_fs_roots_[0]);
     for (const string& data_fs_root : data_fs_roots_) {
       canonicalized_data_fs_roots_.insert(FindOrDie(canonicalized_roots, data_fs_root));
     }
@@ -221,7 +244,7 @@ Status FsManager::Init() {
 
   if (VLOG_IS_ON(1)) {
     VLOG(1) << "WAL roots: " << canonicalized_wal_fs_roots_;
-    VLOG(1) << "Metadata root: " << canonicalized_metadata_fs_root_;
+    VLOG(1) << "Metadata root: " << canonicalized_default_fs_root_;
     VLOG(1) << "Data roots: " << canonicalized_data_fs_roots_;
     VLOG(1) << "All roots: " << canonicalized_all_fs_roots_;
   }
@@ -230,22 +253,50 @@ Status FsManager::Init() {
   return Status::OK();
 }
 
-Status FsManager::Open() {
+Status FsManager::CheckAndOpenFileSystemRoots() {
   RETURN_NOT_OK(Init());
 
   if (HasAnyLockFiles()) {
     return STATUS(Corruption, "Lock file is present, filesystem may be in inconsistent state");
   }
 
+  bool create_roots = false;
   for (const string& root : canonicalized_all_fs_roots_) {
     auto pb = std::make_unique<InstanceMetadataPB>();
-    RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root), pb.get()));
+    auto read_result = pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root),
+                                                        pb.get());
+    auto write_result = CheckWrite(root);
+    if ((!read_result.ok() && !read_result.IsNotFound()) || !write_result.ok()) {
+      LOG(WARNING) << "Path: " << root << " Read Result: "<< read_result
+                   << " Write Result: " << write_result;
+      canonicalized_wal_fs_roots_.erase(root);
+      canonicalized_data_fs_roots_.erase(root);
+      CreateAndSetFaultDriveMetric(root);
+      continue;
+    }
+    if (read_result.IsNotFound()) {
+      create_roots = true;
+      continue;
+    }
     if (!metadata_) {
       metadata_.reset(pb.release());
     } else if (pb->uuid() != metadata_->uuid()) {
       return STATUS(Corruption, Substitute(
           "Mismatched UUIDs across filesystem roots: $0 vs. $1",
           metadata_->uuid(), pb->uuid()));
+    }
+  }
+  if (!metadata_) {
+    return STATUS(NotFound, "Metadata wasn't found");
+  }
+  if (create_roots) {
+    RETURN_NOT_OK(CreateFileSystemRoots(*metadata_.get()));
+  }
+  for (const auto& dir : GetAncillaryDirs()) {
+    bool created;
+    RETURN_NOT_OK(CreateDirIfMissingAndSync(dir, &created));
+    if (created) {
+      LOG(INFO) << dir << " was created";
     }
   }
 
@@ -289,8 +340,8 @@ Status FsManager::DeleteFileSystemLayout(ShouldDeleteLogs also_delete_logs) {
     removal_set = canonicalized_all_fs_roots_;
   } else {
     auto removal_list = GetWalRootDirs();
-    removal_list.push_back(GetRaftGroupMetadataDir());
-    removal_list.push_back(GetConsensusMetadataDir());
+    AppendValues(GetRaftGroupMetadataDirs(), &removal_list);
+    AppendValues(GetConsensusMetadataDirs(), &removal_list);
     for (const string& root : canonicalized_all_fs_roots_) {
       removal_list.push_back(GetInstanceMetadataPath(root));
     }
@@ -349,47 +400,61 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
   // All roots are either empty or non-existent. Create missing roots and all
   // subdirectories.
   //
+
+  InstanceMetadataPB metadata;
+  CreateInstanceMetadata(&metadata);
+  RETURN_NOT_OK(CreateFileSystemRoots(metadata,
+                                      /* create_lock = */ fs_cleaned));
+
+  if (FLAGS_TEST_simulate_fs_create_failure) {
+    return STATUS(IOError, "Simulated fs creation error");
+  }
+  RETURN_NOT_OK(DeleteLockFiles());
+  return Status::OK();
+}
+
+Status FsManager::CreateFileSystemRoots(const InstanceMetadataPB& metadata,
+                                        bool create_lock) {
   // In the event of failure, delete everything we created.
-  std::deque<std::unique_ptr<ScopedFileDeleter>> delete_on_failure;
+  std::deque<ScopedFileDeleter> delete_on_failure;
   unordered_set<string> to_sync;
 
-  for (const string& root : canonicalized_all_fs_roots_) {
+  std::set<std::string> roots = canonicalized_data_fs_roots_;
+  roots.insert(canonicalized_wal_fs_roots_.begin(), canonicalized_wal_fs_roots_.end());
+
+  // All roots are either empty or non-existent. Create missing roots and all
+  // subdirectories.
+  for (const auto& root : roots) {
     bool created;
     std::string out_dir;
     RETURN_NOT_OK(SetupRootDir(env_, root, server_type_, &out_dir, &created));
     if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, out_dir));
+      delete_on_failure.emplace_front(env_, out_dir);
       to_sync.insert(DirName(out_dir));
     }
+
     const string lock_file_path = GetFsLockFilePath(root);
-    if (fs_cleaned || !Exists(lock_file_path)) {
+    if (create_lock && !Exists(lock_file_path)) {
       std::unique_ptr<WritableFile> file;
       RETURN_NOT_OK_PREPEND(env_->NewWritableFile(lock_file_path, &file),
                             "Unable to create lock file.");
       // Do not delete lock file on error. It is used to detect failed initial create.
     }
-  }
-
-  InstanceMetadataPB metadata;
-  CreateInstanceMetadata(&metadata);
-  for (const string& root : canonicalized_all_fs_roots_) {
     const string instance_metadata_path = GetInstanceMetadataPath(root);
+    if (env_->FileExists(instance_metadata_path)) {
+      continue;
+    }
     RETURN_NOT_OK_PREPEND(WriteInstanceMetadata(metadata, instance_metadata_path),
-                          "Unable to write instance metadata");
-    delete_on_failure.emplace_front(new ScopedFileDeleter(env_, instance_metadata_path));
+                            "Unable to write instance metadata");
+    delete_on_failure.emplace_front(env_, instance_metadata_path);
   }
 
-  // Initialize ancillary directories.
-  auto ancillary_dirs = GetWalRootDirs();
-  ancillary_dirs.push_back(GetRaftGroupMetadataDir());
-  ancillary_dirs.push_back(GetConsensusMetadataDir());
-
-  for (const string& dir : ancillary_dirs) {
+  for (const auto& dir : GetAncillaryDirs()) {
     bool created;
     RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
                           Substitute("Unable to create directory $0", dir));
     if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, dir));
+      delete_on_failure.emplace_front(env_, dir);
       to_sync.insert(DirName(dir));
     }
   }
@@ -402,38 +467,27 @@ Status FsManager::CreateInitialFileSystemLayout(bool delete_fs_if_lock_found) {
     }
   }
 
-  // Create the RocksDB directory under each data directory.
-  for (const string& data_root : GetDataRootDirs()) {
-    bool created = false;
-    RETURN_NOT_OK_PREPEND(CreateDirIfMissing(data_root, &created),
-                          Substitute("Unable to create directory $0", data_root));
-    if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, data_root));
-      to_sync.insert(DirName(data_root));
-    }
-
-    const string dir = JoinPathSegments(data_root, kRocksDBDirName);
-    created = false;
-    RETURN_NOT_OK_PREPEND(CreateDirIfMissing(dir, &created),
-                          Substitute("Unable to create directory $0", dir));
-    if (created) {
-      delete_on_failure.emplace_front(new ScopedFileDeleter(env_, dir));
-      to_sync.insert(DirName(dir));
-    }
-  }
-
-  if (FLAGS_TEST_simulate_fs_create_failure) {
-    return STATUS(IOError, "Simulated fs creation error");
-  }
-
   // Success: don't delete any files.
-  for (const auto& deleter : delete_on_failure) {
-    deleter->Cancel();
+  for (auto& deleter : delete_on_failure) {
+    deleter.Cancel();
   }
-
-  RETURN_NOT_OK(DeleteLockFiles());
 
   return Status::OK();
+}
+
+std::set<std::string> FsManager::GetAncillaryDirs() const {
+  std::set<std::string> ancillary_dirs;
+  AppendValues(GetRaftGroupMetadataDirs(), &ancillary_dirs);
+  AppendValues(GetConsensusMetadataDirs(), &ancillary_dirs);
+  for (const auto& wal_fs_root : canonicalized_wal_fs_roots_) {
+    ancillary_dirs.emplace(WalDir(wal_fs_root, server_type_));
+  }
+  for (const string& data_fs_root : canonicalized_data_fs_roots_) {
+    const string data_dir = DataDir(data_fs_root, server_type_);
+    ancillary_dirs.emplace(data_dir);
+    ancillary_dirs.emplace(JoinPathSegments(data_dir, kRocksDBDirName));
+  }
+  return ancillary_dirs;
 }
 
 void FsManager::CreateInstanceMetadata(InstanceMetadataPB* metadata) {
@@ -482,6 +536,39 @@ Status FsManager::IsDirectoryEmpty(const string& path, bool* is_empty) {
   return Status::OK();
 }
 
+Status FsManager::CheckWrite(const std::string& root) {
+  RETURN_NOT_OK(env_->CreateDirs(root));
+  const string tmp_file_temp = JoinPathSegments(root, kCheckFileTemplate);
+  string tmp_file;
+  std::unique_ptr<WritableFile> file;
+  Status write_result = env_->NewTempWritableFile(WritableFileOptions(),
+                                                  tmp_file_temp,
+                                                  &tmp_file,
+                                                  &file);
+  if (!write_result.ok()) {
+    return write_result;
+  }
+  ScopedFileDeleter deleter(env_, tmp_file);
+  write_result = file->Append(Slice("0123456789"));
+  if (!write_result.ok()) {
+    return write_result;
+  }
+  write_result = file->Close();
+  if (!write_result.ok()) {
+    return write_result;
+  }
+  return Status::OK();
+}
+
+void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
+  MetricEntity::AttributeMap attrs;
+  attrs["drive_path"] = path;
+  auto metric_entity = METRIC_ENTITY_drive.Instantiate(metric_registry_,
+                                                       kPrefixMetricId + path,
+                                                       attrs);
+  METRIC_drive_fault.Instantiate(metric_entity)->Increment();
+}
+
 Status FsManager::CreateDirIfMissing(const string& path, bool* created) {
   return env_util::CreateDirIfMissing(env_, path, created);
 }
@@ -506,8 +593,7 @@ vector<string> FsManager::GetDataRootDirs() const {
   // Add the data subdirectory to each data root.
   vector<string> data_paths;
   for (const string& data_fs_root : canonicalized_data_fs_roots_) {
-    data_paths.push_back(
-        JoinPathSegments(GetServerTypeDataPath(data_fs_root, server_type_), kDataDirName));
+    data_paths.push_back(DataDir(data_fs_root, server_type_));
   }
   return data_paths;
 }
@@ -516,8 +602,7 @@ vector<string> FsManager::GetWalRootDirs() const {
   DCHECK(initted_);
   vector<string> wal_dirs;
   for (const auto& canonicalized_wal_fs_root : canonicalized_wal_fs_roots_) {
-    wal_dirs.push_back(JoinPathSegments(
-          GetServerTypeDataPath(canonicalized_wal_fs_root, server_type_), kWalDirName));
+    wal_dirs.push_back(WalDir(canonicalized_wal_fs_root, server_type_));
   }
   return wal_dirs;
 }
@@ -526,14 +611,46 @@ std::string FsManager::GetRaftGroupMetadataDir(const std::string& data_dir) {
   return JoinPathSegments(data_dir, kRaftGroupMetadataDirName);
 }
 
-string FsManager::GetRaftGroupMetadataDir() const {
+vector<string> FsManager::GetRaftGroupMetadataDirs() const {
   DCHECK(initted_);
-  return GetRaftGroupMetadataDir(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_));
+  vector<string> data_paths;
+  data_paths.reserve(canonicalized_data_fs_roots_.size());
+  for (const string& data_fs_root : canonicalized_data_fs_roots_) {
+    data_paths.push_back(GetRaftGroupMetadataDir(
+                           GetServerTypeDataPath(data_fs_root, server_type_)));
+  }
+  return data_paths;
 }
 
-string FsManager::GetRaftGroupMetadataPath(const string& tablet_id) const {
-  return JoinPathSegments(GetRaftGroupMetadataDir(), tablet_id);
+Result<std::string> FsManager::GetRaftGroupMetadataPath(const string& tablet_id) const {
+  return JoinPathSegments(GetRaftGroupMetadataDir(VERIFY_RESULT(GetTabletPath(tablet_id))),
+                            tablet_id);
+}
+
+void FsManager::SetTabletPathByDataPath(const string& tablet_id, const string& path) {
+  string tablet_path = path.empty() ? GetDefaultRootDir() : DirName(path);
+  std::lock_guard<std::mutex> lock(data_mutex_);
+  InsertOrUpdate(&tablet_id_to_path_, tablet_id, tablet_path);
+}
+
+Result<std::string> FsManager::GetTabletPath(const std::string &tablet_id) const {
+  std::lock_guard<std::mutex> lock(data_mutex_);
+  auto tabet_path_it = tablet_id_to_path_.find(tablet_id);
+  if (tabet_path_it == tablet_id_to_path_.end()) {
+    return STATUS(NotFound, Format("Metadata dir not found for tablet $0", tablet_id));
+  }
+  return tabet_path_it->second;
+}
+
+bool FsManager::LookupTablet(const std::string &tablet_id) {
+  for (const auto& dir : GetRaftGroupMetadataDirs()) {
+    if (env_->FileExists(JoinPathSegments(dir, tablet_id))) {
+      std::lock_guard<std::mutex> lock(data_mutex_);
+      tablet_id_to_path_.insert({tablet_id, DirName(dir)});
+      return true;
+    }
+  }
+  return false;
 }
 
 namespace {
@@ -554,20 +671,23 @@ bool IsValidTabletId(const std::string& fname) {
 }
 } // anonymous namespace
 
-Status FsManager::ListTabletIds(vector<string>* tablet_ids) {
-  string dir = GetRaftGroupMetadataDir();
-  vector<string> children;
-  RETURN_NOT_OK_PREPEND(ListDir(dir, &children),
-                        Substitute("Couldn't list tablets in metadata directory $0", dir));
+Result<std::vector<std::string>> FsManager::ListTabletIds() {
+  std::lock_guard<std::mutex> lock(data_mutex_);
+  std::vector<std::string> tablet_ids;
+  for (const auto& dir : GetRaftGroupMetadataDirs()) {
+    vector<string> children;
+    RETURN_NOT_OK_PREPEND(ListDir(dir, &children),
+                          Substitute("Couldn't list tablets in metadata directory $0", dir));
 
-  vector<string> tablets;
-  for (const string& child : children) {
-    if (!IsValidTabletId(child)) {
-      continue;
+    for (const string& child : children) {
+      if (!IsValidTabletId(child)) {
+        continue;
+      }
+      tablet_id_to_path_.emplace(child, DirName(dir));
+      tablet_ids.push_back(child);
     }
-    tablet_ids->push_back(child);
   }
-  return Status::OK();
+  return tablet_ids;
 }
 
 std::string FsManager::GetInstanceMetadataPath(const string& root) const {
@@ -578,14 +698,33 @@ std::string FsManager::GetFsLockFilePath(const string& root) const {
   return JoinPathSegments(GetServerTypeDataPath(root, server_type_), kFsLockFileName);
 }
 
-std::string FsManager::GetConsensusMetadataDir() const {
+std::string FsManager::GetDefaultRootDir() const {
   DCHECK(initted_);
-  return GetConsensusMetadataDir(
-      GetServerTypeDataPath(canonicalized_metadata_fs_root_, server_type_));
+  return GetServerTypeDataPath(canonicalized_default_fs_root_, server_type_);
+}
+
+std::string FsManager::GetCertsDir(const std::string& root_dir) {
+  return JoinPathSegments(root_dir, kSecureCertsDirName);
+}
+
+std::vector<std::string> FsManager::GetConsensusMetadataDirs() const {
+  DCHECK(initted_);
+  vector<string> data_paths;
+  data_paths.reserve(canonicalized_data_fs_roots_.size());
+  for (const string& data_fs_root : canonicalized_data_fs_roots_) {
+    data_paths.push_back(GetConsensusMetadataDir(
+                           GetServerTypeDataPath(data_fs_root, server_type_)));
+  }
+  return data_paths;
 }
 
 std::string FsManager::GetConsensusMetadataDir(const std::string& data_dir) {
   return JoinPathSegments(data_dir, kConsensusMetadataDirName);
+}
+
+Result<std::string> FsManager::GetConsensusMetadataPath(const std::string &tablet_id) const {
+  return JoinPathSegments(GetConsensusMetadataDir(VERIFY_RESULT(GetTabletPath(tablet_id))),
+                                                  tablet_id);
 }
 
 std::string FsManager::GetFirstTabletWalDirOrDie(const std::string& table_id,

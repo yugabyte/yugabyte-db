@@ -33,14 +33,21 @@
 #ifndef YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_
 #define YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_TEST_H_
 
-#include "yb/tserver/remote_bootstrap-test-base.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/quorum_util.h"
+
 #include "yb/gutil/strings/fastmem.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/tablet/tablet_bootstrap_if.h"
+
 #include "yb/tserver/remote_bootstrap_client.h"
+#include "yb/tserver/remote_bootstrap-test-base.h"
+
 #include "yb/util/env_util.h"
 #include "yb/util/net/net_util.h"
 
@@ -65,7 +72,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
 
     fs_manager_.reset(new FsManager(Env::Default(), GetTestPath("client_tablet"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
 
     ASSERT_OK(tablet_peer_->WaitUntilConsensusRunning(MonoDelta::FromSeconds(10.0)));
     SetUpRemoteBootstrapClient();
@@ -89,7 +96,7 @@ class RemoteBootstrapClientTest : public RemoteBootstrapTest {
   }
 
  protected:
-  CHECKED_STATUS CompareFileContents(const string& path1, const string& path2);
+  Status CompareFileContents(const string& path1, const string& path2);
 
   std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<rpc::Messenger> messenger_;

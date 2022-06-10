@@ -1,5 +1,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -12,6 +13,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import org.junit.After;
@@ -36,22 +38,19 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @Before
   public void setUp() throws IOException, NoSuchAlgorithmException {
-    String certificate = "certificates/ca.crt";
-    File certFile = new File(certificate);
-    certFile.getParentFile().mkdirs();
-    certFile.createNewFile();
+    String certificate = createTempFile("delete_certificate_test", "ca.crt", "test data");
 
-    certFolder = certFile.getParentFile();
+    certFolder = new File(certificate).getParentFile();
     defaultCustomer = ModelFactory.testCustomer();
     usedCertificateInfo =
         ModelFactory.createCertificateInfo(
-            defaultCustomer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+            defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
     universe =
         ModelFactory.createUniverse(defaultCustomer.getCustomerId(), usedCertificateInfo.uuid);
 
     unusedCertificateInfo =
         ModelFactory.createCertificateInfo(
-            defaultCustomer.getUuid(), certificate, CertificateInfo.Type.SelfSigned);
+            defaultCustomer.getUuid(), certificate, CertConfigType.SelfSigned);
 
     params = new DeleteCertificate.Params();
     params.customerUUID = defaultCustomer.uuid;
@@ -60,9 +59,6 @@ public class DeleteCertificateTest extends FakeDBApplication {
 
   @After
   public void tearDown() {
-    if (certFolder.exists()) {
-      certFolder.delete();
-    }
     universe.delete();
     defaultCustomer.delete();
     usedCertificateInfo.delete();

@@ -14,8 +14,15 @@
 #ifndef YB_CONSENSUS_CONSENSUS_FWD_H
 #define YB_CONSENSUS_CONSENSUS_FWD_H
 
+#include <memory>
+#include <type_traits>
+
+#include "yb/consensus/consensus.fwd.h"
+
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -24,16 +31,14 @@ namespace consensus {
 class Consensus;
 class ConsensusContext;
 class ConsensusRoundCallback;
+class MultiRaftManager;
 class PeerProxyFactory;
 class PeerMessageQueue;
-class RaftConfigPB;
 class RaftConsensus;
 class ReplicateMsg;
 class ReplicateMsgsHolder;
 class RetryableRequests;
 class SafeOpIdWaiter;
-class VoteRequestPB;
-class VoteResponsePB;
 
 struct ConsensusOptions;
 struct ConsensusBootstrapInfo;
@@ -54,6 +59,9 @@ typedef scoped_refptr<LeaderElection> LeaderElectionPtr;
 
 class PeerProxy;
 typedef std::unique_ptr<PeerProxy> PeerProxyPtr;
+
+class MultiRaftHeartbeatBatcher;
+using MultiRaftHeartbeatBatcherPtr = std::shared_ptr<MultiRaftHeartbeatBatcher>;
 
 struct LeaderElectionData;
 

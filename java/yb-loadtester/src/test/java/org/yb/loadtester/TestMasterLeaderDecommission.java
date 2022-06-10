@@ -37,7 +37,7 @@ public class TestMasterLeaderDecommission extends TestClusterBase {
     loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
     // Disable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      assertTrue(client.setFlag(hp, "tserver_disable_heartbeat_test_only", "true"));
+      assertTrue(client.setFlag(hp, "TEST_tserver_disable_heartbeat", "true"));
     }
 
     // Disable becoming leader in 2 master followers.
@@ -56,7 +56,7 @@ public class TestMasterLeaderDecommission extends TestClusterBase {
 
     // Enable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      assertTrue(client.setFlag(hp, "tserver_disable_heartbeat_test_only", "false"));
+      assertTrue(client.setFlag(hp, "TEST_tserver_disable_heartbeat", "false"));
     }
 
     // Wait for tservers to find and heartbeat to new master.

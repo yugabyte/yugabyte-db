@@ -15,14 +15,14 @@ isTocNested: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/develop/learn/ttl-data-expiration-ysql" class="nav-link">
+    <a href="/preview/develop/learn/ttl-data-expiration-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/develop/learn/ttl-data-expiration-ycql" class="nav-link active">
+    <a href="/preview/develop/learn/ttl-data-expiration-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -42,16 +42,16 @@ non-primary key columns are deleted only in the case of inserts.
 
 ## Table level TTL
 
-YCQL allows the TTL property to be specified at the table level. 
-In this case, you do not store the TTL on a per KV basis in DocDB; but the TTL is implicitly enforced 
+YCQL allows the TTL property to be specified at the table level.
+In this case, you do not store the TTL on a per KV basis in DocDB; but the TTL is implicitly enforced
 on reads as well as during compactions (to reclaim space).
-Table level TTL can be defined with `default_time_to_live` [property](../../../api/ycql/ddl_create_table#table-properties-1). 
+Table level TTL can be defined with `default_time_to_live` [property](../../../api/ycql/ddl_create_table#table-properties-1).
 
 Below, you will look at how the row-level TTL is achieved in detail.
 
 ## Row level TTL
 
-YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation. 
+YCQL allows the TTL property to be specified at the level of each INSERT/UPDATE operation.
 Row level TTL expires the whole row. The value is specified at insert/update time with `USING TTL` clause.
 In such cases, the TTL is stored as part of the DocDB value. A simple query would be:
 
@@ -78,7 +78,7 @@ SELECT * FROM pageviews;
 
 ## Column level TTL
 
-YCQL also allows to set column level TTL. In such cases, the TTL is stored as part of the DocDB column value. 
+YCQL also allows to set column level TTL. In such cases, the TTL is stored as part of the DocDB column value.
 But you can set it only when updating the column:
 
 ```sql
@@ -111,7 +111,7 @@ SELECT * FROM pageviews;
 
 There are several ways to work with TTL:
 
-1. Table level TTL with [`default_time_to_live`](../../../api/ycql/ddl_create_table#table-properties-1) property. 
+1. Table level TTL with [`default_time_to_live`](../../../api/ycql/ddl_create_table#table-properties-1) property.
 2. [Expiring rows with TTL](../../../api/ycql/dml_insert#insert-a-row-with-expiration-time-using-the-using-ttl-clause)
 3. [`TTL` function](../../../api/ycql/expr_fcall/#ttl-function) to return number of seconds until expiration
 4. [`WriteTime` function](../../../api/ycql/expr_fcall#writetime-function) returns timestamp when row/column was inserted

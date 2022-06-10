@@ -17,8 +17,9 @@
 // under the License.
 //
 
-#include "yb/gutil/singleton.h"
 #include "yb/util/debug/trace_event_synthetic_delay.h"
+
+#include "yb/gutil/singleton.h"
 
 namespace {
 const int kMaxSyntheticDelays = 32;

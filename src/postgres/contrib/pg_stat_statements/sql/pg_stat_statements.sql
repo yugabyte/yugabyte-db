@@ -1,3 +1,4 @@
+DROP EXTENSION IF EXISTS pg_stat_statements;
 CREATE EXTENSION pg_stat_statements;
 
 --
@@ -194,5 +195,19 @@ DROP FUNCTION IF EXISTS PLUS_ONE(INTEGER);
 DROP FUNCTION PLUS_TWO(INTEGER);
 
 SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+
+--
+-- create / alter user
+--
+SELECT pg_stat_statements_reset();
+CREATE USER foo PASSWORD 'fooooooo';
+ALTER USER foo PASSWORD 'foo2';
+CREATE ROLE fizzbuzz PASSWORD 'barrr';
+ALTER ROLE fizzbuzz PASSWORD 'barrr2';
+
+SELECT query, calls, rows FROM pg_stat_statements ORDER BY query COLLATE "C";
+
+DROP USER foo;
+DROP ROLE fizzbuzz;
 
 DROP EXTENSION pg_stat_statements;

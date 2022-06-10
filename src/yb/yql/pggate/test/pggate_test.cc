@@ -20,19 +20,26 @@
 #include <unordered_set>
 
 #include <boost/optional.hpp>
-
 #include <gflags/gflags.h>
 
-#include "yb/client/client_fwd.h"
-#include "yb/common/transaction.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/tserver/tserver_util_fwd.h"
-#include "yb/util/result.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
-#include "yb/client/client.h"
-#include "yb/yql/pggate/pggate_flags.h"
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
 
@@ -43,8 +50,8 @@ namespace yb {
 namespace pggate {
 namespace {
 
-void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
-  CHECK(false) << "Not implemented";
+void YbPgMemUpdateMax() {
+  CHECK(true) << "Skip execution in test";
 }
 
 YBCPgMemctx global_test_memctx = nullptr;
@@ -136,9 +143,9 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
-  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
   callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
   callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
+  callbacks.YbPgMemUpdateMax = &YbPgMemUpdateMax;
 
   {
     auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
@@ -146,7 +153,7 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
     tserver::GetSharedDataResponsePB resp;
     rpc::RpcController controller;
     controller.set_timeout(30s);
-    CHECK_OK(proxy->GetSharedData(req, &resp, &controller));
+    CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
     CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
     memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
   }

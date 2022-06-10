@@ -18,7 +18,7 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">
+    <a href="/preview/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -34,7 +34,7 @@ Explicit row-locks use transaction priorities to ensure that two transactions ca
 Explicit locking is an area of active development in YugabyteDB. A number of enhancements are planned in this area. Unlike PostgreSQL, YugabyteDB uses optimistic concurrency control and does not block / wait for currently held locks, instead opting to abort the conflicting transaction with a lower priority. Pessimistic concurrency control is currently under development.
 {{</note >}}
 
-The types of row locks currently supported are: 
+The types of row locks currently supported are:
 * `FOR UPDATE`
 * `FOR NO KEY UPDATE`
 * `FOR SHARE`
@@ -47,7 +47,7 @@ yugabyte=# CREATE TABLE t (k VARCHAR, v VARCHAR);
 yugabyte=# INSERT INTO t VALUES ('k1', 'v1');
 ```
 
-Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below. 
+Next, connect to the cluster using two independent `ysqlsh` instances called *session #1* and *session #2* below.
 
 {{< note title="Note" >}}
 You can connect the session #1 and session #2 `ysqlsh` instances to the same server, or to different servers.
@@ -86,8 +86,8 @@ SELECT * from t WHERE k='k1' FOR UPDATE;
 # Since row is locked by session #1,
 # this update should fail.
 UPDATE t SET v='v1.1' WHERE k='k1';
-ERROR:  Operation failed. Try again. 
-        xxx Conflicts with higher priority 
+ERROR:  Operation failed. Try again.
+        xxx Conflicts with higher priority
         transaction: yyy
     </code></pre>
 {{< note title="Note" >}}

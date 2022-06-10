@@ -31,7 +31,7 @@
 
 namespace rocksdb {
 
-class MergeHelperTest : public testing::Test {
+class MergeHelperTest : public RocksDBTest {
  public:
   MergeHelperTest() { env_ = Env::Default(); }
 

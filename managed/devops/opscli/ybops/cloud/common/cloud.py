@@ -11,6 +11,7 @@
 import logging
 import os
 import re
+import stat
 import socket
 import ssl
 import tempfile
@@ -21,7 +22,7 @@ from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
                          get_internal_datafile_path, get_ssh_host_port, remote_exec_command,
-                         scp_to_tmp)
+                         scp_to_tmp, wait_for_ssh)
 from ybops.utils.remote_shell import RemoteShell
 
 
@@ -40,14 +41,16 @@ class AbstractCloud(AbstractCommandParser):
     YSQLSH_CERT_DIR = os.path.join(YB_HOME_DIR, ".yugabytedb")
     ROOT_CERT_NAME = "ca.crt"
     ROOT_CERT_NEW_NAME = "ca_new.crt"
+    PRODUCER_CERTS_DIR_NAME = "yugabyte-tls-producer"
     CLIENT_ROOT_NAME = "root.crt"
     CLIENT_CERT_NAME = "yugabytedb.crt"
     CLIENT_KEY_NAME = "yugabytedb.key"
     CERT_LOCATION_NODE = "node"
     CERT_LOCATION_PLATFORM = "platform"
-    SSH_RETRY_COUNT = 30
-    SSH_WAIT_SECONDS = 30
+    SSH_RETRY_COUNT = 180
+    SSH_WAIT_SECONDS = 5
     SSH_TIMEOUT_SECONDS = 10
+    MOUNT_PATH_PREFIX = "/mnt/d"
 
     def __init__(self, name):
         super(AbstractCloud, self).__init__(name)
@@ -161,26 +164,26 @@ class AbstractCloud(AbstractCommandParser):
             "process": process,
             "command": command
         }
+        if args.systemd_services:
+            updated_vars.update({"systemd_services": args.systemd_services})
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         remote_shell = RemoteShell(updated_vars)
+        if args.num_volumes:
+            volume_cnt = remote_shell.run_command(
+                "df | awk '{{print $6}}' | egrep '^{}[0-9]+' | wc -l".format(
+                    AbstractCloud.MOUNT_PATH_PREFIX
+                )
+            )
+            if int(volume_cnt.stdout) < int(args.num_volumes):
+                raise YBOpsRuntimeError(
+                    "Not all data volumes attached: needed {} found {}".format(
+                        args.num_volumes, volume_cnt.stdout
+                    )
+                )
 
         if process == "thirdparty" or process == "platform-services":
             self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
-            return
-
-        if args.systemd_services:
-            if command == "start":
-                remote_shell.run_command(
-                    "sudo systemctl enable yb-{}".format(process)
-                )
-            remote_shell.run_command(
-                "sudo systemctl {} yb-{}".format(command, process)
-            )
-            if command == "stop":
-                remote_shell.run_command(
-                    "sudo systemctl disable yb-{}".format(process)
-                )
             return
 
         if os.environ.get("YB_USE_FABRIC", False):
@@ -200,10 +203,27 @@ class AbstractCloud(AbstractCommandParser):
             "-U postgres\"".format(master_addresses, init_db_path)
         )
 
+    def execute_boot_script(self, args, extra_vars):
+        dest_path = os.path.join("/tmp", os.path.basename(args.boot_script))
+
+        # Make it executable, in case it isn't one.
+        st = os.stat(args.boot_script)
+        os.chmod(args.boot_script, st.st_mode | stat.S_IEXEC)
+
+        scp_to_tmp(
+            args.boot_script, extra_vars["ssh_host"],
+            extra_vars["ssh_user"], extra_vars["ssh_port"], args.private_key_file)
+
+        cmd = "sudo {}".format(dest_path)
+        rc, stdout, stderr = remote_exec_command(
+            extra_vars["ssh_host"], extra_vars["ssh_port"],
+            extra_vars["ssh_user"], args.private_key_file, cmd)
+        if rc:
+            raise YBOpsRuntimeError(
+                "[app] Could not run bootscript {} {}".format(stdout, stderr))
+
     def configure_secondary_interface(self, args, extra_vars, subnet_cidr):
         logging.info("[app] Configuring second NIC")
-        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern,
-                               extra_vars["ssh_port"])
         subnet_network, subnet_netmask = subnet_cidr.split('/')
         # Copy and run script to configure routes
         scp_to_tmp(
@@ -223,8 +243,14 @@ class AbstractCloud(AbstractCommandParser):
         remote_exec_command(
             extra_vars["ssh_host"], extra_vars["ssh_port"], extra_vars["ssh_user"],
             args.private_key_file, 'sudo reboot')
-        self.wait_for_ssh_port(extra_vars["ssh_host"],
-                               args.search_pattern, extra_vars["ssh_port"])
+        self.wait_for_ssh_port(extra_vars["ssh_host"], args.search_pattern, extra_vars["ssh_port"])
+        # Make sure we can ssh into the node after the reboot as well.
+        if wait_for_ssh(extra_vars["ssh_host"], extra_vars["ssh_port"],
+                        extra_vars["ssh_user"], args.private_key_file, num_retries=120):
+            pass
+        else:
+            raise YBOpsRuntimeError("Could not ssh into node {}".format(extra_vars["ssh_host"]))
+
         # Verify that the command ran successfully:
         rc, stdout, stderr = remote_exec_command(extra_vars["ssh_host"], extra_vars["ssh_port"],
                                                  extra_vars["ssh_user"], args.private_key_file,
@@ -347,16 +373,27 @@ class AbstractCloud(AbstractCommandParser):
         root_file_verify = remote_shell.run_command_raw("test -r {}".format(root_crt_path))
         if root_file_verify.exited == 1:
             raise YBOpsRuntimeError(
-                            "Root cert: {} is absent or is not readable.".format(root_crt_path))
+                "Root cert: {} is absent or is not readable.".format(root_crt_path))
         node_file_verify = remote_shell.run_command_raw("test -r {}".format(node_crt_path))
         if node_file_verify.exited == 1:
             raise YBOpsRuntimeError(
-                            "Node cert: {} is absent or is not readable.".format(node_crt_path))
+                "Node cert: {} is absent or is not readable.".format(node_crt_path))
         try:
             remote_shell.run_command('which openssl')
         except YBOpsRuntimeError:
             logging.debug("Openssl not found, skipping certificate verification.")
             return
+
+        # Verify if root and node certs are valid
+        cert_verify = remote_shell.run_command_raw(
+            ("openssl crl2pkcs7 -nocrl -certfile {} -certfile {} "
+                "| openssl pkcs7 -print_certs -text -noout")
+            .format(root_crt_path, node_crt_path))
+        if cert_verify.exited == 1:
+            raise YBOpsRuntimeError(
+                "Provided certs ({}, {}) are not valid."
+                .format(root_crt_path, node_crt_path))
+
         # Verify if the node cert is not expired
         validity_verify = remote_shell.run_command_raw(
             "openssl x509 -noout -checkend 86400 -in {}".format(node_crt_path))
@@ -431,7 +468,7 @@ class AbstractCloud(AbstractCommandParser):
                 verify_hostname = True
                 if skip_cert_validation == 'HOSTNAME':
                     logging.info(
-                      "Skipping host name validation for certs for node {}".format(node_ip))
+                        "Skipping host name validation for certs for node {}".format(node_ip))
                     verify_hostname = False
                 self.verify_certs(root_cert_path, server_cert_path,
                                   ssh_options, verify_hostname)
@@ -450,6 +487,59 @@ class AbstractCloud(AbstractCommandParser):
 
         # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(certs_dir))
+
+    def copy_xcluster_root_cert(
+            self,
+            ssh_options,
+            root_cert_path,
+            replication_config_name,
+            producer_certs_dir):
+        if producer_certs_dir is None:
+            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
+        remote_shell = RemoteShell(ssh_options)
+        node_ip = ssh_options["ssh_host"]
+        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
+        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        logging.info("Moving server cert located at {} to {}:{}.".format(
+            root_cert_path, node_ip, src_root_cert_dir_path))
+
+        remote_shell.run_command('mkdir -p ' + src_root_cert_dir_path)
+        # Give write permissions. If the command fails, ignore.
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
+        remote_shell.put_file(root_cert_path, src_root_cert_path)
+
+        # Reset the write permission as a sanity check.
+        remote_shell.run_command('chmod 400 {}/*'.format(src_root_cert_dir_path))
+
+    def remove_xcluster_root_cert(
+            self,
+            ssh_options,
+            replication_config_name,
+            producer_certs_dir):
+        def check_rm_result(rm_result):
+            if rm_result.exited and rm_result.stderr.find("No such file or directory") == -1:
+                raise YBOpsRuntimeError(
+                    "Remote shell command 'rm' failed with "
+                    "return code '{}' and error '{}'".format(rm_result.stderr.encode('utf-8'),
+                                                             rm_result.exited))
+
+        if producer_certs_dir is None:
+            producer_certs_dir = self.PRODUCER_CERTS_DIR_NAME
+        remote_shell = RemoteShell(ssh_options)
+        node_ip = ssh_options["ssh_host"]
+        src_root_cert_dir_path = os.path.join(producer_certs_dir, replication_config_name)
+        src_root_cert_path = os.path.join(src_root_cert_dir_path, self.ROOT_CERT_NAME)
+        logging.info("Removing server cert located at {} from server {}.".format(
+            src_root_cert_dir_path, node_ip))
+
+        remote_shell.run_command('chmod -f 666 {}/* || true'.format(src_root_cert_dir_path))
+        result = remote_shell.run_command_raw('rm ' + src_root_cert_path)
+        check_rm_result(result)
+        # Remove the directory only if it is empty.
+        result = remote_shell.run_command_raw('rm -d ' + src_root_cert_dir_path)
+        check_rm_result(result)
+        # No need to check the result of this command.
+        remote_shell.run_command_raw('rm -d ' + producer_certs_dir)
 
     def copy_client_certs(
             self,
@@ -489,6 +579,29 @@ class AbstractCloud(AbstractCommandParser):
         # Reset the write permission as a sanity check.
         remote_shell.run_command('chmod 400 {}/*'.format(self.YSQLSH_CERT_DIR))
 
+    def cleanup_client_certs(self, ssh_options):
+        remote_shell = RemoteShell(ssh_options)
+        yb_root_cert_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_ROOT_NAME)
+        yb_client_cert_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_CERT_NAME)
+        yb_client_key_path = os.path.join(
+            self.YSQLSH_CERT_DIR, self.CLIENT_KEY_NAME)
+
+        logging.info("Removing client certs located at {}, {}, {}.".format(
+            yb_root_cert_path, yb_client_cert_path, yb_client_key_path))
+
+        # Give write permissions. If the command fails, ignore.
+        remote_shell.run_command(
+            'chmod -f 666 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+        # Remove client certs
+        remote_shell.run_command(
+            "rm '{}' '{}' '{}' || true".format(
+                yb_root_cert_path, yb_client_cert_path, yb_client_key_path))
+        # Reset the write permission as a sanity check.
+        remote_shell.run_command(
+            'chmod 400 {}/* || true'.format(self.YSQLSH_CERT_DIR))
+
     def create_encryption_at_rest_file(self, extra_vars, ssh_options):
         encryption_key_path = extra_vars["encryption_key_file"]  # Source file path
         key_node_dir = extra_vars["encryption_key_dir"]  # Target file path
@@ -524,7 +637,8 @@ class AbstractCloud(AbstractCommandParser):
         if args.mount_points:
             return args.mount_points
         else:
-            return ",".join(["/mnt/d{}".format(i) for i in range(args.num_volumes)])
+            return ",".join(["{}{}".format(AbstractCloud.MOUNT_PATH_PREFIX, i)
+                             for i in range(args.num_volumes)])
 
     def expand_file_system(self, args, ssh_options):
         remote_shell = RemoteShell(ssh_options)
@@ -589,4 +703,41 @@ class AbstractCloud(AbstractCommandParser):
             raise YBOpsRuntimeError(
                 "Cannot reach the instance {} after its start at ports {}".format(
                     instance_name, str(ssh_ports))
-                )
+            )
+
+    def wait_for_startup_script(self, args, host_info):
+        if self._wait_for_startup_script_command:
+            rc, stdout, stderr = remote_exec_command(
+                host_info['ssh_host'], host_info['ssh_port'],
+                host_info['ssh_user'], args.private_key_file,
+                self._wait_for_startup_script_command)
+            if rc != 0:
+                logging.error(
+                    'Failed to wait for startup script completion on {}:'.format(
+                        args.search_pattern))
+                if stdout:
+                    logging.error('STDOUT: {}'.format(stdout))
+                if stderr:
+                    logging.error('STDERR: {}'.format(stderr))
+            return rc == 0
+
+        return True
+
+    def verify_startup_script(self, args, host_info):
+        cmd = "cat /etc/yb-boot-script-complete"
+        rc, stdout, stderr = remote_exec_command(
+            host_info['ssh_host'], host_info['ssh_port'],
+            host_info['ssh_user'], args.private_key_file, cmd
+        )
+        if rc != 0:
+            raise YBOpsRuntimeError(
+                'Failed to read /etc/yb-boot-script-complete {}\nSTDOUT: {}\nSTDERR: {}\n'.format(
+                    args.search_pattern, stdout, stderr))
+        if len(stdout) > 0:
+            if stdout[0].rstrip(os.linesep) != args.boot_script_token:
+                raise YBOpsRuntimeError(
+                    '/etc/yb-boot-script-complete on {} has incorrect token {}'.format(
+                        args.search_pattern, stdout))
+
+    def get_console_output(self, args):
+        return ''

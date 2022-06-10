@@ -10,45 +10,54 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.commissioner.HealthCheckMetrics.CUSTOM_NODE_METRICS_COLLECTION_METRIC;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.HEALTH_CHECK_METRICS;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.HEALTH_CHECK_METRICS_WITHOUT_STATUS;
+import static com.yugabyte.yw.commissioner.HealthCheckMetrics.NODE_EXPORTER_CHECK;
+import static com.yugabyte.yw.commissioner.HealthCheckMetrics.OPENED_FILE_DESCRIPTORS_CHECK;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.UPTIME_CHECK;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getCountMetricByCheckName;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getNodeMetrics;
+import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
+import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static play.mvc.Http.Status.BAD_REQUEST;
 
 import akka.Done;
 import akka.actor.ActorSystem;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.EmailHelper;
-import com.yugabyte.yw.common.HealthManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.metrics.MetricService;
-import com.yugabyte.yw.forms.CustomerRegisterFormData.AlertingData;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
-import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -61,6 +70,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -82,7 +92,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.mail.MessagingException;
 import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.Configuration;
@@ -96,9 +110,21 @@ import scala.concurrent.duration.Duration;
 @Slf4j
 public class HealthChecker {
 
+  private static final String PYTHON_WRAPPER_OUTPUT_PREFIX =
+      "Using virtualenv python executable now.";
+
   private static final String YB_TSERVER_PROCESS = "yb-tserver";
 
+  static final String SCRIPT_PERMISSIONS = "755";
+
   private static final String MAX_NUM_THREADS_KEY = "yb.health.max_num_parallel_checks";
+
+  private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
+      "yb.health.max_num_parallel_node_checks";
+
+  private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
+
+  private static final long NODE_CHECK_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
 
   private final Environment environment;
 
@@ -109,9 +135,6 @@ public class HealthChecker {
 
   // Last time we actually ran the health check script per customer.
   private final Map<UUID, Long> lastCheckTimeMap = new HashMap<>();
-
-  // What will run the health checking script.
-  HealthManager healthManager;
 
   private final AtomicBoolean running = new AtomicBoolean(false);
 
@@ -127,15 +150,27 @@ public class HealthChecker {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
-  // The thread pool executor for parallelized health checks.
-  private final ExecutorService executor;
+  // The thread pool executor for parallelized health checks for multiple universes.
+  private final ExecutorService universeExecutor;
+  // The thread pool executor for parallelized node checks for multiple universes.
+  private final ExecutorService nodeExecutor;
 
   // A map of all running health checks.
   final Map<UUID, CompletableFuture<Void>> runningHealthChecks = new ConcurrentHashMap<>();
 
+  // We upload health check script to the node only when NodeInfo is updates
+  private final Map<Pair<UUID, String>, NodeInfo> uploadedNodeInfo = new ConcurrentHashMap<>();
+
+  private final Set<String> healthScriptMetrics =
+      Collections.newSetFromMap(new ConcurrentHashMap<>());
+
   final ApplicationLifecycle lifecycle;
 
   private final HealthCheckMetrics healthMetrics;
+
+  private final NodeUniverseManager nodeUniverseManager;
+
+  private volatile boolean shutdown;
 
   @Inject
   public HealthChecker(
@@ -143,26 +178,27 @@ public class HealthChecker {
       ActorSystem actorSystem,
       Configuration config,
       ExecutionContext executionContext,
-      HealthManager healthManager,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle,
+      NodeUniverseManager nodeUniverseManager,
       HealthCheckMetrics healthMetrics) {
     this(
         environment,
         actorSystem,
         config,
         executionContext,
-        healthManager,
         healthCheckerReport,
         emailHelper,
         metricService,
         runtimeConfigFactory,
         lifecycle,
         healthMetrics,
-        createExecutor(runtimeConfigFactory.globalRuntimeConf()));
+        nodeUniverseManager,
+        createUniverseExecutor(runtimeConfigFactory.globalRuntimeConf()),
+        createNodeExecutor(runtimeConfigFactory.globalRuntimeConf()));
   }
 
   HealthChecker(
@@ -170,31 +206,31 @@ public class HealthChecker {
       ActorSystem actorSystem,
       Configuration config,
       ExecutionContext executionContext,
-      HealthManager healthManager,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
       ApplicationLifecycle lifecycle,
       HealthCheckMetrics healthMetrics,
-      ExecutorService executorService) {
+      NodeUniverseManager nodeUniverseManager,
+      ExecutorService universeExecutor,
+      ExecutorService nodeExecutor) {
     this.environment = environment;
     this.actorSystem = actorSystem;
     this.config = config;
     this.executionContext = executionContext;
-    this.healthManager = healthManager;
     this.healthCheckerReport = healthCheckerReport;
     this.emailHelper = emailHelper;
     this.metricService = metricService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.lifecycle = lifecycle;
     this.healthMetrics = healthMetrics;
-    this.executor = executorService;
-
-    this.initialize();
+    this.universeExecutor = universeExecutor;
+    this.nodeExecutor = nodeExecutor;
+    this.nodeUniverseManager = nodeUniverseManager;
   }
 
-  private void initialize() {
+  public void initialize() {
     log.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
     this.actorSystem
         .scheduler()
@@ -232,136 +268,111 @@ public class HealthChecker {
   }
 
   /**
-   * Process results received from the health-check script.
+   * Process metrics received from the health-check script.
    *
    * @param c Customer.
    * @param u Universe.
-   * @param response Response data.
-   * @param durationMs Duration of the completed health-check.
-   * @param emailDestinations Recipients for the email report.
-   * @param sendMailAlways Force the email sending.
-   * @param reportOnlyErrors Include only errors into the report.
-   * @param onlyMetrics Don't send email, only metrics collection.
-   * @return
+   * @param report Health report.
+   * @return true if success
    */
-  private boolean processResults(
-      Customer c,
-      Universe u,
-      String response,
-      long durationMs,
-      String emailDestinations,
-      boolean sendMailAlways,
-      boolean reportOnlyErrors,
-      boolean onlyMetrics) {
+  private boolean processMetrics(Customer c, Universe u, Details report) {
 
-    JsonNode healthJSON;
+    boolean hasErrors = false;
+    // This is hacky, but health check data items only make sense if you know order.
+    boolean isMaster = true;
+    boolean isInstanceUp = false;
     try {
-      healthJSON = Util.convertStringToJson(response);
-    } catch (Exception e) {
-      log.warn("Failed to convert health check response to JSON " + e.getMessage());
-      setHealthCheckFailedMetric(
-          c, u, "Error converting health check response to JSON: " + e.getMessage());
-      return false;
-    }
-
-    if (healthJSON != null) {
-      boolean hasErrors = false;
-      // This is hacky, but health check data items only make sense if you know order.
-      boolean isMaster = true;
-      boolean isInstanceUp = false;
-      try {
-        List<Metric> metrics = new ArrayList<>();
-        Map<PlatformMetrics, Integer> platformMetrics = new HashMap<>();
-        Set<String> nodesWithError = new HashSet<>();
-        for (JsonNode entry : healthJSON.path("data")) {
-          String nodeName = entry.path("node").asText();
-          String checkName = entry.path("message").asText();
-          JsonNode process = entry.path("process");
-          JsonNode metricValueNode = entry.path("metric_value");
-          Double merticValue = null;
-          boolean checkResult = entry.path("has_error").asBoolean();
-          if (checkResult) {
-            nodesWithError.add(nodeName);
-          }
-          hasErrors = checkResult || hasErrors;
-
-          // First data node for master and tserver have process field with process type.
-          if (!process.isMissingNode()) {
-            isMaster = !process.asText().equals(YB_TSERVER_PROCESS);
-          }
-          // Some data nodes have metric_value fields, which we need to write as a platform metric.
-          if (!metricValueNode.isMissingNode()) {
-            merticValue = metricValueNode.asDouble();
-          }
-          // Add node metric value if it's present in data node
-          if (merticValue != null) {
-            metrics.addAll(getNodeMetrics(checkName, isMaster, u, nodeName, merticValue));
-          }
-          if (checkName.equals(UPTIME_CHECK)) {
-            // No boot time metric means the instance or the whole node is down
-            // and this node shouldn't be counted in other error node count metrics.
-            isInstanceUp = merticValue != null;
-          }
-
-          // Get per-check error nodes count metric name.
-          PlatformMetrics countMetric = getCountMetricByCheckName(checkName, isMaster);
-
-          // Only increase error nodes metric value in case it's instance up check
-          // or instance is actually up. Otherwise - most probably node is just down
-          // and ssh connection to the node failed during check.
-          boolean increaseNodeCount =
-              isInstanceUp
-                  || PlatformMetrics.HEALTH_CHECK_MASTER_DOWN == countMetric
-                  || PlatformMetrics.HEALTH_CHECK_TSERVER_DOWN == countMetric;
-          if (countMetric != null && increaseNodeCount) {
-            // checkResult == true -> error -> 1
-            int toAppend = checkResult ? 1 : 0;
-            platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
-          }
-          if (null == healthMetrics.getHealthMetric()) continue;
-
-          Gauge.Child prometheusVal =
-              healthMetrics
-                  .getHealthMetric()
-                  .labels(u.universeUUID.toString(), u.name, nodeName, checkName);
-          prometheusVal.set(checkResult ? 1 : 0);
+      List<Metric> metrics = new ArrayList<>();
+      Map<PlatformMetrics, Integer> platformMetrics = new HashMap<>();
+      Set<String> nodesWithError = new HashSet<>();
+      boolean shouldCollectNodeMetrics = false;
+      for (NodeData nodeData : report.getData()) {
+        String node = nodeData.getNode();
+        String checkName = nodeData.getMessage();
+        boolean checkResult = nodeData.getHasError();
+        if (checkResult) {
+          nodesWithError.add(node);
         }
-        log.info(
-            "Health check for universe {} reported {}. [ {} ms ]",
-            u.name,
-            (hasErrors ? "errors" : " success"),
-            durationMs);
+        hasErrors = (!nodeData.getMetricsOnly() && checkResult) || hasErrors;
 
-        metrics.addAll(
-            platformMetrics
-                .entrySet()
-                .stream()
-                .map(e -> buildMetricTemplate(e.getKey(), u).setValue(e.getValue().doubleValue()))
-                .collect(Collectors.toList()));
-        // Clean all health check metrics for universe before saving current values
-        // just in case list of nodes changed between runs.
-        MetricFilter toClean = metricSourceKeysFilter(c, u, HEALTH_CHECK_METRICS_WITHOUT_STATUS);
-        metricService.cleanAndSave(metrics, toClean);
+        // First data node for master and tserver have process field with process type.
+        if (StringUtils.isNotBlank(nodeData.getProcess())) {
+          isMaster = !nodeData.getProcess().equals(YB_TSERVER_PROCESS);
+        }
+        // Add node metric value if it's present in data node
+        List<Details.Metric> nodeMetrics = nodeData.getMetrics();
+        List<Metric> nodeCustomMetrics = new ArrayList<>(getNodeMetrics(c, u, node, nodeMetrics));
+        if (checkName.equals(UPTIME_CHECK)) {
+          // No boot time metric means the instance or the whole node is down
+          // and this node shouldn't be counted in other error node count metrics.
+          isInstanceUp = CollectionUtils.isNotEmpty(nodeCustomMetrics);
+        }
+        if (checkName.equals(NODE_EXPORTER_CHECK)) {
+          shouldCollectNodeMetrics =
+              nodeCustomMetrics
+                  .stream()
+                  .noneMatch(
+                      metric ->
+                          metric.getName().equals(CUSTOM_NODE_METRICS_COLLECTION_METRIC)
+                              && metric.getValue().equals(STATUS_OK));
+        }
 
-        metricService.setMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODES_WITH_ERRORS, u),
-            nodesWithError.size());
+        // Get per-check error nodes count metric name.
+        PlatformMetrics countMetric = getCountMetricByCheckName(checkName, isMaster);
 
-        metricService.setOkStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
-      } catch (Exception e) {
-        log.warn("Failed to convert health check response to prometheus metrics", e);
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u),
-            "Error converting health check response to prometheus metrics: " + e.getMessage());
+        // Only increase error nodes metric value in case it's instance up check
+        // or instance is actually up. Otherwise - most probably node is just down
+        // and ssh connection to the node failed during check.
+        boolean increaseNodeCount =
+            isInstanceUp
+                || PlatformMetrics.HEALTH_CHECK_MASTER_DOWN == countMetric
+                || PlatformMetrics.HEALTH_CHECK_TSERVER_DOWN == countMetric;
+        if (countMetric != null && increaseNodeCount) {
+          // checkResult == true -> error -> 1
+          int toAppend = checkResult ? 1 : 0;
+          platformMetrics.compute(countMetric, (k, v) -> v != null ? v + toAppend : toAppend);
+        }
+        if (shouldCollectNodeMetrics || checkName.equals(OPENED_FILE_DESCRIPTORS_CHECK)) {
+          // Used FD count metric is always collected through health check as it's not
+          // calculated properly from inside the collect_metrics service - it gets service limit
+          // instead of user limit for file descriptors
+          metrics.addAll(nodeCustomMetrics);
+        }
+        if (null == healthMetrics.getHealthMetric()) {
+          continue;
+        }
+
+        Gauge.Child prometheusVal =
+            healthMetrics
+                .getHealthMetric()
+                .labels(u.universeUUID.toString(), u.name, node, checkName);
+        prometheusVal.set(checkResult ? 1 : 0);
       }
 
-      if (!onlyMetrics
-          && sendEmailReport(
-              c, u, emailDestinations, sendMailAlways, hasErrors, reportOnlyErrors, healthJSON)) {
-        metricService.setOkStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u));
-      }
+      healthScriptMetrics.addAll(
+          metrics.stream().map(Metric::getName).collect(Collectors.toList()));
+      metrics.addAll(
+          platformMetrics
+              .entrySet()
+              .stream()
+              .map(e -> buildMetricTemplate(e.getKey(), u).setValue(e.getValue().doubleValue()))
+              .collect(Collectors.toList()));
+      // Clean all health check metrics for universe before saving current values
+      // just in case list of nodes changed between runs.
+      MetricFilter toClean =
+          metricSourceKeysFilterWithHealthScriptMetrics(c, u, HEALTH_CHECK_METRICS_WITHOUT_STATUS);
+      metricService.cleanAndSave(metrics, toClean);
+
+      metricService.setMetric(
+          buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODES_WITH_ERRORS, u),
+          nodesWithError.size());
+
+      metricService.setOkStatusMetric(
+          buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
+    } catch (Exception e) {
+      log.warn("Failed to convert health check response to prometheus metrics", e);
+      metricService.setFailureStatusMetric(
+          buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NODE_METRICS_STATUS, u));
     }
     return true;
   }
@@ -371,32 +382,31 @@ public class HealthChecker {
       Universe u,
       String emailDestinations,
       boolean sendMailAlways,
-      boolean hasErrors,
       boolean reportOnlyErrors,
-      JsonNode report) {
+      Details report) {
     SmtpData smtpData = emailHelper.getSmtpData(c.uuid);
     if (!StringUtils.isEmpty(emailDestinations)
         && (smtpData != null)
-        && (sendMailAlways || hasErrors)) {
+        && (sendMailAlways || report.getHasError())) {
       String subject =
-          String.format("%s - <%s> %s", hasErrors ? "ERROR" : "OK", c.getTag(), u.name);
+          String.format("%s - <%s> %s", report.getHasError() ? "ERROR" : "OK", c.getTag(), u.name);
 
       // LinkedHashMap saves values order.
+      JsonNode reportJson = Json.toJson(report);
       Map<String, String> contentMap = new LinkedHashMap<>();
       contentMap.put(
           "text/plain; charset=\"us-ascii\"",
-          healthCheckerReport.asPlainText(report, reportOnlyErrors));
+          healthCheckerReport.asPlainText(reportJson, reportOnlyErrors));
       contentMap.put(
           "text/html; charset=\"us-ascii\"",
-          healthCheckerReport.asHtml(u, report, reportOnlyErrors));
+          healthCheckerReport.asHtml(u, reportJson, reportOnlyErrors));
 
       try {
         emailHelper.sendEmail(c, subject, emailDestinations, smtpData, contentMap);
       } catch (MessagingException e) {
         log.warn("Health check had the following errors during mailing: " + e.getMessage());
-        metricService.setStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u),
-            "Error sending Health check email: " + e.getMessage());
+        metricService.setFailureStatusMetric(
+            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, u));
         return false;
       }
     }
@@ -464,8 +474,26 @@ public class HealthChecker {
     checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
   }
 
+  public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
+    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
+    }
+    // We hardcode the parameters here as this is currently a cloud-only feature
+    CheckSingleUniverseParams params =
+        new CheckSingleUniverseParams(
+            u,
+            c,
+            false /*shouldSendStatusUpdate*/,
+            false /*reportOnlyErrors*/,
+            false /*onlyMetrics*/,
+            null /*destinations*/);
+
+    return runHealthCheck(params, true /* ignoreLastCheck */);
+  }
+
   @AllArgsConstructor
   static class CheckSingleUniverseParams {
+
     final Universe universe;
     final Customer customer;
     final boolean shouldSendStatusUpdate;
@@ -498,7 +526,7 @@ public class HealthChecker {
               return new CheckSingleUniverseParams(
                   u, c, shouldSendStatusUpdate, reportOnlyErrors, onlyMetrics, destinations);
             })
-        .forEach(this::runHealthCheck);
+        .forEach(params -> runHealthCheck(params, false /*ignoreLastHealthCheck*/));
   }
 
   public void cancelHealthCheck(UUID universeUUID) {
@@ -510,16 +538,45 @@ public class HealthChecker {
     lastCheckForUUID.cancel(true);
   }
 
+  public void markUniverseForReUpload(UUID universeUUID) {
+    List<Pair<UUID, String>> universeNodeInfos =
+        uploadedNodeInfo
+            .keySet()
+            .stream()
+            .filter(key -> key.getFirst().equals(universeUUID))
+            .collect(Collectors.toList());
+    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+  }
+
+  public void handleUniverseRemoval(UUID universeUUID) {
+    cancelHealthCheck(universeUUID);
+    runningHealthChecks.remove(universeUUID);
+    List<Pair<UUID, String>> universeNodeInfos =
+        uploadedNodeInfo
+            .keySet()
+            .stream()
+            .filter(key -> key.getFirst().equals(universeUUID))
+            .collect(Collectors.toList());
+    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+  }
+
   private CompletableFuture<Done> shutdownThreadpool() {
-    if (this.executor != null) {
+    shutdown = true;
+    if (this.universeExecutor != null) {
       log.info("Shutting down Health Check thread pool");
-      this.executor.shutdownNow();
+      MoreExecutors.shutdownAndAwaitTermination(
+          universeExecutor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+    }
+    if (this.nodeExecutor != null) {
+      log.info("Shutting down Health Check Node thread pool");
+      MoreExecutors.shutdownAndAwaitTermination(
+          nodeExecutor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
     }
 
     return CompletableFuture.completedFuture(Done.done());
   }
 
-  private static ExecutorService createExecutor(Config runtimeConfig) {
+  private static ExecutorService createUniverseExecutor(Config runtimeConfig) {
     // TODO: use YBThreadPoolExecutorFactory
     int numParallelism = getThreadpoolParallelism(runtimeConfig);
 
@@ -535,11 +592,22 @@ public class HealthChecker {
     return newExecutor;
   }
 
-  public CompletableFuture<Void> runHealthCheck(CheckSingleUniverseParams params) {
+  private static ExecutorService createNodeExecutor(Config runtimeConfig) {
+    int numParallelism = runtimeConfig.getInt(HealthChecker.MAX_NUM_THREADS_NODE_CHECK_KEY);
+
+    // Initialize the health check thread pool.
+    ThreadFactory namedThreadFactory =
+        new ThreadFactoryBuilder().setNameFormat("Health-Check-Node-Pool-%d").build();
+
+    return Executors.newFixedThreadPool(numParallelism, namedThreadFactory);
+  }
+
+  public CompletableFuture<Void> runHealthCheck(
+      CheckSingleUniverseParams params, Boolean ignoreLastCheck) {
     String universeName = params.universe.name;
     CompletableFuture<Void> lastCheck = this.runningHealthChecks.get(params.universe.universeUUID);
     // Only schedule a task if the previous one for the given universe has completed.
-    if (lastCheck != null && !lastCheck.isDone()) {
+    if (!ignoreLastCheck && lastCheck != null && !lastCheck.isDone()) {
       log.info("Health check for universe {} is still running. Skipping...", universeName);
       return lastCheck;
     }
@@ -561,13 +629,12 @@ public class HealthChecker {
                     universeName);
               } catch (Exception e) {
                 log.error("Error running health check for universe: {}", universeName, e);
-                setHealthCheckFailedMetric(
-                    params.customer,
-                    params.universe,
-                    "Error running health check: " + e.getMessage());
+                setHealthCheckFailedMetric(params.customer, params.universe);
+              } finally {
+                runningHealthChecks.remove(params.universe.getUniverseUUID());
               }
             },
-            this.executor);
+            this.universeExecutor);
 
     // Add the task to the map of running tasks.
     this.runningHealthChecks.put(params.universe.universeUUID, task);
@@ -604,8 +671,7 @@ public class HealthChecker {
     UniverseDefinitionTaskParams details = params.universe.getUniverseDetails();
     if (details == null) {
       log.warn("Skipping universe " + params.universe.name + " due to invalid details json...");
-      setHealthCheckFailedMetric(
-          params.customer, params.universe, "Health check skipped due to invalid details json.");
+      setHealthCheckFailedMetric(params.customer, params.universe);
       return;
     }
     if (details.universePaused) {
@@ -616,154 +682,95 @@ public class HealthChecker {
       log.warn("Skipping universe " + params.universe.name + " due to task in progress...");
       return;
     }
-    long startMs = System.currentTimeMillis();
-
-    Map<UUID, HealthManager.ClusterInfo> clusterMetadata = new HashMap<>();
-    boolean invalidUniverseData = false;
+    Date startTime = new Date();
+    List<NodeInfo> nodeMetadata = new ArrayList<>();
     String providerCode;
+    int masterIndex = 0;
+    int tserverIndex = 0;
+    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(params.universe.universeUUID);
+    Long potentialStartTime = null;
+    if (lastTask != null && lastTask.getCompletionTime() != null) {
+      potentialStartTime = lastTask.getCompletionTime().getTime();
+    }
+    boolean testReadWrite =
+        runtimeConfigFactory
+            .forUniverse(params.universe)
+            .getBoolean("yb.metrics.db_read_write_test");
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
-      HealthManager.ClusterInfo info = new HealthManager.ClusterInfo();
-      clusterMetadata.put(cluster.uuid, info);
-      info.ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
-      info.enableYSQL = cluster.userIntent.enableYSQL;
-      info.enableYCQL = cluster.userIntent.enableYCQL;
-      info.enableYEDIS = cluster.userIntent.enableYEDIS;
-      if (cluster.userIntent.tserverGFlags.containsKey("ssl_protocols")) {
-        info.sslProtocol = cluster.userIntent.tserverGFlags.get("ssl_protocols");
-      }
-      // Since health checker only uses CQLSH, we only care about the
-      // client to node encryption flag.
-      info.enableTls = cluster.userIntent.enableNodeToNodeEncrypt;
-      info.enableTlsClient = cluster.userIntent.enableClientToNodeEncrypt;
-      // Setting this flag to identify correct cert location.
-      info.rootAndClientRootCASame = details.rootAndClientRootCASame;
-      // Pass in whether YSQL authentication is enabled for the given cluster.
-      info.enableYSQLAuth =
-          cluster.userIntent.tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
-              || cluster.userIntent.enableYSQLAuth;
-
-      Provider provider = Provider.get(UUID.fromString(cluster.userIntent.provider));
+      UserIntent userIntent = cluster.userIntent;
+      Provider provider = Provider.get(UUID.fromString(userIntent.provider));
       if (provider == null) {
         log.warn(
             "Skipping universe "
                 + params.universe.name
                 + " due to invalid provider "
                 + cluster.userIntent.provider);
-        invalidUniverseData = true;
-        setHealthCheckFailedMetric(
-            params.customer, params.universe, "Health check skipped due to invalid provider data.");
+        setHealthCheckFailedMetric(params.customer, params.universe);
 
-        break;
+        return;
       }
-
       providerCode = provider.code;
-      if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
-        info.namespaceToConfig =
-            PlacementInfoUtil.getConfigPerNamespace(
-                cluster.placementInfo, details.nodePrefix, provider);
-      }
-
-      AccessKey accessKey = AccessKey.get(provider.uuid, cluster.userIntent.accessKeyCode);
-      if (accessKey == null || accessKey.getKeyInfo() == null) {
-        if (!providerCode.equals(CloudType.kubernetes.toString())) {
-          log.warn("Skipping universe " + params.universe.name + " due to invalid access key...");
-          invalidUniverseData = true;
-          setHealthCheckFailedMetric(
-              params.customer, params.universe, "Health check skipped due to invalid access key.");
-
-          break;
-        }
-      } else {
-        info.identityFile = accessKey.getKeyInfo().privateKey;
-        info.sshPort = accessKey.getKeyInfo().sshPort;
-      }
-
-      if (info.enableYSQL) {
-        for (NodeDetails nd : details.nodeDetailsSet) {
-          if (nd.isYsqlServer) {
-            info.ysqlPort = nd.ysqlServerRpcPort;
-            info.masterHttpPort = nd.masterHttpPort;
-            info.tserverHttpPort = nd.tserverHttpPort;
-            break;
-          }
+      for (NodeDetails nd : details.nodeDetailsSet) {
+        if (nd.cloudInfo.private_ip == null) {
+          log.warn(
+              String.format(
+                  "Universe %s has unprovisioned node %s.", params.universe.name, nd.nodeName));
+          setHealthCheckFailedMetric(params.customer, params.universe);
+          return;
         }
       }
-      if (info.enableYCQL) {
-        for (NodeDetails nd : details.nodeDetailsSet) {
-          if (nd.isYqlServer) {
-            info.ycqlPort = nd.yqlServerRpcPort;
-            info.masterHttpPort = nd.masterHttpPort;
-            info.tserverHttpPort = nd.tserverHttpPort;
-            break;
-          }
+      List<NodeDetails> sortedDetails =
+          details
+              .getNodesInCluster(cluster.uuid)
+              .stream()
+              .sorted(Comparator.comparing(NodeDetails::getNodeName))
+              .collect(Collectors.toList());
+      for (NodeDetails nodeDetails : sortedDetails) {
+        NodeInfo nodeInfo =
+            new NodeInfo()
+                .setNodeHost(nodeDetails.cloudInfo.private_ip)
+                .setNodeName(nodeDetails.nodeName)
+                .setYbSoftwareVersion(userIntent.ybSoftwareVersion)
+                .setEnableYSQL(userIntent.enableYSQL)
+                .setEnableYCQL(userIntent.enableYCQL)
+                .setEnableYEDIS(userIntent.enableYEDIS)
+                .setEnableTls(userIntent.enableNodeToNodeEncrypt)
+                .setEnableTlsClient(userIntent.enableClientToNodeEncrypt)
+                .setRootAndClientRootCASame(details.rootAndClientRootCASame)
+                .setEnableYSQLAuth(userIntent.isYSQLAuthEnabled())
+                .setYbHomeDir(provider.getYbHome())
+                .setNodeStartTime(potentialStartTime)
+                .setTestReadWrite(testReadWrite)
+                .setUniverseUuid(params.universe.getUniverseUUID())
+                .setNodeDetails(nodeDetails);
+        if (nodeDetails.isMaster) {
+          nodeInfo.setMasterIndex(masterIndex++).setMasterHttpPort(nodeDetails.masterHttpPort);
         }
-      }
-
-      if (info.enableYEDIS) {
-        for (NodeDetails nd : details.nodeDetailsSet) {
-          if (nd.isRedisServer) {
-            info.redisPort = nd.redisServerRpcPort;
-            break;
-          }
+        if (nodeDetails.isTserver) {
+          nodeInfo.setTserverIndex(tserverIndex++).setTserverHttpPort(nodeDetails.tserverHttpPort);
         }
+        if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
+          nodeInfo.setK8s(true);
+        }
+        if (userIntent.tserverGFlags.containsKey("ssl_protocols")) {
+          nodeInfo.setSslProtocol(cluster.userIntent.tserverGFlags.get("ssl_protocols"));
+        }
+        if (nodeInfo.enableYSQL && nodeDetails.isYsqlServer) {
+          nodeInfo.setYsqlPort(nodeDetails.ysqlServerRpcPort);
+          nodeInfo.setYsqlServerHttpPort(nodeDetails.ysqlServerHttpPort);
+        }
+        if (nodeInfo.enableYCQL && nodeDetails.isYqlServer) {
+          nodeInfo.setYcqlPort(nodeDetails.yqlServerRpcPort);
+        }
+        if (nodeInfo.enableYEDIS && nodeDetails.isRedisServer) {
+          nodeInfo.setRedisPort(nodeDetails.redisServerRpcPort);
+        }
+        if (!provider.code.equals(CloudType.onprem.toString())
+            && !provider.code.equals(CloudType.kubernetes.toString())) {
+          nodeInfo.setCheckClock(true);
+        }
+        nodeMetadata.add(nodeInfo);
       }
-
-      info.collectMetricsScript = generateMetricsCollectionScript(cluster);
-    }
-
-    // If any clusters were invalid, abort for this universe.
-    if (invalidUniverseData) {
-      return;
-    }
-
-    for (NodeDetails nd : details.nodeDetailsSet) {
-      if (nd.cloudInfo.private_ip == null) {
-        invalidUniverseData = true;
-        log.warn(
-            String.format(
-                "Universe %s has unprovisioned node %s.", params.universe.name, nd.nodeName));
-        setHealthCheckFailedMetric(
-            params.customer,
-            params.universe,
-            String.format(
-                "Can't run health check for the universe due to unprovisioned node%s.",
-                nd.nodeName == null ? "" : " " + nd.nodeName));
-        break;
-      }
-
-      HealthManager.ClusterInfo info = clusterMetadata.get(nd.placementUuid);
-      if (info == null) {
-        invalidUniverseData = true;
-        log.warn(
-            String.format(
-                "Universe %s has node %s with invalid placement %s",
-                params.universe.name, nd.nodeName, nd.placementUuid));
-        String alertText =
-            String.format(
-                "Universe has node %s with invalid placement %s.", nd.nodeName, nd.placementUuid);
-        setHealthCheckFailedMetric(params.customer, params.universe, alertText);
-
-        break;
-      }
-
-      // TODO: we do not have a good way of marking the whole universe as k8s only.
-      if (nd.isMaster) {
-        info.masterNodes.put(nd.cloudInfo.private_ip, nd.nodeName);
-      }
-
-      if (nd.isTserver) {
-        info.tserverNodes.put(nd.cloudInfo.private_ip, nd.nodeName);
-      }
-    }
-    // If any nodes were invalid, abort for this universe.
-    if (invalidUniverseData) {
-      return;
-    }
-
-    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(params.universe.universeUUID);
-    long potentialStartTime = 0;
-    if (lastTask != null && lastTask.getCompletionTime() != null) {
-      potentialStartTime = lastTask.getCompletionTime().getTime();
     }
 
     // If last check had errors, set the flag to send an email. If this check will have an error,
@@ -771,92 +778,186 @@ public class HealthChecker {
     // email about it.
     HealthCheck lastCheck = HealthCheck.getLatest(params.universe.universeUUID);
     boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
-    Provider mainProvider =
-        Provider.get(UUID.fromString(details.getPrimaryCluster().userIntent.provider));
-
-    // Check if it should log the output of the command.
-    boolean shouldLogOutput =
-        runtimeConfigFactory.forUniverse(params.universe).getBoolean("yb.health.logOutput");
 
     // Exit without calling script if the universe is in the "updating" state.
     // Doing the check before the Python script is executed.
-    if (!canHealthCheckUniverse(params.universe.universeUUID)) {
+    if (!canHealthCheckUniverse(params.universe.universeUUID) || shutdown) {
       return;
     }
 
-    // Call devops and process response.
-    ShellResponse response =
-        healthManager.runCommand(
-            mainProvider,
-            new ArrayList<>(clusterMetadata.values()),
-            potentialStartTime,
-            shouldLogOutput);
+    List<NodeData> nodeReports = checkNodes(params.universe, nodeMetadata);
+
+    Details fullReport =
+        new Details()
+            .setTimestamp(startTime)
+            .setYbVersion(details.getPrimaryCluster().userIntent.ybSoftwareVersion)
+            .setData(nodeReports)
+            .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))
+            .setHasWarning(nodeReports.stream().anyMatch(NodeData::getHasWarning));
+    Details healthCheckReport = removeMetricOnlyChecks(fullReport);
 
     // Checking the interruption necessity after the Python script finished.
     // It is not needed to analyze results if the universe has the "update in
     // progress" state.
-    if (!canHealthCheckUniverse(params.universe.universeUUID)) {
+    if (!canHealthCheckUniverse(params.universe.universeUUID) || shutdown) {
       return;
     }
 
-    long durationMs = System.currentTimeMillis() - startMs;
+    long durationMs = System.currentTimeMillis() - startTime.getTime();
     boolean sendMailAlways = (params.shouldSendStatusUpdate || lastCheckHadErrors);
 
-    if (response.code == 0) {
-      boolean succeeded =
-          processResults(
-              params.customer,
-              params.universe,
-              response.message,
-              durationMs,
-              params.emailDestinations,
-              sendMailAlways,
-              params.reportOnlyErrors,
-              params.onlyMetrics);
+    boolean succeeded = processMetrics(params.customer, params.universe, fullReport);
 
-      if (!params.onlyMetrics) {
-        HealthCheck.addAndPrune(
-            params.universe.universeUUID, params.universe.customerId, response.message);
-      }
+    log.info(
+        "Health check for universe {} reported {}. [ {} ms ]",
+        params.universe.name,
+        (healthCheckReport.getHasError() ? "errors" : "success"),
+        durationMs);
 
-      if (succeeded) {
+    if (!params.onlyMetrics) {
+      if (sendEmailReport(
+          params.customer,
+          params.universe,
+          params.emailDestinations,
+          sendMailAlways,
+          params.reportOnlyErrors,
+          healthCheckReport)) {
         metricService.setOkStatusMetric(
-            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
+            buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_NOTIFICATION_STATUS, params.universe));
       }
-    } else {
-      log.error(
-          "Health check script got error: {} code ({}) [ {} ms ]",
-          response.message,
-          response.code,
-          durationMs);
-      String alertText =
-          String.format(
-              "Health check script got error: %s code (%d) [ %d ms ]",
-              response.message, response.code, durationMs);
-      setHealthCheckFailedMetric(params.customer, params.universe, alertText);
+
+      HealthCheck.addAndPrune(
+          params.universe.universeUUID, params.universe.customerId, healthCheckReport);
+    }
+
+    if (succeeded) {
+      metricService.setOkStatusMetric(
+          buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, params.universe));
     }
   }
 
-  private void setHealthCheckFailedMetric(Customer customer, Universe universe, String message) {
+  private List<NodeData> checkNodes(Universe universe, List<NodeInfo> nodes) {
+    // Check if it should log the output of the command.
+    boolean shouldLogOutput =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.logOutput");
+    Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
+    for (NodeInfo nodeInfo : nodes) {
+      nodeChecks.put(
+          nodeInfo.getNodeName(),
+          CompletableFuture.supplyAsync(
+              () -> checkNode(universe, nodeInfo, shouldLogOutput), nodeExecutor));
+    }
+
+    List<NodeData> result = new ArrayList<>();
+
+    for (NodeInfo nodeInfo : nodes) {
+      try {
+        CompletableFuture<Details> future = nodeChecks.get(nodeInfo.getNodeName());
+        result.addAll(future.get().getData());
+      } catch (Exception e) {
+        // In case error comes from python script - we're getting python wrapper output.
+        // Let's remove it for readability
+        String message = e.getMessage();
+        if (StringUtils.isNotBlank(message) && message.contains(PYTHON_WRAPPER_OUTPUT_PREFIX)) {
+          message =
+              message
+                  .substring(
+                      message.lastIndexOf(PYTHON_WRAPPER_OUTPUT_PREFIX)
+                          + PYTHON_WRAPPER_OUTPUT_PREFIX.length())
+                  .trim();
+        }
+        log.warn(
+            "Error occurred while performing health check for node "
+                + nodeInfo.getNodeName()
+                + ":"
+                + message);
+        result.add(
+            new NodeData()
+                .setNode(nodeInfo.nodeHost)
+                .setNodeName(nodeInfo.nodeName)
+                .setMessage("Node")
+                .setDetails(Collections.singletonList("Error: " + message))
+                .setTimestamp(new Date())
+                .setHasError(true));
+      }
+    }
+
+    return result;
+  }
+
+  private Details checkNode(Universe universe, NodeInfo nodeInfo, boolean logOutput) {
+    Pair<UUID, String> nodeKey = new Pair<>(universe.universeUUID, nodeInfo.getNodeName());
+    NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
+    ShellProcessContext context =
+        ShellProcessContext.builder()
+            .logCmdOutput(logOutput)
+            .traceLogging(true)
+            .timeoutSecs(NODE_CHECK_TIMEOUT_SEC)
+            .build();
+    if (uploadedInfo == null && !nodeInfo.isK8s()) {
+      // Only upload it once for new node, as it only depends on yb home dir.
+      // Also skip upload for k8s as no one will call it on k8s pod.
+      String generatedScriptPath = generateCollectMetricsScript(universe.universeUUID, nodeInfo);
+
+      String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
+      nodeUniverseManager
+          .uploadFileToNode(
+              nodeInfo.nodeDetails,
+              universe,
+              generatedScriptPath,
+              scriptPath,
+              SCRIPT_PERMISSIONS,
+              context)
+          .processErrors();
+    }
+
+    String scriptPath =
+        (nodeInfo.isK8s() ? K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()) + "/bin/node_health.py";
+    if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
+      log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
+      String generatedScriptPath = generateNodeCheckScript(universe.universeUUID, nodeInfo);
+
+      nodeUniverseManager
+          .uploadFileToNode(
+              nodeInfo.nodeDetails,
+              universe,
+              generatedScriptPath,
+              scriptPath,
+              SCRIPT_PERMISSIONS,
+              context)
+          .processErrors();
+    }
+    uploadedNodeInfo.put(nodeKey, nodeInfo);
+
+    ShellResponse response =
+        nodeUniverseManager
+            .runCommand(nodeInfo.getNodeDetails(), universe, scriptPath, context)
+            .processErrors();
+
+    return Json.fromJson(Json.parse(response.extractRunCommandOutput()), Details.class);
+  }
+
+  private void setHealthCheckFailedMetric(Customer customer, Universe universe) {
     // Remove old metrics and create only health check failed.
-    MetricFilter toClean = metricSourceKeysFilter(customer, universe, HEALTH_CHECK_METRICS);
+    MetricFilter toClean =
+        metricSourceKeysFilterWithHealthScriptMetrics(customer, universe, HEALTH_CHECK_METRICS);
     Metric healthCheckFailed =
-        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe)
-            .setLabel(KnownAlertLabels.ERROR_MESSAGE, message)
-            .setValue(0.0);
+        buildMetricTemplate(PlatformMetrics.HEALTH_CHECK_STATUS, universe).setValue(0.0);
     metricService.cleanAndSave(Collections.singletonList(healthCheckFailed), toClean);
   }
 
-  private String generateMetricsCollectionScript(Cluster cluster) {
+  private String generateCollectMetricsScript(UUID universeUuid, NodeInfo nodeInfo) {
     String template;
     try (InputStream templateStream =
         environment.resourceAsStream("metric/collect_metrics.sh.template")) {
       template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+      String scriptContent = template.replace("{{YB_HOME_DIR}}", nodeInfo.ybHomeDir);
       // For now it has no universe/cluster specific info. Add placeholder substitution here once
       // they are added.
-      Path path = Paths.get("/tmp/collect_metrics_" + cluster.uuid + ".sh");
+      Path path =
+          Paths.get("/tmp/collect_metrics_" + universeUuid + "_" + nodeInfo.nodeName + ".sh");
 
-      Files.write(path, template.getBytes(StandardCharsets.UTF_8));
+      Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
 
       return path.toString();
     } catch (IOException e) {
@@ -864,16 +965,37 @@ public class HealthChecker {
     }
   }
 
-  private MetricFilter metricSourceKeysFilter(
+  private String generateNodeCheckScript(UUID universeUuid, NodeInfo nodeInfo) {
+    String template;
+    try (InputStream templateStream =
+        environment.resourceAsStream("health/node_health.py.template")) {
+      template = IOUtils.toString(templateStream, StandardCharsets.UTF_8);
+      String scriptContent = template.replace("{{NODE_INFO}}", Json.toJson(nodeInfo).toString());
+      // For now it has no universe/cluster specific info. Add placeholder substitution here once
+      // they are added.
+      Path path = Paths.get("/tmp/node_health_" + universeUuid + "_" + nodeInfo.nodeName + ".py");
+
+      Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
+
+      return path.toString();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to read alert definition rule template", e);
+    }
+  }
+
+  private MetricFilter metricSourceKeysFilterWithHealthScriptMetrics(
       Customer customer, Universe universe, List<PlatformMetrics> metrics) {
+    Set<String> allMetricNames = new HashSet<>(healthScriptMetrics);
+    allMetricNames.addAll(
+        metrics.stream().map(PlatformMetrics::getMetricName).collect(Collectors.toList()));
     List<MetricSourceKey> metricSourceKeys =
-        metrics
+        allMetricNames
             .stream()
             .map(
-                nodeMetric ->
+                metricName ->
                     MetricSourceKey.builder()
                         .customerUuid(customer.getUuid())
-                        .name(nodeMetric.getMetricName())
+                        .name(metricName)
                         .sourceUuid(universe.getUniverseUUID())
                         .build())
             .collect(Collectors.toList());
@@ -883,8 +1005,7 @@ public class HealthChecker {
   @VisibleForTesting
   static boolean canHealthCheckUniverse(UUID universeUUID) {
     Optional<Universe> u = Universe.maybeGet(universeUUID);
-    UniverseDefinitionTaskParams universeDetails =
-        u.isPresent() ? u.get().getUniverseDetails() : null;
+    UniverseDefinitionTaskParams universeDetails = u.map(Universe::getUniverseDetails).orElse(null);
     if (universeDetails == null) {
       log.warn(
           "Cancelling universe "
@@ -898,5 +1019,51 @@ public class HealthChecker {
       return false;
     }
     return true;
+  }
+
+  @Data
+  @Accessors(chain = true)
+  public static class NodeInfo {
+    private int masterIndex = -1;
+    private int tserverIndex = -1;
+    private boolean isK8s = false;
+    private String ybHomeDir;
+    private String nodeHost;
+    private String nodeName;
+    private String ybSoftwareVersion = null;
+    private boolean enableTls = false;
+    private boolean enableTlsClient = false;
+    private boolean rootAndClientRootCASame = true;
+    private String sslProtocol = "";
+    private boolean enableYSQL = false;
+    private boolean enableYCQL = false;
+    private boolean enableYSQLAuth = false;
+    private int ysqlPort = 5433;
+    private int ycqlPort = 9042;
+    private boolean enableYEDIS = false;
+    private int redisPort = 6379;
+    private int masterHttpPort = 7000;
+    private int tserverHttpPort = 9000;
+    private int ysqlServerHttpPort = 13000;
+    private boolean checkClock = false;
+    private Long nodeStartTime = null;
+    private boolean testReadWrite = true;
+    private UUID universeUuid;
+    @JsonIgnore @EqualsAndHashCode.Exclude private NodeDetails nodeDetails;
+  }
+
+  private Details removeMetricOnlyChecks(Details details) {
+    List<NodeData> nodeReports =
+        details
+            .getData()
+            .stream()
+            .filter(data -> !data.getMetricsOnly())
+            .collect(Collectors.toList());
+    return new Details()
+        .setTimestamp(details.getTimestamp())
+        .setYbVersion(details.getYbVersion())
+        .setData(nodeReports)
+        .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))
+        .setHasWarning(nodeReports.stream().anyMatch(NodeData::getHasWarning));
   }
 }

@@ -11,33 +11,30 @@
 // under the License.
 //
 
-#include <sys/types.h>
-
-#include <string>
+#include <glog/logging.h>
+#include <gtest/gtest.h>
 
 #include "yb/gutil/stringprintf.h"
-#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
-#include "yb/util/encrypted_file.h"
-#include "yb/util/encryption_util.h"
-#include "yb/util/header_manager_impl.h"
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
-#include "yb/util/header_manager.h"
+#include "yb/encryption/encrypted_file.h"
+#include "yb/encryption/encryption_util.h"
+#include "yb/encryption/header_manager.h"
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/universe_key_manager.h"
 
-#include "yb/util/path_util.h"
-
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
+#include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/rocksdb/table/internal_iterator.h"
 
-#include "yb/util/universe_key_manager.h"
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
 
 #include "yb/tserver/universe_key_test_util.h"
 
-#include <glog/logging.h>
-#include <gtest/gtest.h>
+#include "yb/util/path_util.h"
+#include "yb/util/status.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -100,8 +97,7 @@ void EncryptedSSTableTest::CounterOverflow(
       ikc,
       /*skip_filters=*/ false);
 
-  std::shared_ptr<yb::UniverseKeyManager> universe_key_manager =
-      GenerateTestUniverseKeyManager();
+  auto universe_key_manager = GenerateTestUniverseKeyManager();
 
   auto header_manager = DefaultHeaderManager(universe_key_manager.get());
   auto env = yb::NewRocksDBEncryptedEnv(std::move(header_manager));
@@ -120,8 +116,8 @@ void EncryptedSSTableTest::CounterOverflow(
       /* suspender */ nullptr);
 
   rocksdb::BlockBasedTableFactory blk_based_tbl_factory;
-  auto table_builder = std::unique_ptr<rocksdb::TableBuilder>(
-      blk_based_tbl_factory.NewTableBuilder(table_builder_options, 0, &base_writer, &data_writer));
+  auto table_builder = blk_based_tbl_factory.NewTableBuilder(
+      table_builder_options, 0, &base_writer, &data_writer);
 
   for (int i = 0; i < num_keys; ++i) {
     string key = GetKey(i);
@@ -130,10 +126,10 @@ void EncryptedSSTableTest::CounterOverflow(
   ASSERT_OK(table_builder->Finish());
   LOG(INFO) << "Wrote a file of total size " << table_builder->TotalFileSize()
       << ", base file size: " << table_builder->BaseFileSize();
-  base_writer.Flush();
-  data_writer.Flush();
-  base_writer.Close();
-  data_writer.Close();
+  ASSERT_OK(base_writer.Flush());
+  ASSERT_OK(data_writer.Flush());
+  ASSERT_OK(base_writer.Close());
+  ASSERT_OK(data_writer.Close());
 
   std::unique_ptr<rocksdb::RandomAccessFile> random_access_file;
   ASSERT_OK(env->NewRandomAccessFile(file_name, &random_access_file, rocksdb::EnvOptions()));
@@ -146,8 +142,8 @@ void EncryptedSSTableTest::CounterOverflow(
   auto data_file_reader = std::make_unique<rocksdb::RandomAccessFileReader>(
       std::move(random_access_data_file), env.get());
 
-  auto* eraf = down_cast<EncryptedRandomAccessFile*>(random_access_file.get());
-  auto* eraf_data = down_cast<EncryptedRandomAccessFile*>(random_access_file.get());
+  auto* eraf = down_cast<encryption::EncryptedRandomAccessFile*>(random_access_file.get());
+  auto* eraf_data = down_cast<encryption::EncryptedRandomAccessFile*>(random_access_file.get());
 
   ASSERT_TRUE(eraf != nullptr);
   ASSERT_TRUE(eraf_data != nullptr);

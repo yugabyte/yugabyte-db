@@ -6,8 +6,9 @@ import { RouteComponentProps } from 'react-router-dom';
 import { YBTabsPanel, YBTabsWithLinksPanel } from '../components/panels';
 import { isAvailable, showOrRedirect } from '../utils/LayoutUtils';
 import { HAInstances, HAReplication } from '../components/ha';
-import './Administration.scss';
 import { AlertConfigurationContainer } from '../components/alerts';
+import { UserManagementContainer } from '../components/users';
+import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
 interface Store {
@@ -44,6 +45,12 @@ enum HighAvailabilityTabs {
 enum AlertConfigurationTabs {
   Creation = 'alertCreation'
 }
+
+const USER_MANAGAEMENT_TAB = {
+  title: 'User Management',
+  id: 'user-management',
+  defaultTab: 'users'
+};
 
 interface RouteParams {
   tab: AdministrationTabs;
@@ -107,8 +114,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
             eventKey={HighAvailabilityTabs.Instances}
             title={
               <span>
-                <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance
-                Configuration
+                <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance Configuration
               </span>
             }
             unmountOnExit
@@ -118,7 +124,20 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         </YBTabsPanel>
       </Tab>
     ) : null;
-  }
+  };
+
+  const getUserManagementTab = () => {
+    const { id, title, defaultTab } = USER_MANAGAEMENT_TAB;
+    return (
+      <Tab eventKey={id} title={title} key={id}>
+        <UserManagementContainer
+          defaultTab={defaultTab}
+          activeTab={params.section}
+          routePrefix={`/admin/${id}/`}
+        />
+      </Tab>
+    );
+  };
 
   return (
     <div>
@@ -132,6 +151,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
       >
         {getHighAvailabilityTab()}
         {getAlertTab()}
+        {getUserManagementTab()}
       </YBTabsWithLinksPanel>
     </div>
   );

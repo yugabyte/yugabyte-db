@@ -39,28 +39,28 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/common_fwd.h"
+#include "yb/common/partial_row.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
-#include "yb/bfql/tserver_opcodes.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/join.h"
-
-#include "yb/tablet/tablet.h"
-#include "yb/common/partial_row.h"
-#include "yb/common/ql_protocol_util.h"
-#include "yb/common/row.h"
+#include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
+
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/read_result.h"
+#include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+
 #include "yb/util/env.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-#include "yb/tablet/local_tablet_writer.h"
-#include "yb/tablet/tablet-test-util.h"
-#include "yb/gutil/strings/numbers.h"
 
 DEFINE_int32(keyspace_size, 300, "number of unique row keys to insert/mutate");
 DEFINE_int32(runtime_seconds, 1, "number of seconds to run the test");
@@ -260,7 +260,7 @@ TEST_F(TestRandomAccess, Test) {
   flush_thread->Join();
 }
 
-void GenerateTestCase(vector<TestOp>* ops, int len) {
+void GenerateTestCase(vector<TestOp>* ops, size_t len) {
   bool exists = false;
   bool ops_pending = false;
   ops->clear();

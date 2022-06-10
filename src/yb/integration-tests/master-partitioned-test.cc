@@ -13,34 +13,47 @@
 
 #include <memory>
 #include <thread>
+
 #include <gtest/gtest.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/client/client.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
-#include "yb/common/schema.h"
+
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/sys_catalog.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/util/atomic.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
-#include "yb/util/shared_lock.h"
+#include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
-using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
-using yb::client::YBSchemaBuilder;
 using yb::client::YBTableCreator;
 using yb::client::YBTableName;
 using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
-using yb::master::MasterServiceProxy;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -97,7 +110,7 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
         .Build());
   }
 
-  Status BreakMasterConnectivityTo(int from_idx, int to_idx) {
+  Status BreakMasterConnectivityTo(size_t from_idx, size_t to_idx) {
     master::MiniMaster* src_master = cluster_->mini_master(from_idx);
     IpAddress src = VERIFY_RESULT(HostToAddress(src_master->bound_rpc_addr().host()));
     // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
@@ -106,12 +119,12 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
         CHECK_RESULT(HostToAddress(TEST_RpcAddress(to_idx + 1, server::Private::kFalse)));
     LOG(INFO) << "Breaking connectivities from master " << from_idx << " to " << to_idx << " i.e. "
               << src << " to " << dst_prv << " and " << dst_pub;
-    src_master->master()->messenger()->BreakConnectivityTo(dst_prv);
-    src_master->master()->messenger()->BreakConnectivityTo(dst_pub);
+    src_master->messenger().BreakConnectivityTo(dst_prv);
+    src_master->messenger().BreakConnectivityTo(dst_pub);
     return Status::OK();
   }
 
-  Status RestoreMasterConnectivityTo(int from_idx, int to_idx) {
+  Status RestoreMasterConnectivityTo(size_t from_idx, size_t to_idx) {
     master::MiniMaster* src_master = cluster_->mini_master(from_idx);
     IpAddress src = VERIFY_RESULT(HostToAddress(src_master->bound_rpc_addr().host()));
     // TEST_RpcAddress is 1-indexed; we expect from_idx/to_idx to be 0-indexed.
@@ -120,8 +133,8 @@ class MasterPartitionedTest : public YBMiniClusterTestBase<MiniCluster> {
         CHECK_RESULT(HostToAddress(TEST_RpcAddress(to_idx + 1, server::Private::kFalse)));
     LOG(INFO) << "Restoring connectivities from master " << from_idx << " to " << to_idx << " i.e. "
               << src << " to " << dst_prv << " and " << dst_pub;
-    src_master->master()->messenger()->RestoreConnectivityTo(dst_prv);
-    src_master->master()->messenger()->RestoreConnectivityTo(dst_pub);
+    src_master->messenger().RestoreConnectivityTo(dst_prv);
+    src_master->messenger().RestoreConnectivityTo(dst_pub);
     return Status::OK();
   }
 
@@ -153,7 +166,7 @@ void MasterPartitionedTest::CreateTable(const YBTableName& table_name, int num_t
 }
 
 OpId LastReceivedOpId(master::MiniMaster* master) {
-  auto consensus = master->master()->catalog_manager()->sys_catalog()->tablet_peer()->consensus();
+  auto consensus = master->tablet_peer()->consensus();
   return consensus->GetLastReceivedOpId();
 }
 
@@ -175,7 +188,8 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
   std::vector<std::pair<int, int>> break_connectivity = {{1, 0}, {1, 2}, {2, 1}, {2, 0}};
   bool connectivity_broken = false;
 
-  ASSERT_OK(WaitFor([this, &master_0_is_leader, &break_connectivity, &connectivity_broken]() {
+  ASSERT_OK(WaitFor(
+      [this, &master_0_is_leader, &break_connectivity, &connectivity_broken]() -> Result<bool> {
     auto leader_mini_master = cluster_->GetLeaderMiniMaster();
     if (!leader_mini_master.ok()) {
       return false;
@@ -183,7 +197,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     if (LastReceivedOpId(*leader_mini_master) != LastReceivedOpId(cluster_->mini_master(0))) {
       if (connectivity_broken) {
         for (const auto& p : break_connectivity) {
-          RestoreMasterConnectivityTo(p.first, p.second);
+          RETURN_NOT_OK(RestoreMasterConnectivityTo(p.first, p.second));
         }
         connectivity_broken = false;
       }
@@ -192,7 +206,7 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
 
     if (!connectivity_broken) {
       for (const auto& p : break_connectivity) {
-        BreakMasterConnectivityTo(p.first, p.second);
+        RETURN_NOT_OK(BreakMasterConnectivityTo(p.first, p.second));
       }
       connectivity_broken = true;
     }
@@ -227,38 +241,30 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
     FLAGS_use_preelection = false;
 
     consensus::ConsensusStatePB cpb;
-    ASSERT_OK(cluster_->mini_master(0)->master()->catalog_manager()->GetCurrentConfig(&cpb));
+    ASSERT_OK(cluster_->mini_master(0)->catalog_manager().GetCurrentConfig(&cpb));
     const auto initial_term = cpb.current_term();
 
     // master-0 cannot send updates to master 2. This will cause master-2
     // to increase its term. And cause the leader (master-0) to step down
     // and re-elect himself
-    BreakMasterConnectivityTo(0, 2);
+    ASSERT_OK(BreakMasterConnectivityTo(0, 2));
     ASSERT_OK(WaitFor(
         [this, initial_term]() {
           consensus::ConsensusStatePB cpb;
-          return cluster_->mini_master(2)
-                     ->master()
-                     ->catalog_manager()
-                     ->GetCurrentConfig(&cpb)
-                     .ok() &&
+          return cluster_->mini_master(2)->catalog_manager().GetCurrentConfig(&cpb).ok() &&
                  cpb.current_term() > initial_term;
         },
         kTimeout,
         "Wait for master 2 to do elections and increase the term"));
 
-    RestoreMasterConnectivityTo(0, 2);
+    ASSERT_OK(RestoreMasterConnectivityTo(0, 2));
 
-    ASSERT_OK(cluster_->mini_master(2)->master()->catalog_manager()->GetCurrentConfig(&cpb));
+    ASSERT_OK(cluster_->mini_master(2)->catalog_manager().GetCurrentConfig(&cpb));
     const auto new_term = cpb.current_term();
     ASSERT_OK(WaitFor(
         [this, new_term]() {
           consensus::ConsensusStatePB cpb;
-          return cluster_->mini_master(0)
-                     ->master()
-                     ->catalog_manager()
-                     ->GetCurrentConfig(&cpb)
-                     .ok() &&
+          return cluster_->mini_master(0)->catalog_manager().GetCurrentConfig(&cpb).ok() &&
                  cpb.current_term() > new_term;
         },
         kTimeout,
@@ -273,12 +279,12 @@ TEST_F(MasterPartitionedTest, CauseMasterLeaderStepdownWithTasksInProgress) {
 
 TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   // Partition away the old master leader from the cluster.
-  int old_leader_idx = cluster_->LeaderMasterIdx();
+  auto old_leader_idx = cluster_->LeaderMasterIdx();
   LOG(INFO) << "Old leader master: " << old_leader_idx;
 
-  int new_cohort_peer1 = -1, new_cohort_peer2 = -1;
-  for (int i = 0; i < cluster_->num_masters(); i++) {
-    if (i == old_leader_idx) {
+  ssize_t new_cohort_peer1 = -1, new_cohort_peer2 = -1;
+  for (size_t i = 0; i < cluster_->num_masters(); i++) {
+    if (implicit_cast<ssize_t>(i) == old_leader_idx) {
       continue;
     }
     if (new_cohort_peer1 == -1) {
@@ -287,8 +293,8 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
       new_cohort_peer2 = i;
     }
     LOG(INFO) << "Breaking connectivity between " << i << " and " << old_leader_idx;
-    BreakMasterConnectivityTo(old_leader_idx, i);
-    BreakMasterConnectivityTo(i, old_leader_idx);
+    ASSERT_OK(BreakMasterConnectivityTo(old_leader_idx, i));
+    ASSERT_OK(BreakMasterConnectivityTo(i, old_leader_idx));
   }
 
   LOG(INFO) << "Introduced a network split. Cohort#1 masters: " << old_leader_idx
@@ -299,21 +305,15 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
     [&]() -> Result<bool> {
       // Get the config of the old leader.
       consensus::ConsensusStatePB cbp, cbp1, cbp2;
-      RETURN_NOT_OK(cluster_->mini_master(old_leader_idx)
-                            ->master()
-                            ->catalog_manager()
-                            ->GetCurrentConfig(&cbp));
+      RETURN_NOT_OK(
+          cluster_->mini_master(old_leader_idx)->catalog_manager().GetCurrentConfig(&cbp));
 
       // Get the config of the new cluster.
-      RETURN_NOT_OK(cluster_->mini_master(new_cohort_peer1)
-                            ->master()
-                            ->catalog_manager()
-                            ->GetCurrentConfig(&cbp1));
+      RETURN_NOT_OK(
+          cluster_->mini_master(new_cohort_peer1)->catalog_manager().GetCurrentConfig(&cbp1));
 
-      RETURN_NOT_OK(cluster_->mini_master(new_cohort_peer2)
-                            ->master()
-                            ->catalog_manager()
-                            ->GetCurrentConfig(&cbp2));
+      RETURN_NOT_OK(
+          cluster_->mini_master(new_cohort_peer2)->catalog_manager().GetCurrentConfig(&cbp2));
 
       // Term number of the new cohort's config should increase.
       // Leader should not be the same as the old leader.
@@ -336,7 +336,7 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
                     ->catalog_manager()
                     ->GetCurrentConfig(&cbp1));
 
-  int new_leader_idx = -1;
+  ssize_t new_leader_idx = -1;
   if (cbp1.leader_uuid() == uuid1) {
     new_leader_idx = new_cohort_peer1;
   } else if (cbp1.leader_uuid() == uuid2) {
@@ -345,14 +345,12 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   LOG(INFO) << "Leader of the new cohort " << new_leader_idx;
 
   // Wait for the leader lease to expire on the new master.
-  ASSERT_OK(cluster_->mini_master(new_leader_idx)
-                    ->master()
-                    ->catalog_manager()
-                    ->WaitUntilCaughtUpAsLeader(MonoDelta::FromSeconds(100)));
+  ASSERT_OK(cluster_->mini_master(new_leader_idx)->catalog_manager().WaitUntilCaughtUpAsLeader(
+      MonoDelta::FromSeconds(100)));
 
   // Now perform an RPC that involves a SHARED_LEADER_LOCK and confirm that it fails.
   yb::master::Master* m = cluster_->mini_master(old_leader_idx)->master();
-  MasterServiceProxy proxy(&(m->proxy_cache()), m->rpc_server()->GetRpcHostPort()[0]);
+  master::MasterClusterProxy proxy(&m->proxy_cache(), m->rpc_server()->GetRpcHostPort()[0]);
 
   RpcController controller;
   controller.Reset();
@@ -365,10 +363,10 @@ TEST_F(MasterPartitionedTest, VerifyOldLeaderStepsDown) {
   ASSERT_EQ(resp.error().status().code(), AppStatusPB::LEADER_HAS_NO_LEASE);
 
   // Restore connectivity.
-  RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer1);
-  RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer2);
-  RestoreMasterConnectivityTo(new_cohort_peer1, old_leader_idx);
-  RestoreMasterConnectivityTo(new_cohort_peer2, old_leader_idx);
+  ASSERT_OK(RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer1));
+  ASSERT_OK(RestoreMasterConnectivityTo(old_leader_idx, new_cohort_peer2));
+  ASSERT_OK(RestoreMasterConnectivityTo(new_cohort_peer1, old_leader_idx));
+  ASSERT_OK(RestoreMasterConnectivityTo(new_cohort_peer2, old_leader_idx));
 }
 
 }  // namespace yb

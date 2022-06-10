@@ -28,12 +28,11 @@
 
 #pragma once
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include <string>
 
-#include "yb/rocksdb/port/port.h"
 #include "yb/util/slice.h"
 
 namespace rocksdb {

@@ -39,9 +39,11 @@
 #include <vector>
 
 #include "yb/gutil/strings/fastmem.h"
+
 #include "yb/util/enums.h"
 #include "yb/util/slice.h"
 #include "yb/util/stack_trace.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -110,7 +112,7 @@ constexpr bool IsDebug() {
 #endif
 }
 
-class ScopeLogger {
+class NODISCARD_CLASS ScopeLogger {
  public:
   ScopeLogger(const std::string& msg, std::function<void()> on_scope_bounds);
 
@@ -128,14 +130,20 @@ std::string SymbolizeAddress(
 // Demangle a C++-mangled identifier.
 std::string DemangleName(const char* name);
 
-#define TEST_PAUSE_IF_FLAG(flag_name) \
+#define TEST_PAUSE_IF_FLAG_WITH_PREFIX(flag_name, prefix) \
     if (PREDICT_FALSE(ANNOTATE_UNPROTECTED_READ(BOOST_PP_CAT(FLAGS_, flag_name)))) { \
-      LOG(INFO) << "Pausing due to flag " << #flag_name; \
+      LOG(INFO) << prefix << "Pausing due to flag " << #flag_name; \
       do { \
         SleepFor(MonoDelta::FromMilliseconds(100)); \
       } while (ANNOTATE_UNPROTECTED_READ(BOOST_PP_CAT(FLAGS_, flag_name))); \
-      LOG(INFO) << "Resuming due to flag " << #flag_name; \
+      LOG(INFO) << prefix << "Resuming due to flag " << #flag_name; \
     }
+
+#define TEST_PAUSE_IF_FLAG(flag_name) \
+  TEST_PAUSE_IF_FLAG_WITH_PREFIX(flag_name, "")
+
+#define TEST_PAUSE_IF_FLAG_WITH_LOG_PREFIX(flag_name) \
+  TEST_PAUSE_IF_FLAG_WITH_PREFIX(flag_name, LogPrefix())
 
 } // namespace yb
 

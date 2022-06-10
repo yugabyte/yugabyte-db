@@ -16,51 +16,13 @@
 #include "yb/yql/pggate/pg_memctx.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pggate.h"
 
 namespace yb {
 namespace pggate {
 
-PgMemctx::PgMemctx() {
-}
-
 PgMemctx::~PgMemctx() {
   Clear();
-}
-
-namespace {
-  // Table of memory contexts.
-  // - Although defined in Yugabyte, this table is owned and managed by Postgres process.
-  //   Other processes cannot control "pggate::PgMemctx" to avoid memory violations.
-  // - Table "postgres_process_memctxs" is to help releasing the references to PgStatement when
-  //   Postgres Process (a C program) is exiting.
-  // - Transaction layer and Postgres BOTH hold references to PgStatement objects, and those
-  //   PgGate objects wouldn't be destroyed unless both layers release their references or both
-  //   layers are terminated.
-  std::unordered_map<PgMemctx *, PgMemctx::SharedPtr> postgres_process_memctxs;
-} // namespace
-
-PgMemctx *PgMemctx::Create() {
-  auto memctx = std::make_shared<PgMemctx>();
-  postgres_process_memctxs[memctx.get()] = memctx;
-  return memctx.get();
-}
-
-Status PgMemctx::Destroy(PgMemctx *handle) {
-  if (handle) {
-    SCHECK(postgres_process_memctxs.find(handle) != postgres_process_memctxs.end(),
-           InternalError, "Invalid memory context handle");
-    postgres_process_memctxs.erase(handle);
-  }
-  return Status::OK();
-}
-
-Status PgMemctx::Reset(PgMemctx *handle) {
-  if (handle) {
-    SCHECK(postgres_process_memctxs.find(handle) != postgres_process_memctxs.end(),
-           InternalError, "Invalid memory context handle");
-    handle->Clear();
-  }
-  return Status::OK();
 }
 
 void PgMemctx::Register(Registrable *obj) {
@@ -91,10 +53,6 @@ void PgMemctx::GetCache(size_t hash_id, PgTableDesc **handle) {
   } else {
     *handle = iter->second.get();
   }
-}
-
-void ClearGlobalPgMemctxMap() {
-  postgres_process_memctxs.clear();
 }
 
 }  // namespace pggate

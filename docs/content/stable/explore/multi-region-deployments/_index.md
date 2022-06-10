@@ -83,4 +83,17 @@ The deployment types are explained in the following sections:
     </a>
   </div>
 
+ <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="follower-reads-ysql/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/rbac-model.png" aria-hidden="true" />
+        <div class="title">Follower Reads</div>
+      </div>
+      <div class="body">
+          Use Follower Reads to reduce read latencies in YugabyteDB.
+      </div>
+    </a>
+  </div>
+</div> -->
+
 </div>

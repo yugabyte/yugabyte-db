@@ -16,7 +16,8 @@
 #ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 #define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
 
-#include "yb/common/ybc_util.h"
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 
@@ -228,7 +229,7 @@ typedef struct PgSysColumns {
 //       use_secondary_index = false
 //
 // Attribute "querying_colocated_table"
-//   - If 'true', SELECT from SQL system catalogs or colocated tables.
+//   - If 'true', SELECT from colocated tables (of any type - database, tablegroup, system).
 //   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
 //     system-tables.
 typedef struct PgPrepareParameters {
@@ -286,10 +287,10 @@ typedef struct PgExecParameters {
   uint64_t limit_offset = 0;
   bool limit_use_default = true;
   int rowmark = -1;
+  int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   char *bfinstr = NULL;
   uint64_t* statement_read_time = NULL;
   char *partition_key = NULL;
-  bool read_from_followers = false;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
 #else
@@ -297,10 +298,10 @@ typedef struct PgExecParameters {
   uint64_t limit_offset;
   bool limit_use_default;
   int rowmark;
+  int wait_policy; // Cast to LockWaitPolicy for C use
   char *bfinstr;
   uint64_t* statement_read_time;
   char *partition_key;
-  bool read_from_followers;
   PgExecOutParam *out_param;
   bool is_index_backfill;
 #endif
@@ -321,22 +322,35 @@ typedef struct PgAttrValueDescriptor {
 } YBCPgAttrValueDescriptor;
 
 typedef struct PgCallbacks {
-  void (*FetchUniqueConstraintName)(YBCPgOid, char*, size_t);
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
+  void (*YbPgMemUpdateMax)();
 } YBCPgCallbacks;
 
+typedef struct PgGFlagsAccessor {
+  const bool*     log_ysql_catalog_versions;
+  const bool*     ysql_disable_index_backfill;
+  const int32_t*  ysql_max_read_restart_attempts;
+  const int32_t*  ysql_max_write_restart_attempts;
+  const int32_t*  ysql_output_buffer_size;
+  const int32_t*  ysql_sequence_cache_minval;
+  const uint64_t* ysql_session_max_batch_size;
+  const bool*     ysql_sleep_before_retry_on_txn_conflict;
+} YBCPgGFlagsAccessor;
+
 typedef struct PgTableProperties {
-  uint32_t num_tablets;
-  uint32_t num_hash_key_columns;
+  uint64_t num_tablets;
+  uint64_t num_hash_key_columns;
   bool is_colocated;
+  YBCPgOid tablegroup_oid; /* 0 if none */
+  YBCPgOid colocation_id; /* 0 if not colocated */
 } YBCPgTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
   YBCPgOid table_oid;
-  int32_t nattrs;
+  size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
 

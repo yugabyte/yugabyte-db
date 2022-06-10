@@ -16,6 +16,8 @@
 #include "yb/rpc/rpc_util.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace rpc {
@@ -69,12 +71,6 @@ Status RefinedStream::Start(bool connect, ev::loop_ref* loop, StreamContext* con
 void RefinedStream::Shutdown(const Status& status) {
   VLOG_WITH_PREFIX(1) << "Shutdown with status: " << status;
 
-  for (auto& data : pending_data_) {
-    if (data) {
-      context().Transferred(data, status);
-    }
-  }
-
   pending_data_.clear();
   lower_stream_->Shutdown(status);
 }
@@ -120,12 +116,12 @@ std::string RefinedStream::ToString() const {
                 *refiner_, local_side_ == LocalSide::kClient ? "C" : "S", state_, *lower_stream_);
 }
 
-void RefinedStream::Cancelled(size_t handle) {
+bool RefinedStream::Cancelled(size_t handle) {
   if (state_ == RefinedStreamState::kDisabled) {
-    lower_stream_->Cancelled(handle);
-    return;
+    return lower_stream_->Cancelled(handle);
   }
   LOG_WITH_PREFIX(DFATAL) << "Cancel is not supported for proxy stream: " << handle;
+  return false;
 }
 
 bool RefinedStream::IsConnected() {
@@ -179,7 +175,7 @@ void RefinedStream::Connected() {
   }
 }
 
-CHECKED_STATUS TransferData(StreamReadBuffer* source, StreamReadBuffer* dest) {
+Status TransferData(StreamReadBuffer* source, StreamReadBuffer* dest) {
   auto dst = VERIFY_RESULT(dest->PrepareAppend());
   auto dst_it = dst.begin();
   size_t total_len = 0;

@@ -488,7 +488,7 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 * assign.  Hitting this assert means there's some path where we failed to
 	 * ensure that a type OID is determined by commands in the dump script.
 	 */
-	Assert(!IsBinaryUpgrade || RelationGetRelid(relation) != TypeRelationId);
+	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
 
 	/* Generate new OIDs until we find one not in the table */
 	do
@@ -527,7 +527,7 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * relfilenode assignments during a binary-upgrade run should be
 	 * determined by commands in the dump script.
 	 */
-	Assert(!IsBinaryUpgrade);
+	Assert(!IsBinaryUpgrade || yb_binary_restore);
 
 	/* This logic should match RelationInitPhysicalAddr */
 	rnode.node.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;
@@ -644,7 +644,12 @@ GetTableOidFromRelOptions(List *relOptions,
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 		if (strcmp(def->defname, "table_oid") == 0)
 		{
-			table_oid = strtol(defGetString(def), NULL, 10);
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &table_oid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"table_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 			if (OidIsValid(table_oid))
 			{
 				Relation pg_class_desc =
@@ -660,7 +665,7 @@ GetTableOidFromRelOptions(List *relOptions,
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
-							 errmsg("table OID %d is in use", table_oid)));
+							 errmsg("table OID %u is in use", table_oid)));
 
 				/* Only process the first table_oid. */
 				break;
@@ -672,29 +677,35 @@ GetTableOidFromRelOptions(List *relOptions,
 }
 
 /*
- * GetTablegroupOidFromRelOptions
- *		Scans through relOptions for any 'tablegroup' options.
- *		Returns that oid, or InvalidOid if unspecified.
+ * GetColocationIdFromRelOptions
+ *		Scans through relOptions for any 'colocation_id' options.
+ *		Returns that ID, or InvalidOid if unspecified.
  */
 Oid
-GetTablegroupOidFromRelOptions(List *relOptions)
+YbGetColocationIdFromRelOptions(List *relOptions)
 {
 	ListCell   *opt_cell;
-	Oid			tablegroup_oid;
+	Oid        colocation_id;
 
 	foreach(opt_cell, relOptions)
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
-		if (strcmp(def->defname, "tablegroup") == 0)
+		if (strcmp(def->defname, "colocation_id") == 0)
 		{
-			tablegroup_oid = strtol(defGetString(def), NULL, 10);
-			if (OidIsValid(tablegroup_oid))
-				return tablegroup_oid;
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &colocation_id, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"colocation_id\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+			if (OidIsValid(colocation_id))
+				return colocation_id;
 		}
 	}
 
 	return InvalidOid;
 }
+
 /*
  * GetRowTypeOidFromRelOptions
  *		Scans through relOptions for any 'row_type_oid' options, and ensures
@@ -713,7 +724,12 @@ GetRowTypeOidFromRelOptions(List *relOptions)
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 		if (strcmp(def->defname, "row_type_oid") == 0)
 		{
-			row_type_oid = strtol(defGetString(def), NULL, 10);
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &row_type_oid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"row_type_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 			if (OidIsValid(row_type_oid))
 			{
 				pg_type_desc = heap_open(TypeRelationId, AccessExclusiveLock);
@@ -722,7 +738,7 @@ GetRowTypeOidFromRelOptions(List *relOptions)
 				if (HeapTupleIsValid(tuple))
 					ereport(ERROR,
 							(errcode(ERRCODE_DUPLICATE_OBJECT),
-							 errmsg("type OID %d is in use", row_type_oid)));
+							 errmsg("type OID %u is in use", row_type_oid)));
 
 				heap_close(pg_type_desc, AccessExclusiveLock);
 

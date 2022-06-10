@@ -96,7 +96,7 @@ void TableReaderBenchmark(const Options& opts, const EnvOptions& env_options,
   std::string dbname = test::TmpDir() + "/rocksdb_table_reader_bench_db";
   WriteOptions wo;
   Env* env = Env::Default();
-  TableBuilder* tb = nullptr;
+  std::unique_ptr<TableBuilder> tb = nullptr;
   DB* db = nullptr;
   Status s;
   const ImmutableCFOptions ioptions(opts);

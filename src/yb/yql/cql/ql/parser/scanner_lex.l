@@ -36,6 +36,7 @@
 #include "yb/yql/cql/ql/parser/parse_context.h"
 #include "yb/yql/cql/ql/parser/scanner.h"
 #include "yb/yql/cql/ql/parser/scanner_util.h"
+#include "yb/gutil/casts.h"
 #include "yb/util/logging.h"
 
 /* Not including unistd. */
@@ -588,7 +589,7 @@ other                     .
 }
 
 <xe>{xeunicode} {
-  pg_wchar c = strtoul(yytext+2, NULL, 16);
+  pg_wchar c = narrow_cast<pg_wchar>(strtoul(yytext+2, NULL, 16));
 
   check_escape_warning();
 
@@ -603,7 +604,7 @@ other                     .
 }
 
 <xeu>{xeunicode} {
-  pg_wchar c = strtoul(yytext+2, NULL, 16);
+  pg_wchar c = narrow_cast<pg_wchar>(strtoul(yytext+2, NULL, 16));
 
   if (!is_utf16_surrogate_second(c)) {
     yyerror("invalid Unicode surrogate pair");
@@ -884,7 +885,7 @@ other                     .
     slashstar = dashdash;
   }
   if (slashstar) {
-    nchars = slashstar - yytext;
+    nchars = narrow_cast<int>(slashstar - yytext);
   }
 
   /* For SQL compatibility, '+' and '-' cannot be the

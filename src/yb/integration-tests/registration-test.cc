@@ -32,25 +32,35 @@
 
 #include <memory>
 #include <string>
+
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/yb_table_name.h"
+
 #include "yb/common/schema.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
-#include "yb/master/master.h"
-#include "yb/master/master.pb.h"
+
 #include "yb/master/master-test-util.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/curl_util.h"
 #include "yb/util/faststring.h"
 #include "yb/util/metrics.h"
 #include "yb/util/test_util.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(yb_num_shards_per_tserver);
@@ -119,15 +129,12 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
 
     auto GetCatalogMetric = [&](CounterPrototype& prototype) -> int64_t {
       auto metrics = cluster_->mini_master()
-                         ->master()
-                         ->catalog_manager()
-                         ->sys_catalog()
                          ->tablet_peer()
                          ->shared_tablet()
                          ->GetTabletMetricsEntity();
       return prototype.Instantiate(metrics)->value();
     };
-    int before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    auto before_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     LOG(INFO) << "Begin calculating sys catalog rows inserted";
 
     // Add a tablet, make sure it reports itself.
@@ -144,13 +151,13 @@ class RegistrationTest : public YBMiniClusterTestBase<MiniCluster> {
               locs.replicas(0).ts_info().permanent_uuid();
 
     LOG(INFO) << "Finish calculating sys catalog rows inserted";
-    int after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
+    auto after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
     // Check that we inserted the right number of rows for the first table:
     // - 2 for the namespace
     // - 1 for the table
     // - 3 * FLAGS_yb_num_shards_per_tserver for the tablets:
     //    PREPARING, first heartbeat, leader election heartbeat
-    int expected_rows = 2 + 1 + FLAGS_yb_num_shards_per_tserver * 3;
+    int64_t expected_rows = 2 + 1 + FLAGS_yb_num_shards_per_tserver * 3;
     EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
 
     // Add another tablet, make sure it is reported via incremental.

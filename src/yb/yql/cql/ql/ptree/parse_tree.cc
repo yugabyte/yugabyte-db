@@ -16,8 +16,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
+
+#include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
 
 namespace yb {
 namespace ql {
@@ -46,7 +49,7 @@ ParseTree::~ParseTree() {
   root_ = nullptr;
 }
 
-CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
+Status ParseTree::Analyze(SemContext *sem_context) {
   if (root_ == nullptr) {
     LOG(INFO) << "Parse tree is NULL";
     return Status::OK();

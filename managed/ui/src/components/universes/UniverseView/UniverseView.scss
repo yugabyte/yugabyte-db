@@ -209,11 +209,11 @@ a:hover .universe-name-cell {
     float: right;
     line-height: 60px;
     margin-left: 0;
+    display: flex;
   }
 }
 
 .list-universe-status-container .pending {
-  display: block;
   float: none;
 
   .progress {
@@ -463,11 +463,14 @@ a:hover .universe-name-cell {
         .universe-cost-cell {
           display: flex;
           justify-content: flex-end;
+          padding-right: 68px;
         }
         .universe-status-cell {
           display: flex;
           font-weight: 500;
-
+          align-items: flex-start;
+          justify-content: space-between;
+          overflow: unset;
           .yb-loader-circle {
             margin: 5px 5px 0 0;
             width: 10px;
@@ -495,9 +498,8 @@ a:hover .universe-name-cell {
           &.unknown {
             color: $YB_PENDING_COLOR;
           }
-          span {
+          &>div {
             display: flex;
-            padding-left: 4px;
           }
         }
       }

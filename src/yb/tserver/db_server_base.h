@@ -14,12 +14,13 @@
 #ifndef YB_TSERVER_DB_SERVER_BASE_H
 #define YB_TSERVER_DB_SERVER_BASE_H
 
+#include <future>
+
 #include "yb/client/client_fwd.h"
 
 #include "yb/server/server_base.h"
 
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/tserver/tablet_server_interface.h"
 
 namespace yb {
 namespace tserver {
@@ -32,25 +33,38 @@ class DbServerBase : public server::RpcAndWebServerBase {
       std::shared_ptr<MemTracker> mem_tracker);
   ~DbServerBase();
 
-  int GetSharedMemoryFd() {
-    return shared_object_.GetFd();
-  }
+  int GetSharedMemoryFd();
 
-  client::TransactionManager* TransactionManager();
+  client::TransactionManager& TransactionManager();
 
-  client::TransactionPool* TransactionPool();
+  client::TransactionPool& TransactionPool();
 
-  virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
+  virtual MonoDelta default_client_timeout() = 0;
+  virtual const std::string& permanent_uuid() const = 0;
+  virtual void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) = 0;
 
   virtual client::LocalTabletFilter CreateLocalTabletFilter() = 0;
 
+  const std::shared_future<client::YBClient*>& client_future() const;
+
   tserver::TServerSharedData& shared_object();
 
+  Status Init() override;
+
+  Status Start() override;
+
+  void Shutdown() override;
+
  protected:
+  void EnsureTransactionPoolCreated();
+
   // Shared memory owned by the tablet server.
-  tserver::TServerSharedObject shared_object_;
+  std::unique_ptr<tserver::TServerSharedObject> shared_object_;
+
+  std::unique_ptr<client::AsyncClientInitialiser> async_client_init_;
 
   std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
+  std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
   std::mutex transaction_pool_mutex_;
   std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
   std::unique_ptr<client::TransactionPool> transaction_pool_holder_;

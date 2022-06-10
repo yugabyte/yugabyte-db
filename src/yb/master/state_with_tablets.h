@@ -15,21 +15,21 @@
 #define YB_MASTER_STATE_WITH_TABLETS_H
 
 #include <boost/iterator/transform_iterator.hpp>
-
-#include <boost/multi_index_container.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/range/iterator_range_core.hpp>
+#include <glog/logging.h>
 
-#include <boost/range/iterator_range.hpp>
-
-#include "yb/common/entity_ids.h"
+#include "yb/gutil/casts.h"
 
 #include "yb/master/master_fwd.h"
-#include "yb/master/master_backup.pb.h"
+#include "yb/master/catalog_entity_info.pb.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {
@@ -58,7 +58,7 @@ class StateWithTablets {
   // Otherwise all tablets should be in the same state, which is returned.
   Result<SysSnapshotEntryPB::State> AggregatedState() const;
 
-  CHECKED_STATUS AnyFailure() const;
+  Status AnyFailure() const;
   Result<bool> Complete() const;
   bool AllTabletsDone() const;
   bool PassedSinceCompletion(const MonoDelta& duration) const;
@@ -69,8 +69,16 @@ class StateWithTablets {
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
 
   // Initialize tablet states from serialized data.
-  void InitTablets(
-      const google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>& tablets);
+  template<class Tablets>
+  void InitTablets(const Tablets& tablets) {
+    for (const auto& tablet : tablets) {
+      tablets_.emplace(tablet.id(), tablet.state());
+      if (tablet.state() == initial_state_) {
+        ++num_tablets_in_initial_state_;
+      }
+    }
+    CheckCompleteness();
+  }
 
   template <class TabletIds>
   void InitTabletIds(const TabletIds& tablet_ids, SysSnapshotEntryPB::State state) {
@@ -90,7 +98,7 @@ class StateWithTablets {
 
   template <class PB>
   void TabletsToPB(google::protobuf::RepeatedPtrField<PB>* out) {
-    out->Reserve(tablets_.size());
+    out->Reserve(narrow_cast<int>(tablets_.size()));
     for (const auto& tablet : tablets_) {
       auto* tablet_state = out->Add();
       tablet_state->set_id(tablet.id);
@@ -108,10 +116,9 @@ class StateWithTablets {
         // Could exit here, because we have already iterated over all non-running operations.
         break;
       }
-      bool should_run = it->state == initial_state_;
+      bool should_run = it->state == initial_state_ && functor(*it);
       if (should_run) {
         VLOG(4) << "Prepare operation for " << it->ToString();
-        functor(*it);
 
         // Here we modify indexed value, so iterator could be advanced to the next element.
         // Taking next before modify.
@@ -138,8 +145,12 @@ class StateWithTablets {
 
   virtual bool IsTerminalFailure(const Status& status) = 0;
 
-  virtual CHECKED_STATUS CheckDoneStatus(const Status& status) {
+  virtual Status CheckDoneStatus(const Status& status) {
     return status;
+  }
+
+  bool Empty() {
+    return tablets().empty();
   }
 
  protected:

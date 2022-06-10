@@ -14,13 +14,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/manage/backup-restore/restore-data" class="nav-link active">
+    <a href="/preview/manage/backup-restore/restore-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/manage/backup-restore/restore-data-ycql" class="nav-link">
+    <a href="/preview/manage/backup-restore/restore-data-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -64,7 +64,7 @@ To reduce security risks, SQL script files created using `ysql_dump` include `SE
 
 ## Restore databases using `ysqlsh -f`
 
-To restore one database using `ysqlsh` on the command line, open a command line window and run the following command. The `ysqlsh -f` command will read the SQL statements from the specified file and 
+To restore one database using `ysqlsh` on the command line, open a command line window and run the following command. The `ysqlsh -f` command will read the SQL statements from the specified file and
 
 ```sh
 $ ysqlsh -f <db-sql-script>

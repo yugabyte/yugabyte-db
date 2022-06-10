@@ -22,10 +22,10 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
-#include <assert.h>
+
 #include <atomic>
-#include <mutex>
 #include <thread>
+
 #include "yb/rocksdb/port/port.h"
 
 namespace rocksdb {

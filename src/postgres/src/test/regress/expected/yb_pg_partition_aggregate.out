@@ -708,7 +708,7 @@ CREATE TABLE pagg_tab_ml_p3_s1(c text, a int, b int);
 CREATE TABLE pagg_tab_ml_p3_s2 PARTITION OF pagg_tab_ml_p3 FOR VALUES FROM (5) TO (10);
 ALTER TABLE pagg_tab_ml_p3 ATTACH PARTITION pagg_tab_ml_p3_s1 FOR VALUES FROM (0) TO (5);
 ALTER TABLE pagg_tab_ml ATTACH PARTITION pagg_tab_ml_p3 FOR VALUES FROM (20) TO (30);
-INSERT INTO pagg_tab_ml SELECT i % 30, i % 10, to_char(i % 4, 'FM0000') FROM generate_series(0, 29999) i;
+INSERT INTO pagg_tab_ml SELECT i % 30, i % 10, to_char(i % 4, 'FM0000') FROM generate_series(0, 2999) i;
 ANALYZE pagg_tab_ml;
 -- For Parallel Append
 SET max_parallel_workers_per_gather TO 2;
@@ -721,17 +721,17 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), array_agg(distinct c), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
- a  | sum  |  array_agg  | count
-----+------+-------------+-------
-  0 |    0 | {0000,0002} |  1000
-  1 | 1000 | {0001,0003} |  1000
-  2 | 2000 | {0000,0002} |  1000
- 10 |    0 | {0000,0002} |  1000
- 11 | 1000 | {0001,0003} |  1000
- 12 | 2000 | {0000,0002} |  1000
- 20 |    0 | {0000,0002} |  1000
- 21 | 1000 | {0001,0003} |  1000
- 22 | 2000 | {0000,0002} |  1000
+ a  | sum |  array_agg  | count
+----+-----+-------------+-------
+  0 |   0 | {0000,0002} |   100
+  1 | 100 | {0001,0003} |   100
+  2 | 200 | {0000,0002} |   100
+ 10 |   0 | {0000,0002} |   100
+ 11 | 100 | {0001,0003} |   100
+ 12 | 200 | {0000,0002} |   100
+ 20 |   0 | {0000,0002} |   100
+ 21 | 100 | {0001,0003} |   100
+ 22 | 200 | {0000,0002} |   100
 (9 rows)
 
 -- Without ORDER BY clause, to test Gather at top-most path
@@ -746,17 +746,17 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
- a  | sum  | count
-----+------+-------
-  0 |    0 |  1000
-  1 | 1000 |  1000
-  2 | 2000 |  1000
- 10 |    0 |  1000
- 11 | 1000 |  1000
- 12 | 2000 |  1000
- 20 |    0 |  1000
- 21 | 1000 |  1000
- 22 | 2000 |  1000
+ a  | sum | count
+----+-----+-------
+  0 |   0 |   100
+  1 | 100 |   100
+  2 | 200 |   100
+ 10 |   0 |   100
+ 11 | 100 |   100
+ 12 | 200 |   100
+ 20 |   0 |   100
+ 21 | 100 |   100
+ 22 | 200 |   100
 (9 rows)
 
 -- Partial aggregation at all levels as GROUP BY clause does not match with
@@ -766,13 +766,13 @@ EXPLAIN (COSTS OFF)
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
 */
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
- b |  sum  | count
----+-------+-------
- 0 | 30000 |  3000
- 1 | 33000 |  3000
- 2 | 36000 |  3000
- 3 | 39000 |  3000
- 4 | 42000 |  3000
+ b | sum  | count
+---+------+-------
+ 0 | 3000 |   300
+ 1 | 3300 |   300
+ 2 | 3600 |   300
+ 3 | 3900 |   300
+ 4 | 4200 |   300
 (5 rows)
 
 -- Full aggregation at all levels as GROUP BY clause matches with PARTITION KEY
@@ -806,20 +806,20 @@ SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 O
 (23 rows)
 
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
- a  | sum  | count
-----+------+-------
-  8 | 4000 |   500
-  8 | 4000 |   500
-  9 | 4500 |   500
-  9 | 4500 |   500
- 18 | 4000 |   500
- 18 | 4000 |   500
- 19 | 4500 |   500
- 19 | 4500 |   500
- 28 | 4000 |   500
- 28 | 4000 |   500
- 29 | 4500 |   500
- 29 | 4500 |   500
+ a  | sum | count
+----+-----+-------
+  8 | 400 |    50
+  8 | 400 |    50
+  9 | 450 |    50
+  9 | 450 |    50
+ 18 | 400 |    50
+ 18 | 400 |    50
+ 19 | 450 |    50
+ 19 | 450 |    50
+ 28 | 400 |    50
+ 28 | 400 |    50
+ 29 | 450 |    50
+ 29 | 450 |    50
 (12 rows)
 
 -- Parallelism within partitionwise aggregates
@@ -833,17 +833,17 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a HAVING avg(b) < 3 ORDER BY 1, 2, 3;
- a  | sum  | count
-----+------+-------
-  0 |    0 |  1000
-  1 | 1000 |  1000
-  2 | 2000 |  1000
- 10 |    0 |  1000
- 11 | 1000 |  1000
- 12 | 2000 |  1000
- 20 |    0 |  1000
- 21 | 1000 |  1000
- 22 | 2000 |  1000
+ a  | sum | count
+----+-----+-------
+  0 |   0 |   100
+  1 | 100 |   100
+  2 | 200 |   100
+ 10 |   0 |   100
+ 11 | 100 |   100
+ 12 | 200 |   100
+ 20 |   0 |   100
+ 21 | 100 |   100
+ 22 | 200 |   100
 (9 rows)
 
 -- Partial aggregation at all levels as GROUP BY clause does not match with
@@ -853,13 +853,13 @@ EXPLAIN (COSTS OFF)
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b ORDER BY 1, 2, 3;
 */
 SELECT b, sum(a), count(*) FROM pagg_tab_ml GROUP BY b HAVING avg(a) < 15 ORDER BY 1, 2, 3;
- b |  sum  | count
----+-------+-------
- 0 | 30000 |  3000
- 1 | 33000 |  3000
- 2 | 36000 |  3000
- 3 | 39000 |  3000
- 4 | 42000 |  3000
+ b | sum  | count
+---+------+-------
+ 0 | 3000 |   300
+ 1 | 3300 |   300
+ 2 | 3600 |   300
+ 3 | 3900 |   300
+ 4 | 4200 |   300
 (5 rows)
 
 -- Full aggregation at all levels as GROUP BY clause matches with PARTITION KEY
@@ -868,20 +868,20 @@ EXPLAIN (COSTS OFF)
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
 */
 SELECT a, sum(b), count(*) FROM pagg_tab_ml GROUP BY a, b, c HAVING avg(b) > 7 ORDER BY 1, 2, 3;
- a  | sum  | count
-----+------+-------
-  8 | 4000 |   500
-  8 | 4000 |   500
-  9 | 4500 |   500
-  9 | 4500 |   500
- 18 | 4000 |   500
- 18 | 4000 |   500
- 19 | 4500 |   500
- 19 | 4500 |   500
- 28 | 4000 |   500
- 28 | 4000 |   500
- 29 | 4500 |   500
- 29 | 4500 |   500
+ a  | sum | count
+----+-----+-------
+  8 | 400 |    50
+  8 | 400 |    50
+  9 | 450 |    50
+  9 | 450 |    50
+ 18 | 400 |    50
+ 18 | 400 |    50
+ 19 | 450 |    50
+ 19 | 450 |    50
+ 28 | 400 |    50
+ 28 | 400 |    50
+ 29 | 450 |    50
+ 29 | 450 |    50
 (12 rows)
 
 -- Parallelism within partitionwise aggregates (single level)
@@ -897,7 +897,7 @@ CREATE TABLE pagg_tab_para(x int, y int) PARTITION BY RANGE(x);
 CREATE TABLE pagg_tab_para_p1 PARTITION OF pagg_tab_para FOR VALUES FROM (0) TO (10);
 CREATE TABLE pagg_tab_para_p2 PARTITION OF pagg_tab_para FOR VALUES FROM (10) TO (20);
 CREATE TABLE pagg_tab_para_p3 PARTITION OF pagg_tab_para FOR VALUES FROM (20) TO (30);
-INSERT INTO pagg_tab_para SELECT i % 30, i % 20 FROM generate_series(0, 29999) i;
+INSERT INTO pagg_tab_para SELECT i % 30, i % 20 FROM generate_series(0, 2999) i;
 ANALYZE pagg_tab_para;
 -- When GROUP BY clause matches; full aggregation is performed for each partition.
 /*
@@ -905,14 +905,14 @@ EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 */
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum  |        avg         | count
-----+------+--------------------+-------
-  0 | 5000 | 5.0000000000000000 |  1000
-  1 | 6000 | 6.0000000000000000 |  1000
- 10 | 5000 | 5.0000000000000000 |  1000
- 11 | 6000 | 6.0000000000000000 |  1000
- 20 | 5000 | 5.0000000000000000 |  1000
- 21 | 6000 | 6.0000000000000000 |  1000
+ x  | sum |        avg         | count
+----+-----+--------------------+-------
+  0 | 500 | 5.0000000000000000 |   100
+  1 | 600 | 6.0000000000000000 |   100
+ 10 | 500 | 5.0000000000000000 |   100
+ 11 | 600 | 6.0000000000000000 |   100
+ 20 | 500 | 5.0000000000000000 |   100
+ 21 | 600 | 6.0000000000000000 |   100
 (6 rows)
 
 -- When GROUP BY clause does not match; partial aggregation is performed for each partition.
@@ -921,12 +921,12 @@ EXPLAIN (COSTS OFF)
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
 */
 SELECT y, sum(x), avg(x), count(*) FROM pagg_tab_para GROUP BY y HAVING avg(x) < 12 ORDER BY 1, 2, 3;
- y  |  sum  |         avg         | count
-----+-------+---------------------+-------
-  0 | 15000 | 10.0000000000000000 |  1500
-  1 | 16500 | 11.0000000000000000 |  1500
- 10 | 15000 | 10.0000000000000000 |  1500
- 11 | 16500 | 11.0000000000000000 |  1500
+ y  | sum  |         avg         | count
+----+------+---------------------+-------
+  0 | 1500 | 10.0000000000000000 |   150
+  1 | 1650 | 11.0000000000000000 |   150
+ 10 | 1500 | 10.0000000000000000 |   150
+ 11 | 1650 | 11.0000000000000000 |   150
 (4 rows)
 
 -- Test when parent can produce parallel paths but not any (or some) of its children
@@ -946,14 +946,14 @@ EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 */
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum  |        avg         | count
-----+------+--------------------+-------
-  0 | 5000 | 5.0000000000000000 |  1000
-  1 | 6000 | 6.0000000000000000 |  1000
- 10 | 5000 | 5.0000000000000000 |  1000
- 11 | 6000 | 6.0000000000000000 |  1000
- 20 | 5000 | 5.0000000000000000 |  1000
- 21 | 6000 | 6.0000000000000000 |  1000
+ x  | sum |        avg         | count
+----+-----+--------------------+-------
+  0 | 500 | 5.0000000000000000 |   100
+  1 | 600 | 6.0000000000000000 |   100
+ 10 | 500 | 5.0000000000000000 |   100
+ 11 | 600 | 6.0000000000000000 |   100
+ 20 | 500 | 5.0000000000000000 |   100
+ 21 | 600 | 6.0000000000000000 |   100
 (6 rows)
 
 ALTER TABLE pagg_tab_para_p2 SET (parallel_workers = 0);
@@ -967,14 +967,14 @@ EXPLAIN (COSTS OFF)
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
 */
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum  |        avg         | count
-----+------+--------------------+-------
-  0 | 5000 | 5.0000000000000000 |  1000
-  1 | 6000 | 6.0000000000000000 |  1000
- 10 | 5000 | 5.0000000000000000 |  1000
- 11 | 6000 | 6.0000000000000000 |  1000
- 20 | 5000 | 5.0000000000000000 |  1000
- 21 | 6000 | 6.0000000000000000 |  1000
+ x  | sum |        avg         | count
+----+-----+--------------------+-------
+  0 | 500 | 5.0000000000000000 |   100
+  1 | 600 | 6.0000000000000000 |   100
+ 10 | 500 | 5.0000000000000000 |   100
+ 11 | 600 | 6.0000000000000000 |   100
+ 20 | 500 | 5.0000000000000000 |   100
+ 21 | 600 | 6.0000000000000000 |   100
 (6 rows)
 
 -- Reset parallelism parameters to get partitionwise aggregation plan.
@@ -1002,12 +1002,12 @@ SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) <
 (15 rows)
 
 SELECT x, sum(y), avg(y), count(*) FROM pagg_tab_para GROUP BY x HAVING avg(y) < 7 ORDER BY 1, 2, 3;
- x  | sum  |        avg         | count
-----+------+--------------------+-------
-  0 | 5000 | 5.0000000000000000 |  1000
-  1 | 6000 | 6.0000000000000000 |  1000
- 10 | 5000 | 5.0000000000000000 |  1000
- 11 | 6000 | 6.0000000000000000 |  1000
- 20 | 5000 | 5.0000000000000000 |  1000
- 21 | 6000 | 6.0000000000000000 |  1000
+ x  | sum |        avg         | count
+----+-----+--------------------+-------
+  0 | 500 | 5.0000000000000000 |   100
+  1 | 600 | 6.0000000000000000 |   100
+ 10 | 500 | 5.0000000000000000 |   100
+ 11 | 600 | 6.0000000000000000 |   100
+ 20 | 500 | 5.0000000000000000 |   100
+ 21 | 600 | 6.0000000000000000 |   100
 (6 rows)

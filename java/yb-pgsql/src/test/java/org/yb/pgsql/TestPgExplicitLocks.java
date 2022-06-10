@@ -13,6 +13,7 @@
 
 package org.yb.pgsql;
 
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -23,6 +24,7 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
@@ -30,6 +32,13 @@ import static org.yb.AssertionWrappers.*;
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestPgExplicitLocks extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("yb_enable_read_committed_isolation", "true");
+    return flagMap;
+  }
 
   @Test
   public void testExplicitLocks() throws Exception {
@@ -41,7 +50,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     Statement s2 = c2.createStatement();
 
     try {
-      String query = "begin";
+      String query = "begin transaction isolation level serializable";
       s1.execute(query);
       query = "select * from explicitlocks where h=0 and r=0 for update";
       s1.execute(query);
@@ -127,93 +136,131 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
     }
   };
 
-  private void runRangeKeyLocksTest(ParallelQueryRunner runner) throws SQLException {
+  private void runRangeKeyLocksTest(ParallelQueryRunner runner,
+                                    IsolationLevel pgIsolationLevel) throws SQLException {
     QueryBuilder builder = new QueryBuilder("table_with_hash");
-    // SELECT must lock (h: 1)
+    // NOTE: for all examples below, the SELECT statement will lock the whole predicate for
+    // SERIALIZABLE isolation level and only matching rows in other isolation levels. The predicate
+    // is locked by locking the longest prefix of pk that is specified in the where clause.
+    // E.g:
+    //   SELECT ... WHERE h=1 : lock full partition (h=1)
+    //   SELECT ... WHERE h=1 and r2=100 : lock only (h=1) chunk since value for r1 is missing
+    //   SELECT ... WHERE h=1 and r1=100 : lock full range (h=1, r1:100)
+    //   SELECT ... WHERE h=1 and r1=100, r2=100 : lock full pk (h=1, r1:100, r2: 100)
+    //   SELECT ... WHERE r1=100, r2=100 : lock whole table since value of h is missing
+
+    // SELECT with (h: 1)
+    // 1. DELETE on row that exists and matches SELECT where clause
+    //      Conflicts will occur in both isolation levels since the row that DELETE tries to remove
+    //      is already locked either way (lock predicate or only matching rows).
     runner.runWithConflict(
       builder.select("h = 1"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
-    // SELECT must lock (h: 1, r1: 10, r2: 100)
+    // 2. DELETE on row that matches the same predicate but doesn't exist.
+    runner.run(
+      builder.select("h = 1"),
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 102"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
     runner.runWithConflict(
       builder.select("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1"));
-    // SELECT must lock (h: 1, r1: 10)
+
+    // SELECT with (h: 1, r1: 10)
+    // 1. DELETE on rows that exists and matches SELECT where clause
     runner.runWithConflict(
       builder.select("h = 1 AND r1 = 10"),
-      builder.delete("h = 1 AND r1 = 10 AND r2 = 102"));
-    // SELECT must lock (h:1, r1:10, r2:102) and (h:1, r1:11, r2:102)
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
+    // 2. DELETE on row that matches the same predicate but doesn't exist.
+    runner.run(
+      builder.select("h = 1 AND r1 = 10"),
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 102"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
+    // SELECT with (h:1, r1:10, r2:100) and (h:1, r1:11, r2:100)
+    // 1. DELETE on row that exists and matches SELECT where clause
     runner.runWithConflict(
-      builder.select("h = 1 AND r1 IN (10, 11) AND r2 = 102"),
-      builder.delete("h = 1 AND r1 = 11 AND r2 = 102"));
-    // SELECT must lock (h:1, r1: 11, r2: 98) and (h:1, r1: 11, r2: 99)
-    runner.runWithConflict(
-      builder.select("h = 1 AND r1 = 11 AND r2 IN (98, 99)"),
-      builder.delete("h = 1 AND r1 = 11 AND r2 = 99"));
-    // SELECT must lock (h:1)
-    runner.runWithConflict(
+      builder.select("h = 1 AND r1 IN (10, 11) AND r2 = 100"),
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
+    // 2. DELETE on row that matches the same predicate but doesn't exist.
+    runner.run(
+      builder.select("h = 1 AND r1 IN (10, 11) AND r2 = 100"),
+      builder.delete("h = 1 AND r1 = 11 AND r2 = 100"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
+    // SELECT with (h:1, r1: 10, r2: 100) and (h:1, r1: 10, r2: 101)
+    // 1. DELETE on row that exists and matches SELECT where clause
+    runner.run(
+      builder.select("h = 1 AND r1 = 10 AND r2 IN (100, 101)"),
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 100"),
+      true /* conflict_expected */);
+    // 2. DELETE on row that matches the same predicate but doesn't exist.
+    runner.run(
+      builder.select("h = 1 AND r1 = 10 AND r2 IN (100, 101)"),
+      builder.delete("h = 1 AND r1 = 10 AND r2 = 101"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
+    // Lock full partition (h: 1) if SERIALIZABLE.
+    runner.run(
       builder.select("h = 1 AND r2 = 102"),
-      builder.delete("h = 1 AND r1 = 11 AND r2 = 101"));
-    // SELECT must lock () i.e. whole tablet
-    runner.runWithConflict(
+      builder.delete("h = 1 AND r1 = 11 AND r2 = 101"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
+    // Lock full tablet if SERIALIZABLE.
+    runner.run(
       builder.select("r1 = 11"),
-      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
-    // SELECT must lock () i.e. whole tablet
-    runner.runWithConflict(
+      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+    runner.run(
       builder.select("r2 = 102"),
-      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
-    // SELECT must lock (h:1, r1:10, r2:100)
+      builder.delete("h = 2 AND r1 = 21 AND r2 = 201"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
     runner.runWithConflict(
       builder.select("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
 
-    // SELECT must lock (h: 1)
     runner.runWithoutConflict(
       builder.select("h = 1"),
       builder.delete("h = 2 AND r1 = 20 AND r2 = 200"));
-    // SELECT must lock (h: 1, r1: 10)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 = 10"),
       builder.delete("h = 1 AND r1 = 11 AND r2 = 101"));
-    // SELECT must lock (h:1, r1:10, r2:102) and (h:1, r1:11, r2:102)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 in (10, 11) AND r2 = 102"),
       builder.delete("h = 2 AND r1 = 21 AND r2 = 201"));
-    // SELECT must lock (h:1, r1: 11, r2: 100) and (h:1, r1: 11, r2: 101)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 = 11 AND r2 in (100, 101)"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 100"));
-    // SELECT must lock (h:1)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r2 = 102"),
       builder.delete("h = 2 AND r1 = 22 AND r2 = 202"));
-    // SELECT must lock (h:1, r1:10, r2:100)
     runner.runWithoutConflict(
       builder.select("h = 1 AND r1 = 10 AND r2 = 100"),
       builder.delete("h = 1 AND r1 = 10 AND r2 = 1000"));
 
     builder = new QueryBuilder("table_without_hash");
-    // SELECT must lock () i.e. whole tablet
-    runner.runWithConflict(
+    // Lock full tablet if SERIALIZABLE.
+    runner.run(
       builder.select("r2 = 11"),
-      builder.delete("r1 = 2 AND r2 = 22"));
-    // SELECT must lock () i.e. whole tablet
-    runner.runWithConflict(
+      builder.delete("r1 = 2 AND r2 = 22"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+
+    runner.run(
       builder.select("r1 = 1 OR r2 = 11"),
-      builder.delete("r1 = 2 AND r2 = 22"));
-    // SELECT must lock (r1:1)
-    runner.runWithConflict(
+      builder.delete("r1 = 2 AND r2 = 22"),
+      pgIsolationLevel == IsolationLevel.SERIALIZABLE /* conflict_expected */);
+    runner.run(
       builder.select("r1 = 1"),
-      builder.delete("r1 = 1 AND r2 = 10"));
-    // SELECT must lock (r1:1, r2:10)
+      builder.delete("r1 = 1 AND r2 = 10"),
+      true /* conflict_expected */);
     runner.runWithConflict(
       builder.select("r2 = 10 AND r1 IN (1)"),
       builder.delete("r1 = 1 AND r2 = 10"));
 
-    // SELECT must lock (r1:1)
     runner.runWithoutConflict(
       builder.select("r1 = 1"),
       builder.delete("r1 = 2 AND r2 = 20"));
-    // SELECT must lock (r1:1, r2:10)
     runner.runWithoutConflict(
       builder.select("r2 = 10 AND r1 IN (1)"),
       builder.delete("r1 = 1 AND r2 = 11"));
@@ -284,7 +331,7 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       stmt.execute("INSERT INTO table_without_hash VALUES " +
         "(1, 10), (1, 11), (1, 12), " +
         "(2, 10), (2, 11), (2, 20), (2, 21), (2, 22)");
-      runRangeKeyLocksTest(new ParallelQueryRunner(stmt, extraStmt));
+      runRangeKeyLocksTest(new ParallelQueryRunner(stmt, extraStmt), pgIsolationLevel);
     }
   }
 
@@ -335,5 +382,91 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
   @Test
   public void testLocksSnapshotIsolation() throws Exception {
     testLocksIsolationLevel(IsolationLevel.REPEATABLE_READ);
+  }
+
+  @Test
+  public void testNoWait() throws Exception {
+    ConnectionBuilder builder = getConnectionBuilder();
+    try (Connection conn1 = builder.connect();
+         Connection conn2 = builder.connect();
+         Statement stmt1 = conn1.createStatement();
+         Statement stmt2 = conn2.createStatement();
+         Connection extraConn = builder.connect();
+         Statement extraStmt = extraConn.createStatement()) {
+      extraStmt.execute("CREATE TABLE test (k INT PRIMARY KEY, v INT)");
+      extraStmt.execute("INSERT INTO test VALUES (1, 1)");
+
+      // The below SELECT is done so that catalog reads are done before the NOWAIT statement. This
+      // helps us accurately measure the number of read rpcs performed during the NOWAIT query for a
+      // later assertion.
+      //
+      // The sleep is added to ensure that the cache refresh is complete before we measure
+      // the number of read rpcs.
+      stmt2.execute("SELECT * FROM test");
+      Thread.sleep(2000);
+
+      // Case 1: for REPEATABLE READ (not fully supported yet as explained below).
+
+      // This test uses 2 txns which can be assigned random priorities. Txn1 does just a SELECT FOR
+      // UPDATE. Txn2 later does the same but with the NOWAIT clause. There are 2 possible outcomes
+      // based on whether txn2 is assigned higher or lower priority than txn1:
+      //   1. Txn2 has higher priority: txn1 is aborted.
+      //   2. Txn2 has lower priority: txn2 is aborted.
+      //
+      // TODO(Piyush): The semantics of NOWAIT require that txn2 is aborted always. The statement in
+      // with NOWAIT should not kill other txns. So, the semantics of case 1 above need to be fixed.
+      //
+      // Since only case (2) works as of now, we need to ensure that txn2 has lower priority.
+      stmt1.execute("SET yb_transaction_priority_lower_bound = 0.5");
+      stmt2.execute("SET yb_transaction_priority_upper_bound = 0.4");
+
+      stmt1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      stmt2.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+      stmt1.execute("SELECT * FROM test WHERE k=1 FOR UPDATE");
+
+      Long read_count_before = getTServerMetric(
+        "handler_latency_yb_tserver_TabletServerService_Read").count;
+      LOG.info("read_count_before=" + read_count_before);
+      try {
+        stmt2.execute("SELECT * FROM test WHERE k=1 FOR UPDATE NOWAIT");
+        assertTrue("Should not reach here since the statement is supposed to fail", false);
+      } catch (SQLException e) {
+        // If txn2 had a lower priority than txn1, instead of attempting retries for
+        // ysql_max_write_restart_attempts, it would fail immediately due to the NOWAIT clause
+        // with the appropriate message.
+        assertTrue(StringUtils.containsIgnoreCase(e.getMessage(),
+          "ERROR: could not obtain lock on row in relation \"test\""));
+
+        // Assert that we failed immediately without retrying at all. This is done by ensuring that
+        // we make only 2 read rpc call to tservers - one for reading the tuple and one for locking
+        // the row.
+        Long read_count_after = getTServerMetric(
+          "handler_latency_yb_tserver_TabletServerService_Read").count;
+        LOG.info("read_count_after=" + read_count_after);
+        assertTrue((read_count_after - read_count_before) == 2);
+        stmt1.execute("COMMIT");
+        stmt2.execute("ROLLBACK");
+      }
+
+      // Case 2: for READ COMMITTED isolation.
+      // All txns use the same priority in this isolation level.
+      stmt1.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      stmt2.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      stmt1.execute("SELECT * FROM test WHERE k=1 FOR UPDATE");
+
+      read_count_before = getTServerMetric(
+        "handler_latency_yb_tserver_TabletServerService_Read").count;
+      LOG.info("read_count_before=" + read_count_before);
+      runInvalidQuery(stmt2, "SELECT * FROM test WHERE k=1 FOR UPDATE NOWAIT",
+        "ERROR: could not obtain lock on row in relation \"test\"");
+
+      // Assert that we failed immediately without retrying at all.
+      Long read_count_after = getTServerMetric(
+          "handler_latency_yb_tserver_TabletServerService_Read").count;
+        LOG.info("read_count_after=" + read_count_after);
+      assertTrue((read_count_after - read_count_before) == 2);
+      stmt1.execute("COMMIT");
+      stmt2.execute("ROLLBACK");
+    }
   }
 }

@@ -42,11 +42,9 @@
 // numeric_limits for the compilers we use.
 //
 
-#ifndef UTIL_MATH_MATHLIMITS_H__
-#define UTIL_MATH_MATHLIMITS_H__
+#ifndef YB_GUTIL_MATHLIMITS_H
+#define YB_GUTIL_MATHLIMITS_H
 
-#include <math.h>
-#include <string.h>
 #include <cfloat>
 #include <cmath>
 
@@ -194,15 +192,15 @@ struct MathLimits<IntType> { \
 };
 
 DECL_SIGNED_INT_LIMITS(signed char, unsigned char)
-DECL_SIGNED_INT_LIMITS(signed short int, unsigned short int)
+DECL_SIGNED_INT_LIMITS(signed short int, unsigned short int) // NOLINT
 DECL_SIGNED_INT_LIMITS(signed int, unsigned int)
-DECL_SIGNED_INT_LIMITS(signed long int, unsigned long int)
-DECL_SIGNED_INT_LIMITS(signed long long int, unsigned long long int)
+DECL_SIGNED_INT_LIMITS(signed long int, unsigned long int) // NOLINT
+DECL_SIGNED_INT_LIMITS(signed long long int, unsigned long long int) // NOLINT
 DECL_UNSIGNED_INT_LIMITS(unsigned char)
-DECL_UNSIGNED_INT_LIMITS(unsigned short int)
+DECL_UNSIGNED_INT_LIMITS(unsigned short int) // NOLINT
 DECL_UNSIGNED_INT_LIMITS(unsigned int)
-DECL_UNSIGNED_INT_LIMITS(unsigned long int)
-DECL_UNSIGNED_INT_LIMITS(unsigned long long int)
+DECL_UNSIGNED_INT_LIMITS(unsigned long int) // NOLINT
+DECL_UNSIGNED_INT_LIMITS(unsigned long long int) // NOLINT
 
 #undef DECL_SIGNED_INT_LIMITS
 #undef DECL_UNSIGNED_INT_LIMITS
@@ -267,4 +265,4 @@ DECL_FP_LIMITS(long double, LDBL)
 
 // ========================================================================= //
 
-#endif  // UTIL_MATH_MATHLIMITS_H__
+#endif  // YB_GUTIL_MATHLIMITS_H

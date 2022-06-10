@@ -1705,6 +1705,51 @@ parse_hba_line(TokenizedLine *tok_line, int elevel)
 		parsedline->clientcert = true;
 	}
 
+	parsedline->maskedline = NULL;
+	if (parsedline->ldapbindpasswd)
+	{
+		/*
+		 * We manually mask ldapbindpasswd field of the the rawline
+		 * by creating a duplicate modified version of it and storing
+		 * that in the maskedline field
+		 */
+		static const char *passkey = "ldapbindpasswd=";
+		static const char *pass_replacement_string = "ldapbindpasswd=***";
+		char *passfield = strstr(parsedline->rawline, passkey);
+		Assert(passfield != NULL);
+
+		/*
+		 * Caching various string lengths
+		 */		
+		size_t total_len = strlen(parsedline->rawline);
+		size_t prefix_len = passfield - parsedline->rawline;
+		size_t passkey_len = strlen(passkey);
+		size_t passwd_len = strlen(parsedline->ldapbindpasswd);
+		size_t pass_replacement_string_len = strlen(pass_replacement_string);
+		size_t maskedlinelength = total_len - passkey_len - passwd_len
+									+ pass_replacement_string_len + 1;
+
+		parsedline->maskedline = palloc0(maskedlinelength);
+		size_t head = 0;
+		size_t copy_size = prefix_len;
+		strncpy(parsedline->maskedline + head, parsedline->rawline, copy_size);
+		head += copy_size;
+
+		copy_size = pass_replacement_string_len;
+		strncpy(parsedline->maskedline + head, 
+				pass_replacement_string, copy_size);
+		head += copy_size;
+
+		copy_size = total_len - prefix_len - passkey_len
+					- passwd_len;
+		strncpy(parsedline->maskedline + head, 
+				passfield + passkey_len
+				+ passwd_len, copy_size);
+		head += copy_size;
+
+		parsedline->maskedline[maskedlinelength - 1] = '\0';
+	}
+
 	return parsedline;
 }
 

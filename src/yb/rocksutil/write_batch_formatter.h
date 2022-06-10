@@ -22,7 +22,6 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -45,25 +44,25 @@ class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
         output_format_(output_format),
         line_prefix_(line_prefix) {}
 
-  virtual CHECKED_STATUS PutCF(
+  virtual Status PutCF(
+      uint32_t column_family_id,
+      const rocksdb::SliceParts& key,
+      const rocksdb::SliceParts& value) override;
+
+  virtual Status DeleteCF(
+      uint32_t column_family_id,
+      const rocksdb::Slice& key) override;
+
+  virtual Status SingleDeleteCF(
+      uint32_t column_family_id,
+      const rocksdb::Slice& key) override;
+
+  virtual Status MergeCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  virtual CHECKED_STATUS DeleteCF(
-      uint32_t column_family_id,
-      const rocksdb::Slice& key) override;
-
-  virtual CHECKED_STATUS SingleDeleteCF(
-      uint32_t column_family_id,
-      const rocksdb::Slice& key) override;
-
-  virtual CHECKED_STATUS MergeCF(
-      uint32_t column_family_id,
-      const rocksdb::Slice& key,
-      const rocksdb::Slice& value) override;
-
-  CHECKED_STATUS Frontiers(const rocksdb::UserFrontiers& range) override;
+  Status Frontiers(const rocksdb::UserFrontiers& range) override;
 
   std::string str() { return out_.str(); }
 

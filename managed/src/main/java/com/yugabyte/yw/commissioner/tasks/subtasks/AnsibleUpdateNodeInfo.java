@@ -11,6 +11,7 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Strings;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
@@ -40,16 +41,24 @@ public class AnsibleUpdateNodeInfo extends NodeTaskBase {
   public void run() {
     // Create the process to fetch information about the node from the cloud provider.
     ShellResponse response =
-        getNodeManager().nodeCommand(NodeManager.NodeCommandType.List, taskParams());
-    processShellResponse(response);
-
-    // TODO: log output stream somewhere.
+        getNodeManager()
+            .nodeCommand(NodeManager.NodeCommandType.List, taskParams())
+            .processErrors();
 
     NodeTaskParams taskParams = taskParams();
     log.info(
-        "Updating node details for univ uuid={}, node name={}.",
+        "Updating node details for univ uuid={}, node name={} with {}.",
         taskParams.universeUUID,
-        taskParams.nodeName);
+        taskParams.nodeName,
+        response.message);
+
+    if (Strings.isNullOrEmpty(response.message)) {
+      String msg =
+          String.format(
+              "Node %s in universe %s is not found.", taskParams.nodeName, taskParams.universeUUID);
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
 
     // Parse into a json object.
     JsonNode jsonNodeTmp = Json.parse(response.message);

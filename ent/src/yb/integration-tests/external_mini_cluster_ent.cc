@@ -12,11 +12,14 @@
 
 #include "yb/integration-tests/external_mini_cluster_ent.h"
 
+#include <string>
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/server/secure.h"
 
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 using namespace std::literals;

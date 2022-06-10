@@ -1284,6 +1284,39 @@ public class TestSelect extends BaseCQLTest {
       assertEquals(4, metrics.seekCount);
     }
 
+    // Test using a partial specification of range key
+    {
+        String query =
+            "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (80, 30)";
+
+        String[] rows = {"Row[1, 80, 0, 180]",
+                        "Row[1, 80, 10, 181]",
+                        "Row[1, 80, 20, 182]",
+                        "Row[1, 80, 30, 183]",
+                        "Row[1, 80, 40, 184]",
+                        "Row[1, 80, 50, 185]",
+                        "Row[1, 80, 60, 186]",
+                        "Row[1, 80, 70, 187]",
+                        "Row[1, 80, 80, 188]",
+                        "Row[1, 80, 90, 189]",
+                        "Row[1, 30, 0, 130]",
+                        "Row[1, 30, 10, 131]",
+                        "Row[1, 30, 20, 132]",
+                        "Row[1, 30, 30, 133]",
+                        "Row[1, 30, 40, 134]",
+                        "Row[1, 30, 50, 135]",
+                        "Row[1, 30, 60, 136]",
+                        "Row[1, 30, 70, 137]",
+                        "Row[1, 30, 80, 138]",
+                        "Row[1, 30, 90, 139]"};
+        RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query,
+        rows);
+        // seeking to 2 places
+        // Seeking to DocKey(0x0a73, [1], [80, kLowest])
+        // Seeking to DocKey(0x0a73, [1], [30, kLowest])
+        assertEquals(2, metrics.seekCount);
+    }
+
     // Test ORDER BY clause with IN (reverse scan).
     {
       String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
@@ -1533,7 +1566,7 @@ public class TestSelect extends BaseCQLTest {
       // Additionally, one
       //   Seeking to DocKey([], []) per tablet.
       // Overall, 11 * 10 + 9
-      assertEquals(119, metrics.seekCount);
+      assertEquals(109, metrics.seekCount);
     }
 
     // Test ORDER BY clause (reverse scan).
@@ -1564,7 +1597,7 @@ public class TestSelect extends BaseCQLTest {
       //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "40"]), []))
       //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "30"]), []))
       //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "20"]), []))
-      assertEquals(14, metrics.seekCount);
+      assertEquals(10, metrics.seekCount);
     }
 
     {
@@ -1608,7 +1641,7 @@ public class TestSelect extends BaseCQLTest {
       //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "30"]), []))
       //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "20"]), []))
       //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "10"]), []))
-      assertEquals(34, metrics.seekCount);
+      assertEquals(28, metrics.seekCount);
     }
   }
 

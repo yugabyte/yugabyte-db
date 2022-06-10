@@ -78,7 +78,7 @@ CREATE TABLE floating_point_test (
 
 INSERT INTO floating_point_test (floatn_test, real_test, numeric_test)
 VALUES
-    (9223372036854775807, 2147483647, 5.36), 
+    (9223372036854775807, 2147483647, 5.36),
     (9223372036854775800, 2147483640, 9.99);
 ```
 
@@ -126,9 +126,9 @@ Next, let's insert a row into this table.
 INSERT INTO temporal_types (
   date_type, time_type, timestamp_type, timestampz_type, interval_type)
 VALUES
-  ('2000-06-28', '06:23:00', '2016-06-22 19:10:25-07', 
+  ('2000-06-28', '06:23:00', '2016-06-22 19:10:25-07',
    '2016-06-22 19:10:25-07', '1 year'),
-  ('2010-06-28', '12:32:12','2016-06-22 19:10:25-07', 
+  ('2010-06-28', '12:32:12','2016-06-22 19:10:25-07',
    '2016-06-22 19:10:25-07', '10 years 3 months 5 days');
 ```
 
@@ -262,13 +262,13 @@ Output:
 
 ## Enumerations - `ENUM` type
 
-YugabyteDB supports the `ENUM` type in PostgreSQL. Below is an example (adapted from [here](http://postgresguide.com/sexy/enums.html)).
+YugabyteDB supports the `ENUM` type in PostgreSQL. Below is an example (adapted from [here](http://postgresguide.com/cool/enums.html)).
 
 ### 1. Create `ENUM`
 ```sql
 CREATE TYPE e_contact_method AS ENUM (
-  'Email', 
-  'Sms', 
+  'Email',
+  'Sms',
   'Phone');
 ```
 
@@ -276,8 +276,8 @@ CREATE TYPE e_contact_method AS ENUM (
 
 To view the list of values across all `ENUM` types, run:
 ```sql
-select t.typname, e.enumlabel 
-  from pg_type t, pg_enum e 
+select t.typname, e.enumlabel
+  from pg_type t, pg_enum e
   where t.oid = e.enumtypid;
 ```
 The output should be as follows:

@@ -29,6 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/metrics.h"
 
 #include <map>
@@ -37,6 +38,7 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/jsonwriter.h"
@@ -205,14 +207,14 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                                  const MetricPrometheusOptions& opts) const {
+Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+                                          const MetricPrometheusOptions& opts) const {
   return WriteForPrometheus(writer, {""}, opts);  // Include all metrics.
 }
 
-CHECKED_STATUS MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                                  const vector<string>& requested_metrics,
-                                                  const MetricPrometheusOptions& opts) const {
+Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
+                                          const vector<string>& requested_metrics,
+                                          const MetricPrometheusOptions& opts) const {
   EntityMap entities;
   {
     std::lock_guard<simple_spinlock> l(lock_);
@@ -372,7 +374,7 @@ void StringGauge::WriteValue(JsonWriter* writer) const {
   writer->String(value());
 }
 
-CHECKED_STATUS StringGauge::WriteForPrometheus(
+Status StringGauge::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
@@ -395,6 +397,9 @@ scoped_refptr<Counter> CounterPrototype::Instantiate(
 }
 
 Counter::Counter(const CounterPrototype* proto) : Metric(proto) {
+}
+
+Counter::Counter(std::unique_ptr<CounterPrototype> proto) : Metric(std::move(proto)) {
 }
 
 int64_t Counter::value() const {
@@ -426,7 +431,7 @@ Status Counter::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS Counter::WriteForPrometheus(
+Status Counter::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {
@@ -564,7 +569,7 @@ Status Histogram::WriteAsJson(JsonWriter* writer,
   return Status::OK();
 }
 
-CHECKED_STATUS Histogram::WriteForPrometheus(
+Status Histogram::WriteForPrometheus(
     PrometheusWriter* writer, const MetricEntity::AttributeMap& attr,
     const MetricPrometheusOptions& opts) const {
   if (prototype_->level() < opts.level) {

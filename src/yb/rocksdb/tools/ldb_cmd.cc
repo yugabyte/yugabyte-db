@@ -39,15 +39,19 @@
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/writebuffer.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
+#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/port/dirent.h"
 #include "yb/rocksdb/tools/sst_dump_tool_imp.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/utilities/ttl/db_ttl_impl.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 namespace rocksdb {
 
@@ -1574,7 +1578,7 @@ void DumpWalFile(std::string wal_file, bool print_header, bool print_values,
       log_number = 0;
     }
     DBOptions db_options;
-    log::Reader reader(db_options.info_log, move(wal_file_reader), &reporter,
+    log::Reader reader(db_options.info_log, std::move(wal_file_reader), &reporter,
                        true, 0, log_number);
     string scratch;
     WriteBatch batch;
@@ -2254,7 +2258,7 @@ void DBFileDumperCommand::DoCommand() {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   for (auto& fileMetadata : metadata) {
-    std::string filename = fileMetadata.db_path + fileMetadata.name;
+    std::string filename = fileMetadata.FullName();
     std::cout << filename << " level:" << fileMetadata.level << std::endl;
     std::cout << "------------------------------" << std::endl;
     DumpSstFile(filename, false, true);

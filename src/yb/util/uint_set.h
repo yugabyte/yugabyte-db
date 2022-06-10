@@ -13,13 +13,13 @@
 #ifndef YB_UTIL_UINT_SET_H
 #define YB_UTIL_UINT_SET_H
 
-#include <unordered_set>
-
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/gutil/strings/join.h"
+
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
@@ -40,7 +40,7 @@ class UnsignedIntSet {
 
   // Set the indexes of this set in [lo, hi] to "on". It is perfectly valid to call SetRange with
   // lo = hi.
-  CHECKED_STATUS SetRange(T lo, T hi) {
+  Status SetRange(T lo, T hi) {
     SCHECK_LE(lo, hi, InvalidArgument, Format("Called SetRange with lo ($0) > hi ($1).", lo, hi));
     interval_set_ += ElementRange::closed(lo, hi);
     return Status::OK();
@@ -56,9 +56,8 @@ class UnsignedIntSet {
     return interval_set_.empty();
   }
 
-  template <class PB>
-  static Result<UnsignedIntSet<T>> FromPB(const PB& container) {
-    static_assert(std::is_same<typename PB::value_type, T>::value, "Wrong container value_type");
+  template <class Container>
+  static Result<UnsignedIntSet<T>> FromPB(const Container& container) {
     UnsignedIntSet set;
 
     auto run_length_size = container.size();
@@ -74,9 +73,9 @@ class UnsignedIntSet {
     }
 
     uint32_t prev = 0;
-    for (auto run = container.begin(); run != container.end(); run += 2) {
-      auto start = prev += *run;
-      auto finish = (prev += *(run + 1)) - 1;
+    for (auto run = container.begin(); run != container.end();) {
+      auto start = prev += *run++;
+      auto finish = (prev += *run++) - 1;
       RETURN_NOT_OK(set.SetRange(start, finish));
     }
 

@@ -17,16 +17,45 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
 
+#include "yb/docdb/docdb_fwd.h"
+
 #include "yb/master/state_with_tablets.h"
+
+#include "yb/util/async_task_util.h"
+#include "yb/util/tostring.h"
+
+DECLARE_int64(max_concurrent_restoration_rpcs);
+DECLARE_int64(max_concurrent_restoration_rpcs_per_tserver);
+
 
 namespace yb {
 namespace master {
+
+YB_DEFINE_ENUM(RestorePhase, (kInitial)(kPostSysCatalogLoad));
+YB_STRONGLY_TYPED_BOOL(IsSysCatalogRestored);
+
+struct TabletRestoreOperation {
+  TabletId tablet_id;
+  TxnSnapshotRestorationId restoration_id;
+  TxnSnapshotId snapshot_id;
+  HybridTime restore_at;
+  bool sys_catalog_restore_needed;
+  bool is_tablet_part_of_snapshot;
+  std::optional<int64_t> db_oid;
+};
+
+using TabletRestoreOperations = std::vector<TabletRestoreOperation>;
 
 class RestorationState : public StateWithTablets {
  public:
   RestorationState(
       SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
-      SnapshotState* snapshot);
+      SnapshotState* snapshot, HybridTime restore_at, IsSysCatalogRestored is_sys_catalog_restored,
+      uint64_t throttle_limit = std::numeric_limits<int>::max());
+
+  RestorationState(
+      SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
+      const SysRestorationEntryPB& entry);
 
   const TxnSnapshotRestorationId& restoration_id() const {
     return restoration_id_;
@@ -40,20 +69,87 @@ class RestorationState : public StateWithTablets {
     return complete_time_;
   }
 
+  const SnapshotScheduleId& schedule_id() const {
+    return schedule_id_;
+  }
+
+  HybridTime restore_at() const {
+    return restore_at_;
+  }
+
+  int64_t version() const {
+    return version_;
+  }
+
   void set_complete_time(HybridTime value) {
     complete_time_ = value;
   }
 
-  CHECKED_STATUS ToPB(RestorationInfoPB* out);
+  void SetSysCatalogRestored(IsSysCatalogRestored is_sys_catalog_restored) {
+    is_sys_catalog_restored_ = is_sys_catalog_restored;
+  }
 
-  TabletInfos PrepareOperations();
+  void SetLeaderTerm(int64_t leader_term) {
+    leader_term_ = leader_term;
+  }
+
+  int64_t GetLeaderTerm() {
+    return leader_term_;
+  }
+
+  IsSysCatalogRestored IsSysCatalogRestorationDone() {
+    return is_sys_catalog_restored_;
+  }
+
+  AsyncTaskThrottler& Throttler() {
+    return throttler_;
+  }
+
+  const std::unordered_map<std::string, SysRowEntryType>& MasterMetadata() {
+    return master_metadata_;
+  }
+
+  std::unordered_map<std::string, SysRowEntryType>* MutableMasterMetadata() {
+    return &master_metadata_;
+  }
+
+  bool ShouldUpdate(const RestorationState& other) const {
+    // Backward compatibility mode
+    int64_t other_version = other.version() == 0 ? version() + 1 : other.version();
+    // If we have several updates for single restore, they are loaded in chronological order.
+    // So latest update should be picked.
+    return version() < other_version;
+  }
+
+  std::string ToString() const {
+    return YB_CLASS_TO_STRING(restoration_id, snapshot_id);
+  }
+
+  Status ToPB(RestorationInfoPB* out);
+
+  void PrepareOperations(
+      TabletRestoreOperations* operations, const std::unordered_set<TabletId>& snapshot_tablets,
+      std::optional<int64_t> db_oid);
+
+  Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch);
+
+  Status StoreToKeyValuePair(docdb::KeyValuePairPB* pair);
 
  private:
   bool IsTerminalFailure(const Status& status) override;
 
+  Status ToEntryPB(SysRestorationEntryPB* out);
+
   const TxnSnapshotRestorationId restoration_id_;
-  const TxnSnapshotId snapshot_id_;
+  TxnSnapshotId snapshot_id_ = TxnSnapshotId::Nil();
+  SnapshotScheduleId schedule_id_ = SnapshotScheduleId::Nil();
   HybridTime complete_time_;
+  IsSysCatalogRestored is_sys_catalog_restored_;
+  HybridTime restore_at_;
+  AsyncTaskThrottler throttler_;
+  int64_t version_;
+  int64_t leader_term_ = -1; // Set only after the leader has loaded sys catalog.
+  std::unordered_map<std::string, SysRowEntryType> master_metadata_;
 };
 
 } // namespace master

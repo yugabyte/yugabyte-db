@@ -13,14 +13,37 @@
 
 package org.yb.cdc;
 
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.YBTable;
 
 public class LogClient implements OutputClient {
-  private static final Logger LOG = Logger.getLogger(LogClient.class);
+  long inserts = 0;
+  long updates = 0;
+  long deletes = 0;
+  long writes = 0;
+  long snapshotRecords = 0;
+
+  private static final Logger LOG = LoggerFactory.getLogger(LogClient.class);
 
   @Override
-  public void applyChange(YBTable table, CdcService.CDCRecordPB changeRecord) throws Exception {
+  public void applyChange(YBTable table, CdcService.CDCSDKProtoRecordPB changeRecord) {
     LOG.info(changeRecord.toString());
+    switch (changeRecord.getRowMessage().getOp()) {
+      case INSERT:
+        ++inserts;
+        break;
+      case UPDATE:
+        ++updates;
+        break;
+      case DELETE:
+        ++deletes;
+        break;
+      case READ:
+        ++snapshotRecords;
+        break;
+    }
+    LOG.info(String.format("Inserts: %d, Updates: %d, Deletes: %d, Snapshot Records: %d",
+        inserts, updates, deletes, snapshotRecords));
   }
 }

@@ -36,14 +36,14 @@
 
 #ifndef NDEBUG
 #include <utility>
-#endif // NDEBUG
 
-#ifndef NDEBUG
 #include "yb/gutil/walltime.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/thread.h"
 #endif // NDEBUG
+
+#include "yb/util/thread_restrictions.h"
 
 namespace yb {
 
@@ -122,7 +122,17 @@ bool RWCLock::HasWriteLock() const {
 #endif
 }
 
+void RWCLock::WriteLockThreadChanged() {
+#ifndef NDEBUG
+  MutexLock l(lock_);
+  DCHECK(write_locked_);
+  last_writer_tid_ = Thread::CurrentThreadId();
+#endif
+}
+
 void RWCLock::WriteLock() {
+  ThreadRestrictions::AssertWaitAllowed();
+
   MutexLock l(lock_);
   // Wait for any other mutations to finish.
 #ifndef NDEBUG
@@ -152,6 +162,8 @@ void RWCLock::WriteLock() {
 }
 
 void RWCLock::WriteUnlock() {
+  ThreadRestrictions::AssertWaitAllowed();
+
   MutexLock l(lock_);
   DCHECK(write_locked_);
   write_locked_ = false;

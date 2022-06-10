@@ -23,6 +23,7 @@
 
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/env.h"
+#include <glog/logging.h>
 
 namespace rocksdb {
 

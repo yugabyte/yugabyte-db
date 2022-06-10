@@ -13,28 +13,31 @@
 
 #include <sstream>
 #include <string>
+
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/error.h"
 #include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tools/data_gen_util.h"
+
 #include "yb/util/file_system.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
-
 
 using namespace std::literals;
 
@@ -101,7 +104,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 
  protected:
 
-  CHECKED_STATUS WriteData() {
+  Status WriteData() {
     auto session = client_->NewSession();
     session->SetTimeout(5s);
 
@@ -110,7 +113,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
     GenerateDataForRow(table_->schema(), 17 /* record_id */, &random_, req);
 
     session->Apply(insert);
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     return Status::OK();
   }
 
@@ -132,7 +135,7 @@ class RocksDbDumpTest : public YBMiniClusterTestBase<MiniCluster> {
 TEST_F(RocksDbDumpTest, VerifySingleKeyIsFound) {
   string output;
   ASSERT_OK(WriteData());
-  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAll));
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync, tablet::FlushFlags::kAllDbs));
   string db_path = ASSERT_RESULT(GetTabletDbPath());
 
   string output_path = strings::Substitute(

@@ -14,10 +14,21 @@
 #ifndef YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_
 #define YB_UTIL_MEMORY_TRACKED_SHARED_PTR_H_
 
+#include <stdint.h>
+
+#include <atomic>
+#include <functional>
 #include <memory>
+#include <type_traits>
+
+#include <gflags/gflags_declare.h>
+
+#include "yb/gutil/integral_types.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/locks.h"
+#include "yb/util/math_util.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/thread.h"
 
 namespace yb {

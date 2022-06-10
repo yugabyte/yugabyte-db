@@ -14,21 +14,23 @@
 #include "yb/rpc/compressed_stream.h"
 
 #include <lz4.h>
-
-#include <snappy.h>
 #include <snappy-sinksource.h>
-
+#include <snappy.h>
 #include <zlib.h>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/range/iterator_range.hpp>
+
+#include "yb/gutil/casts.h"
 
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
 
 #include "yb/util/logging.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -47,10 +49,10 @@ class Compressor {
   virtual std::string ToString() const = 0;
 
   // Initialize compressor, required since we don't use exceptions to return error from ctor.
-  virtual CHECKED_STATUS Init() = 0;
+  virtual Status Init() = 0;
 
   // Compress specified vector of input buffers into single output buffer.
-  virtual CHECKED_STATUS Compress(
+  virtual Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) = 0;
 
   // Decompress specified input slice to specified output buffer.
@@ -152,7 +154,7 @@ class ZlibCompressor : public Compressor {
     return GetConnectionHeader<ZlibCompressor>();
   }
 
-  CHECKED_STATUS Init() override {
+  Status Init() override {
     memset(&deflate_stream_, 0, sizeof(deflate_stream_));
     int res = deflateInit(&deflate_stream_, /* level= */ Z_DEFAULT_COMPRESSION);
     if (res != Z_OK) {
@@ -174,7 +176,7 @@ class ZlibCompressor : public Compressor {
     return "Zlib";
   }
 
-  CHECKED_STATUS Compress(
+  Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
     RefCntBuffer output(deflateBound(&deflate_stream_, TotalLen(input)));
     deflate_stream_.avail_out = static_cast<unsigned int>(output.size());
@@ -215,9 +217,9 @@ class ZlibCompressor : public Compressor {
     return DecompressBySlices(
         inp, out, [this](Slice* input, void* out, size_t outlen) -> Result<size_t> {
       inflate_stream_.next_in = const_cast<Bytef*>(pointer_cast<const Bytef*>(input->data()));
-      inflate_stream_.avail_in = input->size();
+      inflate_stream_.avail_in = narrow_cast<uInt>(input->size());
       inflate_stream_.next_out = static_cast<Bytef*>(out);
-      inflate_stream_.avail_out = outlen;
+      inflate_stream_.avail_out = narrow_cast<uInt>(outlen);
 
       int res = inflate(&inflate_stream_, Z_NO_FLUSH);
       if (res != Z_OK && res != Z_BUF_ERROR) {
@@ -355,7 +357,7 @@ static size_t FindMaxChunkSize(size_t header_len, const F& max_compressed_len) {
   size_t r = max_value;
   while (r > l) {
     size_t m = (l + r + 1) / 2;
-    if (max_compressed_len(m) > max_value) {
+    if (implicit_cast<size_t>(max_compressed_len(narrow_cast<int>(m))) > max_value) {
       r = m - 1;
     } else {
       l = m;
@@ -387,7 +389,7 @@ class SnappyCompressor : public Compressor {
     return GetConnectionHeader<SnappyCompressor>();
   }
 
-  CHECKED_STATUS Init() override {
+  Status Init() override {
     return Status::OK();
   }
 
@@ -395,7 +397,7 @@ class SnappyCompressor : public Compressor {
     return "Snappy";
   }
 
-  CHECKED_STATUS Compress(
+  Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
     RangeSource<SmallRefCntBuffers::const_iterator> source(input.begin(), input.end());
     auto input_size = source.Available();
@@ -593,14 +595,16 @@ class LZ4DecompressState {
   }
 
  private:
-  CHECKED_STATUS DecompressChunk(const Slice& input) {
+  Status DecompressChunk(const Slice& input) {
     int res = LZ4_decompress_safe(
-        input.cdata(), static_cast<char*>(out_it_->iov_base), input.size(), out_it_->iov_len);
+        input.cdata(), static_cast<char*>(out_it_->iov_base), narrow_cast<int>(input.size()),
+        narrow_cast<int>(out_it_->iov_len));
     if (res <= 0) {
       // Unfortunately LZ4 does not provide information whether decryption failed because
       // of wrong data or it just does not fit into output buffer.
       // Try to decode to buffer that is big enough for max possible decompressed chunk.
-      res = LZ4_decompress_safe(input.cdata(), output_buffer_, input.size(), kLZ4BufferSize);
+      res = LZ4_decompress_safe(
+          input.cdata(), output_buffer_, narrow_cast<int>(input.size()), kLZ4BufferSize);
       if (res <= 0) {
         return STATUS_FORMAT(RuntimeError, "Decompress failed: $0", res);
       }
@@ -669,7 +673,7 @@ class LZ4Compressor : public Compressor {
     return GetConnectionHeader<LZ4Compressor>();
   }
 
-  CHECKED_STATUS Init() override {
+  Status Init() override {
     return Status::OK();
   }
 
@@ -677,7 +681,7 @@ class LZ4Compressor : public Compressor {
     return "LZ4";
   }
 
-  CHECKED_STATUS Compress(
+  Status Compress(
       const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
     // Increment iterator in loop body to be able to check whether it is last iteration or not.
     for (auto input_it = input.begin(); input_it != input.end();) {
@@ -692,8 +696,9 @@ class LZ4Compressor : public Compressor {
           chunk = input_slice;
         }
         input_slice.remove_prefix(chunk.size());
-        RefCntBuffer output(kHeaderLen + LZ4_compressBound(chunk.size()));
-        int res = LZ4_compress(chunk.cdata(), output.data() + kHeaderLen, chunk.size());
+        RefCntBuffer output(kHeaderLen + LZ4_compressBound(narrow_cast<int>(chunk.size())));
+        int res = LZ4_compress(
+            chunk.cdata(), output.data() + kHeaderLen, narrow_cast<int>(chunk.size()));
         if (res <= 0) {
           return STATUS_FORMAT(RuntimeError, "LZ4 compression failed: $0", res);
         }
@@ -760,7 +765,7 @@ class CompressedRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  CHECKED_STATUS ProcessHeader() override {
+  Status ProcessHeader() override {
     constexpr int kHeaderLen = 3;
 
     auto data = stream_->ReadBuffer().AppendedVecs();
@@ -785,13 +790,13 @@ class CompressedRefiner : public StreamRefiner {
     return stream_->Established(RefinedStreamState::kDisabled);
   }
 
-  CHECKED_STATUS Send(OutboundDataPtr data) override {
+  Status Send(OutboundDataPtr data) override {
     boost::container::small_vector<RefCntBuffer, 10> input;
     data->Serialize(&input);
     return compressor_->Compress(input, stream_, std::move(data));
   }
 
-  CHECKED_STATUS Handshake() override {
+  Status Handshake() override {
     if (stream_->local_side() == LocalSide::kClient) {
       compressor_ = CreateOutboundCompressor(stream_->buffer_tracker());
       if (!compressor_) {

@@ -14,24 +14,24 @@ import {
   getUniverseStatus,
   getUniverseStatusIcon,
   hasPendingTasksForUniverse,
-  status
+  universeState
 } from '../helpers/universeHelpers';
 import {
   YBCost,
-  YBResourceCount,
   YBFormattedNumber,
-  YBLabelWithIcon
+  YBLabelWithIcon,
+  YBResourceCount
 } from '../../common/descriptors';
 import {
   getClusterProviderUUIDs,
   getProviderMetadata,
-  getUniverseNodes,
+  getUniverseNodeCount,
   isPausableUniverse
 } from '../../../utils/UniverseUtils';
 import {
-  YBUniverseItem,
+  DeleteUniverseContainer,
   ToggleUniverseStateContainer,
-  DeleteUniverseContainer
+  YBUniverseItem
 } from '../../universes';
 import {
   getFeatureState,
@@ -54,6 +54,7 @@ import ellipsisIcon from '../../common/media/more.svg';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 import './UniverseView.scss';
 import { YBLoadingCircleIcon } from '../../common/indicators';
+import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -115,10 +116,10 @@ const tableDataValueToKey = {
 
 const toggleTooltip = (view) => <Tooltip id="tooltip">Switch to {view} view.</Tooltip>;
 
-const { UNKNOWN, WARNING, ...filterStatuses } = status;
+const { UNKNOWN, WARNING, ...filterStatuses } = universeState;
 const filterStatusesArr = Object.values(filterStatuses).map((status) => ({
-  value: status.statusText,
-  label: status.statusText
+  value: status.text,
+  label: status.text
 }));
 
 const TABLE_MIN_PAGE_SIZE = 10;
@@ -224,11 +225,14 @@ export const UniverseView = (props) => {
     setActivePage(1);
   };
 
-  const formatUniverseState = (status) => {
+  const formatUniverseState = (status, row) => {
     return (
-      <div className={`universe-status-cell ${status.statusClassName}`}>
-        {getUniverseStatusIcon(status)}
-        <span>{status.statusText}</span>
+      <div className={`universe-status-cell ${status.className}`}>
+        <div>
+          {getUniverseStatusIcon(status)}
+          <span>{status.text}</span>
+        </div>
+        <UniverseAlertBadge universeUUID={row.universeUUID} listView />
       </div>
     );
   };
@@ -443,7 +447,7 @@ export const UniverseView = (props) => {
             dataSort
             sortFunc={(a, b, _) => universeSortFunction(a, b)}
             headerAlign="right"
-            tdStyle={{ whiteSpace: 'normal', paddingRight: '100px' }}
+            tdStyle={{ whiteSpace: 'normal' }}
             thStyle={{ paddingRight: '100px' }}
             columnClassName="no-border"
           >
@@ -451,7 +455,7 @@ export const UniverseView = (props) => {
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="status"
-            dataFormat={formatUniverseState}
+            dataFormat={(cell, row) => formatUniverseState(cell, row)}
             dataSort
             sortFunc={(a, b, _) => universeSortFunction(a, b)}
             tdStyle={{ whiteSpace: 'normal' }}
@@ -490,8 +494,8 @@ export const UniverseView = (props) => {
             universe,
             universePendingTasks[universe.universeUUID]
           );
-          universe.status = universeStatus.status;
-          universe.statusText = universeStatus.status.statusText;
+          universe.status = universeStatus.state;
+          universe.statusText = universeStatus.state.text;
           return universe;
         })
       : [];
@@ -522,13 +526,14 @@ export const UniverseView = (props) => {
   if (universes) {
     universes.forEach(function (universeItem) {
       if (isNonEmptyObject(universeItem.universeDetails)) {
-        numNodes += getUniverseNodes(universeItem.universeDetails.clusters);
+        numNodes += getUniverseNodeCount(universeItem.universeDetails.nodeDetailsSet);
       }
       if (isDefinedNotNull(universeItem.pricePerHour)) {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
       }
     });
   }
+
   return (
     <React.Fragment>
       <DeleteUniverseContainer

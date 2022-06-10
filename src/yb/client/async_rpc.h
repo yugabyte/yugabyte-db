@@ -14,14 +14,20 @@
 #ifndef YB_CLIENT_ASYNC_RPC_H_
 #define YB_CLIENT_ASYNC_RPC_H_
 
+#include <boost/range/iterator_range_core.hpp>
+#include <boost/version.hpp>
+
 #include "yb/client/in_flight_op.h"
 #include "yb/client/tablet_rpc.h"
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/metrics_fwd.h"
 
 namespace yb {
 namespace client {
@@ -48,6 +54,8 @@ struct AsyncRpcMetrics {
   scoped_refptr<Counter> consistent_prefix_successful_reads;
   scoped_refptr<Counter> consistent_prefix_failed_reads;
 };
+
+using InFlightOps = boost::iterator_range<std::vector<InFlightOp>::iterator>;
 
 struct AsyncRpcData {
   BatcherPtr batcher;

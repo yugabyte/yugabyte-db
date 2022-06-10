@@ -161,6 +161,9 @@ log "Removing old JSON-based test report files"
   rm -f test_results.json test_failures.json
 )
 
+activate_virtualenv
+set_pythonpath
+
 # We change YB_RUN_JAVA_TEST_METHODS_SEPARATELY in a subshell in a few places and that is OK.
 # shellcheck disable=SC2031
 export YB_RUN_JAVA_TEST_METHODS_SEPARATELY=1
@@ -172,10 +175,10 @@ if is_mac; then
   export PATH=/usr/local/bin:$PATH
 fi
 
-MAX_NUM_PARALLEL_TESTS=3
-
 # gather core dumps
 ulimit -c unlimited
+
+detect_architecture
 
 BUILD_TYPE=${BUILD_TYPE:-debug}
 build_type=$BUILD_TYPE
@@ -195,6 +198,28 @@ if [[ ${YB_DOWNLOAD_THIRDPARTY:-auto} == "auto" ]]; then
   export YB_DOWNLOAD_THIRDPARTY=1
 fi
 log "YB_DOWNLOAD_THIRDPARTY=$YB_DOWNLOAD_THIRDPARTY"
+
+# This is normally done in set_build_root, but we need to decide earlier because this is factored
+# into the decision of whether to use LTO.
+decide_whether_to_use_linuxbrew
+
+if [[ -z ${YB_LINKING_TYPE:-} ]]; then
+  if using_linuxbrew && [[ "${YB_COMPILER_TYPE}" =~ clang1[234] && "${BUILD_TYPE}" == "release" ]]
+  then
+    export YB_LINKING_TYPE=full-lto
+  else
+    export YB_LINKING_TYPE=dynamic
+  fi
+  log "Automatically decided to set YB_LINKING_TYPE to ${YB_LINKING_TYPE} based on:" \
+      "YB_COMPILER_TYPE=${YB_COMPILER_TYPE}," \
+      "BUILD_TYPE=${BUILD_TYPE}," \
+      "YB_USE_LINUXBREW=${YB_USE_LINUXBREW}," \
+      "YB_LINUXBREW_DIR=${YB_LINUXBREW_DIR:-undefined}."
+else
+  log "YB_LINKING_TYPE is already set to ${YB_LINKING_TYPE}"
+fi
+log "YB_LINKING_TYPE=${YB_LINKING_TYPE}"
+export YB_LINKING_TYPE
 
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
@@ -398,13 +423,7 @@ if [[ $BUILD_TYPE != "asan" ]]; then
   export YB_TEST_ULIMIT_CORE=unlimited
 fi
 
-# Cap the number of parallel tests to run at $MAX_NUM_PARALLEL_TESTS
 detect_num_cpus
-if [[ $YB_NUM_CPUS -gt $MAX_NUM_PARALLEL_TESTS ]]; then
-  NUM_PARALLEL_TESTS=$MAX_NUM_PARALLEL_TESTS
-else
-  NUM_PARALLEL_TESTS=$YB_NUM_CPUS
-fi
 
 declare -i EXIT_STATUS=0
 
@@ -614,6 +633,25 @@ if [[ $YB_BUILD_JAVA == "1" && $YB_SKIP_BUILD != "1" ]]; then
   log "Finished building Java code (see timing information above)"
 fi
 
+# It is important to do these LTO linking steps before building the package.
+if [[ ${YB_LINKING_TYPE} == *-lto ]]; then
+  log "Using LTO. Replacing the yb-tserver binary with an LTO-enabled one."
+  log "See below for the file size and linked shared libraries."
+  (
+    set -x
+    "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+        --build-root "$BUILD_ROOT" \
+        --file-regex "^.*/yb-tserver$" \
+        --lto-output-suffix="" \
+        "--lto-type=${YB_LINKING_TYPE%-lto}" \
+        link-whole-program
+    ls -l "$BUILD_ROOT/bin/yb-tserver"
+    ldd "$BUILD_ROOT/bin/yb-tserver"
+  )
+else
+  log "Not using LTO: YB_LINKING_TYPE=${YB_LINKING_TYPE}"
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Now that that all C++ and Java code has been built, test creating a package.
 #
@@ -743,11 +781,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
         test_conf_path="$BUILD_ROOT/test_conf.json"
         # YB_GIT_COMMIT_FOR_DETECTING_TESTS allows overriding the commit to use to detect the set
         # of tests to run. Useful when testing this script.
-        "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
-            --build-root "$BUILD_ROOT" \
-            --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
-            --output-test-config "$test_conf_path" \
-            affected
+        (
+          set -x
+          "$YB_SRC_ROOT/python/yb/dependency_graph.py" \
+              --build-root "$BUILD_ROOT" \
+              --git-commit "${YB_GIT_COMMIT_FOR_DETECTING_TESTS:-$current_git_commit}" \
+              --output-test-config "$test_conf_path" \
+              affected
+        )
         run_tests_extra_args+=( "--test_conf" "$test_conf_path" )
         unset test_conf_path
       fi
@@ -760,6 +801,14 @@ if [[ $YB_COMPILE_ONLY != "1" ]]; then
       if is_mac; then
         unset YB_MVN_LOCAL_REPO
       fi
+
+      NUM_REPETITIONS="${YB_NUM_REPETITIONS:-1}"
+      log "NUM_REPETITIONS is set to $NUM_REPETITIONS"
+      if [[ $NUM_REPETITIONS -gt 1 ]]; then
+        log "Repeating each test $NUM_REPETITIONS times"
+        run_tests_extra_args+=( "--num_repetitions" "$NUM_REPETITIONS" )
+      fi
+
       set +u  # because extra_args can be empty
       if ! run_tests_on_spark "${run_tests_extra_args[@]}"; then
         set -u

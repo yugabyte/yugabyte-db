@@ -47,7 +47,7 @@ Where
 
 - `name` is the name of the policy to be removed.
 - `table_name` is the name of the table that the policy is on.
-- `CASCADE` / `RESTRICT` don't have any effect since table policies don't have any dependencies.
+- `CASCADE` / `RESTRICT` don't have any effect because table policies don't have any dependent objects.
 
 ## Example
 

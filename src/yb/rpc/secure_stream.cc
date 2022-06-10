@@ -19,6 +19,10 @@
 
 #include <boost/tokenizer.hpp>
 
+#include "yb/encryption/encryption_util.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
 
@@ -26,7 +30,9 @@
 #include "yb/util/errno.h"
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/encryption_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/unique_lock.h"
 
 using namespace std::literals;
 
@@ -44,19 +50,29 @@ DEFINE_string(cipher_list, "",
 DEFINE_string(ciphersuites, "",
               "Define the available TLSv1.3 ciphersuites.");
 
-#define YB_RPC_SSL_TYPE_DEFINE(name) \
-  void BOOST_PP_CAT(name, Free)::operator()(name* value) const { \
-    BOOST_PP_CAT(name, _free)(value); \
-  } \
+#define YB_RPC_SSL_TYPE(name) \
+  struct BOOST_PP_CAT(name, Free) { \
+    void operator()(name* value) const { \
+      BOOST_PP_CAT(name, _free)(value); \
+    } \
+  }; \
+  typedef std::unique_ptr<name, BOOST_PP_CAT(name, Free)> BOOST_PP_CAT(name, Ptr);
 
 namespace yb {
 namespace rpc {
 
 namespace {
 
-YB_RPC_SSL_TYPE_DECLARE(BIO);
-YB_RPC_SSL_TYPE_DEFINE(BIO)
-YB_RPC_SSL_TYPE_DECLARE(SSL);
+typedef struct evp_pkey_st EVP_PKEY;
+typedef struct ssl_st SSL;
+typedef struct ssl_ctx_st SSL_CTX;
+typedef struct x509_st X509;
+
+YB_RPC_SSL_TYPE(BIO)
+YB_RPC_SSL_TYPE(EVP_PKEY)
+YB_RPC_SSL_TYPE(SSL)
+YB_RPC_SSL_TYPE(SSL_CTX)
+YB_RPC_SSL_TYPE(X509)
 
 const unsigned char kContextId[] = { 'Y', 'u', 'g', 'a', 'B', 'y', 't', 'e' };
 
@@ -65,24 +81,22 @@ std::string SSLErrorMessage(uint64_t error) {
   return message ? message : "no error";
 }
 
-#define YB_RPC_SSL_TYPE(name) YB_RPC_SSL_TYPE_DECLARE(name) YB_RPC_SSL_TYPE_DEFINE(name)
-
 #define SSL_STATUS(type, format) STATUS_FORMAT(type, format, SSLErrorMessage(ERR_get_error()))
 
 Result<BIOPtr> BIOFromSlice(const Slice& data) {
-  BIOPtr bio(BIO_new_mem_buf(data.data(), data.size()));
+  BIOPtr bio(BIO_new_mem_buf(data.data(), narrow_cast<int>(data.size())));
   if (!bio) {
     return SSL_STATUS(IOError, "Create BIO failed: $0");
   }
   return std::move(bio);
 }
 
-Result<detail::X509Ptr> X509FromSlice(const Slice& data) {
+Result<X509Ptr> X509FromSlice(const Slice& data) {
   ERR_clear_error();
 
   auto bio = VERIFY_RESULT(BIOFromSlice(data));
 
-  detail::X509Ptr cert(PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr));
+  X509Ptr cert(PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr));
   if (!cert) {
     return SSL_STATUS(IOError, "Read cert failed: $0");
   }
@@ -94,13 +108,13 @@ YB_RPC_SSL_TYPE(ASN1_INTEGER);
 YB_RPC_SSL_TYPE(RSA);
 YB_RPC_SSL_TYPE(X509_NAME);
 
-Result<detail::EVP_PKEYPtr> GeneratePrivateKey(int bits) {
+Result<EVP_PKEYPtr> GeneratePrivateKey(int bits) {
   RSAPtr rsa(RSA_generate_key(bits, 65537, nullptr, nullptr));
   if (!rsa) {
     return SSL_STATUS(InvalidArgument, "Failed to generate private key: $0");
   }
 
-  detail::EVP_PKEYPtr pkey(EVP_PKEY_new());
+  EVP_PKEYPtr pkey(EVP_PKEY_new());
   auto res = EVP_PKEY_assign_RSA(pkey.get(), rsa.release());
   if (res != 1) {
     return SSL_STATUS(InvalidArgument, "Failed to assign private key: $0");
@@ -118,7 +132,7 @@ class ExtensionConfigurator {
     X509V3_set_ctx(&ctx_, cert, cert, nullptr, nullptr, 0);
   }
 
-  CHECKED_STATUS Add(int nid, const char* value) {
+  Status Add(int nid, const char* value) {
     X509_EXTENSION *ex = X509V3_EXT_conf_nid(nullptr, &ctx_, nid, value);
     if (!ex) {
       return SSL_STATUS(InvalidArgument, "Failed to create extension: $0");
@@ -135,9 +149,9 @@ class ExtensionConfigurator {
   X509* cert_;
 };
 
-Result<detail::X509Ptr> CreateCertificate(
+Result<X509Ptr> CreateCertificate(
     EVP_PKEY* key, const std::string& common_name, EVP_PKEY* ca_pkey, X509* ca_cert) {
-  detail::X509Ptr cert(X509_new());
+  X509Ptr cert(X509_new());
   if (!cert) {
     return SSL_STATUS(IOError, "Failed to create new certificate: $0");
   }
@@ -155,7 +169,7 @@ Result<detail::X509Ptr> CreateCertificate(
   X509_NAMEPtr name(X509_NAME_new());
   auto bytes = pointer_cast<const unsigned char*>(common_name.c_str());
   if (!X509_NAME_add_entry_by_txt(
-      name.get(), "CN", MBSTRING_ASC, bytes, common_name.length(), -1, 0)) {
+      name.get(), "CN", MBSTRING_ASC, bytes, narrow_cast<int>(common_name.length()), -1, 0)) {
     return SSL_STATUS(IOError, "Failed to create subject: $0");
   }
 
@@ -239,19 +253,98 @@ int64_t ProtocolsOption() {
   return result;
 }
 
+class OpenSSLInitializer {
+ public:
+  OpenSSLInitializer() {
+    SSL_library_init();
+    SSL_load_error_strings();
+    OpenSSL_add_all_algorithms();
+    OpenSSL_add_all_ciphers();
+  }
+
+  ~OpenSSLInitializer() {
+    ERR_free_strings();
+    EVP_cleanup();
+    CRYPTO_cleanup_all_ex_data();
+    ERR_remove_thread_state(nullptr);
+    SSL_COMP_free_compression_methods();
+  }
+};
+
+YB_STRONGLY_TYPED_BOOL(UseCertificateKeyPair);
+
 } // namespace
 
-namespace detail {
-
-YB_RPC_SSL_TYPE_DEFINE(EVP_PKEY)
-YB_RPC_SSL_TYPE_DEFINE(SSL)
-YB_RPC_SSL_TYPE_DEFINE(SSL_CTX)
-YB_RPC_SSL_TYPE_DEFINE(X509)
-
+void InitOpenSSL() {
+  static OpenSSLInitializer initializer;
 }
 
-SecureContext::SecureContext() {
-  yb::InitOpenSSL();
+class SecureContext::Impl {
+ public:
+  Impl(
+      RequireClientCertificate require_client_certificate,
+      UseClientCertificate use_client_certificate,
+      const std::string& required_uid);
+
+  Impl(const Impl&) = delete;
+  void operator=(const Impl&) = delete;
+
+  Status AddCertificateAuthorityFile(const std::string& file) EXCLUDES(mutex_);
+
+  Status UseCertificates(
+      const std::string& ca_cert_file, const Slice& certificate_data,
+      const Slice& pkey_data) EXCLUDES(mutex_);
+
+  // Generates and uses temporary keys, should be used only during testing.
+  Status TEST_GenerateKeys(int bits, const std::string& common_name,
+                                   MatchingCertKeyPair matching_cert_key_pair) EXCLUDES(mutex_);
+
+  Result<SSLPtr> Create(rpc::UseCertificateKeyPair use_certificate_key_pair)
+      const EXCLUDES(mutex_);
+
+  RequireClientCertificate require_client_certificate() const {
+    return require_client_certificate_;
+  }
+
+  UseClientCertificate use_client_certificate() const {
+    return use_client_certificate_;
+  }
+
+  const std::string& required_uid() const {
+    return required_uid_;
+  }
+
+ private:
+  Status AddCertificateAuthorityFileUnlocked(const std::string& file) REQUIRES(mutex_);
+
+  Status UseCertificateKeyPair(
+      const Slice& certificate_data, const Slice& pkey_data) REQUIRES(mutex_);
+
+  Status UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKEYPtr&& pkey) REQUIRES(mutex_);
+
+  Status AddCertificateAuthority(X509* cert) REQUIRES(mutex_);
+
+  Result<SSLPtr> Create(
+      const X509Ptr& certificate, const EVP_PKEYPtr& pkey,
+      rpc::UseCertificateKeyPair use_certificate_key_pair) const REQUIRES_SHARED(mutex_);
+
+  mutable rw_spinlock mutex_;
+  SSL_CTXPtr context_ GUARDED_BY(mutex_);
+  EVP_PKEYPtr pkey_ GUARDED_BY(mutex_);
+  X509Ptr certificate_ GUARDED_BY(mutex_);
+
+  RequireClientCertificate require_client_certificate_;
+  UseClientCertificate use_client_certificate_;
+  std::string required_uid_;
+};
+
+SecureContext::Impl::Impl(
+    RequireClientCertificate require_client_certificate,
+    UseClientCertificate use_client_certificate, const std::string& required_uid):
+  require_client_certificate_(require_client_certificate),
+  use_client_certificate_(use_client_certificate), required_uid_(required_uid) {
+
+  InitOpenSSL();
 
   context_.reset(SSL_CTX_new(SSLv23_method()));
   DCHECK(context_);
@@ -281,11 +374,35 @@ SecureContext::SecureContext() {
                            << SSLErrorMessage(ERR_get_error());
 }
 
-detail::SSLPtr SecureContext::Create() const {
-  return detail::SSLPtr(SSL_new(context_.get()));
+Result<SSLPtr> SecureContext::Impl::Create(
+    rpc::UseCertificateKeyPair use_certificate_key_pair) const {
+  SharedLock<rw_spinlock> lock(mutex_);
+  return Create(certificate_, pkey_, use_certificate_key_pair);
 }
 
-Status SecureContext::AddCertificateAuthorityFile(const std::string& file) {
+Result<SSLPtr> SecureContext::Impl::Create(
+    const X509Ptr& certificate, const EVP_PKEYPtr& pkey,
+    rpc::UseCertificateKeyPair use_certificate_key_pair) const {
+  auto ssl = SSLPtr(SSL_new(context_.get()));
+  if (use_certificate_key_pair) {
+    auto res = SSL_use_certificate(ssl.get(), certificate.get());
+    if (res != 1) {
+      return SSL_STATUS(InvalidArgument, "Failed to use certificate: $0");
+    }
+    res = SSL_use_PrivateKey(ssl.get(), pkey.get());
+    if (res != 1) {
+      return SSL_STATUS(InvalidArgument, "Failed to use private key: $0");
+    }
+  }
+  return ssl;
+}
+
+Status SecureContext::Impl::AddCertificateAuthorityFile(const std::string& file) {
+  UNIQUE_LOCK(lock, mutex_);
+  return AddCertificateAuthorityFileUnlocked(file);
+}
+
+Status SecureContext::Impl::AddCertificateAuthorityFileUnlocked(const std::string& file) {
   X509_STORE* store = SSL_CTX_get_cert_store(context_.get());
   if (!store) {
     return SSL_STATUS(IllegalState, "Failed to get store: $0");
@@ -300,11 +417,7 @@ Status SecureContext::AddCertificateAuthorityFile(const std::string& file) {
   return Status::OK();
 }
 
-Status SecureContext::AddCertificateAuthority(const Slice& data) {
-  return AddCertificateAuthority(VERIFY_RESULT(X509FromSlice(data)).get());
-}
-
-Status SecureContext::AddCertificateAuthority(X509* cert) {
+Status SecureContext::Impl::AddCertificateAuthority(X509* cert) {
   X509_STORE* store = SSL_CTX_get_cert_store(context_.get());
   if (!store) {
     return SSL_STATUS(IllegalState, "Failed to get store: $0");
@@ -318,47 +431,84 @@ Status SecureContext::AddCertificateAuthority(X509* cert) {
   return Status::OK();
 }
 
-Status SecureContext::TEST_GenerateKeys(int bits, const std::string& common_name) {
-  auto ca_key = VERIFY_RESULT(GeneratePrivateKey(bits));
-  auto ca_cert = VERIFY_RESULT(CreateCertificate(ca_key.get(), "YugaByte", ca_key.get(), nullptr));
-  auto key = VERIFY_RESULT(GeneratePrivateKey(bits));
-  auto cert = VERIFY_RESULT(CreateCertificate(key.get(), common_name, ca_key.get(), ca_cert.get()));
-
-  RETURN_NOT_OK(AddCertificateAuthority(ca_cert.get()));
-  pkey_ = std::move(key);
-  certificate_ = std::move(cert);
-
-  return Status::OK();
-}
-
-Status SecureContext::UsePrivateKey(const Slice& slice) {
+Status SecureContext::Impl::UseCertificateKeyPair(
+    const Slice& certificate_data, const Slice& pkey_data) {
   ERR_clear_error();
+  auto certificate = VERIFY_RESULT(X509FromSlice(certificate_data));
 
-  auto bio = VERIFY_RESULT(BIOFromSlice(slice));
-
+  ERR_clear_error();
+  auto bio = VERIFY_RESULT(BIOFromSlice(pkey_data));
   auto pkey = PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr);
   if (!pkey) {
     return SSL_STATUS(IOError, "Failed to read private key: $0");
   }
 
-  pkey_.reset(pkey);
+  return UseCertificateKeyPair(std::move(certificate), EVP_PKEYPtr(pkey));
+}
+
+Status SecureContext::Impl::UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKEYPtr&& pkey) {
+  RETURN_NOT_OK(Create(certificate, pkey, rpc::UseCertificateKeyPair::kTrue));
+
+  certificate_ = std::move(certificate);
+  pkey_ = std::move(pkey);
+
   return Status::OK();
 }
 
-Status SecureContext::UseCertificate(const Slice& data) {
-  ERR_clear_error();
+Status SecureContext::Impl::UseCertificates(
+    const std::string& ca_cert_file, const Slice& certificate_data, const Slice& pkey_data) {
+  UNIQUE_LOCK(lock, mutex_);
 
-  certificate_ = VERIFY_RESULT(X509FromSlice(data));
+  RETURN_NOT_OK(AddCertificateAuthorityFileUnlocked(ca_cert_file));
+  RETURN_NOT_OK(UseCertificateKeyPair(certificate_data, pkey_data));
 
   return Status::OK();
 }
 
-namespace {
+Status SecureContext::Impl::TEST_GenerateKeys(int bits, const std::string& common_name,
+                                              MatchingCertKeyPair matching_cert_key_pair) {
+  auto ca_key = VERIFY_RESULT(GeneratePrivateKey(bits));
+  auto ca_cert = VERIFY_RESULT(CreateCertificate(ca_key.get(), "YugaByte", ca_key.get(), nullptr));
+  auto key = VERIFY_RESULT(GeneratePrivateKey(bits));
+  auto cert = VERIFY_RESULT(CreateCertificate(key.get(), common_name, ca_key.get(), ca_cert.get()));
+
+  if (!matching_cert_key_pair) {
+    key = VERIFY_RESULT(GeneratePrivateKey(bits));
+  }
+
+  UNIQUE_LOCK(lock, mutex_);
+  RETURN_NOT_OK(AddCertificateAuthority(ca_cert.get()));
+  RETURN_NOT_OK(UseCertificateKeyPair(std::move(cert), std::move(key)));
+
+  return Status::OK();
+}
+
+SecureContext::SecureContext(RequireClientCertificate require_client_certificate,
+                             UseClientCertificate use_client_certificate,
+                             const std::string& required_uid):
+  impl_(std::make_unique<Impl>(require_client_certificate, use_client_certificate, required_uid)) {
+}
+
+SecureContext::~SecureContext() { }
+
+Status SecureContext::AddCertificateAuthorityFile(const std::string& file) {
+  return impl_->AddCertificateAuthorityFile(file);
+}
+
+Status SecureContext::UseCertificates(
+    const std::string& ca_cert_file, const Slice& certificate_data, const Slice& pkey_data) {
+  return impl_->UseCertificates(ca_cert_file, certificate_data, pkey_data);
+}
+
+Status SecureContext::TEST_GenerateKeys(int bits, const std::string& common_name,
+                                        MatchingCertKeyPair matching_cert_key_pair) {
+  return impl_->TEST_GenerateKeys(bits, common_name, matching_cert_key_pair);
+}
 
 class SecureRefiner : public StreamRefiner {
  public:
   SecureRefiner(const SecureContext& context, const StreamCreateData& data)
-    : secure_context_(context), remote_hostname_(data.remote_hostname) {
+    : secure_context_(*context.impl_), remote_hostname_(data.remote_hostname) {
   }
 
  private:
@@ -366,11 +516,11 @@ class SecureRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  CHECKED_STATUS Handshake() override;
-  CHECKED_STATUS Init();
+  Status Handshake() override;
+  Status Init();
 
-  CHECKED_STATUS Send(OutboundDataPtr data) override;
-  CHECKED_STATUS ProcessHeader() override;
+  Status Send(OutboundDataPtr data) override;
+  Status ProcessHeader() override;
   Result<ReadBufferFull> Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
@@ -382,14 +532,14 @@ class SecureRefiner : public StreamRefiner {
   }
 
   static int VerifyCallback(int preverified, X509_STORE_CTX* store_context);
-  CHECKED_STATUS Verify(bool preverified, X509_STORE_CTX* store_context);
+  Status Verify(bool preverified, X509_STORE_CTX* store_context);
   bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
   Result<bool> WriteEncrypted(OutboundDataPtr data);
   void DecryptReceived();
 
-  CHECKED_STATUS Established(RefinedStreamState state) {
+  Status Established(RefinedStreamState state) {
     VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
                         << SSL_get_cipher_name(ssl_.get());
 
@@ -400,13 +550,13 @@ class SecureRefiner : public StreamRefiner {
     return stream_->LogPrefix();
   }
 
-  const SecureContext& secure_context_;
+  const SecureContext::Impl& secure_context_;
   const std::string remote_hostname_;
   RefinedStream* stream_ = nullptr;
   std::vector<std::string> certificate_entries_;
 
   BIOPtr bio_;
-  detail::SSLPtr ssl_;
+  SSLPtr ssl_;
   Status verification_status_;
 };
 
@@ -416,8 +566,9 @@ Status SecureRefiner::Send(OutboundDataPtr data) {
   for (const auto& buf : queue) {
     Slice slice(buf.data(), buf.size());
     for (;;) {
-      auto len = SSL_write(ssl_.get(), slice.data(), slice.size());
-      if (len == slice.size()) {
+      int slice_size = narrow_cast<int>(slice.size());
+      auto len = SSL_write(ssl_.get(), slice.data(), slice_size);
+      if (len == slice_size) {
         break;
       }
       auto error = len <= 0 ? SSL_get_error(ssl_.get(), len) : SSL_ERROR_NONE;
@@ -445,8 +596,9 @@ Result<bool> SecureRefiner::WriteEncrypted(OutboundDataPtr data) {
     return data ? STATUS(NetworkError, "No pending data during write") : Result<bool>(false);
   }
   RefCntBuffer buf(pending);
-  auto len = BIO_read(bio_.get(), buf.data(), buf.size());
-  LOG_IF_WITH_PREFIX(DFATAL, len != buf.size())
+  int buf_size = narrow_cast<int>(buf.size());
+  auto len = BIO_read(bio_.get(), buf.data(), buf_size);
+  LOG_IF_WITH_PREFIX(DFATAL, len != buf_size)
       << "BIO_read was not full: " << buf.size() << ", read: " << len;
   VLOG_WITH_PREFIX(4) << "Write encrypted: " << len << ", " << AsString(data);
   RETURN_NOT_OK(stream_->SendToLower(std::make_shared<SingleBufferOutboundData>(
@@ -484,7 +636,7 @@ Result<ReadBufferFull> SecureRefiner::Read(StreamReadBuffer* out) {
   auto iovecs = VERIFY_RESULT(out->PrepareAppend());
   auto iov_it = iovecs.begin();
   for (;;) {
-    auto len = SSL_read(ssl_.get(), iov_it->iov_base, iov_it->iov_len);
+    auto len = SSL_read(ssl_.get(), iov_it->iov_base, narrow_cast<int>(iov_it->iov_len));
 
     if (len <= 0) {
       auto error = SSL_get_error(ssl_.get(), len);
@@ -518,13 +670,13 @@ void SecureRefiner::DecryptReceived() {
   }
   size_t total = 0;
   for (const auto& iov : inp.AppendedVecs()) {
-    auto res = BIO_write(bio_.get(), iov.iov_base, iov.iov_len);
+    auto res = BIO_write(bio_.get(), iov.iov_base, narrow_cast<int>(iov.iov_len));
     VLOG_WITH_PREFIX(4) << "Decrypted: " << res << " of " << iov.iov_len;
     if (res <= 0) {
       break;
     }
     total += res;
-    if (res < iov.iov_len) {
+    if (implicit_cast<size_t>(res) < iov.iov_len) {
       break;
     }
   }
@@ -564,7 +716,7 @@ Status SecureRefiner::Handshake() {
     if (ssl_error == SSL_ERROR_WANT_WRITE || pending_after > pending_before) {
       // SSL expects that we would write to underlying transport.
       RefCntBuffer buffer(pending_after);
-      int len = BIO_read(bio_.get(), buffer.data(), buffer.size());
+      int len = BIO_read(bio_.get(), buffer.data(), narrow_cast<int>(buffer.size()));
       DCHECK_EQ(len, pending_after);
       RETURN_NOT_OK(stream_->SendToLower(
           std::make_shared<SingleBufferOutboundData>(buffer, nullptr)));
@@ -589,22 +741,12 @@ Status SecureRefiner::Init() {
     return Status::OK();
   }
 
-  ssl_ = secure_context_.Create();
+  ssl_ = VERIFY_RESULT(secure_context_.Create(UseCertificateKeyPair(
+      stream_->local_side() == LocalSide::kServer || secure_context_.use_client_certificate())));
   SSL_set_mode(ssl_.get(), SSL_MODE_ENABLE_PARTIAL_WRITE);
   SSL_set_mode(ssl_.get(), SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
   SSL_set_mode(ssl_.get(), SSL_MODE_RELEASE_BUFFERS);
   SSL_set_app_data(ssl_.get(), this);
-
-  if (stream_->local_side() == LocalSide::kServer || secure_context_.use_client_certificate()) {
-    auto res = SSL_use_PrivateKey(ssl_.get(), secure_context_.private_key());
-    if (res != 1) {
-      return SSL_STATUS(InvalidArgument, "Failed to use private key: $0");
-    }
-    res = SSL_use_certificate(ssl_.get(), secure_context_.certificate());
-    if (res != 1) {
-      return SSL_STATUS(InvalidArgument, "Failed to use certificate: $0");
-    }
-  }
 
   BIO* int_bio = nullptr;
   BIO* temp_bio = nullptr;
@@ -886,8 +1028,6 @@ Status SecureRefiner::Verify(bool preverified, X509_STORE_CTX* store_context) {
 
   return Status::OK();
 }
-
-} // namespace
 
 const Protocol* SecureStreamProtocol() {
   static Protocol result("tcps");

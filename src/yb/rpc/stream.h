@@ -16,10 +16,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/net/net_fwd.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
 
 namespace ev {
 
@@ -96,7 +94,7 @@ class Stream {
   Stream(const Stream&) = delete;
   void operator=(const Stream&) = delete;
 
-  virtual CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
+  virtual Status Start(bool connect, ev::loop_ref* loop, StreamContext* context) = 0;
   virtual void Close() = 0;
   virtual void Shutdown(const Status& status) = 0;
 
@@ -105,10 +103,10 @@ class Stream {
   // For instance when unsent call times out.
   virtual Result<size_t> Send(OutboundDataPtr data) = 0;
 
-  virtual CHECKED_STATUS TryWrite() = 0;
+  virtual Status TryWrite() = 0;
   virtual void ParseReceived() = 0;
   virtual size_t GetPendingWriteBytes() = 0;
-  virtual void Cancelled(size_t handle) = 0;
+  virtual bool Cancelled(size_t handle) = 0;
 
   virtual bool Idle(std::string* reason_not_idle) = 0;
   virtual bool IsConnected() = 0;
@@ -120,9 +118,7 @@ class Stream {
   // The address of the local end of the connection.
   virtual const Endpoint& Local() const = 0;
 
-  virtual std::string ToString() const {
-    return Format("{ local: $0 remote: $1 }", Local(), Remote());
-  }
+  virtual std::string ToString() const;
 
   const std::string& LogPrefix() {
     if (log_prefix_.empty()) {
@@ -147,7 +143,7 @@ struct StreamCreateData {
   Endpoint remote;
   const std::string& remote_hostname;
   Socket* socket;
-  int32_t receive_buffer_size;
+  size_t receive_buffer_size;
   std::shared_ptr<MemTracker> mem_tracker;
   scoped_refptr<MetricEntity> metric_entity;
 };

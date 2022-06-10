@@ -14,14 +14,24 @@
 #ifndef YB_DOCDB_DOC_PATH_H_
 #define YB_DOCDB_DOC_PATH_H_
 
+#include <stdint.h>
+
+#include <cstring>
+#include <functional>
 #include <ostream>
 #include <string>
+#include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/key_bytes.h"
+
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/string_util.h"
 
 namespace yb {
@@ -35,45 +45,37 @@ namespace docdb {
 class DocPath {
  public:
   template<class... T>
-  DocPath(const KeyBytes& encoded_doc_key, T... subkeys) {
+  DocPath(const KeyBytes& encoded_doc_key, T&&... subkeys)
+      : subkeys_{std::forward<T>(subkeys)...} {
     encoded_doc_key_ = encoded_doc_key;
-    AppendPrimitiveValues(&subkeys_, subkeys...);
   }
 
   template<class... T>
-  DocPath(const Slice& encoded_doc_key, T... subkeys)
-      : encoded_doc_key_(encoded_doc_key) {
-    AppendPrimitiveValues(&subkeys_, subkeys...);
+  DocPath(const Slice& encoded_doc_key, T&&... subkeys)
+      : encoded_doc_key_(encoded_doc_key), subkeys_{std::forward<T>(subkeys)...} {
   }
 
-  DocPath(const KeyBytes& encoded_doc_key, const vector<PrimitiveValue>& subkeys)
+  DocPath(const KeyBytes& encoded_doc_key, const vector<KeyEntryValue>& subkeys)
       : encoded_doc_key_(encoded_doc_key),
         subkeys_(subkeys) {
   }
 
   const KeyBytes& encoded_doc_key() const { return encoded_doc_key_; }
 
-  int num_subkeys() const { return subkeys_.size(); }
+  size_t num_subkeys() const { return subkeys_.size(); }
 
-  const PrimitiveValue& subkey(int i) const {
-    assert(0 <= i && i < num_subkeys());
+  const KeyEntryValue& subkey(size_t i) const {
+    assert(i < num_subkeys());
     return subkeys_[i];
   }
 
-  std::string ToString() const {
-    return strings::Substitute("DocPath($0, $1)",
-        BestEffortDocDBKeyToStr(encoded_doc_key_), rocksdb::VectorToString(subkeys_));
-  }
+  std::string ToString() const;
 
-  void AddSubKey(const PrimitiveValue& subkey) {
-    subkeys_.emplace_back(subkey);
-  }
+  void AddSubKey(const KeyEntryValue& subkey);
 
-  void AddSubKey(PrimitiveValue&& subkey) {
-    subkeys_.emplace_back(std::move(subkey));
-  }
+  void AddSubKey(KeyEntryValue&& subkey);
 
-  const PrimitiveValue& last_subkey() const {
+  const KeyEntryValue& last_subkey() const {
     assert(!subkeys_.empty());
     return subkeys_.back();
   }
@@ -81,15 +83,9 @@ class DocPath {
   // Note: the hash is supposed to be uint16_t, but protobuf only supports uint32.
   // So this function takes in uint32_t.
   // TODO (akashnil): Add uint16 data type in docdb.
-  static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "") {
-    DocPath doc_path = DocPath(DocKey::FromRedisKey(hash, key).Encode());
-    if (!subkey.empty()) {
-      doc_path.AddSubKey(PrimitiveValue(subkey));
-    }
-    return doc_path;
-  }
+  static DocPath DocPathFromRedisKey(uint16_t hash, const string& key, const string& subkey = "");
 
-  const std::vector<PrimitiveValue>& subkeys() const {
+  const std::vector<KeyEntryValue>& subkeys() const {
     return subkeys_;
   }
 
@@ -99,7 +95,7 @@ class DocPath {
   // TODO(mikhail): should this really be encoded?
   KeyBytes encoded_doc_key_;
 
-  std::vector<PrimitiveValue> subkeys_;
+  std::vector<KeyEntryValue> subkeys_;
 };
 
 inline std::ostream& operator << (std::ostream& out, const DocPath& doc_path) {

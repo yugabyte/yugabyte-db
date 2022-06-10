@@ -13,18 +13,19 @@
 
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
+
+#include "yb/integration-tests/cql_test_util.h"
+#include "yb/integration-tests/external_mini_cluster_ent.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
 
-
-#include "yb/util/size_literals.h"
+#include "yb/util/file_util.h"
 #include "yb/util/env_util.h"
+#include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
-
-
-#include "yb/integration-tests/cql_test_util.h"
-#include "yb/integration-tests/external_mini_cluster_ent.h"
+#include "yb/util/tostring.h"
 
 DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
@@ -63,12 +64,73 @@ class ExternalMiniClusterSecureTest :
     MiniClusterTestWithClient::DoTearDown();
   }
 
-  CHECKED_STATUS CreateClient() override {
+  Status CreateClient() override {
     return cluster_->CreateClient(messenger_.get()).MoveTo(&client_);
+  }
+
+  Status CallYBAdmin(const std::string& client_node, const std::string& what) {
+    auto command = ToStringVector(
+        GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+        "-certs_dir_name", ToolCertDirectory(), "-timeout_ms", "5000",
+        strings::Substitute("-client_node_name=$0", client_node), what);
+    LOG(INFO) << "Running " << ToString(command);
+    return Subprocess::Call(command);
+  }
+
+  Status CallYBTSCli(const std::string& client_node, const std::string& what,
+                             const HostPort& server) {
+    auto command = yb::ToStringVector(
+        GetToolPath("yb-ts-cli"), "-server_address", server,
+        "-certs_dir_name", ToolCertDirectory(),
+        strings::Substitute("-client_node_name=$0", client_node), what);
+    LOG(INFO) << "Running " << ToString(command);
+    return Subprocess::Call(command);
+  }
+
+  Status CallYBTSCliAllServers(const std::string& client_node, const std::string& what) {
+    for (size_t i = 0; i < cluster_->num_masters(); ++i) {
+      RETURN_NOT_OK(CallYBTSCli(client_node, what, cluster_->master(i)->bound_rpc_addr()));
+    }
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      RETURN_NOT_OK(CallYBTSCli(client_node, what, cluster_->tablet_server(i)->bound_rpc_addr()));
+    }
+    return Status::OK();
+  }
+
+  virtual std::string ToolCertDirectory() {
+    return FLAGS_certs_dir;
+  }
+
+
+  Result<CassandraSession> EstablishCqlSession(std::initializer_list<std::string> ca_cert_files) {
+    std::vector<std::string> hosts;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      hosts.push_back(cluster_->tablet_server(i)->bind_host());
+    }
+
+    auto cql_port = cluster_->tablet_server(0)->cql_rpc_port();
+    LOG(INFO) << "CQL port: " << cql_port;
+    driver_ = std::make_unique<CppCassandraDriver>(
+        hosts, cql_port, UsePartitionAwareRouting::kTrue);
+
+    std::vector<std::string> ca_certs;
+    ca_certs.reserve(ca_cert_files.size());
+    for (const auto& ca_cert_file : ca_cert_files) {
+      faststring cert_data;
+      RETURN_NOT_OK(ReadFileToString(Env::Default(), ca_cert_file, &cert_data));
+      ca_certs.push_back(cert_data.ToString());
+    }
+
+    if (!ca_certs.empty()) {
+      driver_->EnableTLS(ca_certs);
+    }
+
+    return EstablishSession(driver_.get());
   }
 
   std::unique_ptr<rpc::SecureContext> secure_context_;
   std::unique_ptr<rpc::Messenger> messenger_;
+  std::unique_ptr<CppCassandraDriver> driver_;
   client::TableHandle table_;
 };
 
@@ -104,17 +166,7 @@ class ExternalMiniClusterSecureAllowInsecureTest : public ExternalMiniClusterSec
 // So we are checking disabled mode of RefinedStream.
 // For this test with allow insecure (i.e. not encrypted) connections.
 TEST_F_EX(ExternalMiniClusterSecureTest, InsecureCql, ExternalMiniClusterSecureAllowInsecureTest) {
-  std::vector<std::string> hosts;
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
-    hosts.push_back(cluster_->tablet_server(i)->bind_host());
-  }
-
-  auto cql_port = cluster_->tablet_server(0)->cql_rpc_port();
-  LOG(INFO) << "CQL port: " << cql_port;
-  auto driver = std::make_unique<CppCassandraDriver>(
-      hosts, cql_port, UsePartitionAwareRouting::kTrue);
-
-  auto session = ASSERT_RESULT(EstablishSession(driver.get()));
+  auto session = ASSERT_RESULT(EstablishCqlSession({}));
   ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t (k, v) VALUES (1, 2)"));
   auto content = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
@@ -129,18 +181,94 @@ class ExternalMiniClusterSecureWithClientCertsTest : public ExternalMiniClusterS
 };
 
 TEST_F_EX(ExternalMiniClusterSecureTest, YbAdmin, ExternalMiniClusterSecureWithClientCertsTest) {
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      GetToolPath("yb-admin"), "--master_addresses", cluster_->GetMasterAddresses(),
-      "--certs_dir_name", GetToolPath("../ent/test_certs"),
-      "--client_node_name=127.0.0.100", "list_tables")));
+  ASSERT_OK(CallYBAdmin("127.0.0.100", "list_tables"));
 }
 
 TEST_F_EX(ExternalMiniClusterSecureTest, YbTsCli, ExternalMiniClusterSecureWithClientCertsTest) {
-  ASSERT_OK(Subprocess::Call(ToStringVector(
-      GetToolPath("yb-ts-cli"),
-      "--server_address", cluster_->tablet_server(0)->bound_rpc_addr(),
-      "--certs_dir_name", GetToolPath("../ent/test_certs"),
-      "--client_node_name=127.0.0.100", "list_tablets")));
+  ASSERT_OK(CallYBTSCli("127.0.0.100", "list_tablets",
+                        cluster_->tablet_server(0)->bound_rpc_addr()));
+}
+
+class ExternalMiniClusterSecureReloadTest : public ExternalMiniClusterSecureTest {
+ public:
+  void SetUpFlags() override {
+    FLAGS_certs_dir = JoinPathSegments(GetTestDataDirectory(), "certs");
+
+    const auto sub_dir = JoinPathSegments("ent", "test_certs");
+    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
+                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+
+    LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
+  }
+
+  void SetupCql() {
+    const auto sub_dir = JoinPathSegments("ent", "test_certs");
+    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    auto session = ASSERT_RESULT(EstablishCqlSession({JoinPathSegments(src_certs_dir, "ca.crt")}));
+    ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (k INT PRIMARY KEY, v INT)"));
+    ASSERT_OK(session.ExecuteQuery("INSERT INTO t (k, v) VALUES (1, 2)"));
+  }
+
+  void TestCql(const std::string& ca_file) {
+    const auto sub_dir = JoinPathSegments("ent", "test_certs");
+    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    auto session = ASSERT_RESULT(EstablishCqlSession({JoinPathSegments(src_certs_dir, ca_file)}));
+    auto content = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+    ASSERT_EQ(content, "1,2");
+  }
+
+  virtual std::string ToolCertDirectory() override {
+    const auto sub_dir = JoinPathSegments("ent", "test_certs");
+    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    if (!use_ca2_) {
+      return src_certs_dir;
+    } else {
+      return JoinPathSegments(src_certs_dir, "CA2");
+    }
+  }
+
+  void ReplaceYBCertificates() {
+    const auto sub_dir = JoinPathSegments("ent", "test_certs", "CA2");
+    const auto src_certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    ASSERT_OK(CopyDirectory(Env::Default(), src_certs_dir, FLAGS_certs_dir,
+                            UseHardLinks::kFalse, CreateIfMissing::kTrue, RecursiveCopy::kFalse));
+    LOG(INFO) << "Copied certs from " << src_certs_dir << " to " << FLAGS_certs_dir;
+
+    const auto combined_cert_file = JoinPathSegments(src_certs_dir, "combinedCA.crt");
+    const auto test_cert_file = JoinPathSegments(FLAGS_certs_dir, "ca.crt");
+    ASSERT_OK(CopyFile(Env::Default(), combined_cert_file, test_cert_file));
+    LOG(INFO) << "Replaced " << test_cert_file << " with " << combined_cert_file;
+  }
+
+  void ReplaceToolCertificates() {
+    use_ca2_ = true;
+  }
+
+  bool use_ca2_ = false;
+};
+
+TEST_F_EX(ExternalMiniClusterSecureTest, ReloadCertificates, ExternalMiniClusterSecureReloadTest) {
+  SetupCql();
+  TestCql("ca.crt");
+
+  // Certificates haven't changed, this should do nothing.
+  ASSERT_OK(CallYBTSCliAllServers("127.0.0.100", "reload_certificates"));
+  TestCql("ca.crt");
+
+  // Update certificates to add a new CA + use node certificate signed with new CA.
+  ReplaceYBCertificates();
+  ASSERT_OK(CallYBTSCliAllServers("127.0.0.100", "reload_certificates"));
+  TestCql(JoinPathSegments("CA2", "ca.crt"));
+
+  // yb-admin/yb-ts-cli do not have new CA registered, so this now fails.
+  ASSERT_NOK(CallYBTSCliAllServers("127.0.0.100", "reload_certificates"));
+  TestCql(JoinPathSegments("CA2", "ca.crt"));
+
+  // This should do nothing, but succeed, even without old CA.
+  ReplaceToolCertificates();
+  ASSERT_OK(CallYBTSCliAllServers("127.0.0.100", "reload_certificates"));
+  TestCql(JoinPathSegments("CA2", "ca.crt"));
 }
 
 } // namespace yb

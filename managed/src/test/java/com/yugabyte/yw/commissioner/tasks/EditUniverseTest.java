@@ -7,6 +7,8 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -15,6 +17,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -24,27 +27,112 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.util.ServerInfo;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditUniverseTest extends UniverseModifyBaseTest {
+
+  private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.SetNodeStatus, // ToBeAdded to Adding
+          TaskType.AnsibleCreateServer,
+          TaskType.AnsibleUpdateNodeInfo,
+          TaskType.AnsibleSetupServer,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.SetNodeStatus,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.UpdatePlacementInfo,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForLoadBalance,
+          TaskType.ChangeMasterConfig, // Add
+          TaskType.ChangeMasterConfig, // Remove
+          TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers, // Tservers
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleConfigureServers, // Masters
+          TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
+          TaskType.UniverseUpdateSucceeded);
+
+  private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM =
+      ImmutableList.of(
+          TaskType.PreflightNodeCheck,
+          TaskType.SetNodeStatus, // ToBeAdded to Adding
+          TaskType.AnsibleCreateServer,
+          TaskType.AnsibleUpdateNodeInfo,
+          TaskType.AnsibleSetupServer,
+          TaskType.AnsibleConfigureServers,
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.AnsibleConfigureServers, // GFlags
+          TaskType.SetNodeStatus,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.ModifyBlackList,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForServer,
+          TaskType.SetNodeState,
+          TaskType.ModifyBlackList,
+          TaskType.UpdatePlacementInfo,
+          TaskType.SwamperTargetsFileUpdate,
+          TaskType.WaitForLoadBalance,
+          TaskType.ChangeMasterConfig, // Add
+          TaskType.ChangeMasterConfig, // Remove
+          TaskType.AnsibleClusterServerCtl, // Stop master
+          TaskType.WaitForMasterLeader,
+          TaskType.UpdateNodeProcess,
+          TaskType.AnsibleConfigureServers, // Tservers
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleConfigureServers, // Masters
+          TaskType.SetFlagInMemory,
+          TaskType.ModifyBlackList,
+          TaskType.WaitForTServerHeartBeats,
+          TaskType.UniverseUpdateSucceeded);
+
+  private void assertTaskSequence(
+      List<TaskType> sequence, Map<Integer, List<TaskInfo>> subTasksByPosition) {
+    int position = 0;
+    assertEquals(sequence.size(), subTasksByPosition.size());
+    for (TaskType taskType : sequence) {
+      List<TaskInfo> tasks = subTasksByPosition.get(position);
+      assertTrue(tasks.size() > 0);
+      assertEquals(taskType, tasks.get(0).getTaskType());
+      position++;
+    }
+  }
 
   @Override
   @Before
   public void setUp() {
     super.setUp();
 
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder().setVersion(1);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder().setVersion(1);
     GetMasterClusterConfigResponse mockConfigResponse =
         new GetMasterClusterConfigResponse(1111, "", configBuilder.build(), null);
     ChangeMasterClusterConfigResponse mockMasterChangeConfigResponse =
@@ -54,14 +142,20 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     when(mockListTabletServersResponse.getTabletServersCount()).thenReturn(10);
 
     try {
+      when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
-      when(mockClient.changeMasterConfig(anyString(), anyInt(), anyBoolean(), anyBoolean()))
+      when(mockClient.changeMasterConfig(
+              anyString(), anyInt(), anyBoolean(), anyBoolean(), anyString()))
           .thenReturn(mockChangeConfigResponse);
       when(mockClient.setFlag(any(), anyString(), anyString(), anyBoolean()))
           .thenReturn(Boolean.TRUE);
       when(mockClient.listTabletServers()).thenReturn(mockListTabletServersResponse);
+      ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
     } catch (Exception e) {
+      fail();
     }
     mockWaits(mockClient);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -86,6 +180,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE, subTasksByPosition);
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
@@ -100,6 +198,10 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM, subTasksByPosition);
     universe = Universe.getOrBadRequest(universe.universeUUID);
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }

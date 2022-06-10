@@ -16,19 +16,19 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/quick-start/build-apps/go/ysql-pq" class="nav-link">
+    <a href="/preview/quick-start/build-apps/go/ysql-pq" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
     </a>
   </li>
   <li >
-    <a href="/latest/quick-start/build-apps/go/ysql-gorm" class="nav-link active">
+    <a href="/preview/quick-start/build-apps/go/ysql-gorm" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - GORM
     </a>
   </li>
   <li>
-    <a href="/latest/quick-start/build-apps/go/ycql" class="nav-link">
+    <a href="/preview/quick-start/build-apps/go/ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -218,7 +218,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -242,7 +242,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -280,7 +280,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

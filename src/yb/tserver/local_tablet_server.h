@@ -14,7 +14,11 @@
 #ifndef YB_TSERVER_LOCAL_TABLET_SERVER_H
 #define YB_TSERVER_LOCAL_TABLET_SERVER_H
 
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/tserver/tserver_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tserver {
@@ -24,7 +28,7 @@ class LocalTabletServer {
   LocalTabletServer() = default;
   virtual ~LocalTabletServer() = default;
 
-  virtual CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
+  virtual Status GetTabletStatus(const GetTabletStatusRequestPB* req,
                                          GetTabletStatusResponsePB* resp) const = 0;
 
   virtual bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const = 0;

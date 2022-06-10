@@ -16,11 +16,16 @@
 #ifndef YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 #define YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 
-#include "yb/tserver/tserver_service.pb.h"
+#include <condition_variable>
+
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/tablet/operation_filter.h"
-
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
 
 namespace yb {
 namespace tablet {
@@ -31,30 +36,30 @@ class TabletSplitter;
 // Keeps track of the Operation states (request, result, ...).
 // Executes the SplitTablet operation.
 class SplitOperation
-    : public OperationBase<OperationType::kSplit, tserver::SplitTabletRequestPB>,
+    : public OperationBase<OperationType::kSplit, SplitTabletRequestPB>,
       public OperationFilter {
  public:
   SplitOperation(
       Tablet* tablet, TabletSplitter* tablet_splitter,
-      const tserver::SplitTabletRequestPB* request = nullptr)
+      const SplitTabletRequestPB* request = nullptr)
       : OperationBase(tablet, request), tablet_splitter_(*CHECK_NOTNULL(tablet_splitter)) {}
 
   TabletSplitter& tablet_splitter() const { return tablet_splitter_; }
 
   static bool ShouldAllowOpAfterSplitTablet(consensus::OperationType op_type);
 
-  static CHECKED_STATUS RejectionStatus(
+  static Status RejectionStatus(
       OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
       const TabletId& child1, const TabletId& child2);
 
  private:
-  CHECKED_STATUS Prepare() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status Prepare() override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
   void AddedAsPending() override;
   void RemovedFromPending() override;
 
-  CHECKED_STATUS CheckOperationAllowed(
+  Status CheckOperationAllowed(
       const OpId& id, consensus::OperationType op_type) const override;
 
   TabletSplitter& tablet_splitter_;

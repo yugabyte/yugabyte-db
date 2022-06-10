@@ -25,6 +25,8 @@ import static play.test.Helpers.route;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -44,6 +46,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -60,6 +63,8 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   private static final String GET_CONFIG_INCL_INHERITED = GET_CONFIG + "?includeInherited=true";
   private static final String KEY = "/api/customers/%s/runtime_config/%s/key/%s";
   private static final String GC_CHECK_INTERVAL_KEY = "yb.taskGC.gc_check_interval";
+  private static final String EXT_SCRIPT_KEY = "yb.external_script";
+  private static final String EXT_SCRIPT_SCHEDULE_KEY = "yb.external_script.schedule";
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -88,7 +93,10 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
     assertEquals(OK, result.status());
     ImmutableSet<String> expectedKeys =
-        ImmutableSet.of("yb.taskGC.gc_check_interval", "yb.taskGC.task_retention_duration");
+        ImmutableSet.of(
+            "yb.taskGC.gc_check_interval",
+            "yb.taskGC.task_retention_duration",
+            "yb.external_script");
     Set<String> actualKeys =
         ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
             .stream()
@@ -129,20 +137,22 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
   public void key() {
     assertEquals(
         NOT_FOUND,
-        assertPlatformException(() -> getGCInterval(defaultUniverse.universeUUID)).status());
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
     String newInterval = "2 days";
-    Result result = setGCInterval(newInterval, defaultUniverse.universeUUID);
+    assertEquals(OK, setGCInterval(newInterval, defaultUniverse.universeUUID).status());
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
     Duration duration =
         runtimeConfigFactory.forUniverse(defaultUniverse).getDuration(GC_CHECK_INTERVAL_KEY);
     assertEquals(24 * 60 * 2, duration.toMinutes());
-    assertEquals(OK, result.status());
-    assertEquals(newInterval, contentAsString(getGCInterval(defaultUniverse.universeUUID)));
-    assertEquals(OK, deleteGCInterval(defaultUniverse.universeUUID).status());
+    assertEquals(
+        newInterval, contentAsString(getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY)));
+    assertEquals(OK, deleteKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY).status());
     assertEquals(
         NOT_FOUND,
-        assertPlatformException(() -> getGCInterval(defaultUniverse.universeUUID)).status());
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
@@ -154,18 +164,79 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     return route(app, request);
   }
 
-  private Result getGCInterval(UUID scopeUUID) {
-    return doRequestWithAuthToken(
-        "GET",
-        String.format(KEY, defaultCustomer.uuid, scopeUUID, GC_CHECK_INTERVAL_KEY),
-        authToken);
+  @Test
+  public void keyObj() {
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, GC_CHECK_INTERVAL_KEY))
+            .status());
+    String newInterval = "2 days";
+    String newRetention = "32 days";
+    assertEquals(
+        OK, setExtScriptObject(newInterval, newRetention, defaultUniverse.universeUUID).status());
+
+    // Now get key internal to the external script object directly (on server side)
+    RuntimeConfigFactory runtimeConfigFactory =
+        app.injector().instanceOf(RuntimeConfigFactory.class);
+    Duration duration =
+        runtimeConfigFactory.forUniverse(defaultUniverse).getDuration(EXT_SCRIPT_SCHEDULE_KEY);
+    assertEquals(24 * 60 * 2, duration.toMinutes());
+
+    // Fetching internal key through API should not work
+    assertEquals(
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, EXT_SCRIPT_SCHEDULE_KEY))
+            .status());
+
+    // Fetch whole object through the API parse it and extract the internal key
+    assertEquals(
+        newInterval,
+        ConfigFactory.parseString(
+                contentAsString(getKey(defaultUniverse.universeUUID, EXT_SCRIPT_KEY)))
+            .getString("schedule"));
+
+    assertEquals(
+        "If you set an object deleting its internal key should result in key not found",
+        NOT_FOUND,
+        assertPlatformException(
+                () -> deleteKey(defaultUniverse.universeUUID, EXT_SCRIPT_SCHEDULE_KEY))
+            .status());
+
+    assertEquals(
+        "Delete of the object key should work",
+        OK,
+        deleteKey(defaultUniverse.universeUUID, EXT_SCRIPT_KEY).status());
+
+    assertEquals(
+        "The object was deleted. So expecting NOT_FOUND status",
+        NOT_FOUND,
+        assertPlatformException(() -> getKey(defaultUniverse.universeUUID, EXT_SCRIPT_KEY))
+            .status());
   }
 
-  private Result deleteGCInterval(UUID universeUUID) {
+  private Result setExtScriptObject(String schedule, String content, UUID scopeUUID) {
+    Http.RequestBuilder request =
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, EXT_SCRIPT_KEY))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText(
+                String.format(
+                    "{"
+                        + "  schedule = %s\n"
+                        + "  params = %s\n"
+                        + "  content = \"the script\"\n"
+                        + "}",
+                    schedule, content));
+    return route(app, request);
+  }
+
+  private Result getKey(UUID scopeUUID, String key) {
     return doRequestWithAuthToken(
-        "DELETE",
-        String.format(KEY, defaultCustomer.uuid, universeUUID, GC_CHECK_INTERVAL_KEY),
-        authToken);
+        "GET", String.format(KEY, defaultCustomer.uuid, scopeUUID, key), authToken);
+  }
+
+  private Result deleteKey(UUID universeUUID, String key) {
+    return doRequestWithAuthToken(
+        "DELETE", String.format(KEY, defaultCustomer.uuid, universeUUID, key), authToken);
   }
 
   @Test
@@ -182,11 +253,42 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   @Parameters(method = "scopeAndPresetParams")
-  public void getConfig_universe_inherited(ScopeType scopeType, String presetIntervalValue) {
+  public void getConfig_universe_inherited(
+      ScopeType scopeType, String presetIntervalValue, String expectedIntervalValue) {
     UUID scopeUUID = getScopeUUIDForType(scopeType);
     if (!presetIntervalValue.isEmpty()) {
       setGCInterval(presetIntervalValue, scopeUUID);
     }
+    final String actualValue =
+        internal_getConfig_universe_inherited(
+            scopeType, presetIntervalValue, scopeUUID, GC_CHECK_INTERVAL_KEY);
+    compareToExpectedValue(expectedIntervalValue, actualValue, "1 hour");
+  }
+
+  // Same test as above except the config is set as external Script object with retention  key
+  // embeded
+  @Test
+  @Parameters(method = "scopeAndPresetParamsObj")
+  public void getConfig_universe_inherited_obj(
+      ScopeType scopeType, String presetIntervalValue, String expectedIntervalValue) {
+    UUID scopeUUID = getScopeUUIDForType(scopeType);
+    String newRetention = "32 days";
+    if (!presetIntervalValue.isEmpty()) {
+      setExtScriptObject(presetIntervalValue, newRetention, scopeUUID);
+    }
+    final String actualObjValue =
+        internal_getConfig_universe_inherited(
+            scopeType, presetIntervalValue, scopeUUID, EXT_SCRIPT_KEY);
+    final Config configObj = ConfigFactory.parseString(actualObjValue);
+    String expectedValue = null;
+    if (configObj.hasPath("schedule")) {
+      expectedValue = configObj.getValue("schedule").render();
+    }
+    compareToExpectedValue(expectedIntervalValue, expectedValue, null);
+  }
+
+  private String internal_getConfig_universe_inherited(
+      ScopeType scopeType, String presetIntervalValue, UUID scopeUUID, String checkKey) {
     Result result =
         doRequestWithAuthToken(
             "GET",
@@ -200,8 +302,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Map<String, String> configEntriesMap = new HashMap<>();
     while (configEntries.hasNext()) {
       JsonNode entry = configEntries.next();
-      if (GC_CHECK_INTERVAL_KEY.equals(entry.get("key").asText())
-          && !presetIntervalValue.isEmpty()) {
+      if (checkKey.equals(entry.get("key").asText()) && !presetIntervalValue.isEmpty()) {
         assertFalse(contentAsString(result), entry.get("inherited").asBoolean());
       } else {
         assertTrue(contentAsString(result), entry.get("inherited").asBoolean());
@@ -210,10 +311,15 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     }
     // two taskGC entries (There will be more in future hence >= 2)
     assertTrue(contentAsString(result), configEntriesMap.size() >= 2);
-    if (presetIntervalValue.isEmpty()) {
-      assertEquals("1 hour", configEntriesMap.get(GC_CHECK_INTERVAL_KEY));
+    return configEntriesMap.get(checkKey);
+  }
+
+  private void compareToExpectedValue(
+      String presetIntervalValue, String value, String defaultValue) {
+    if (StringUtils.isEmpty(presetIntervalValue)) {
+      assertEquals(defaultValue, value);
     } else {
-      assertEquals(presetIntervalValue, configEntriesMap.get(GC_CHECK_INTERVAL_KEY));
+      assertEquals(presetIntervalValue, value);
     }
   }
 
@@ -233,14 +339,49 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   public Object[] scopeAndPresetParams() {
     return new Object[] {
-      new Object[] {ScopeType.GLOBAL, ""},
-      new Object[] {ScopeType.CUSTOMER, ""},
-      new Object[] {ScopeType.PROVIDER, ""},
-      new Object[] {ScopeType.UNIVERSE, ""},
-      new Object[] {ScopeType.GLOBAL, "33 days"},
-      new Object[] {ScopeType.CUSTOMER, "44 seconds"},
-      new Object[] {ScopeType.PROVIDER, "22 hours"},
-      new Object[] {ScopeType.UNIVERSE, "11 minutes"},
+      new Object[] {ScopeType.GLOBAL, "", ""},
+      new Object[] {ScopeType.CUSTOMER, "", ""},
+      new Object[] {ScopeType.PROVIDER, "", ""},
+      new Object[] {ScopeType.UNIVERSE, "", ""},
+      // We will return any strings as unquoted even if they were set as quoted
+      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "33 days"},
+      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
+      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
+      // Set without quotes should be allowed for string objects backward compatibility
+      // Even when set with quotes we will return string without redundant quotes.
+      // But we will do proper escaping for special characters
+      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
     };
+  }
+
+  public Object[] scopeAndPresetParamsObj() {
+    return new Object[] {
+      new Object[] {ScopeType.GLOBAL, "", null},
+      new Object[] {ScopeType.CUSTOMER, "", null},
+      new Object[] {ScopeType.PROVIDER, "", null},
+      new Object[] {ScopeType.UNIVERSE, "", null},
+      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
+      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
+      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},
+      // Set without escape quotes should not be allowed within a json object
+      new Object[] {ScopeType.UNIVERSE, "\"11\\\"\"", "\"11\\\"\""},
+    };
+  }
+
+  @Test
+  public void configResolution() {
+    RuntimeConfigFactory runtimeConfigFactory =
+        app.injector().instanceOf(RuntimeConfigFactory.class);
+    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    setCloudEnabled(defaultUniverse.universeUUID);
+    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+  }
+
+  private void setCloudEnabled(UUID scopeUUID) {
+    Http.RequestBuilder request =
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, "yb.cloud.enabled"))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText("true");
+    route(app, request);
   }
 }

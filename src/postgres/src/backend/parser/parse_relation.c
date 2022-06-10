@@ -739,6 +739,8 @@ scanRTEForColumn(ParseState *pstate, RangeTblEntry *rte, const char *colname,
 				var = make_var(pstate, rte, attnum, location);
 				/* Require read access to the column */
 				markVarForSelectPriv(pstate, var, rte);
+				if (IsYBRelationById(rte->relid))
+					YbCheckUnsupportedSystemColumns(var, colname, rte);
 				result = (Node *) var;
 			}
 		}

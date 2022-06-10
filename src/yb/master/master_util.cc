@@ -17,29 +17,58 @@
 
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/metadata.pb.h"
+
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_cluster.proxy.h"
 #include "yb/master/master_defaults.h"
-#include "yb/master/master.proxy.h"
-#include "yb/util/logging.h"
+#include "yb/master/master_error.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 
 namespace yb {
 namespace master {
 
-using master::GetMasterRegistrationRequestPB;
-using master::GetMasterRegistrationResponsePB;
-using master::MasterServiceProxy;
-
 namespace {
+
+static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
+static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
+static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
+static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 
 struct GetMasterRegistrationData {
   GetMasterRegistrationRequestPB req;
   GetMasterRegistrationResponsePB resp;
   rpc::RpcController controller;
-  MasterServiceProxy proxy;
+  MasterClusterProxy proxy;
 
   GetMasterRegistrationData(rpc::ProxyCache* proxy_cache, const HostPort& hp)
       : proxy(proxy_cache, hp) {}
 };
+
+bool DoesRegistrationMatch(
+    const ServerRegistrationPB& registration, std::function<bool(const HostPortPB&)> predicate) {
+  if (std::find_if(
+          registration.private_rpc_addresses().begin(),
+          registration.private_rpc_addresses().end(),
+          predicate) != registration.private_rpc_addresses().end()) {
+    return true;
+  }
+  if (std::find_if(
+          registration.broadcast_addresses().begin(),
+          registration.broadcast_addresses().end(),
+          predicate) != registration.broadcast_addresses().end()) {
+    return true;
+  }
+  return false;
+}
 
 } // namespace
 
@@ -187,6 +216,73 @@ Result<bool> TableMatchesIdentifier(
   }
   return STATUS_FORMAT(
     InvalidArgument, "Wrong table identifier format: $0", table_identifier);
+}
+
+Status SetupError(MasterErrorPB* error, const Status& s) {
+  StatusToPB(s, error->mutable_status());
+  error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
+  return s;
+}
+
+bool IsColocationParentTableId(const TableId& table_id) {
+  return IsColocatedDbParentTableId(table_id) || IsTablegroupParentTableId(table_id);
+}
+
+bool IsColocatedDbParentTableId(const TableId& table_id) {
+  return table_id.find(kColocatedDbParentTableIdSuffix) == 32 &&
+      boost::algorithm::ends_with(table_id, kColocatedDbParentTableIdSuffix);
+}
+
+TableId GetColocatedDbParentTableId(const NamespaceId& database_id) {
+  DCHECK(IsIdLikeUuid(database_id)) << database_id;
+  return database_id + kColocatedDbParentTableIdSuffix;
+}
+
+TableName GetColocatedDbParentTableName(const NamespaceId& database_id) {
+  DCHECK(IsIdLikeUuid(database_id)) << database_id;
+  return database_id + kColocatedDbParentTableNameSuffix;
+}
+
+bool IsTablegroupParentTableId(const TableId& table_id) {
+  return table_id.find(kTablegroupParentTableIdSuffix) == 32 &&
+      boost::algorithm::ends_with(table_id, kTablegroupParentTableIdSuffix);
+}
+
+TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id) {
+  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
+  return tablegroup_id + kTablegroupParentTableIdSuffix;
+}
+
+TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id) {
+  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
+  return tablegroup_id + kTablegroupParentTableNameSuffix;
+}
+
+TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id) {
+  DCHECK(IsTablegroupParentTableId(table_id)) << table_id;
+  return table_id.substr(0, 32);
+}
+
+bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist) {
+  auto predicate = [&blacklist](const HostPortPB& rhs) {
+    return blacklist.count(HostPortFromPB(rhs)) > 0;
+  };
+  return DoesRegistrationMatch(registration, predicate);
+}
+
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp) {
+  auto predicate = [&hp](const HostPortPB& rhs) {
+    return rhs.host() == hp.host() && rhs.port() == hp.port();
+  };
+  return DoesRegistrationMatch(registration, predicate);
+}
+
+BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist) {
+  BlacklistSet blacklist_set;
+  for (const auto& hp : blacklist.hosts()) {
+    blacklist_set.insert(HostPortFromPB(hp));
+  }
+  return blacklist_set;
 }
 
 } // namespace master

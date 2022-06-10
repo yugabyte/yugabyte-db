@@ -13,6 +13,9 @@
 
 #include "yb/rpc/circular_read_buffer.h"
 
+#include "yb/util/result.h"
+#include "yb/util/tostring.h"
+
 namespace yb {
 namespace rpc {
 
@@ -59,7 +62,7 @@ Result<IoVecs> CircularReadBuffer::PrepareAppend() {
 }
 
 std::string CircularReadBuffer::ToString() const {
-  return Format("{ capacity: $0 pos: $1 size: $2 }", capacity_, pos_, size_);
+  return YB_CLASS_TO_STRING(capacity, pos, size);
 }
 
 void CircularReadBuffer::DataAppended(size_t len) {

@@ -28,8 +28,8 @@
 // This is useful when implementing a new Env and ensuring that the
 // semantics and behavior are correct (in that they match that of an
 // existing, stable Env, like the default POSIX one).
-#ifndef ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_ENV_MIRROR_H
-#define ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_ENV_MIRROR_H
+#ifndef YB_ROCKSDB_UTILITIES_ENV_MIRROR_H
+#define YB_ROCKSDB_UTILITIES_ENV_MIRROR_H
 
 #ifndef ROCKSDB_LITE
 
@@ -61,92 +61,23 @@ class EnvMirror : public EnvWrapper {
                            const std::string& old_fname,
                            unique_ptr<WritableFile>* r,
                            const EnvOptions& options) override;
-  virtual Status NewDirectory(const std::string& name,
-                              unique_ptr<Directory>* result) override {
-    unique_ptr<Directory> br;
-    Status as = a_->NewDirectory(name, result);
-    Status bs = b_->NewDirectory(name, &br);
-    assert(as.code() == bs.code());
-    return as;
-  }
-  Status FileExists(const std::string& f) override {
-    Status as = a_->FileExists(f);
-    Status bs = b_->FileExists(f);
-    assert(as.code() == bs.code());
-    return as;
-  }
+  Status NewDirectory(const std::string& name,
+                      unique_ptr<Directory>* result) override;
+  Status FileExists(const std::string& f) override;
   Status GetChildren(const std::string& dir,
-                     std::vector<std::string>* r) override {
-    std::vector<std::string> ar, br;
-    Status as = a_->GetChildren(dir, &ar);
-    Status bs = b_->GetChildren(dir, &br);
-    assert(as.code() == bs.code());
-    std::sort(ar.begin(), ar.end());
-    std::sort(br.begin(), br.end());
-    if (!as.ok() || ar != br) {
-      assert(0 == "getchildren results don't match");
-    }
-    *r = ar;
-    return as;
-  }
-  Status DeleteFile(const std::string& f) override {
-    Status as = a_->DeleteFile(f);
-    Status bs = b_->DeleteFile(f);
-    assert(as.code() == bs.code());
-    return as;
-  }
-  Status CreateDir(const std::string& d) override {
-    Status as = a_->CreateDir(d);
-    Status bs = b_->CreateDir(d);
-    assert(as.code() == bs.code());
-    return as;
-  }
-  Status CreateDirIfMissing(const std::string& d) override {
-    Status as = a_->CreateDirIfMissing(d);
-    Status bs = b_->CreateDirIfMissing(d);
-    assert(as.code() == bs.code());
-    return as;
-  }
-  Status DeleteDir(const std::string& d) override {
-    Status as = a_->DeleteDir(d);
-    Status bs = b_->DeleteDir(d);
-    assert(as.code() == bs.code());
-    return as;
-  }
-  Status GetFileSize(const std::string& f, uint64_t* s) override {
-    uint64_t asize, bsize;
-    Status as = a_->GetFileSize(f, &asize);
-    Status bs = b_->GetFileSize(f, &bsize);
-    assert(as.code() == bs.code());
-    assert(!as.ok() || asize == bsize);
-    *s = asize;
-    return as;
-  }
+                     std::vector<std::string>* r) override;
+  Status DeleteFile(const std::string& f) override;
+  Status CreateDir(const std::string& d) override;
+  Status CreateDirIfMissing(const std::string& d) override;
+  Status DeleteDir(const std::string& d) override;
+  Status GetFileSize(const std::string& f, uint64_t* s) override;
 
   Status GetFileModificationTime(const std::string& fname,
-                                 uint64_t* file_mtime) override {
-    uint64_t amtime, bmtime;
-    Status as = a_->GetFileModificationTime(fname, &amtime);
-    Status bs = b_->GetFileModificationTime(fname, &bmtime);
-    assert(as.code() == bs.code());
-    assert(!as.ok() || amtime - bmtime < 10000 || bmtime - amtime < 10000);
-    *file_mtime = amtime;
-    return as;
-  }
+                                 uint64_t* file_mtime) override;
 
-  Status RenameFile(const std::string& s, const std::string& t) override {
-    Status as = a_->RenameFile(s, t);
-    Status bs = b_->RenameFile(s, t);
-    assert(as.code() == bs.code());
-    return as;
-  }
+  Status RenameFile(const std::string& s, const std::string& t) override;
 
-  Status LinkFile(const std::string& s, const std::string& t) override {
-    Status as = a_->LinkFile(s, t);
-    Status bs = b_->LinkFile(s, t);
-    assert(as.code() == bs.code());
-    return as;
-  }
+  Status LinkFile(const std::string& s, const std::string& t) override;
 
   class FileLockMirror : public FileLock {
    public:
@@ -154,26 +85,13 @@ class EnvMirror : public EnvWrapper {
     FileLockMirror(FileLock* a, FileLock* b) : a_(a), b_(b) {}
   };
 
-  Status LockFile(const std::string& f, FileLock** l) override {
-    FileLock* al, *bl;
-    Status as = a_->LockFile(f, &al);
-    Status bs = b_->LockFile(f, &bl);
-    assert(as.code() == bs.code());
-    if (as.ok()) *l = new FileLockMirror(al, bl);
-    return as;
-  }
+  Status LockFile(const std::string& f, FileLock** l) override;
 
-  Status UnlockFile(FileLock* l) override {
-    FileLockMirror* ml = static_cast<FileLockMirror*>(l);
-    Status as = a_->UnlockFile(ml->a_);
-    Status bs = b_->UnlockFile(ml->b_);
-    assert(as.code() == bs.code());
-    return as;
-  }
+  Status UnlockFile(FileLock* l) override;
 };
 
 }  // namespace rocksdb
 
 #endif  // ROCKSDB_LITE
 
-#endif  // ROCKSDB_INCLUDE_ROCKSDB_UTILITIES_ENV_MIRROR_H
+#endif  // YB_ROCKSDB_UTILITIES_ENV_MIRROR_H

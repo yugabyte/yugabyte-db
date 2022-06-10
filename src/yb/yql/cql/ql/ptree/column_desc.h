@@ -18,9 +18,7 @@
 #ifndef YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
 #define YB_YQL_CQL_QL_PTREE_COLUMN_DESC_H_
 
-#include "yb/common/types.h"
-#include "yb/yql/cql/ql/ptree/pt_type.h"
-#include "yb/util/memory/mc_types.h"
+#include "yb/client/schema.h"
 
 namespace yb {
 namespace ql {
@@ -30,7 +28,7 @@ namespace ql {
 // This class can be used to describe any reference of a column.
 class ColumnDesc {
  public:
-  ColumnDesc(const int index,
+  ColumnDesc(const size_t index,
              const int id,
              const std::string& name,
              const bool is_hash,
@@ -52,7 +50,7 @@ class ColumnDesc {
         has_mangled_name_(has_mangled_name) {
   }
 
-  int index() const {
+  size_t index() const {
     return index_;
   }
 
@@ -61,23 +59,10 @@ class ColumnDesc {
   }
 
   // User name (not mangled).
-  std::string name() const {
-    // Demangle "name_" if it was previous mangled (IndexTable has mangled column names).
-    if (has_mangled_name_) {
-      return YcqlName::DemangleName(name_);
-    }
-    return name_;
-  }
+  std::string name() const;
 
   // Index column name (mangled).
-  std::string MangledName() const {
-    // Mangle "name_" if it was not previous mangled.
-    // When we load INDEX, the column name is already mangled (Except for older INDEX).
-    if (has_mangled_name_) {
-      return name_;
-    }
-    return YcqlName::MangleColumnName(name_);
-  }
+  std::string MangledName() const;
 
   // Return the name that is kept in catalog.
   // - For Catalog::Table, user-defined-column name is not mangled.
@@ -115,7 +100,7 @@ class ColumnDesc {
   }
 
  private:
-  int index_ = -1;
+  size_t index_;
   int id_ = -1;
   std::string name_;
   bool is_hash_ = false;

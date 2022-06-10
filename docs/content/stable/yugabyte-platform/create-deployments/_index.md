@@ -4,10 +4,11 @@ headerTitle: Create YugabyteDB universe deployments
 linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
 image: /images/section_icons/index/deploy.png
+type: page
+section: YUGABYTE PLATFORM
 menu:
   stable:
     identifier: create-deployments
-    parent: yugabyte-platform
     weight: 643
 isTocNested: true
 showAsideToc: true

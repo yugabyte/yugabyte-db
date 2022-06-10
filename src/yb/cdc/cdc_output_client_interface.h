@@ -13,12 +13,12 @@
 #ifndef YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H
 #define YB_CDC_CDC_OUTPUT_CLIENT_INTERFACE_H
 
+#include "yb/consensus/opid_util.h"
+
 #include "yb/cdc/cdc_service.pb.h"
 
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
-#include "yb/consensus/opid_util.h"
-
 
 namespace yb {
 
@@ -41,7 +41,7 @@ class CDCOutputClient {
   virtual ~CDCOutputClient() {}
   virtual void Shutdown() {}
   // Async call for applying changes.
-  virtual CHECKED_STATUS ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
+  virtual Status ApplyChanges(const cdc::GetChangesResponsePB* resp) = 0;
 };
 
 } // namespace cdc

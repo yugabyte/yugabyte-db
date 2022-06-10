@@ -35,15 +35,28 @@
 #include <algorithm>
 #include <set>
 
+#include <glog/logging.h>
+
+#include "yb/common/common.pb.h"
 #include "yb/common/crc16.h"
+#include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/row.h"
+#include "yb/common/schema.h"
+
 #include "yb/docdb/doc_key.h"
-#include "yb/gutil/map-util.h"
+
 #include "yb/gutil/hash/hash.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/yb_partition.h"
+
 #include "yb/yql/redis/redisserver/redis_constants.h"
-#include "yb/common/ql_value.h"
 
 namespace yb {
 
@@ -78,7 +91,7 @@ Slice Partition::range_key(const string& partition_key) const {
 
 void Partition::ToPB(PartitionPB* pb) const {
   pb->Clear();
-  pb->mutable_hash_buckets()->Reserve(hash_buckets_.size());
+  pb->mutable_hash_buckets()->Reserve(narrow_cast<int>(hash_buckets_.size()));
   for (int32_t bucket : hash_buckets()) {
     pb->add_hash_buckets(bucket);
   }
@@ -95,6 +108,14 @@ void Partition::FromPB(const PartitionPB& pb, Partition* partition) {
 
   partition->partition_key_start_ = pb.partition_key_start();
   partition->partition_key_end_ = pb.partition_key_end();
+}
+
+std::string Partition::ToString() const {
+  return Format(
+      "{ partition_key_start: $0 partition_key_end: $1 hash_buckets: $2 }",
+      Slice(partition_key_start_).ToDebugString(),
+      Slice(partition_key_end_).ToDebugString(),
+      hash_buckets_);
 }
 
 namespace {
@@ -114,7 +135,7 @@ Status ExtractColumnIds(const RepeatedPtrField<PartitionSchemaPB_ColumnIdentifie
           continue;
         }
         case PartitionSchemaPB_ColumnIdentifierPB::kName: {
-          int32_t column_idx = schema.find_column(identifier.name());
+          auto column_idx = schema.find_column(identifier.name());
           if (column_idx == Schema::kColumnNotFound) {
             return STATUS(InvalidArgument, "unknown column", identifier.DebugString());
           }
@@ -129,13 +150,17 @@ Status ExtractColumnIds(const RepeatedPtrField<PartitionSchemaPB_ColumnIdentifie
 // Sets a repeated field of column identifiers to the provided column IDs.
 void SetColumnIdentifiers(const vector<ColumnId>& column_ids,
                           RepeatedPtrField<PartitionSchemaPB_ColumnIdentifierPB>* identifiers) {
-    identifiers->Reserve(column_ids.size());
+    identifiers->Reserve(narrow_cast<int>(column_ids.size()));
     for (ColumnId column_id : column_ids) {
       identifiers->Add()->set_id(column_id);
     }
 }
 
 } // namespace
+
+bool PartitionSchema::IsHashPartitioning(const PartitionSchemaPB& pb) {
+  return pb.has_hash_schema();
+}
 
 Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
                                const Schema& schema,
@@ -195,7 +220,7 @@ Status PartitionSchema::FromPB(const PartitionSchemaPB& pb,
   } else {
     // Currently system table schema does not define partitioning method (See github issue #5832).
     // NOTE: Each system table uses only one tablet.
-    for (int32_t column_idx = 0; column_idx < schema.num_key_columns(); column_idx++) {
+    for (size_t column_idx = 0; column_idx < schema.num_key_columns(); column_idx++) {
       partition_schema->range_schema_.column_ids.push_back(schema.column_id(column_idx));
     }
   }
@@ -269,7 +294,7 @@ Status PartitionSchema::KuduFromPB(const PartitionSchemaPB& pb,
     // Fill in the default range partition (PK columns).
     // like the sorting above, this should only happen during table creation
     // while deserializing the user-provided partition schema.
-    for (int32_t column_idx = 0; column_idx < schema.num_key_columns(); column_idx++) {
+    for (size_t column_idx = 0; column_idx < schema.num_key_columns(); column_idx++) {
       partition_schema->range_schema_.column_ids.push_back(schema.column_id(column_idx));
     }
   }
@@ -284,7 +309,7 @@ void PartitionSchema::KuduToPB(PartitionSchemaPB* pb) const {
   // - If this code is deleted, Kudu's original test needs to be updated.
   pb->Clear();
 
-  pb->mutable_hash_bucket_schemas()->Reserve(hash_bucket_schemas_.size());
+  pb->mutable_hash_bucket_schemas()->Reserve(narrow_cast<int>(hash_bucket_schemas_.size()));
   for (const HashBucketSchema& hash_bucket : hash_bucket_schemas_) {
     PartitionSchemaPB_HashBucketSchemaPB* hash_bucket_pb = pb->add_hash_bucket_schemas();
     SetColumnIdentifiers(hash_bucket.column_ids, hash_bucket_pb->mutable_columns());
@@ -340,9 +365,7 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
       for (const auto &col_expr_pb : hash_col_values) {
         AppendToKey(col_expr_pb.value(), &tmp);
       }
-      const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
-      *buf = EncodeMultiColumnHashValue(hash_value);
-      return Status::OK();
+      return CompleteEncodeKey(tmp, buf);
     }
     case YBHashSchema::kPgsqlHash:
       DLOG(FATAL) << "Illegal code path. PGSQL hash cannot be computed from CQL expression";
@@ -355,39 +378,7 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
   return STATUS(InvalidArgument, "Unsupported Partition Schema Type.");
 }
 
-Status PartitionSchema::EncodeKey(const RepeatedPtrField<PgsqlExpressionPB>& hash_col_values,
-                                  string* buf) const {
-  if (!hash_schema_) {
-    return Status::OK();
-  }
-
-  switch (*hash_schema_) {
-    case YBHashSchema::kPgsqlHash: {
-      // TODO(neil) Discussion is needed. PGSQL hash should be done appropriately.
-      // For now, let's not doing anything. Just borrow code from multi column hashing style.
-      string tmp;
-      for (const auto &col_expr_pb : hash_col_values) {
-        AppendToKey(col_expr_pb.value(), &tmp);
-      }
-      const uint16_t hash_value = YBPartition::HashColumnCompoundValue(tmp);
-      *buf = EncodeMultiColumnHashValue(hash_value);
-      return Status::OK();
-    }
-
-    case YBHashSchema::kMultiColumnHash:
-      DLOG(FATAL) << "Illegal code path. CQL hash cannot be computed from PGSQL expression";
-      break;
-
-    case YBHashSchema::kRedisHash:
-      DLOG(FATAL) << "Illegal code path. REDIS hash cannot be computed from PGSQL expression";
-      break;
-  }
-
-  return STATUS(InvalidArgument, "Unsupported Partition Schema Type.");
-}
-
 Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
-
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kPgsqlHash:
@@ -438,15 +429,13 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
 
 string PartitionSchema::EncodeMultiColumnHashValue(uint16_t hash_value) {
   char value_bytes[kPartitionKeySize];
-  value_bytes[0] = hash_value >> 8;
-  value_bytes[1] = hash_value & 0xff;
-  return string(value_bytes, kPartitionKeySize);
+  BigEndian::Store16(value_bytes, hash_value);
+  return std::string(value_bytes, kPartitionKeySize);
 }
 
-uint16_t PartitionSchema::DecodeMultiColumnHashValue(const string& partition_key) {
-  DCHECK_EQ(partition_key.size(), kPartitionKeySize);
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(partition_key.data());
-  return (bytes[0] << 8) | bytes[1];
+uint16_t PartitionSchema::DecodeMultiColumnHashValue(Slice partition_key) {
+  DCHECK_GE(partition_key.size(), kPartitionKeySize);
+  return BigEndian::Load16(partition_key.data());
 }
 
 string PartitionSchema::GetEncodedKeyPrefix(
@@ -455,7 +444,7 @@ string PartitionSchema::GetEncodedKeyPrefix(
     const auto doc_key_hash = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     docdb::KeyBytes split_encoded_key_bytes;
     docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key_bytes)
-      .Hash(doc_key_hash, std::vector<docdb::PrimitiveValue>());
+      .Hash(doc_key_hash, std::vector<docdb::KeyEntryValue>());
     return split_encoded_key_bytes.ToStringBuffer();
   }
   return partition_key;
@@ -484,6 +473,38 @@ Status PartitionSchema::IsValidHashPartitionRange(const string& partition_key_st
 
 bool PartitionSchema::IsValidHashPartitionKeyBound(const string& partition_key) {
   return partition_key.empty() || partition_key.size() == kPartitionKeySize;
+}
+
+uint32_t PartitionSchema::GetOverlap(
+    const std::string& key_start,
+    const std::string& key_end,
+    const std::string& other_key_start,
+    const std::string& other_key_end) {
+  uint16_t first_start_val =
+      key_start.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(key_start);
+  uint16_t second_start_val =
+      other_key_start.empty() ? 0 : PartitionSchema::DecodeMultiColumnHashValue(other_key_start);
+  uint16_t first_end_val = key_end.empty()
+                               ? std::numeric_limits<uint16_t>::max()
+                               : PartitionSchema::DecodeMultiColumnHashValue(key_end) - 1;
+  uint16_t second_end_val = other_key_end.empty()
+                                ? std::numeric_limits<uint16_t>::max()
+                                : PartitionSchema::DecodeMultiColumnHashValue(other_key_end) - 1;
+
+  // Use uint32 as max Overlap is uint16_t max + 1
+  uint32_t start_key = max(first_start_val, second_start_val);
+  uint32_t end_key = min(first_end_val, second_end_val);
+
+  if (end_key >= start_key) {
+    return end_key - start_key + 1;
+  }
+
+  return 0;
+}
+
+uint32_t PartitionSchema::GetPartitionRangeSize(
+    const std::string& key_start, const std::string& key_end) {
+  return GetOverlap(key_start, key_end, key_start, key_end);
 }
 
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
@@ -524,6 +545,9 @@ Status PartitionSchema::CreateHashPartitions(int32_t num_tablets,
   if (num_tablets <= 0) {
     return STATUS_SUBSTITUTE(InvalidArgument, "num_tablets should be greater than 0. Client "
                              "would need to wait for master leader get heartbeats from tserver.");
+  }
+  if (num_tablets > 0xffff) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Too many tablets requested: $0", num_tablets);
   }
 
   // Allocate the partitions.
@@ -609,12 +633,12 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
     partitions->swap(new_partitions);
   }
 
-  unordered_set<int> range_column_idxs;
+  std::unordered_set<size_t> range_column_idxs;
   for (ColumnId column_id : range_schema_.column_ids) {
     int column_idx = schema.find_column_by_id(column_id);
     if (column_idx == Schema::kColumnNotFound) {
-      return STATUS(InvalidArgument, Substitute("Range partition column ID $0 "
-                                                "not found in table schema.", column_id));
+      return STATUS_FORMAT(
+          InvalidArgument, "Range partition column ID $0 not found in table schema", column_id);
     }
     if (!InsertIfNotPresent(&range_column_idxs, column_idx)) {
       return STATUS(InvalidArgument, "Duplicate column in range partition",
@@ -627,7 +651,7 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
   string start_key;
   for (const YBPartialRow& row : split_rows) {
     int column_count = 0;
-    for (int column_idx = 0; column_idx < schema.num_columns(); column_idx++) {
+    for (size_t column_idx = 0; column_idx < schema.num_columns(); column_idx++) {
       const ColumnSchema& column = schema.column(column_idx);
       if (row.IsColumnSet(column_idx)) {
         if (ContainsKey(range_column_idxs, column_idx)) {
@@ -693,7 +717,8 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
   // see PartitionTest::TestCreatePartitions.
   for (Partition& partition : *partitions) {
     if (partition.range_key_start().empty()) {
-      for (int i = partition.hash_buckets().size() - 1; i >= 0; i--) {
+      for (size_t i = partition.hash_buckets().size(); i > 0;) {
+        --i;
         if (partition.hash_buckets()[i] != 0) {
           break;
         }
@@ -701,7 +726,8 @@ Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
       }
     }
     if (partition.range_key_end().empty()) {
-      for (int i = partition.hash_buckets().size() - 1; i >= 0; i--) {
+      for (size_t i = partition.hash_buckets().size(); i > 0;) {
+        --i;
         partition.partition_key_end_.erase(kEncodedBucketSize * i);
         int32_t hash_bucket = partition.hash_buckets()[i] + 1;
         if (hash_bucket != hash_bucket_schemas_[i].num_buckets) {
@@ -720,7 +746,7 @@ Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
                                                  const Row& row,
                                                  bool* contains) const {
   CHECK_EQ(partition.hash_buckets().size(), hash_bucket_schemas_.size());
-  for (int i = 0; i < hash_bucket_schemas_.size(); i++) {
+  for (size_t i = 0; i < hash_bucket_schemas_.size(); i++) {
     const HashBucketSchema& hash_bucket_schema = hash_bucket_schemas_[i];
     int32_t bucket;
     RETURN_NOT_OK(BucketForRow(row, hash_bucket_schema, &bucket));
@@ -773,7 +799,7 @@ Status PartitionSchema::DecodeRangeKey(Slice* encoded_key,
                                        YBPartialRow* row,
                                        Arena* arena) const {
   ContiguousRow cont_row(row->schema(), row->row_data_);
-  for (int i = 0; i < range_schema_.column_ids.size(); i++) {
+  for (size_t i = 0; i < range_schema_.column_ids.size(); i++) {
 
     if (encoded_key->empty()) {
       // This can happen when decoding partition start and end keys, since they
@@ -854,6 +880,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
   if (hash_schema_) {
     switch (*hash_schema_) {
       case YBHashSchema::kRedisHash: FALLTHROUGH_INTENDED;
+      case YBHashSchema::kPgsqlHash: FALLTHROUGH_INTENDED;
       case YBHashSchema::kMultiColumnHash: {
         const string& pstart = partition.partition_key_start();
         const string& pend = partition.partition_key_end();
@@ -863,8 +890,6 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
                             Uint16ToHexString(hash_start), Uint16ToHexString(hash_end)));
         return s;
       }
-      case YBHashSchema::kPgsqlHash:
-        return "Pgsql Hash";
     }
   }
 
@@ -1081,8 +1106,8 @@ string PartitionSchema::DebugString(const Schema& schema) const {
       case YBHashSchema::kMultiColumnHash: {
         string component = "Multi Column Hash Partition. Partition columns: ";
         const std::vector<ColumnSchema>& cols = schema.columns();
-        for (int idx = 0; idx < schema.num_hash_key_columns(); idx++) {
-          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name()));
+        for (size_t idx = 0; idx < schema.num_hash_key_columns(); idx++) {
+          component.append(Substitute("$0($1)  ", cols[idx].name(), cols[idx].type_info()->name));
         }
         component_types.push_back(component);
         break;
@@ -1129,7 +1154,7 @@ bool PartitionSchema::Equals(const PartitionSchema& other) const {
 
   // Compare hash bucket components.
   if (hash_bucket_schemas_.size() != other.hash_bucket_schemas_.size()) return false;
-  for (int i = 0; i < hash_bucket_schemas_.size(); i++) {
+  for (size_t i = 0; i < hash_bucket_schemas_.size(); i++) {
     if (hash_bucket_schemas_[i].seed != other.hash_bucket_schemas_[i].seed) return false;
     if (hash_bucket_schemas_[i].num_buckets
         != other.hash_bucket_schemas_[i].num_buckets) return false;
@@ -1144,7 +1169,7 @@ bool PartitionSchema::Equals(const PartitionSchema& other) const {
 Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row,
                                       const vector<ColumnId>& column_ids,
                                       string* buf) {
-  for (int i = 0; i < column_ids.size(); i++) {
+  for (size_t i = 0; i < column_ids.size(); i++) {
     ColumnId column_id = column_ids[i];
     int32_t column_idx = row.schema()->find_column_by_id(column_id);
     const TypeInfo* type = row.schema()->column(column_idx).type_info();
@@ -1157,7 +1182,7 @@ Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row,
 Status PartitionSchema::EncodeColumns(const YBPartialRow& row,
                                       const vector<ColumnId>& column_ids,
                                       string* buf) {
-  for (int i = 0; i < column_ids.size(); i++) {
+  for (size_t i = 0; i < column_ids.size(); i++) {
     int32_t column_idx = row.schema()->find_column_by_id(column_ids[i]);
     CHECK(column_idx != Schema::kColumnNotFound);
     const TypeInfo* type_info = row.schema()->column(column_idx).type_info();
@@ -1198,8 +1223,8 @@ uint16_t PartitionSchema::HashColumnCompoundValue(const string& compound) {
 // Encodes the hash columns of the supplied row into a 2-byte partition key.
 Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row, string* buf) {
   string tmp;
-  int num_cols = row.schema()->num_hash_key_columns();
-  for (int col_idx = 0; col_idx < num_cols; col_idx++) {
+  auto num_cols = row.schema()->num_hash_key_columns();
+  for (size_t col_idx = 0; col_idx < num_cols; col_idx++) {
     const TypeInfo* type = row.schema()->column(col_idx).type_info();
     GetKeyEncoder<string>(type).Encode(row.cell_ptr(col_idx), col_idx + 1 == num_cols, &tmp);
   }
@@ -1212,8 +1237,8 @@ Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row, string* buf
 // Encodes the hash columns of the supplied row into a 2-byte partition key.
 Status PartitionSchema::EncodeColumns(const YBPartialRow& row, string* buf) {
   string tmp;
-  int num_cols = row.schema()->num_hash_key_columns();
-  for (int col_idx = 0; col_idx < num_cols; col_idx++) {
+  auto num_cols = row.schema()->num_hash_key_columns();
+  for (size_t col_idx = 0; col_idx < num_cols; col_idx++) {
     const TypeInfo* type_info = row.schema()->column(col_idx).type_info();
     const KeyEncoder<string>& encoder = GetKeyEncoder<string>(type_info);
 
@@ -1282,7 +1307,7 @@ Status PartitionSchema::Validate(const Schema& schema) const {
       if (column_idx == Schema::kColumnNotFound) {
         return STATUS(InvalidArgument, "must specify existing columns for hash "
                                        "bucket partition components");
-      } else if (column_idx >= schema.num_key_columns()) {
+      } else if (implicit_cast<size_t>(column_idx) >= schema.num_key_columns()) {
         return STATUS(InvalidArgument, "must specify only primary key columns for "
                                        "hash bucket partition components");
       }
@@ -1294,12 +1319,39 @@ Status PartitionSchema::Validate(const Schema& schema) const {
     if (column_idx == Schema::kColumnNotFound) {
       return STATUS(InvalidArgument, "must specify existing columns for range "
                                      "partition component");
-    } else if (column_idx >= schema.num_key_columns()) {
+    } else if (implicit_cast<size_t>(column_idx) >= schema.num_key_columns()) {
       return STATUS(InvalidArgument, "must specify only primary key columns for "
                                      "range partition component");
     }
   }
 
+  return Status::OK();
+}
+
+bool PartitionSchema::IsHashPartitioning() const {
+  return hash_schema_ != boost::none;
+}
+
+YBHashSchema PartitionSchema::hash_schema() const {
+  CHECK(hash_schema_);
+  return *hash_schema_;
+}
+
+void PartitionSchema::ProcessHashKeyEntry(const LWQLValuePB& value_pb, std::string* out) {
+  AppendToKey(value_pb, out);
+}
+
+void PartitionSchema::ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::string* out) {
+  AppendToKey(expr.value(), out);
+}
+
+void PartitionSchema::ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out) {
+  AppendToKey(expr.value(), out);
+}
+
+Status PartitionSchema::CompleteEncodeKey(const std::string& key, std::string* buf) {
+  const uint16_t hash_value = YBPartition::HashColumnCompoundValue(key);
+  *buf = EncodeMultiColumnHashValue(hash_value);
   return Status::OK();
 }
 

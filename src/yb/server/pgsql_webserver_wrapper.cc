@@ -10,39 +10,91 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include <map>
-#include "yb/server/webserver.h"
-#include "yb/util/web_callback_registry.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
-#include "yb/util/jsonwriter.h"
-#include "yb/gutil/map-util.h"
+
+#include <math.h>
+
+#include <map>
+
 #include "yb/common/ybc-internal.h"
-#include "yb/util/metrics.h"
+
+#include "yb/gutil/map-util.h"
+
+#include "yb/server/webserver.h"
+
+#include "yb/util/jsonwriter.h"
+#include "yb/util/metrics_writer.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/status_log.h"
 
+namespace yb {
 DECLARE_string(metric_node_name);
-
-using yb::Webserver;
-using yb::JsonWriter;
-using yb::PrometheusWriter;
-using yb::WebCallbackRegistry;
 
 static ybpgmEntry *ybpgm_table;
 static int ybpgm_num_entries;
 static int *num_backends;
-yb::MetricEntity::AttributeMap prometheus_attr;
+MetricEntity::AttributeMap prometheus_attr;
 static void (*pullYsqlStatementStats)(void *);
 static void (*resetYsqlStatementStats)();
 static rpczEntry **rpczResultPointer;
 
 static postgresCallbacks pgCallbacks;
-static void PgMetricsHandler(const Webserver::WebRequest& req,
-                             Webserver::WebResponse* resp) {
+
+static const char *EXPORTED_INSTANCE = "exported_instance";
+static const char *METRIC_TYPE = "metric_type";
+static const char *METRIC_ID = "metric_id";
+
+static const char *METRIC_TYPE_SERVER = "server";
+static const char *METRIC_ID_YB_YSQLSERVER = "yb.ysqlserver";
+
+static const char *PSQL_SERVER_CONNECTION_TOTAL = "yb_ysqlserver_connection_total";
+static const char *PSQL_SERVER_ACTIVE_CONNECTION_TOTAL = "yb_ysqlserver_active_connection_total";
+
+namespace {
+
+void emitConnectionMetrics(PrometheusWriter *pwriter) {
+  pgCallbacks.pullRpczEntries();
+  rpczEntry *entry = *rpczResultPointer;
+
+  uint64_t tot_connections = 0;
+  uint64_t tot_active_connections = 0;
+  for (int i = 0; i < *num_backends; ++i, ++entry) {
+    if (entry->proc_id > 0) {
+      if (entry->backend_active != 0u) {
+        tot_active_connections++;
+      }
+      tot_connections++;
+    }
+  }
+
+  std::ostringstream errMsg;
+  errMsg << "Cannot publish connection metric to Promethesu-metrics endpoint";
+
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntryNonTable(
+          prometheus_attr, PSQL_SERVER_ACTIVE_CONNECTION_TOTAL, tot_active_connections),
+      errMsg.str());
+
+  WARN_NOT_OK(
+      pwriter->WriteSingleEntryNonTable(
+          prometheus_attr, PSQL_SERVER_CONNECTION_TOTAL, tot_connections),
+      errMsg.str());
+  pgCallbacks.freeRpczEntries();
+}
+
+void initSqlServerDefaultLabels(const char *metric_node_name) {
+  prometheus_attr[EXPORTED_INSTANCE] = metric_node_name;
+  prometheus_attr[METRIC_TYPE] = METRIC_TYPE_SERVER;
+  prometheus_attr[METRIC_ID] = METRIC_ID_YB_YSQLSERVER;
+}
+
+}  // namespace
+
+static void PgMetricsHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-              JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
 
   JsonWriter writer(output, json_mode);
   writer.StartArray();
@@ -54,7 +106,7 @@ static void PgMetricsHandler(const Webserver::WebRequest& req,
   writer.String("metrics");
   writer.StartArray();
 
-  for (const auto* entry = ybpgm_table, *end = entry + ybpgm_num_entries; entry != end; ++entry) {
+  for (const auto *entry = ybpgm_table, *end = entry + ybpgm_num_entries; entry != end; ++entry) {
     writer.StartObject();
     writer.String("name");
     writer.String(entry->name);
@@ -72,7 +124,11 @@ static void PgMetricsHandler(const Webserver::WebRequest& req,
   writer.EndArray();
 }
 
-static void DoWriteStatArrayElemToJson(JsonWriter* writer, YsqlStatementStat* stat) {
+static void DoWriteStatArrayElemToJson(JsonWriter *writer, YsqlStatementStat *stat) {
+  writer->String("query_id");
+  // Use Int64 for this uint64 field to keep consistent output with PG.
+  writer->Int64(stat->query_id);
+
   writer->String("query");
   writer->String(stat->query);
 
@@ -93,21 +149,19 @@ static void DoWriteStatArrayElemToJson(JsonWriter* writer, YsqlStatementStat* st
 
   writer->String("stddev_time");
   // Based on logic in pg_stat_monitor_internal().
-  double stddev = (stat->calls > 1) ?
-    (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
+  double stddev = (stat->calls > 1) ? (sqrt(stat->sum_var_time / stat->calls)) : 0.0;
   writer->Double(stddev);
 
   writer->String("rows");
   writer->Int64(stat->rows);
 }
 
-static void PgStatStatementsHandler(const Webserver::WebRequest& req,
-                                    Webserver::WebResponse* resp) {
+static void PgStatStatementsHandler(
+    const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-              JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -124,13 +178,12 @@ static void PgStatStatementsHandler(const Webserver::WebRequest& req,
   writer.EndObject();
 }
 
-static void PgStatStatementsResetHandler(const Webserver::WebRequest& req,
-                                         Webserver::WebResponse* resp) {
+static void PgStatStatementsResetHandler(
+    const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-              JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
 
   writer.StartObject();
@@ -146,9 +199,9 @@ static void PgStatStatementsResetHandler(const Webserver::WebRequest& req,
   writer.EndObject();
 }
 
-static void WriteAsJsonTimestampAndRunningForMs(JsonWriter *writer, const std::string& prefix,
-                                                int64 start_timestamp, int64 snapshot_timestamp,
-                                                bool active) {
+static void WriteAsJsonTimestampAndRunningForMs(
+    JsonWriter *writer, const std::string &prefix, int64 start_timestamp, int64 snapshot_timestamp,
+    bool active) {
   writer->String(prefix + "_start_time");
   writer->String(pgCallbacks.getTimestampTzToStr(start_timestamp));
 
@@ -160,16 +213,14 @@ static void WriteAsJsonTimestampAndRunningForMs(JsonWriter *writer, const std::s
   writer->Int64(pgCallbacks.getTimestampTzDiffMs(start_timestamp, snapshot_timestamp));
 }
 
-static void PgRpczHandler(const Webserver::WebRequest& req,
-                                Webserver::WebResponse* resp) {
+static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
   pgCallbacks.pullRpczEntries();
   int64 snapshot_timestamp = pgCallbacks.getTimestampTz();
 
   JsonWriter::Mode json_mode;
   string arg = FindWithDefault(req.parsed_args, "compact", "false");
-  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-              JsonWriter::COMPACT : JsonWriter::PRETTY;
+  json_mode = ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
   JsonWriter writer(output, json_mode);
   rpczEntry *entry = *rpczResultPointer;
 
@@ -191,20 +242,20 @@ static void PgRpczHandler(const Webserver::WebRequest& req,
         writer.String(entry->query);
       }
 
-      WriteAsJsonTimestampAndRunningForMs(&writer, "process",
-                                          entry->process_start_timestamp,
-                                          snapshot_timestamp, entry->backend_active);
+      WriteAsJsonTimestampAndRunningForMs(
+          &writer, "process", entry->process_start_timestamp, snapshot_timestamp,
+          entry->backend_active);
 
       if (entry->transaction_start_timestamp > 0) {
-        WriteAsJsonTimestampAndRunningForMs(&writer, "transaction",
-                                            entry->transaction_start_timestamp,
-                                            snapshot_timestamp, entry->backend_active);
+        WriteAsJsonTimestampAndRunningForMs(
+            &writer, "transaction", entry->transaction_start_timestamp, snapshot_timestamp,
+            entry->backend_active);
       }
 
       if (entry->query_start_timestamp > 0) {
-        WriteAsJsonTimestampAndRunningForMs(&writer, "query",
-                                            entry->query_start_timestamp,
-                                            snapshot_timestamp, entry->backend_active);
+        WriteAsJsonTimestampAndRunningForMs(
+            &writer, "query", entry->query_start_timestamp, snapshot_timestamp,
+            entry->backend_active);
       }
 
       writer.String("application_name");
@@ -232,8 +283,8 @@ static void PgRpczHandler(const Webserver::WebRequest& req,
   pgCallbacks.freeRpczEntries();
 }
 
-static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
-                                       Webserver::WebResponse* resp) {
+static void PgPrometheusMetricsHandler(
+    const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
   PrometheusWriter writer(output);
 
@@ -241,77 +292,75 @@ static void PgPrometheusMetricsHandler(const Webserver::WebRequest& req,
   char copied_name[106];
   for (int i = 0; i < ybpgm_num_entries; ++i) {
     snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr,
-                                        copied_name,
-                                        ybpgm_table[i].calls,
-                                        yb::AggregationFunction::kSum),
-                                        "Couldn't write text metrics for Prometheus");
+    WARN_NOT_OK(
+        writer.WriteSingleEntry(
+            prometheus_attr, copied_name, ybpgm_table[i].calls, AggregationFunction::kSum),
+        "Couldn't write text metrics for Prometheus");
     snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_sum");
-    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr,
-                                        copied_name,
-                                        ybpgm_table[i].total_time,
-                                        yb::AggregationFunction::kSum),
-                                        "Couldn't write text metrics for Prometheus");
+    WARN_NOT_OK(
+        writer.WriteSingleEntry(
+            prometheus_attr, copied_name, ybpgm_table[i].total_time, AggregationFunction::kSum),
+        "Couldn't write text metrics for Prometheus");
   }
+
+  // Publish sql server connection related metrics
+  emitConnectionMetrics(&writer);
 }
 
 extern "C" {
-  void WriteStatArrayElemToJson(void* p1, void* p2) {
-    JsonWriter* writer = static_cast<JsonWriter*>(p1);
-    YsqlStatementStat* stat = static_cast<YsqlStatementStat*>(p2);
+void WriteStatArrayElemToJson(void *p1, void *p2) {
+  JsonWriter *writer = static_cast<JsonWriter *>(p1);
+  YsqlStatementStat *stat = static_cast<YsqlStatementStat *>(p2);
 
-    writer->StartObject();
-    DoWriteStatArrayElemToJson(writer, stat);
-    writer->EndObject();
-  }
+  writer->StartObject();
+  DoWriteStatArrayElemToJson(writer, stat);
+  writer->EndObject();
+}
 
-  WebserverWrapper *CreateWebserver(char *listen_addresses, int port) {
-    yb::WebserverOptions opts;
-    opts.bind_interface = listen_addresses;
-    opts.port = port;
-    // Important! Since postgres functions aren't generally thread-safe,
-    // we shouldn't allow more than one worker thread at a time.
-    opts.num_worker_threads = 1;
-    return reinterpret_cast<WebserverWrapper *> (new Webserver(opts, "Postgres webserver"));
-  }
+WebserverWrapper *CreateWebserver(char *listen_addresses, int port) {
+  WebserverOptions opts;
+  opts.bind_interface = listen_addresses;
+  opts.port = port;
+  // Important! Since postgres functions aren't generally thread-safe,
+  // we shouldn't allow more than one worker thread at a time.
+  opts.num_worker_threads = 1;
+  return reinterpret_cast<WebserverWrapper *>(new Webserver(opts, "Postgres webserver"));
+}
 
-  void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name) {
-    ybpgm_table = tab;
-    ybpgm_num_entries = num_entries;
+void RegisterMetrics(ybpgmEntry *tab, int num_entries, char *metric_node_name) {
+  ybpgm_table = tab;
+  ybpgm_num_entries = num_entries;
+  initSqlServerDefaultLabels(metric_node_name);
+}
 
-    prometheus_attr["exported_instance"] = metric_node_name;
-    prometheus_attr["metric_type"] = "server";
-    prometheus_attr["metric_id"] = "yb.ysqlserver";
-  }
+void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *)) {
+  pullYsqlStatementStats = getYsqlStatementStats;
+}
 
-  void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *)) {
-    pullYsqlStatementStats = getYsqlStatementStats;
-  }
-
-  void RegisterResetYsqlStatStatements(void (*fn)()) {
+void RegisterResetYsqlStatStatements(void (*fn)()) {
     resetYsqlStatementStats = fn;
-  }
+}
 
-  void RegisterRpczEntries(postgresCallbacks *callbacks, int *num_backends_ptr,
-                           rpczEntry **rpczEntriesPointer) {
-    pgCallbacks = *callbacks;
-    num_backends = num_backends_ptr;
-    rpczResultPointer = rpczEntriesPointer;
-  }
+void RegisterRpczEntries(
+    postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer) {
+  pgCallbacks = *callbacks;
+  num_backends = num_backends_ptr;
+  rpczResultPointer = rpczEntriesPointer;
+}
 
-  YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
-    Webserver *webserver = reinterpret_cast<Webserver *> (webserver_wrapper);
-    webserver->RegisterPathHandler("/metrics", "Metrics", PgMetricsHandler, false, false);
-    webserver->RegisterPathHandler("/jsonmetricz", "Metrics", PgMetricsHandler, false, false);
-    webserver->RegisterPathHandler("/prometheus-metrics", "Metrics", PgPrometheusMetricsHandler,
-                                   false, false);
-    webserver->RegisterPathHandler("/rpcz", "RPCs in progress", PgRpczHandler, false, false);
-    webserver->RegisterPathHandler("/statements", "PG Stat Statements", PgStatStatementsHandler,
-        false, false);
-    webserver->RegisterPathHandler("/statements-reset", "Reset PG Stat Statements",
-        PgStatStatementsResetHandler, false, false);
-    return ToYBCStatus(yb::WithMaskedYsqlSignals([webserver]() {
-      return webserver->Start();
-    }));
-  }
-};
+YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
+  Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->RegisterPathHandler("/metrics", "Metrics", PgMetricsHandler, false, false);
+  webserver->RegisterPathHandler("/jsonmetricz", "Metrics", PgMetricsHandler, false, false);
+  webserver->RegisterPathHandler(
+      "/prometheus-metrics", "Metrics", PgPrometheusMetricsHandler, false, false);
+  webserver->RegisterPathHandler("/rpcz", "RPCs in progress", PgRpczHandler, false, false);
+  webserver->RegisterPathHandler(
+      "/statements", "PG Stat Statements", PgStatStatementsHandler, false, false);
+  webserver->RegisterPathHandler(
+      "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
+  return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
+}
+}  // extern "C"
+
+}  // namespace yb

@@ -33,7 +33,6 @@
 #include <vector>
 
 #include "yb/rocksdb/db/compaction.h"
-#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/status.h"
@@ -283,6 +282,12 @@ class UniversalCompactionPicker : public CompactionPicker {
 
   // Pick Universal compaction to limit space amplification.
   std::unique_ptr<Compaction> PickCompactionUniversalSizeAmp(
+      const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
+      VersionStorageInfo* vstorage, double score,
+      const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);
+
+  // Pick Universal compaction to directly delete files that are no longer needed.
+  std::unique_ptr<Compaction> PickCompactionUniversalDeletion(
       const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
       VersionStorageInfo* vstorage, double score,
       const std::vector<SortedRun>& sorted_runs, LogBuffer* log_buffer);

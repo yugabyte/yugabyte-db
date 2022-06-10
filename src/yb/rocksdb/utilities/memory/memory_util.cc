@@ -22,8 +22,6 @@
 
 #include "yb/rocksdb/utilities/memory_util.h"
 
-#include "yb/rocksdb/db/db_impl.h"
-
 namespace rocksdb {
 
 Status MemoryUtil::GetApproximateMemoryUsageByType(

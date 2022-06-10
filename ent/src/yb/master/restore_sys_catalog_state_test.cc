@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/master/master_backup.pb.h"
 #include "yb/master/master_snapshot_coordinator.h"
 #include "yb/master/restore_sys_catalog_state.h"
 
@@ -44,6 +45,15 @@ TEST(RestoreSysCatalogStateTest, Filter) {
       .snapshot_id = TxnSnapshotId::GenerateRandom(),
       .restore_at = HybridTime(),
       .restoration_id = TxnSnapshotRestorationId::GenerateRandom(),
+      .op_id = OpId(),
+      .write_time = {},
+      .term = 0,
+      .schedules = {},
+      .non_system_obsolete_tablets = {},
+      .non_system_obsolete_tables = {},
+      .non_system_objects_to_restore = {},
+      .existing_system_tables = {},
+      .restoring_system_tables = {},
   };
   RestoreSysCatalogState state(&restoration);
   SysNamespaceEntryPB namespace_entry;

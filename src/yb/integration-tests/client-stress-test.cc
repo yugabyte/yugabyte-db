@@ -31,32 +31,42 @@
 //
 
 #include <memory>
-#include <vector>
 #include <regex>
+#include <vector>
 
 #include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/schema.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/test_workload.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_entity_info.pb.h"
 #include "yb/master/master_rpc.h"
 
 #include "yb/rpc/rpc.h"
 
 #include "yb/util/curl_util.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/pstack_watcher.h"
-#include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_int32(memory_limit_soft_percentage);
 
@@ -131,15 +141,15 @@ class ClientStressTest_MultiMaster : public ClientStressTest {
 // to fixing that bug.
 TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
   TestWorkload work(cluster_.get());
-  work.set_num_write_threads(64);
+  work.set_num_write_threads(RegularBuildVsSanitizers(64, 8));
 
   // This timeout gets applied to the master requests. It's lower than the
   // amount of time that we sleep the masters, to ensure they timeout.
-  work.set_client_default_rpc_timeout_millis(250);
+  work.set_client_default_rpc_timeout_millis(250 * kTimeMultiplier);
   // This is the time budget for the whole request. It has to be longer than
   // the above timeout so that the client actually attempts to resolve
   // the leader.
-  work.set_write_timeout_millis(280);
+  work.set_write_timeout_millis(280 * kTimeMultiplier);
   work.set_timeout_allowed(true);
   work.Setup();
 
@@ -151,19 +161,19 @@ TEST_F(ClientStressTest_MultiMaster, TestLeaderResolutionTimeout) {
   ASSERT_OK(cluster_->master(0)->Pause());
   ASSERT_OK(cluster_->master(1)->Pause());
   ASSERT_OK(cluster_->master(2)->Pause());
-  SleepFor(MonoDelta::FromMilliseconds(300));
+  SleepFor(MonoDelta::FromMilliseconds(300 * kTimeMultiplier));
   ASSERT_OK(cluster_->tablet_server(0)->Resume());
   ASSERT_OK(cluster_->tablet_server(1)->Resume());
   ASSERT_OK(cluster_->tablet_server(2)->Resume());
   ASSERT_OK(cluster_->master(0)->Resume());
   ASSERT_OK(cluster_->master(1)->Resume());
   ASSERT_OK(cluster_->master(2)->Resume());
-  SleepFor(MonoDelta::FromMilliseconds(100));
+  SleepFor(MonoDelta::FromMilliseconds(100 * kTimeMultiplier));
 
   // Set an explicit timeout. This test has caused deadlocks in the past.
   // Also make sure to dump stacks before the alarm goes off.
-  PstackWatcher watcher(MonoDelta::FromSeconds(30));
-  alarm(60);
+  PstackWatcher watcher(MonoDelta::FromSeconds(30 * kTimeMultiplier));
+  alarm(60 * kTimeMultiplier);
 }
 
 namespace {
@@ -189,7 +199,7 @@ void LeaderMasterCallback(Synchronizer* sync,
 
 void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
   server::MasterAddresses master_addrs;
-  for (auto i = 0; i != cluster->num_masters(); ++i) {
+  for (size_t i = 0; i != cluster->num_masters(); ++i) {
     master_addrs.push_back({cluster->master(i)->bound_rpc_addr()});
   }
   auto stop_time = std::chrono::steady_clock::now() + 60s;
@@ -200,13 +210,14 @@ void RepeatGetLeaderMaster(ExternalMiniCluster* cluster) {
         rpc::Rpcs rpcs;
         Synchronizer sync;
         auto deadline = CoarseMonoClock::Now() + 20s;
-        auto rpc = rpc::StartRpc<master::GetLeaderMasterRpc>(
+        auto rpc = std::make_shared<master::GetLeaderMasterRpc>(
             Bind(&LeaderMasterCallback, &sync),
             master_addrs,
             deadline,
             cluster->messenger(),
             &cluster->proxy_cache(),
             &rpcs);
+        rpc->SendRpc();
         auto status = sync.Wait();
         LOG_IF(INFO, !status.ok()) << "Get leader master failed: " << status;
       }
@@ -293,7 +304,7 @@ TEST_F(ClientStressTest_LowMemory, TestMemoryThrottling) {
     // appear on every server. Rather than explicitly wait for that above,
     // we'll just treat the lack of a metric as non-fatal. If the entity
     // or metric is truly missing, we'll eventually timeout and fail.
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       for (const auto* metric : { &METRIC_leader_memory_pressure_rejections,
                                   &METRIC_follower_memory_pressure_rejections }) {
         auto result = cluster_->tablet_server(i)->GetInt64Metric(
@@ -449,7 +460,7 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
     return opts;
   }
 
-  const size_t kHardLimitBytes = 500_MB;
+  static constexpr size_t kHardLimitBytes = 100_MB * RegularBuildVsSanitizers(5, 1);
   const size_t kConsensusMaxBatchSizeBytes = 32_MB;
 };
 
@@ -467,6 +478,8 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
 // In this test we simulate slow inbound RPC requests parsing using
 // TEST_yb_inbound_big_calls_parse_delay_ms flag.
 TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
+  constexpr int kNumRows = 20000 * RegularBuildVsSanitizers(5, 1);
+
   TestWorkload workload(cluster_.get());
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(1);
@@ -487,12 +500,23 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
 
   LOG(INFO) << "Killing ts-1";
   ts->Shutdown();
-  std::this_thread::sleep_for(30s);
+
+  // Write enough data to guarantee large UpdateConsensus requests before restarting ts-1.
+  while (workload.rows_inserted() < kNumRows) {
+    LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
+    std::this_thread::sleep_for(1s);
+  }
+
   LOG(INFO) << "Restarting ts-1";
-  ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
+  ts->mutable_flags()->push_back(
+      Format("--TEST_yb_inbound_big_calls_parse_delay_ms=$0", 50000 * kTimeMultiplier));
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
+  // Throttle requests with network size larger than 1 MB. Note that the amount of memory that is
+  // counted against the memtracker is much larger after the param has been parsed, so it does not
+  // take too many requests to hit the soft memory limit.
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
-  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
+  // Read buffer should be large enough to accept the large RPCs.
+  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-50");
   ASSERT_OK(ts->Restart());
 
   ThrottleLogCounter log_counter(ts);

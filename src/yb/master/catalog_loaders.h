@@ -33,11 +33,14 @@
 #ifndef YB_MASTER_CATALOG_LOADERS_H
 #define YB_MASTER_CATALOG_LOADERS_H
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/permissions_manager.h"
-#include "yb/master/sys_catalog-internal.h"
+#include <type_traits>
 
 #include <boost/preprocessor/cat.hpp>
+
+#include "yb/master/master_fwd.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/permissions_manager.h"
+#include "yb/master/sys_catalog.h"
 
 namespace yb {
 namespace master {
@@ -51,7 +54,7 @@ namespace master {
         : catalog_manager_(catalog_manager), term_(term) {} \
     \
   private: \
-    CHECKED_STATUS Visit( \
+    Status Visit( \
         const key_type& key, \
         const entry_pb_name& metadata) override REQUIRES(mutex); \
     \

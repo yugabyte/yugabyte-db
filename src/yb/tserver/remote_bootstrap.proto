@@ -37,7 +37,6 @@ option java_package = "org.yb.tserver";
 
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
-import "yb/fs/fs.proto";
 import "yb/rpc/rpc_header.proto";
 import "yb/tablet/metadata.proto";
 

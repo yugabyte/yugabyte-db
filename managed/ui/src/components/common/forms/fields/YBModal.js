@@ -22,11 +22,12 @@ export default class YBModal extends Component {
       onFormSubmit(event);
     }
     event.preventDefault();
-  }
+  };
 
   componentDidMount() {
     document.addEventListener('keydown', this.handleKeyPressFunction, false);
   }
+
   componentWillUnmount() {
     document.removeEventListener('keydown', this.handleKeyPressFunction, false);
   }
@@ -47,8 +48,12 @@ export default class YBModal extends Component {
       footerAccessory,
       showCancelButton,
       className,
+      dialogClassName,
       normalizeFooter,
-      disableSubmit
+      disableSubmit,
+      customHeader,
+      formClassName,
+      cancelBtnProps = {}
     } = this.props;
     let btnDisabled = false;
     if (submitting || asyncValidating || disableSubmit) {
@@ -59,17 +64,25 @@ export default class YBModal extends Component {
       footerButtonClass = 'modal-action-buttons';
     }
     return (
-      <Modal show={visible} onHide={onHide} bsSize={size} className={className}>
-        <form name={formName} onSubmit={this.handleFormSubmit}>
-          <Modal.Header closeButton>
-            <Modal.Title>{title}</Modal.Title>
-            <div
-              className={`yb-alert-item
+      <Modal
+        show={visible}
+        onHide={onHide}
+        bsSize={size}
+        className={className}
+        dialogClassName={dialogClassName}
+      >
+        <form className={formClassName} name={formName} onSubmit={this.handleFormSubmit}>
+          {customHeader || (
+            <Modal.Header closeButton>
+              <Modal.Title>{title}</Modal.Title>
+              <div
+                className={`yb-alert-item
                 ${error ? '' : 'hide'}`}
-            >
-              {error}
-            </div>
-          </Modal.Header>
+              >
+                {error}
+              </div>
+            </Modal.Header>
+          )}
           <Modal.Body>{this.props.children}</Modal.Body>
           {(footerAccessory || showCancelButton || onFormSubmit) && (
             <Modal.Footer>
@@ -84,7 +97,12 @@ export default class YBModal extends Component {
                   />
                 )}
                 {showCancelButton && (
-                  <YBButton btnClass="btn" btnText={cancelLabel} onClick={onHide} />
+                  <YBButton
+                    btnClass="btn"
+                    btnText={cancelLabel}
+                    onClick={onHide}
+                    {...cancelBtnProps}
+                  />
                 )}
                 {footerAccessory && (
                   <div className="pull-left modal-accessory">{footerAccessory}</div>
@@ -99,10 +117,7 @@ export default class YBModal extends Component {
 }
 
 YBModal.propTypes = {
-  title: PropTypes.oneOfType([
-    PropTypes.string,
-    PropTypes.object
-  ]).isRequired,
+  title: PropTypes.oneOfType([PropTypes.string, PropTypes.object]).isRequired,
   visible: PropTypes.bool,
   size: PropTypes.oneOf(['large', 'small', 'xsmall']),
   formName: PropTypes.string,

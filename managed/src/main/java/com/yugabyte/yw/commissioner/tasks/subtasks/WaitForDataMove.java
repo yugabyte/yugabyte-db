@@ -10,10 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
+import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.GetLoadMovePercentResponse;
@@ -73,14 +75,14 @@ public class WaitForDataMove extends AbstractTaskBase {
             errorMsg = getName() + ": hit too many errors during data move completion wait.";
             break;
           }
-          Thread.sleep(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS);
+          waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
           continue;
         }
 
         percent = response.getPercentCompleted();
         // No need to wait if completed (as in, percent == 100).
         if (percent < 100) {
-          Thread.sleep(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS);
+          waitFor(Duration.ofMillis(getSleepMultiplier() * WAIT_EACH_ATTEMPT_MS));
         }
 
         numIters++;
@@ -91,7 +93,7 @@ public class WaitForDataMove extends AbstractTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error {}.", getName(), e.getMessage(), e);
-      throw new RuntimeException(getName() + " hit error: ", e);
+      Throwables.propagate(e);
     } finally {
       ybService.closeClient(client, masterAddresses);
     }

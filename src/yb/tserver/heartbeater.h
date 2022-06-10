@@ -38,8 +38,9 @@
 
 #include "yb/gutil/macros.h"
 #include "yb/master/master_fwd.h"
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -79,8 +80,8 @@ class Heartbeater {
   Heartbeater(const Heartbeater& other) = delete;
   void operator=(const Heartbeater& other) = delete;
 
-  CHECKED_STATUS Start();
-  CHECKED_STATUS Stop();
+  Status Start();
+  Status Stop();
 
   // Trigger a heartbeat as soon as possible, even if the normal
   // heartbeat interval has not expired.

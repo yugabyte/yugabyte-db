@@ -18,12 +18,15 @@
 
 #include <map>
 
-#include "yb/common/schema.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include <boost/functional/hash.hpp>
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/column_id.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
 
 namespace yb {
-namespace common {
 
 //--------------------------------------------------------------------------------------------------
 // YQL Scanspec.
@@ -62,10 +65,19 @@ class QLScanRange {
 
   QLScanRange(const Schema& schema, const QLConditionPB& condition);
   QLScanRange(const Schema& schema, const PgsqlConditionPB& condition);
+  QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition);
 
   QLRange RangeFor(ColumnId col_id) const {
     const auto& iter = ranges_.find(col_id);
     return (iter == ranges_.end() ? QLRange() : iter->second);
+  }
+
+  std::vector<ColumnId> GetColIds() const {
+    std::vector<ColumnId> col_id_list;
+    for (auto &it : ranges_) {
+      col_id_list.push_back(it.first);
+    }
+    return col_id_list;
   }
 
   bool has_in_range_options() const {
@@ -80,12 +92,14 @@ class QLScanRange {
   QLScanRange& operator=(QLScanRange&& other);
 
  private:
+  template <class Cond>
+  void Init(const Cond& cond);
 
   // Table schema being scanned.
   const Schema& schema_;
 
   // Mapping of column id to the column value ranges (inclusive lower/upper bounds) to scan.
-  std::unordered_map<ColumnId, QLRange> ranges_;
+  std::unordered_map<ColumnId, QLRange, boost::hash<ColumnId>> ranges_;
 
   // Whether the condition has an IN condition on a range (clustering) column.
   // Used in doc_ql_scanspec to try to construct the set of options for a multi-point scan.
@@ -108,7 +122,7 @@ class QLScanSpec : public YQLScanSpec {
 
   // Evaluate the WHERE condition for the given row to decide if it is selected or not.
   // virtual to make the class polymorphic.
-  virtual CHECKED_STATUS Match(const QLTableRow& table_row, bool* match) const;
+  virtual Status Match(const QLTableRow& table_row, bool* match) const;
 
   bool is_forward_scan() const {
     return is_forward_scan_;
@@ -129,7 +143,7 @@ class QLScanSpec : public YQLScanSpec {
 //--------------------------------------------------------------------------------------------------
 class PgsqlScanSpec : public YQLScanSpec {
  public:
-  typedef std::unique_ptr<common::PgsqlScanSpec> UniPtr;
+  typedef std::unique_ptr<PgsqlScanSpec> UniPtr;
 
   explicit PgsqlScanSpec(const PgsqlExpressionPB *where_expr,
                          QLExprExecutorPtr executor = nullptr);
@@ -145,7 +159,6 @@ class PgsqlScanSpec : public YQLScanSpec {
   QLExprExecutorPtr executor_;
 };
 
-} // namespace common
 } // namespace yb
 
 #endif // YB_COMMON_QL_SCANSPEC_H

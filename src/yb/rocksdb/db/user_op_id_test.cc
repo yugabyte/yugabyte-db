@@ -17,13 +17,11 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/rocksdb/db.h"
-
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 using std::string;
 
@@ -34,11 +32,11 @@ namespace {
 struct UserOpIdTestHandler : public WriteBatch::Handler {
   Status PutCF(
       uint32_t column_family_id,
-      const Slice& key,
-      const Slice& value) override {
+      const SliceParts& key,
+      const SliceParts& value) override {
     StartOutputLine(__FUNCTION__);
-    OutputField("key", key);
-    OutputField("value", value);
+    OutputField("key", key.TheOnlyPart());
+    OutputField("value", value.TheOnlyPart());
     FinishOutputLine();
     return Status::OK();
   }
@@ -109,7 +107,7 @@ std::string WriteBatchToString(const WriteBatch& b) {
 
 } // namespace
 
-class UserOpIdTest : public testing::Test {
+class UserOpIdTest : public RocksDBTest {
  protected:
   WriteBatch CreateDummyWriteBatch() {
     WriteBatch b;

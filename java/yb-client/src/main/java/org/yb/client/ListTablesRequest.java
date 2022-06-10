@@ -33,8 +33,9 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.YQLDatabase;
-import org.yb.master.Master;
+import org.yb.CommonTypes.YQLDatabase;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -59,8 +60,8 @@ class ListTablesRequest extends YRpc<ListTablesResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.ListTablesRequestPB.Builder builder =
-        Master.ListTablesRequestPB.newBuilder();
+    final MasterDdlOuterClass.ListTablesRequestPB.Builder builder =
+        MasterDdlOuterClass.ListTablesRequestPB.newBuilder();
     if (nameFilter != null) {
       builder.setNameFilter(nameFilter);
     }
@@ -68,8 +69,8 @@ class ListTablesRequest extends YRpc<ListTablesResponse> {
       builder.setExcludeSystemTables(excludeSystemTables);
     }
     if (namespace != null) {
-      final Master.NamespaceIdentifierPB.Builder namespaceBuilder =
-          Master.NamespaceIdentifierPB.newBuilder();
+      final MasterTypes.NamespaceIdentifierPB.Builder namespaceBuilder =
+          MasterTypes.NamespaceIdentifierPB.newBuilder();
           namespaceBuilder.setName(namespace);
           builder.setNamespace(namespaceBuilder.build());
     }
@@ -87,8 +88,8 @@ class ListTablesRequest extends YRpc<ListTablesResponse> {
   @Override
   Pair<ListTablesResponse, Object> deserialize(CallResponse callResponse,
                                                String tsUUID) throws Exception {
-    final Master.ListTablesResponsePB.Builder respBuilder =
-        Master.ListTablesResponsePB.newBuilder();
+    final MasterDdlOuterClass.ListTablesResponsePB.Builder respBuilder =
+        MasterDdlOuterClass.ListTablesResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     ListTablesResponse response = new ListTablesResponse(deadlineTracker.getElapsedMillis(),
                                                          tsUUID, respBuilder.getTablesList());

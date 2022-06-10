@@ -1,13 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Tab } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
-import { isNonAvailable, isDisabled, showOrRedirect, isNotHidden } from '../../utils/LayoutUtils';
-import { YBTabsWithLinksPanel } from '../panels';
-import { isDefinedNotNull } from '../../utils/ObjectUtils';
+import { isNonAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import UserProfileForm from './UserProfileForm';
-import UserList from './UserList';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
 
@@ -35,7 +31,7 @@ export default class CustomerProfile extends Component {
   };
 
   render() {
-    const { customer = {}, apiToken, customerProfile, params } = this.props;
+    const { customer = {}, apiToken, customerProfile } = this.props;
     if (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit()) {
       return <YBLoading />;
     }
@@ -61,47 +57,16 @@ export default class CustomerProfile extends Component {
       }, 2000);
     }
 
-    const defaultTab = isNotHidden(customer.data.features, 'main.profile') ? 'general' : 'general';
-    const activeTab = isDefinedNotNull(params) ? params.tab : defaultTab;
     return (
-      <div className="bottom-bar-padding">
-        <h2 className="content-title">Update Customer Profile {profileUpdateStatus}</h2>
-        <YBTabsWithLinksPanel
-          defaultTab={defaultTab}
-          activeTab={activeTab}
-          routePrefix={`/profile/`}
-          id={'profile-tab-panel'}
-          className="profile-detail"
-        >
-          {[
-            <Tab.Pane
-              eventKey={'general'}
-              tabtitle="General"
-              key="general-tab"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(customer.data.features, 'main.profile')}
-            >
-              <UserProfileForm
-                customer={this.props.customer}
-                customerProfile={customerProfile}
-                apiToken={apiToken}
-                handleProfileUpdate={this.handleProfileUpdate}
-                {...this.props}
-              />
-            </Tab.Pane>,
-            <Tab.Pane
-              eventKey={'manage-users'}
-              tabtitle="Users"
-              key="manage-users"
-              mountOnEnter={true}
-              unmountOnExit={true}
-              disabled={isDisabled(customer.data.features, 'main.profile')}
-            >
-              <UserList {...this.props} />
-            </Tab.Pane>
-          ]}
-        </YBTabsWithLinksPanel>
+      <div className="tab-content">
+        <h2 className="content-title">User Profile {profileUpdateStatus}</h2>
+        <UserProfileForm
+          customer={this.props.customer}
+          customerProfile={customerProfile}
+          apiToken={apiToken}
+          handleProfileUpdate={this.handleProfileUpdate}
+          {...this.props}
+        />
       </div>
     );
   }

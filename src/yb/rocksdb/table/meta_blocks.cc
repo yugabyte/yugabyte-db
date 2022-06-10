@@ -17,6 +17,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/rocksdb/table/meta_blocks.h"
 
 #include <map>
@@ -24,8 +25,8 @@
 
 #include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table_properties.h"
 #include "yb/rocksdb/table/block.h"
+#include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_properties_internal.h"

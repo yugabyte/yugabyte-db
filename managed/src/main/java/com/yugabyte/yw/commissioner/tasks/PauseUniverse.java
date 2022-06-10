@@ -10,16 +10,18 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -42,9 +44,6 @@ public class PauseUniverse extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
@@ -56,13 +55,29 @@ public class PauseUniverse extends UniverseTaskBase {
 
       preTaskActions();
 
+      Map<UUID, UniverseDefinitionTaskParams.Cluster> clusterMap =
+          universe
+              .getUniverseDetails()
+              .clusters
+              .stream()
+              .collect(Collectors.toMap(c -> c.uuid, c -> c));
+
       Set<NodeDetails> tserverNodes = new HashSet<>(universe.getTServers());
+      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
+
+      for (NodeDetails node : Sets.union(masterNodes, tserverNodes)) {
+        if (!node.disksAreMountedByUUID) {
+          UniverseDefinitionTaskParams.Cluster cluster = clusterMap.get(node.placementUuid);
+          createUpdateMountedDisksTask(
+              node, cluster.userIntent.instanceType, cluster.userIntent.deviceInfo);
+        }
+      }
+
       for (NodeDetails node : tserverNodes) {
         createTServerTaskForNode(node, "stop")
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 
-      Set<NodeDetails> masterNodes = new HashSet<>(universe.getMasters());
       createStopMasterTasks(masterNodes)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
@@ -72,18 +87,27 @@ public class PauseUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       }
       createSwamperTargetUpdateTask(false);
+      // Remove alert definition files.
+      createUnivManageAlertDefinitionsTask(false)
+          .setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Mark universe task state to success.
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.PauseUniverse);
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
 
       saveUniverseDetails(
           u -> {
             UniverseDefinitionTaskParams universeDetails = u.getUniverseDetails();
             universeDetails.universePaused = true;
+            for (NodeDetails node : universeDetails.nodeDetailsSet) {
+              if (node.isMaster || node.isTserver) {
+                node.disksAreMountedByUUID = true;
+              }
+            }
             u.setUniverseDetails(universeDetails);
           });
 
+      metricService.markSourceInactive(params().customerUUID, params().universeUUID);
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

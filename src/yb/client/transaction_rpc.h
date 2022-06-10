@@ -27,8 +27,7 @@
 #include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -38,7 +37,8 @@ class HybridTime;
     ((UpdateTransaction, WITH_REQUEST)) \
     ((GetTransactionStatus, WITHOUT_REQUEST)) \
     ((GetTransactionStatusAtParticipant, WITHOUT_REQUEST)) \
-    ((AbortTransaction, WITHOUT_REQUEST))
+    ((AbortTransaction, WITHOUT_REQUEST)) \
+    ((UpdateTransactionStatusLocation, WITHOUT_REQUEST))
 
 #define TRANSACTION_RPC_NAME(entry) BOOST_PP_TUPLE_ELEM(2, 0, entry)
 

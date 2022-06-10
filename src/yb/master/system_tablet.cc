@@ -13,22 +13,31 @@
 
 #include "yb/master/system_tablet.h"
 
+#include "yb/common/common.pb.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
+
+#include "yb/docdb/doc_read_context.h"
+
+#include "yb/master/sys_catalog_constants.h"
+#include "yb/master/yql_virtual_table.h"
+
 namespace yb {
 namespace master {
 
 SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
                            const TabletId& tablet_id)
-    : schema_(std::make_shared<Schema>(schema)),
+    : doc_read_context_(std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion)),
       yql_virtual_table_(std::move(yql_virtual_table)),
       tablet_id_(tablet_id) {
 }
 
-yb::SchemaPtr SystemTablet::GetSchema(const std::string& table_id) const {
+docdb::DocReadContextPtr SystemTablet::GetDocReadContext(const std::string& table_id) const {
   // table_id is ignored. It should match the system table's id.
-  return schema_;
+  return doc_read_context_;
 }
 
-const common::YQLStorageIf& SystemTablet::QLStorage() const {
+const docdb::YQLStorageIf& SystemTablet::QLStorage() const {
   return *yql_virtual_table_;
 }
 
@@ -53,7 +62,7 @@ Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                          tablet::QLReadRequestResult* result) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, boost::none, result);
+      deadline, read_time, ql_read_request, TransactionOperationContext(), result);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

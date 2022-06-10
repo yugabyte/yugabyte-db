@@ -42,15 +42,14 @@ Examples:
     V2.1__5408__jsonb_path.sql
 
 Here, major version starts at 1 and is incremented by 1 for each subsequent migration. When
-introducing a new migration, pick a major version number of N + 1.
+introducing a new migration to the latest (master) branch, major version should be incremented; when
+adding a migration to a backport (release) branch, minor version should be incremented.
 
-Minor version exists solely for backporting, and shouldn't be used otherwise. `major.minor`
-combination should never be reused.
+`major.minor` combination should never be reused across all branches. To accomplish that, make sure
+that no two stable YB releases (say v2.6 and v2.8) have the same major version. Introduce a NOOP
+migration to prevent that before creating v2.8, if necessary.
 
-Note that two stable YB releases (say v2.6 and v2.8) should not be on the same major version,
-introduce a NOOP migration to prevent that before creating v2.8 if necessary.
-
-Example of how different versions would be names in different branches:
+Example of how different versions would be named in different branches:
 
     Master branch:     V1, V2, V3, V4, V5, V6
     Release branch A:  V1, V2, V2.1 (V4), V2.2 (V6)
@@ -122,7 +121,7 @@ Testing
 -------
 
 There's a `TestYsqlUpgrade#migratingIsEquivalentToReinitdb` test that would make sure your migration
-does the same as initdb. Note that it only works in the release build though!
+does the same as initdb.
 
 To check a migration manually:
 

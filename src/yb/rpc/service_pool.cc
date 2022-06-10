@@ -32,32 +32,38 @@
 
 #include "yb/rpc/service_pool.h"
 
+#include <pthread.h>
+#include <sys/types.h>
+
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
 #include <vector>
 
 #include <boost/asio/strand.hpp>
-
+#include <boost/optional/optional.hpp>
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
-
 #include <glog/logging.h>
 
+#include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/inbound_call.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/service_if.h"
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -381,19 +387,20 @@ class ServicePoolImpl final : public InboundCallHandler {
     return log_prefix_;
   }
 
-  bool CallQueued() override {
+  boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
     auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
     if (queued_calls < 0) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
     }
 
-    if (queued_calls >= max_queued_calls_) {
+    size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
+    if (implicit_cast<size_t>(queued_calls) >= max_queued_calls) {
       queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      return false;
+      return boost::none;
     }
 
     rpcs_in_queue_->Increment();
-    return true;
+    return queued_calls;
   }
 
   void CallDequeued() override {

@@ -44,19 +44,17 @@
 #ifndef YB_UTIL_LOGGING_H
 #define YB_UTIL_LOGGING_H
 
-#include <fcntl.h>
-
 #include <mutex>
 #include <string>
 
-#include <glog/logging.h>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/walltime.h"
-#include "yb/util/fault_injection.h"
+
 #include "yb/util/logging_callback.h"
 #include "yb/util/monotime.h"
 
@@ -73,10 +71,9 @@
 // Example usage:
 //   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
 #define YB_LOG_EVERY_N_SECS(severity, n_secs) \
-  static yb::logging_internal::LogThrottler LOG_THROTTLER;  \
-  int num_suppressed = 0; \
-  if (LOG_THROTTLER.ShouldLog(n_secs, &num_suppressed)) \
-    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num_suppressed).stream()
+  static yb::logging_internal::LogThrottler BOOST_PP_CAT(LOG_THROTTLER_, __LINE__); \
+  if (int num = BOOST_PP_CAT(LOG_THROTTLER_, __LINE__).ShouldLog(n_secs) ; num >= 0) \
+    BOOST_PP_CAT(GOOGLE_LOG_, severity)(num).stream()
 
 #define YB_LOG_WITH_PREFIX_EVERY_N_SECS(severity, n_secs) \
     YB_LOG_EVERY_N_SECS(severity, n_secs) << LogPrefix()
@@ -139,9 +136,9 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 #define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
   static uint64_t LOG_OCCURRENCES = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
-  if (LOG_OCCURRENCES++ < n) \
+  if (LOG_OCCURRENCES++ < (n)) \
     google::LogMessage( \
-      __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
+      __FILE__, __LINE__, google::GLOG_ ## severity, static_cast<int>(LOG_OCCURRENCES), \
       &what_to_do).stream()
 
 // The direct user-facing macros.
@@ -202,6 +199,9 @@ void InitGoogleLoggingSafe(const char* arg);
 // These properties make it attractive for us in libraries.
 void InitGoogleLoggingSafeBasic(const char* arg);
 
+// Like InitGoogleLoggingSafeBasic() but nothing will be written to stderr.
+void InitGoogleLoggingSafeBasicSuppressNonNativePostgresLogs(const char* arg);
+
 // Check if Google Logging has been initialized. Can be used e.g. to determine whether to print
 // something to stderr or log it. The implementation takes the logging mutex, so should not be used
 // in hot codepaths.
@@ -240,23 +240,23 @@ namespace logging_internal {
 // Internal implementation class used for throttling log messages.
 class LogThrottler {
  public:
-  LogThrottler() : num_suppressed_(0), last_ts_(0) {
+  LogThrottler() {
     ANNOTATE_BENIGN_RACE(&last_ts_, "OK to be sloppy with log throttling");
   }
 
-  bool ShouldLog(int n_secs, int* num_suppressed) {
+  // Returns the number of suppressed messages if it should log, otherwise -1.
+  int ShouldLog(int n_secs) {
     MicrosecondsInt64 ts = GetMonoTimeMicros();
     if (ts - last_ts_ < n_secs * 1e6) {
-      *num_suppressed = base::subtle::NoBarrier_AtomicIncrement(&num_suppressed_, 1);
-      return false;
+      base::subtle::NoBarrier_AtomicIncrement(&num_suppressed_, 1);
+      return -1;
     }
     last_ts_ = ts;
-    *num_suppressed = base::subtle::NoBarrier_AtomicExchange(&num_suppressed_, 0);
-    return true;
+    return base::subtle::NoBarrier_AtomicExchange(&num_suppressed_, 0);
   }
  private:
-  Atomic32 num_suppressed_;
-  uint64_t last_ts_;
+  Atomic32 num_suppressed_ = 0;
+  uint64_t last_ts_ = 0;
 };
 
 // Utility class that is used by YB_LOG_HIGHER_SEVERITY_WHEN_TOO_MANY macros.

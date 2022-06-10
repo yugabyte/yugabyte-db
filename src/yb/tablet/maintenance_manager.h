@@ -45,11 +45,10 @@
 #include "yb/gutil/thread_annotations.h"
 
 #include "yb/tablet/tablet.pb.h"
+
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -251,7 +250,7 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   explicit MaintenanceManager(const Options& options);
   ~MaintenanceManager();
 
-  CHECKED_STATUS Init();
+  Status Init();
   void Shutdown();
 
   // Register an op with the manager.

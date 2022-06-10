@@ -96,7 +96,7 @@ consistent reads or accept write requests.
 
 Every read request is assigned a particular MVCC timestamp / hybrid time (let's call it
 **ht_read**), which allows write operations to the same set of keys to happen in parallel with
-reads. It is crucial, however, that the view of of the database *as of this timestamp* is not
+reads. It is crucial, however, that the view of the database *as of this timestamp* is not
 updated by concurrently happening writes. In other words, once we've picked **ht_read** for a read
 request, no further writes to the same set of keys can be assigned timestamps lower than or equal to
 **ht_read**. As we mentioned above, we assign strictly increasing hybrid times to Raft log entries
@@ -138,7 +138,7 @@ maximum of:
 * Last committed Raft entry's hybrid time
 * One of:
   * If there are uncommitted entries in the Raft log: the minimum ofthe first uncommitted entry's
-    hybrid time - &epsilon; (where &epsilon; is the smallest possibledifference in hybrid time)
+    hybrid time - &epsilon; (where &epsilon; is the smallest possible difference in hybrid time)
     and **replicated_ht_lease_exp**.
   * If there are no uncommitted entries in the Raft log: the minimum of the current hybrid time and **replicated_ht_lease_exp**.
 

@@ -14,8 +14,10 @@
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/logging.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DEFINE_test_flag(bool, mark_snasphot_as_failed, false,
                  "Whether we should skip sending RESTORE_FINISHED to tablets.");
@@ -53,17 +55,6 @@ StateWithTablets::StateWithTablets(
     SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state,
     std::string log_prefix)
     : context_(*context), initial_state_(initial_state), log_prefix_(std::move(log_prefix)) {
-}
-
-void StateWithTablets::InitTablets(
-    const google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>& tablets) {
-  for (const auto& tablet : tablets) {
-    tablets_.emplace(tablet.id(), tablet.state());
-    if (tablet.state() == initial_state_) {
-      ++num_tablets_in_initial_state_;
-    }
-  }
-  CheckCompleteness();
 }
 
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {

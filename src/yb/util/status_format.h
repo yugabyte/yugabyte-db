@@ -16,11 +16,10 @@
 #ifndef YB_UTIL_STATUS_FORMAT_H
 #define YB_UTIL_STATUS_FORMAT_H
 
-// TODO Should be migrated to separate header
-// #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/strings/substitute.h"
 
-// #include "yb/util/format.h"
-// #include "yb/util/status.h"
+#include "yb/util/format.h"
+#include "yb/util/status.h"
 
 #define STATUS_SUBSTITUTE(status_type, ...) \
     (Status(Status::BOOST_PP_CAT(k, status_type), \
@@ -48,8 +47,9 @@
   do { \
     auto v1_tmp = (var1); \
     auto v2_tmp = (var2); \
-    if (PREDICT_FALSE(!((v1_tmp) op (v2_tmp)))) return STATUS(status_type, \
-      yb::Format("$0: $1 vs. $2", (msg), v1_tmp, v2_tmp)); \
+    if (PREDICT_FALSE(!(v1_tmp op v2_tmp))) { \
+      return STATUS_FORMAT(status_type, "$0: $1 vs $2", (msg), v1_tmp, v2_tmp); \
+    } \
   } while (0)
 
 #define SCHECK_EQ(var1, var2, status_type, msg) SCHECK_OP(var1, ==, var2, status_type, msg)
@@ -69,7 +69,7 @@
 // Debug mode ("not defined NDEBUG (non-debug-mode)" means "debug mode").
 // In case the check condition is false, we will crash with a CHECK failure.
 
-#define RSTATUS_DCHECK(expr, type, msg) DCHECK(expr) << msg
+#define RSTATUS_DCHECK(expr, type, ...) DCHECK(expr) << ::yb::Format(__VA_ARGS__)
 #define RSTATUS_DCHECK_EQ(var1, var2, type, msg) DCHECK_EQ(var1, var2) << msg
 #define RSTATUS_DCHECK_NE(var1, var2, type, msg) DCHECK_NE(var1, var2) << msg
 #define RSTATUS_DCHECK_GT(var1, var2, type, msg) DCHECK_GT(var1, var2) << msg
@@ -82,7 +82,7 @@
 // Release mode.
 // In case the check condition is false, we will return an error status.
 
-#define RSTATUS_DCHECK(expr, type, msg) SCHECK(expr, type, msg)
+#define RSTATUS_DCHECK(expr, type, ...) SCHECK(expr, type, __VA_ARGS__)
 #define RSTATUS_DCHECK_EQ(var1, var2, type, msg) SCHECK_EQ(var1, var2, type, msg)
 #define RSTATUS_DCHECK_NE(var1, var2, type, msg) SCHECK_NE(var1, var2, type, msg)
 #define RSTATUS_DCHECK_GT(var1, var2, type, msg) SCHECK_GT(var1, var2, type, msg)
@@ -91,5 +91,14 @@
 #define RSTATUS_DCHECK_LE(var1, var2, type, msg) SCHECK_LE(var1, var2, type, msg)
 
 #endif
+
+// Utility macros to perform the appropriate check. If the check fails, returns the specified
+// (error) Status, with the given message.
+#define SCHECK(expr, status_type, ...) \
+  do { \
+    if (PREDICT_FALSE(!(expr))) { \
+      return STATUS_FORMAT(status_type, __VA_ARGS__); \
+    } \
+  } while (0)
 
 #endif // YB_UTIL_STATUS_FORMAT_H

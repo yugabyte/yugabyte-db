@@ -141,7 +141,7 @@ Status ReadFully(RandomAccessFile* file, uint64_t offset, size_t n,
 
   bool first_read = true;
 
-  int rem = n;
+  size_t rem = n;
   uint8_t* dst = scratch;
   while (rem > 0) {
     Slice this_result;

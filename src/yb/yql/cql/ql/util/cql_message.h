@@ -21,20 +21,40 @@
 #define YB_YQL_CQL_QL_UTIL_CQL_MESSAGE_H_
 
 #include <stdint.h>
+
+#include <functional>
 #include <memory>
 #include <set>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 
+#include <boost/range/iterator_range.hpp>
+#include <boost/version.hpp>
+#include <glog/logging.h>
+#include <rapidjson/document.h>
+
+#include "yb/common/entity_ids.h"
+#include "yb/common/jsonb.h"
+#include "yb/common/ql_protocol_util.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/callback.h"
+#include "yb/gutil/callback_internal.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/template_util.h"
+
 #include "yb/rpc/server_event.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/memory/memory_usage.h"
+#include "yb/util/net/sockaddr.h"
+#include "yb/util/slice.h"
+
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-
-#include "yb/util/memory/memory_usage.h"
-#include "yb/util/result.h"
-#include "yb/util/slice.h"
-#include "yb/util/status.h"
-#include "yb/util/net/sockaddr.h"
 
 namespace yb {
 namespace ql {
@@ -77,6 +97,8 @@ class CQLMessage {
   static constexpr Flags kTracingFlag       = 0x02;
   static constexpr Flags kCustomPayloadFlag = 0x04; // Since V4
   static constexpr Flags kWarningFlag       = 0x08; // Since V4
+  // Not specified by CQL protocol - YB custom flag
+  static constexpr Flags kMetadataFlag      = 0x80;
 
   using StreamId = uint16_t;
   static constexpr StreamId kEventStreamId = 0xffff; // Special stream id for events.
@@ -111,6 +133,32 @@ class CQLMessage {
     Header(const Version version, const StreamId stream_id, const Opcode opcode)
        : version(version), flags(0), stream_id(stream_id), opcode(opcode) { }
   };
+
+  // The CQL metadata consists of the first 8 bytes of the request body.
+  // The format of the request metadata is
+  //   0        16        32        48        64
+  //   +---------+---------+---------+---------+
+  //   |           unused            | Q limit |
+  //   +---------+---------+---------+---------+
+  // The format of the response metadata is
+  //   0        16        32        48        64
+  //   +---------+---------+---------+---------+
+  //   |           unused            |  Q pos  |
+  //   +---------+---------+---------+---------+
+  //
+  // The RPC queue limit ("Q limit") is a unsigned 16-bit integer indicating
+  // whether the request should be dropped. If the queue position of the
+  // incoming RPC is greater than the queue limit, then the request gets
+  // dropped immediately and an ERROR_SERVER_TOO_BUSY response is sent back
+  // to the client. If the queue limit is 0, then the request is not dropped
+  // based on the queue position.
+  //
+  // The RPC queue position ("Q pos") is a signed 16-bit integer indicating
+  // the queue position of the corresponding inbound RPC. If for some reason
+  // the queue position could not be determined, then a value of -1 is returned.
+  static constexpr size_t kMetadataSize = 8;
+  static constexpr size_t kMetadataQueueLimitOffset = 6;
+  static constexpr size_t kMetadataQueuePosOffset = 6;
 
   // STARTUP options.
   static constexpr char kCQLVersionOption[] = "CQL_VERSION";
@@ -217,18 +265,18 @@ class CQLMessage {
 
     QueryParameters() : ql::StatementParameters() { }
 
-    virtual CHECKED_STATUS GetBindVariable(const std::string& name,
+    virtual Status GetBindVariable(const std::string& name,
                                            int64_t pos,
                                            const std::shared_ptr<QLType>& type,
                                            QLValue* value) const override;
     virtual Result<bool> IsBindVariableUnset(const std::string& name,
                                              int64_t pos) const override;
 
-    CHECKED_STATUS ValidateConsistency();
+    Status ValidateConsistency();
 
    private:
-    CHECKED_STATUS GetBindVariableValue(const std::string& name,
-                                        const int64_t pos,
+    Status GetBindVariableValue(const std::string& name,
+                                        size_t pos,
                                         const Value** value) const;
   };
 
@@ -267,20 +315,22 @@ class CQLRequest : public CQLMessage {
     return body_.size();
   }
 
+  static int64_t ParseRpcQueueLimit(const Slice& mesg);
+
   virtual ~CQLRequest();
 
  protected:
   CQLRequest(const Header& header, const Slice& body);
 
   // Function to parse a request body that all CQLRequest subclasses need to implement
-  virtual CHECKED_STATUS ParseBody() = 0;
+  virtual Status ParseBody() = 0;
 
   // Parse a CQL number (8, 16, 32 and 64-bit integer). <num_type> is the parsed integer type.
   // <converter> converts the number from network byte-order to machine order and <data_type>
   // is the coverter's return type. The converter's return type <data_type> is unsigned while
   // <num_type> may be signed or unsigned.
   template<typename num_type, typename data_type>
-  inline CHECKED_STATUS ParseNum(
+  inline Status ParseNum(
       const char* type_name, data_type (*converter)(const void*), num_type* val) {
     RETURN_NOT_OK(CQLDecodeNum(sizeof(num_type), converter, &body_, val));
     DVLOG(4) << type_name << " " << static_cast<int64_t>(*val);
@@ -290,7 +340,7 @@ class CQLRequest : public CQLMessage {
   // Parse a CQL byte stream (string or bytes). <len_type> is the parsed length type.
   // <len_parser> parses the byte length from network byte-order to machine order.
   template<typename len_type>
-  inline CHECKED_STATUS ParseBytes(
+  inline Status ParseBytes(
       const char* type_name, Status (CQLRequest::*len_parser)(len_type*), std::string* val) {
     len_type len = 0;
     RETURN_NOT_OK((this->*len_parser)(&len));
@@ -299,48 +349,25 @@ class CQLRequest : public CQLMessage {
     return Status::OK();
   }
 
-  inline CHECKED_STATUS ParseByte(uint8_t* value) {
-    static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
-    return ParseNum("CQL byte", Load8, value);
-  }
-  inline CHECKED_STATUS ParseShort(uint16_t* value) {
-    static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
-    return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
-  }
-  inline CHECKED_STATUS ParseInt(int32_t* value) {
-    static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
-    return ParseNum("CQL int", NetworkByteOrder::Load32, value);
-  }
-  inline CHECKED_STATUS ParseLong(int64_t* value) {
-    static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
-    return ParseNum("CQL long", NetworkByteOrder::Load64, value);
-  }
-  inline CHECKED_STATUS ParseString(std::string* value)  {
-    return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
-  }
-  inline CHECKED_STATUS ParseLongString(std::string* value)  {
-    return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
-  }
-  inline CHECKED_STATUS ParseShortBytes(std::string* value) {
-    return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
-  }
-  inline CHECKED_STATUS ParseBytes(std::string* value) {
-    return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
-  }
-  inline CHECKED_STATUS ParseConsistency(Consistency* consistency) {
-    static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
-    return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
-  }
-  CHECKED_STATUS ParseUUID(std::string* value);
-  CHECKED_STATUS ParseTimeUUID(std::string* value);
-  CHECKED_STATUS ParseStringList(std::vector<std::string>* list);
-  CHECKED_STATUS ParseInet(Endpoint* value);
-  CHECKED_STATUS ParseStringMap(std::unordered_map<std::string, std::string>* map);
-  CHECKED_STATUS ParseStringMultiMap(
+  Status ParseByte(uint8_t* value);
+  Status ParseShort(uint16_t* value);
+  Status ParseInt(int32_t* value);
+  Status ParseLong(int64_t* value);
+  Status ParseString(std::string* value);
+  Status ParseLongString(std::string* value);
+  Status ParseShortBytes(std::string* value);
+  Status ParseBytes(std::string* value);
+  Status ParseConsistency(Consistency* consistency);
+  Status ParseUUID(std::string* value);
+  Status ParseTimeUUID(std::string* value);
+  Status ParseStringList(std::vector<std::string>* list);
+  Status ParseInet(Endpoint* value);
+  Status ParseStringMap(std::unordered_map<std::string, std::string>* map);
+  Status ParseStringMultiMap(
       std::unordered_map<std::string, std::vector<std::string>>* map);
-  CHECKED_STATUS ParseBytesMap(std::unordered_map<std::string, std::string>* map);
-  CHECKED_STATUS ParseValue(bool with_name, Value* value);
-  CHECKED_STATUS ParseQueryParameters(QueryParameters* params);
+  Status ParseBytesMap(std::unordered_map<std::string, std::string>* map);
+  Status ParseValue(bool with_name, Value* value);
+  Status ParseQueryParameters(QueryParameters* params);
 
  private:
   Slice body_;
@@ -355,7 +382,7 @@ class StartupRequest : public CQLRequest {
   const std::unordered_map<std::string, std::string>& options() const { return options_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::unordered_map<std::string, std::string> options_;
@@ -368,7 +395,7 @@ class AuthResponseRequest : public CQLRequest {
    public:
     AuthQueryParameters() : ql::StatementParameters() {}
 
-    CHECKED_STATUS GetBindVariable(const std::string& name,
+    Status GetBindVariable(const std::string& name,
                                    int64_t pos,
                                    const std::shared_ptr<QLType>& type,
                                    QLValue* value) const override;
@@ -383,7 +410,7 @@ class AuthResponseRequest : public CQLRequest {
   const AuthQueryParameters& params() const { return params_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::string token_;
@@ -397,7 +424,7 @@ class OptionsRequest : public CQLRequest {
   virtual ~OptionsRequest() override;
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 };
 
 //------------------------------------------------------------
@@ -410,7 +437,7 @@ class QueryRequest : public CQLRequest {
   const QueryParameters& params() const { return params_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::string query_;
@@ -426,7 +453,7 @@ class PrepareRequest : public CQLRequest {
   const std::string& query() const { return query_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   std::string query_;
@@ -442,7 +469,7 @@ class ExecuteRequest : public CQLRequest {
   const QueryParameters& params() const { return params_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   QueryId query_id_;
@@ -470,7 +497,7 @@ class BatchRequest : public CQLRequest {
   const std::vector<Query>& queries() const { return queries_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
 
@@ -487,7 +514,7 @@ class RegisterRequest : public CQLRequest {
   Events events() const { return events_; }
 
  protected:
-  virtual CHECKED_STATUS ParseBody() override;
+  virtual Status ParseBody() override;
 
  private:
   Events events_;
@@ -502,6 +529,10 @@ class CQLResponse : public CQLMessage {
   Events registered_events() const { return registered_events_; }
   void set_registered_events(Events events) { registered_events_ = events; }
 
+  void set_rpc_queue_position(int64_t rpc_queue_position) {
+    rpc_queue_position_ = trim_cast<int16_t>(rpc_queue_position);
+  }
+
  protected:
   CQLResponse(const CQLRequest& request, Opcode opcode);
   CQLResponse(StreamId stream_id, Opcode opcode);
@@ -512,6 +543,7 @@ class CQLResponse : public CQLMessage {
 
  private:
   Events registered_events_ = kNoEvents;
+  int16_t rpc_queue_position_ = -1;
 };
 
 // ------------------------------ Individual CQL responses -----------------------------------

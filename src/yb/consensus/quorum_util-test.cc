@@ -30,21 +30,14 @@
 // under the License.
 //
 
-#include <atomic>
 #include <string>
-
-#include <glog/logging.h>
 
 #include <gtest/gtest.h>
 
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/util/env.h"
-#include "yb/util/monotime.h"
-#include "yb/util/result.h"
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
 
 namespace yb {
 namespace consensus {
@@ -52,7 +45,7 @@ namespace consensus {
 using std::string;
 
 static void SetPeerInfo(const string& uuid,
-                        RaftPeerPB::MemberType type,
+                        PeerMemberType type,
                         RaftPeerPB* peer) {
   peer->set_permanent_uuid(uuid);
   peer->set_member_type(type);
@@ -60,9 +53,9 @@ static void SetPeerInfo(const string& uuid,
 
 TEST(QuorumUtilTest, TestMemberExtraction) {
   RaftConfigPB config;
-  SetPeerInfo("A", RaftPeerPB::VOTER, config.add_peers());
-  SetPeerInfo("B", RaftPeerPB::VOTER, config.add_peers());
-  SetPeerInfo("C", RaftPeerPB::VOTER, config.add_peers());
+  SetPeerInfo("A", PeerMemberType::VOTER, config.add_peers());
+  SetPeerInfo("B", PeerMemberType::VOTER, config.add_peers());
+  SetPeerInfo("C", PeerMemberType::VOTER, config.add_peers());
 
   // Basic test for GetRaftConfigMember().
   RaftPeerPB peer_pb;

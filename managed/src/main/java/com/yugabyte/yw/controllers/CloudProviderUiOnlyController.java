@@ -13,6 +13,7 @@ import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import io.swagger.annotations.Api;
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import play.libs.Json;
 import play.mvc.Result;
@@ -51,7 +53,13 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             cloudProviderFormData.name,
             cloudProviderFormData.config,
             cloudProviderFormData.region);
-    auditService().createAuditEntry(ctx(), request(), Json.toJson(cloudProviderFormData));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            Objects.toString(provider.uuid, null),
+            Audit.ActionType.Create,
+            Json.toJson(cloudProviderFormData));
     return PlatformResults.withData(provider);
   }
 
@@ -67,7 +75,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     }
 
     Provider newProvider = cloudProviderHandler.setupNewDockerProvider(customer);
-    auditService().createAuditEntry(ctx(), request());
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            Objects.toString(newProvider.uuid, null),
+            Audit.ActionType.SetupDocker);
     return PlatformResults.withData(newProvider);
   }
 
@@ -80,7 +93,13 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
     Provider provider =
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
-    auditService().createAuditEntry(ctx(), request(), requestBody);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            Objects.toString(provider.uuid, null),
+            Audit.ActionType.CreateKubernetes,
+            requestBody);
     return PlatformResults.withData(provider);
   }
 
@@ -115,7 +134,14 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     CloudBootstrap.Params taskParams =
         formFactory.getFormDataOrBadRequest(requestBody, CloudBootstrap.Params.class);
     UUID taskUUID = cloudProviderHandler.bootstrap(customer, provider, taskParams);
-    auditService().createAuditEntry(ctx(), request(), requestBody, taskUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.CloudProvider,
+            Objects.toString(provider.uuid, null),
+            Audit.ActionType.Bootstrap,
+            requestBody,
+            taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

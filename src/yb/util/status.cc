@@ -23,6 +23,7 @@
 #include <array>
 #include <atomic>
 #include <regex>
+#include <string_view>
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/util/debug-util.h"
@@ -179,7 +180,46 @@ class ErrorCodesRange {
   const char* start_;
 };
 
+template<class SizeType>
+uint8_t* StoreString(const std::string& str, uint8_t* out) {
+  Store<SizeType, LittleEndian>(out, str.size());
+  out += sizeof(SizeType);
+  memcpy(out, str.data(), str.size());
+  out += str.size();
+  return out;
+}
+
+template<class SizeType>
+size_t StringEncodedSize(const std::string& str) {
+  return sizeof(SizeType) + str.size();
+}
+
+template<class SizeType>
+std::string_view DecodeString(Slice* source) {
+  const auto str_size = Load<SizeType, LittleEndian>(source->cdata());
+  source->remove_prefix(sizeof(SizeType));
+  const std::string_view result(source->cdata(), str_size);
+  source->remove_prefix(str_size);
+  return result;
+}
+
 } // anonymous namespace
+
+StringBackedErrorTag::Value StringBackedErrorTag::Decode(const uint8_t* source) {
+  if (!source) {
+    return Value();
+  }
+  Slice buf(source, DecodeSize(source));
+  return StringBackedErrorTag::Value(DecodeString<SizeType>(&buf));
+}
+
+size_t StringBackedErrorTag::EncodedSize(const StringBackedErrorTag::Value& value) {
+  return StringEncodedSize<SizeType>(value);
+}
+
+uint8_t* StringBackedErrorTag::Encode(const StringBackedErrorTag::Value& value, uint8_t* out) {
+  return StoreString<SizeType>(value, out);
+}
 
 StringVectorBackedErrorTag::Value StringVectorBackedErrorTag::Decode(const uint8_t* source) {
   if (!source) {
@@ -189,10 +229,7 @@ StringVectorBackedErrorTag::Value StringVectorBackedErrorTag::Decode(const uint8
   Slice buf(source, DecodeSize(source));
   buf.remove_prefix(sizeof(SizeType));
   while (buf.size() > 0) {
-    const auto str_size = Load<SizeType, LittleEndian>(buf.data());
-    buf.remove_prefix(sizeof(SizeType));
-    result.emplace_back(buf.cdata(), str_size);
-    buf.remove_prefix(str_size);
+    result.emplace_back(DecodeString<SizeType>(&buf));
   }
   return result;
 }
@@ -200,7 +237,7 @@ StringVectorBackedErrorTag::Value StringVectorBackedErrorTag::Decode(const uint8
 size_t StringVectorBackedErrorTag::EncodedSize(const StringVectorBackedErrorTag::Value& value) {
   size_t size = sizeof(SizeType);
   for (const auto& str : value) {
-    size += sizeof(SizeType) + str.size();
+    size += StringEncodedSize<SizeType>(str);
   }
   return size;
 }
@@ -210,10 +247,7 @@ uint8_t* StringVectorBackedErrorTag::Encode(
   uint8_t* const start = out;
   out += sizeof(SizeType);
   for (const auto& str : value) {
-    Store<SizeType, LittleEndian>(out, str.size());
-    out += sizeof(SizeType);
-    memcpy(out, str.data(), str.size());
-    out += str.size();
+    out = StoreString<SizeType>(str, out);
   }
   Store<SizeType, LittleEndian>(start, out - start);
   return out;
@@ -551,7 +585,7 @@ Status Status::CloneAndAddErrorCode(const StatusErrorCode& error_code) const {
     out = DoEncode(error_code, out);
     *out++ = 0;
   }
-  auto encoded_size = out - buffer;
+  size_t encoded_size = out - buffer;
   LOG_IF(DFATAL, encoded_size != new_errors_size)
       << "New error codes size is expected to be " << new_errors_size << " but " << encoded_size
       << " bytes were encoded";

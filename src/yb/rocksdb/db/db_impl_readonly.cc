@@ -18,13 +18,15 @@
 // under the License.
 //
 
-
 #include "yb/rocksdb/db/db_impl_readonly.h"
 
 #include "yb/rocksdb/db/compacted_db_impl.h"
-#include "yb/rocksdb/db/merge_context.h"
 #include "yb/rocksdb/db/db_iter.h"
+#include "yb/rocksdb/db/merge_context.h"
+#include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
+
+#include "yb/util/stats/perf_step_timer.h"
 
 namespace rocksdb {
 
@@ -146,28 +148,32 @@ Status DB::OpenForReadOnly(
   *dbptr = nullptr;
   handles->clear();
 
+  Status s;
   DBImplReadOnly* impl = new DBImplReadOnly(db_options, dbname);
-  impl->mutex_.Lock();
-  Status s = impl->Recover(column_families, true /* read only */,
-                           error_if_log_file_exist);
-  if (s.ok()) {
-    // set column family handles
-    for (auto cf : column_families) {
-      auto cfd =
-          impl->versions_->GetColumnFamilySet()->GetColumnFamily(cf.name);
-      if (cfd == nullptr) {
-        s = STATUS(InvalidArgument, "Column family not found: ", cf.name);
-        break;
+  {
+    // Used to destroy superversions outside of lock.
+    std::vector<std::unique_ptr<SuperVersion>> old_superversions;
+
+    InstrumentedMutexLock lock(&impl->mutex_);
+    s = impl->Recover(column_families, true /* read only */, error_if_log_file_exist);
+    if (s.ok()) {
+      // set column family handles
+      for (auto cf : column_families) {
+        auto cfd =
+            impl->versions_->GetColumnFamilySet()->GetColumnFamily(cf.name);
+        if (cfd == nullptr) {
+          s = STATUS(InvalidArgument, "Column family not found: ", cf.name);
+          break;
+        }
+        handles->push_back(new ColumnFamilyHandleImpl(cfd, impl, &impl->mutex_));
       }
-      handles->push_back(new ColumnFamilyHandleImpl(cfd, impl, &impl->mutex_));
+    }
+    if (s.ok()) {
+      for (auto cfd : *impl->versions_->GetColumnFamilySet()) {
+        old_superversions.push_back(cfd->InstallSuperVersion(new SuperVersion(), &impl->mutex_));
+      }
     }
   }
-  if (s.ok()) {
-    for (auto cfd : *impl->versions_->GetColumnFamilySet()) {
-      cfd->InstallSuperVersion(new SuperVersion(), &impl->mutex_);
-    }
-  }
-  impl->mutex_.Unlock();
   if (s.ok()) {
     *dbptr = impl;
   } else {

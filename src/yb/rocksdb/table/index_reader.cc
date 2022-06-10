@@ -15,6 +15,7 @@
 
 #include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/util/slice.h"
 
@@ -38,7 +39,8 @@ Status BinarySearchIndexReader::Create(
 
   return s;
 }
-Result<Slice> BinarySearchIndexReader::GetMiddleKey() {
+
+Result<std::string> BinarySearchIndexReader::GetMiddleKey() const {
   return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
@@ -127,7 +129,7 @@ Status HashIndexReader::Create(const SliceTransform* hash_key_extractor,
   return Status::OK();
 }
 
-Result<Slice> HashIndexReader::GetMiddleKey() {
+Result<std::string> HashIndexReader::GetMiddleKey() const {
   return index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
 }
 
@@ -136,7 +138,7 @@ class MultiLevelIterator : public InternalIterator {
   static constexpr auto kIterChainInitialCapacity = 4;
 
   MultiLevelIterator(
-      TwoLevelIteratorState* state, InternalIterator* top_level_iter, int num_levels,
+      TwoLevelIteratorState* state, InternalIterator* top_level_iter, uint32_t num_levels,
       bool need_free_top_level_iter)
     : state_(state), iter_(num_levels), index_block_handle_(num_levels - 1),
       bottom_level_iter_(iter_.data() + (num_levels - 1)),
@@ -286,7 +288,7 @@ class MultiLevelIterator : public InternalIterator {
 };
 
 Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
-    RandomAccessFileReader* file, const Footer& footer, const int num_levels,
+    RandomAccessFileReader* file, const Footer& footer, const uint32_t num_levels,
     const BlockHandle& top_level_index_handle, Env* env, const ComparatorPtr& comparator,
     const std::shared_ptr<yb::MemTracker>& mem_tracker) {
   std::unique_ptr<Block> index_block;
@@ -300,13 +302,24 @@ Result<std::unique_ptr<MultiLevelIndexReader>> MultiLevelIndexReader::Create(
 InternalIterator* MultiLevelIndexReader::NewIterator(
     BlockIter* iter, TwoLevelIteratorState* index_iterator_state, bool) {
   InternalIterator* top_level_iter = top_level_index_block_->NewIndexIterator(
-      comparator_.get(), iter, true /* total_order_seek */);
+      comparator_.get(), iter, /* total_order_seek = */ true);
   return new MultiLevelIterator(
       index_iterator_state, top_level_iter, num_levels_, top_level_iter != iter);
 }
 
-Result<Slice> MultiLevelIndexReader::GetMiddleKey() {
-  return top_level_index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat);
+Result<std::string> MultiLevelIndexReader::GetMiddleKey() const {
+  const auto middle_key =
+      top_level_index_block_->GetMiddleKey(kIndexBlockKeyValueEncodingFormat, comparator_.get());
+  if (!middle_key.ok() && middle_key.status().IsIncomplete() && (num_levels_ > 1)) {
+    // Incomplete status means block has less than 2 entries and this shouldn't happen if there are
+    // more than 1 level in the block, see MultiLevelIndexBuilder::FlushNextBlock().
+    return STATUS_FORMAT(
+        InternalError,
+        "It is expected to have more than 1 entry in top-level block in case of more than 1 level,"
+        " num_levels: $0",
+        num_levels_);
+  }
+  return middle_key;
 }
 
 } // namespace rocksdb

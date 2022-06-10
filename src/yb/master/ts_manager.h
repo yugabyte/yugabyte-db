@@ -40,21 +40,20 @@
 
 #include <boost/function.hpp>
 
-#include "yb/gutil/thread_annotations.h"
+#include "yb/common/common_fwd.h"
+
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
 
-#include "yb/util/capabilities.h"
-#include "yb/util/locks.h"
-#include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
-
-#include "yb/common/common.pb.h"
-#include "yb/master/master.pb.h"
+#include "yb/master/master_cluster.fwd.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/master/master_fwd.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/locks.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_util.h"
 
 namespace yb {
 
@@ -62,7 +61,7 @@ class NodeInstancePB;
 
 namespace master {
 
-typedef std::unordered_set<HostPort, HostPortHash> BlacklistSet;
+typedef std::string TabletServerId;
 
 // A callback that is called when the number of tablet servers reaches a certain number.
 typedef boost::function<void()> TSCountCallback;
@@ -86,7 +85,7 @@ class TSManager {
   // If the TS has never registered, or this instance doesn't match the
   // current instance ID for the TS, then a NotFound status is returned.
   // Otherwise, *desc is set and OK is returned.
-  CHECKED_STATUS LookupTS(const NodeInstancePB& instance,
+  Status LookupTS(const NodeInstancePB& instance,
                           TSDescriptorPtr* desc);
 
   // Lookup the tablet server descriptor for the given UUID.
@@ -98,7 +97,7 @@ class TSManager {
   // Register or re-register a tablet server with the manager.
   //
   // If successful, *desc reset to the registered descriptor.
-  CHECKED_STATUS RegisterTS(const NodeInstancePB& instance,
+  Status RegisterTS(const NodeInstancePB& instance,
                             const TSRegistrationPB& registration,
                             CloudInfoPB local_cloud_info,
                             rpc::ProxyCache* proxy_cache,
@@ -118,7 +117,7 @@ class TSManager {
   // Return all of the currently registered TS descriptors that have sent a heartbeat
   // recently and are in the same 'cluster' with given placement uuid.
   // Optionally pass in blacklist as a set of HostPorts to return all live non-blacklisted servers.
-  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, string placement_uuid,
+  void GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs, std::string placement_uuid,
                                       const boost::optional<BlacklistSet>& blacklist = boost::none,
                                       bool primary_cluster = true) const;
 
@@ -131,7 +130,7 @@ class TSManager {
   const TSDescriptorPtr GetTSDescriptor(const HostPortPB& host_port) const;
 
   // Check if the placement uuid of the tserver is same as given cluster uuid.
-  static bool IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid);
+  static bool IsTsInCluster(const TSDescriptorPtr& ts, std::string cluster_uuid);
 
   static bool IsTsBlacklisted(const TSDescriptorPtr& ts,
                               const boost::optional<BlacklistSet>& blacklist = boost::none);
@@ -149,7 +148,7 @@ class TSManager {
   void GetDescriptorsUnlocked(std::function<bool(const TSDescriptorPtr&)> condition,
                       TSDescriptorVector* descs) const REQUIRES_SHARED(lock_);
 
-  int GetCountUnlocked() const REQUIRES_SHARED(lock_);
+  size_t GetCountUnlocked() const REQUIRES_SHARED(lock_);
 
   mutable rw_spinlock lock_;
 
@@ -158,7 +157,7 @@ class TSManager {
 
   // This callback will be called when the number of tablet servers reaches the given number.
   TSCountCallback ts_count_callback_ GUARDED_BY(lock_);
-  int ts_count_callback_min_count_ GUARDED_BY(lock_) = 0;
+  size_t ts_count_callback_min_count_ GUARDED_BY(lock_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(TSManager);
 };

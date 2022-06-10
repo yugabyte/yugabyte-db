@@ -18,9 +18,14 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/pgsql_error.h"
 
+#include "yb/tablet/transaction_participant_context.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::placeholders;
@@ -64,7 +69,7 @@ void RunningTransaction::AddReplicatedBatch(
   size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
   VLOG_WITH_PREFIX(4) << __func__ << "(" << batch_idx << ")";
   replicated_batches_.Set(batch_idx);
-  encoded_replicated_batches->push_back(docdb::ValueTypeAsChar::kBitSet);
+  encoded_replicated_batches->push_back(docdb::KeyEntryTypeAsChar::kBitSet);
   replicated_batches_.EncodeTo(encoded_replicated_batches);
 }
 
@@ -75,7 +80,7 @@ void RunningTransaction::BatchReplicated(const TransactionalBatchData& value) {
 
 void RunningTransaction::SetLocalCommitData(
     HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set) {
-  local_commit_aborted_subtxn_set_ = aborted_subtxn_set;
+  last_known_aborted_subtxn_set_ = aborted_subtxn_set;
   local_commit_time_ = time;
   last_known_status_hybrid_time_ = local_commit_time_;
   last_known_status_ = TransactionStatus::COMMITTED;
@@ -100,8 +105,9 @@ void RunningTransaction::RequestStatusAt(const StatusRequest& request,
     if (transaction_status) {
       HybridTime last_known_status_hybrid_time = last_known_status_hybrid_time_;
       AbortedSubTransactionSet local_commit_aborted_subtxn_set;
-      if (transaction_status == TransactionStatus::COMMITTED) {
-        local_commit_aborted_subtxn_set = local_commit_aborted_subtxn_set_;
+      if (transaction_status == TransactionStatus::COMMITTED ||
+          transaction_status == TransactionStatus::PENDING) {
+        local_commit_aborted_subtxn_set = last_known_aborted_subtxn_set_;
       }
       lock->unlock();
       request.callback(TransactionStatusResult{
@@ -130,7 +136,7 @@ bool RunningTransaction::WasAborted() const {
   return last_known_status_ == TransactionStatus::ABORTED;
 }
 
-CHECKED_STATUS RunningTransaction::CheckAborted() const {
+Status RunningTransaction::CheckAborted() const {
   if (WasAborted()) {
     return MakeAbortedStatus(id());
   }
@@ -243,14 +249,16 @@ void RunningTransaction::StatusReceived(
 bool RunningTransaction::UpdateStatus(
     TransactionStatus transaction_status, HybridTime time_of_status,
     HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set) {
+  if (!local_commit_time_ && transaction_status != TransactionStatus::ABORTED) {
+    // If we've already committed locally, then last_known_aborted_subtxn_set_ is already set
+    // properly. Otherwise, we should update it here.
+    last_known_aborted_subtxn_set_ = aborted_subtxn_set;
+  }
+
   // Check for local_commit_time_ is not required for correctness, but useful for optimization.
   // So we could avoid unnecessary actions.
   if (local_commit_time_) {
     return false;
-  }
-
-  if (transaction_status == TransactionStatus::COMMITTED) {
-    local_commit_aborted_subtxn_set_ = aborted_subtxn_set;
   }
 
   if (transaction_status == TransactionStatus::ABORTED && coordinator_safe_time) {
@@ -298,9 +306,18 @@ void RunningTransaction::DoStatusReceived(const Status& status,
       return;
     }
 
-    if (response.status_hybrid_time().size() == 1 &&
-        response.status().size() == 1 &&
-        response.aborted_subtxn_set().size() == 1) {
+    if (response.status_hybrid_time().size() != 1 ||
+        response.status().size() != 1 ||
+        (response.aborted_subtxn_set().size() != 0 && response.aborted_subtxn_set().size() != 1)) {
+      LOG_WITH_PREFIX(DFATAL)
+          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
+          << "exactly one entry expected: "
+          << response.ShortDebugString();
+    } else if (PREDICT_FALSE(response.aborted_subtxn_set().empty())) {
+      YB_LOG_EVERY_N(WARNING, 1)
+          << "Empty aborted_subtxn_set in transaction status response. "
+          << "This should only happen when nodes are on different versions, e.g. during upgrade.";
+    } else {
       auto aborted_subtxn_set_or_status = AbortedSubTransactionSet::FromPB(
           response.aborted_subtxn_set(0).set());
       if (aborted_subtxn_set_or_status.ok()) {
@@ -313,11 +330,6 @@ void RunningTransaction::DoStatusReceived(const Status& status,
             << "error - " << aborted_subtxn_set_or_status.status().ToString()
             << " response - " << response.ShortDebugString();
       }
-    } else {
-      LOG_WITH_PREFIX(DFATAL)
-          << "Wrong number of status, status hybrid time, or aborted subtxn set entries, "
-          << "exactly one entry expected: "
-          << response.ShortDebugString();
     }
 
     LOG_IF_WITH_PREFIX(DFATAL, response.coordinator_safe_time().size() > 1)
@@ -333,7 +345,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
 
     time_of_status = last_known_status_hybrid_time_;
     transaction_status = last_known_status_;
-    aborted_subtxn_set = local_commit_aborted_subtxn_set_;
+    aborted_subtxn_set = last_known_aborted_subtxn_set_;
 
     status_waiters = ExtractFinishedStatusWaitersUnlocked(
         serial_no, time_of_status, transaction_status);
@@ -382,7 +394,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
     if (status_for_waiter) {
       // We know status at global_limit_ht, so could notify waiter.
       auto result = TransactionStatusResult{*status_for_waiter, time_of_status};
-      if (result.status == TransactionStatus::COMMITTED) {
+      if (result.status == TransactionStatus::COMMITTED ||
+          result.status == TransactionStatus::PENDING) {
         result.aborted_subtxn_set = aborted_subtxn_set;
       }
       waiter.callback(std::move(result));
@@ -393,7 +406,8 @@ void RunningTransaction::NotifyWaiters(int64_t serial_no, HybridTime time_of_sta
       LOG_IF_WITH_PREFIX(DFATAL, waiter.serial_no > serial_no)
           << "Notify waiter with request id greater than id of status request: "
           << waiter.serial_no << " vs " << serial_no;
-      waiter.callback(TransactionStatusResult{TransactionStatus::PENDING, time_of_status});
+      waiter.callback(TransactionStatusResult{
+          TransactionStatus::PENDING, time_of_status, aborted_subtxn_set});
     } else {
       waiter.callback(STATUS(TryAgain,
           Format("Cannot determine transaction status with read_ht $0, and global_limit_ht $1, "
@@ -503,8 +517,18 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 }
 
+void RunningTransaction::SetOpId(const OpId& id) {
+  opId.index = id.index;
+  opId.term = id.term;
+}
+
 bool RunningTransaction::ProcessingApply() const {
   return processing_apply_.load(std::memory_order_acquire);
+}
+
+void RunningTransaction::UpdateTransactionStatusLocation(const TabletId& new_status_tablet) {
+  metadata_.old_status_tablet = std::move(metadata_.status_tablet);
+  metadata_.status_tablet = new_status_tablet;
 }
 
 void RunningTransaction::UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode) {

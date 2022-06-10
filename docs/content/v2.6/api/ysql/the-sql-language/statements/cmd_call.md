@@ -164,7 +164,7 @@ You might need to add explicit type casts.
 
 isn't helpful.
 
-Create a procedure procedure with `INOUT` formal parameters.
+Create a procedure with `INOUT` formal parameters.
 
 ```plpgsql
 drop procedure if exists x(int, int, int, int, int);
@@ -194,7 +194,7 @@ call x(10, 20, 30, 40, 50);
 This is the result:
 
 ```
- a  | b  | c  | d  | e  
+ a  | b  | c  | d  | e
 ----+----+----+----+----
  11 | 22 | 33 | 44 | 55
 ```

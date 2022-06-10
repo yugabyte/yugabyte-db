@@ -16,7 +16,18 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_update.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_type.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -24,9 +35,9 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTAssign::PTAssign(MemoryContext *memctx,
-                   YBLocation::SharedPtr loc,
+                   YBLocationPtr loc,
                    const PTQualifiedName::SharedPtr& lhs,
-                   const PTExpr::SharedPtr& rhs,
+                   const PTExprPtr& rhs,
                    const PTExprListNode::SharedPtr& subscript_args,
                    const PTExprListNode::SharedPtr& json_ops)
     : TreeNode(memctx, loc),
@@ -40,7 +51,7 @@ PTAssign::PTAssign(MemoryContext *memctx,
 PTAssign::~PTAssign() {
 }
 
-CHECKED_STATUS PTAssign::Analyze(SemContext *sem_context) {
+Status PTAssign::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   sem_state.set_processing_assignee(true);
@@ -126,7 +137,7 @@ PTUpdateStmt::PTUpdateStmt(MemoryContext *memctx,
 PTUpdateStmt::~PTUpdateStmt() {
 }
 
-CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
+Status PTUpdateStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -153,8 +164,8 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   sem_state.ResetContextState();
 
   // Set clause can't have primary keys.
-  int num_keys = num_key_columns();
-  for (int idx = 0; idx < num_keys; idx++) {
+  auto num_keys = num_key_columns();
+  for (size_t idx = 0; idx < num_keys; idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       return sem_context->Error(set_clause_, ErrorCode::INVALID_ARGUMENTS);
     }
@@ -172,6 +183,9 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
   // Analyze indexes for write operations.
   RETURN_NOT_OK(AnalyzeIndexesForWrites(sem_context));
 
+  if (update_properties_ != nullptr) {
+    RETURN_NOT_OK(update_properties_->Analyze(sem_context));
+  }
   // If returning a status we always return back the whole row.
   if (returns_status_) {
     AddRefForAllColumns();
@@ -182,7 +196,7 @@ CHECKED_STATUS PTUpdateStmt::Analyze(SemContext *sem_context) {
 
 namespace {
 
-CHECKED_STATUS MultipleColumnSetError(const ColumnDesc* const col_desc,
+Status MultipleColumnSetError(const ColumnDesc* const col_desc,
                                       const PTAssign* const assign_expr,
                                       SemContext* sem_context) {
   return sem_context->Error(
@@ -194,7 +208,7 @@ CHECKED_STATUS MultipleColumnSetError(const ColumnDesc* const col_desc,
 
 } // anonymous namespace
 
-CHECKED_STATUS PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
+Status PTUpdateStmt::AnalyzeSetExpr(PTAssign *assign_expr, SemContext *sem_context) {
   // Analyze the expression.
   RETURN_NOT_OK(assign_expr->Analyze(sem_context));
 
@@ -258,13 +272,13 @@ ExplainPlanPB PTUpdateStmt::AnalysisResultToPB() {
   update_plan->set_update_type("Update on " + table_name().ToString());
   update_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name().ToString());
   string key_conditions = "        Key Conditions: " +
-      conditionsToString<MCVector<ColumnOp>>(key_where_ops());
+      ConditionsToString<MCVector<ColumnOp>>(key_where_ops());
   update_plan->set_key_conditions(key_conditions);
-  update_plan->set_output_width(max({
+  update_plan->set_output_width(narrow_cast<int32_t>(max({
     update_plan->update_type().length(),
     update_plan->scan_type().length(),
     update_plan->key_conditions().length()
-  }));
+  })));
   return explain_plan;
 }
 

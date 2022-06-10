@@ -14,6 +14,7 @@
 #ifndef ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
 #define ENT_SRC_YB_TSERVER_CDC_CONSUMER_H
 
+#include <condition_variable>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -96,6 +97,8 @@ class CDCConsumer {
     return TEST_num_successful_write_rpcs.load(std::memory_order_acquire);
   }
 
+  Status ReloadCertificates();
+
  private:
   // Runs a thread that periodically polls for any new threads.
   void RunThread();
@@ -109,7 +112,8 @@ class CDCConsumer {
   // polled for.
   void TriggerPollForNewTablets();
 
-  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info);
+  bool ShouldContinuePolling(const cdc::ProducerTabletInfo producer_tablet_info,
+                             const cdc::ConsumerTabletInfo consumer_tablet_info);
 
   void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
 
@@ -129,8 +133,8 @@ class CDCConsumer {
                      cdc::ProducerTabletInfo::Hash> producer_consumer_tablet_map_from_master_
                      GUARDED_BY(master_data_mutex_);
 
-  std::unordered_set<std::string> streams_with_same_num_producer_consumer_tablets_
-    GUARDED_BY(master_data_mutex_);
+  std::unordered_set<std::string> streams_with_local_tserver_optimization_
+      GUARDED_BY(master_data_mutex_);
 
   scoped_refptr<Thread> run_trigger_poll_thread_;
 

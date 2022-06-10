@@ -16,7 +16,11 @@
 #include <memory>
 
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/tablet/tablet.fwd.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
@@ -47,27 +51,52 @@ class SnapshotOperation;
 class SplitOperation;
 class TabletSnapshots;
 class TabletSplitter;
-class TabletStatusPB;
 class TabletStatusListener;
 class TransactionIntentApplier;
 class TransactionCoordinator;
 class TransactionCoordinatorContext;
 class TransactionParticipant;
 class TransactionParticipantContext;
+class TransactionStatePB;
 class TruncateOperation;
+class TruncatePB;
 class UpdateTxnOperation;
+class WriteOperation;
+class WriteQuery;
+class WriteQueryContext;
 
 struct CreateSnapshotData;
+struct DocDbOpIds;
+struct PgsqlReadRequestResult;
+struct QLReadRequestResult;
+struct RemoveIntentsData;
+struct TabletInitData;
 struct TabletMetrics;
+struct TransactionApplyData;
+struct TransactionStatusInfo;
 
+YB_DEFINE_ENUM(FlushMode, (kSync)(kAsync));
 YB_DEFINE_ENUM(RequireLease, (kFalse)(kTrue)(kFallbackToFollower));
+YB_STRONGLY_TYPED_BOOL(Destroy);
+YB_STRONGLY_TYPED_BOOL(DisableFlushOnShutdown);
 YB_STRONGLY_TYPED_BOOL(IsSysCatalogTablet);
+YB_STRONGLY_TYPED_BOOL(ShouldAbortActiveTransactions);
 YB_STRONGLY_TYPED_BOOL(TransactionsEnabled);
 
 // Used to indicate that a transaction-related operation has already been applied to regular RocksDB
 // (which was flushed) but the corresponding deletion of intents from the intents RocksDB has not
 // been flushed and was therefore lost.
 YB_STRONGLY_TYPED_BOOL(AlreadyAppliedToRegularDB);
+
+enum class FlushFlags {
+  kNone = 0,
+
+  kRegular = 1,
+  kIntents = 2,
+  kNoScopedOperation = 4,
+
+  kAllDbs = kRegular | kIntents
+};
 
 }  // namespace tablet
 }  // namespace yb

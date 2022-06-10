@@ -25,7 +25,7 @@ import org.springframework.shell.core.annotation.CliCommand;
 import org.springframework.shell.core.annotation.CliOption;
 import org.springframework.stereotype.Component;
 import org.yb.ColumnSchema;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.Schema;
 import org.yb.client.AsyncYBClient;
 import org.yb.client.AsyncYBClient.AsyncYBClientBuilder;
@@ -42,7 +42,7 @@ import org.yb.client.ListTabletServersResponse;
 import org.yb.client.ChangeLoadBalancerStateResponse;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.NetUtil;
 import org.yb.util.ServerInfo;
 
@@ -194,7 +194,7 @@ public class YBCliCommands implements CommandMarker {
       sb.append("Got " + resp.getTablesList().size() +
                 " tables [(index) keyspace name uuid type]:\n");
       int idx = 1;
-      for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
+      for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
         sb.append("\t(" + idx + ") " + table.getNamespace().getName() + " " + table.getName() +
                   " " + table.getId().toStringUtf8() + " " + table.getTableType() + "\n");
         idx++;
@@ -206,7 +206,8 @@ public class YBCliCommands implements CommandMarker {
     }
   }
 
-  private void printTableInfo(Master.ListTablesResponsePB.TableInfo table, StringBuilder sb) {
+  private void printTableInfo(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo table, StringBuilder sb) {
     sb.append("Keyspace: ");
     sb.append(table.getNamespace().getName());
     sb.append("\n");
@@ -251,7 +252,7 @@ public class YBCliCommands implements CommandMarker {
     StringBuilder sb = new StringBuilder();
     try {
       ListTablesResponse resp = ybClient.getTablesList();
-      for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
+      for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
         if (table.getId().toStringUtf8().equals(uuid)) {
           printTableInfo(table, sb);
           printSchemaInfo(ybClient.getTableSchemaByUUID(uuid), sb);
@@ -286,7 +287,7 @@ public class YBCliCommands implements CommandMarker {
     StringBuilder sb = new StringBuilder();
     try {
       ListTablesResponse resp = ybClient.getTablesList();
-      for (Master.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
+      for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : resp.getTableInfoList()) {
         if (table.getNamespace().getName().equals(keyspace) && table.getName().equals(tableName)) {
           printTableInfo(table, sb);
           printSchemaInfo(ybClient.getTableSchema(keyspace, tableName), sb);

@@ -33,7 +33,7 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.master.Master;
+import org.yb.master.MasterTypes;
 import org.yb.util.ServerInfo;
 
 import java.util.List;
@@ -44,7 +44,7 @@ public class ListTabletServersResponse extends YRpcResponse {
 
   private final int tabletServersCount;
   private final List<ServerInfo> tabletServersList;
-  private Master.MasterErrorPB serverError;
+  private MasterTypes.MasterErrorPB serverError;
 
   /**
    * @param ellapsedMillis Time in milliseconds since RPC creation to now.
@@ -52,7 +52,7 @@ public class ListTabletServersResponse extends YRpcResponse {
    * @param tabletServersList List of tablet servers.
    */
   ListTabletServersResponse(long ellapsedMillis, String tsUUID, int tabletServersCount,
-                            List<ServerInfo> tabletServersList, Master.MasterErrorPB error) {
+                            List<ServerInfo> tabletServersList, MasterTypes.MasterErrorPB error) {
     super(ellapsedMillis, tsUUID);
     this.tabletServersCount = tabletServersCount;
     this.tabletServersList = tabletServersList;

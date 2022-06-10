@@ -19,11 +19,14 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/status.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/tserver_admin.pb.h"
+#include "yb/master/master_fwd.h"
 
-#include "yb/master/catalog_entity_info.h"
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 DECLARE_string(initial_sys_catalog_snapshot_path);
 DECLARE_bool(use_initial_sys_catalog_snapshot);
@@ -33,26 +36,25 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 namespace yb {
 namespace master {
 
-class SysCatalogTable;
-
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {
  public:
-  InitialSysCatalogSnapshotWriter() {}
+  InitialSysCatalogSnapshotWriter();
+  ~InitialSysCatalogSnapshotWriter();
 
   // Collect all Raft group metadata changes needed by PostgreSQL tables so we can replay them
   // when creating a new cluster (to avoid running initdb).
-  void AddMetadataChange(tserver::ChangeMetadataRequestPB metadata_change);
+  void AddMetadataChange(tablet::ChangeMetadataRequestPB metadata_change);
 
-  CHECKED_STATUS WriteSnapshot(
+  Status WriteSnapshot(
       tablet::Tablet* sys_catalog_tablet,
       const std::string& dest_path);
 
  private:
-  std::vector<tserver::ChangeMetadataRequestPB> initdb_metadata_changes_;
+  std::vector<tablet::ChangeMetadataRequestPB> initdb_metadata_changes_;
 };
 
-CHECKED_STATUS RestoreInitialSysCatalogSnapshot(
+Status RestoreInitialSysCatalogSnapshot(
     const std::string& initial_snapshot_path,
     tablet::TabletPeer* sys_catalog_tablet_peer,
     int64_t term);
@@ -61,7 +63,7 @@ void SetDefaultInitialSysCatalogSnapshotFlags();
 
 // A one-time migration procedure for existing clusters to set is_ysql_catalog_table and
 // is_transactional flags to true on YSQL system catalog tables.
-CHECKED_STATUS MakeYsqlSysCatalogTablesTransactional(
+Status MakeYsqlSysCatalogTablesTransactional(
     TableInfoMap* table_ids_map,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,

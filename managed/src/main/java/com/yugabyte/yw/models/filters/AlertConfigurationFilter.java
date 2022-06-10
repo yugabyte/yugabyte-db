@@ -11,6 +11,8 @@ package com.yugabyte.yw.models.filters;
 
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.Severity;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -27,10 +29,12 @@ public class AlertConfigurationFilter {
   String name;
   Boolean active;
   AlertConfiguration.TargetType targetType;
+  AlertConfigurationTarget target;
   AlertTemplate template;
-  UUID targetUuid;
+  Severity severity;
   DestinationType destinationType;
   UUID destinationUuid;
+  Boolean suspended;
 
   // Can't use @Builder(toBuilder = true) as it sets null fields as well, which breaks non null
   // checks.
@@ -51,17 +55,23 @@ public class AlertConfigurationFilter {
     if (targetType != null) {
       result.targetType(targetType);
     }
+    if (target != null) {
+      result.target(target);
+    }
     if (template != null) {
       result.template(template);
     }
-    if (targetUuid != null) {
-      result.targetUuid(targetUuid);
+    if (severity != null) {
+      result.severity(severity);
     }
     if (destinationType != null) {
       result.destinationType(destinationType);
     }
     if (destinationUuid != null) {
       result.destinationUuid(destinationUuid);
+    }
+    if (suspended != null) {
+      result.suspended(suspended);
     }
     return result;
   }
@@ -100,13 +110,18 @@ public class AlertConfigurationFilter {
       return this;
     }
 
+    public AlertConfigurationFilterBuilder target(@NonNull AlertConfigurationTarget target) {
+      this.target = target;
+      return this;
+    }
+
     public AlertConfigurationFilterBuilder template(@NonNull AlertTemplate template) {
       this.template = template;
       return this;
     }
 
-    public AlertConfigurationFilterBuilder targetUuid(@NonNull UUID targetUuid) {
-      this.targetUuid = targetUuid;
+    public AlertConfigurationFilterBuilder severity(@NonNull Severity severity) {
+      this.severity = severity;
       return this;
     }
 

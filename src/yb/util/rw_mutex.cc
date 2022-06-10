@@ -32,8 +32,9 @@
 
 #include "yb/util/rw_mutex.h"
 
-#include <glog/logging.h>
 #include <mutex>
+
+#include <glog/logging.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/util/env.h"
@@ -162,7 +163,7 @@ void RWMutex::AssertAcquiredForWriting() const {
 }
 
 void RWMutex::CheckLockState(LockState state) const {
-  pid_t my_tid = Env::Default()->gettid();
+  auto my_tid = Env::Default()->gettid();
   bool is_reader;
   bool is_writer;
   {

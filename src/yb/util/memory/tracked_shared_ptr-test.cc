@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <limits>
 
 #include <gtest/gtest.h>
@@ -79,7 +80,7 @@ TEST(TrackedSharedPtr, RandomOps) {
     std::uniform_int_distribution<size_t> random_op(0, 4);
     std::uniform_int_distribution<size_t> random_index(0, kNumObjects - 1);
 
-    for (int i = 0; i < kNumIterations; ++i) {
+    for (size_t i = 0; i < kNumIterations; ++i) {
       switch (random_op(rng)) {
         case 0: {
           // Get.

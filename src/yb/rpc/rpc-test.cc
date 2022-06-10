@@ -52,6 +52,9 @@
 #include "yb/gutil/strings/human_readable.h"
 
 #include "yb/rpc/compressed_stream.h"
+#include "yb/rpc/network_error.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/secure_stream.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/tcp_stream.h"
@@ -59,8 +62,16 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/env.h"
+#include "yb/util/format.h"
 #include "yb/util/logging_test_util.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+#include "yb/util/thread.h"
 
 #include "yb/util/memory/memory_usage_test_util.h"
 
@@ -77,7 +88,7 @@ DECLARE_bool(TEST_pause_calculator_echo_request);
 DECLARE_bool(binary_call_parser_reject_on_mem_tracker_hard_limit);
 DECLARE_bool(enable_rpc_keepalive);
 DECLARE_int32(num_connections_to_server);
-DECLARE_int32(rpc_throttle_threshold_bytes);
+DECLARE_int64(rpc_throttle_threshold_bytes);
 DECLARE_int32(stream_compression_algo);
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_string(vmodule);
@@ -120,16 +131,16 @@ class TestRpc : public RpcTestBase {
   void CheckServerMessengerConnections(size_t num_connections) {
     ReactorMetrics metrics;
     ASSERT_OK(server_messenger()->TEST_GetReactorMetrics(0, &metrics));
-    ASSERT_EQ(metrics.num_server_connections_, num_connections)
+    ASSERT_EQ(metrics.num_server_connections, num_connections)
         << "Server should have " << num_connections << " server connection(s)";
-    ASSERT_EQ(metrics.num_client_connections_, 0) << "Server should have 0 client connections";
+    ASSERT_EQ(metrics.num_client_connections, 0) << "Server should have 0 client connections";
   }
 
   void CheckClientMessengerConnections(Messenger* messenger, size_t num_connections) {
     ReactorMetrics metrics;
     ASSERT_OK(messenger->TEST_GetReactorMetrics(0, &metrics));
-    ASSERT_EQ(metrics.num_server_connections_, 0) << "Client should have 0 server connections";
-    ASSERT_EQ(metrics.num_client_connections_, num_connections)
+    ASSERT_EQ(metrics.num_server_connections, 0) << "Client should have 0 server connections";
+    ASSERT_EQ(metrics.num_client_connections, num_connections)
         << "Client should have " << num_connections << " client connection(s)";
   }
 
@@ -260,6 +271,13 @@ TEST_F(TestRpc, TestCallToBadServer) {
     LOG(INFO) << "Status: " << s.ToString();
     ASSERT_TRUE(s.IsRemoteError()) << "unexpected status: " << s.ToString();
   }
+}
+
+TEST_F(TestRpc, StatusNetworkError) {
+  auto status = STATUS_EC_FORMAT(NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
+                   "Connect error $0", "for test");
+  // Ensuring that we don't fail with unknown category during status.ToString().
+  LOG(INFO) << status.ToString();
 }
 
 // Test that RPC calls can be failed with an error status on the server.
@@ -499,9 +517,8 @@ static void AcceptAndReadForever(Socket* listen_sock) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(MonoDelta::FromSeconds(10));
 
-  size_t nread;
   uint8_t buf[1024];
-  while (server_sock.BlockingRecv(buf, sizeof(buf), &nread, deadline).ok()) {
+  while (server_sock.BlockingRecv(buf, sizeof(buf), deadline).ok()) {
   }
 }
 
@@ -764,7 +781,7 @@ TEST_F(TestRpc, QueueTimeout) {
   for (int i = 0; i != kCalls; ++i) {
     auto& call = calls[i];
     auto& req = call.req;
-    req.set_sleep_micros(kSleep.ToMicroseconds());
+    req.set_sleep_micros(narrow_cast<uint32_t>(kSleep.ToMicroseconds()));
     req.set_client_timeout_defined(true);
     call.controller.set_timeout(kSleep / 2);
     p.AsyncRequest(method, /* method_metrics= */ nullptr, req, &call.resp, &call.controller,
@@ -788,8 +805,8 @@ TEST_F(TestRpc, QueueTimeout) {
 struct DisconnectShare {
   Proxy proxy;
   size_t left;
-  std::mutex mutex;
-  std::condition_variable cond;
+  std::mutex mutex{};
+  std::condition_variable cond{};
   std::unordered_map<std::string, size_t> counts;
 };
 
@@ -833,7 +850,8 @@ TEST_F(TestRpc, TestDisconnect) {
   auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
 
   constexpr size_t kRequests = 10000;
-  DisconnectShare share = { { client_messenger.get(), server_addr }, kRequests };
+  auto share = DisconnectShare{
+      .proxy = {client_messenger.get(), server_addr}, .left = kRequests, .counts = {}};
 
   std::vector<DisconnectTask> tasks;
   for (size_t i = 0; i != kRequests; ++i) {
@@ -929,7 +947,7 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
         kEmptyMsgLengthPrefix, kMsgLengthPrefixLength, "Empty message");
     sending.emplace_back(data_ptr, tracker);
 
-    const auto heap_allocated_bytes =
+    const size_t heap_allocated_bytes =
         MemTracker::GetTCMallocCurrentAllocatedBytes() - heap_allocated_bytes_initial;
     if (heap_allocated_bytes != current.heap_allocated_bytes) {
       latest_before_realloc = current;
@@ -1025,7 +1043,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
 
   LOG(INFO) << n_calls << " calls marked as finished.";
 
-  for (int i = 0; i < controllers.size(); ++i) {
+  for (size_t i = 0; i < controllers.size(); ++i) {
     auto& controller = controllers[i];
     ASSERT_TRUE(controller->finished());
     auto s = controller->status();
@@ -1075,7 +1093,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
   latch.Wait();
   LOG(INFO) << n_calls << " calls marked as finished.";
 
-  for (int i = 0; i < controllers.size(); ++i) {
+  for (size_t i = 0; i < controllers.size(); ++i) {
     auto& controller = controllers[i];
     ASSERT_TRUE(controller->finished());
     auto s = controller->status();
@@ -1093,8 +1111,9 @@ class TestRpcSecure : public RpcTestBase {
  public:
   void SetUp() override {
     RpcTestBase::SetUp();
-    secure_context_ = std::make_unique<SecureContext>();
-    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1"));
+    secure_context_ = std::make_unique<SecureContext>(
+        RequireClientCertificate::kFalse, UseClientCertificate::kFalse);
+    EXPECT_OK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kTrue));
   }
 
  protected:
@@ -1120,6 +1139,10 @@ class TestRpcSecure : public RpcTestBase {
     }, f);
   }
 };
+
+TEST_F(TestRpcSecure, TestKeyCertificateMismatch) {
+  ASSERT_NOK(secure_context_->TEST_GenerateKeys(1024, "127.0.0.1", MatchingCertKeyPair::kFalse));
+}
 
 void TestSimple(CalculatorServiceProxy* proxy) {
   RpcController controller;

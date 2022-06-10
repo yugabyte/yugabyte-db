@@ -17,9 +17,10 @@
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -53,10 +54,8 @@ AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
                                              const scoped_refptr<TabletInfo>& tablet,
                                              const string& snapshot_id,
                                              tserver::TabletSnapshotOpRequestPB::Operation op)
-  : enterprise::RetryingTSRpcTask(master,
-                                  callback_pool,
-                                  new PickLeaderReplica(tablet),
-                                  tablet->table().get()),
+  : RetryingTSRpcTask(
+        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get()),
     tablet_(tablet),
     snapshot_id_(snapshot_id),
     operation_(op) {
@@ -105,7 +104,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
     VLOG_WITH_PREFIX(1) << "Complete";
   }
 
-  if (state() != MonitoredTaskState::kComplete) {
+  if (state() != server::MonitoredTaskState::kComplete) {
     VLOG_WITH_PREFIX(1) << "TabletSnapshotOp task is not completed";
     return;
   }
@@ -172,6 +171,10 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
     *req.mutable_schema() = schema_;
     *req.mutable_indexes() = indexes_;
     req.set_hide(hide_);
+  }
+
+  if (db_oid_) {
+    req.set_db_oid(*db_oid_);
   }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 

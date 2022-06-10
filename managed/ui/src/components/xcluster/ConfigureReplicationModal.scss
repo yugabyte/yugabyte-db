@@ -1,31 +1,57 @@
+.replication-help-text {
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 25px;
+}
+
 .select-tables-form {
-  padding: 20px;
   .info-search {
     display: flex;
     justify-content: center;
     align-items: center;
     margin-bottom: 20px;
   }
+
   .tables-list {
-    margin-top: 20px;
-    box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+    margin: 16px;
+    border: 1px solid #dde1e6;
+    border-radius: 8px;
     height: 350px;
     padding: 20px;
   }
+
   .validate {
     margin-top: 20px;
     display: flex;
     align-items: center;
+
     .validate-msg {
       &.success {
         color: green;
       }
+
       &.failed {
         color: red;
       }
     }
   }
+
   .add-to-table-container {
     overflow-y: auto;
+  }
+  .noMarginButton {
+    margin-bottom: 0;
+  }
+}
+
+.alertMsg {
+  * {
+    margin-right: 5px;
+  }
+
+  a {
+    text-decoration: underline;
+    color: #FFF;
+
   }
 }

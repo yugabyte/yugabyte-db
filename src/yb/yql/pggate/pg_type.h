@@ -15,8 +15,8 @@
 #ifndef YB_YQL_PGGATE_PG_TYPE_H_
 #define YB_YQL_PGGATE_PG_TYPE_H_
 
-#include "yb/client/client.h"
-#include "yb/common/ql_value.h"
+#include <unordered_map>
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {

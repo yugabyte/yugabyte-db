@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 YugaByte, Inc. and Contributors
+ * Copyright 2022 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -15,7 +15,9 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import com.google.common.annotations.VisibleForTesting;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import com.typesafe.config.ConfigParseOptions;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
@@ -23,55 +25,92 @@ import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.db.ebean.EbeanDynamicEvolutions;
+import play.libs.Json;
 
 /** Factory to create RuntimeConfig for various scopes */
 @Singleton
 public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private static final Logger LOG = LoggerFactory.getLogger(SettableRuntimeConfigFactory.class);
 
+  // For example, anything just email, or ending with .email, _email or -email matches.
+  private static final Pattern SENSITIVE_CONFIG_NAME_PAT =
+      Pattern.compile("(^|\\.|[_\\-])(email|password|server)$");
+
+  @VisibleForTesting
+  static final String RUNTIME_CONFIG_INCLUDED_OBJECTS = "runtime_config.included_objects";
+
   private final Config appConfig;
 
+  private static final String newLine = System.getProperty("line.separator");
+
+  // We need to do this because appConfig is preResolved by playFramework
+  // So setting references to global or universe scoped config in reference.conf or application.conf
+  // wont resolve to unexpected.
+  // This helps us avoid unnecessary migrations of config keys.
+  private static final Config UNRESOLVED_STATIC_CONFIG =
+      ConfigFactory.parseString(
+          String.join(
+              newLine,
+              "yb {",
+              "  upgrade.vmImage = ${yb.cloud.enabled}",
+              "  external_script {",
+              "    content = ${?platform_ext_script_content}",
+              "    params = ${?platform_ext_script_params}",
+              "    schedule = ${?platform_ext_script_schedule}",
+              "  }",
+              "}"));
+
   @Inject
-  public SettableRuntimeConfigFactory(Config appConfig) {
+  public SettableRuntimeConfigFactory(
+      Config appConfig, EbeanDynamicEvolutions ebeanDynamicEvolutions, YBFlywayInit ybFlywayInit) {
     this.appConfig = appConfig;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Customer> forCustomer(Customer customer) {
-    Config config =
-        getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")")
-            .withFallback(globalConfig());
+    RuntimeConfig<Customer> config =
+        new RuntimeConfig<>(
+            customer,
+            getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")")
+                .withFallback(globalConfig()));
     LOG.trace("forCustomer {}: {}", customer.uuid, config);
-    return new RuntimeConfig<>(customer, config);
+    return config;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
     Customer customer = Customer.get(universe.customerId);
-    Config config =
-        getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
-            .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
-            .withFallback(globalConfig());
+    RuntimeConfig<Universe> config =
+        new RuntimeConfig<>(
+            universe,
+            getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
+                .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
+                .withFallback(globalConfig()));
     LOG.trace("forUniverse {}: {}", universe.universeUUID, config);
-    return new RuntimeConfig<>(universe, config);
+    return config;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Provider> forProvider(Provider provider) {
     Customer customer = Customer.get(provider.customerUUID);
-    Config config =
-        getConfigForScope(provider.uuid, "Scoped Config (" + provider + ")")
-            .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
-            .withFallback(globalConfig());
+    RuntimeConfig<Provider> config =
+        new RuntimeConfig<>(
+            provider,
+            getConfigForScope(provider.uuid, "Scoped Config (" + provider + ")")
+                .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
+                .withFallback(globalConfig()));
     LOG.trace("forProvider {}: {}", provider.uuid, config);
-    return new RuntimeConfig<>(provider, config);
+    return config;
   }
 
   /** @return A RuntimeConfig instance for a GLOBAL_SCOPE */
@@ -88,16 +127,58 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   private Config globalConfig() {
     Config config =
         getConfigForScope(GLOBAL_SCOPE_UUID, "Global Runtime Config (" + GLOBAL_SCOPE_UUID + ")")
+            .withFallback(UNRESOLVED_STATIC_CONFIG)
             .withFallback(appConfig);
-    LOG.trace("globalConfig : {}", config);
+    LOG.trace("globalConfig : {}", toRedactedString(config));
     return config;
   }
 
   @VisibleForTesting
   Config getConfigForScope(UUID scope, String description) {
     Map<String, String> values = RuntimeConfigEntry.getAsMapForScope(scope);
-    Config config = ConfigFactory.parseMap(values, description);
-    LOG.trace("Read from DB for {}: {}", description, config);
+    return toConfig(description, values);
+  }
+
+  private Config toConfig(String description, Map<String, String> values) {
+    String confStr = toConfigString(values);
+    Config config =
+        ConfigFactory.parseString(
+            confStr, ConfigParseOptions.defaults().setOriginDescription(description));
+
+    LOG.trace("Read from DB for {}: {}", description, toRedactedString(config));
     return config;
+  }
+
+  private String toConfigString(Map<String, String> values) {
+    return values
+        .entrySet()
+        .stream()
+        .map(entry -> entry.getKey() + "=" + maybeQuote(entry))
+        .collect(Collectors.joining("\n"));
+  }
+
+  private String maybeQuote(Map.Entry<String, String> entry) {
+    final boolean isObject =
+        appConfig.getStringList(RUNTIME_CONFIG_INCLUDED_OBJECTS).contains(entry.getKey());
+    if (isObject || entry.getValue().startsWith("\"")) {
+      // No need to escape
+      return entry.getValue();
+    }
+    return Json.stringify(Json.toJson(entry.getValue()));
+  }
+
+  @VisibleForTesting
+  static String toRedactedString(Config config) {
+    return config
+        .entrySet()
+        .stream()
+        .map(
+            entry -> {
+              if (SENSITIVE_CONFIG_NAME_PAT.matcher(entry.getKey()).find()) {
+                return entry.getKey() + "=REDACTED";
+              }
+              return entry.getKey() + "=" + entry.getValue();
+            })
+        .collect(Collectors.joining(", "));
   }
 }

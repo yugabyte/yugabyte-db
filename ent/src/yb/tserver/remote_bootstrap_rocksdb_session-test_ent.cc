@@ -12,6 +12,11 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include "yb/consensus/log.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
@@ -24,13 +29,13 @@ using yb::tablet::Tablet;
 
 static const string kSnapshotId = "0123456789ABCDEF0123456789ABCDEF";
 
-class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
+class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
  public:
-  RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YQL_TABLE_TYPE) {}
+  RemoteBootstrapRocksDBTest() : RemoteBootstrapSessionTest(YQL_TABLE_TYPE) {}
 
   void InitSession() override {
     CreateSnapshot();
-    RemoteBootstrapTest::InitSession();
+    RemoteBootstrapSessionTest::InitSession();
   }
 
   void CreateSnapshot() {

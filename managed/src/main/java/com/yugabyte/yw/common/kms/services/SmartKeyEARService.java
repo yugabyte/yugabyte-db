@@ -17,9 +17,8 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.algorithms.SmartKeyAlgorithm;
-import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
-import com.yugabyte.yw.forms.UniverseTaskParams.EncryptionAtRestConfig;
+import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
@@ -148,8 +147,26 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
     final JsonNode errors = response.get("error");
     if (errors != null) throw new RuntimeException(errors.toString());
     keyVal = Base64.getDecoder().decode(response.get("value").asText());
-    // Update cache entry
-    if (keyVal != null) EncryptionAtRestUtil.setUniverseKeyCacheEntry(universeUUID, keyRef, keyVal);
+    return keyVal;
+  }
+
+  @Override
+  public byte[] validateRetrieveKeyWithService(
+      UUID universeUUID,
+      UUID configUUID,
+      byte[] keyRef,
+      EncryptionAtRestConfig config,
+      ObjectNode authConfig) {
+    byte[] keyVal = null;
+    final String endpoint = String.format("/crypto/v1/keys/%s/export", new String(keyRef));
+    final String sessionToken = retrieveSessionAuthorization(authConfig);
+    final Map<String, String> headers = ImmutableMap.of("Authorization", sessionToken);
+    final String baseUrl = authConfig.get("base_url").asText();
+    final String url = Util.buildURL(baseUrl, endpoint);
+    final JsonNode response = this.apiHelper.getRequest(url, headers);
+    final JsonNode errors = response.get("error");
+    if (errors != null) throw new RuntimeException(errors.toString());
+    keyVal = Base64.getDecoder().decode(response.get("value").asText());
     return keyVal;
   }
 }

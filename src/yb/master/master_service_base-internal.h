@@ -14,13 +14,16 @@
 #ifndef YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 #define YB_MASTER_MASTER_SERVICE_BASE_INTERNAL_H
 
-#include <gflags/gflags_declare.h>
+#include <boost/preprocessor/seq/for_each.hpp>
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/flush_manager.h"
+#include "yb/master/master.h"
+#include "yb/master/master_error.h"
 #include "yb/master/master_service_base.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -66,7 +69,7 @@ void MasterServiceBase::HandleOnLeader(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  ScopedLeaderSharedLock l(server_->catalog_manager(), file_name, line_number, function_name);
+  ScopedLeaderSharedLock l(server_->catalog_manager_impl(), file_name, line_number, function_name);
   if (FLAGS_TEST_timeout_non_leader_master_rpcs && !l.leader_status().ok()) {
     std::this_thread::sleep_until(rpc->GetClientDeadline());
   }
@@ -107,7 +110,7 @@ void MasterServiceBase::HandleIn(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
+  HandleOnLeader(req, resp, rpc, [this, resp, f]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(resp); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
@@ -124,7 +127,7 @@ void MasterServiceBase::HandleIn(
     HoldCatalogLock hold_catalog_lock) {
   LongOperationTracker long_operation_tracker("HandleIn", std::chrono::seconds(10));
 
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
+  HandleOnLeader(req, resp, rpc, [this, req, resp, f]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
@@ -139,10 +142,59 @@ void MasterServiceBase::HandleIn(
     int line_number,
     const char* function_name,
     HoldCatalogLock hold_catalog_lock) {
-  HandleOnLeader(req, resp, rpc, [=]() -> Status {
+  HandleOnLeader(req, resp, rpc, [this, req, resp, f, rpc]() -> Status {
       return (handler(static_cast<HandlerType*>(nullptr))->*f)(req, resp, rpc); },
       file_name, line_number, function_name, hold_catalog_lock);
 }
+
+#define COMMON_HANDLER_ARGS(class_name, method_name) \
+    req, resp, &rpc, &class_name::method_name, __FILE__, __LINE__, __func__
+
+#define HANDLE_ON_LEADER_IMPL(class_name, method_name, hold_leader_lock) \
+    HandleIn<class_name>(COMMON_HANDLER_ARGS(class_name, method_name), (hold_leader_lock))
+
+#define HANDLE_ON_LEADER_WITH_LOCK(class_name, method_name) \
+    HANDLE_ON_LEADER_IMPL(class_name, method_name, HoldCatalogLock::kTrue)
+
+#define HANDLE_ON_ALL_MASTERS(class_name, method_name) \
+    HandleOnAllMasters<class_name>(COMMON_HANDLER_ARGS(class_name, method_name))
+
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK_HELPER(r, class_name, method_name) \
+  void method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB)* req, \
+      BOOST_PP_CAT(method_name, ResponsePB)* resp, \
+      rpc::RpcContext rpc) override { \
+    HANDLE_ON_LEADER_WITH_LOCK(class_name, method_name); \
+  }
+
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(class_name, methods) \
+  BOOST_PP_SEQ_FOR_EACH(MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK_HELPER, class_name, methods)
+
+#define MASTER_SERVICE_IMPL_ON_ALL_MASTERS_HELPER(r, class_name, method_name) \
+  void method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB)* req, \
+      BOOST_PP_CAT(method_name, ResponsePB)* resp, \
+      rpc::RpcContext rpc) override { \
+    HANDLE_ON_ALL_MASTERS(class_name, method_name); \
+  }
+
+#define MASTER_SERVICE_IMPL_ON_ALL_MASTERS(class_name, methods) \
+  BOOST_PP_SEQ_FOR_EACH(MASTER_SERVICE_IMPL_ON_ALL_MASTERS_HELPER, class_name, methods)
+
+#define HANDLE_ON_LEADER_WITHOUT_LOCK(class_name, method_name) \
+    HANDLE_ON_LEADER_IMPL(class_name, method_name, HoldCatalogLock::kFalse)
+
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK_HELPER(r, class_name, method_name) \
+  void method_name( \
+      const BOOST_PP_CAT(method_name, RequestPB)* req, \
+      BOOST_PP_CAT(method_name, ResponsePB)* resp, \
+      rpc::RpcContext rpc) override { \
+    HANDLE_ON_LEADER_WITHOUT_LOCK(class_name, method_name); \
+  }
+
+#define MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(class_name, methods) \
+  BOOST_PP_SEQ_FOR_EACH(MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK_HELPER, class_name, methods)
+
 
 } // namespace master
 } // namespace yb

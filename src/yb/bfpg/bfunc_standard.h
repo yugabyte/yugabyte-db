@@ -25,35 +25,30 @@
 #ifndef YB_BFPG_BFUNC_STANDARD_H_
 #define YB_BFPG_BFUNC_STANDARD_H_
 
-#include <iostream>
 #include <string>
 
-#include "yb/common/ql_protocol.pb.h"
-
 #include "yb/util/status.h"
-#include "yb/util/logging.h"
 #include "yb/util/status_log.h"
 #include "yb/util/uuid.h"
-#include "yb/util/yb_partition.h"
 
 namespace yb {
 namespace bfpg {
 
 //--------------------------------------------------------------------------------------------------
 // Dummy function for minimum opcode.
-inline CHECKED_STATUS NoOp() {
+inline Status NoOp() {
   return Status::OK();
 }
 
 // ServerOperator that takes no argument and has no return value.
-inline CHECKED_STATUS ServerOperator() {
+inline Status ServerOperator() {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
 
 // ServerOperator that takes 1 argument and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ServerOperator(PTypePtr arg1, RTypePtr result) {
+Status ServerOperator(PTypePtr arg1, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -61,7 +56,7 @@ CHECKED_STATUS ServerOperator(PTypePtr arg1, RTypePtr result) {
 // This is not used but implemented as an example for future coding.
 // ServerOperator that takes 2 arguments and has a return value.
 template<typename PTypePtr, typename RTypePtr>
-CHECKED_STATUS ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
+Status ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
   LOG(ERROR) << "Only tablet servers can execute this builtin call";
   return STATUS(RuntimeError, "Only tablet servers can execute this builtin call");
 }
@@ -71,8 +66,8 @@ CHECKED_STATUS ServerOperator(PTypePtr arg1, PTypePtr arg2, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_int64_value(x->int64_value() + y->int64_value());
   }
@@ -81,8 +76,8 @@ Status AddI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_double_value(x->double_value() + y->double_value());
   }
@@ -91,38 +86,38 @@ Status AddDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddStringString(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
-    result->set_string_value(x->string_value() + y->string_value());
+    ConcatStrings(x->string_value(), y->string_value(), &*result);
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddStringDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
-    result->set_string_value(x->string_value() + std::to_string(y->double_value()));
+    ConcatStrings(x->string_value(), std::to_string(y->double_value()), &*result);
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status AddDoubleString(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
-    result->set_string_value(std::to_string(x->double_value()) + y->string_value());
+    ConcatStrings(std::to_string(x->double_value()), y->string_value(), &*result);
   }
   return Status::OK();
 }
 
 template<typename PTypePtr, typename RTypePtr>
 Status SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_int64_value(x->int64_value() - y->int64_value());
   }
@@ -131,8 +126,8 @@ Status SubI64I64(PTypePtr x, PTypePtr y, RTypePtr result) {
 
 template<typename PTypePtr, typename RTypePtr>
 Status SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
-    result->SetNull();
+  if (IsNull(*x) || IsNull(*y)) {
+    SetNull(&*result);
   } else {
     result->set_double_value(x->double_value() - y->double_value());
   }
@@ -143,10 +138,10 @@ Status SubDoubleDouble(PTypePtr x, PTypePtr y, RTypePtr result) {
 // Comparison.
 template<typename PTypePtr, typename RTypePtr>
 Status Equal(PTypePtr x, PTypePtr y, RTypePtr result) {
-  if (x->IsNull() || y->IsNull()) {
+  if (IsNull(*x) || IsNull(*y)) {
     result->set_bool_value(false);
   } else {
-    result->set_bool_value(x->value() == y->value());
+    result->set_bool_value(*x == *y);
   }
   return Status::OK();
 }
@@ -160,7 +155,7 @@ Status NowTimeUuid(RTypePtr result) {
   Uuid time_uuid(linux_time_uuid);
   CHECK_OK(time_uuid.IsTimeUuid());
   CHECK_OK(time_uuid.HashMACAddress());
-  result->set_timeuuid_value(time_uuid);
+  QLValue::set_timeuuid_value(time_uuid, &*result);
   return Status::OK();
 }
 

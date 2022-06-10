@@ -11,10 +11,18 @@
 // under the License.
 //
 
-#include "yb/common/ql_value.h"
-#include "yb/common/ql_name.h"
 #include "yb/master/yql_indexes_vtable.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/common/index_column.h"
+#include "yb/common/ql_name.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -84,10 +92,10 @@ string QLExpressionPBToPredicateString(const QLExpressionPB& where_expr, const S
 
 Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
-  CatalogManager* catalog_manager = master_->catalog_manager();
+  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto* catalog_manager = &this->catalog_manager();
 
-  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
   for (const auto& table : tables) {
     const auto indexed_table_id = table->indexed_table_id();
     if (indexed_table_id.empty()) {
@@ -95,7 +103,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     }
 
     // Skip non-YQL indexes.
-    if (!CatalogManager::IsYcqlTable(*table)) {
+    if (!IsYcqlTable(*table)) {
       continue;
     }
 
@@ -108,8 +116,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     RETURN_NOT_OK(indexed_table->GetSchema(&indexed_schema));
 
     // Get namespace for table.
-    auto ns_info = VERIFY_RESULT(master_->catalog_manager()->FindNamespaceById(
-        table->namespace_id()));
+    auto ns_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Create appropriate row for the table;
     QLRow& row = vtable->Extend();
@@ -183,11 +190,10 @@ Result<std::shared_ptr<QLRowBlock>> YQLIndexesVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kOptions, options.value(), &row));
 
     // Create appropriate table uuids.
-    Uuid uuid;
     // Note: table id is in host byte order.
-    RETURN_NOT_OK(uuid.FromHexString(indexed_table_id));
+    auto uuid = VERIFY_RESULT(Uuid::FromHexString(indexed_table_id));
     RETURN_NOT_OK(SetColumnValue(kTableId, uuid, &row));
-    RETURN_NOT_OK(uuid.FromHexString(table->id()));
+    uuid = VERIFY_RESULT(Uuid::FromHexString(table->id()));
     RETURN_NOT_OK(SetColumnValue(kIndexId, uuid, &row));
 
     Schema schema;

@@ -13,12 +13,23 @@
 
 #include "yb/tserver/tserver_metrics_heartbeat_data_provider.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/consensus/log.h"
+
+#include "yb/docdb/docdb_rocksdb_util.h"
+
+#include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.service.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
 
 DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
              "Interval (in milliseconds) at which tserver sends its metrics in a heartbeat to "
@@ -26,6 +37,8 @@ DEFINE_int32(tserver_heartbeat_metrics_interval_ms, 5000,
 
 DEFINE_bool(tserver_heartbeat_metrics_add_drive_data, true,
             "Add drive data to metrics which tserver sends to master");
+
+DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
 using namespace std::literals;
 
@@ -82,11 +95,11 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
 
   // Get the total number of read and write operations.
   auto reads_hist = server().GetMetricsHistogram(
-      TabletServerServiceIf::RpcMethodIndexes::kMethodIndexRead);
+      TabletServerServiceRpcMethodIndexes::kRead);
   uint64_t num_reads = (reads_hist != nullptr) ? reads_hist->TotalCount() : 0;
 
   auto writes_hist = server().GetMetricsHistogram(
-      TabletServerServiceIf::RpcMethodIndexes::kMethodIndexWrite);
+      TabletServerServiceRpcMethodIndexes::kWrite);
   uint64_t num_writes = (writes_hist != nullptr) ? writes_hist->TotalCount() : 0;
 
   // Calculate the read and write ops per second.
@@ -106,6 +119,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
   uint64_t uptime_seconds = CalculateUptime();
 
   metrics->set_uptime_seconds(uptime_seconds);
+  // If the "max file size for compaction" flag is greater than 0, then tablet splitting should
+  // be disabled for tablets with a default TTL.
+  metrics->set_disable_tablet_split_if_default_ttl(FLAGS_rocksdb_max_file_size_for_compaction > 0);
 
   VLOG_WITH_PREFIX(4) << "Read Ops per second: " << rops_per_sec;
   VLOG_WITH_PREFIX(4) << "Write Ops per second: " << wops_per_sec;

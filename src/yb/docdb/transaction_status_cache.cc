@@ -10,14 +10,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/docdb/transaction_status_cache.h"
 
+#include <future>
+
+#include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/docdb/transaction_dump.h"
-
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
@@ -30,7 +33,7 @@ namespace docdb {
 
 namespace {
 
-CHECKED_STATUS StatusWaitTimedOut(const TransactionId& transaction_id) {
+Status StatusWaitTimedOut(const TransactionId& transaction_id) {
   return STATUS_FORMAT(
       TimedOut, "Timed out waiting for transaction status: $0", transaction_id);
 }
@@ -46,7 +49,7 @@ YB_DEFINE_ENUM(CommitTimeSource,
 } // namespace
 
 struct TransactionStatusCache::GetCommitDataResult {
-  CommitMetadata commit_data;
+  TransactionLocalState transaction_local_state;
   CommitTimeSource source = CommitTimeSource();
   HybridTime status_time;
   HybridTime safe_time;
@@ -54,9 +57,9 @@ struct TransactionStatusCache::GetCommitDataResult {
 
 // For locally committed transactions returns commit time if committed at specified time or
 // HybridTime::kMin otherwise. For other transactions returns boost::none.
-boost::optional<CommitMetadata> TransactionStatusCache::GetLocalCommitData(
+boost::optional<TransactionLocalState> TransactionStatusCache::GetLocalCommitData(
     const TransactionId& transaction_id) {
-  auto local_commit_data_opt = txn_context_opt_->txn_status_manager.LocalCommitData(transaction_id);
+  auto local_commit_data_opt = txn_context_opt_.txn_status_manager->LocalTxnData(transaction_id);
   if (local_commit_data_opt == boost::none || !local_commit_data_opt->commit_ht.is_valid()) {
     return boost::none;
   }
@@ -68,7 +71,8 @@ boost::optional<CommitMetadata> TransactionStatusCache::GetLocalCommitData(
   return local_commit_data_opt;
 }
 
-Result<CommitMetadata> TransactionStatusCache::GetCommitData(const TransactionId& transaction_id) {
+Result<TransactionLocalState> TransactionStatusCache::GetTransactionLocalState(
+    const TransactionId& transaction_id) {
   auto it = cache_.find(transaction_id);
   if (it != cache_.end()) {
     return it->second;
@@ -76,11 +80,12 @@ Result<CommitMetadata> TransactionStatusCache::GetCommitData(const TransactionId
 
   auto result = VERIFY_RESULT(DoGetCommitData(transaction_id));
   YB_TRANSACTION_DUMP(
-      Status, txn_context_opt_ ? txn_context_opt_->transaction_id : TransactionId::Nil(),
-      read_time_, transaction_id, result.commit_data.commit_ht, static_cast<uint8_t>(result.source),
-      result.status_time, result.safe_time, result.commit_data.aborted_subtxn_set.ToString());
-  cache_.emplace(transaction_id, result.commit_data);
-  return result.commit_data;
+      Status, txn_context_opt_ ? txn_context_opt_.transaction_id : TransactionId::Nil(),
+      read_time_, transaction_id, result.transaction_local_state.commit_ht,
+      static_cast<uint8_t>(result.source), result.status_time, result.safe_time,
+      result.transaction_local_state.aborted_subtxn_set.ToString());
+  cache_.emplace(transaction_id, result.transaction_local_state);
+  return result.transaction_local_state;
 }
 
 Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGetCommitData(
@@ -88,8 +93,10 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
   auto local_commit_data_opt = GetLocalCommitData(transaction_id);
   if (local_commit_data_opt != boost::none) {
     return GetCommitDataResult {
-      .commit_data = std::move(*local_commit_data_opt),
+      .transaction_local_state = std::move(*local_commit_data_opt),
       .source = CommitTimeSource::kLocalBefore,
+      .status_time = {},
+      .safe_time = {},
     };
   }
 
@@ -106,7 +113,7 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
     auto callback = [txn_status_promise](Result<TransactionStatusResult> result) {
       txn_status_promise->set_value(std::move(result));
     };
-    txn_context_opt_->txn_status_manager.RequestStatusAt(
+    txn_context_opt_.txn_status_manager->RequestStatusAt(
         {&transaction_id, read_time_.read, read_time_.global_limit, read_time_.serial_no,
               &kRequestReason,
               TransactionLoadFlags{TransactionLoadFlag::kCleanup},
@@ -123,9 +130,12 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
       if (txn_status_result.status().IsNotFound()) {
         // We have intent w/o metadata, that means that transaction was already cleaned up.
         LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
-        return GetCommitDataResult {
-          .commit_data = CommitMetadata {HybridTime::kMin},
-          .source = CommitTimeSource::kNoMetadata,
+        return GetCommitDataResult{
+            .transaction_local_state =
+                TransactionLocalState{.commit_ht = HybridTime::kMin, .aborted_subtxn_set = {}},
+            .source = CommitTimeSource::kNoMetadata,
+            .status_time = {},
+            .safe_time = {},
         };
       }
       LOG(WARNING)
@@ -162,38 +172,47 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
       // we would not have local commit time even for committed transaction.
       // Waiting for safe time to be sure that we APPLY was processed if present.
       // See https://github.com/YugaByte/yugabyte-db/issues/7729 for details.
-      safe_time = VERIFY_RESULT(txn_context_opt_->txn_status_manager.WaitForSafeTime(
+      safe_time = VERIFY_RESULT(txn_context_opt_.txn_status_manager->WaitForSafeTime(
           txn_status.status_time, deadline_));
     }
     local_commit_data_opt = GetLocalCommitData(transaction_id);
     if (local_commit_data_opt != boost::none) {
       return GetCommitDataResult {
-        .commit_data = std::move(*local_commit_data_opt),
+        .transaction_local_state = std::move(*local_commit_data_opt),
         .source = CommitTimeSource::kLocalAfter,
         .status_time = txn_status.status_time,
         .safe_time = safe_time,
       };
     }
 
-    return GetCommitDataResult {
-      .commit_data = CommitMetadata {HybridTime::kMin},
-      .source = CommitTimeSource::kRemoteAborted,
-      .status_time = txn_status.status_time,
-      .safe_time = safe_time,
+    return GetCommitDataResult{
+        .transaction_local_state =
+            TransactionLocalState {.commit_ht = HybridTime::kMin, .aborted_subtxn_set = {}},
+        .source = CommitTimeSource::kRemoteAborted,
+        .status_time = txn_status.status_time,
+        .safe_time = safe_time,
     };
   }
 
   if (txn_status.status == TransactionStatus::COMMITTED) {
     return GetCommitDataResult {
-      .commit_data = CommitMetadata {txn_status.status_time, txn_status.aborted_subtxn_set},
+      .transaction_local_state = TransactionLocalState {
+        .commit_ht = txn_status.status_time,
+        .aborted_subtxn_set = txn_status.aborted_subtxn_set
+      },
       .source = CommitTimeSource::kRemoteCommitted,
+      .status_time = {},
+      .safe_time = {},
     };
   }
 
-  return GetCommitDataResult {
-    // TODO(savepoints) - surface aborted subtxn data for pending transactions.
-    .commit_data = CommitMetadata {HybridTime::kMin},
-    .source = CommitTimeSource::kRemotePending,
+  return GetCommitDataResult{
+      // TODO(savepoints) - surface aborted subtxn data for pending transactions.
+      .transaction_local_state =
+          TransactionLocalState {.commit_ht = HybridTime::kMin, .aborted_subtxn_set = {}},
+      .source = CommitTimeSource::kRemotePending,
+      .status_time = {},
+      .safe_time = {},
   };
 }
 

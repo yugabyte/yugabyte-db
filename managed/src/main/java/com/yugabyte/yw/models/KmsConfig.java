@@ -26,11 +26,14 @@ import java.util.UUID;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 
 @Entity
+@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"customer_uuid", "name"}))
 @ApiModel(description = "KMS configuration")
 public class KmsConfig extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(KmsConfig.class);
@@ -98,6 +101,10 @@ public class KmsConfig extends Model {
         .eq("customer_UUID", customerUUID)
         .eq("version", SCHEMA_VERSION)
         .findList();
+  }
+
+  public static List<KmsConfig> listAllKMSConfigs() {
+    return KmsConfig.find.query().where().eq("version", SCHEMA_VERSION).findList();
   }
 
   public static KmsConfig updateKMSConfig(UUID configUUID, ObjectNode updatedConfig) {

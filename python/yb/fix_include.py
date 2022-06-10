@@ -1,4 +1,5 @@
 import argparse
+import cpp_parser
 import enum
 import json
 import multiprocessing
@@ -13,26 +14,34 @@ import tempfile
 import time
 import typing
 
-PREFIXES = ['../../ent/src/', '../../src/', 'src/']
-INCLUDE_RE = re.compile(R'^#include\s+"([^"]+)"$')
-SYSTEM_INCLUDE_RE = re.compile(R'^#include\s+<([^>]+)>$')
-IGNORE_RE = re.compile(R'^(?://.*|using\s.*)$')
-IF_OPEN_RE = re.compile(R'^#if.*$')
-IF_CLOSE_RE = re.compile(R'^#endif.*$')
+EXTERNAL_PREFIXES = ['/usr/include/c++/v1/', '/usr/include/', '/include/rapidjson/', '/include/',
+                     '/include-fixed/']
 
-headers = {}
-nodes = {}
+build_dir = os.getcwd()
+root_dir = os.path.dirname(os.path.dirname(build_dir))
+prefixes = [os.path.join(root_dir, 'ent/src/'), os.path.join(root_dir, 'src/'),
+            os.path.join(build_dir, 'src/')]
+
+nodes: typing.Dict[str, 'Node'] = {}
 missing = set()
 node_stack = []
 compdb = {}
 max_jobs = multiprocessing.cpu_count()
 temp_dir = '/tmp'
+header_cc = 'header.cc'
 next_task_id = 0
 filter_re = None
+debug_filter_re = None
+sources = []
+added_includes = {}
 
 
 def replace_ext(fname: str, new_ext: str) -> str:
     return os.path.splitext(fname)[0] + new_ext
+
+
+def is_header(fname: str) -> bool:
+    return fname.endswith('.h')
 
 
 def random_fname():
@@ -63,75 +72,19 @@ class NodeState(enum.Enum):
     PROCESSED = 2
 
 
-class Include(typing.NamedTuple):
-    name: str
-    line_no: int
-    system: bool
-    if_nesting: int
-
-
-class ParsedFile:
-    def __init__(self):
-        self.includes: typing.List[Include] = []
-        self.trivial = True
-
-
-def parse(fname, lines) -> ParsedFile:
-    header = fname.endswith('.h')
-    line_no = -1
-    result = ParsedFile()
-    last_unknown = None
-    if_nesting = 0
-    prev_lines = ['', '']
-    for line in lines:
-        line_no += 1
-        line = line.rstrip()
-        for i in range(len(prev_lines) - 1):
-            prev_lines[i + 1] = prev_lines[i]
-        prev_lines[0] = line
-        if len(line) == 0 or IGNORE_RE.match(line):
-            continue
-        if IF_OPEN_RE.match(line):
-            if_nesting += 1
-            continue
-        elif IF_CLOSE_RE.match(line):
-            if_nesting -= 1
-            continue
-        if header and if_nesting == 1 and line.startswith("#define") and\
-                prev_lines[1] == "#ifndef" + line[7:]:
-            if_nesting -= 1
-            continue
-        match = INCLUDE_RE.match(line)
-        system = False
-        if not match:
-            match = SYSTEM_INCLUDE_RE.match(line)
-            system = True
-        if match:
-            name = match[1]
-            if result.trivial and last_unknown is not None:
-                result.trivial = False
-                if not header:
-                    print("{} non trivial because of {}".format(fname, last_unknown))
-            if not system and name not in nodes:
-                if name not in missing and result.trivial:
-                    print("File not found: {} in {}".format(name, fname))
-                    missing.add(name)
-                continue
-            if result.trivial and if_nesting != 0:
-                result.trivial = False
-            result.includes.append(Include(name, line_no, system, if_nesting))
-        else:
-            last_unknown = line
-    return result
-
-
 class Node:
-    def __init__(self, name, fname):
+    def __init__(self, name, fname, external, prefix_idx):
         self.name = name
         self.fname = fname
+        self.external = external
+        self.prefix_idx = prefix_idx
         self.refs: typing.Set[str] = set()
         self.state = NodeState.IDLE
-        self.parsed: typing.Union[ParsedFile, None] = None
+        self.parsed: typing.Union[cpp_parser.ParsedFile, None] = None
+        self.included_by: typing.Set[Node] = set()
+        self.includes = set()
+        self.not_cleaned_includes = 0
+        self.removed_includes: typing.List[str] = []
 
     def process(self):
         if self.state == NodeState.PROCESSED:
@@ -143,13 +96,18 @@ class Node:
                 return
             self.state = NodeState.PROCESSING
             with open(self.fname) as inp:
-                self.parsed = parse(self.fname, inp)
+                self.parsed = cpp_parser.parse(self.fname, inp)
             for include in self.parsed.includes:
                 self.refs.add(include.name)
-                if not include.system:
-                    nodes[include.name].process()
-                    self.refs.update(nodes[include.name].refs)
+                if include.name in nodes:
+                    included_node = nodes[include.name]
+                    included_node.included_by.add(self)
+                    self.includes.add(included_node)
+                    included_node.process()
+                    self.refs.update(included_node.refs)
             self.state = NodeState.PROCESSED
+            if not self.external and self.parsed.trivial and source_file(self.fname):
+                sources.append(SourceFile(self.fname, self))
         finally:
             popped = node_stack.pop()
             if popped != self.name:
@@ -171,52 +129,29 @@ class Step(enum.Enum):
     FINISH = 2
 
 
-def extract_includes(includes: typing.Dict[str, bool], filter) -> typing.List[str]:
+def extract_include_key(include_line: str) -> str:
+    if not include_line.endswith('_fwd.h"'):
+        return include_line
+    pos = include_line.rfind('/')
+    if pos == -1:
+        return include_line
+    return include_line[:pos]
+
+
+def extract_includes(includes: typing.Dict[str, typing.Tuple[bool, str]], filter) \
+        -> typing.List[str]:
     result = []
     todel = []
-    for include, system in includes.items():
+    for include, (system, tail) in includes.items():
         if filter(include, system):
             todel.append(include)
-            result.append("#include " + ('<{}>' if system else '"{}"').format(include))
+            result.append(cpp_parser.gen_line(include, system) + tail)
     for include in todel:
         del includes[include]
-    result.sort()
+    result.sort(key=extract_include_key)
     if len(result) > 0:
         result.append("")
     return result
-
-
-lib_headers = frozenset([
-    'ev++.h',
-    'squeasel.h',
-    ])
-
-lib_header_prefixes = frozenset([
-    'boost',
-    'cds',
-    'cpp_redis',
-    'google',
-    'gflags',
-    'glog',
-    'gmock',
-    'gtest',
-    'rapidjson',
-    'tacopie',
-    ])
-
-
-def include_prefix(include: str) -> str:
-    idx = include.find('/')
-    return "" if idx == -1 else include[:idx]
-
-
-def is_c_system_header(include: str, system: bool) -> bool:
-    return system and include.find(".") != -1 and (include not in lib_headers) and \
-           (include_prefix(include) not in lib_header_prefixes)
-
-
-def is_cpp_system_header(include: str, system: bool) -> bool:
-    return system and include.find(".") == -1
 
 
 class GeneratedSource:
@@ -227,18 +162,14 @@ class GeneratedSource:
         self.includes = {}
 
     def append(self, line: str):
-        m = INCLUDE_RE.match(line)
-        system = False
-        if not m:
-            m = SYSTEM_INCLUDE_RE.match(line)
-            system = True
-        if m:
-            self.header_lines += self.footer_lines
-            self.footer_lines.clear()
-            include = m[1]
-            if include in self.includes:
+        parsed_include = cpp_parser.parse_include_line(line)
+        if parsed_include is not None:
+            if len(self.includes) == 0:
+                self.header_lines += self.footer_lines
+                self.footer_lines.clear()
+            if parsed_include.file in self.includes:
                 return
-            self.includes[include] = system
+            self.includes[parsed_include.file] = (parsed_include.system, parsed_include.tail)
             return
         self.footer_lines.append(line)
 
@@ -251,13 +182,28 @@ class GeneratedSource:
         while i > 0 and self.header_lines[i - 1] == "":
             i -= 1
         result = self.header_lines[:i]
+        if i > 0:
+            result.append('')
         includes = dict(self.includes)
         result += extract_includes(
             includes, lambda include, system: self.fname.endswith(replace_ext(include, '.cc')))
-        result += extract_includes(includes, is_c_system_header)
-        result += extract_includes(includes, is_cpp_system_header)
+        result += extract_includes(includes, cpp_parser.is_c_system_header)
+        result += extract_includes(includes, cpp_parser.is_cpp_system_header)
         result += extract_includes(includes, lambda include, system: system)
-        result += extract_includes(includes, lambda include, system: True)
+        prefix = None
+        local_includes = extract_includes(includes, lambda include, system: True)
+        for line in local_includes:
+            if line == "":
+                continue
+            idx = line.find('/', line.find('/') + 1)
+            cur_prefix = line[:idx] if idx != -1 else ""
+            if prefix != cur_prefix:
+                if prefix is not None:
+                    result.append("")
+                prefix = cur_prefix
+            result.append(line)
+        if len(local_includes) != 0:
+            result.append("")
         i = 0
         while i < len(self.footer_lines) and self.footer_lines[i] == "":
             i += 1
@@ -266,47 +212,118 @@ class GeneratedSource:
 
 
 class SourceFile:
-    def __init__(self, fname):
+    def __init__(self, fname, node: typing.Union[Node, None]):
         self.fname = fname
+        self.node = node
         self.lines = None
-        self.patched = False
         self.modified_lines: typing.Dict[int, str] = {}
         self.checked: typing.Set[typing.Tuple[string, Step]] = set()
         self.unchecked: typing.List[CheckableInclude] = []
         self.running: typing.Union[CheckableInclude, None] = None
-        self.includes: typing.Union[typing.List[Include], None] = None
+        self.includes: typing.Union[typing.List[cpp_parser.Include], None] = None
         self.step = Step.REMOVE
+        self.injected_includes = set()
+
+    def debug(self):
+        return debug_filter_re is not None and debug_filter_re.search(self.fname)
+
+    def debug_print(self, fmt, *args):
+        if not self.debug():
+            return
+        print("{} {}:".format(self.fname, self.step), fmt.format(*args))
 
     def prepare(self):
         if self.lines is None:
-            with open(self.fname) as inp:
-                self.lines = inp.read().split('\n')
-            parsed = parse(self.fname, self.lines)
-            if parsed.trivial:
-                self.includes = parsed.includes
+            self.load_from_disk()
         if self.includes is None:
             return
+        added_includes_set = set()
+        added_includes_key = self.fname
+        if added_includes_key.startswith('../../'):
+            added_includes_key = added_includes_key[6:]
+        if added_includes_key in added_includes:
+            added_includes_set = added_includes[added_includes_key]
         for include in self.includes:
             cc_file = replace_ext(include.name, '.cc')
             if self.fname.endswith(cc_file):
                 continue
+            if include.name.endswith('_fwd.h') and \
+                    os.path.dirname(self.fname).endswith(os.path.dirname(include.name)):
+                self.debug_print("Skipping fwd header in the same dir: {}", include)
+                continue
+            if not include.trivial:
+                self.debug_print("Skipping non trivial include: {}", include)
+                continue
+            if include.name.endswith('_fwd.h') and \
+                    os.path.dirname(self.fname).endswith(os.path.dirname(include.name)):
+                self.debug_print("Skipping fwd header in the same dir: {}", include)
+                continue
+            if not include.trivial:
+                self.debug_print("Skipping non trivial include: {}", include)
+                continue
             if (include.name, self.step) in self.checked or include.line_no in self.modified_lines:
+                self.debug_print("Skipping checked include: {}", include)
                 continue
             unique = True
-            for other in self.includes:
-                if other.line_no == include.line_no or other.name not in nodes:
-                    continue
-                refs = nodes[other.name].refs
-                if include.name in refs:
-                    unique = False
-                    break
-            if not unique:
+            if include.gen_line() not in self.injected_includes and \
+                    include.name not in added_includes_set:
+                for other in self.includes:
+                    if other.line_no == include.line_no or other.name not in nodes:
+                        continue
+                    refs = nodes[other.name].refs
+                    if include.name in refs:
+                        unique = False
+                        break
+            if not unique or include.name.startswith('boost/preprocessor') or \
+                    include.name.startswith('yb/gutil/'):
+                self.debug_print("Skipping non unique include: {}", include)
                 continue
             if self.step == Step.INLINE:
                 if include.system or include.name not in nodes or \
                         not nodes[include.name].parsed.trivial:
+                    self.debug_print("Skipping non unique include: {}", include)
                     continue
+            self.debug_print("Add: {}", include)
             self.unchecked.append(CheckableInclude(include.name, include.line_no, pick_task_id()))
+
+    def load_from_disk(self):
+        with open(self.fname) as inp:
+            lines = inp.read().split('\n')
+        parsed = cpp_parser.parse(self.fname, lines)
+        if not parsed.trivial:
+            return
+        injected_includes = self.injected_includes
+        for node in self.node.includes:
+            injected_includes.update(node.removed_includes)
+        for include in parsed.includes:
+            line = include.gen_line()
+            if line in injected_includes:
+                injected_includes.remove(line)
+        if len(injected_includes) != 0:
+            print("Injecting to {}: {}".format(self.fname, injected_includes))
+            for i in range(len(lines)):
+                if lines[i].startswith("#include"):
+                    generated_source = GeneratedSource(self.fname)
+                    generated_source.extend(lines[:i])
+                    generated_source.extend(injected_includes)
+                    generated_source.extend(lines[i:])
+                    lines = generated_source.complete()
+                    parsed = None
+                    break
+        self.lines = lines
+        if parsed is None:
+            parsed = cpp_parser.parse(self.fname, self.lines)
+        self.includes = parsed.includes
+
+    def cleaned(self):
+        for node in self.node.included_by:
+            node.not_cleaned_includes -= 1
+
+    def launch(self):
+        result = self.perform()
+        if result is None:
+            self.cleaned()
+        return result
 
     def perform(self):
         if len(self.unchecked) != 0:
@@ -323,9 +340,20 @@ class SourceFile:
         command = []
         replace = None
         self.running = self.unchecked.pop()
-        if isinstance(compdb[self.fname], str):
-            compdb[self.fname] = shlex.split(compdb[self.fname])
-        for arg in compdb[self.fname]:
+        compdb_key = self.fname
+        if is_header(self.fname):
+            dirname = os.path.dirname(self.fname)
+            if dirname == os.path.join(build_dir, 'src/yb/rocksdb'):
+                dirname = os.path.join(dirname, 'db')
+            compdb_key = os.path.join(dirname, header_cc)
+        if compdb_key not in compdb:
+            print("No compdb for {}/{}".format(self.fname, compdb_key))
+            return None
+        if isinstance(compdb[compdb_key], str):
+            compdb[compdb_key] = shlex.split(compdb[compdb_key])
+        source_name = self.temp_source('cc')
+
+        for arg in compdb[compdb_key]:
             if replace is not None:
                 command.append(replace)
                 replace = None
@@ -335,15 +363,21 @@ class SourceFile:
             elif arg == '-MF':
                 replace = os.path.join(temp_dir, fname_for_task(self.running.task_id, 'o.d'))
             elif arg == '-c':
-                replace = self.temp_source(self.running.task_id)
+                replace = source_name
             command.append(arg)
-        print("Checking {}: {} {}".format(self.fname, self.step, self.running[0]))
+        print("Checking {}: {} {}".format(self.fname, self.step, self.running[0]), flush=True)
         inline = None if self.step == Step.REMOVE else self.running.name
-        self.write_source(self.temp_source(self.running.task_id), (self.running.line_no, inline))
+        if is_header(self.fname):
+            header_name = self.temp_source('h')
+            self.write_source(header_name, (self.running.line_no, inline))
+            with open(source_name, 'w') as out:
+                out.write('#include "{}"\n'.format(header_name))
+        else:
+            self.write_source(source_name, (self.running.line_no, inline))
         return subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def temp_source(self, task_idx):
-        return replace_ext(self.fname, '.' + fname_for_task(task_idx, 'cc'))
+    def temp_source(self, ext):
+        return replace_ext(self.fname, '.' + fname_for_task(self.running.task_id, ext))
 
     def generate_lines(self, modified_line):
         modified_lines: typing.List[typing.Tuple[int, str]] = list(self.modified_lines.items())
@@ -358,10 +392,8 @@ class SourceFile:
             if modification[1] is not None:
                 node: Node = nodes[modification[1]]
                 for include in node.parsed.includes:
-                    if include.system:
-                        result.append('#include <{}>'.format(include.name))
-                    else:
-                        result.append('#include "{}"'.format(include.name))
+                    if include.trivial:
+                        result.append(include.gen_line())
             p = modification[0] + 1
         result.extend(self.lines[p:])
         return result.complete()
@@ -373,16 +405,34 @@ class SourceFile:
 
     def complete(self):
         if len(self.modified_lines) == 0:
-            if self.patched:
-                self.write_source(self.fname, None)
-            return None
-        self.patched = True
+            return self.clean_finished()
+        for modified_line in self.modified_lines.keys():
+            self.node.removed_includes.append(self.lines[modified_line])
+        existing = set([x.name for x in self.includes])
         self.lines = self.generate_lines(None)
-        parsed = parse(self.fname, self.lines)
+        parsed = cpp_parser.parse(self.fname, self.lines)
+        if not parsed.trivial:
+            print("{} became non trivial", self.fname)
+        else:
+            for include in parsed.includes:
+                if include.name not in existing:
+                    self.injected_includes.add(include.gen_line())
         self.includes = parsed.includes if parsed.trivial else None
         self.step = Step.REMOVE
         self.modified_lines.clear()
         return self.next_task()
+
+    def clean_finished(self):
+        if len(self.node.removed_includes) != 0 or len(self.injected_includes) != 0:
+            has_not_injected = False
+            for include in self.node.removed_includes:
+                if include not in self.injected_includes:
+                    has_not_injected = True
+                    break
+            if has_not_injected or len(self.injected_includes) > len(self.node.removed_includes):
+                self.write_source(self.fname, None)
+        self.cleaned()
+        return None
 
     def next_task(self):
         result = self.perform()
@@ -390,28 +440,44 @@ class SourceFile:
             return self.complete()
         return result
 
-    def handle_result(self, return_code):
-        os.unlink(self.temp_source(self.running.task_id))
+    def handle_result(self, return_code, output):
+        os.unlink(self.temp_source('cc'))
+        if is_header(self.fname):
+            os.unlink(self.temp_source('h'))
         self.checked.add((self.running.name, self.step))
         if return_code == 0:
             print("Could {} {} from {}".format(self.step, self.running.name, self.fname))
             inline = None if self.step == Step.REMOVE else self.running.name
             self.modified_lines[self.running.line_no] = inline
+        elif self.debug():
+            self.debug_print("Failure {}:\n{}", self.running.name, output.decode("utf-8"))
         return self.next_task()
 
 
-def prefix_idx(fname):
-    for i in range(len(PREFIXES)):
-        if fname.startswith(PREFIXES[i]):
-            return i
-    return None
+def process_prefix(fname, external):
+    if external:
+        for i in range(len(EXTERNAL_PREFIXES)):
+            idx = fname.find(EXTERNAL_PREFIXES[i])
+            if idx != -1:
+                return i, idx + len(EXTERNAL_PREFIXES[i])
+
+    else:
+        for i in range(len(prefixes)):
+            if fname.startswith(prefixes[i]):
+                return i, len(prefixes[i])
+    return None, None
 
 
 def parse_comp_db():
     json_str = subprocess.check_output(['ninja', '-t', 'compdb'])
     compdb_json = json.loads(json_str)
     for entry in compdb_json:
-        compdb[entry['file']] = entry['command']
+        file = entry['file']
+        command = entry['command']
+        header_name = os.path.join(os.path.dirname(file), header_cc)
+        compdb[file] = command
+        if file.endswith('.cc') and header_name not in compdb[file]:
+            compdb[header_name] = command
 
 
 class RunningTask(typing.NamedTuple):
@@ -419,14 +485,24 @@ class RunningTask(typing.NamedTuple):
     process: subprocess.Popen
 
 
-def cleanup(sources: typing.List[SourceFile]):
+def cleanup():
     pending_source = 0
     running_tasks: typing.List[RunningTask] = []
     while len(running_tasks) != 0 or len(sources) > pending_source:
         need_wait = True
         while len(running_tasks) < max_jobs and len(sources) > pending_source:
+            idx = pending_source
+            while idx < len(sources) and sources[idx].node.not_cleaned_includes != 0:
+                idx += 1
+            if idx == len(sources):
+                node: Node = sources[pending_source].node
+                print("Unable to clean {}, because of pending {} cleans".format(
+                    node.fname, node.not_cleaned_includes))
+                break
+            if idx != pending_source:
+                sources[idx], sources[pending_source] = sources[pending_source], sources[idx]
             source = sources[pending_source]
-            process = source.perform()
+            process = source.launch()
             pending_source += 1
             if process is None:
                 continue
@@ -439,7 +515,7 @@ def cleanup(sources: typing.List[SourceFile]):
                 continue
             need_wait = False
             task = running_tasks[i]
-            new_process = task.file.handle_result(return_code)
+            new_process = task.file.handle_result(return_code, None)  # task.process.stdout.read()
             if new_process is None:
                 running_tasks[i] = running_tasks[len(running_tasks) - 1]
                 running_tasks.pop()
@@ -449,10 +525,17 @@ def cleanup(sources: typing.List[SourceFile]):
             time.sleep(0.1)
 
 
-def parse_deps(filter):
+def source_file(fname: str):
     global filter_re
-    filter_re = re.compile(filter) if filter is not None else None
-    sources = []
+    if fname.startswith(build_dir):
+        return False
+    if filter_re is None:
+        return True
+    return filter_re.search(fname) is not None
+
+
+def parse_deps():
+    global nodes, sources
     with open('deps.txt') as inp:
         first = False
         for line in inp:
@@ -462,51 +545,91 @@ def parse_deps(filter):
                 continue
             fname = line.lstrip()
             if first:
-                if fname.startswith('../../src/'):
-                    if True if filter_re is None else filter_re.match(fname):
-                        sources.append(SourceFile(fname))
+                if source_file(fname):
+                    nodes[fname] = Node(fname, fname, False, -1)
                 first = False
-            elif fname.startswith('/') or fname.startswith('postgres'):
-                continue
-            elif fname.endswith(".h"):
-                idx = prefix_idx(fname)
-                if idx is None:
-                    error("Not found prefix for {}", fname)
-                ref_name = fname[len(PREFIXES[idx]):]
-                if ref_name in headers:
-                    if headers[ref_name] != fname and idx < prefix_idx(headers[ref_name]):
-                        headers[ref_name] = fname
-                        print("Update: {} => {}", headers[ref_name], fname)
-                else:
-                    headers[ref_name] = fname
-    return sources
+            elif fname.endswith(".h") or fname.endswith(".hpp") or \
+                    fname.find('/usr/include/c++/v1/') != -1:
+                external = not fname.startswith(root_dir) or \
+                           fname.startswith(os.path.join(build_dir, 'postgres'))
+                prefix_idx, prefix_len = process_prefix(fname, external)
+                if prefix_idx is None:
+                    error("Not found prefix for {}, external: {}", fname, external)
+                ref_name = fname[prefix_len:]
+                if ref_name not in nodes or prefix_idx < nodes[ref_name].prefix_idx:
+                    nodes[ref_name] = Node(ref_name, fname, external, prefix_idx)
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--filter')
+    parser.add_argument('--debug-filter')
+    parser.add_argument('--diff')
     return parser.parse_args()
 
 
+def add_artificial_ref(file: str, ref: str):
+    if file in nodes:
+        nodes[file].refs.add(ref)
+
+
+def parse_diff(fname):
+    file_start_re = re.compile(R'^\+\+\+\sb/(.*)$')
+    include_re = re.compile(R'^\+#include\s+["<](.*)[>"].*$')
+    with open(fname) as inp:
+        file = None
+        for line in inp:
+            line = line.rstrip()
+            m = file_start_re.match(line)
+            if m:
+                file = m[1]
+                added_includes[file] = set()
+                continue
+            m = include_re.match(line)
+            if m:
+                added_includes[file].add(m[1])
+
+
 def main() -> None:
+    global filter_re, debug_filter_re
+
     args = parse_args()
+
+    if args.diff is not None:
+        parse_diff(args.diff)
 
     print("Parsing compdb")
     parse_comp_db()
     print("Parsing deps")
-    sources = parse_deps(args.filter)
 
-    for name, fname in headers.items():
-        nodes[name] = Node(name, fname)
+    filter_re = re.compile(args.filter) if args.filter is not None else None
+    debug_filter_re = re.compile(args.debug_filter) if args.debug_filter is not None else None
+
+    parse_deps()
+
+    # libc++ defines mutex and condition_variable in __mutex_base
+    add_artificial_ref('__mutex_base', 'condition_variable')
+    add_artificial_ref('__mutex_base', 'mutex')
+    # libc++ declares basic_string in iterator
+    add_artificial_ref('iterator', 'string')
+    # libc++ declares vector in iosfwd
+    add_artificial_ref('iosfwd', 'vector')
+
+    # Old libstdc++ declares std::function in memory
+    add_artificial_ref('memory', 'functional')
 
     for node in nodes.values():
         node.process()
+
+    for source in sources:
+        for node in source.node.included_by:
+            node.not_cleaned_includes += 1
 
     with tempfile.TemporaryDirectory() as tmpdirname:
         global temp_dir
         temp_dir = tmpdirname
         print("Try cleanup {} sources".format(len(sources)))
-        cleanup(sources)
+        cleanup()
 
 
 if __name__ == '__main__':

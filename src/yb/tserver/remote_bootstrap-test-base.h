@@ -34,15 +34,19 @@
 
 #include <string>
 
-#include "yb/tserver/tablet_server-test-base.h"
-
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/remote_bootstrap.pb.h"
+#include "yb/tserver/tablet_server-test-base.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"

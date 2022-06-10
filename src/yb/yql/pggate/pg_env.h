@@ -22,11 +22,6 @@
 #define YB_YQL_PGGATE_PG_ENV_H_
 
 #include <memory>
-#include <string>
-
-#include "yb/common/entity_ids.h"
-#include "yb/common/pg_types.h"
-#include "yb/client/client.h"
 
 namespace yb {
 namespace pggate {

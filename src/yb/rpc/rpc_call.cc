@@ -12,7 +12,6 @@
 // under the License.
 //
 //
-
 #include "yb/rpc/rpc_call.h"
 
 #include "yb/util/status.h"

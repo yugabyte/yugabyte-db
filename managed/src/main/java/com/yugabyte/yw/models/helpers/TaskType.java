@@ -19,9 +19,13 @@ public enum TaskType {
 
   ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
 
+  ReadOnlyKubernetesClusterDelete("ReadOnlyKubernetesClusterDelete"),
+
   ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
 
   CreateKubernetesUniverse("CreateKubernetesUniverse"),
+
+  ReadOnlyKubernetesClusterCreate("ReadOnlyKubernetesClusterCreate"),
 
   DestroyUniverse("DestroyUniverse"),
 
@@ -35,7 +39,11 @@ public enum TaskType {
 
   BackupUniverse("BackupUniverse"),
 
+  RestoreBackup("RestoreBackup"),
+
   MultiTableBackup("MultiTableBackup"),
+
+  CreateBackup("CreateBackup"),
 
   EditUniverse("EditUniverse"),
 
@@ -62,6 +70,8 @@ public enum TaskType {
   GFlagsKubernetesUpgrade("upgrade.GFlagsKubernetesUpgrade"),
 
   CertsRotate("upgrade.CertsRotate"),
+
+  CertsRotateKubernetesUpgrade("upgrade.CertsRotateKubernetesUpgrade"),
 
   TlsToggle("upgrade.TlsToggle"),
 
@@ -95,12 +105,16 @@ public enum TaskType {
 
   ReleaseInstanceFromUniverse("ReleaseInstanceFromUniverse"),
 
+  RotateAccessKey("RotateAccessKey"),
+
   SetUniverseKey("SetUniverseKey"),
 
   @Deprecated
   SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
 
   CreateKMSConfig("CreateKMSConfig"),
+
+  EditKMSConfig("EditKMSConfig"),
 
   DeleteKMSConfig("DeleteKMSConfig"),
 
@@ -110,13 +124,17 @@ public enum TaskType {
 
   CreateXClusterConfig("CreateXClusterConfig"),
 
+  EditXClusterConfig("EditXClusterConfig"),
+
   DeleteXClusterConfig("DeleteXClusterConfig"),
 
-  EditXClusterConfig("EditXClusterConfig"),
+  SyncXClusterConfig("SyncXClusterConfig"),
 
   CreateSupportBundle("CreateSupportBundle"),
 
   // Tasks belonging to subtasks classpath
+  AddAuthorizedKey("subtasks.AddAuthorizedKey"),
+
   AnsibleClusterServerCtl("subtasks.AnsibleClusterServerCtl"),
 
   AnsibleConfigureServers("subtasks.AnsibleConfigureServers"),
@@ -149,11 +167,17 @@ public enum TaskType {
 
   DeleteBackup("subtasks.DeleteBackup"),
 
+  DeleteBackupYb("subtasks.DeleteBackupYb"),
+
   DeleteCustomerConfig("DeleteCustomerConfig"),
+
+  DeleteCustomerStorageConfig("DeleteCustomerStorageConfig"),
 
   UpdateNodeProcess("subtasks.nodes.UpdateNodeProcess"),
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
+
+  DeleteTablesFromUniverse("subtasks.DeleteTablesFromUniverse"),
 
   LoadBalancerStateChange("subtasks.LoadBalancerStateChange"),
 
@@ -177,9 +201,13 @@ public enum TaskType {
 
   UpdateSoftwareVersion("subtasks.UpdateSoftwareVersion"),
 
+  VerifyNodeSSHAccess("subtasks.VerifyNodeSSHAccess"),
+
   WaitForDataMove("subtasks.WaitForDataMove"),
 
   WaitForLeaderBlacklistCompletion("subtasks.WaitForLeaderBlacklistCompletion"),
+
+  WaitForFollowerLag("subtasks.WaitForFollowerLag"),
 
   WaitForLoadBalance("subtasks.WaitForLoadBalance"),
 
@@ -197,14 +225,34 @@ public enum TaskType {
 
   RunExternalScript("subtasks.RunExternalScript"),
 
-  // Tasks belonging to subtasks.xcluster classpath
-  XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
+  RemoveAuthorizedKey("subtasks.RemoveAuthorizedKey"),
 
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
+  UpdateUniverseAccessKey("subtasks.UpdateUniverseAccessKey"),
+
+  // Tasks belonging to subtasks.xcluster classpath
+  BootstrapProducer("subtasks.xcluster.BootstrapProducer"),
+
+  CheckBootstrapRequired("subtasks.xcluster.CheckBootstrapRequired"),
+
+  DeleteBootstrapIds("subtasks.xcluster.DeleteBootstrapIds"),
+
+  DeleteReplication("subtasks.xcluster.DeleteReplication"),
+
+  DeleteXClusterConfigFromDb("subtasks.xcluster.DeleteXClusterConfigFromDb"),
+
+  SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
+
+  XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
 
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
+
+  XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
+
+  XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
+
+  XClusterConfigUpdateMasterAddresses("subtasks.xcluster.XClusterConfigUpdateMasterAddresses"),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup("subtasks.cloud.CloudAccessKeyCleanup"),
@@ -223,9 +271,15 @@ public enum TaskType {
 
   BackupTable("subtasks.BackupTable"),
 
+  BackupTableYb("subtasks.BackupTableYb"),
+
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
+  RestoreBackupYb("subtasks.RestoreBackupYb"),
+
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
+
+  RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),
 
   WaitForLeadersOnPreferredOnly("subtasks.WaitForLeadersOnPreferredOnly"),
 
@@ -241,6 +295,8 @@ public enum TaskType {
 
   KubernetesCheckNumPod("subtasks.KubernetesCheckNumPod"),
 
+  SetActiveUniverseKeys("subtasks.SetActiveUniverseKeys"),
+
   @Deprecated
   CopyEncryptionKeyFile("subtasks.CopyEncryptionKeyFile"),
 
@@ -250,13 +306,47 @@ public enum TaskType {
 
   CreateAlertDefinitions("subtasks.CreateAlertDefinitions"),
 
+  ManageAlertDefinitions("subtasks.ManageAlertDefinitions"),
+
   UniverseSetTlsParams("subtasks.UniverseSetTlsParams"),
 
   UniverseUpdateRootCert("subtasks.UniverseUpdateRootCert"),
 
   ResetUniverseVersion("subtasks.ResetUniverseVersion"),
 
-  DeleteCertificate("subtasks.DeleteCertificate");
+  DeleteCertificate("subtasks.DeleteCertificate"),
+
+  SetNodeStatus("subtasks.SetNodeStatus"),
+
+  CheckMasterLeader("subtasks.check.CheckMasterLeader"),
+
+  CheckMasters("subtasks.check.CheckMasters"),
+
+  CheckTServers("subtasks.check.CheckTServers"),
+
+  WaitForTServerHBs("subtasks.check.WaitForTServerHBs"),
+
+  CreatePrometheusSwamperConfig("subtasks.CreatePrometheusSwamperConfig"),
+
+  PreflightNodeCheck("subtasks.PreflightNodeCheck"),
+
+  RunYsqlUpgrade("subtasks.RunYsqlUpgrade"),
+
+  ResizeNode("upgrade.ResizeNode"),
+
+  CheckMemory("subtasks.check.CheckMemory"),
+
+  UpdateMountedDisks("subtasks.UpdateMountedDisks"),
+
+  TransferXClusterCerts("subtasks.TransferXClusterCerts"),
+
+  CreateTableSpacesInUniverse("CreateTableSpacesInUniverse"),
+
+  CreateTableSpaces("subtasks.CreateTableSpaces"),
+
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
+
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload");
 
   private String relativeClassPath;
 

@@ -45,7 +45,6 @@ set(MASTER_PROTO_LIBS_EXTENSIONS
 
 set(MASTER_SRCS_EXTENSIONS
   ${YB_ENT_CURRENT_SOURCE_DIR}/async_snapshot_tasks.cc
-  ${YB_ENT_CURRENT_SOURCE_DIR}/async_ts_rpc_tasks.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/catalog_manager_ent.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/master_backup_service.cc
   ${YB_ENT_CURRENT_SOURCE_DIR}/master_ent.cc
@@ -59,6 +58,7 @@ set(MASTER_SRCS_EXTENSIONS
 
 set(MASTER_ADDITIONAL_TESTS
     catalog_manager-test_ent
+    cluster_balance_preferred_leader-test
     sys_catalog-test_ent
     master-test_ent
     restore_sys_catalog_state_test

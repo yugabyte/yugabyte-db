@@ -15,9 +15,9 @@
 
 #include "yb/integration-tests/cql_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
+
 #include "yb/util/format.h"
 #include "yb/util/status_format.h"
-
 #include "yb/util/subprocess.h"
 
 namespace yb {
@@ -67,7 +67,7 @@ Result<rapidjson::Document> AdminTestBase::ParseJson(const std::string& raw) {
 Result<CassandraSession> AdminTestBase::CqlConnect(const std::string& db_name) {
   if (!cql_driver_) {
     std::vector<std::string> hosts;
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       hosts.push_back(cluster_->tablet_server(i)->bind_host());
     }
     LOG(INFO) << "CQL hosts: " << AsString(hosts);
@@ -91,7 +91,7 @@ Result<const rapidjson::Value&> Get(const rapidjson::Value& value, const char* n
 
 Result<rapidjson::Value&> Get(rapidjson::Value* value, const char* name) {
   auto it = value->FindMember(name);
-  if (it == value->MemberEnd()) {
+  if (it.operator==(value->MemberEnd())) {
     return STATUS_FORMAT(InvalidArgument, "Missing $0 field", name);
   }
   return it->value;

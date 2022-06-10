@@ -137,10 +137,13 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   table_oid,
 	                                   is_shared_relation,
 	                                   false, /* if_not_exists */
-                                     pkey_idx == NULL, /* add_primary_key */
-                                     true, /* colocated */
-                                     InvalidOid /* tablegroup_oid */,
-                                     InvalidOid /* tablespace_oid */,
+	                                   pkey_idx == NULL, /* add_primary_key */
+	                                   true, /* is_colocated_via_database */
+	                                   InvalidOid /* tablegroup_oid */,
+	                                   InvalidOid /* colocation_id */,
+	                                   InvalidOid /* tablespace_oid */,
+	                                   false /* is_matview */,
+	                                   InvalidOid /* matviewPgTableId */,
 	                                   &yb_stmt));
 
 	/* Add all key columns first, then the regular columns */

@@ -304,10 +304,11 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	}
 	else if (bypassrls)
 	{
-		if (!superuser())
+		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change bypassrls attribute")));
+					 errmsg("must be superuser or yb_db_admin role member to "
+					 		"change bypassrls attribute")));
 	}
 	else
 	{
@@ -430,7 +431,7 @@ CreateRole(ParseState *pstate, CreateRoleStmt *stmt)
 	 * pg_largeobject_metadata contains pg_authid.oid's, so we use the
 	 * binary-upgrade override.
 	 */
-	if (IsBinaryUpgrade)
+	if (IsBinaryUpgrade && !yb_binary_restore)
 	{
 		if (!OidIsValid(binary_upgrade_next_pg_authid_oid))
 			ereport(ERROR,
@@ -704,10 +705,11 @@ AlterRole(AlterRoleStmt *stmt)
 	}
 	else if (bypassrls >= 0)
 	{
-		if (!superuser())
+		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change bypassrls attribute")));
+					 errmsg("must be superuser or yb_db_admin role member "
+					 		"to change bypassrls attribute")));
 	}
 	else if (!have_createrole_privilege())
 	{
@@ -1390,16 +1392,24 @@ ReassignOwnedObjects(ReassignOwnedStmt *stmt)
 	{
 		Oid			roleid = lfirst_oid(cell);
 
-		if (!has_privs_of_role(GetUserId(), roleid))
+		if (!has_privs_of_role(GetUserId(), roleid) &&
+			!IsYbDbAdminUser(GetUserId()))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to reassign objects")));
+
+		if (superuser_arg(roleid) && !superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("non-superuser cannot reassign objects "
+					 		"from superuser")));
 	}
 
 	/* Must have privileges on the receiving side too */
 	newrole = get_rolespec_oid(stmt->newrole, false);
 
-	if (!has_privs_of_role(GetUserId(), newrole))
+	if (!has_privs_of_role(GetUserId(), newrole) &&
+		!IsYbDbAdminUser(GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to reassign objects")));

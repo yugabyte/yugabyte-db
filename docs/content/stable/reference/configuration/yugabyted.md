@@ -12,15 +12,15 @@ isTocNested: true
 showAsideToc: true
 ---
 
-`yugabyted` is a new database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. Since its inception, YugabyteDB has relied on a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. yugabyted is the answer to this user need. It also adds a new UI similar to the Yugabyte Platform UI so that users can experience a richer data placement map and metrics dashboard.
+YugabyteDB uses a 2-server architecture with YB-TServers managing the data and YB-Masters managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use `yugabyted`, which is a database server that acts as a parent server across the [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) servers. yugabyted also provides a UI similar to the Yugabyte Platform UI, with a data placement map and metrics dashboard.
 
-The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory. 
+The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
 {{< note title="Note" >}}
 
-- yugabyted currently supports both single-node and multi-node clusters (using the `join` option in the `start` command). However, ability to create multi-node clusters is currently under BETA.
+- yugabyted supports both single-node and multi-node clusters (using the `join` option in the `start` command). However, the ability to create multi-node clusters is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
-- yugabyted is not recommended for production deployments at this time. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) directly using the [Deploy](../../../deploy) docs.
+- yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver) and [`yb-master`](../yb-master) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 
 {{< /note >}}
 
@@ -33,7 +33,7 @@ yugabyted [-h] [ <command> ] [ <flags> ]
 - *command*: command to run
 - *flags*: one or more flags, separated by spaces.
 
-### Example 
+### Example
 
 ```sh
 $ ./bin/yugabyted start
@@ -95,106 +95,77 @@ Usage: yugabyted start [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 #### Flags
 
-##### -h, --help
+-h, --help
+: Print the command line help and exit.
 
-Print the command line help and exit.
+--config *config-file*
+: The path to the configuration file.
 
-##### --config *config-file*
+--data_dir *data-directory*
+: The directory where yugabyted stores data. Must be an absolute path.
 
-The path to the configuration file.
+--base_dir *base-directory*
+: The directory where yugabyted stores data, configurations, and logs. Must be an absolute path.
 
-##### --data_dir *data-directory*
+--log_dir *log-directory*
+: The directory to store yugabyted logs. Must be an absolute path.
 
-The directory where yugabyted stores data. Must be an absolute path.
+--ycql_port *ycql-port*
+: The port on which YCQL will run.
 
-##### --base_dir *base-directory*
+--ysql_port *ysql-port*
+: The port on which YSQL will run.
 
-The directory where yugabyted stores data, conf and logs. Must be an absolute path.
+--master_rpc_port *master-rpc-port*
+: The port on which YB-Master will listen for RPC calls.
 
-##### --log_dir *log-directory*
+--tserver_rpc_port *tserver-rpc-port*
+: The port on which YB-TServer will listen for RPC calls.
 
-The directory to store yugabyted logs. Must be an absolute path.
+--master_webserver_port *master-webserver-port*
+: The port on which YB-Master webserver will run.
 
-##### --ycql_port *ycql-port*
+--tserver_webserver_port *tserver-webserver-port*
+: The port on which YB-TServer webserver will run.
 
-The port on which YCQL will run.
+--webserver_port *webserver-port*
+: The port on which main webserver will run.
 
-##### --ysql_port *ysql-port*
+--listen *bind-ip*
+: The IP address or localhost name to which `yugabyted` will listen.
 
-The port on which YSQL will run.
+--join *master-ip*
+: This feature is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+: The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
 
-##### --master_rpc_port *master-rpc-port*
+--daemon *bool*
+: Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default is `true`.
 
-The port on which YB-Master will listen for RPC calls.
+--callhome *bool*
+: Enable or disable the "call home" feature that sends analytics data to Yugabyte. Default is `true`.
 
-##### --tserver_rpc_port *tserver-rpc-port*
+--ui *bool*
+: Enable or disable the webserver UI. Default is `false`.
 
-The port on which YB-TServer will listen for RPC calls.
+--master_flags *master_flags*
+: Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
-##### --master_webserver_port *master-webserver-port*
+--tserver_flags *tserver_flags*
+: Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
 
-The port on which YB-Master webserver will run.
+--ysql_enable_auth *bool*
+: Enable or disable YSQL Authentication. Default is `false`.
+: If the `YSQL_PASSWORD` environment variable exists, then authentication mode is automatically changed to enforced.
 
-##### --tserver_webserver_port *tserver-webserver-port*
+--use_cassandra_authentication *bool*
+: Enable or disable YCQL Authentication. Default is `false`.
+: If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist, then authentication mode is automatically changed to enforced.
+: **Note**: The corresponding environment variables have higher priority than the command-line flags.
 
-The port on which YB-TServer webserver will run.
-
-##### --webserver_port *webserver-port*
-
-The port on which main webserver will run.
-
-##### --listen *bind-ip*
-
-The IP address or localhost name to which `yugabyted` will listen.
-
-##### --join *master-ip*
-
-{{< note title="Note" >}}
-
-This feature is currently in [BETA](../../../faq/general/#what-is-the-definition-of-the-beta-feature-tag).
-
-{{< /note >}}
-
-The IP address of the existing `yugabyted` server to which the new `yugabyted` server will join.
-
-##### --daemon *bool*
-
-Enable or disable running `yugabyted` in the background as a daemon. Does not persist on restart. Default is `true`.
-
-##### --callhome *bool*
-
-Enable or disable the "call home" feature that sends analytics data to Yugabyte. Default is `true`.
-
-##### --ui *bool*
-
-Enable or disable the webserver UI. Default is `false`.
-
-##### --master_flags *master_flags*
-
-Specify extra [master flags](../../../reference/configuration/yb-master#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
-
-##### --tserver_flags *tserver_flags*
-
-Specify extra [tserver flags](../../../reference/configuration/yb-tserver#configuration-flags) as a set of key value pairs. Format (key=value,key=value).
-
-##### --ysql_enable_auth *bool*
-
-Enable or disable YSQL Authentication. Default is `false`.
-If the `YSQL_PASSWORD` environment variable exists then, authentication mode is automatically changed to enforced.
-
-##### --use_cassandra_authentication *bool*
-
-Enable or disable YCQL Authentication. Default is `false`.
-If the `YCQL_USER` or `YCQL_PASSWORD` environment variables exist then, authentication mode is automatically changed to enforced.
-
-**Note**
-- The corresponding environment variables have higher priority than the command-line flags.
-
-##### --initial_scripts_dir *initial-scripts-dir*
-
-The directory from where yugabyted reads initialization scripts.
-The format will be: For YSQL - `.sql`, For YCQL - `.cql`.
-Initialization scripts will be executed in sorted name order.
+--initial_scripts_dir *initial-scripts-dir*
+: The directory from where yugabyted reads initialization scripts.
+: Script format - YSQL `.sql`, YCQL `.cql`.
+: Initialization scripts are executed in sorted name order.
 
 -----
 
@@ -211,21 +182,44 @@ Usage: yugabyted stop [-h] [--config CONFIG] [--data_dir DATA_DIR]
 
 #### Flags
 
-##### -h | --help
+-h | --help
+: Print the command line help and exit.
 
-Print the command line help and exit.
-  
-##### --config *config-file*
+--config *config-file*
+: The path to the configuration file of the yugabyted server that needs to be stopped.
 
-The path to the configuration file of the yugabyted server that needs to be stopped.
-  
-##### --data_dir *data-directory*
+--data_dir *data-directory*
+: The data directory for the yugabyted server that needs to be stopped.
 
-The data directory for the yugabtyed server that needs to be stopped.
+--base_dir *base-directory*
+: The base directory for the yugabyted server that needs to be stopped.
 
-##### --base_dir *base-directory*
+-----
 
-The base directory for the yugabtyed server that needs to be stopped.
+### destroy
+
+Use the `yugabyted destroy` command to delete a cluster.
+
+#### Syntax
+
+```sh
+Usage: yugabyted destroy [-h] [--config CONFIG] [--data_dir DATA_DIR]
+                                [--base_dir BASE_DIR]
+```
+
+#### Flags
+
+-h, --help
+: Print the command line help and exit.
+
+--config *config-file*
+: The path to the configuration file of the yugabyted server that needs to be destroyed.
+
+--data_dir *data-directory*
+: The data directory for the yugabyted server that needs to be destroyed.
+
+--base_dir *base-directory*
+: The base directory for the yugabyted server that needs to be destroyed.
 
 -----
 
@@ -235,28 +229,24 @@ Use the `yugabyted status` command to check the status.
 
 #### Syntax
 
-```
+```sh
 Usage: yugabyted status [-h] [--config CONFIG] [--data_dir DATA_DIR]
                                  [--base_dir BASE_DIR]
 ```
 
 #### Flags
 
-##### -h | --help
+-h | --help
+: Print the command line help and exit.
 
-Print the command line help and exit.
-  
-##### --config *config-file*
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose status is desired.
 
-The path to the configuration file of the yugabyted server whose status is desired.
-  
-##### --data_dir *data-directory*
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose status is desired.
 
-The data directory for the yugabtyed server whose status is desired.
-
-##### --base_dir *base-directory*
-
-The base directory for the yugabtyed server that whose status is desired.
+--base_dir *base-directory*
+: The base directory for the yugabyted server that whose status is desired.
 
 -----
 
@@ -266,28 +256,24 @@ Use the `yugabyted version` command to check the version number.
 
 #### Syntax
 
-```
+```sh
 Usage: yugabyted version [-h] [--config CONFIG] [--data_dir DATA_DIR]
                                   [--base_dir BASE_DIR]
 ```
 
 #### Flags
 
-##### -h | --help
+-h | --help
+: Print the command line help and exit.
 
-Print the command line help and exit.
-  
-##### --config *config-file*
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose version is desired.
 
-The path to the configuration file of the yugabyted server whose version is desired.
-  
-##### --data_dir *data-directory*
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose version is desired.
 
-The data directory for the yugabtyed server whose version is desired.
-
-##### --base_dir *base-directory*
-
-The base directory for the yugabtyed server that whose version is desired.
+--base_dir *base-directory*
+: The base directory for the yugabyted server that whose version is desired.
 
 -----
 
@@ -297,7 +283,7 @@ Use the `yugabyted collect_logs` command to generate a zipped file with all logs
 
 #### Syntax
 
-```
+```sh
 Usage: yugabyted collect_logs [-h] [--config CONFIG]
                                        [--data_dir DATA_DIR]
                                        [--base_dir BASE_DIR]
@@ -305,80 +291,64 @@ Usage: yugabyted collect_logs [-h] [--config CONFIG]
 
 #### Flags
 
-##### -h | --help
+-h | --help
+: Print the command line help and exit.
 
-Print the command line help and exit.
-  
-##### --config *config-file*
+--config *config-file*
+: The path to the configuration file of the yugabyted server whose logs are desired.
 
-The path to the configuration file of the yugabyted server whose logs are desired.
-  
-##### --data_dir *data-directory*
+--data_dir *data-directory*
+: The data directory for the yugabyted server whose logs are desired.
 
-The data directory for the yugabtyed server whose logs are desired.
-
-##### --base_dir *base-directory*
-
-The base directory for the yugabtyed server that whose logs are desired.
+--base_dir *base-directory*
+: The base directory for the yugabyted server that whose logs are desired.
 
 -----
 
 ### connect
 
-Use the `yugabyted connect` command to connect to the cluster with `ysqlsh` or `ycqlsh` cli.
+Use the `yugabyted connect` command to connect to the cluster using [ysqlsh](../../../admin/ysqlsh) or [ycqlsh](../../../admin/ycqlsh).
 
 #### Syntax
 
-```
+```sh
 Usage: yugabyted connect [-h] {ycql,ysql} ...
-
-Commands:
-  {ycql,ysql}
-    ycql       Use YCQL through the CLI.
-    ysql       Use YSQL through the CLI.
 ```
 
 #### Flags
 
-##### -h | --help
+-h | --help
+: Print the command line help and exit.
 
-Print the command line help and exit.
-  
-##### --ysql
+--ysql
+: Connect with ysqlsh.
 
-Connect with `ysqlsh` cli.
-  
-##### --ycql
-
-Connect with `ycqlsh` cli.
+--ycql
+: Connect with ycqlsh.
 
 -----
 
 ### demo
 
-Use the `yugabyted demo connect` command to start YugabyteDB with the [northwind sample dataset](../../../sample-data/northwind/). 
+Use the `yugabyted demo connect` command to start YugabyteDB with the [Northwind sample dataset](../../../sample-data/northwind/).
 
 #### Syntax
 
-```
+```sh
 Usage: yugabyted demo [-h] {connect,destroy} ...
 ```
 
 #### Flags
 
-##### -h | --help
+-h | --help
+: Print the help message and exit.
 
-Print the help message and exit.
+connect
+: Loads the Northwind sample dataset into a new `yb_demo_northwind` SQL database and then opens the `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
 
-##### connect
-
-Loads the `northwind` sample dataset into a new `yb_demo_northwind` SQL database and then opens up `ysqlsh` prompt for the same database. Skips the data load if data is already loaded.
-
-##### destroy
-
-Shuts down the yugabyted single-node cluster and removes data, configuration, and log directories.
-
-Deletes the `yb_demo_northwind` northwind database.
+destroy
+: Shuts down the yugabyted single-node cluster and removes data, configuration, and log directories.
+: Deletes the `yb_demo_northwind` database.
 
 -----
 
@@ -388,10 +358,10 @@ Deletes the `yb_demo_northwind` northwind database.
 
 Set `YSQL_PASSWORD` to use the cluster in enforced authentication mode.
 
-Combinations of environment variables and their uses. 
+Combinations of environment variables and their uses.
 
 - `YSQL_PASSWORD`
-   
+
   Update the default yugabyte user's password.
 
 - `YSQL_PASSWORD, YSQL_DB`
@@ -415,7 +385,7 @@ Combinations of environment variables and their uses.
   Create `YSQL_DB` named DB.
 
 - `YSQL_USER, YSQL_PASSWORD, YSQL_DB`
-  
+
   Create `YSQL_USER` named user with password `YSQL_PASSWORD` and `YSQL_DB` named DB.
 
 ### For YCQL:  `YCQL_USER` `YCQL_PASSWORD` `YCQL_KEYSPACE`
@@ -425,7 +395,7 @@ Set `YCQL_USER` or `YCQL_PASSWORD` to use the cluster in enforced authentication
 Combinations of environment variables and their uses.
 
 - `YCQL_PASSWORD`
-   
+
   Update the default cassandra user's password.
 
 - `YCQL_PASSWORD, YCQL_KEYSPACE`
@@ -449,12 +419,16 @@ Combinations of environment variables and their uses.
   Create `YCQL_KEYSPACE` named keyspace.
 
 - `YCQL_USER, YCQL_PASSWORD, YCQL_KEYSPACE`
-  
+
   Create `YCQL_USER` named user with password `YCQL_PASSWORD` and `YCQL_KEYSPACE` named keyspace.
 
-**Note**
-- In the case of multi-node deployment, all nodes should have similar environment variables. 
+{{< note title="Note" >}}
+
+- In the case of multi-node deployment, all nodes should have similar environment variables.
 - Changing the values of the environment variables after the first run has no effect.
+
+{{< /note >}}
+
 -----
 
 ## Examples
@@ -467,9 +441,9 @@ Create a single-node cluster with a given base dir and listen address. Note the 
 bin/yugabyted start --base_dir=/Users/username/yugabyte-2.3.3.0/data1 --listen=127.0.0.1
 ```
 
-### Pass additional flags to tserver
+### Pass additional flags to YB-TServer
 
-Create a single-node cluster and set additional flags to the yb-tserver process.
+Create a single-node cluster and set additional flags for the YB-TServer process.
 
 ```sh
 bin/yugabyted start --tserver_flags="pg_yb_session_timeout_ms=1200000,ysql_max_connections=400"
@@ -491,5 +465,5 @@ Destroy the above multi-node cluster.
 ```sh
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
 bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data2
-bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data1
+bin/yugabyted destroy --base_dir=/Users/username/yugabyte-2.3.3.0/data3
 ```

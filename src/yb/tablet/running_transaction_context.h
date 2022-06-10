@@ -14,11 +14,26 @@
 #ifndef YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H
 #define YB_TABLET_RUNNING_TRANSACTION_CONTEXT_H
 
+#include <stdint.h>
+
+#include <functional>
+#include <mutex>
+#include <type_traits>
+
+#include <gflags/gflags_declare.h>
+
+#include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
+
 #include "yb/rpc/rpc.h"
 
+#include "yb/tablet/transaction_intent_applier.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/delayer.h"
+#include "yb/util/math_util.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/status_callback.h"
 
 namespace yb {
 namespace tablet {

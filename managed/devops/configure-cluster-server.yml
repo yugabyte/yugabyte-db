@@ -7,8 +7,8 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 - name: Install and configure server
-  hosts: "{{ instance_search_pattern }}"
-  gather_facts: no
+  hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
+  gather_facts: yes
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   roles:

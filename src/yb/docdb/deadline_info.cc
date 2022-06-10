@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#include <string>
-#include <gflags/gflags.h>
-
 #include "yb/docdb/deadline_info.h"
+
+#include <string>
+
+#include <gflags/gflags.h>
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"

@@ -11,16 +11,24 @@
 // under the License.
 //
 
+#include "yb/master/encryption_manager.h"
+
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
-#include "yb/master/encryption_manager.h"
-#include "yb/master/master.pb.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/encryption/encryption.pb.h"
+
+#include "yb/master/master_encryption.pb.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/master_replication.pb.h"
 #include "yb/master/universe_key_registry_service.h"
 
-#include "yb/util/encryption.pb.h"
 #include "yb/util/env.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::chrono_literals;
 
@@ -28,7 +36,7 @@ namespace yb {
 namespace master {
 
 EncryptionManager::EncryptionManager()
-    : universe_keys_(std::make_unique<UniverseKeysPB>()) {}
+    : universe_keys_(std::make_unique<encryption::UniverseKeysPB>()) {}
 
 Status EncryptionManager::AddUniverseKeys(
     const AddUniverseKeysRequestPB* req, AddUniverseKeysResponsePB* resp) {
@@ -109,7 +117,7 @@ Status EncryptionManager::IsEncryptionEnabled(const EncryptionInfoPB& encryption
       VERIFY_RESULT(enterprise::DecryptUniverseKeyRegistry(
           encryption_info.universe_key_registry_encoded(), Slice(universe_key)));
   auto universe_key_registry =
-      VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
+      VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(decrypted_registry));
 
   resp->set_key_id(universe_key_registry.latest_version_id());
   LOG(INFO) << Format("Cluster encrypted with key $0", resp->key_id());
@@ -117,7 +125,48 @@ Status EncryptionManager::IsEncryptionEnabled(const EncryptionInfoPB& encryption
   return Status::OK();
 }
 
-CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(
+EncryptionManager::EncryptionState EncryptionManager::GetEncryptionState(
+    const EncryptionInfoPB& encryption_info, IsEncryptionEnabledResponsePB* encryption_resp) {
+  EncryptionState state = EncryptionState::kUnknown;
+
+  Status encryption_status = IsEncryptionEnabled(encryption_info, encryption_resp);
+  WARN_NOT_OK(encryption_status, "Unable to determine encryption status");
+  if (encryption_status.ok()) {
+    if (encryption_resp->encryption_enabled()) {
+      state = EncryptionState::kEnabled;
+
+      HasUniverseKeyInMemoryRequestPB has_key_in_mem_req;
+      has_key_in_mem_req.set_version_id(encryption_resp->key_id());
+      HasUniverseKeyInMemoryResponsePB has_key_in_mem_res;
+      encryption_status = HasUniverseKeyInMemory(&has_key_in_mem_req, &has_key_in_mem_res);
+      if (encryption_status.ok() && has_key_in_mem_res.has_error()) {
+        encryption_status = StatusFromPB(has_key_in_mem_res.error().status());
+      }
+
+      WARN_NOT_OK(encryption_status, "Unable to determine if encryption keys are in memory");
+      if (!encryption_status.ok()) {
+        state = EncryptionState::kEnabledUnkownIfKeyIsInMem;
+      } else if (!has_key_in_mem_res.has_key()) {
+        state = EncryptionState::kEnabledKeyNotInMem;
+      }
+    } else {
+      state = EncryptionState::kNeverEnabled;
+
+      Slice registry_decrypted(encryption_info.universe_key_registry_encoded());
+      auto universe_key_registry =
+          pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(registry_decrypted);
+      if (!universe_key_registry.ok()) {
+        WARN_NOT_OK(
+            universe_key_registry.status(), "Unable to determine if encryption is Disabled");
+      } else if (!universe_key_registry->universe_keys().empty()) {
+        state = EncryptionState::kDisabled;
+      }
+    }
+  }
+  return state;
+}
+
+Status EncryptionManager::FillHeartbeatResponseEncryption(
     const EncryptionInfoPB& encryption_info, TSHeartbeatResponsePB* resp) {
   Slice decrypted_registry(encryption_info.universe_key_registry_encoded());
   std::string decrypted;
@@ -131,12 +180,14 @@ CHECKED_STATUS EncryptionManager::FillHeartbeatResponseEncryption(
     decrypted_registry = Slice(decrypted);
   }
 
-  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<UniverseKeyRegistryPB>(decrypted_registry));
+  auto registry = VERIFY_RESULT(pb_util::ParseFromSlice<encryption::UniverseKeyRegistryPB>(
+      decrypted_registry));
   resp->mutable_universe_key_registry()->CopyFrom(registry);
   return Status::OK();
 }
 
-void EncryptionManager::PopulateUniverseKeys(const UniverseKeysPB& universe_key_registry) {
+void EncryptionManager::PopulateUniverseKeys(
+      const encryption::UniverseKeysPB& universe_key_registry) {
   std::lock_guard<simple_spinlock> l(universe_key_mutex_);
   for (const auto& entry : universe_key_registry.map()) {
     (*universe_keys_->mutable_map())[entry.first] = entry.second;

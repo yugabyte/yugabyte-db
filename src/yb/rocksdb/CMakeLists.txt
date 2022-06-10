@@ -13,6 +13,9 @@
 
 # RocksDB build.
 
+set(YB_PCH_PREFIX rocksdb)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+
 PROTOBUF_GENERATE_CPP(
   ROCKSDB_PROTO_SRCS ROCKSDB_PROTO_HDRS ROCKSDB_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
@@ -185,13 +188,8 @@ set(ROCKSDB_SRCS
 
 set(CMAKE_CXX_FLAGS
   "${CMAKE_CXX_FLAGS} \
-   -Wextra -Wsign-compare -Wshadow -Woverloaded-virtual \
+   -Wextra -Wshadow -Woverloaded-virtual \
    -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-variable")
-
-if (IS_CLANG)
-  set(CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -Wshorten-64-to-32 -Wno-unevaluated-expression -Wno-parentheses-equality")
-endif()
 
 if (NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
@@ -201,19 +199,19 @@ if ("${YB_BUILD_TYPE}" STREQUAL "asan")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_MALLOC_USABLE_SIZE")
 endif()
 
-add_library(rocksdb ${ROCKSDB_SRCS})
-target_link_libraries(rocksdb gflags gutil snappy z lz4 yb_common yb_util opid_proto)
+ADD_YB_LIBRARY(rocksdb
+               SRCS ${ROCKSDB_SRCS}
+               DEPS gflags gutil snappy z lz4 yb_common yb_util opid_proto)
 
 add_library(rocksdb_tools
   tools/ldb_cmd.cc
   tools/ldb_tool.cc
   tools/sst_dump_tool.cc)
-target_link_libraries(rocksdb_tools rocksdb yb_rocksutil)
+target_link_libraries(rocksdb_tools docdb_proto rocksdb yb_rocksutil)
 
 macro(ADD_YB_ROCKSDB_TOOL tool)
   add_executable(${tool} tools/${tool}.cc)
   target_link_libraries(${tool} rocksdb_tools)
-  set_target_properties(${tool} PROPERTIES COMPILE_FLAGS "-DDISABLE_STATUS_NODISCARD")
 endmacro()
 
 set(ROCKSDB_TEST_UTIL_SRCS
@@ -288,7 +286,14 @@ ADD_YB_TEST(util/memenv_test)
 ADD_YB_TEST(util/mock_env_test)
 ADD_YB_TEST(util/options_test)
 ADD_YB_TEST(util/rate_limiter_test)
+
 ADD_YB_TEST(util/slice_transform_test)
+if (BUILD_TESTS AND
+    COMPILER_FAMILY STREQUAL "gcc" AND
+    "${COMPILER_VERSION}" MATCHES "^(10|11)[.].*$")
+  target_compile_options(slice_transform_test PRIVATE "-Wno-array-bounds")
+endif()
+
 ADD_YB_TEST(utilities/document/document_db_test)
 ADD_YB_TEST(utilities/document/json_document_test)
 ADD_YB_TEST(utilities/geodb/geodb_test)
@@ -315,6 +320,7 @@ ADD_YB_TEST(db/db_inplace_update_test)
 ADD_YB_TEST(db/db_iter_test)
 ADD_YB_TEST(db/db_log_iter_test)
 ADD_YB_TEST(db/db_properties_test)
+ADD_YB_TEST(db/db_statistics_test)
 ADD_YB_TEST(db/db_sst_test)
 ADD_YB_TEST(db/db_table_properties_test)
 ADD_YB_TEST(db/db_tailing_iter_test)

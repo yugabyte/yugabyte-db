@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX pgwrapper)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
@@ -21,12 +24,30 @@ ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
 
+# We indirectly use some headers that are generated while processing the protobufs below.
+add_dependencies(
+  yb_pgwrapper
+  gen_src_yb_tserver_backup_proto
+  gen_src_yb_docdb_docdb_proto
+  gen_src_yb_util_opid_proto
+  gen_src_yb_tablet_metadata_proto
+  gen_src_yb_tablet_operations_proto
+  gen_src_yb_tablet_tablet_proto
+  gen_src_yb_tablet_tablet_types_proto
+  gen_src_yb_tserver_tserver_proto
+  gen_src_yb_tserver_tserver_types_proto
+  gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_encryption_encryption_proto
+  gen_src_yb_master_master_heartbeat_proto
+  gen_src_yb_master_master_types_proto
+  gen_src_yb_tserver_tserver_service_proto
+  gen_src_yb_rpc_any_proto
+  )
+
 set(PQ_UTILS_SRCS
     libpq_utils.cc)
 set(PQ_UTILS_DEPS
-    pgsql_protocol_proto
     pq
-    ql_protocol_proto
     yb_common_proto
     yb_pggate_flags)
 ADD_YB_LIBRARY(pq_utils
@@ -45,6 +66,16 @@ ADD_YB_LIBRARY(pg_wrapper_test_base
 
 target_link_libraries(pg_wrapper_test_base integration-tests)
 
+set(GEO_TRANSACTIONS_TEST_BASE_SRCS
+    geo_transactions_test_base.cc)
+set(GEO_TRANSACTIONS_TEST_BASE_DEPS
+    pg_wrapper_test_base)
+ADD_YB_LIBRARY(geo_transactions_test_base
+               SRCS ${GEO_TRANSACTIONS_TEST_BASE_SRCS}
+               DEPS ${GEO_TRANSACTIONS_TEST_BASE_DEPS})
+
+target_link_libraries(geo_transactions_test_base pg_wrapper_test_base integration-tests)
+
 set(YSQL_UPGRADE_SRCS
     ysql_upgrade.cc)
 set(YSQL_UPGRADE_DEPS
@@ -55,19 +86,27 @@ ADD_YB_LIBRARY(ysql_upgrade
                DEPS ${YSQL_UPGRADE_DEPS})
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper yb_client ql-dml-test-base pg_wrapper_test_base tools_test_utils
-   ${YB_MIN_TEST_LIBS})
+    geo_transactions_test_base ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(pg_catalog_perf-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
+ADD_YB_TEST(pg_fkey-test)
 ADD_YB_TEST(pg_gin_index-test)
 ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)
+ADD_YB_TEST(pg_load_balancer-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_on_conflict-test)
+ADD_YB_TEST(pg_op_buffering-test)
+ADD_YB_TEST(pg_packed_row-test)
+ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_txn-test)
 ADD_YB_TEST(pg_wrapper-test)
 ADD_YB_TEST(alter_table_with_concurrent_txn-test)
 ADD_YB_TEST(geo_transactions-test)
+ADD_YB_TEST(geo_transactions_promotion-test)
+ADD_YB_TEST(pg_explicit_lock-test)
+ADD_YB_TEST(alter_schema_abort_txn-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)

@@ -110,7 +110,7 @@ public class Customer extends Model {
     LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
   }
 
-  public Set<UUID> getUniverseUUIDs() {
+  public synchronized Set<UUID> getUniverseUUIDs() {
     Set<UUID> uuids = new HashSet<UUID>();
     if (!universeUUIDs.isEmpty()) {
       String[] ids = universeUUIDs.split(",");

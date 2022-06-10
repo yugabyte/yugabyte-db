@@ -19,7 +19,8 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/util/decimal.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace pggate {
@@ -110,9 +111,7 @@ Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
 
-void PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
-  // Setup the buffer to read the next set of tuples.
-  CHECK(cursor->empty()) << "Existing cache is not yet fully read";
+void PgDocData::LoadCache(const Slice& cache, int64_t *total_row_count, Slice *cursor) {
   *cursor = cache;
 
   // Read the number row_count in this set.

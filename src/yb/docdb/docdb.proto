@@ -15,6 +15,7 @@ syntax = "proto2";
 package yb.docdb;
 
 import "yb/common/common.proto";
+import "yb/common/transaction.proto";
 import "yb/util/opid.proto";
 
 option java_package = "org.yb.docdb";
@@ -30,6 +31,11 @@ message ApplyExternalTransactionPB {
   optional fixed64 commit_hybrid_time = 2;
 }
 
+message TableSchemaVersionPB {
+  optional bytes table_id = 1;
+  optional uint32 schema_version = 2;
+}
+
 // A set of key/value pairs to be written into RocksDB.
 message KeyValueWriteBatchPB {
   repeated KeyValuePairPB write_pairs = 1;
@@ -39,10 +45,18 @@ message KeyValueWriteBatchPB {
   // Used by serializable isolation transactions and row locking statements to store read intents.
   // In case of read-modify-write operation both read_pairs and write_pairs could present.
   repeated KeyValuePairPB read_pairs = 5;
+  // Even though there can be multiple write_pairs we have only one row_mark_type/ wait_policy since
+  // currently we don't batch read RPCs from YSQL (which are the only ones that can set these 2
+  // fields). And hence, only a singular value is sufficient.
   optional RowMarkType row_mark_type = 6;
+  optional WaitPolicy wait_policy = 10;
   repeated ApplyExternalTransactionPB apply_external_transactions = 7;
 
   optional int64 ttl = 9;
+
+  // Table schema version used by this write batch.
+  // We could have writes to multiple cotables in a single write batch.
+  repeated TableSchemaVersionPB table_schema_version = 11;
 }
 
 message ConsensusFrontierPB {
@@ -51,6 +65,7 @@ message ConsensusFrontierPB {
   optional fixed64 history_cutoff = 3;
   optional fixed64 hybrid_time_filter = 4;
   optional fixed64 max_value_level_ttl_expiration_time = 5;
+  repeated TableSchemaVersionPB table_schema_version = 6;
 }
 
 message ApplyTransactionStatePB {
@@ -65,4 +80,20 @@ message ApplyTransactionStatePB {
 
   // Set of aborted subtransactions.
   optional AbortedSubTransactionSetPB aborted = 4;
+}
+
+message ColumnPackingPB {
+  optional uint32 id = 1;
+  optional uint64 num_varlen_columns_before = 2;
+  optional uint64 offset_after_prev_varlen_column = 3;
+  optional uint64 size = 4;
+  optional bool nullable = 5;
+}
+
+message SchemaPackingPB {
+  optional uint32 schema_version = 1;
+  repeated ColumnPackingPB columns = 2;
+
+  // Columns that present in schema but don't participate in packing.
+  repeated uint32 skipped_column_ids = 3;
 }

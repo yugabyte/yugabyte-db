@@ -39,6 +39,12 @@ showAsideToc: true
       YSQL - Spring Data JPA
     </a>
   </li>
+   <li>
+    <a href="../ysql-ebeans/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebeans
+    </a>
+  </li>
   <li>
     <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
@@ -62,7 +68,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.8.0-yb-5</version>
+      <version>3.10.3-yb-2</version>
     </dependency>
   </dependencies>
 ```
@@ -172,7 +178,7 @@ public class YBCqlHelloWorld {
 
       // Insert a row.
       String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                                          " VALUES (1, 'John', 35, 'Java');"; 
+                                          " VALUES (1, 'John', 35, 'Java');";
       ResultSet insertResult = session.execute(insert);
       System.out.println("Inserted data: " + insert);
 

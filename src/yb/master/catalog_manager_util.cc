@@ -13,16 +13,16 @@
 
 #include "yb/master/catalog_manager_util.h"
 
-#include <gflags/gflags.h>
+#include "yb/master/catalog_entity_info.h"
 
+#include "yb/master/master_cluster.pb.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/string_util.h"
 
 DEFINE_double(balancer_load_max_standard_deviation, 2.0,
-              "The standard deviation among the tserver load, above which that distribution "
-              "is considered not balanced.");
+    "The standard deviation among the tserver load, above which that distribution "
+    "is considered not balanced.");
 TAG_FLAG(balancer_load_max_standard_deviation, advanced);
 
 namespace yb {
@@ -143,7 +143,7 @@ void CatalogManagerUtil::CalculateTxnLeaderMap(std::map<std::string, int>* txn_m
     for (const auto& tablet : tablets) {
       auto replication_locations = tablet->GetReplicaLocations();
       for (const auto& replica : *replication_locations) {
-        if (replica.second.role == consensus::RaftPeerPB_Role_LEADER) {
+        if (replica.second.role == PeerRole::LEADER) {
           (*txn_map)[replica.first]++;
         }
       }
@@ -175,33 +175,48 @@ bool CatalogManagerUtil::IsCloudInfoEqual(const CloudInfoPB& lhs, const CloudInf
           lhs.placement_zone() == rhs.placement_zone());
 }
 
-Status CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
-                                                             const CloudInfoPB& cloud_info) {
+bool CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(const PlacementInfoPB& placement_info,
+                                                           const CloudInfoPB& cloud_info) {
   for (const auto& placement_block : placement_info.placement_blocks()) {
     if (IsCloudInfoEqual(placement_block.cloud_info(), cloud_info)) {
-      return Status::OK();
+      return true;
     }
   }
-  return STATUS_SUBSTITUTE(InvalidArgument, "Placement info $0 does not contain cloud info $1",
-                           placement_info.DebugString(),
-                           TSDescriptor::generate_placement_id(cloud_info));
+  return false;
+}
+
+bool CatalogManagerUtil::DoesPlacementInfoSpanMultipleRegions(
+    const PlacementInfoPB& placement_info) {
+  int num_blocks = placement_info.placement_blocks_size();
+  if (num_blocks < 2) {
+    return false;
+  }
+  const auto& first_block = placement_info.placement_blocks(0).cloud_info();
+  for (int i = 1; i < num_blocks; ++i) {
+    const auto& cur_block = placement_info.placement_blocks(i).cloud_info();
+    if (first_block.placement_cloud() != cur_block.placement_cloud() ||
+        first_block.placement_region() != cur_block.placement_region()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
     const ReplicationInfoPB& replication_info, const consensus::RaftPeerPB& peer) {
   switch (peer.member_type()) {
-    case consensus::RaftPeerPB::PRE_VOTER:
-    case consensus::RaftPeerPB::VOTER: {
+    case consensus::PeerMemberType::PRE_VOTER:
+    case consensus::PeerMemberType::VOTER: {
       // This peer is a live replica.
       return replication_info.live_replicas().placement_uuid();
     }
-    case consensus::RaftPeerPB::PRE_OBSERVER:
-    case consensus::RaftPeerPB::OBSERVER: {
+    case consensus::PeerMemberType::PRE_OBSERVER:
+    case consensus::PeerMemberType::OBSERVER: {
       // This peer is a read replica.
       std::vector<std::string> placement_uuid_matches;
       for (const auto& placement_info : replication_info.read_replicas()) {
         if (CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(
-            placement_info, peer.cloud_info()).ok()) {
+                placement_info, peer.cloud_info())) {
           placement_uuid_matches.push_back(placement_info.placement_uuid());
         }
       }
@@ -214,7 +229,7 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
 
       return placement_uuid_matches.front();
     }
-    case consensus::RaftPeerPB::UNKNOWN_MEMBER_TYPE: {
+    case consensus::PeerMemberType::UNKNOWN_MEMBER_TYPE: {
       return STATUS(IllegalState, Format("Member type unknown for peer $0",
                                          peer.ShortDebugString()));
     }
@@ -223,8 +238,11 @@ Result<std::string> CatalogManagerUtil::GetPlacementUuidFromRaftPeer(
   }
 }
 
-CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
+Status CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     const scoped_refptr<TabletInfo>& tablet) {
+  static const auto stringify_partition_key = [](const Slice& key) {
+    return key.empty() ? "{empty}" : key.ToDebugString();
+  };
   const auto& tablet_id = tablet->tablet_id();
 
   const auto tablet_lock = tablet->LockForRead();
@@ -262,8 +280,9 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
       return STATUS_FORMAT(
           IllegalState,
           "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-          tablet_id, Slice(partition_key).ToDebugString(),
-          Slice(inner_partition.partition_key_start()).ToDebugString());
+          tablet_id,
+          stringify_partition_key(partition_key),
+          stringify_partition_key(inner_partition.partition_key_start()));
     }
     partition_key = inner_partition.partition_key_end();
     if (!partition.partition_key_end().empty() && partition_key >= partition.partition_key_end()) {
@@ -274,32 +293,42 @@ CHECKED_STATUS CatalogManagerUtil::CheckIfCanDeleteSingleTablet(
     return STATUS_FORMAT(
         IllegalState,
         "Can't delete tablet $0 not covered by child tablets. Partition gap: $1 ... $2",
-        tablet_id, Slice(partition_key).ToDebugString(),
-        Slice(partition.partition_key_end()).ToDebugString());
+        tablet_id,
+        stringify_partition_key(partition_key),
+        stringify_partition_key(partition.partition_key_end()));
   }
   return Status::OK();
 }
 
-bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2) {
-  bool is_cloud_same = true, is_region_same = true, is_zone_same = true;
-  if (ci1.has_placement_cloud() && ci2.has_placement_cloud()) {
-    is_cloud_same = ci1.placement_cloud() == ci2.placement_cloud();
+CatalogManagerUtil::CloudInfoSimilarity CatalogManagerUtil::ComputeCloudInfoSimilarity(
+    const CloudInfoPB& ci1, const CloudInfoPB& ci2) {
+  if (ci1.has_placement_cloud() &&
+      ci2.has_placement_cloud() &&
+      ci1.placement_cloud() != ci2.placement_cloud()) {
+      return NO_MATCH;
   }
 
-  if (ci1.has_placement_region() && ci2.has_placement_region()) {
-    is_region_same = ci1.placement_region() == ci2.placement_region();
+  if (ci1.has_placement_region() &&
+      ci2.has_placement_region() &&
+      ci1.placement_region() != ci2.placement_region()) {
+      return CLOUD_MATCH;
   }
 
-  if (ci1.has_placement_zone() && ci2.has_placement_zone()) {
-    is_zone_same = ci1.placement_zone() == ci2.placement_zone();
+  if (ci1.has_placement_zone() &&
+      ci2.has_placement_zone() &&
+      ci1.placement_zone() != ci2.placement_zone()) {
+      return REGION_MATCH;
   }
-
-  return is_cloud_same && is_region_same && is_zone_same;
+  return ZONE_MATCH;
 }
 
-CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
+bool CatalogManagerUtil::IsCloudInfoPrefix(const CloudInfoPB& ci1, const CloudInfoPB& ci2) {
+  return ComputeCloudInfoSimilarity(ci1, ci2) == ZONE_MATCH;
+}
+
+Status CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& placement_info) {
   // Check for duplicates.
-  unordered_set<string> cloud_info_string;
+  std::unordered_set<string> cloud_info_string;
 
   for (int i = 0; i < placement_info.placement_blocks_size(); i++) {
     if (!placement_info.placement_blocks(i).has_cloud_info()) {
@@ -353,7 +382,7 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
         continue;
       } else {
         if (!placement_info.placement_blocks(i).has_cloud_info() ||
-        !placement_info.placement_blocks(j).has_cloud_info()) {
+            !placement_info.placement_blocks(j).has_cloud_info()) {
           continue;
         }
 
@@ -371,6 +400,121 @@ CHECKED_STATUS CatalogManagerUtil::IsPlacementInfoValid(const PlacementInfoPB& p
     }
   }
   return Status::OK();
+}
+
+Status ValidateAndAddPreferredZone(
+    const PlacementInfoPB& placement_info, const CloudInfoPB& cloud_info,
+    std::set<string>* visited_zones, CloudInfoListPB* zone_set) {
+  auto cloud_info_str = TSDescriptor::generate_placement_id(cloud_info);
+
+  if (visited_zones->find(cloud_info_str) != visited_zones->end()) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Invalid argument for preferred zone $0, values should not repeat",
+        cloud_info_str);
+  }
+
+  if (!CatalogManagerUtil::DoesPlacementInfoContainCloudInfo(placement_info, cloud_info)) {
+    return STATUS_FORMAT(
+        InvalidArgument, "Preferred zone '$0' not found in Placement info '$1'", cloud_info_str,
+        placement_info);
+  }
+
+  if (zone_set) {
+    *zone_set->add_zones() = cloud_info;
+  }
+
+  visited_zones->emplace(cloud_info_str);
+
+  return Status::OK();
+}
+
+Status CatalogManagerUtil::SetPreferredZones(
+    const SetPreferredZonesRequestPB* req, ReplicationInfoPB* replication_info) {
+  replication_info->clear_affinitized_leaders();
+  replication_info->clear_multi_affinitized_leaders();
+  const auto& placement_info = replication_info->live_replicas();
+
+  std::set<string> visited_zones;
+  if (req->multi_preferred_zones_size()) {
+    for (const auto& alternate_zones : req->multi_preferred_zones()) {
+      if (!alternate_zones.zones_size()) {
+        return STATUS(InvalidArgument, "Preferred zones list cannot be empty");
+      }
+
+      auto new_zone_set = replication_info->add_multi_affinitized_leaders();
+      for (const auto& cloud_info : alternate_zones.zones()) {
+        RETURN_NOT_OK(
+            ValidateAndAddPreferredZone(placement_info, cloud_info, &visited_zones, new_zone_set));
+      }
+    }
+  } else if (req->preferred_zones_size()) {
+    // Handle old clients
+    auto new_zone_set = replication_info->add_multi_affinitized_leaders();
+    for (const auto& cloud_info : req->preferred_zones()) {
+      RETURN_NOT_OK(
+          ValidateAndAddPreferredZone(placement_info, cloud_info, &visited_zones, new_zone_set));
+    }
+  }
+
+  return Status::OK();
+}
+
+void CatalogManagerUtil::GetAllAffinitizedZones(
+    const ReplicationInfoPB& replication_info, vector<AffinitizedZonesSet>* affinitized_zones) {
+  if (replication_info.multi_affinitized_leaders_size()) {
+    // New persisted version
+    for (auto& zone_set : replication_info.multi_affinitized_leaders()) {
+      AffinitizedZonesSet new_zone_set;
+      for (auto& ci : zone_set.zones()) {
+        new_zone_set.insert(ci);
+      }
+      if (!new_zone_set.empty()) {
+        affinitized_zones->push_back(new_zone_set);
+      }
+    }
+  } else {
+    // Old persisted version
+    AffinitizedZonesSet new_zone_set;
+    for (auto& ci : replication_info.affinitized_leaders()) {
+      new_zone_set.insert(ci);
+    }
+    if (!new_zone_set.empty()) {
+      affinitized_zones->push_back(new_zone_set);
+    }
+  }
+}
+
+Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& replication_info) {
+  auto& placement_info = replication_info.live_replicas();
+  if (!placement_info.placement_blocks().empty()) {
+    vector<AffinitizedZonesSet> affinitized_zones;
+    GetAllAffinitizedZones(replication_info, &affinitized_zones);
+
+    std::set<string> visited_zones;
+    for (const auto& zone_set : affinitized_zones) {
+      for (const auto& cloud_info : zone_set) {
+        RETURN_NOT_OK(
+            ValidateAndAddPreferredZone(placement_info, cloud_info, &visited_zones, nullptr));
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {
+  if (per_ts_load_[ts1] != per_ts_load_[ts2]) {
+    return per_ts_load_[ts1] < per_ts_load_[ts2];
+  }
+  if (global_load_state_->GetGlobalLoad(ts1) == global_load_state_->GetGlobalLoad(ts2)) {
+    return ts1 < ts2;
+  }
+  return global_load_state_->GetGlobalLoad(ts1) < global_load_state_->GetGlobalLoad(ts2);
+}
+
+void CMPerTableLoadState::SortLoad() {
+  Comparator comp(this);
+  std::sort(sorted_load_.begin(), sorted_load_.end(), comp);
 }
 
 } // namespace master

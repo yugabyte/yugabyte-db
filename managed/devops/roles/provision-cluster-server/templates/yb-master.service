@@ -10,8 +10,10 @@ PathExists={{yb_home_dir}}/master/bin/yb-master
 PathExists={{yb_home_dir}}/master/conf/server.conf
 
 [Service]
-User=yugabyte
-Group=yugabyte
+{% if ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7' %}
+User={{ user_name }}
+Group={{ user_name }}
+{% endif %}
 # Start
 ExecStart={{yb_home_dir}}/master/bin/yb-master --flagfile {{yb_home_dir}}/master/conf/server.conf
 Restart=on-failure
@@ -25,6 +27,10 @@ FinalKillSignal=SIGKILL
 # Logs
 StandardOutput=syslog
 StandardError=syslog
+# ulimit
+LimitCORE=infinity
+LimitNOFILE=1048576
+LimitNPROC=12000
 
 [Install]
 WantedBy=default.target

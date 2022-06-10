@@ -11,6 +11,8 @@
 
 [
 
-{ major => '14', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# For better version control conflict detection, list latest migration filename
+# here: V20__11928__stat_progress_copy.sql
+{ major => '20', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]

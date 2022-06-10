@@ -12,6 +12,7 @@ DROP TABLE tab_noco;
 
 CREATE DATABASE colocation_test colocated = true;
 \c colocation_test
+CREATE TABLE e (id int PRIMARY KEY, first_name TEXT) WITH (colocated = true) SPLIT INTO 10 TABLETS;
 
 -- CREATE TABLE
 
@@ -97,6 +98,10 @@ CREATE INDEX idx_range4 ON tab_range_nonkey_noco3 (a);
 CREATE TABLE tab_range_nonkey5 (a INT, b INT, PRIMARY KEY (a ASC));
 CREATE INDEX idx_range5 ON tab_range_nonkey5 (a);
 
+-- colocated table with unique index
+CREATE TABLE tab_nonkey2 (a INT) WITH (colocated = true);
+CREATE UNIQUE INDEX idx_range6 ON tab_nonkey2 (a);
+
 \dt
 \di
 
@@ -129,6 +134,15 @@ SELECT * FROM tab_range_nonkey2;
 -- truncate non-colocated table with explicit index
 TRUNCATE TABLE tab_range_nonkey_noco2;
 SELECT * FROM tab_range_nonkey_noco2;
+
+-- insert and truncate colocated table with explicit index
+INSERT INTO tab_nonkey2 VALUES (1), (2), (3);
+EXPLAIN (COSTS OFF) SELECT a FROM tab_nonkey2 ORDER BY a;
+SELECT a FROM tab_nonkey2 ORDER BY a;
+TRUNCATE TABLE tab_nonkey2;
+SELECT a FROM tab_nonkey2 ORDER BY a;
+INSERT INTO tab_nonkey2 VALUES (2), (4);
+SELECT a FROM tab_nonkey2 ORDER BY a;
 
 \dt
 \di

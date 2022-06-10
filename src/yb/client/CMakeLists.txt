@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX client)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 set(CLIENT_SRCS
   async_initializer.cc
   async_rpc.cc
@@ -37,6 +40,7 @@ set(CLIENT_SRCS
   client.cc
   client_builder-internal.cc
   client_error.cc
+  client_master_rpc.cc
   client-internal.cc
   client_utils.cc
   error.cc
@@ -103,14 +107,13 @@ endif()
 # This code is useful for other tests which use the client, but isn't
 # part of the client itself (ie we don't want to ship it to customers,
 # and therefore don't need to worry about export strictness)
-add_library(yb_client_test_util
-            client-test-util.cc)
-target_link_libraries(yb_client_test_util
-                      gmock
-                      yb_client)
+ADD_YB_LIBRARY(yb_client_test_util
+               SRCS client-test-util.cc
+               DEPS gmock yb_client)
 
-add_library(ql-dml-test-base ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc)
-target_link_libraries(ql-dml-test-base integration-tests)
+ADD_YB_LIBRARY(ql-dml-test-base
+               SRCS ql-dml-test-base.cc txn-test-base.cc snapshot_test_util.cc
+               DEPS integration-tests)
 
 # Tests
 

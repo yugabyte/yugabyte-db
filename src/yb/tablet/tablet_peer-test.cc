@@ -33,35 +33,54 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
+#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/state_change_context.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+
 #include "yb/server/clock.h"
 #include "yb/server/logical_clock.h"
-#include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/write_operation.h"
-#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/write_query.h"
+
 #include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
-#include "yb/util/test_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
 
 METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
+DECLARE_uint64(initial_log_segment_size_bytes);
 DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
+DECLARE_uint64(max_group_replicate_batch_size);
+DECLARE_int32(protobuf_message_total_bytes_limit);
 
 DECLARE_bool(quick_leader_election_on_create);
 
@@ -94,8 +113,10 @@ static Schema GetTestSchema() {
 
 class TabletPeerTest : public YBTabletTest {
  public:
-  TabletPeerTest()
-    : YBTabletTest(GetTestSchema(), YQL_TABLE_TYPE),
+  TabletPeerTest() : TabletPeerTest(GetTestSchema()) {}
+
+  explicit TabletPeerTest(const Schema& schema)
+    : YBTabletTest(schema, YQL_TABLE_TYPE),
       insert_counter_(0),
       delete_counter_(0) {
   }
@@ -115,10 +136,14 @@ class TabletPeerTest : public YBTabletTest {
 
     RaftPeerPB config_peer;
     config_peer.set_permanent_uuid(tablet()->metadata()->fs_manager()->uuid());
-    config_peer.set_member_type(RaftPeerPB::VOTER);
+    config_peer.set_member_type(consensus::PeerMemberType::VOTER);
     auto addr = config_peer.mutable_last_known_private_addr()->Add();
     addr->set_host("fake-host");
     addr->set_port(0);
+
+    multi_raft_manager_ = std::make_unique<consensus::MultiRaftManager>(messenger_.get(),
+                                                                        proxy_cache_.get(),
+                                                                        config_peer.cloud_info());
 
     // "Bootstrap" and start the TabletPeer.
     tablet_peer_.reset(new TabletPeer(
@@ -170,10 +195,11 @@ class TabletPeerTest : public YBTabletTest {
                                            tablet_metric_entity_,
                                            raft_pool_.get(),
                                            tablet_prepare_pool_.get(),
-                                           nullptr /* retryable_requests */));
+                                           nullptr /* retryable_requests */,
+                                           multi_raft_manager_.get()));
   }
 
-  CHECKED_STATUS StartPeer(const ConsensusBootstrapInfo& info) {
+  Status StartPeer(const ConsensusBootstrapInfo& info) {
     RETURN_NOT_OK(tablet_peer_->Start(info));
 
     return LoggedWaitFor([&]() -> Result<bool> {
@@ -194,8 +220,13 @@ class TabletPeerTest : public YBTabletTest {
   }
 
   void TearDown() override {
+    multi_raft_manager_->StartShutdown();
     messenger_->Shutdown();
-    WARN_NOT_OK(tablet_peer_->Shutdown(), "Tablet peer shutdown failed");
+    WARN_NOT_OK(
+        tablet_peer_->Shutdown(
+            ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
+        "Tablet peer shutdown failed");
+    multi_raft_manager_->CompleteShutdown();
     YBTabletTest::TearDown();
   }
 
@@ -214,21 +245,22 @@ class TabletPeerTest : public YBTabletTest {
     AddTestRowDelete(delete_counter_++, write_req);
   }
 
-  Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+  void ExecuteWrite(TabletPeer* tablet_peer, const WriteRequestPB& req) {
     WriteResponsePB resp;
-    auto operation = std::make_unique<WriteOperation>(
+    auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), &resp);
-    *operation->AllocateRequest() = req;
+    query->set_client_request(req);
 
     CountDownLatch rpc_latch(1);
-    operation->set_completion_callback(
-        MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
+    query->set_callback(MakeLatchOperationCompletionCallback(&rpc_latch, &resp));
 
-    tablet_peer->WriteAsync(std::move(operation));
+    tablet_peer->WriteAsync(std::move(query));
     rpc_latch.Wait();
     CHECK(!resp.has_error())
-        << "\nReq:\n" << req.DebugString() << "Resp:\n" << resp.DebugString();
+        << "\nResp:\n" << resp.DebugString() << "Req:\n" << req.DebugString();
+  }
 
+  Status RollLog(TabletPeer* tablet_peer) {
     Synchronizer synchronizer;
     CHECK_OK(tablet_peer->log_->TEST_SubmitFuncToAppendToken([&synchronizer, tablet_peer] {
       synchronizer.StatusCB(tablet_peer->log_->AllocateSegmentAndRollOver());
@@ -236,8 +268,13 @@ class TabletPeerTest : public YBTabletTest {
     return synchronizer.Wait();
   }
 
+  Status ExecuteWriteAndRollLog(TabletPeer* tablet_peer, const WriteRequestPB& req) {
+    ExecuteWrite(tablet_peer, req);
+    return RollLog(tablet_peer);
+  }
+
   // Execute insert requests and roll log after each one.
-  CHECKED_STATUS ExecuteInsertsAndRollLogs(int num_inserts) {
+  Status ExecuteInsertsAndRollLogs(int num_inserts) {
     for (int i = 0; i < num_inserts; i++) {
       WriteRequestPB req;
       GenerateSequentialInsertRequest(&req);
@@ -281,6 +318,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
+  std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 };
 
 // Ensure that Log::GC() doesn't delete logs with anchors.
@@ -421,6 +459,93 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->Start(info));
   // We don't wait on consensus on purpose.
   ASSERT_OK(tablet_peer_->RunLogGC());
+}
+
+class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
+ public:
+  TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_protobuf_message_total_bytes_limit) = kProtobufSizeLimit;
+    // Avoid unnecessary log segments rolling.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = kProtobufSizeLimit * 2;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = kProtobufSizeLimit * 2;
+  }
+
+  static constexpr auto kProtobufSizeLimit = 10_MB;
+};
+
+TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimitTest) {
+  constexpr auto kNumOps = 10;
+
+  // Make sure batch of kNumOps operations is larger than kProtobufSizeLimit to test limit overflow.
+  constexpr auto kValueSize = kProtobufSizeLimit / (kNumOps - 1);
+
+  // Make sure we don't reach max_group_replicate_batch_size limit.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_max_group_replicate_batch_size) = kNumOps * 2;
+
+  ConsensusBootstrapInfo info;
+  ASSERT_OK(StartPeer(info));
+
+  std::string value(kValueSize, 'X');
+
+  std::vector<WriteRequestPB> requests(kNumOps);
+  std::vector<WriteResponsePB> responses(kNumOps);
+  std::vector<std::unique_ptr<WriteQuery>> queries;
+  queries.reserve(kNumOps);
+  CountDownLatch latch(kNumOps);
+
+  auto* const tablet_peer = tablet_peer_.get();
+
+  for (int i = 0; i < kNumOps; ++i) {
+    auto* req = &requests[i];
+    auto* resp = &responses[i];
+
+    req->set_tablet_id(tablet()->tablet_id());
+    AddTestRowInsert(i, i, value, req);
+    auto query = std::make_unique<WriteQuery>(
+        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet_peer->tablet(), resp);
+    query->set_client_request(*req);
+    query->set_callback([&latch, resp](const Status& status) {
+      if (!status.ok()) {
+        StatusToPB(status, resp->mutable_error()->mutable_status());
+      }
+      latch.CountDown();
+    });
+    queries.push_back(std::move(query));
+  }
+
+  for (auto& query : queries) {
+    tablet_peer->WriteAsync(std::move(query));
+  }
+  latch.Wait();
+
+  for (size_t i = 0; i < responses.size(); ++i) {
+    const auto& resp = responses[i];
+    ASSERT_FALSE(responses[i].has_error()) << "\n Response[" << i << "]:\n" << resp.DebugString();
+  }
+
+  ASSERT_OK(RollLog(tablet_peer_.get()));
+
+  auto* log = tablet_peer_->log();
+
+  log::SegmentSequence segments;
+  ASSERT_OK(log->GetLogReader()->GetSegmentsSnapshot(&segments));
+
+  for (auto& segment : segments) {
+    auto entries = segment->ReadEntries();
+    ASSERT_OK(entries.status);
+
+    size_t current_batch_size = 0;
+    int64_t current_batch_offset = 0;
+    for (const auto& meta : entries.entry_metadata) {
+      if (meta.offset == current_batch_offset) {
+        ++current_batch_size;
+      } else {
+        current_batch_offset = meta.offset;
+        current_batch_size = 1;
+      }
+      ASSERT_LE(current_batch_size, kProtobufSizeLimit);
+    }
+  }
 }
 
 } // namespace tablet

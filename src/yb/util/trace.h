@@ -33,6 +33,7 @@
 #define YB_UTIL_TRACE_H
 
 #include <atomic>
+#include <functional>
 #include <iosfwd>
 #include <string>
 #include <vector>
@@ -40,17 +41,18 @@
 #include <gflags/gflags.h>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/ref_counted.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-#include "yb/util/atomic.h"
+#include "yb/util/atomic.h" // For GetAtomicFlag
 #include "yb/util/locks.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/monotime.h"
 
 DECLARE_bool(enable_tracing);
+DECLARE_bool(use_monotime_for_traces);
 DECLARE_int32(tracing_level);
 
 // Adopt a Trace on the current thread for the duration of the current
@@ -59,22 +61,36 @@ DECLARE_int32(tracing_level);
 // 't' should be a Trace* pointer.
 #define ADOPT_TRACE(t) yb::ScopedAdoptTrace _adopt_trace(t);
 
+// Like the above, but takes the trace pointer as an explicit argument.
+#define TRACE_TO_WITH_TIME(trace, time, format, substitutions...) \
+  do { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
+      if ((trace)) { \
+        (trace)->SubstituteAndTrace( \
+            __FILE__, __LINE__, (time), (format), ##substitutions); \
+      } \
+    } \
+  } while (0)
+
+#define VTRACE_TO(level, trace, format, substitutions...) \
+  do { \
+    if (GetAtomicFlag(&FLAGS_enable_tracing) && level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
+      const bool use_fine_ts = GetAtomicFlag(&FLAGS_use_monotime_for_traces); \
+      auto time = (use_fine_ts ? ToCoarse(MonoTime::Now()) : CoarseMonoClock::Now()); \
+      TRACE_TO_WITH_TIME(trace, time, format, ##substitutions); \
+    } \
+  } while (0)
+
+#define TRACE_TO(trace, format, substitutions...) \
+  VTRACE_TO(0, (trace), (format), ##substitutions)
+
 // Issue a trace message, if tracing is enabled in the current thread.
 // and the current tracing level flag is >= the specified level.
 // See Trace::SubstituteAndTrace for arguments.
 // Example:
 //  VTRACE(1, "Acquired timestamp $0", timestamp);
 #define VTRACE(level, format, substitutions...) \
-  do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing) && \
-            level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
-      yb::Trace* _trace = Trace::CurrentTrace(); \
-      if (_trace) { \
-        _trace->SubstituteAndTrace(__FILE__, __LINE__, CoarseMonoClock::Now(), (format),  \
-          ##substitutions); \
-      } \
-    } \
-  } while (0)
+  VTRACE_TO(level, Trace::CurrentTrace(), format, ##substitutions)
 
 // Issue a trace message, if tracing is enabled in the current thread.
 // See Trace::SubstituteAndTrace for arguments.
@@ -85,28 +101,6 @@ DECLARE_int32(tracing_level);
 
 #define TRACE_FUNC() \
   TRACE(__func__)
-
-// Like the above, but takes the trace pointer as an explicit argument.
-#define VTRACE_TO(level, trace, format, substitutions...) \
-  do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing) && \
-            level <= GetAtomicFlag(&FLAGS_tracing_level)) { \
-      (trace)->SubstituteAndTrace( \
-          __FILE__, __LINE__, CoarseMonoClock::Now(), (format), ##substitutions); \
-    } \
-  } while (0)
-
-#define TRACE_TO(trace, format, substitutions...) \
-  VTRACE_TO(0, (trace), (format), ##substitutions)
-
-// Like the above, but takes the trace pointer as an explicit argument.
-#define TRACE_TO_WITH_TIME(trace, time, format, substitutions...) \
-  do { \
-    if (GetAtomicFlag(&FLAGS_enable_tracing)) { \
-      (trace)->SubstituteAndTrace( \
-          __FILE__, __LINE__, (time), (format), ##substitutions); \
-    } \
-  } while (0)
 
 #define PLAIN_TRACE_TO(trace, message) \
   do { \
@@ -228,7 +222,7 @@ class Trace : public RefCountedThreadSafe<Trace> {
 
   // Allocate a new entry from the arena, with enough space to hold a
   // message of length 'len'.
-  TraceEntry* NewEntry(int len, const char* file_path, int line_number, CoarseTimePoint now);
+  TraceEntry* NewEntry(size_t len, const char* file_path, int line_number, CoarseTimePoint now);
 
   // Add the entry to the linked list of entries.
   void AddEntry(TraceEntry* entry);

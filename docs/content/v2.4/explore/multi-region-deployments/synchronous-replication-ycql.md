@@ -16,14 +16,14 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link">
+    <a href="/preview/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/latest/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link active">
+    <a href="/preview/explore/multi-region-deployments/synchronous-replication-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -84,7 +84,7 @@ You should now see some read and write load on the [tablet servers page](http://
 
 ### Add new nodes
 
-Add a node in the zone `us-east-1a` of region `us-east-1`. 
+Add a node in the zone `us-east-1a` of region `us-east-1`.
 
 ```sh
 $ ./bin/yb-ctl add_node --placement_info "aws.us-east-1.us-east-1a"

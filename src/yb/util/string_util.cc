@@ -20,13 +20,14 @@
 #include "yb/util/string_util.h"
 
 #include <regex>
-#include <string>
 
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/preprocessor/cat.hpp>
-#include <glog/logging.h>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
 
-#include "yb/gutil/dynamic_annotations.h"
+#include <boost/preprocessor/cat.hpp>
+
+#include <glog/logging.h>
 
 using std::vector;
 using std::regex;
@@ -54,6 +55,11 @@ bool IsDecimal(const Slice& s) {
 
 bool IsBoolean(const Slice& s) {
   return iequals(s.cdata(), "true") || iequals(s.cdata(), "false");
+}
+
+bool IsIdLikeUuid(const Slice& s) {
+  static const regex uuid_regex("[0-9a-f]{32}");
+  return regex_match(s.cdata(), uuid_regex);
 }
 
 vector<string> StringSplit(const string& arg, char delim) {
@@ -99,6 +105,18 @@ void AppendWithSeparator(const char* to_append, string* dest, const char* separa
     *dest += separator;
   }
   *dest += to_append;
+}
+
+std::vector<std::string> SplitAndFlatten(
+    const std::vector<std::string>& input,
+    const char* separators) {
+  std::vector<std::string> result_vec;
+  for (const auto& dir : input) {
+    std::vector<std::string> temp;
+    boost::split(temp, dir, boost::is_any_of(separators));
+    result_vec.insert(result_vec.end(), temp.begin(), temp.end());
+  }
+  return result_vec;
 }
 
 }  // namespace yb

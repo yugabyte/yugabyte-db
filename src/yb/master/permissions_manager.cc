@@ -11,19 +11,25 @@
 // under the License.
 //
 
+#include "yb/master/permissions_manager.h"
+
 #include <mutex>
 
-#include "yb/util/crypt.h"
-
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/catalog_manager-internal.h"
-#include "yb/master/permissions_manager.h"
+#include "yb/master/master_dcl.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 
+#include "yb/util/crypt.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 using std::shared_ptr;
 
@@ -699,18 +705,21 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
             resource.canonical_resource() != kRolesRoleResource) {
           auto* resource_permissions = role_permissions->add_resource_permissions();
           resource_permissions->set_canonical_resource(resource.canonical_resource());
-          resource_permissions->set_permissions(resource_permissions_bitset.to_ullong());
+          resource_permissions->set_permissions(
+              narrow_cast<uint32_t>(resource_permissions_bitset.to_ullong()));
           recursive_granted_permissions_[role_name][resource.canonical_resource()] =
               resource_permissions_bitset.to_ullong();
         }
       }
 
-      role_permissions->set_all_keyspaces_permissions(all_keyspaces_permissions_bitset.to_ullong());
+      role_permissions->set_all_keyspaces_permissions(
+          narrow_cast<uint32_t>(all_keyspaces_permissions_bitset.to_ullong()));
       VLOG(2) << "Setting all_keyspaces_permissions to "
               << role_permissions->all_keyspaces_permissions()
               << " for role " << role_name;
 
-      role_permissions->set_all_roles_permissions(all_roles_permissions_bitset.to_ullong());
+      role_permissions->set_all_roles_permissions(
+          narrow_cast<uint32_t>(all_roles_permissions_bitset.to_ullong()));
       VLOG(2) << "Setting all_roles_permissions to "
               << role_permissions->all_roles_permissions()
               << " for role " << role_name;
@@ -725,8 +734,10 @@ void PermissionsManager::BuildResourcePermissionsUnlocked() {
         // Set all the bits to 1.
         superuser_bitset.set();
 
-        role_permissions->set_all_keyspaces_permissions(superuser_bitset.to_ullong());
-        role_permissions->set_all_roles_permissions(superuser_bitset.to_ullong());
+        role_permissions->set_all_keyspaces_permissions(
+            narrow_cast<uint32_t>(superuser_bitset.to_ullong()));
+        role_permissions->set_all_roles_permissions(
+            narrow_cast<uint32_t>(superuser_bitset.to_ullong()));
       }
     }
   }
@@ -949,7 +960,7 @@ void PermissionsManager::BuildRecursiveRoles() {
 }
 
 void PermissionsManager::TraverseRole(
-    const string& role_name, unordered_set<RoleName>* granted_roles) {
+    const string& role_name, std::unordered_set<RoleName>* granted_roles) {
   auto iter = recursive_granted_roles_.find(role_name);
   // This node has already been visited. So just add all the granted (directly or through
   // inheritance) roles to granted_roles.

@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX bfpg)
+set(YB_PCH_DEP_LIBS gutil yb_test_util yb_util)
+
 # Build the code generator.
 add_executable(bfpg_codegen
                directory.cc

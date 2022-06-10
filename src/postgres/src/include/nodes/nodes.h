@@ -375,7 +375,6 @@ typedef enum NodeTag
 	T_DeallocateStmt,
 	T_DeclareCursorStmt,
 	T_CreateTableGroupStmt,
-	T_DropTableGroupStmt,
 	T_CreateTableSpaceStmt,
 	T_DropTableSpaceStmt,
 	T_AlterObjectDependsStmt,
@@ -518,7 +517,8 @@ typedef enum NodeTag
 	 */
 	T_YbPgExecOutParam,
 	T_YbBackfillInfo,
-	T_PartitionPruneStepFuncOp
+	T_PartitionPruneStepFuncOp,
+	T_YbExprParamDesc
 
 } NodeTag;
 
@@ -822,7 +822,8 @@ typedef enum OnConflictAction
 {
 	ONCONFLICT_NONE,			/* No "ON CONFLICT" clause */
 	ONCONFLICT_NOTHING,			/* ON CONFLICT ... DO NOTHING */
-	ONCONFLICT_UPDATE			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_YB_REPLACE		/* Replace the existing tuple (upsert mode) */
 } OnConflictAction;
 
 #endif							/* NODES_H */

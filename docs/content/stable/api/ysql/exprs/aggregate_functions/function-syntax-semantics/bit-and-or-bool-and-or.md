@@ -24,7 +24,7 @@ The `bit` data type represents an array of `false/true` values of arbitrary leng
 
 ```
 input value:       bit, smallint, int, bigint
-                   
+
 return value:      < Same as the input value's data type. >
 ```
 
@@ -36,7 +36,7 @@ return value:      < Same as the input value's data type. >
 
 ```
 input value:       bit, smallint, int, bigint
-                   
+
 return value:      < Same as the input value's data type. >
 ```
 **Purpose:** Returns a value that represents the outcome of the applying the two-by-two matrix `OR` rule to each aligned set of bits for the set of `NOT NULL` input values.
@@ -47,11 +47,11 @@ return value:      < Same as the input value's data type. >
 
 ```
 input value:       boolean
-                   
+
 return value:      boolean
 ```
 
-**Purpose:** Returns a value that represents the outcome of the applying the two-by-two matrix `AND` rule to to the set of `NOT NULL` input `boolean` values.
+**Purpose:** Returns a value that represents the outcome of the applying the two-by-two matrix `AND` rule to the set of `NOT NULL` input `boolean` values.
 
 ## bool_or()
 
@@ -59,10 +59,10 @@ return value:      boolean
 
 ```
 input value:       anyelement, int, [, anyelement]
-                   
+
 return value:      anyelement
 ```
-**Purpose:** Returns a value that represents the outcome of the applying the two-by-two matrix `OR` rule to to the set of `NOT NULL` input `boolean` values.
+**Purpose:** Returns a value that represents the outcome of the applying the two-by-two matrix `OR` rule to the set of `NOT NULL` input `boolean` values.
 
 ## Examples
 
@@ -99,7 +99,7 @@ order by k, class;
 This is the result:
 
 ```
- k | class |    b1    |   b2   
+ k | class |    b1    |   b2
 ---+-------+----------+--------
  1 |     1 | 00000001 | true
  2 |     1 | 00000010 | true
@@ -129,7 +129,7 @@ order by class;
 This is the result:
 
 ```
- class | bit_and(b1) | bit_or(b1) | bool_and(b2) | bool_or(b2) 
+ class | bit_and(b1) | bit_or(b1) | bool_and(b2) | bool_or(b2)
 -------+-------------+------------+--------------+-------------
      1 | 00000000    | 00001111   | false        | true
      2 | 10000000    | 10111101   | true         | true
@@ -158,7 +158,7 @@ order by k, class;
 This is the result:
 
 ```
- k | class | bit_and(b1) | bit_or(b1) | bool_and(b2) | bool_or(b2) 
+ k | class | bit_and(b1) | bit_or(b1) | bool_and(b2) | bool_or(b2)
 ---+-------+-------------+------------+--------------+-------------
  1 |     1 | 00000001    | 00000001   | true         | true
  2 |     1 | 00000000    | 00000011   | true         | true

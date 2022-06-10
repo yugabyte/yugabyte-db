@@ -79,6 +79,8 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
+
+#include "common/pg_yb_common.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
 
 PG_MODULE_MAGIC;
@@ -336,7 +338,7 @@ static void JumbleRangeTable(pgssJumbleState *jstate, List *rtable);
 static void JumbleExpr(pgssJumbleState *jstate, Node *node);
 static void RecordConstLocation(pgssJumbleState *jstate, int location);
 static char *generate_normalized_query(pgssJumbleState *jstate, const char *query,
-						  int query_loc, int *query_len_p, int encoding);
+						 int query_loc, int *query_len_p, int encoding);
 static void fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
 						 int query_loc);
 static int	comp_location(const void *a, const void *b);
@@ -454,20 +456,20 @@ _PG_fini(void)
 	ProcessUtility_hook = prev_ProcessUtility;
 }
 
-static void 
+static void
 resetYsqlStatementStats()
 {
   pg_stat_statements_reset(NULL);
 }
 
-static void 
+static void
 getYsqlStatementStats(void *cb_arg)
 {
 	HASH_SEQ_STATUS hash_seq;
 	char	   *qbuffer = NULL;
 	Size		qbuffer_size = 0;
 	pgssEntry  *entry;
-  YsqlStatementStat tmp;
+	YsqlStatementStat tmp;
 
 	qbuffer = qtext_load_file(&qbuffer_size);
 	if (qbuffer == NULL)
@@ -495,6 +497,7 @@ getYsqlStatementStats(void *cb_arg)
       tmp.sum_var_time = entry->counters.sum_var_time;
 
       tmp.rows         = entry->counters.rows;
+      tmp.query_id     = entry->key.queryid;
 
       WriteStatArrayElemToJson(cb_arg, &tmp);
     }
@@ -1159,6 +1162,8 @@ pgss_store(const char *query, uint64 queryId,
 	pgssHashKey key;
 	pgssEntry  *entry;
 	char	   *norm_query = NULL;
+	const char *redacted_query;
+	int         redacted_query_len;
 	int			encoding = GetDatabaseEncoding();
 
 	Assert(query != NULL);
@@ -1199,11 +1204,16 @@ pgss_store(const char *query, uint64 queryId,
 	while (query_len > 0 && scanner_isspace(query[query_len - 1]))
 		query_len--;
 
+	/* Use the redacted query for checking purposes. */
+	redacted_query = pnstrdup(query, query_len);
+	redacted_query = RedactPasswordIfExists(redacted_query);
+	redacted_query_len = strlen(redacted_query);
+
 	/*
 	 * For utility statements, we just hash the query string to get an ID.
 	 */
 	if (queryId == UINT64CONST(0))
-		queryId = pgss_hash_string(query, query_len);
+		queryId = pgss_hash_string(redacted_query, redacted_query_len);
 
 	/* Set up key for hashtable search */
 	key.userid = GetUserId();
@@ -1233,15 +1243,15 @@ pgss_store(const char *query, uint64 queryId,
 		if (jstate)
 		{
 			LWLockRelease(pgss->lock);
-			norm_query = generate_normalized_query(jstate, query,
+			norm_query = generate_normalized_query(jstate, redacted_query,
 												   query_location,
-												   &query_len,
+												   &redacted_query_len,
 												   encoding);
 			LWLockAcquire(pgss->lock, LW_SHARED);
 		}
 
 		/* Append new query text to file with only shared lock held */
-		stored = qtext_store(norm_query ? norm_query : query, query_len,
+		stored = qtext_store(norm_query ? norm_query : redacted_query, redacted_query_len,
 							 &query_offset, &gc_count);
 
 		/*
@@ -1263,7 +1273,7 @@ pgss_store(const char *query, uint64 queryId,
 		 * exclusive lock isn't a performance problem.
 		 */
 		if (!stored || pgss->gc_count != gc_count)
-			stored = qtext_store(norm_query ? norm_query : query, query_len,
+			stored = qtext_store(norm_query ? norm_query : redacted_query, redacted_query_len,
 								 &query_offset, NULL);
 
 		/* If we failed to write to the text file, give up */
@@ -1271,7 +1281,7 @@ pgss_store(const char *query, uint64 queryId,
 			goto done;
 
 		/* OK to create a new hashtable entry */
-		entry = entry_alloc(&key, query_offset, query_len, encoding,
+		entry = entry_alloc(&key, query_offset, redacted_query_len, encoding,
 							jstate != NULL);
 
 		/* If needed, perform garbage collection while exclusive lock held */
@@ -2284,6 +2294,26 @@ gc_fail:
 }
 
 /*
+ * Function that caches environmental variable
+ * FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset.
+ *
+ * This avoids the process of checking the value of the environmental variable
+ * time and again.
+ */
+bool
+yb_lwlock_crash_after_acquire_pg_stat_statements_reset()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrue(
+		    "FLAGS_TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset");
+	}
+	return cached_value;
+
+}
+
+/*
  * Release all entries.
  */
 static void
@@ -2301,6 +2331,8 @@ entry_reset(void)
 		hash_search(pgss_hash, &entry->key, HASH_REMOVE, NULL);
 	}
 
+	if (yb_lwlock_crash_after_acquire_pg_stat_statements_reset())
+	  kill(getpid(), 9);
 	/*
 	 * Write new empty query file, perhaps even creating a new one to recover
 	 * if the file was missing.
@@ -3108,7 +3140,7 @@ generate_normalized_query(pgssJumbleState *jstate, const char *query,
  */
 static void
 fill_in_constant_lengths(pgssJumbleState *jstate, const char *query,
-						 int query_loc)
+			 int query_loc)
 {
 	pgssLocationLen *locs;
 	core_yyscan_t yyscanner;

@@ -11,37 +11,57 @@
 // under the License.
 //
 
-#include <sys/types.h>
+#include <boost/function.hpp>
 
-#include <memory>
-
+#include "yb/client/client.h"
 #include "yb/client/table_alterer.h"
+#include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
-#include "yb/docdb/docdb_compaction_filter.h"
-#include "yb/docdb/doc_ttl_util.h"
-#include "yb/rocksdb/compaction_filter.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/util/compare_util.h"
+#include "yb/common/snapshot.h"
+
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+
 #include "yb/docdb/consensus_frontier.h"
+#include "yb/docdb/doc_ttl_util.h"
+
 #include "yb/gutil/integral_types.h"
-#include "yb/integration-tests/test_workload.h"
+#include "yb/gutil/ref_counted.h"
+
 #include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/test_workload.h"
 
+#include "yb/master/catalog_entity_info.h"
 
+#include "yb/rocksdb/db.h"
+#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/types.h"
+#undef TEST_SYNC_POINT
 #include "yb/rocksdb/util/sync_point.h"
 
+#include "yb/server/hybrid_clock.h"
+
+#include "yb/tablet/tablet_fwd.h"
+#include "yb/tablet/tablet_options.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/tablet.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/compare_util.h"
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/operation_counter.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/test_util.h"
+#include "yb/util/threadpool.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals; // NOLINT
@@ -74,19 +94,23 @@ constexpr auto kNumTablets = 3;
 class RocksDbListener : public rocksdb::EventListener {
  public:
   void OnCompactionCompleted(rocksdb::DB* db, const rocksdb::CompactionJobInfo&) override {
-    IncrementValueByDb(db, &num_compactions_completed_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++num_compactions_completed_[db];
   }
 
-  int GetNumCompactionsCompleted(rocksdb::DB* db) {
-    return GetValueByDb(db, num_compactions_completed_);
+  size_t GetNumCompactionsCompleted(rocksdb::DB* db) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return num_compactions_completed_[db];
   }
 
   void OnFlushCompleted(rocksdb::DB* db, const rocksdb::FlushJobInfo&) override {
-    IncrementValueByDb(db, &num_flushes_completed_);
+    std::lock_guard<std::mutex> lock(mutex_);
+    ++num_flushes_completed_[db];
   }
 
-  int GetNumFlushesCompleted(rocksdb::DB* db) {
-    return GetValueByDb(db, num_flushes_completed_);
+  size_t GetNumFlushesCompleted(rocksdb::DB* db) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return num_flushes_completed_[db];
   }
 
   void Reset() {
@@ -96,35 +120,12 @@ class RocksDbListener : public rocksdb::EventListener {
   }
 
  private:
-  typedef std::unordered_map<const rocksdb::DB*, int> CountByDbMap;
-
-  void IncrementValueByDb(const rocksdb::DB* db, CountByDbMap* map);
-  int GetValueByDb(const rocksdb::DB* db, const CountByDbMap& map);
+  typedef std::unordered_map<const rocksdb::DB*, size_t> CountByDbMap;
 
   std::mutex mutex_;
-  CountByDbMap num_compactions_completed_;
-  CountByDbMap num_flushes_completed_;
+  CountByDbMap num_compactions_completed_ GUARDED_BY(mutex_);
+  CountByDbMap num_flushes_completed_ GUARDED_BY(mutex_);
 };
-
-void RocksDbListener::IncrementValueByDb(const rocksdb::DB* db, CountByDbMap* map) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = map->find(db);
-  if (it == map->end()) {
-    (*map)[db] = 1;
-  } else {
-    ++(it->second);
-  }
-}
-
-int RocksDbListener::GetValueByDb(const rocksdb::DB* db, const CountByDbMap& map) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = map.find(db);
-  if (it == map.end()) {
-    return 0;
-  } else {
-    return it->second;
-  }
-}
 
 } // namespace
 
@@ -200,7 +201,7 @@ class CompactionTest : public YBTest {
     return workload_->rows_inserted() * kPayloadBytes;
   }
 
-  CHECKED_STATUS WriteAtLeast(size_t size_bytes) {
+  Status WriteAtLeast(size_t size_bytes) {
     workload_->Start();
     RETURN_NOT_OK(LoggedWaitFor(
         [this, size_bytes] { return BytesWritten() >= size_bytes; }, 60s,
@@ -210,14 +211,13 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS WriteAtLeastFilesPerDb(int num_files) {
+  Status WriteAtLeastFilesPerDb(size_t num_files) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     workload_->Start();
     RETURN_NOT_OK(LoggedWaitFor(
         [this, &dbs, num_files] {
             for (auto* db : dbs) {
-              if (rocksdb_listener_->GetNumFlushesCompleted(db
-              ) < num_files) {
+              if (rocksdb_listener_->GetNumFlushesCompleted(db) < num_files) {
                 return false;
               }
             }
@@ -230,13 +230,12 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS WaitForNumCompactionsPerDb(int num_compactions) {
+  Status WaitForNumCompactionsPerDb(size_t num_compactions) {
     auto dbs = GetAllRocksDbs(cluster_.get());
     RETURN_NOT_OK(LoggedWaitFor(
         [this, &dbs, num_compactions] {
             for (auto* db : dbs) {
-              if (rocksdb_listener_->GetNumCompactionsCompleted(db
-              ) < num_compactions) {
+              if (rocksdb_listener_->GetNumCompactionsCompleted(db) < num_compactions) {
                 return false;
               }
             }
@@ -247,7 +246,7 @@ class CompactionTest : public YBTest {
     return Status::OK();
   }
 
-  CHECKED_STATUS ChangeTableTTL(const client::YBTableName& table_name, int ttl_sec) {
+  Status ChangeTableTTL(const client::YBTableName& table_name, int ttl_sec) {
     RETURN_NOT_OK(client_->TableExists(table_name));
     auto alterer = client_->NewTableAlterer(table_name);
     TableProperties table_properties;
@@ -256,7 +255,7 @@ class CompactionTest : public YBTest {
     return alterer->Alter();
   }
 
-  CHECKED_STATUS ExecuteManualCompaction() {
+  Status ExecuteManualCompaction() {
     constexpr int kCompactionTimeoutSec = 60;
     const auto table_info = VERIFY_RESULT(FindTable(cluster_.get(), workload_->table_name()));
     return workload_->client().FlushTables(
@@ -265,8 +264,8 @@ class CompactionTest : public YBTest {
 
   void TestCompactionAfterTruncate();
   void TestCompactionWithoutFrontiers(
-      const int num_without_frontiers,
-      const int num_with_frontiers,
+      const size_t num_without_frontiers,
+      const size_t num_with_frontiers,
       const bool trigger_manual_compaction);
 
   std::unique_ptr<MiniCluster> cluster_;
@@ -294,7 +293,7 @@ void CompactionTest::TestCompactionAfterTruncate() {
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
-              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+              implicit_cast<size_t>(FLAGS_rocksdb_level0_file_num_compaction_trigger)) {
             return false;
           }
         }
@@ -304,8 +303,8 @@ void CompactionTest::TestCompactionAfterTruncate() {
 }
 
 void CompactionTest::TestCompactionWithoutFrontiers(
-    const int num_without_frontiers,
-    const int num_with_frontiers,
+    const size_t num_without_frontiers,
+    const size_t num_with_frontiers,
     const bool trigger_manual_compaction) {
   // Write a number of files without frontiers
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_adding_user_frontier_to_sst) = true;
@@ -331,8 +330,7 @@ void CompactionTest::TestCompactionWithoutFrontiers(
   ASSERT_OK(LoggedWaitFor(
       [&dbs, num_without_frontiers, num_with_frontiers] {
         for (auto* db : dbs) {
-          if (db->GetLiveFilesMetaData().size() >=
-              num_without_frontiers + num_with_frontiers) {
+          if (db->GetLiveFilesMetaData().size() >= num_without_frontiers + num_with_frontiers) {
             return false;
           }
         }
@@ -494,7 +492,7 @@ TEST_F(CompactionTestWithTTL, CompactionAfterExpiry) {
       [&dbs] {
         for (auto* db : dbs) {
           if (db->GetLiveFilesMetaData().size() >
-              FLAGS_rocksdb_level0_file_num_compaction_trigger) {
+              implicit_cast<size_t>(FLAGS_rocksdb_level0_file_num_compaction_trigger)) {
             return false;
           }
         }
@@ -538,9 +536,6 @@ class CompactionTestWithFileExpiration : public CompactionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_ignore_value_ttl) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_file_expiration_value_ttl_overrides_table_ttl) = false;
-    // Disable automatic compactions, but continue to allow manual compactions.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_base_background_compactions) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_background_compactions) = 0;
   }
  protected:
   size_t GetTotalSizeOfDbs();
@@ -551,6 +546,9 @@ class CompactionTestWithFileExpiration : public CompactionTest {
   void WriteRecordsAllExpire();
   void AssertNoFilesExpired();
   void AssertAllFilesExpired();
+  bool CheckEachDbHasExactlyNumFiles(size_t num_files);
+  bool CheckEachDbHasAtLeastNumFiles(size_t num_files);
+  bool CheckAtLeastFileExpirationsPerDb(size_t num_expirations);
   int table_ttl_to_use() override {
     return kTableTTLSec;
   }
@@ -627,7 +625,40 @@ void CompactionTestWithFileExpiration::AssertNoFilesExpired() {
   ASSERT_EQ(CountFilteredSSTFiles(), 0);
 }
 
+bool CompactionTestWithFileExpiration::CheckEachDbHasExactlyNumFiles(size_t num_files) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    if (db->GetCurrentVersionNumSSTFiles() != num_files) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompactionTestWithFileExpiration::CheckEachDbHasAtLeastNumFiles(size_t num_files) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto* db : dbs) {
+    if (db->GetCurrentVersionNumSSTFiles() < num_files) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CompactionTestWithFileExpiration::CheckAtLeastFileExpirationsPerDb(size_t num_expirations) {
+  auto dbs = GetAllRocksDbs(cluster_.get(), false);
+  for (auto db : dbs) {
+    auto stats = db->GetOptions().statistics;
+    if (stats->getTickerCount(rocksdb::COMPACTION_FILES_FILTERED) < num_expirations) {
+      return false;
+    }
+  }
+  return true;
+}
+
 void CompactionTestWithFileExpiration::WriteRecordsAllExpire() {
+  // Disable auto compactions to prevent any files from accidentally expiring early.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = -1;
   SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
 
   ASSERT_OK(WriteAtLeastFilesPerDb(10));
@@ -836,6 +867,69 @@ TEST_F(CompactionTestWithFileExpiration, TableTTLChangesWillChangeWhetherFilesEx
   ASSERT_OK(ExecuteManualCompaction());
   // Assert data has expired.
   AssertAllFilesExpired();
+}
+
+TEST_F(CompactionTestWithFileExpiration, FewerFilesThanCompactionTriggerCanExpire) {
+  // Set the number of files required to trigger compactions too high to initially trigger.
+  const int kNumFilesTriggerCompaction = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 1_KB;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
+      = kNumFilesTriggerCompaction;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Write fewer files than are required to trigger an auto compaction.
+  // These will be the only files that will be eligible for expiration.
+  ASSERT_OK(WriteAtLeastFilesPerDb(1));
+  LogSizeAndFilesInDbs();
+
+  LOG(INFO) << "Sleeping for table TTL seconds";
+  SleepFor(2s * kTableTTLSec);
+
+  // Write enough files to trigger an automatic compaction.
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+
+  LogSizeAndFilesInDbs(true);
+  // Verify that at least one file has expired per DB.
+  ASSERT_TRUE(CheckAtLeastFileExpirationsPerDb(1));
+}
+
+// In the past, we have observed behavior of one disporportionately large file
+// being unable to be directly deleted after it expires (and preventing subsequent
+// files from also being deleted). This test verifies that large files will not
+// prevent expiration.
+TEST_F(CompactionTestWithFileExpiration, LargeFileDoesNotPreventExpiration) {
+  const int kNumFilesTriggerCompaction = 10;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger)
+      = kNumFilesTriggerCompaction;
+  SetupWorkload(IsolationLevel::NON_TRANSACTIONAL);
+  // Write a disporportionately large amount of data, then compact into one file.
+  ASSERT_OK(WriteAtLeast(1000_KB));
+  ASSERT_OK(ExecuteManualCompaction());
+  LogSizeAndFilesInDbs();
+  ASSERT_TRUE(CheckEachDbHasExactlyNumFiles(1));
+  const auto files_compacted_without_expiration = CountUnfilteredSSTFiles();
+
+  // Add a flag to limit file size for compaction, then write several more files.
+  // At this point, there will be one large ~1000_KB file, followed by several files
+  // ~1_KB large. None of these files will be included in normal compactions
+  // (but all are eligible for deletion).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_max_file_size_for_compaction) = 1_KB;
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+
+  LOG(INFO) << "Sleeping for table TTL seconds";
+  SleepFor(2s * kTableTTLSec);
+
+  // Write enough files to trigger an auto compaction, even though all are too large
+  // to be considered for normal compaction.
+  rocksdb_listener_->Reset();
+  ASSERT_OK(WriteAtLeastFilesPerDb(kNumFilesTriggerCompaction));
+
+  LogSizeAndFilesInDbs(true);
+  // Check that 1 or more files have expired per database.
+  ASSERT_TRUE(CheckAtLeastFileExpirationsPerDb(1));
+  // Verify that no files have been compacted other than the manual compaction and deletions.
+  ASSERT_EQ(CountUnfilteredSSTFiles(), files_compacted_without_expiration);
 }
 
 class FileExpirationWithRF3 : public CompactionTestWithFileExpiration {

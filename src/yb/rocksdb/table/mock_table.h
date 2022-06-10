@@ -19,27 +19,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_TABLE_MOCK_TABLE_H
-#define ROCKSDB_TABLE_MOCK_TABLE_H
+#ifndef YB_ROCKSDB_TABLE_MOCK_TABLE_H
+#define YB_ROCKSDB_TABLE_MOCK_TABLE_H
 
 #include <algorithm>
 #include <atomic>
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <utility>
 
-#include "yb/rocksdb/util/kv_map.h"
-#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/table_reader.h"
+#include "yb/rocksdb/util/kv_map.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 namespace mock {
@@ -159,6 +156,10 @@ class MockTableBuilder : public TableBuilder {
     return TableProperties();
   }
 
+  const std::string& LastKey() const override {
+    return (--table_.end())->first;
+  }
+
  private:
   uint32_t id_;
   MockTableFileSystem* file_system_;
@@ -176,7 +177,7 @@ class MockTableFactory : public TableFactory {
 
   bool IsSplitSstForWriteSupported() const override { return false; }
 
-  TableBuilder* NewTableBuilder(
+  std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options, uint32_t column_familly_id,
       WritableFileWriter* base_file, WritableFileWriter* data_file = nullptr) const override;
 
@@ -212,4 +213,4 @@ class MockTableFactory : public TableFactory {
 }  // namespace mock
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_TABLE_MOCK_TABLE_H
+#endif  // YB_ROCKSDB_TABLE_MOCK_TABLE_H

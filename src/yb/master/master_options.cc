@@ -37,6 +37,7 @@
 #include "yb/master/master.h"
 #include "yb/server/server_base_options.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
 
 using std::make_shared;
 using std::vector;

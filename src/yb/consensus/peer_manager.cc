@@ -35,12 +35,13 @@
 #include <mutex>
 
 #include "yb/consensus/consensus_peers.h"
-#include "yb/consensus/log.h"
+
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/util/logging.h"
+#include "yb/util/threadpool.h"
+
+DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 
 namespace yb {
 namespace consensus {
@@ -48,18 +49,19 @@ namespace consensus {
 using log::Log;
 using strings::Substitute;
 
-PeerManager::PeerManager(const std::string tablet_id,
-                         const std::string local_uuid,
-                         PeerProxyFactory* peer_proxy_factory,
-                         PeerMessageQueue* queue,
-                         ThreadPoolToken* raft_pool_token,
-                         const log::LogPtr& log)
+PeerManager::PeerManager(
+    const std::string tablet_id,
+    const std::string local_uuid,
+    PeerProxyFactory* peer_proxy_factory,
+    PeerMessageQueue* queue,
+    ThreadPoolToken* raft_pool_token,
+    consensus::MultiRaftManager* multi_raft_manager)
     : tablet_id_(tablet_id),
       local_uuid_(local_uuid),
       peer_proxy_factory_(peer_proxy_factory),
       queue_(queue),
       raft_pool_token_(raft_pool_token),
-      log_(log) {
+      multi_raft_manager_(multi_raft_manager) {
 }
 
 PeerManager::~PeerManager() {
@@ -80,9 +82,13 @@ void PeerManager::UpdateRaftConfig(const RaftConfigPB& config) {
     }
 
     VLOG_WITH_PREFIX(1) << "Adding remote peer. Peer: " << peer_pb.ShortDebugString();
+    MultiRaftHeartbeatBatcherPtr multi_raft_batcher = nullptr;
+    if (multi_raft_manager_) {
+      multi_raft_batcher = multi_raft_manager_->AddOrGetBatcher(peer_pb);
+    }
     auto remote_peer = Peer::NewRemotePeer(
         peer_pb, tablet_id_, local_uuid_, peer_proxy_factory_->NewProxy(peer_pb), queue_,
-        raft_pool_token_, consensus_, peer_proxy_factory_->messenger());
+        multi_raft_batcher, raft_pool_token_, consensus_, peer_proxy_factory_->messenger());
     if (!remote_peer.ok()) {
       LOG_WITH_PREFIX(WARNING)
           << "Failed to create remote peer for " << peer_pb.ShortDebugString() << ": "
@@ -123,7 +129,7 @@ void PeerManager::Close() {
 }
 
 void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
-  unordered_map<string, RaftPeerPB> peers_in_config;
+  std::unordered_map<std::string, RaftPeerPB> peers_in_config;
   for (const RaftPeerPB &peer_pb : config.peers()) {
     InsertOrDie(&peers_in_config, peer_pb.permanent_uuid(), peer_pb);
   }

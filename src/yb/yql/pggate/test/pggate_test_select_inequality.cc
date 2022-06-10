@@ -13,8 +13,13 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -33,10 +38,15 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
-                                       false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, true /* colocated */,
+                                       false /* is_shared_table */,
+                                       true /* if_not_exist */,
+                                       false /* add_primary_key */,
+                                       true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
+                                       kColocationIdNotSet /* colocation_id */,
                                        kInvalidOid /* tablespace_id */,
+                                       false /* is_matview */,
+                                       kInvalidOid /* matview_pg_table_id */,
                                        &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "h", ++col_count,
                                                DataType::STRING, true, false));
@@ -50,8 +60,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   int h = 0, r = 0;
   // Allocate constant expressions.
@@ -105,8 +115,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 < B -------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -160,7 +170,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
@@ -175,8 +185,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 -----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A < r1";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -227,7 +237,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
@@ -242,8 +252,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- r1 < B -----------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: r1 < B";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -294,7 +304,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 
@@ -309,8 +319,8 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
 
   // SELECT --------------------------------- A < r1 < A -------------------------------------------
   LOG(INFO) << "Test SELECTing from table WITH RANGE values: A < r1 < A";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::STRING, &colref));
@@ -363,7 +373,7 @@ TEST_F(PggateTestSelectInequality, TestSelectInequality) {
     string expected_id = strings::Substitute("$0", h);
     CHECK_EQ(selected_id, expected_id);
 
-    int32_t r1 = values[col_index++];  // h : int64
+    int64_t r1 = values[col_index++];  // h : int64
     CHECK_LE(A, r1);
     CHECK_GE(B, r1);
 

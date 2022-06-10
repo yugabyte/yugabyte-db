@@ -39,21 +39,22 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_round.h"
-#include "yb/consensus/opid_util.h"
+#include "yb/consensus/consensus_types.pb.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
-#include "yb/util/auto_release_pool.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/operation_counter.h"
-#include "yb/util/status.h"
-#include "yb/util/memory/arena.h"
+#include "yb/util/opid.h"
 
 namespace yb {
+
+class Synchronizer;
+
 namespace tablet {
 
 using OperationCompletionCallback = std::function<void(const Status&)>;
@@ -68,6 +69,8 @@ YB_DEFINE_ENUM(
     ((kEmpty, consensus::UNKNOWN_OP))
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
     ((kSplit, consensus::SPLIT_OP)));
+
+YB_STRONGLY_TYPED_BOOL(WasPending);
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -90,12 +93,12 @@ class Operation {
   // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
   // transaction type, but usually are limited to what can be done without actually changing shared
   // data structures (such as the RocksDB memtable) and without side-effects.
-  virtual CHECKED_STATUS Prepare() = 0;
+  virtual Status Prepare() = 0;
 
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
   // Also it should notify callback if necessary.
-  CHECKED_STATUS Replicated(int64_t leader_term);
+  Status Replicated(int64_t leader_term, WasPending was_pending);
 
   // Abort operation. Release resources and notify callbacks.
   void Aborted(const Status& status, bool was_pending);
@@ -105,7 +108,13 @@ class Operation {
 
   std::string LogPrefix() const;
 
-  virtual void SubmittedToPreparer() {}
+  void set_preparing_token(ScopedOperation&& preparing_token) {
+    preparing_token_ = std::move(preparing_token);
+  }
+
+  void SubmittedToPreparer() {
+    preparing_token_ = ScopedOperation();
+  }
 
   // Returns the request PB associated with this transaction. May be NULL if the transaction's state
   // has been reset.
@@ -135,7 +144,7 @@ class Operation {
 
   virtual void Release();
 
-  virtual void SetTablet(Tablet* tablet) {
+  void SetTablet(Tablet* tablet) {
     tablet_ = tablet;
   }
 
@@ -199,7 +208,7 @@ class Operation {
   void AddedToFollower();
 
   void Aborted(bool was_pending);
-  void Replicated();
+  void Replicated(WasPending was_pending);
 
   virtual ~Operation();
 
@@ -207,10 +216,10 @@ class Operation {
   // Actual implementation of Replicated.
   // complete_status could be used to change completion status, i.e. callback will be invoked
   // with this status.
-  virtual CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) = 0;
+  virtual Status DoReplicated(int64_t leader_term, Status* complete_status) = 0;
 
   // Actual implementation of Aborted, should return status that should be passed to callback.
-  virtual CHECKED_STATUS DoAborted(const Status& status) = 0;
+  virtual Status DoAborted(const Status& status) = 0;
 
   // A private version of this transaction's transaction state so that we can use base
   // Operation methods on destructors.
@@ -236,6 +245,8 @@ class Operation {
   OpId op_id_ GUARDED_BY(mutex_);
 
   scoped_refptr<consensus::ConsensusRound> consensus_round_;
+
+  ScopedOperation preparing_token_;
 };
 
 template <class Request>
@@ -246,7 +257,13 @@ struct RequestTraits {
   static Request* MutableRequest(consensus::ReplicateMsg* replicate);
 };
 
+consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
 
+// Request here actually means serializable part of operation state.
+// When creating new XxxOperation class inherited from OperationBase, it is better to declare
+// separate protobuf XxxOperationDataPB wrapping original RPC request and use XxxOperationDataPB as
+// a Request. This way it will be easier to add into XxxOperationDataPB more fields that are not
+// part of RPC request, but should be stored in Raft log.
 template <OperationType op_type, class Request, class Base = Operation>
 class OperationBase : public Base {
  public:
@@ -278,8 +295,7 @@ class OperationBase : public Base {
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override {
-    auto result = std::make_shared<consensus::ReplicateMsg>();
-    result->set_op_type(static_cast<consensus::OperationType>(op_type));
+    auto result = CreateReplicateMsg(op_type);
     auto* request = request_holder_.release();
     if (request) {
       RequestTraits<Request>::SetAllocatedRequest(result.get(), request);
@@ -350,15 +366,8 @@ auto MakeLatchOperationCompletionCallback(LatchPtr latch, ResponsePBPtr response
   };
 }
 
-inline auto MakeWeakSynchronizerOperationCompletionCallback(
-    std::weak_ptr<Synchronizer> synchronizer) {
-  return [synchronizer = std::move(synchronizer)](const Status& status) {
-    auto shared_synchronizer = synchronizer.lock();
-    if (shared_synchronizer) {
-      shared_synchronizer->StatusCB(status);
-    }
-  };
-}
+OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer);
 
 }  // namespace tablet
 }  // namespace yb

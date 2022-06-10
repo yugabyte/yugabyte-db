@@ -66,7 +66,7 @@ public class TestPgTimeout extends BasePgSQLTest {
     query = "SELECT count(*) FROM timeouttest";
     try (ResultSet rs = statement.executeQuery(query)) {
     } catch (PSQLException ex) {
-      if (Pattern.matches(".*RPC .* timed out after.*", ex.getMessage())) {
+      if (ex.getMessage().contains("canceling statement due to statement timeout")) {
         LOG.info("Timeout ERROR: " + ex.getMessage());
         timeoutEncountered = true;
       }

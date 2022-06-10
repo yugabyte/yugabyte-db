@@ -16,7 +16,18 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
+
+#include "yb/common/common.pb.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -27,9 +38,9 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
                            YBLocation::SharedPtr loc,
                            PTExprListNode::SharedPtr target,
                            PTTableRef::SharedPtr relation,
-                           PTDmlUsingClause::SharedPtr using_clause,
-                           PTExpr::SharedPtr where_clause,
-                           PTExpr::SharedPtr if_clause,
+                           PTDmlUsingClausePtr using_clause,
+                           PTExprPtr where_clause,
+                           PTExprPtr if_clause,
                            const bool else_error,
                            const bool returns_status)
     : PTDmlStmt(memctx, loc, where_clause, if_clause, else_error, using_clause, returns_status),
@@ -40,7 +51,7 @@ PTDeleteStmt::PTDeleteStmt(MemoryContext *memctx,
 PTDeleteStmt::~PTDeleteStmt() {
 }
 
-CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
+Status PTDeleteStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -115,7 +126,7 @@ CHECKED_STATUS PTDeleteStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTDeleteStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
+Status PTDeleteStmt::AnalyzeTarget(TreeNode *target, SemContext *sem_context) {
   // Walking through the target expressions and collect all columns. Currently, CQL doesn't allow
   // any expression except for references to table column.
   if (target->opcode() != TreeNodeOpcode::kPTRef) {
@@ -156,19 +167,18 @@ ExplainPlanPB PTDeleteStmt::AnalysisResultToPB() {
   } else {
     delete_plan->set_scan_type("  ->  Primary Key Lookup on " + table_name().ToString());
   }
-  string key_conditions = "        Key Conditions: " +
-      conditionsToString<MCVector<ColumnOp>>(key_where_ops());
+  std::string key_conditions = "        Key Conditions: " + ConditionsToString(key_where_ops());
   delete_plan->set_key_conditions(key_conditions);
   if (!where_ops().empty()) {
-    string filter = "        Filter: " + conditionsToString < MCList < ColumnOp >> (where_ops());
+    std::string filter = "        Filter: " + ConditionsToString(where_ops());
     delete_plan->set_filter(filter);
   }
-  delete_plan->set_output_width(max({
+  delete_plan->set_output_width(narrow_cast<int32_t>(max({
     delete_plan->delete_type().length(),
     delete_plan->scan_type().length(),
     delete_plan->key_conditions().length(),
     delete_plan->filter().length()
-  }));
+  })));
   return explain_plan;
 }
 

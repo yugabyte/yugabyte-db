@@ -33,16 +33,14 @@
 #define YB_SERVER_WEBUI_UTIL_H
 
 #include <string>
-#include <sstream>
-#include <vector>
 #include <unordered_set>
 
-#include "yb/gutil/ref_counted.h"
+#include "yb/common/common_fwd.h"
+
+#include "yb/server/server_fwd.h"
 
 namespace yb {
-
-class Schema;
-class MonitoredTask;
+namespace server {
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output);
@@ -56,6 +54,7 @@ inline std::string TableLongName(const std::string& keyspace_name,
   return keyspace_name + (keyspace_name.empty() ? "" : ".") + table_name;
 }
 
+} // namespace server
 } // namespace yb
 
 #endif // YB_SERVER_WEBUI_UTIL_H

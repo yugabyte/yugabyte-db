@@ -13,10 +13,12 @@
 //
 //
 
-#include <boost/lockfree/queue.hpp>
-
 #ifndef YB_RPC_TASKS_POOL_H
 #define YB_RPC_TASKS_POOL_H
+
+#include <boost/lockfree/queue.hpp>
+
+#include "yb/rpc/thread_pool.h"
 
 namespace yb {
 namespace rpc {

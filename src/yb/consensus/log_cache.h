@@ -32,29 +32,43 @@
 #ifndef YB_CONSENSUS_LOG_CACHE_H
 #define YB_CONSENSUS_LOG_CACHE_H
 
+#include <pthread.h>
+#include <sys/types.h>
+
+#include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
+#include <glog/logging.h>
+#include <gtest/gtest_prod.h>
+
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/log_fwd.h"
+#include "yb/consensus/log_util.h"
 #include "yb/consensus/consensus.pb.h"
-#include "yb/consensus/opid_util.h"
+#include "yb/consensus/consensus_types.pb.h"
+
 #include "yb/gutil/macros.h"
 
-#include "yb/util/async_util.h"
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/mutex.h"
 #include "yb/util/opid.h"
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/result.h"
+#include "yb/util/status_callback.h"
+
+YB_STRONGLY_TYPED_BOOL(HaveMoreMessages);
 
 namespace yb {
 
 class MetricEntity;
 class MemTracker;
+class OpIdPB;
 
 namespace consensus {
 
@@ -63,7 +77,9 @@ class ReplicateMsg;
 struct ReadOpsResult {
   ReplicateMsgs messages;
   yb::OpId preceding_op;
-  bool have_more_messages = false;
+  yb::SchemaPB header_schema;
+  uint32_t header_schema_version;
+  HaveMoreMessages have_more_messages = HaveMoreMessages::kFalse;
   int64_t read_from_disk_size = 0;
 };
 
@@ -104,8 +120,7 @@ class LogCache {
   // If the ops being requested are not available in the log, this will synchronously read these ops
   // from disk. Therefore, this function may take a substantial amount of time and should not be
   // called with important locks held, etc.
-  Result<ReadOpsResult> ReadOps(int64_t after_op_index,
-                                int max_size_bytes);
+  Result<ReadOpsResult> ReadOps(int64_t after_op_index, size_t max_size_bytes);
 
   // Same as above but also includes a 'to_op_index' parameter which will be used to limit results
   // until 'to_op_index' (inclusive).
@@ -113,7 +128,7 @@ class LogCache {
   // If 'to_op_index' is 0, then all operations after 'after_op_index' will be included.
   Result<ReadOpsResult> ReadOps(int64_t after_op_index,
                                 int64_t to_op_index,
-                                int max_size_bytes,
+                                size_t max_size_bytes,
                                 CoarseTimePoint deadline = CoarseTimePoint::max());
 
   // Append the operations into the log and the cache.  When the messages have completed writing
@@ -123,7 +138,7 @@ class LogCache {
   // callback fires.
   //
   // Returns non-OK if the Log append itself fails.
-  CHECKED_STATUS AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
+  Status AppendOperations(const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
                                   RestartSafeCoarseTimePoint batch_mono_time,
                                   const StatusCallback& callback);
 
@@ -138,9 +153,7 @@ class LogCache {
   // Return the number of bytes of memory currently in use by the cache.
   int64_t BytesUsed() const;
 
-  int64_t num_cached_ops() const {
-    return metrics_.num_ops->value();
-  }
+  int64_t num_cached_ops() const;
 
   int64_t earliest_op_index() const;
 
@@ -167,7 +180,7 @@ class LogCache {
   // Start memory tracking of following operations in case they are still present in cache.
   void TrackOperationsMemory(const OpIds& op_ids);
 
-  CHECKED_STATUS FlushIndex();
+  Status FlushIndex();
 
   Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
@@ -232,7 +245,7 @@ class LogCache {
   // Maps from log index -> ReplicateMsg
   // An ordered map that serves as the buffer for the cached messages.  Maps from log index ->
   // CacheEntry
-  typedef std::map<uint64_t, CacheEntry> MessageCache;
+  typedef std::map<int64_t, CacheEntry> MessageCache;
   MessageCache cache_;
 
   // The next log index to append. Each append operation must either start with this log index, or

@@ -10,10 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <yb/gutil/stringprintf.h>
-
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/rocksdb/metadata.h"
 #include "yb/util/bytes_formatter.h"
 
@@ -29,12 +27,12 @@ namespace yb {
 
 rocksdb::Status WriteBatchFormatter::PutCF(
     uint32_t column_family_id,
-    const Slice& key,
-    const Slice& value) {
+    const SliceParts& key,
+    const SliceParts& value) {
   StartOutputLine(__FUNCTION__);
-  OutputKey(key);
+  OutputKey(key.TheOnlyPart());
   AddSeparator();
-  OutputValue(key, value);
+  OutputValue(key.TheOnlyPart(), value.TheOnlyPart());
   FinishOutputLine();
   return Status::OK();
 }

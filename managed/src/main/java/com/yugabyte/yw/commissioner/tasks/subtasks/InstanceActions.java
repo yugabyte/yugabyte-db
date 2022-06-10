@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,7 +44,6 @@ public class InstanceActions extends NodeTaskBase {
         taskParams().type.toString(),
         taskParams().nodeName);
 
-    ShellResponse response = getNodeManager().nodeCommand(taskParams().type, taskParams());
-    processShellResponse(response);
+    getNodeManager().nodeCommand(taskParams().type, taskParams()).processErrors();
   }
 }

@@ -18,13 +18,13 @@ showAsideToc: true
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ysql" class="nav-link active">
+    <a href="/preview/secure/audit-logging/audit-logging-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/latest/secure/audit-logging/audit-logging-ycql" class="nav-link">
+    <a href="/preview/secure/audit-logging/audit-logging-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -58,7 +58,7 @@ An alternative suggestion is to use the YB `SET` command, which essentially chan
 
 For example, `SET pgaudit.log='DDL'`
 
-`SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html). 
+`SET` only affects the value used by the current session. For more information, see the [PostgreSQL documentation](https://www.postgresql.org/docs/11/sql-set.html).
 
 
 ### Step 2. Load the `pgAudit` extension
@@ -132,7 +132,7 @@ The default is <strong><code>OFF</code></strong>.
   <tr>
    <td><code>pgaudit.log_level</code>
    </td>
-   <td>Values: <strong><code>DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG</code></strong>. 
+   <td>Values: <strong><code>DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG</code></strong>.
 Log level to be used for log entries (<code>ERROR</code>, <code>FATAL</code>, and <code>PANIC</code> are not allowed). This setting is used for testing.
 
 <p>
@@ -191,7 +191,7 @@ Alternatively, open the YSQL shell and execute the following commands:
 
 
 ```shell
-SET pgaudit.log='DDL'; 
+SET pgaudit.log='DDL';
 SET pgaudit.log_client=ON;
 SET pgaudit.log_level=notice;
 ```
@@ -205,14 +205,14 @@ Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for t
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password. 
+When prompted for the password, enter the yugabyte password.
 
 You should be able to login and see an output similar to the following:
 
 
     ysqlsh (11.2-YB-2.5.0.0-b0)
     Type "help" for help.
-    
+
     yugabyte=#
 
 To enable the `pgAudit` extension on the YugabyteDB cluster, connect to the database by using the following:
@@ -229,19 +229,19 @@ Finally, create the `pgAudit` extension as follows:
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
-### 3. Create a table and verify log 
+### 3. Create a table and verify log
 
 Since `pgaudit.log='DDL'` is configured, `CREATE TABLE` YSQL statements are logged and the corresponding log is shown in the YSQL client:
 
 
 ```sql
-CREATE TABLE employees (empno int, ename text, address text, 
+CREATE TABLE employees (empno int, ename text, address text,
   salary int, account_number text);
 ```
 
 ```
 NOTICE:  AUDIT: SESSION,2,1,DDL,CREATE TABLE,TABLE,public.employees,
-"create table employees ( empno int, ename text, address text, salary int, 
+"create table employees ( empno int, ename text, address text, salary int,
 account_number text );",<not logged>
 CREATE TABLE
 ```

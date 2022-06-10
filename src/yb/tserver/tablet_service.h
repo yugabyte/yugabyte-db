@@ -32,22 +32,32 @@
 #ifndef YB_TSERVER_TABLET_SERVICE_H_
 #define YB_TSERVER_TABLET_SERVICE_H_
 
+#include <functional>
+#include <future>
 #include <memory>
+#include <set>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
-#include "yb/common/read_hybrid_time.h"
+#include <boost/range/iterator_range.hpp>
+
+#include "yb/common/common_fwd.h"
+
 #include "yb/consensus/consensus.service.h"
+
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/tablet_server_interface.h"
+#include "yb/tserver/read_query.h"
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_admin.pb.h"
 #include "yb/tserver/tserver_admin.service.h"
-#include "yb/tserver/tserver_service.service.h"
 #include "yb/tserver/tserver_forward_service.service.h"
+#include "yb/tserver/tserver_service.service.h"
 
 namespace yb {
 class Schema;
@@ -56,15 +66,10 @@ class HybridTime;
 
 namespace tserver {
 
-class ReadCompletionTask;
 class TabletPeerLookupIf;
 class TabletServer;
 
-struct ReadContext;
-
-YB_STRONGLY_TYPED_BOOL(AllowSplitTablet);
-
-class TabletServiceImpl : public TabletServerServiceIf {
+class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvider {
  public:
   typedef std::vector<tablet::TabletPeerPtr> TabletPeers;
 
@@ -124,6 +129,10 @@ class TabletServiceImpl : public TabletServerServiceIf {
                         AbortTransactionResponsePB* resp,
                         rpc::RpcContext context) override;
 
+  void UpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
+                                       UpdateTransactionStatusLocationResponsePB* resp,
+                                       rpc::RpcContext context) override;
+
   void Truncate(const TruncateRequestPB* req,
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
@@ -152,34 +161,9 @@ class TabletServiceImpl : public TabletServerServiceIf {
   void Shutdown() override;
 
  private:
-  friend class ReadCompletionTask;
-
-  CHECKED_STATUS CheckPeerIsLeader(const tablet::TabletPeer& tablet_peer);
-
-  // Checks if the peer is ready for servicing IOs.
-  // allow_split_tablet specifies whether to reject requests to tablets which have been already
-  // split.
-  CHECKED_STATUS CheckPeerIsReady(
-      const tablet::TabletPeer& tablet_peer, AllowSplitTablet allow_split_tablet);
-
-  // If tablet_peer is already set, we assume that LookupTabletPeerOrRespond has already been
-  // called, and only perform additional checks, such as readiness, leadership, bounded staleness,
-  // etc.
-  // allow_split_tablet specifies whether to reject requests to tablets which have been already
-  // split.
-  template <class Req, class Resp>
-  bool DoGetTabletOrRespond(
-      const Req* req, Resp* resp, rpc::RpcContext* context,
-      std::shared_ptr<tablet::AbstractTablet>* tablet,
-      tablet::TabletPeerPtr tablet_peer = nullptr,
-      AllowSplitTablet allow_split_tablet = AllowSplitTablet::kFalse);
-
-  virtual WARN_UNUSED_RESULT bool GetTabletOrRespond(
-      const ReadRequestPB* req,
-      ReadResponsePB* resp,
-      rpc::RpcContext* context,
-      std::shared_ptr<tablet::AbstractTablet>* tablet,
-      tablet::TabletPeerPtr tablet_peer = nullptr);
+  Result<std::shared_ptr<tablet::AbstractTablet>> GetTabletForRead(
+    const TabletId& tablet_id, tablet::TabletPeerPtr tablet_peer,
+    YBConsistencyLevel consistency_level, tserver::AllowSplitTablet allow_split_tablet) override;
 
   template<class Resp>
   bool CheckWriteThrottlingOrRespond(
@@ -188,15 +172,11 @@ class TabletServiceImpl : public TabletServerServiceIf {
   template <class Req, class Resp, class F>
   void PerformAtLeader(const Req& req, Resp* resp, rpc::RpcContext* context, const F& f);
 
-  // Read implementation. If restart is required returns restart time, in case of success
-  // returns invalid ReadHybridTime. Otherwise returns error status.
-  Result<ReadHybridTime> DoRead(ReadContext* read_context);
-  Result<ReadHybridTime> DoReadImpl(ReadContext* read_context);
-  // Completes read, invokes DoRead in loop, adjusting read time due to read restart time.
-  // Sends response, etc.
-  void CompleteRead(ReadContext* read_context);
+  Result<uint64_t> DoChecksum(const ChecksumRequestPB* req, CoarseTimePoint deadline);
 
-  void UpdateConsistentPrefixMetrics(ReadContext* read_context);
+  Status HandleUpdateTransactionStatusLocation(const UpdateTransactionStatusLocationRequestPB* req,
+                                               UpdateTransactionStatusLocationResponsePB* resp,
+                                               std::shared_ptr<rpc::RpcContext> context);
 
   TabletServerIf *const server_;
 };
@@ -214,7 +194,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                     DeleteTabletResponsePB* resp,
                     rpc::RpcContext context) override;
 
-  void AlterSchema(const ChangeMetadataRequestPB* req,
+  void AlterSchema(const tablet::ChangeMetadataRequestPB* req,
                    ChangeMetadataResponsePB* resp,
                    rpc::RpcContext context) override;
 
@@ -250,13 +230,13 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   // Called on the Index table(s) once the backfill is complete.
   void BackfillDone(
-      const ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
+      const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
       rpc::RpcContext context) override;
 
   // Starts tablet splitting by adding split tablet Raft operation into Raft log of the source
   // tablet.
   void SplitTablet(
-      const SplitTabletRequestPB* req,
+      const tablet::SplitTabletRequestPB* req,
       SplitTabletResponsePB* resp,
       rpc::RpcContext context) override;
 
@@ -266,10 +246,13 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
       UpgradeYsqlResponsePB* resp,
       rpc::RpcContext context) override;
 
+  void TestRetry(
+      const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) override;
+
  private:
   TabletServer* server_;
 
-  CHECKED_STATUS DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
+  Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
 
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is
@@ -277,6 +260,7 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
   mutable std::mutex backfill_lock_;
   std::condition_variable backfill_cond_;
   std::atomic<int32_t> num_tablets_backfilling_{0};
+  std::atomic<int32_t> num_test_retry_calls{0};
 };
 
 class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
@@ -290,6 +274,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                consensus::ConsensusResponsePB *resp,
                                rpc::RpcContext context) override;
 
+  virtual void MultiRaftUpdateConsensus(const consensus::MultiRaftConsensusRequestPB *req,
+                                        consensus::MultiRaftConsensusResponsePB *resp,
+                                        rpc::RpcContext context) override;
+
   virtual void RequestConsensusVote(const consensus::VoteRequestPB* req,
                                     consensus::VoteResponsePB* resp,
                                     rpc::RpcContext context) override;
@@ -297,6 +285,10 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
   virtual void ChangeConfig(const consensus::ChangeConfigRequestPB* req,
                             consensus::ChangeConfigResponsePB* resp,
                             rpc::RpcContext context) override;
+
+  virtual void UnsafeChangeConfig(const consensus::UnsafeChangeConfigRequestPB* req,
+                                  consensus::UnsafeChangeConfigResponsePB* resp,
+                                  rpc::RpcContext context) override;
 
   virtual void GetNodeInstance(const consensus::GetNodeInstanceRequestPB* req,
                                consensus::GetNodeInstanceResponsePB* resp,
@@ -327,6 +319,8 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
                                     rpc::RpcContext context) override;
 
  private:
+  void CompleteUpdateConsensusResponse(std::shared_ptr<tablet::TabletPeer> tablet_peer,
+                                       consensus::ConsensusResponsePB* resp);
   TabletPeerLookupIf* tablet_manager_;
 };
 

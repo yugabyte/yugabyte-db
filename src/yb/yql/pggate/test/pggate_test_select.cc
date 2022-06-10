@@ -13,8 +13,15 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/common/constants.h"
 #include "yb/common/ybc-internal.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/pggate/test/pggate_test.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
@@ -33,10 +40,16 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
   int col_count = 0;
   CHECK_YBC_STATUS(YBCPgNewCreateTable(kDefaultDatabase, kDefaultSchema, tabname,
                                        kDefaultDatabaseOid, tab_oid,
-                                       false /* is_shared_table */, true /* if_not_exist */,
-                                       false /* add_primary_key */, true /* colocated */,
+                                       false /* is_shared_table */,
+                                       true /* if_not_exist */,
+                                       false /* add_primary_key */,
+                                       true /* is_colocated_via_database */,
                                        kInvalidOid /* tablegroup_id */,
-                                       kInvalidOid /* tablespace_id */, &pg_stmt));
+                                       kColocationIdNotSet /* colocation_id */,
+                                       kInvalidOid /* tablespace_id */,
+                                       false /* is_matview */,
+                                       kInvalidOid /* matview_pg_table_id */,
+                                       &pg_stmt));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "hash_key", ++col_count,
                                                DataType::INT64, true, true));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "id", ++col_count,
@@ -58,8 +71,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // INSERT ----------------------------------------------------------------------------------------
   // Allocate new insert.
-  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid,
-                                  false /* is_single_row_txn */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewInsert(kDefaultDatabaseOid, tab_oid, false /* is_single_row_txn */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Allocate constant expressions.
   // TODO(neil) We can also allocate expression with bind.
@@ -115,8 +128,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITH RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   YBCPgExpr colref;
@@ -174,7 +187,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     // Check result.
     int col_index = 0;
     CHECK_EQ(values[col_index++], 0);  // hash_key : int64
-    int32_t id = values[col_index++];  // id : int32
+    int32_t id = narrow_cast<int32_t>(values[col_index++]);  // id : int32
     CHECK_EQ(id, seed) << "Unexpected result for hash column";
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
@@ -197,8 +210,8 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
 
   // SELECT ----------------------------------------------------------------------------------------
   LOG(INFO) << "Test SELECTing from non-partitioned table WITHOUT RANGE values";
-  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid,
-                                  NULL /* prepare_params */, &pg_stmt));
+  CHECK_YBC_STATUS(YBCPgNewSelect(kDefaultDatabaseOid, tab_oid, NULL /* prepare_params */,
+                                  false /* is_region_local */, &pg_stmt));
 
   // Specify the selected expressions.
   CHECK_YBC_STATUS(YBCTestNewColumnRef(pg_stmt, 1, DataType::INT64, &colref));
@@ -245,7 +258,7 @@ TEST_F(PggateTestSelect, TestSelectOneTablet) {
     // Check result.
     int col_index = 0;
     CHECK_EQ(values[col_index++], 0);  // hash_key : int64
-    int32_t id = values[col_index++];  // id : int32
+    int32_t id = narrow_cast<int32_t>(values[col_index++]);  // id : int32
     CHECK_EQ(values[col_index++], id);  // dependent_count : int16
     CHECK_EQ(values[col_index++], 100 + id);  // project_count : int32
 

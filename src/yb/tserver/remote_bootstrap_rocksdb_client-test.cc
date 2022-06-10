@@ -17,7 +17,6 @@
 
 #include "yb/tserver/remote_bootstrap_client-test.h"
 
-
 using std::shared_ptr;
 
 namespace yb {
@@ -62,7 +61,7 @@ TEST_F(RemoteBootstrapRocksDBClientTest, TestDownloadRocksDBFiles) {
       << AsString(rocksdb_files) << " vs " << AsString(tablet_peer_checkpoint_files);
 
   // Verify that the client has the same files that the leader has.
-  for (int i = 0; i < rocksdb_files.size(); ++i) {
+  for (size_t i = 0; i < rocksdb_files.size(); ++i) {
     auto local_rocksdb_file = rocksdb_files[i];
     auto tablet_peer_rocksdb_file = tablet_peer_checkpoint_files[i];
     ASSERT_EQ(local_rocksdb_file, tablet_peer_rocksdb_file);

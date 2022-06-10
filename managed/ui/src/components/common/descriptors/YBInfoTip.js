@@ -1,15 +1,19 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
+import clsx from 'clsx';
 import PropTypes from 'prop-types';
 import { Popover, OverlayTrigger } from 'react-bootstrap';
-
 export default class YBInfoTip extends Component {
   render() {
-    const { content, placement, title } = this.props;
+    const { content, placement, title, customClass } = this.props;
     const id = 'popover-trigger-hover-focus';
     const popover = (
-      <Popover className="yb-popover" id={id} title={title}>
+      <Popover
+        className={clsx('yb-popover', customClass && `${customClass}`)}
+        id={id}
+        title={title}
+      >
         {content}
       </Popover>
     );

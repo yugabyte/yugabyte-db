@@ -15,6 +15,11 @@
 
 #include <hiredis/hiredis.h>
 
+#include "yb/gutil/casts.h"
+
+#include "yb/util/cast.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 
 namespace yb {
@@ -106,7 +111,8 @@ class RedisClient::Impl {
       if (args.empty()) {
         continue;
       }
-      if (redisAppendCommandArgv(context_, args.size(), args.data(), arg_lens.data()) != REDIS_OK) {
+      if (redisAppendCommandArgv(
+              context_, narrow_cast<int>(args.size()), args.data(), arg_lens.data()) != REDIS_OK) {
         NotifyDisconnected();
         Free();
         return;

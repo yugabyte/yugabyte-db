@@ -18,11 +18,14 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.Random;
+import java.nio.charset.Charset;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.extern.slf4j.Slf4j;
 import org.joda.time.DateTime;
 import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
@@ -30,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.mvc.Http.Status;
 
+@Slf4j
 @Entity
 @ApiModel(description = "A user associated with a customer")
 public class Users extends Model {
@@ -65,6 +69,14 @@ public class Users extends Model {
           return null;
       }
     }
+  }
+
+  public enum UserType {
+    @EnumValue("local")
+    local,
+
+    @EnumValue("ldap")
+    ldap;
   }
 
   @Id
@@ -105,10 +117,10 @@ public class Users extends Model {
   }
 
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssXXX")
   @ApiModelProperty(
       value = "User creation date",
-      example = "2021-06-17 15:00:05",
+      example = "2021-06-17T15:00:05-04:00",
       accessMode = READ_ONLY)
   public Date creationDate;
 
@@ -154,6 +166,30 @@ public class Users extends Model {
 
   public void setIsPrimary(boolean isPrimary) {
     this.isPrimary = isPrimary;
+  }
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "User Type")
+  public UserType userType;
+
+  public void setUserType(UserType userType) {
+    this.userType = userType;
+  }
+
+  public UserType getUserType() {
+    return this.userType;
+  }
+
+  @Column(nullable = false)
+  @ApiModelProperty(value = "LDAP Specified Role")
+  public boolean ldapSpecifiedRole;
+
+  public void setLdapSpecifiedRole(boolean ldapSpecifiedRole) {
+    this.ldapSpecifiedRole = ldapSpecifiedRole;
+  }
+
+  public boolean getLdapSpecifiedRole() {
+    return this.ldapSpecifiedRole;
   }
 
   public Date getAuthTokenIssueDate() {
@@ -230,8 +266,25 @@ public class Users extends Model {
     users.creationDate = new Date();
     users.role = role;
     users.isPrimary = isPrimary;
+    users.setUserType(UserType.local);
+    users.setLdapSpecifiedRole(false);
     users.save();
     return users;
+  }
+
+  /**
+   * Delete Users identified via email
+   *
+   * @param email
+   * @return void
+   */
+  public static void deleteUser(String email) {
+    Users userToDelete = Users.find.query().where().eq("email", email).findOne();
+    if (userToDelete != null && userToDelete.userType.equals(UserType.ldap)) {
+      log.info("Deleting user id {} with email address {}", userToDelete.uuid, userToDelete.email);
+      userToDelete.delete();
+    }
+    return;
   }
 
   /**

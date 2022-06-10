@@ -33,9 +33,11 @@
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/util/random.h"
 
+#include "yb/rocksdb/util/testutil.h"
+
 namespace rocksdb {
 
-class RateLimiterTest : public testing::Test {};
+class RateLimiterTest : public RocksDBTest {};
 
 TEST_F(RateLimiterTest, StartStop) {
   std::unique_ptr<RateLimiter> limiter(new GenericRateLimiter(100, 100, 10));

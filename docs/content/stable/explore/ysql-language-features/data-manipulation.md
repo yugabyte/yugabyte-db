@@ -2,7 +2,6 @@
 title: Data Manipulation
 linkTitle: Data Manipulation
 description: Data Manipulation in YSQL
-headcontent: Data Manipulation
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -17,7 +16,7 @@ This section describes how to manipulate data in YugabyteDB using the YSQL `INSE
 
 ## Inserting Rows
 
-Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing complete or partial data by inserting one row at a time. 
+Initially, database tables are not populated with data. Using YSQL, you can add one or more rows containing complete or partial data by inserting one row at a time.
 
 For example, you work with a database that includes the following table:
 
@@ -32,20 +31,20 @@ CREATE TABLE employees (
 Assuming you know the order of columns in the table, you can insert a row by executing the following command:
 
 ```sql
-INSERT INTO employees VALUES (1, 'John Smith', 'Marketing');  
+INSERT INTO employees VALUES (1, 'John Smith', 'Marketing');
 ```
 
-If you do not know the order of columns, you have an option of listing them within the `INSERT`  statement when adding a new row, as follows: 
+If you do not know the order of columns, you have an option of listing them within the `INSERT`  statement when adding a new row, as follows:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
-VALUES (1, 'John Smith', 'Marketing');  
+INSERT INTO employees (employee_no, name, department)
+VALUES (1, 'John Smith', 'Marketing');
 ```
 
 You can view your changes by executing the following command:
 
 ```sql
-SELECT * FROM employees;  
+SELECT * FROM employees;
 ```
 
 You can always view the table schema by executing the following command:
@@ -59,14 +58,14 @@ yugabyte=# \d employees
 In some cases you might not know values for all the columns when you insert a row. You have the option of not specifying these values at all, in which case the columns are automatically filled with default values when the `INSERT`  statement is executed, as demonstrated in the following example:
 
 ```sql
-INSERT INTO employees (employee_no, name) VALUES (1, 'John Smith');  
+INSERT INTO employees (employee_no, name) VALUES (1, 'John Smith');
 ```
 
 Another option is to explicitly specify the missing values as `DEFAULT` in the `INSERT` statement, as shown in the following example:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
-VALUES (1, 'John Smith', DEFAULT);  
+INSERT INTO employees (employee_no, name, department)
+VALUES (1, 'John Smith', DEFAULT);
 ```
 
 ### Multiple Rows
@@ -74,11 +73,11 @@ VALUES (1, 'John Smith', DEFAULT);
 You can use YSQL to insert multiple rows by executing a single `INSERT`  statement, as shown in the following example:
 
 ```sql
-INSERT INTO employees 
-VALUES 
+INSERT INTO employees
+VALUES
 (1, 'John Smith', 'Marketing'),
 (2, 'Bette Davis', 'Sales'),
-(3, 'Lucille Ball', 'Operations'); 
+(3, 'Lucille Ball', 'Operations');
 ```
 
 ### Upsert
@@ -96,27 +95,27 @@ CREATE TABLE employees (
 ```
 
 ```sql
-INSERT INTO employees 
-VALUES 
+INSERT INTO employees
+VALUES
 (1, 'John Smith', 'Marketing'),
 (2, 'Bette Davis', 'Sales'),
-(3, 'Lucille Ball', 'Operations'); 
+(3, 'Lucille Ball', 'Operations');
 ```
 
 If the department for the employee John Smith changed from Marketing to Sales, the `employees` table could have been modified using the `UPDATE` statement. YSQL provides the `INSERT ON CONFLICT` statement that you can use to perform upserts: if John Smith was assigned to work in both departments, you can use `UPDATE` as the action of the `INSERT` statement, as shown in the following example:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
+INSERT INTO employees (employee_no, name, department)
 VALUES (1, 'John Smith', 'Sales')
-ON CONFLICT (name) 
-DO 
+ON CONFLICT (name)
+DO
 UPDATE SET department = EXCLUDED.department || ';' || employees.department;
 ```
 
 The following is the output produced by the preceding example:
 
 ```
- employee_no | name          | department   
+ employee_no | name          | department
 -------------+---------------+-----------------
  1           | John Smith    | Sales;Marketing
  2           | Bette Davis   | Sales
@@ -126,7 +125,7 @@ The following is the output produced by the preceding example:
 There are cases when no action is required ( `DO NOTHING` ) if a specific record already exists in the table. For example, executing the following does not change the department for Bette Davis:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
+INSERT INTO employees (employee_no, name, department)
 VALUES (2, 'Bette Davis', 'Operations')
 ON CONFLICT
 DO NOTHING;
@@ -217,9 +216,9 @@ CREATE TABLE employees (
 
 ## Configuring Automatic Timestamps
 
-You can use automatic timestamps to keep track of when data in a table was added or updated. 
+You can use automatic timestamps to keep track of when data in a table was added or updated.
 
-The date of the data creation is typically added via a  `created_at` column with a default value of `NOW()`, as shown in the following example: 
+The date of the data creation is typically added via a  `created_at` column with a default value of `NOW()`, as shown in the following example:
 
 ```sql
 CREATE TABLE employees (
@@ -273,13 +272,13 @@ When using the `RETURNING` clause within the  `UPDATE` statement, the data you a
 ```sql
 UPDATE employees SET employee_no = employee_no + 1
 	WHERE employee_no = 1
-	RETURNING name, employee_no AS new_employee_no;  
+	RETURNING name, employee_no AS new_employee_no;
 ```
 
 In cases of using the `RETURNING` clause within the  `DELETE` statement, you are obtaining the content of the deleted row, as shown the following example:
 
 ```sql
-DELETE FROM employees WHERE department = 'Sales' RETURNING *;  
+DELETE FROM employees WHERE department = 'Sales' RETURNING *;
 ```
 
 ## Auto-Incrementing Column Values
@@ -288,13 +287,13 @@ Using a special kind of database object called sequence, you can generate unique
 
 CREATE TABLE employees2 (employee_no serial, name text, department text);
 
-Typically, you add sequences using the `serial` pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence. 
+Typically, you add sequences using the `serial` pseudotype that creates a new sequence object and sets the default value for the column to the next value produced by the sequence.
 
-When a sequence generates values, it adds a `NOT NULL` constraint to the column. 
+When a sequence generates values, it adds a `NOT NULL` constraint to the column.
 
 The sequence is automatically removed if the  `serial` column is removed.
 
-You can create both a new table and a new sequence generator at the same time, as follows: 
+You can create both a new table and a new sequence generator at the same time, as follows:
 
 ```sql
 CREATE TABLE employees (
@@ -307,14 +306,14 @@ CREATE TABLE employees (
 You may also choose to assign auto-incremented sequence values to new rows created via the `INSERT`  statement. To instruct `INSERT` to take the default value for a column, you can omit this column from the `INSERT` column list, as shown in the following example:
 
 ```sql
-INSERT INTO employees (name, department) VALUES ('John Smith', 'Sales');  
+INSERT INTO employees (name, department) VALUES ('John Smith', 'Sales');
 ```
 
 Alternatively, you can provide the `DEFAULT` keyword as the column's value, as shown in the following example:
 
 ```sql
-INSERT INTO employees (employee_no, name, department) 
-VALUES (DEFAULT, 'John Smith', 'Sales');  
+INSERT INTO employees (employee_no, name, department)
+VALUES (DEFAULT, 'John Smith', 'Sales');
 ```
 
 When you create your sequence via  `serial` , the sequence has all its parameters set to default values. For example, the sequence would not be optimized for access to its information because it does not have a cache (the default value of the a `SEQUENCE` 's  `CACHE` parameter is 1;  `CACHE`  defines how many sequence numbers should be preallocated and stored in memory). To be able to configure a sequence at the time of its creation, you need to construct it explicitly and then reference it when you create your table, as shown in the following examples:
@@ -345,12 +344,12 @@ If you know (1) the name of the table and column that require updating, (2) the 
 UPDATE employees SET department = 'Sales';
 ```
 
-Since YSQL does not provide a unique identifier for rows, you might not be able to pinpoint the row directly. To work around this limitation, you can specify one or more conditions a row needs to meet to be updated. 
+Since YSQL does not provide a unique identifier for rows, you might not be able to pinpoint the row directly. To work around this limitation, you can specify one or more conditions a row needs to meet to be updated.
 
 The following example attempts to find an employee whose employee number is 3 and change this number to 7:
 
 ```sql
-UPDATE employees SET employee_no = 7 WHERE employee_no = 3;  
+UPDATE employees SET employee_no = 7 WHERE employee_no = 3;
 ```
 
 If there is no employee number 3 in the table, nothing is updated. If the `WHERE` clause is not included, all  rows in the table are updated; if the `WHERE` clause is included, then only the rows that match the `WHERE` condition are modified.
@@ -358,13 +357,13 @@ If there is no employee number 3 in the table, nothing is updated. If the `WHERE
 The new column value does not have to be a constant, as it can be any scalar expression. The following example changes employee numbers of all employees by increasing these numbers by 1:
 
 ```sql
-UPDATE employees SET employee_no = employee_no + 1;  
+UPDATE employees SET employee_no = employee_no + 1;
 ```
 
 You can use the `UPDATE` statement to modify values of more than one column. You do this by listing more than one assignment in the `SET` clause, as shown in the following example:
 
 ```sql
-UPDATE employees SET employee_no = 2, name = 'Lee Warren' WHERE employee_no = 5;  
+UPDATE employees SET employee_no = 2, name = 'Lee Warren' WHERE employee_no = 5;
 ```
 
 ## Deleting Rows
@@ -374,13 +373,13 @@ Using YSQL, you can remove rows from a table by executing the `DELETE`  statemen
 The following example deletes all rows that have the Sales department:
 
 ```sql
-DELETE FROM employees WHERE department = 'Sales';  
+DELETE FROM employees WHERE department = 'Sales';
 ```
 
 You can remove all rows from the table as follows:
 
 ```sql
-DELETE FROM employees;  
+DELETE FROM employees;
 ```
 
 

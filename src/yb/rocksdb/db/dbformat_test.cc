@@ -26,8 +26,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/env.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
@@ -74,7 +73,7 @@ static void TestKey(const std::string& key,
   ASSERT_TRUE(!ParseInternalKey(Slice("bar"), &decoded));
 }
 
-class FormatTest : public testing::Test {};
+class FormatTest : public RocksDBTest {};
 
 TEST_F(FormatTest, InternalKey_EncodeDecode) {
   const char* keys[] = { "", "k", "hello", "longggggggggggggggggggggg" };

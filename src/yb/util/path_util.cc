@@ -38,7 +38,7 @@
 
 #include <string>
 #if defined(__APPLE__)
-#include <mutex>
+#include <sys/param.h>
 #endif // defined(__APPLE__)
 
 #if defined(__linux__)
@@ -82,17 +82,23 @@ Status FileCreationError(const std::string& path_dir, int err_number) {
 }
 
 string DirName(const string& path) {
-  std::unique_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
 #if defined(__APPLE__)
-  static std::mutex lock;
-  std::lock_guard<std::mutex> l(lock);
+  char buffer[MAXPATHLEN];
+  return dirname_r(path.c_str(), buffer);
+#else
+  std::unique_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
+  return dirname(path_copy.get());
 #endif // defined(__APPLE__)
-  return ::dirname(path_copy.get());
 }
 
 string BaseName(const string& path) {
+#if defined(__APPLE__)
+  char buffer[MAXPATHLEN];
+  return basename_r(path.c_str(), buffer);
+#else
   std::unique_ptr<char[], FreeDeleter> path_copy(strdup(path.c_str()));
   return basename(path_copy.get());
+#endif
 }
 
 std::string GetYbDataPath(const std::string& root) {

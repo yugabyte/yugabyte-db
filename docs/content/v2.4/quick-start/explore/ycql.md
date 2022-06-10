@@ -18,19 +18,19 @@ showAsideToc: true
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/latest/quick-start/explore/ysql" class="nav-link">
+    <a href="/preview/quick-start/explore/ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/latest/quick-start/explore/ycql" class="nav-link active">
+    <a href="/preview/quick-start/explore/ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 After [creating a local cluster](../../create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
@@ -72,7 +72,7 @@ After [creating a local cluster](../../create-local-cluster/), follow the instru
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
     {{% includeMarkdown "binary/explore-ycql.md" /%}}
-  </div> 
+  </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
     {{% includeMarkdown "docker/explore-ycql.md" /%}}
   </div>

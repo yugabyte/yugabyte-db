@@ -16,16 +16,19 @@
 #include <lz4.h>
 #include <snappy.h>
 
-
-
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 
-
+#include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace ql {
@@ -42,6 +45,7 @@ using snappy::MaxCompressedLength;
 using snappy::RawUncompress;
 using snappy::RawCompress;
 
+#undef RETURN_NOT_ENOUGH
 #define RETURN_NOT_ENOUGH(sz)                               \
   do {                                                      \
     if (body_.size() < (sz)) {                              \
@@ -60,21 +64,21 @@ constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
-CHECKED_STATUS CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
-                                                                 const int64_t pos,
+Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
+                                                                 const size_t pos,
                                                                  const Value** value) const {
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {
       return STATUS_SUBSTITUTE(RuntimeError, "Bind variable \"$0\" not found", name);
     }
-    *value = &values.at(itr->second);
+    *value = &values[itr->second];
   } else {
-    if (pos < 0 || pos >= values.size()) {
+    if (pos >= values.size()) {
       // Return error with 1-based position.
       return STATUS_SUBSTITUTE(RuntimeError, "Bind variable at position $0 not found", pos + 1);
     }
-    *value = &values.at(pos);
+    *value = &values[pos];
   }
 
   return Status::OK();
@@ -244,6 +248,19 @@ bool CQLRequest::ParseRequest(
   const uint8_t* body_data = body_size > 0 ? mesg.data() + kMessageHeaderLength : to_uchar_ptr("");
   unique_ptr<uint8_t[]> buffer;
 
+  if (header.flags & kMetadataFlag) {
+    if (body_size < kMetadataSize) {
+      error_response->reset(
+          new ErrorResponse(
+              header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
+              "Metadata flag set, but request body too small"));
+      return false;
+    }
+    // Ignore the request metadata.
+    body_size -= kMetadataSize;
+    body_data += kMetadataSize;
+  }
+
   // If the message body is compressed, uncompress it.
   if (body_size > 0 && (header.flags & kCompressionFlag)) {
     if (header.opcode == Opcode::STARTUP) {
@@ -263,13 +280,14 @@ bool CQLRequest::ParseRequest(
           return false;
         }
 
-        const uint32_t uncomp_size = static_cast<uint32_t>(NetworkByteOrder::Load32(body_data));
+        const uint32_t uncomp_size = NetworkByteOrder::Load32(body_data);
         buffer = std::make_unique<uint8_t[]>(uncomp_size);
         body_data += sizeof(uncomp_size);
         body_size -= sizeof(uncomp_size);
-        const int size = LZ4_decompress_safe(to_char_ptr(body_data), to_char_ptr(buffer.get()),
-                                             body_size, uncomp_size);
-        if (size < 0 || size != uncomp_size) {
+        const int size = LZ4_decompress_safe(
+            to_char_ptr(body_data), to_char_ptr(buffer.get()), narrow_cast<int>(body_size),
+            uncomp_size);
+        if (size < 0 || static_cast<uint32_t>(size) != uncomp_size) {
           error_response->reset(
               new ErrorResponse(
                   header.stream_id, ErrorResponse::Code::PROTOCOL_ERROR,
@@ -385,6 +403,16 @@ bool CQLRequest::ParseRequest(
   return true;
 }
 
+int64_t CQLRequest::ParseRpcQueueLimit(const Slice& mesg) {
+  Flags flags = LoadByte<Flags>(mesg, kHeaderPosFlags);
+  if (!(flags & kMetadataFlag)) {
+    return std::numeric_limits<int64_t>::max();
+  }
+  uint16_t queue_limit = LoadShort<uint16_t>(
+      mesg, kMessageHeaderLength + kMetadataQueueLimitOffset);
+  return static_cast<int64_t>(queue_limit);
+}
+
 CQLRequest::CQLRequest(const Header& header, const Slice& body) : CQLMessage(header), body_(body) {
 }
 
@@ -497,7 +525,8 @@ Status CQLRequest::ParseValue(const bool with_name, Value* value) {
   if (length >= 0) {
     value->kind = Value::Kind::NOT_NULL;
     if (length > 0) {
-      RETURN_NOT_ENOUGH(length);
+      uint32_t unsigned_length = length;
+      RETURN_NOT_ENOUGH(unsigned_length);
       value->value.assign(to_char_ptr(data), kIntSize + length);
       body_.remove_prefix(length);
       DVLOG(4) << "CQL value bytes " << value->value;
@@ -558,6 +587,47 @@ Status CQLRequest::ParseQueryParameters(QueryParameters* params) {
   return Status::OK();
 }
 
+Status CQLRequest::ParseByte(uint8_t* value) {
+  static_assert(sizeof(*value) == kByteSize, "inconsistent byte size");
+  return ParseNum("CQL byte", Load8, value);
+}
+
+Status CQLRequest::ParseShort(uint16_t* value) {
+  static_assert(sizeof(*value) == kShortSize, "inconsistent short size");
+  return ParseNum("CQL byte", NetworkByteOrder::Load16, value);
+}
+
+Status CQLRequest::ParseInt(int32_t* value) {
+  static_assert(sizeof(*value) == kIntSize, "inconsistent int size");
+  return ParseNum("CQL int", NetworkByteOrder::Load32, value);
+}
+
+Status CQLRequest::ParseLong(int64_t* value) {
+  static_assert(sizeof(*value) == kLongSize, "inconsistent long size");
+  return ParseNum("CQL long", NetworkByteOrder::Load64, value);
+}
+
+Status CQLRequest::ParseString(std::string* value)  {
+  return ParseBytes("CQL string", &CQLRequest::ParseShort, value);
+}
+
+Status CQLRequest::ParseLongString(std::string* value)  {
+  return ParseBytes("CQL long string", &CQLRequest::ParseInt, value);
+}
+
+Status CQLRequest::ParseShortBytes(std::string* value) {
+  return ParseBytes("CQL short bytes", &CQLRequest::ParseShort, value);
+}
+
+Status CQLRequest::ParseBytes(std::string* value) {
+  return ParseBytes("CQL bytes", &CQLRequest::ParseInt, value);
+}
+
+Status CQLRequest::ParseConsistency(Consistency* consistency) {
+  static_assert(sizeof(*consistency) == kConsistencySize, "inconsistent consistency size");
+  return ParseNum("CQL consistency", NetworkByteOrder::Load16, consistency);
+}
+
 // ------------------------------ Individual CQL requests -----------------------------------
 StartupRequest::StartupRequest(const Header& header, const Slice& body)
     : CQLRequest(header, body) {
@@ -604,7 +674,7 @@ Status AuthResponseRequest::ParseBody() {
   return STATUS(InvalidArgument, error_msg);
 }
 
-CHECKED_STATUS AuthResponseRequest::AuthQueryParameters::GetBindVariable(
+Status AuthResponseRequest::AuthQueryParameters::GetBindVariable(
     const std::string& name,
     int64_t pos,
     const std::shared_ptr<QLType>& type,
@@ -853,8 +923,8 @@ void SerializeTimeUUID(const string& value, faststring* mesg) {
 
 void SerializeStringList(const vector<string>& list, faststring* mesg) {
   SerializeShort(list.size(), mesg);
-  for (int i = 0; i < list.size(); ++i) {
-    SerializeString(list[i], mesg);
+  for (const auto& entry : list) {
+    SerializeString(entry, mesg);
   }
 }
 
@@ -922,7 +992,10 @@ void SerializeValue(const CQLMessage::Value& value, faststring* mesg) {
 
 // ------------------------------------ CQL response -----------------------------------
 CQLResponse::CQLResponse(const CQLRequest& request, const Opcode opcode)
-    : CQLMessage(Header(request.version() | kResponseVersion, 0, request.stream_id(), opcode)) {
+    : CQLMessage(Header(request.version() | kResponseVersion,
+                        request.flags() & kMetadataFlag,
+                        request.stream_id(),
+                        opcode)) {
 }
 
 CQLResponse::CQLResponse(const StreamId stream_id, const Opcode opcode)
@@ -946,6 +1019,11 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
   const size_t start_pos = mesg->size(); // save the start position
   const bool compress = (compression_scheme != CQLMessage::CompressionScheme::kNone);
   SerializeHeader(compress, mesg);
+  if (flags() & kMetadataFlag) {
+    uint8_t buffer[kMetadataSize] = {0};
+    SERIALIZE_SHORT(buffer, kMetadataQueuePosOffset, static_cast<uint16_t>(rpc_queue_position_));
+    mesg->append(buffer, sizeof(buffer));
+  }
   if (compress) {
     faststring body;
     SerializeBody(&body);
@@ -953,11 +1031,11 @@ void CQLResponse::Serialize(const CompressionScheme compression_scheme, faststri
       case CQLMessage::CompressionScheme::kLz4: {
         SerializeInt(static_cast<int32_t>(body.size()), mesg);
         const size_t curr_size = mesg->size();
-        const int max_comp_size = LZ4_compressBound(body.size());
+        const int max_comp_size = LZ4_compressBound(narrow_cast<int>(body.size()));
         mesg->resize(curr_size + max_comp_size);
         const int comp_size = LZ4_compress_default(to_char_ptr(body.data()),
                                                    to_char_ptr(mesg->data() + curr_size),
-                                                   body.size(),
+                                                   narrow_cast<int>(body.size()),
                                                    max_comp_size);
         CHECK_NE(comp_size, 0) << "LZ4 compression failed";
         mesg->resize(curr_size + comp_size);
@@ -1307,7 +1385,7 @@ ResultResponse::RowsMetadata::Type::Type(const shared_ptr<QLType>& ql_type) {
     case DataType::USER_DEFINED_TYPE: {
       id = Id::UDT;
       std::vector<UDTType::Field> fields;
-      for (int i = 0; i < type->params().size(); i++) {
+      for (size_t i = 0; i < type->params().size(); i++) {
         auto field_type = std::make_shared<const Type>(Type(type->param_type(i)));
         UDTType::Field field{type->udtype_field_name(i), field_type};
         fields.push_back(std::move(field));
@@ -1389,7 +1467,7 @@ ResultResponse::RowsMetadata::RowsMetadata(const client::YBTableName& table_name
       paging_state(paging_state),
       global_table_spec(no_metadata ? "" : table_name.namespace_name(),
                         no_metadata ? "" : table_name.table_name()),
-      col_count(columns.size()) {
+      col_count(narrow_cast<int>(columns.size())) {
   if (!no_metadata) {
     col_specs.reserve(col_count);
     for (const auto& column : columns) {
@@ -1555,7 +1633,7 @@ PreparedResultResponse::PreparedMetadata::PreparedMetadata(
     this->pk_indices.emplace_back(static_cast<uint16_t>(index));
   }
   col_specs.reserve(bind_variable_schemas.size());
-  for (int i = 0; i < bind_variable_schemas.size(); i++) {
+  for (size_t i = 0; i < bind_variable_schemas.size(); i++) {
     const ColumnSchema& var = bind_variable_schemas[i];
     if (flags & kHasGlobalTableSpec) {
       col_specs.emplace_back(var.name(), RowsMetadata::Type(var.type()));
@@ -1587,9 +1665,9 @@ PreparedResultResponse::~PreparedResultResponse() {
 void PreparedResultResponse::SerializePreparedMetadata(
     const PreparedMetadata& metadata, faststring* mesg) const {
   SerializeInt(metadata.flags, mesg);
-  SerializeInt(metadata.col_specs.size(), mesg);
+  SerializeInt(narrow_cast<int32_t>(metadata.col_specs.size()), mesg);
   if (VersionIsCompatible(kV4Version)) {
-    SerializeInt(metadata.pk_indices.size(), mesg);
+    SerializeInt(narrow_cast<int32_t>(metadata.pk_indices.size()), mesg);
     for (const auto& pk_index : metadata.pk_indices) {
       SerializeShort(pk_index, mesg);
     }

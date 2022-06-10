@@ -33,15 +33,12 @@
 #define YB_UTIL_NET_DNS_RESOLVER_H
 
 #include <future>
-#include <vector>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/status_fwd.h"
-
 #include "yb/util/net/net_fwd.h"
-#include "yb/util/net/inetaddress.h"
 
 namespace yb {
 

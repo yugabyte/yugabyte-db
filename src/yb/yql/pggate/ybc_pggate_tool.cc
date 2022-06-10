@@ -13,30 +13,26 @@
 #include "yb/yql/pggate/ybc_pggate_tool.h"
 
 #include "yb/common/ybc-internal.h"
-#include "yb/yql/pggate/ybc_pggate.h"
+
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/server/server_base_options.h"
 
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include "yb/util/countdown_latch.h"
+#include "yb/util/shared_mem.h"
+
 #include "yb/yql/pggate/pg_env.h"
 #include "yb/yql/pggate/pggate.h"
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 namespace yb {
 namespace pggate {
 
 namespace {
-
-// Fetches relation's unique constraint name to specified buffer.
-// If relation is not an index and it has primary key the name of primary key index is returned.
-// In other cases, relation name is used.
-//
-// Not implemented for tools.
-void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
-  CHECK(false) << "Not implemented";
-}
 
 YBCPgMemctx GetCurrentToolYbMemctx() {
   static YBCPgMemctx tool_memctx = nullptr;
@@ -52,7 +48,7 @@ YBCPgMemctx GetCurrentToolYbMemctx() {
 // Currently it is not used in the tools and can be empty.
 static const YBCPgTypeEntity YBCEmptyTypeEntityTable[] = {};
 
-CHECKED_STATUS PrepareInitPgGateBackend() {
+Status PrepareInitPgGateBackend() {
   server::MasterAddresses master_addresses;
   std::string resolved_str;
   RETURN_NOT_OK(server::DetermineMasterAddresses(
@@ -117,7 +113,6 @@ CHECKED_STATUS PrepareInitPgGateBackend() {
             << ", postgres_auth_key: " << shared_data.postgres_auth_key();
 
   YBCPgCallbacks callbacks;
-  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
   callbacks.GetCurrentYbMemctx = &GetCurrentToolYbMemctx;
   YBCInitPgGateEx(YBCEmptyTypeEntityTable, 0, callbacks, &context);
 

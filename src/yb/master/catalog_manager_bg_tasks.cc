@@ -29,16 +29,22 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/master/catalog_manager_bg_tasks.h"
+
 #include <memory>
 
-#include "yb/util/logging.h"
-#include "yb/util/mutex.h"
+#include "yb/gutil/casts.h"
 
-#include "yb/master/catalog_manager_bg_tasks.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/ts_descriptor.h"
 #include "yb/master/cluster_balance.h"
+#include "yb/master/master.h"
+#include "yb/master/ts_descriptor.h"
+#include "yb/master/tablet_split_manager.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/mutex.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using std::shared_ptr;
 
@@ -55,10 +61,24 @@ DEFINE_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
+DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
+                 "Pause the bg tasks thread at the beginning of the loop.");
+
+DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
+                 "Pause the bg tasks thread at the end of the loop.");
+
 DECLARE_bool(enable_ysql);
 
 namespace yb {
 namespace master {
+
+CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
+    : closing_(false),
+      pending_updates_(false),
+      cond_(&lock_),
+      thread_(nullptr),
+      catalog_manager_(down_cast<enterprise::CatalogManager*>(catalog_manager)) {
+}
 
 void CatalogManagerBgTasks::Wake() {
   MutexLock lock(lock_);
@@ -105,6 +125,7 @@ void CatalogManagerBgTasks::Shutdown() {
 
 void CatalogManagerBgTasks::Run() {
   while (!closing_.load()) {
+    TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_start);
     // Perform assignment processing.
     SCOPED_LEADER_SHARED_LOCK(l, catalog_manager_);
     if (!l.catalog_status().ok()) {
@@ -135,11 +156,17 @@ void CatalogManagerBgTasks::Run() {
 
       bool processed_tablets = false;
       if (!to_process.empty()) {
+        // For those tablets which need to be created in this round, assign replicas.
+        TSDescriptorVector ts_descs = catalog_manager_->GetAllLiveNotBlacklistedTServers();
+        CMGlobalLoadState global_load_state;
+        catalog_manager_->InitializeGlobalLoadState(ts_descs, &global_load_state);
         // Transition tablet assignment state from preparing to creating, send
         // and schedule creation / deletion RPC messages, etc.
+        // This is done table by table.
         for (const auto& entries : to_process) {
           LOG(INFO) << "Processing pending assignments for table: " << entries.first;
-          Status s = catalog_manager_->ProcessPendingAssignments(entries.second);
+          Status s = catalog_manager_->ProcessPendingAssignmentsPerTable(
+              entries.first, entries.second, &global_load_state);
           WARN_NOT_OK(s, "Assignment failed");
           // Set processed_tablets as true if the call succeeds for at least one table.
           processed_tablets = processed_tablets || s.ok();
@@ -156,6 +183,15 @@ void CatalogManagerBgTasks::Run() {
         }
       }
 
+      TableInfoMap table_info_map;
+      TabletInfoMap tablet_info_map;
+      {
+        CatalogManager::SharedLock lock(catalog_manager_->mutex_);
+        table_info_map = *catalog_manager_->table_ids_map_;
+        tablet_info_map = *catalog_manager_->tablet_map_;
+      }
+      catalog_manager_->tablet_split_manager()->MaybeDoSplitting(table_info_map, tablet_info_map);
+
       if (!to_delete.empty() || catalog_manager_->AreTablesDeleting()) {
         catalog_manager_->CleanUpDeletedTables();
       }
@@ -163,6 +199,17 @@ void CatalogManagerBgTasks::Run() {
       auto s = catalog_manager_->FindCDCStreamsMarkedAsDeleting(&streams);
       if (s.ok() && !streams.empty()) {
         s = catalog_manager_->CleanUpDeletedCDCStreams(streams);
+      }
+
+      // Do a failed universe clean up
+      if (s.ok()) {
+        s = catalog_manager_->ClearFailedUniverse();
+      }
+      std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
+      auto status_delete_metadata = catalog_manager_->FindCDCStreamsMarkedForMetadataDeletion(
+          &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA);
+      if (status_delete_metadata.ok() && !cdcsdk_streams.empty()) {
+        status_delete_metadata = catalog_manager_->CleanUpCDCStreamsMetadata(cdcsdk_streams);
       }
 
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
@@ -187,6 +234,7 @@ void CatalogManagerBgTasks::Run() {
     //    to notify about tablets creation.
     //  - DeleteTable will call Wake() to finish destructing any table internals
     l.Unlock();
+    TEST_PAUSE_IF_FLAG(TEST_pause_catalog_manager_bg_loop_end);
     Wait(FLAGS_catalog_manager_bg_task_wait_ms);
   }
   VLOG(1) << "Catalog manager background task thread shutting down";

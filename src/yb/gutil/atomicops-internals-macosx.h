@@ -282,7 +282,13 @@ inline void NoBarrier_Store(volatile Atomic64* ptr, Atomic64 value) {
 // are in a spinlock wait loop and should allow other hyperthreads
 // to run, not speculate memory access, etc.
 inline void PauseCPU() {
+#ifdef __x86_64__
   __asm__ __volatile__("pause" : : : "memory");
+#elif defined(__arm64__)
+  __asm__ __volatile__("yield" : : : "memory");
+#else
+  #error "PauseCPU is only supported for x86_64 and arm64 on macOS"
+#endif
 }
 
 inline void Acquire_Store(volatile Atomic64 *ptr, Atomic64 value) {

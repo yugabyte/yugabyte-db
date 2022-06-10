@@ -33,18 +33,21 @@
 #define YB_MASTER_SCOPED_LEADER_SHARED_LOCK_H
 
 #include <chrono>
+#include <shared_mutex>
+#include <string>
+#include <unordered_map>
 
 #include <glog/logging.h>
 
-#include "yb/util/status.h"
-#include "yb/rpc/rpc_context.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/rpc/service_if.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/rw_mutex.h"
-#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace master {
-
-class CatalogManager;
 
 // This is how we should instantiate ScopedLeaderSharedLock. Captures context information so we can
 // use it in logging and debugging.
@@ -86,7 +89,13 @@ class ScopedLeaderSharedLock {
       int line_number,
       const char* function_name);
 
-  ~ScopedLeaderSharedLock() { Unlock(); }
+  explicit ScopedLeaderSharedLock(
+      enterprise::CatalogManager* catalog,
+      const char* file_name,
+      int line_number,
+      const char* function_name);
+
+  ~ScopedLeaderSharedLock();
 
   void Unlock();
 
@@ -146,7 +155,7 @@ class ScopedLeaderSharedLock {
                                            bool set_error = true);
 
   CatalogManager* catalog_;
-  shared_lock<RWMutex> leader_shared_lock_;
+  std::shared_lock<RWMutex> leader_shared_lock_;
   Status catalog_status_;
   Status leader_status_;
   std::chrono::steady_clock::time_point start_;

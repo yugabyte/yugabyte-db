@@ -2,6 +2,9 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_TAGS;
+import static com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler.GFLAGS_FILTER_PATTERN;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static play.test.Helpers.contentAsString;
@@ -9,6 +12,7 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -59,6 +63,9 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     "1.1.1.1, MASTER",
     "1.1.1.1-b11, TSERVER",
     "1.1.1.1, TSERVER",
+    "1.1.1.1-b12-remote, TSERVER",
+    "1.1.1.1-remote, TSERVER",
+    "1.1.1.1-Remote, TSERVER"
   })
   @TestCaseName("testGetGFlagsMetadataWithValidParamsWhen " + "version:{0} serverType:{1}")
   public void testGetGFlagsMetadataWithValidParams(String version, String serverType) {
@@ -97,7 +104,8 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
         assertPlatformException(
             () -> FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken()));
     AssertHelper.assertBadRequest(
-        result, "Incorrect version format. Valid formats: 1.1.1.1 or 1.1.1.1-b1");
+        result,
+        "Incorrect version format. Valid formats: 1.1.1.1, 1.1.1.1-b1 or 1.1.1.1-b12-remote");
   }
 
   @Test
@@ -119,15 +127,18 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
   @Test
   public void testValidateGFlagWithValidParams() {
     ObjectNode body = Json.newObject();
-    ObjectNode masterGFlags = Json.newObject();
-    masterGFlags.put("cdc_enable_replicate_intents", "true");
-    masterGFlags.put("update_metrics_interval_ms", "15000");
-    body.set("MASTER", masterGFlags);
-    ObjectNode tserverGFlags = Json.newObject();
-    tserverGFlags.put("cdc_enable_replicate_intents", "true");
-    tserverGFlags.put("update_metrics_interval_ms", "15000");
-    body.set("TSERVER", tserverGFlags);
-
+    ArrayNode gflags = Json.newArray();
+    ObjectNode flag1 = Json.newObject();
+    flag1.put("name", "cdc_enable_replicate_intents");
+    flag1.put("MASTER", "true");
+    flag1.put("TSERVER", "true");
+    ObjectNode flag2 = Json.newObject();
+    flag2.put("name", "update_metrics_interval_ms");
+    flag2.put("MASTER", "string");
+    flag2.put("TSERVER", "15000");
+    gflags.add(flag1);
+    gflags.add(flag2);
+    body.set("gflags", gflags);
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
@@ -136,29 +147,40 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     ObjectNode expectedJson = Json.newObject();
-    ObjectNode expectedMasterGFlags = Json.newObject();
-    expectedMasterGFlags.set("cdc_enable_replicate_intents", Json.newObject());
-    expectedMasterGFlags.set("update_metrics_interval_ms", Json.newObject());
-    expectedJson.set("MASTER", expectedMasterGFlags);
-    ObjectNode expectedTserverGFlags = Json.newObject();
-    expectedTserverGFlags.set("cdc_enable_replicate_intents", Json.newObject());
-    expectedTserverGFlags.set("update_metrics_interval_ms", Json.newObject());
-    expectedJson.set("TSERVER", expectedTserverGFlags);
+    ObjectNode expectedFlag1Json = Json.newObject();
+    expectedFlag1Json.put("name", "cdc_enable_replicate_intents");
+    ObjectNode flag1MasterJson = Json.newObject();
+    flag1MasterJson.put("exist", "true");
+    expectedFlag1Json.set("MASTER", flag1MasterJson);
+    ObjectNode flag1TserverJson = Json.newObject();
+    flag1TserverJson.put("exist", "true");
+    expectedJson.arrayNode().add(expectedFlag1Json);
+    ObjectNode expectedFlag2Json = Json.newObject();
+    expectedFlag2Json.put("name", "cdc_enable_replicate_intents");
+    ObjectNode flag2MasterJson = Json.newObject();
+    flag2MasterJson.put("exist", "true");
+    expectedFlag2Json.set("MASTER", flag1MasterJson);
+    ObjectNode flag2TserverJson = Json.newObject();
+    flag2TserverJson.put("exist", "true");
+    expectedJson.arrayNode().add(expectedFlag2Json);
     AssertHelper.assertJsonEqual(expectedJson, json);
   }
 
   @Test
   public void testValidateGFlagWithInvalidDatatype() {
     ObjectNode body = Json.newObject();
-    ObjectNode masterGFlags = Json.newObject();
-    masterGFlags.put("cdc_enable_replicate_intents", "string");
-    masterGFlags.put("update_metrics_interval_ms", "string");
-    body.set("MASTER", masterGFlags);
-    ObjectNode tserverGFlags = Json.newObject();
-    tserverGFlags.put("cdc_enable_replicate_intents", "true");
-    tserverGFlags.put("update_metrics_interval_ms", "15000");
-    body.set("TSERVER", tserverGFlags);
-
+    ArrayNode gflags = Json.newArray();
+    ObjectNode flag1 = Json.newObject();
+    flag1.put("name", "cdc_enable_replicate_intents");
+    flag1.put("MASTER", "string");
+    flag1.put("TSERVER", "true");
+    ObjectNode flag2 = Json.newObject();
+    flag2.put("name", "update_metrics_interval_ms");
+    flag2.put("MASTER", "string");
+    flag2.put("TSERVER", "15000");
+    gflags.add(flag1);
+    gflags.add(flag2);
+    body.set("gflags", gflags);
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
@@ -167,18 +189,24 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     ObjectNode expectedJson = Json.newObject();
-    ObjectNode expectedMasterGFlags = Json.newObject();
-    ObjectNode int32Error = Json.newObject();
-    int32Error.put("type", "Given string is not a int32 type");
-    expectedMasterGFlags.set("update_metrics_interval_ms", int32Error);
-    ObjectNode boolError = Json.newObject();
-    boolError.put("type", "Given string is not a bool type");
-    expectedMasterGFlags.set("cdc_enable_replicate_intents", boolError);
-    expectedJson.set("MASTER", expectedMasterGFlags);
-    ObjectNode expectedTserverGFlags = Json.newObject();
-    expectedTserverGFlags.set("cdc_enable_replicate_intents", Json.newObject());
-    expectedTserverGFlags.set("update_metrics_interval_ms", Json.newObject());
-    expectedJson.set("TSERVER", expectedTserverGFlags);
+    ObjectNode expectedFlag1Json = Json.newObject();
+    expectedFlag1Json.put("name", "cdc_enable_replicate_intents");
+    ObjectNode flag1MasterJson = Json.newObject();
+    flag1MasterJson.put("exist", "true");
+    flag1MasterJson.put("error", "Given string is not a bool type");
+    expectedFlag1Json.set("MASTER", flag1MasterJson);
+    ObjectNode flag1TserverJson = Json.newObject();
+    flag1TserverJson.put("exist", "true");
+    flag1TserverJson.put("error", "Given string is not a int32 type");
+    expectedJson.arrayNode().add(expectedFlag1Json);
+    ObjectNode expectedFlag2Json = Json.newObject();
+    expectedFlag2Json.put("name", "cdc_enable_replicate_intents");
+    ObjectNode flag2MasterJson = Json.newObject();
+    flag2MasterJson.put("exist", "true");
+    expectedFlag2Json.set("MASTER", flag1MasterJson);
+    ObjectNode flag2TserverJson = Json.newObject();
+    flag2TserverJson.put("exist", "true");
+    expectedJson.arrayNode().add(expectedFlag2Json);
     AssertHelper.assertJsonEqual(expectedJson, json);
   }
 
@@ -186,15 +214,18 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
   public void testValiadtedGFlagWithIncorrectGFlagName() {
     String gflagName = "invalid_gflag";
     ObjectNode body = Json.newObject();
-    ObjectNode masterGFlags = Json.newObject();
-    masterGFlags.put(gflagName, "123");
-    masterGFlags.put("update_metrics_interval_ms", "15000");
-    body.set("MASTER", masterGFlags);
-    ObjectNode tserverGFlags = Json.newObject();
-    tserverGFlags.put(gflagName, "123");
-    tserverGFlags.put("update_metrics_interval_ms", "15000");
-    body.set("TSERVER", tserverGFlags);
-
+    ArrayNode gflags = Json.newArray();
+    ObjectNode flag1 = Json.newObject();
+    flag1.put("name", gflagName);
+    flag1.put("MASTER", "123");
+    flag1.put("TSERVER", "123");
+    ObjectNode flag2 = Json.newObject();
+    flag2.put("name", "update_metrics_interval_ms");
+    flag2.put("MASTER", "string");
+    flag2.put("TSERVER", "15000");
+    gflags.add(flag1);
+    gflags.add(flag2);
+    body.set("gflags", gflags);
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b11" + "/validate_gflags";
     Result result =
         FakeApiHelper.doRequestWithAuthTokenAndBody(
@@ -203,16 +234,22 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
 
     ObjectNode expectedJson = Json.newObject();
-    ObjectNode expectedMasterGFlags = Json.newObject();
-    ObjectNode gflagNameError = Json.newObject();
-    gflagNameError.put("name", gflagName + " is not present as per current metadata");
-    expectedMasterGFlags.set(gflagName, gflagNameError);
-    expectedMasterGFlags.set("update_metrics_interval_ms", Json.newObject());
-    expectedJson.set("MASTER", expectedMasterGFlags);
-    ObjectNode expectedTserverGFlags = Json.newObject();
-    expectedTserverGFlags.set(gflagName, gflagNameError);
-    expectedTserverGFlags.set("update_metrics_interval_ms", Json.newObject());
-    expectedJson.set("TSERVER", expectedTserverGFlags);
+    ObjectNode expectedFlag1Json = Json.newObject();
+    expectedFlag1Json.put("name", gflagName);
+    ObjectNode flag1MasterJson = Json.newObject();
+    flag1MasterJson.put("exist", "false");
+    expectedFlag1Json.set("MASTER", flag1MasterJson);
+    ObjectNode flag1TserverJson = Json.newObject();
+    flag1TserverJson.put("exist", "false");
+    expectedJson.arrayNode().add(expectedFlag1Json);
+    ObjectNode expectedFlag2Json = Json.newObject();
+    expectedFlag2Json.put("name", "cdc_enable_replicate_intents");
+    ObjectNode flag2MasterJson = Json.newObject();
+    flag2MasterJson.put("exist", "true");
+    expectedFlag2Json.set("MASTER", flag1MasterJson);
+    ObjectNode flag2TserverJson = Json.newObject();
+    flag2TserverJson.put("exist", "true");
+    expectedJson.arrayNode().add(expectedFlag2Json);
     AssertHelper.assertJsonEqual(expectedJson, json);
   }
 
@@ -220,14 +257,12 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
   public void testValidateGFlagWithEmptyParams() {
     String url = "/api/v1/metadata" + "/version/1.1.1.1-b89" + "/validate_gflags";
     ObjectNode body = Json.newObject();
-    body.set("MASTER", Json.newObject());
-    body.set("TSERVER", Json.newObject());
     Result result =
-        FakeApiHelper.doRequestWithAuthTokenAndBody(
-            "POST", url, defaultUser.createAuthToken(), body);
-    AssertHelper.assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    AssertHelper.assertJsonEqual(body, json);
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthTokenAndBody(
+                    "POST", url, defaultUser.createAuthToken(), body));
+    AssertHelper.assertBadRequest(result, "Please provide a valid list of gflags.");
   }
 
   @Test
@@ -244,5 +279,63 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     AssertHelper.assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertNotNull(json);
+  }
+
+  @Test
+  public void testGFlagsFilteredTags() throws IOException {
+    GFlagDetails flag1 = new GFlagDetails();
+    flag1.name = "hidden_tag_gflag";
+    flag1.tags = "hidden";
+    GFlagDetails flag2 = new GFlagDetails();
+    flag2.name = "stable_tag_gflag";
+    flag2.tags = "stable";
+    GFlagDetails flag3 = new GFlagDetails();
+    flag3.name = "experimental_tag_gflag";
+    flag3.tags = "experimental";
+    List<GFlagDetails> gflagList = new ArrayList<>(Arrays.asList(flag1, flag2, flag3));
+    when(mockGFlagsValidation.extractGFlags(any(), any(), anyBoolean())).thenReturn(gflagList);
+    String url =
+        "/api/v1/metadata"
+            + "/version/1.1.1.1-b78"
+            + "/list_gflags?server=MASTER"
+            + "&mostUsedGFlag=false";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    AssertHelper.assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json);
+    for (JsonNode flag : json) {
+      assertNotEquals(
+          true,
+          GFLAGS_FILTER_TAGS.stream().anyMatch(tag -> flag.get("tags").asText().contains(tag)));
+    }
+  }
+
+  @Test
+  public void testGFlagsFilteredRegex() throws IOException {
+    GFlagDetails flag1 = new GFlagDetails();
+    flag1.name = "test_gflag";
+    GFlagDetails flag2 = new GFlagDetails();
+    flag2.name = "gflag_test";
+    GFlagDetails flag3 = new GFlagDetails();
+    flag3.name = "experimental_tag_gflag";
+    flag3.tags = "experimental";
+    List<GFlagDetails> gflagList = new ArrayList<>(Arrays.asList(flag1, flag2, flag3));
+    when(mockGFlagsValidation.extractGFlags(any(), any(), anyBoolean())).thenReturn(gflagList);
+    String url =
+        "/api/v1/metadata"
+            + "/version/1.1.1.1-b78"
+            + "/list_gflags?server=MASTER"
+            + "&mostUsedGFlag=false";
+    Result result = FakeApiHelper.doRequestWithAuthToken("GET", url, defaultUser.createAuthToken());
+    AssertHelper.assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertNotNull(json);
+    for (JsonNode flag : json) {
+      assertNotEquals(
+          true,
+          !GFLAGS_FILTER_PATTERN
+              .stream()
+              .anyMatch(regexMatcher -> regexMatcher.matcher(flag.get("name").asText()).find()));
+    }
   }
 }

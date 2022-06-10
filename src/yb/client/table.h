@@ -14,14 +14,17 @@
 #ifndef YB_CLIENT_TABLE_H
 #define YB_CLIENT_TABLE_H
 
-#include "yb/client/yb_table_name.h"
-#include "yb/client/schema.h"
+#include <gflags/gflags_declare.h>
+
+#include "yb/client/client_fwd.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/index.h"
-#include "yb/common/partition.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/locks.h"
+#include "yb/util/status_callback.h"
+#include "yb/util/status_fwd.h"
 
 DECLARE_int32(max_num_tablets_for_table);
 
@@ -30,7 +33,7 @@ namespace client {
 
 // This must match TableType in common.proto.
 // We have static_assert's in tablet-test.cc to verify this.
-enum YBTableType {
+enum class YBTableType {
   YQL_TABLE_TYPE = 2,
   REDIS_TABLE_TYPE = 3,
   PGSQL_TABLE_TYPE = 4,
@@ -38,25 +41,14 @@ enum YBTableType {
   UNKNOWN_TABLE_TYPE = -1
 };
 
-struct YBTableInfo {
-  YBTableName table_name;
-  std::string table_id;
-  YBSchema schema;
-  PartitionSchema partition_schema;
-  IndexMap index_map;
-  boost::optional<IndexInfo> index_info;
-  YBTableType table_type;
-  bool colocated;
-  boost::optional<master::ReplicationInfoPB> replication_info;
-};
-
 struct VersionedTablePartitionList {
   TablePartitionList keys;
   // See SysTablesEntryPB::partition_list_version.
   PartitionListVersion version;
+
+  std::string ToString() const;
 };
 
-typedef std::shared_ptr<const VersionedTablePartitionList> VersionedTablePartitionListPtr;
 typedef Result<VersionedTablePartitionListPtr> FetchPartitionsResult;
 typedef std::function<void(const FetchPartitionsResult&)> FetchPartitionsCallback;
 
@@ -74,12 +66,9 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   ~YBTable();
 
-  static Status PBToClientTableType(TableType table_type_from_pb, YBTableType* client_table_type);
-  static TableType ClientToPBTableType(YBTableType table_type);
   // Fetches tablet partitions from master using GetTableLocations RPC.
   static void FetchPartitions(
-      YBClient* client, std::reference_wrapper<const YBTableInfo> table_info,
-      FetchPartitionsCallback callback);
+      YBClient* client, const TableId& table_id, FetchPartitionsCallback callback);
 
   //------------------------------------------------------------------------------------------------
   // Access functions.
@@ -119,7 +108,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
   // For index table: information about this index.
   const IndexInfo& index_info() const;
 
-  // Is the table colocated?
+  // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
 
   // Returns the replication info for the table.
@@ -150,13 +139,14 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
  private:
   friend class YBClient;
   friend class internal::GetTableSchemaRpc;
+  friend class internal::GetTablegroupSchemaRpc;
   friend class internal::GetColocatedTabletSchemaRpc;
 
   void InvokeRefreshPartitionsCallbacks(const Status& status);
 
   size_t FindPartitionStartIndex(const std::string& partition_key, size_t group_by = 1) const;
 
-  const YBTableInfo info_;
+  const std::unique_ptr<const YBTableInfo> info_;
 
   // Mutex protecting partitions_.
   mutable rw_spinlock mutex_;

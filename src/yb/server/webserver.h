@@ -44,15 +44,14 @@
 #define YB_SERVER_WEBSERVER_H
 
 #include <map>
+#include <shared_mutex>
 #include <string>
 #include <vector>
-#include <mutex>
 
-#include <boost/thread/shared_mutex.hpp>
 #include "yb/server/webserver_options.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/web_callback_registry.h"
 
 struct sq_connection;
@@ -73,17 +72,17 @@ class Webserver : public WebCallbackRegistry {
 
   // Starts a webserver on the port passed to the constructor. The webserver runs in a
   // separate thread, so this call is non-blocking.
-  CHECKED_STATUS Start();
+  Status Start();
 
   // Stops the webserver synchronously.
   void Stop();
 
   // Return the addresses that this server has successfully
   // bound to. Requires that the server has been Start()ed.
-  CHECKED_STATUS GetBoundAddresses(std::vector<Endpoint>* addrs) const;
+  Status GetBoundAddresses(std::vector<Endpoint>* addrs) const;
 
   // Return the single HostPort that this server was asked to bind on
-  CHECKED_STATUS GetInputHostPort(HostPort* hp) const;
+  Status GetInputHostPort(HostPort* hp) const;
 
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
@@ -137,7 +136,7 @@ class Webserver : public WebCallbackRegistry {
   bool static_pages_available() const;
 
   // Build the string to pass to mongoose specifying where to bind.
-  CHECKED_STATUS BuildListenSpec(std::string* spec) const;
+  Status BuildListenSpec(std::string* spec) const;
 
   // Renders a common Bootstrap-styled header
   void BootstrapPageHeader(std::stringstream* output);
@@ -174,7 +173,7 @@ class Webserver : public WebCallbackRegistry {
   const WebserverOptions opts_;
 
   // Lock guarding the path_handlers_ map and footer_html.
-  boost::shared_mutex lock_;
+  std::shared_timed_mutex lock_;
 
   // Map of path to a PathHandler containing a list of handlers for that
   // path. More than one handler may register itself with a path so that many

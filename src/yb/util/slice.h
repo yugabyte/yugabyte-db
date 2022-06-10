@@ -37,6 +37,7 @@
 #define YB_UTIL_SLICE_H_
 
 #include <string>
+#include <string_view>
 
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/stringpiece.h"
@@ -176,6 +177,8 @@ class Slice {
 
   void CopyToBuffer(std::string* buffer) const;
 
+  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
+
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
 
@@ -304,7 +307,13 @@ struct SliceParts {
   size_t SumSizes() const;
 
   // Copy content of all slice to specified buffer.
-  void CopyAllTo(void* out) const;
+  void* CopyAllTo(void* out) const {
+    return CopyAllTo(static_cast<char*>(out));
+  }
+
+  char* CopyAllTo(char* out) const;
+
+  Slice TheOnlyPart() const;
 
   const Slice* parts;
   int num_parts;
@@ -369,6 +378,22 @@ inline void CopyToBuffer(const Slice& source, std::string* dest) {
   // build, so we have to use assign(const char*, size_t) to preserve buffer capacity and avoid
   // unnecessary memory reallocations.
   source.CopyToBuffer(dest);
+}
+
+inline bool operator<(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) < 0;
+}
+
+inline bool operator<=(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) <= 0;
+}
+
+inline bool operator>(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) > 0;
+}
+
+inline bool operator>=(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) >= 0;
 }
 
 }  // namespace yb

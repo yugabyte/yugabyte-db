@@ -196,6 +196,9 @@ IoService& Scheduler::io_service() {
   return impl_->io_service();
 }
 
+ScheduledTaskTracker::ScheduledTaskTracker(Scheduler* scheduler)
+    : scheduler_(DCHECK_NOTNULL(scheduler)) {}
+
 void ScheduledTaskTracker::Abort() {
   auto last_scheduled_task_id = last_scheduled_task_id_.load(std::memory_order_acquire);
   if (last_scheduled_task_id != rpc::kInvalidTaskId) {

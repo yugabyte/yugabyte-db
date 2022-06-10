@@ -1,36 +1,33 @@
 .add-tables-to-cluster {
   .info-search {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    margin-bottom: 20px;
     .info {
       font-weight: bold;
+      margin-bottom: 20px;
     }
   }
+
   .replication-info {
     background: #c7e9c8;
     padding: 3px 5px;
     margin-top: 20px;
     margin-bottom: 10px;
   }
-  .added-to-replication {
-    background-color: aquamarine;
-    &:last-child {
-      td {
-        padding-bottom: 11px !important;
-      }
-    }
-  }
-  .removed-from-replication {
-    background-color: #e4a9ac;
-    &:last-child {
-      td {
-        padding-bottom: 11px !important;
-      }
-    }
-  }
+
   .add-to-table-container {
     overflow-y: auto;
+    border: 1px solid #dde1e6 !important;
+    border-radius: 8px;
+    padding: 20px 10px;
+  }
+}
+
+.alertMsg {
+  * {
+    margin-right: 5px;
+  }
+
+  a {
+    text-decoration: underline;
+    color: #fff;
   }
 }

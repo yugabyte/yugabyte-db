@@ -74,7 +74,7 @@ export default class TopNavBar extends Component {
                   to={'/profile'}
                   disabled={isDisabled(currentCustomer.data.features, 'main.profile')}
                 >
-                  <i className="fa fa-user fa-fw"></i>Profile
+                  <i className="fa fa-user fa-fw"></i>User Profile
                 </YBMenuItem>
               )}
               {isNotHidden(currentCustomer.data.features, 'main.logs') && (

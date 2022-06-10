@@ -18,6 +18,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
@@ -101,7 +102,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       String status,
       double percentComplete) {
     ObjectNode responseJson = Json.newObject();
-    UUID taskUUID =
+    CustomerTask task =
         createTaskWithStatusAndResponse(
             targetUUID,
             targetType,
@@ -111,11 +112,12 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             status,
             percentComplete,
             responseJson);
-    when(mockCommissioner.mayGetStatus(taskUUID)).thenReturn(Optional.of(responseJson));
-    return taskUUID;
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
+    when(mockCommissioner.buildTaskStatus(task, taskInfo)).thenReturn(Optional.of(responseJson));
+    return task.getTaskUUID();
   }
 
-  private UUID createTaskWithStatusAndResponse(
+  private CustomerTask createTaskWithStatusAndResponse(
       UUID targetUUID,
       CustomerTask.TargetType targetType,
       CustomerTask.TaskType taskType,
@@ -136,7 +138,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         responseJson);
   }
 
-  private UUID createTaskWithStatusAndResponse(
+  private CustomerTask createTaskWithStatusAndResponse(
       UUID targetUUID,
       CustomerTask.TargetType targetType,
       CustomerTask.TaskType taskType,
@@ -163,6 +165,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     responseJson.put("targetUUID", targetUUID.toString());
     responseJson.put("type", taskType.name());
     responseJson.put("typeName", taskType.getFriendlyName());
+    responseJson.put("abortable", false);
+    responseJson.put("retryable", false);
     if (percentComplete == 100.0) {
       // Sleep 3 seconds so that the completed time is greater than
       // creation time.
@@ -173,7 +177,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         // Do nothing
       }
     }
-    return taskUUID;
+    return task;
   }
 
   private UUID createSubTask(
@@ -572,7 +576,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testTaskStatusWithValidUUID() {
     String authToken = user.createAuthToken();
     ObjectNode responseJson = Json.newObject();
-    UUID taskUUID =
+    CustomerTask task =
         createTaskWithStatusAndResponse(
             universe.universeUUID,
             CustomerTask.TargetType.Universe,
@@ -582,6 +586,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             "Success",
             100.0,
             responseJson);
+    UUID taskUUID = task.getTaskUUID();
     createSubTaskWithResponse(
         taskUUID, 0, TaskType.AnsibleSetupServer, TaskInfo.State.Success, responseJson);
     when(mockCommissioner.getStatusOrBadRequest(taskUUID)).thenReturn(responseJson);
@@ -648,18 +653,17 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
   public void testCustomTaskTypeName() {
     String authToken = user.createAuthToken();
     ObjectNode responseJson = Json.newObject();
-    UUID taskUUID =
-        createTaskWithStatusAndResponse(
-            universe.universeUUID,
-            CustomerTask.TargetType.Universe,
-            TlsToggle,
-            TaskType.TlsToggle,
-            "Foo",
-            "Success",
-            99.0,
-            "TLS Toggle ON",
-            responseJson);
-    when(mockCommissioner.mayGetStatus(taskUUID)).thenReturn(Optional.of(responseJson));
+    createTaskWithStatusAndResponse(
+        universe.universeUUID,
+        CustomerTask.TargetType.Universe,
+        TlsToggle,
+        TaskType.TlsToggle,
+        "Foo",
+        "Success",
+        99.0,
+        "TLS Toggle ON",
+        responseJson);
+    when(mockCommissioner.buildTaskStatus(any(), any())).thenReturn(Optional.of(responseJson));
     Result result =
         FakeApiHelper.doRequestWithAuthToken(
             "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);

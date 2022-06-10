@@ -14,7 +14,6 @@
 #ifndef YB_MASTER_YQL_KEYSPACES_VTABLE_H
 #define YB_MASTER_YQL_KEYSPACES_VTABLE_H
 
-#include "yb/master/master.h"
 #include "yb/master/yql_virtual_table.h"
 
 namespace yb {

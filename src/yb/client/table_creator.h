@@ -14,9 +14,19 @@
 #ifndef YB_CLIENT_TABLE_CREATOR_H
 #define YB_CLIENT_TABLE_CREATOR_H
 
-#include "yb/client/table.h"
+#include <boost/optional/optional.hpp>
 
-#include "yb/master/master.pb.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/constants.h"
+#include "yb/common/common_fwd.h"
+
+#include "yb/gutil/macros.h"
+
+#include "yb/master/master_fwd.h"
+
+#include "yb/util/monotime.h"
 
 namespace yb {
 struct TransactionMetadata;
@@ -49,15 +59,20 @@ class YBTableCreator {
   // will calculate this value (num_shards_per_tserver * num_of_tservers).
   YBTableCreator& num_tablets(int32_t count);
 
-  // Whether this table should be colocated. Will be ignored by catalog manager if the database is
-  // not colocated.
-  YBTableCreator& colocated(const bool colocated);
+  // Whether this table should be colocated due to being a part of colocated database.
+  // Will be ignored by catalog manager if the database is not colocated.
+  YBTableCreator& is_colocated_via_database(bool is_colocated_via_database);
 
   // Tablegroup ID - will be ignored by catalog manager if the table is not in a tablegroup.
   YBTableCreator& tablegroup_id(const std::string& tablegroup_id);
 
-  // Tablespace ID.
+  YBTableCreator& colocation_id(ColocationId colocation_id);
+
   YBTableCreator& tablespace_id(const std::string& tablespace_id);
+
+  YBTableCreator& is_matview(bool is_matview);
+
+  YBTableCreator& matview_pg_table_id(const std::string& matview_pg_table_id);
 
   // Sets the schema with which to create the table. Must remain valid for
   // the lifetime of the builder. Required.
@@ -126,7 +141,7 @@ class YBTableCreator {
 
   // Return index_info for caller to fill index information.
   IndexInfoPB* mutable_index_info() {
-    return &index_info_;
+    return index_info_.get();
   }
 
   // Set the timeout for the operation. This includes any waiting
@@ -148,7 +163,7 @@ class YBTableCreator {
   // The return value may indicate an error in the create table operation,
   // or a misuse of the builder; in the latter case, only the last error is
   // returned.
-  CHECKED_STATUS Create();
+  Status Create();
 
   Result<int> NumTabletsForUserTable();
 
@@ -175,18 +190,17 @@ class YBTableCreator {
 
   const YBSchema* schema_ = nullptr;
 
-  PartitionSchemaPB partition_schema_;
+  std::unique_ptr<PartitionSchemaPB> partition_schema_;
 
   std::vector<Partition> partitions_;
 
   int num_replicas_ = 0;
 
-  master::ReplicationInfoPB replication_info_;
-  bool has_replication_info_ = false;
+  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
 
   // When creating index, proxy server construct index_info_, and master server will write it to
   // the data-table being indexed.
-  IndexInfoPB index_info_;
+  std::unique_ptr<IndexInfoPB> index_info_;
 
   bool skip_index_backfill_ = false;
 
@@ -195,15 +209,22 @@ class YBTableCreator {
   MonoDelta timeout_;
   bool wait_ = true;
 
-  bool colocated_ = true;
-
-  const TransactionMetadata * txn_ = nullptr;
+  bool is_colocated_via_database_ = true;
 
   // The tablegroup id to assign (if a table is in a tablegroup).
   std::string tablegroup_id_;
 
+  // Colocation ID to distinguish a table within a colocation group.
+  ColocationId colocation_id_ = kColocationIdNotSet;
+
   // The id of the tablespace to which this table is to be associated with.
   std::string tablespace_id_;
+
+  boost::optional<bool> is_matview_;
+
+  std::string matview_pg_table_id_;
+
+  const TransactionMetadata* txn_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableCreator);
 };

@@ -2,6 +2,7 @@
 package com.yugabyte.yw.models;
 
 import static com.yugabyte.yw.common.ModelFactory.createAlertConfiguration;
+import static com.yugabyte.yw.common.TestUtils.replaceFirstChar;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -362,6 +363,11 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.UNIVERSE_NAME.labelName(),
             definition.getLabelValue(KnownAlertLabels.UNIVERSE_NAME));
+    AlertLabel nodePrefixLabel =
+        new AlertLabel(
+            alert,
+            KnownAlertLabels.NODE_PREFIX.labelName(),
+            definition.getLabelValue(KnownAlertLabels.NODE_PREFIX));
     AlertLabel targetUuidLabel =
         new AlertLabel(
             alert,
@@ -392,6 +398,8 @@ public class AlertTest extends FakeDBApplication {
             alert,
             KnownAlertLabels.SEVERITY.labelName(),
             AlertConfiguration.Severity.SEVERE.name());
+    AlertLabel expressionLabel =
+        new AlertLabel(alert, KnownAlertLabels.ALERT_EXPRESSION.labelName(), "query > 1");
     AlertLabel thresholdLabel = new AlertLabel(alert, KnownAlertLabels.THRESHOLD.labelName(), "1");
     AlertLabel definitionUuidLabel =
         new AlertLabel(
@@ -413,6 +421,7 @@ public class AlertTest extends FakeDBApplication {
             customerUuidLabel,
             universeUuidLabel,
             universeNameLabel,
+            nodePrefixLabel,
             targetUuidLabel,
             targetNameLabel,
             targetTypeLabel,
@@ -421,7 +430,8 @@ public class AlertTest extends FakeDBApplication {
             severityLabel,
             thresholdLabel,
             definitionUuidLabel,
-            definitionNameLabel));
+            definitionNameLabel,
+            expressionLabel));
   }
 
   @Test
@@ -451,11 +461,5 @@ public class AlertTest extends FakeDBApplication {
             .build();
     list = alertService.list(filter);
     assertThat(list, containsInAnyOrder(alert1, alert3));
-  }
-
-  private UUID replaceFirstChar(UUID uuid, char firstChar) {
-    char[] chars = uuid.toString().toCharArray();
-    chars[0] = firstChar;
-    return UUID.fromString(new String(chars));
   }
 }

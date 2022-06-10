@@ -79,12 +79,12 @@ get_ephemeral_drives() {
   declare -i exit_code=0
 
   # Take into account xvdb or sdb
-  root_drive=$(df | awk '$6 == "/" {print $1}')
+  root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
 
-  if [[ "$root_drive" == "/dev/xvda1" ]]; then
+  if [[ "$root_drive" =~ .*xvd.* ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" =~ ^/dev/nvme.* ]]; then
+  elif [[ "$root_drive" =~ .*nvme.* ]]; then
     echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='nvme'
   else
@@ -147,7 +147,7 @@ get_ephemeral_drives() {
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
     # Also check to make sure we don't try to mount on root volume
-    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "$root_drive"; then
+    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
       set +e
       # NOTE: This does not seem to return the actual file system
@@ -176,16 +176,31 @@ get_ephemeral_drives() {
       mkdir -p "$mount_path"
       chmod 777 "$mount_path"
 
+      device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
+      echo "device uuid = $device_uuid"
+
       if grep -q "#$mount_path" /etc/fstab; then
         echo "Entry for $mount_path in fstab already exists."
+        if egrep -q "^$device_path .*" /etc/fstab; then
+          echo "Device $device_path is mounted not using UUID, need to rewrite"
+          sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
+        fi
       else
         echo "Adding entry for $mount_path to fstab..."
         echo "#$mount_path" >> /etc/fstab
-        echo "$device_path $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
-              >> /etc/fstab
+        # Mounting using UUID
+        echo "UUID=$device_uuid $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
+                        >> /etc/fstab
       fi
-
-      if mount | egrep -q "^$device_path on $mount_path "; then
+      echo "checking actual path"
+      already_mounted=false
+      # Sometimes link does not exist at the time of checking
+      if test -e "/dev/disk/by-uuid/$device_uuid"; then
+        actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
+        echo "actual_path is $actual_path"
+        mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
+      fi
+      if $already_mounted; then
         echo "$device_path is already mounted on $mount_path"
       else
         echo "Mounting $device_path on $mount_path"

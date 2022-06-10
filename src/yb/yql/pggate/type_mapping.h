@@ -16,10 +16,12 @@
 #ifndef YB_YQL_PGGATE_TYPE_MAPPING_H
 #define YB_YQL_PGGATE_TYPE_MAPPING_H
 
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
-
-#include "yb/util/status.h"
 #include "yb/common/ybc-internal.h"
+#include "yb/common/ybc_util.h"
+
+#include "yb/util/status_fwd.h"
+
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {

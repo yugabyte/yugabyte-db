@@ -33,18 +33,20 @@
 #include "yb/tablet/operations/operation.h"
 
 #include "yb/consensus/consensus_round.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/tserver_error.h"
 
+#include "yb/util/async_util.h"
+#include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/trace.h"
 
 namespace yb {
 namespace tablet {
 
-using consensus::DriverType;
 using tserver::TabletServerError;
 using tserver::TabletServerErrorPB;
 
@@ -63,10 +65,10 @@ std::string Operation::ToString() const {
 }
 
 
-Status Operation::Replicated(int64_t leader_term) {
+Status Operation::Replicated(int64_t leader_term, WasPending was_pending) {
   Status complete_status = Status::OK();
   RETURN_NOT_OK(DoReplicated(leader_term, &complete_status));
-  Replicated();
+  Replicated(was_pending);
   Release();
   CompleteWithStatus(complete_status);
   return Status::OK();
@@ -150,12 +152,13 @@ void Operation::Aborted(bool was_pending) {
   }
 }
 
-void Operation::Replicated() {
+void Operation::Replicated(WasPending was_pending) {
   if (use_mvcc()) {
     tablet()->mvcc_manager()->Replicated(hybrid_time(), op_id());
   }
-
-  RemovedFromPending();
+  if (was_pending) {
+    RemovedFromPending();
+  }
 }
 
 void Operation::Release() {
@@ -164,6 +167,22 @@ void Operation::Release() {
 void ExclusiveSchemaOperationBase::ReleasePermitToken() {
   permit_token_.Reset();
   TRACE("Released permit token");
+}
+
+OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
+    std::weak_ptr<Synchronizer> synchronizer) {
+  return [synchronizer = std::move(synchronizer)](const Status& status) {
+    auto shared_synchronizer = synchronizer.lock();
+    if (shared_synchronizer) {
+      shared_synchronizer->StatusCB(status);
+    }
+  };
+}
+
+consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type) {
+  auto result = std::make_shared<consensus::ReplicateMsg>();
+  result->set_op_type(static_cast<consensus::OperationType>(op_type));
+  return result;
 }
 
 }  // namespace tablet

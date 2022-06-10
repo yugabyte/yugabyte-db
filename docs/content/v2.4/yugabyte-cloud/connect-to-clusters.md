@@ -3,7 +3,7 @@ title: Connect clients to Yugabyte Cloud clusters
 headerTitle: Connect to Yugabyte Cloud clusters
 linkTitle: Connect to clusters
 description: Connect to clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.
-beta: /latest/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   v2.4:
     identifier: connect-to-clusters

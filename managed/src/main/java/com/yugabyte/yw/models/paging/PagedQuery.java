@@ -26,9 +26,9 @@ public abstract class PagedQuery<F, S extends PagedQuery.SortByIF> {
 
   @Constraints.Required() SortDirection direction;
 
-  @Constraints.Required() int offset;
+  @Constraints.Required() int offset = 0;
 
-  @Constraints.Required() int limit;
+  @Constraints.Required() int limit = 10;
 
   @Constraints.Required() boolean needTotalCount;
 

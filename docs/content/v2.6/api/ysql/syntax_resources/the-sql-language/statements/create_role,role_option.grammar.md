@@ -1,4 +1,4 @@
-```
+```ebnf
 create_role ::= CREATE ROLE role_name 
                 [ [ WITH ] role_option [ , ... ] ]
 

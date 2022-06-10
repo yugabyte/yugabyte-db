@@ -174,8 +174,6 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverse(false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
-    ShellResponse response = new ShellResponse();
-    when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -231,8 +229,6 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
-    ShellResponse response = new ShellResponse();
-    when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
 
     ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor.forClass(String.class);
@@ -290,9 +286,6 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     az2.updateConfig(config2);
     az3.updateConfig(config3);
 
-    ShellResponse response = new ShellResponse();
-    when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
-
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
     taskParams.customerUUID = defaultCustomer.uuid;
@@ -323,8 +316,6 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     setupUniverseMultiAZ(/* update in progress */ false, /* skip provider config */ false);
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V2TO3.toString()));
-    ShellResponse response = new ShellResponse();
-    when(mockKubernetesManager.helmDelete(any(), any(), any())).thenReturn(response);
 
     ArgumentCaptor.forClass(UUID.class);
     ArgumentCaptor.forClass(String.class);

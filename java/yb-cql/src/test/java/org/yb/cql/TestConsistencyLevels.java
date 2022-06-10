@@ -28,7 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.ColumnSchema;
-import org.yb.Common;
+import org.yb.CommonTypes;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.YBTestRunner;
@@ -109,7 +109,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
     CreateTableOptions options = new CreateTableOptions();
     options.setNumTablets(1);
-    options.setTableType(Common.TableType.YQL_TABLE_TYPE);
+    options.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
     ybTable = client.createTable(DEFAULT_TEST_KEYSPACE, TABLE_NAME, new Schema(
       Arrays.asList(hash_column.build(), range_column.build(), regular_column.build())), options);
 
@@ -145,7 +145,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
       int webPort = tservers.get(HostAndPort.fromParts(host, replica.getRpcPort())).getWebPort();
       Metrics metrics = new Metrics(host, webPort, "server");
       long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(NUM_OPS, numOps);
       } else {
         assertEquals(0, numOps);

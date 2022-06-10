@@ -24,12 +24,7 @@
 #ifndef YB_UTIL_CODING_CONSTS_H
 #define YB_UTIL_CODING_CONSTS_H
 
-#include <stdint.h>
-#include <string.h>
-#include <string>
 
-#include "yb/util/slice.h"
-#include "yb/util/faststring.h"
 
 namespace yb {
 

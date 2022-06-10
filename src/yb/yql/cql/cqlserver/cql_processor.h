@@ -24,6 +24,7 @@
 
 #include "yb/rpc/service_if.h"
 
+#include "yb/yql/cql/cqlserver/cqlserver_fwd.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
 
@@ -57,11 +58,7 @@ class CQLMetrics : public ql::QLMetrics {
   scoped_refptr<Counter> parsers_created_;
 };
 
-
 // A list of CQL processors and position in the list.
-class CQLProcessor;
-using CQLProcessorList = std::list<std::unique_ptr<CQLProcessor>>;
-using CQLProcessorListPos = CQLProcessorList::iterator;
 
 class CQLProcessor : public ql::QLProcessor {
  public:
@@ -115,7 +112,7 @@ class CQLProcessor : public ql::QLProcessor {
   void PrepareAndSendResponse(const std::unique_ptr<ql::CQLResponse>& response);
   void SendResponse(const ql::CQLResponse& response);
 
-  const unordered_map<string, vector<string>> kSupportedOptions = {
+  const std::unordered_map<std::string, std::vector<std::string>> kSupportedOptions = {
       {ql::CQLMessage::kCQLVersionOption,
           {"3.0.0" /* minimum */, "3.4.2" /* current */}},
       {ql::CQLMessage::kCompressionOption,

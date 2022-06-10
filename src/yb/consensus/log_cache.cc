@@ -37,24 +37,25 @@
 #include <mutex>
 #include <vector>
 
-
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
-#include "yb/consensus/consensus_util.h"
+#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/human_readable.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/debug-util.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/mem_tracker.h"
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -281,7 +282,7 @@ namespace {
 // Calculate the total byte size that will be used on the wire to replicate this message as part of
 // a consensus update request. This accounts for the length delimiting and tagging of the message.
 int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
-  int msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
+  auto msg_size = google::protobuf::internal::WireFormatLite::LengthDelimitedSize(
     msg.ByteSize());
   msg_size += 1; // for the type tag
   return msg_size;
@@ -289,14 +290,13 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
 
 } // anonymous namespace
 
-Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
-                                        int max_size_bytes) {
+Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
   return ReadOps(after_op_index, 0 /* to_op_index */, max_size_bytes);
 }
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                         int64_t to_op_index,
-                                        int max_size_bytes,
+                                        size_t max_size_bytes,
                                         CoarseTimePoint deadline) {
   DCHECK_GE(after_op_index, 0);
 
@@ -304,6 +304,7 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
                                << ", to_op_index: " << to_op_index
                                << ", max_size_bytes: " << max_size_bytes;
   ReadOpsResult result;
+  int64_t starting_op_segment_seq_num;
   result.preceding_op = VERIFY_RESULT(LookupOpId(after_op_index));
 
   std::unique_lock<simple_spinlock> l(lock_);
@@ -334,16 +335,28 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         up_to = to_index - 1;
       } else {
         // Read up to the next entry that's in the cache or to_index whichever is lesser.
-        up_to = std::min(iter->first - 1, static_cast<uint64_t>(to_index - 1));
+        up_to = std::min(iter->first - 1, to_index - 1);
       }
 
       l.unlock();
 
       ReplicateMsgs raw_replicate_ptrs;
       RETURN_NOT_OK_PREPEND(
-        log_->GetLogReader()->ReadReplicatesInRange(
-            next_index, up_to, remaining_space, &raw_replicate_ptrs, deadline),
-        Substitute("Failed to read ops $0..$1", next_index, up_to));
+          log_->GetLogReader()->ReadReplicatesInRange(
+              next_index, up_to, remaining_space, &raw_replicate_ptrs, &starting_op_segment_seq_num,
+              &result.header_schema, &(result.header_schema_version), deadline),
+          Substitute("Failed to read ops $0..$1", next_index, up_to));
+
+      if ((starting_op_segment_seq_num != -1) && !result.header_schema.IsInitialized()) {
+        scoped_refptr<log::ReadableLogSegment> segment =
+            log_->GetLogReader()->GetSegmentBySequenceNumber(starting_op_segment_seq_num);
+
+        if (segment != nullptr && segment->header().has_unused_schema()) {
+          result.header_schema.CopyFrom(segment->header().unused_schema());
+          result.header_schema_version = segment->header().unused_schema_version();
+        }
+      }
+
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
       LOG_WITH_PREFIX_UNLOCKED(INFO)
           << "Successfully read " << raw_replicate_ptrs.size() << " ops from disk.";
@@ -358,10 +371,24 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
           break;
         }
         result.messages.push_back(msg);
+        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
+          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          result.header_schema_version = msg->change_metadata_request().schema_version();
+        }
         result.read_from_disk_size += current_message_size;
         next_index++;
       }
     } else {
+      starting_op_segment_seq_num = VERIFY_RESULT(log_->GetLogReader()->LookupHeader(next_index));
+
+      if ((starting_op_segment_seq_num != -1)) {
+        scoped_refptr<log::ReadableLogSegment> segment =
+            log_->GetLogReader()->GetSegmentBySequenceNumber(starting_op_segment_seq_num);
+        if (segment != nullptr && segment->header().has_unused_schema()) {
+          result.header_schema.CopyFrom(segment->header().unused_schema());
+          result.header_schema_version = segment->header().unused_schema_version();
+        }
+      }
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {
         if (to_op_index > 0 && next_index > to_op_index) {
@@ -380,11 +407,15 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
         }
 
         result.messages.push_back(msg);
+        if (msg->op_type() == consensus::OperationType::CHANGE_METADATA_OP) {
+          result.header_schema.CopyFrom(msg->change_metadata_request().schema());
+          result.header_schema_version = msg->change_metadata_request().schema_version();
+        }
         next_index++;
       }
     }
   }
-  result.have_more_messages = remaining_space < 0;
+  result.have_more_messages = HaveMoreMessages(remaining_space < 0);
   return result;
 }
 
@@ -543,7 +574,7 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
 
   std::lock_guard<simple_spinlock> lock(lock_);
 
-  int mem_required = 0;
+  size_t mem_required = 0;
   for (const auto& op_id : op_ids) {
     auto it = cache_.find(op_id.index);
     if (it != cache_.end() && it->second.msg->id().term() == op_id.term) {
@@ -558,8 +589,8 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
 
   // Try to consume the memory. If it can't be consumed, we may need to evict.
   if (!tracker_->TryConsume(mem_required)) {
-    int spare = tracker_->SpareCapacity();
-    int need_to_free = mem_required - spare;
+    auto spare = tracker_->SpareCapacity();
+    auto need_to_free = mem_required - spare;
     VLOG_WITH_PREFIX_UNLOCKED(1)
         << "Memory limit would be exceeded trying to append "
         << HumanReadableNumBytes::ToString(mem_required)
@@ -573,6 +604,10 @@ void LogCache::TrackOperationsMemory(const OpIds& op_ids) {
     // ops from another tablet than evict recent ops from this one.
     EvictSomeUnlocked(min_pinned_op_index_, need_to_free);
   }
+}
+
+int64_t LogCache::num_cached_ops() const {
+  return metrics_.num_ops->value();
 }
 
 #define INSTANTIATE_METRIC(x, ...) \

@@ -42,6 +42,7 @@
 #include "yb/tablet/operations/write_operation.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
@@ -131,20 +132,20 @@ class OperationTrackerTest : public YBTest {
 };
 
 TEST_F(OperationTrackerTest, TestGetPending) {
-  ASSERT_EQ(0, tracker_.GetNumPendingForTests());
+  ASSERT_EQ(0, tracker_.TEST_GetNumPending());
   vector<scoped_refptr<OperationDriver> > drivers;
   ASSERT_OK(AddDrivers(1, &drivers));
   scoped_refptr<OperationDriver> driver = drivers[0];
-  ASSERT_EQ(1, tracker_.GetNumPendingForTests());
+  ASSERT_EQ(1, tracker_.TEST_GetNumPending());
 
   auto pending_operations = tracker_.GetPendingOperations();
   ASSERT_EQ(1, pending_operations.size());
   ASSERT_EQ(driver.get(), pending_operations.front().get());
 
   // And mark the operation as failed, which will cause it to unregister itself.
-  driver->Abort(STATUS(Aborted, ""));
+  driver->TEST_Abort(STATUS(Aborted, ""));
 
-  ASSERT_EQ(0, tracker_.GetNumPendingForTests());
+  ASSERT_EQ(0, tracker_.TEST_GetNumPending());
 }
 
 // Thread which starts a bunch of operations and later stops them all.
@@ -164,7 +165,7 @@ void OperationTrackerTest::RunOperationsThread(CountDownLatch* finish_latch) {
   // Finish all the operations
   for (const scoped_refptr<OperationDriver>& driver : drivers) {
     // And mark the operation as failed, which will cause it to unregister itself.
-    driver->Abort(STATUS(Aborted, ""));
+    driver->TEST_Abort(STATUS(Aborted, ""));
   }
 }
 
@@ -177,7 +178,7 @@ TEST_F(OperationTrackerTest, TestWaitForAllToFinish) {
                           &thr));
 
   // Wait for the txns to start.
-  while (tracker_.GetNumPendingForTests() == 0) {
+  while (tracker_.TEST_GetNumPending() == 0) {
     SleepFor(MonoDelta::FromMilliseconds(1));
   }
 
@@ -186,7 +187,7 @@ TEST_F(OperationTrackerTest, TestWaitForAllToFinish) {
   tracker_.WaitForAllToFinish();
 
   CHECK_OK(ThreadJoiner(thr.get()).Join());
-  ASSERT_EQ(tracker_.GetNumPendingForTests(), 0);
+  ASSERT_EQ(tracker_.TEST_GetNumPending(), 0);
 }
 
 static void CheckMetrics(const scoped_refptr<MetricEntity>& entity,
@@ -212,11 +213,11 @@ TEST_F(OperationTrackerTest, TestMetrics) {
   ASSERT_OK(AddDrivers(3, &drivers));
   ASSERT_NO_FATALS(CheckMetrics(entity_, 3, 0, 0));
 
-  drivers[0]->Abort(STATUS(Aborted, ""));
+  drivers[0]->TEST_Abort(STATUS(Aborted, ""));
   ASSERT_NO_FATALS(CheckMetrics(entity_, 2, 0, 0));
 
-  drivers[1]->Abort(STATUS(Aborted, ""));
-  drivers[2]->Abort(STATUS(Aborted, ""));
+  drivers[1]->TEST_Abort(STATUS(Aborted, ""));
+  drivers[2]->TEST_Abort(STATUS(Aborted, ""));
   ASSERT_NO_FATALS(CheckMetrics(entity_, 0, 0, 0));
 }
 
@@ -259,7 +260,7 @@ TEST_F(OperationTrackerTest, TestTooManyOperations) {
   ASSERT_NO_FATALS(CheckMemTracker(t));
 
   // If we abort one operation, we should be able to add one more.
-  drivers.back()->Abort(STATUS(Aborted, ""));
+  drivers.back()->TEST_Abort(STATUS(Aborted, ""));
   drivers.pop_back();
   ASSERT_NO_FATALS(CheckMemTracker(t));
   ASSERT_OK(AddDrivers(1, &drivers));
@@ -267,7 +268,7 @@ TEST_F(OperationTrackerTest, TestTooManyOperations) {
 
   // Clean up.
   for (const scoped_refptr<OperationDriver>& driver : drivers) {
-    driver->Abort(STATUS(Aborted, ""));
+    driver->TEST_Abort(STATUS(Aborted, ""));
   }
 }
 

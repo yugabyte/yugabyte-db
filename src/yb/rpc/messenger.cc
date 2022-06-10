@@ -37,6 +37,7 @@
 #include <list>
 #include <mutex>
 #include <set>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 
@@ -49,7 +50,7 @@
 
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"
-#include "yb/rpc/proxy.h"
+#include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
@@ -57,15 +58,19 @@
 #include "yb/rpc/tcp_stream.h"
 #include "yb/rpc/yb_rpc.h"
 
+#include "yb/util/debug-util.h"
 #include "yb/util/errno.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/logging.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/socket.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 
@@ -73,8 +78,9 @@ using namespace std::literals;
 using namespace std::placeholders;
 using namespace yb::size_literals;
 
-using std::string;
+using std::shared_lock;
 using std::shared_ptr;
+using std::string;
 using strings::Substitute;
 
 DECLARE_int32(num_connections_to_server);
@@ -111,6 +117,9 @@ MessengerBuilder::MessengerBuilder(std::string name)
       num_connections_to_server_(GetAtomicFlag(&FLAGS_num_connections_to_server)) {
   AddStreamFactory(TcpStream::StaticProtocol(), TcpStream::Factory());
 }
+
+MessengerBuilder::~MessengerBuilder() = default;
+MessengerBuilder::MessengerBuilder(const MessengerBuilder&) = default;
 
 MessengerBuilder& MessengerBuilder::set_connection_keepalive_time(
     CoarseMonoClock::Duration keepalive) {
@@ -398,9 +407,7 @@ rpc::ThreadPool& Messenger::ThreadPool(ServicePriority priority) {
 Status Messenger::RegisterService(
     const std::string& service_name, const scoped_refptr<RpcService>& service) {
   DCHECK(service);
-  if (!rpc_services_.emplace(service_name, service).second) {
-    return STATUS_FORMAT(IllegalState, "Duplicate service: $0", service_name);
-  }
+  rpc_services_.emplace(service_name, service);
   return Status::OK();
 }
 
@@ -470,8 +477,7 @@ void Messenger::Handle(InboundCallPtr call, Queue queue) {
   }
   auto it = rpc_endpoints_.find(call->serialized_remote_method());
   if (it == rpc_endpoints_.end()) {
-    auto remote_method = serialization::ParseRemoteMethod(
-        call->serialized_remote_method());
+    auto remote_method = ParseRemoteMethod(call->serialized_remote_method());
     Status s;
     ErrorStatusPB::RpcErrorCodePB error_code = ErrorStatusPB::ERROR_NO_SUCH_SERVICE;
     if (remote_method.ok()) {
@@ -549,7 +555,7 @@ Messenger::Messenger(const MessengerBuilder &bld)
       scheduler_(&io_thread_pool_.io_service()),
       normal_thread_pool_(new rpc::ThreadPool(name_, bld.queue_limit_, bld.workers_limit_)),
       resolver_(new DnsResolver(&io_thread_pool_.io_service())),
-      rpc_metrics_(new RpcMetrics(bld.metric_entity_)),
+      rpc_metrics_(std::make_shared<RpcMetrics>(bld.metric_entity_)),
       num_connections_to_server_(bld.num_connections_to_server_) {
 #ifndef NDEBUG
   creation_stack_trace_.Collect(/* skip_frames */ 1);
@@ -582,8 +588,8 @@ size_t Messenger::max_concurrent_requests() const {
 }
 
 Reactor* Messenger::RemoteToReactor(const Endpoint& remote, uint32_t idx) {
-  uint32_t hashCode = hash_value(remote);
-  int reactor_idx = (hashCode + idx) % reactors_.size();
+  auto hash_code = hash_value(remote);
+  auto reactor_idx = (hash_code + idx) % reactors_.size();
   // This is just a static partitioning; where each connection
   // to a remote is assigned to a particular reactor. We could
   // get a lot fancier with assigning Sockaddrs to Reactors,
@@ -680,6 +686,10 @@ ScheduledTaskId Messenger::ScheduleOnReactor(
   }
 
   return kInvalidTaskId;
+}
+
+scoped_refptr<MetricEntity> Messenger::metric_entity() const {
+  return metric_entity_;
 }
 
 } // namespace rpc

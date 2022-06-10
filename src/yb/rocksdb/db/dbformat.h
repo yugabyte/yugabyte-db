@@ -26,22 +26,23 @@
 
 #pragma once
 
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 
+#include <memory>
 #include <string>
-
-#include "yb/util/logging.h"
-#include "yb/util/result.h"
+#include <unordered_map>
+#include <vector>
 
 #include "yb/rocksdb/comparator.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/filter_policy.h"
-#include "yb/util/slice.h"
+#include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/slice_transform.h"
-#include "yb/rocksdb/table.h"
+#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/coding.h"
-#include "yb/rocksdb/util/logging.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 
@@ -107,9 +108,12 @@ inline size_t InternalKeyEncodingLength(const ParsedInternalKey& key) {
 // Pack a sequence number and a ValueType into a uint64_t
 extern uint64_t PackSequenceAndType(uint64_t seq, ValueType t);
 
-// Given the result of PackSequenceAndType, store the sequence number in *seq
-// and the ValueType in *t.
-extern void UnPackSequenceAndType(uint64_t packed, uint64_t* seq, ValueType* t);
+struct SequenceAndType {
+  SequenceNumber sequence;
+  ValueType type;
+};
+
+SequenceAndType UnPackSequenceAndTypeFromEnd(const void* end);
 
 // Append the serialization of "key" to *result.
 extern void AppendInternalKey(std::string* result,
@@ -125,7 +129,7 @@ extern bool ParseInternalKey(const Slice& internal_key,
 // Returns the user key portion of an internal key.
 inline Slice ExtractUserKey(const Slice& internal_key) {
   assert(internal_key.size() >= kLastInternalComponentSize);
-  return Slice(internal_key.data(), internal_key.size() - kLastInternalComponentSize);
+  return internal_key.WithoutSuffix(kLastInternalComponentSize);
 }
 
 inline ValueType ExtractValueType(const Slice& internal_key) {
@@ -221,23 +225,17 @@ class InternalKey {
   static std::string DebugString(const std::string& rep, bool hex = false);
  private:
   explicit InternalKey(const Slice& slice)
-      : rep_(slice.ToBuffer()) {
+      : rep_(slice.cdata(), slice.size()) {
   }
 };
 
 class BoundaryValuesExtractor {
  public:
-  virtual Status Decode(UserBoundaryTag tag, Slice data, UserBoundaryValuePtr* value) = 0;
-  virtual Status Extract(Slice user_key, Slice value, UserBoundaryValues* values) = 0;
+  virtual Status Extract(Slice user_key, UserBoundaryValueRefs* values) = 0;
   virtual UserFrontierPtr CreateFrontier() = 0;
  protected:
   ~BoundaryValuesExtractor() {}
 };
-
-yb::Result<FileBoundaryValues<InternalKey>> MakeFileBoundaryValues(
-    BoundaryValuesExtractor* extractor,
-    const Slice& key,
-    const Slice& value);
 
 // Create FileBoundaryValues from specified user_key, seqno, value_type.
 inline FileBoundaryValues<InternalKey> MakeFileBoundaryValues(

@@ -262,6 +262,7 @@ Boot_CreateStmt:
 						boot_reldesc = heap_create($2,
 												   PG_CATALOG_NAMESPACE,
 												   shared_relation ? GLOBALTABLESPACE_OID : 0,
+												   InvalidOid, /* tablegroup */
 												   $3,
 												   InvalidOid,
 												   tupdesc,
@@ -279,6 +280,7 @@ Boot_CreateStmt:
 						id = heap_create_with_catalog($2,
 													  PG_CATALOG_NAMESPACE,
 													  shared_relation ? GLOBALTABLESPACE_OID : 0,
+													  InvalidOid, /* tablegroup */
 													  $3,
 													  $7,
 													  InvalidOid,

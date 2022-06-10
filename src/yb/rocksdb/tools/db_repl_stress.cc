@@ -37,6 +37,8 @@ int main() {
 #include "yb/rocksdb/types.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/status_log.h"
+
 // Run a thread to perform Put's.
 // Another thread uses GetUpdatesSince API to keep getting the updates.
 // options :
@@ -71,7 +73,7 @@ static void DataPumpThreadBody(void* arg) {
 struct ReplicationThread {
   std::atomic<bool> stop;
   DB* db;
-  volatile size_t no_read;
+  std::atomic<size_t> no_read;
 };
 
 static void ReplicationThreadBody(void* arg) {
@@ -152,7 +154,7 @@ int db_repl_stress(int argc, const char** argv) {
         stderr,
         "No. of Record's written and read not same\nRead : %" ROCKSDB_PRIszt
             " Written : %" ROCKSDB_PRIszt "\n",
-        replThread.no_read, dataPump.no_records);
+        replThread.no_read.load(), dataPump.no_records);
     exit(1);
   }
   fprintf(stderr, "Successful!\n");

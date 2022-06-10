@@ -20,12 +20,6 @@
 
 #pragma once
 
-#include "yb/rocksdb/db/db_impl.h"
-#include "yb/rocksdb/db/managed_iterator.h"
-#include "yb/rocksdb/db/write_callback.h"
-#include "yb/rocksdb/options.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/util/xfunc.h"
 
 namespace rocksdb {
 

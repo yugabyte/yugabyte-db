@@ -93,7 +93,7 @@ yb-admin \
 
 * master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *tablet_id*: The identifier (ID) of the tablet.
-* ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
+* ADD_SERVER | REMOVE_SERVER: Subcommand to add or remove the server.
 * *peer_uuid*: The UUID of the tablet server hosting the peer tablet.
 * PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
@@ -104,7 +104,7 @@ If you need to take a node down temporarily, but intend to bring it back up, you
 * If the node is down for less than 15 minutes, it will catch up through RPC calls when it comes back online.
 * If the node is offline longer than 15 minutes, then it will go through Remote Bootstrap, where the current leader will forward all relevant files to catch up.
 
-If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOTE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
+If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOVE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
 
 #### change_master_config
 
@@ -118,15 +118,15 @@ yb-admin \
     change_master_config \
     [ ADD_SERVER|REMOVE_SERVER ] \
     <ip_addr> <port> \
-    [ 0 | 1 ]
+    [<uuid>]
 ```
 
-* master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master server.
   * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
-* `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
+* *uuid*: The UUID for the server that is being added/removed.
 
 #### list_tablet_servers
 
@@ -759,7 +759,7 @@ yb-admin \
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * _snapshot_id_: The identifier (ID) for the snapshot.
-* *file_name*: The name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
+* *file_name*: The name of the file to contain the metadata. Recommended file extension is `.snapshot`.
 
 **Example**
 

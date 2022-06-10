@@ -16,13 +16,17 @@
 
 #include <memory>
 
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
-#include "yb/rpc/rpc_fwd.h"
-#include "yb/master/master.pb.h"
 
+#include "yb/master/master_client.fwd.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/status.h"
 
 // This file contains utility functions that can be shared between client and master code.
 
@@ -38,7 +42,7 @@ namespace master {
 
 // Given a hostport, return the master server information protobuf.
 // Does not apply to tablet server.
-CHECKED_STATUS GetMasterEntryForHosts(
+Status GetMasterEntryForHosts(
     rpc::ProxyCache* proxy_cache,
     const std::vector<HostPort>& hostports,
     MonoDelta timeout,
@@ -71,6 +75,35 @@ Result<bool> NamespaceMatchesIdentifier(
 Result<bool> TableMatchesIdentifier(const TableId& id,
                                     const SysTablesEntryPB& table,
                                     const TableIdentifierPB& table_identifier);
+
+Status SetupError(MasterErrorPB* error, const Status& s);
+
+// TODO(alex): Merge with stuff in entity_ids?
+
+// Is this a parent dummy table ID created for a colocation group (database/tablegroup)?
+bool IsColocationParentTableId(const TableId& table_id);
+
+// Is this a parent dummy table ID created for a colocated database?
+bool IsColocatedDbParentTableId(const TableId& table_id);
+
+TableId GetColocatedDbParentTableId(const TableId& table_id);
+
+TableName GetColocatedDbParentTableName(const NamespaceId& database_id);
+
+// Is this a parent dummy table ID created for a tablegroup?
+bool IsTablegroupParentTableId(const TableId& table_id);
+
+TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id);
+
+TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id);
+
+TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id);
+
+bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist);
+
+bool IsRunningOn(const ServerRegistrationPB& registration, const HostPortPB& hp);
+
+BlacklistSet ToBlacklistSet(const BlacklistPB& blacklist);
 
 } // namespace master
 } // namespace yb

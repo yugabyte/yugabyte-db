@@ -13,13 +13,19 @@
 
 #include "yb/master/util/yql_vtable_helpers.h"
 
+#include <future>
+
 #include <boost/container/small_vector.hpp>
 
 #include "yb/common/ql_value.h"
 
-#include "yb/util/yb_partition.h"
+#include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/util/net/dns_resolver.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/yb_partition.h"
 
 namespace yb {
 namespace master {
@@ -69,7 +75,7 @@ bool RemoteEndpointMatchesTServer(const TSInformationPB& ts_info,
   return false;
 }
 
-QLValuePB GetReplicationValue(int replication_factor) {
+QLValuePB GetReplicationValue(size_t replication_factor) {
   QLValuePB value_pb;
   QLMapValuePB *map_value = value_pb.mutable_map_value();
 

@@ -6,7 +6,9 @@ import {
   refreshYugaByteReleases,
   refreshYugaByteReleasesResponse,
   getYugaByteReleases,
-  getYugaByteReleasesResponse
+  getYugaByteReleasesResponse,
+  fetchSoftwareVersionsFailure,
+  fetchSoftwareVersionsSuccess
 } from '../../../actions/customers';
 
 const mapDispatchToProps = (dispatch) => {
@@ -19,6 +21,11 @@ const mapDispatchToProps = (dispatch) => {
     getYugaByteReleases: () => {
       dispatch(getYugaByteReleases()).then((response) => {
         dispatch(getYugaByteReleasesResponse(response.payload));
+        if (response.payload.status !== 200) {
+          dispatch(fetchSoftwareVersionsFailure(response.payload));
+        } else {
+          dispatch(fetchSoftwareVersionsSuccess(response.payload));
+        }
       });
     }
   };

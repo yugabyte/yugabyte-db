@@ -25,10 +25,10 @@ export const AddDestinationChannelForm = (props) => {
     <option key={2} value="slack">
       Slack
     </option>,
-    <option key={3} value="pagerDuty">
+    <option key={3} value="pagerduty">
       PagerDuty
     </option>,
-    <option key={4} value="webHook">
+    <option key={4} value="webhook">
       WebHook
     </option>
   ];
@@ -75,13 +75,13 @@ export const AddDestinationChannelForm = (props) => {
           payload['params']['defaultSmtpSettings'] = true;
         }
         break;
-      case 'pagerDuty':
+      case 'pagerduty':
         payload['name'] = values['pagerDuty_name'];
         payload['params']['channelType'] = 'PagerDuty';
         payload['params']['apiKey'] = values.apiKey;
         payload['params']['routingKey'] = values.routingKey;
         break;
-      case 'webHook':
+      case 'webhook':
         payload['name'] = values['webHook_name'];
         payload['params']['channelType'] = 'WebHook';
         payload['params']['webhookUrl'] = values.webhookURL;
@@ -157,7 +157,7 @@ export const AddDestinationChannelForm = (props) => {
 
   const getChannelForm = () => {
     switch (channelType) {
-      case 'pagerDuty':
+      case 'pagerduty':
         return (
           <>
             <Row>
@@ -198,7 +198,7 @@ export const AddDestinationChannelForm = (props) => {
             </Row>
           </>
         );
-      case 'webHook':
+      case 'webhook':
         return (
           <>
             <Row>
@@ -434,8 +434,8 @@ export const AddDestinationChannelForm = (props) => {
   const validationSchema =
     channelType === 'email' ? validationSchemaEmail :
     channelType === 'slack' ? validationSchemaSlack :
-    channelType === 'pagerDuty' ? validationSchemaPagerDuty :
-    channelType === 'webHook' ? validationSchemaWebHook :
+    channelType === 'pagerduty' ? validationSchemaPagerDuty :
+    channelType === 'webhook' ? validationSchemaWebHook :
     null;
   return (
     <YBModalForm
@@ -445,7 +445,7 @@ export const AddDestinationChannelForm = (props) => {
       visible={visible}
       onHide={onModalHide}
       initialValues={props.editValues || {}}
-      submitLabel={props.type === 'edit' ? 'Edit' : 'Create'}
+      submitLabel={props.type === 'edit' ? 'Save' : 'Create'}
       validationSchema={validationSchema}
       onFormSubmit={!isReadOnly ? (values, { setSubmitting }) => {
         const payload = {

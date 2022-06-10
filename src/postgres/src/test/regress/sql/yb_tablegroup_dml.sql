@@ -92,6 +92,29 @@ TRUNCATE TABLE tab_range;
 TRUNCATE TABLE tab_range2;
 SELECT * FROM tab_range2;
 
+-- truncate tablegroup table with no-tablegroup index
+CREATE TABLE tab_truncate (a INT) TABLEGROUP tg_test1;
+CREATE INDEX ON tab_truncate (a) NO TABLEGROUP;
+INSERT INTO tab_truncate VALUES (1);
+TRUNCATE tab_truncate;
+EXPLAIN (costs off)
+SELECT * FROM tab_truncate WHERE a = 1;
+SELECT * FROM tab_truncate WHERE a = 1;
+DROP TABLE tab_truncate;
+-- truncate no-tablegroup table with tablegroup index
+CREATE TABLE tab_truncate1 (a INT);
+CREATE INDEX ON tab_truncate1 (a) TABLEGROUP tg_test1;
+INSERT INTO tab_truncate1 VALUES (1);
+CREATE TABLE tab_truncate2 (a INT) TABLEGROUP tg_test1;
+INSERT INTO tab_truncate2 VALUES (1);
+TRUNCATE tab_truncate1;
+SELECT * FROM tab_truncate1;
+EXPLAIN (costs off)
+SELECT * FROM tab_truncate1 WHERE a = 1;
+SELECT * FROM tab_truncate1 WHERE a = 1;
+SELECT * FROM tab_truncate2;
+DROP TABLE tab_truncate1, tab_truncate2;
+
 -- ALTER TABLE
 CREATE TABLE tab_range_alter (a INT, b INT, PRIMARY KEY (a ASC)) TABLEGROUP tg_test1;
 INSERT INTO tab_range (a) VALUES (0), (1), (2);
@@ -133,7 +156,9 @@ SELECT * FROM tab_range2;
 \di
 
 -- DROP TABLEGROUP
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP tg_test1; -- fail
+\set VERBOSITY default
 DROP TABLEGROUP tg_test2;
 
 -- drop database

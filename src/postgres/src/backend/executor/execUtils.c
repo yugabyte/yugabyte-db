@@ -169,9 +169,9 @@ CreateExecutorState(void)
 
 	/*
 	 * YugaByte-specific fields
-	 * TODO(neil) Rename "es_yb" to "yb_es".  Not sure why they are named this way in the past.
 	 */
-	estate->es_yb_is_single_row_modify_txn = false;
+	estate->yb_es_is_single_row_modify_txn = false;
+	estate->yb_es_is_fk_check_disabled = false;
 	estate->yb_conflict_slot = NULL;
 	/*
 	 * The read hybrid time used for this query. This will be initialized
@@ -184,8 +184,6 @@ CreateExecutorState(void)
 	estate->yb_exec_params.limit_offset = 0;
 	estate->yb_exec_params.limit_use_default = true;
 	estate->yb_exec_params.rowmark = -1;
-	estate->yb_can_batch_updates = false;
-	estate->yb_exec_params.read_from_followers = false;
 	estate->yb_exec_params.is_index_backfill = false;
 	/*
 	 * Pointer to the query read hybrid time. This pointer is passed

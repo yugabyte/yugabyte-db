@@ -33,18 +33,18 @@
 #ifndef YB_UTIL_TEST_UTIL_H
 #define YB_UTIL_TEST_UTIL_H
 
+#include <dirent.h>
+
 #include <atomic>
 #include <string>
-#include <thread>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/test_macros.h" // For convenience
 
 #define ASSERT_EVENTUALLY(expr) do { \
   AssertEventually(expr); \
@@ -150,7 +150,7 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
       smaller_vector = &expected;
     }
 
-    for (int i = smaller_vector->size();
+    for (auto i = smaller_vector->size();
          i < min(smaller_vector->size() + 16, bigger_vector->size());
          ++i) {
       LOG(WARNING) << bigger_vector_desc << "[" << i << "]: " << (*bigger_vector)[i];
@@ -189,7 +189,7 @@ constexpr int kDefaultMaxWaitDelayMs = 2000;
 } // namespace test_util
 
 // Waits for the given condition to be true or until the provided deadline happens.
-CHECKED_STATUS Wait(
+Status Wait(
     const std::function<Result<bool>()>& condition,
     MonoTime deadline,
     const std::string& description,
@@ -197,7 +197,7 @@ CHECKED_STATUS Wait(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-CHECKED_STATUS Wait(
+Status Wait(
     const std::function<Result<bool>()>& condition,
     CoarseTimePoint deadline,
     const std::string& description,
@@ -205,7 +205,7 @@ CHECKED_STATUS Wait(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-CHECKED_STATUS LoggedWait(
+Status LoggedWait(
     const std::function<Result<bool>()>& condition,
     CoarseTimePoint deadline,
     const std::string& description,
@@ -214,7 +214,7 @@ CHECKED_STATUS LoggedWait(
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
 // Waits for the given condition to be true or until the provided timeout has expired.
-CHECKED_STATUS WaitFor(
+Status WaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,
@@ -222,7 +222,7 @@ CHECKED_STATUS WaitFor(
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-CHECKED_STATUS LoggedWaitFor(
+Status LoggedWaitFor(
     const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,
@@ -241,7 +241,26 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
-int CalcNumTablets(int num_tablet_servers);
+int CalcNumTablets(size_t num_tablet_servers);
+
+template<uint32_t limit>
+struct LengthLimitedStringPrinter {
+  explicit LengthLimitedStringPrinter(const std::string& str_)
+      : str(str_) {
+  }
+  const std::string& str;
+};
+
+using Max500CharsPrinter = LengthLimitedStringPrinter<500>;
+
+template<uint32_t limit>
+std::ostream& operator<<(std::ostream& os, const LengthLimitedStringPrinter<limit>& printer) {
+  const auto& s = printer.str;
+  if (s.length() <= limit) {
+    return os << s;
+  }
+  return os.write(s.c_str(), limit) << "... (" << (s.length() - limit) << " more characters)";
+}
 
 class StopOnFailure {
  public:

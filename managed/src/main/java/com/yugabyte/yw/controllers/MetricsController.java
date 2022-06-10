@@ -7,7 +7,6 @@ import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.models.Metric;
-import com.yugabyte.yw.models.MetricLabel;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
@@ -24,7 +23,6 @@ import java.io.OutputStreamWriter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +64,7 @@ public class MetricsController extends Controller {
       // Write runtime metrics
       TextFormat.write004(osw, CollectorRegistry.defaultRegistry.metricFamilySamples());
       // Write persisted metrics
-      TextFormat.write004(osw, Collections.enumeration(getPersistedMetrics()));
+      TextFormat.write004(osw, Collections.enumeration(getPrecalculatedMetrics()));
       // Write Kamon metrics
       osw.write(getKamonMetrics());
 
@@ -97,7 +95,7 @@ public class MetricsController extends Controller {
     return StringUtils.EMPTY;
   }
 
-  private List<Collector.MetricFamilySamples> getPersistedMetrics() {
+  private List<Collector.MetricFamilySamples> getPrecalculatedMetrics() {
     List<MetricFamilySamples> result = new ArrayList<>();
     List<Metric> allMetrics = metricService.list(MetricFilter.builder().expired(false).build());
 
@@ -108,13 +106,17 @@ public class MetricsController extends Controller {
 
     Map<String, PlatformMetrics> platformMetricsMap =
         Stream.of(PlatformMetrics.values())
-            .collect(Collectors.toMap(PlatformMetrics::name, Function.identity()));
+            .collect(Collectors.toMap(PlatformMetrics::getMetricName, Function.identity()));
     for (Map.Entry<String, List<Metric>> metric : metricsByName.entrySet()) {
       String metricName = metric.getKey();
       List<Metric> metrics = metric.getValue();
       PlatformMetrics knownMetric = platformMetricsMap.get(metricName);
-      String help = knownMetric != null ? knownMetric.getHelp() : StringUtils.EMPTY;
-      String unit = knownMetric != null ? knownMetric.getUnitName() : StringUtils.EMPTY;
+      String help = knownMetric != null ? knownMetric.getHelp() : metrics.get(0).getHelp();
+      String unit = knownMetric != null ? knownMetric.getUnitName() : metrics.get(0).getUnit();
+      if (unit == null) {
+        // Prometheus client library expects empty string in case metric has no unit
+        unit = StringUtils.EMPTY;
+      }
       Collector.Type type = metrics.get(0).getType().getPrometheusType();
 
       List<Collector.MetricFamilySamples.Sample> samples =
@@ -125,16 +127,8 @@ public class MetricsController extends Controller {
   }
 
   private Collector.MetricFamilySamples.Sample convert(Metric metric) {
-    List<MetricLabel> metricLabels =
-        metric
-            .getLabels()
-            .stream()
-            .sorted(Comparator.comparing(MetricLabel::getName))
-            .collect(Collectors.toList());
-    List<String> labelNames =
-        metricLabels.stream().map(MetricLabel::getName).collect(Collectors.toList());
-    List<String> labelValues =
-        metricLabels.stream().map(MetricLabel::getValue).collect(Collectors.toList());
+    List<String> labelNames = new ArrayList<>(metric.getLabels().keySet());
+    List<String> labelValues = new ArrayList<>(metric.getLabels().values());
     if (metric.getCustomerUUID() != null) {
       labelNames.add(KnownAlertLabels.CUSTOMER_UUID.labelName());
       labelValues.add(metric.getCustomerUUID().toString());

@@ -11,6 +11,8 @@ package com.yugabyte.yw.forms.filters;
 
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertConfiguration.Severity;
+import com.yugabyte.yw.models.AlertConfigurationTarget;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter.AlertConfigurationFilterBuilder;
 import com.yugabyte.yw.models.filters.AlertConfigurationFilter.DestinationType;
@@ -27,7 +29,9 @@ public class AlertConfigurationApiFilter {
   private String name;
   private Boolean active;
   private AlertConfiguration.TargetType targetType;
+  private AlertConfigurationTarget target;
   private AlertTemplate template;
+  private Severity severity;
   private DestinationType destinationType;
   private UUID destinationUuid;
 
@@ -45,8 +49,14 @@ public class AlertConfigurationApiFilter {
     if (targetType != null) {
       builder.targetType(targetType);
     }
+    if (target != null) {
+      builder.target(target);
+    }
     if (template != null) {
       builder.template(template);
+    }
+    if (severity != null) {
+      builder.severity(severity);
     }
     if (destinationType != null) {
       builder.destinationType(destinationType);

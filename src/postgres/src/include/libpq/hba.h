@@ -63,6 +63,7 @@ typedef struct HbaLine
 {
 	int			linenumber;
 	char	   *rawline;
+	char       *maskedline;
 	ConnType	conntype;
 	List	   *databases;
 	List	   *roles;

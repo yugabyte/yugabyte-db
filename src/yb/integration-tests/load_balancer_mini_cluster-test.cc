@@ -13,22 +13,26 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/integration-tests/yb_table_test_base.h"
+#include "yb/client/client.h"
 
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus.proxy.h"
-#include "yb/integration-tests/mini_cluster.h"
-#include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/master_fwd.h"
-#include "yb/master/master.proxy.h"
-#include "yb/rpc/rpc_controller.h"
-#include "yb/tools/yb-admin_client.h"
-#include "yb/tserver/tablet_server_options.h"
-#include "yb/util/monotime.h"
+
 #include "yb/gutil/dynamic_annotations.h"
+
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/master/cluster_balance.h"
+
+#include "yb/tools/yb-admin_client.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_server_options.h"
+
+#include "yb/util/monotime.h"
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(load_balancer_drive_aware);
@@ -82,7 +86,7 @@ void WaitForReplicaOnTS(yb::MiniCluster* mini_cluster,
       return false;
     }
     scoped_refptr<master::TableInfo> tbl_info =
-      (*leader_mini_master)->master()->catalog_manager()->
+      (*leader_mini_master)->catalog_manager().
           GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                     table_name.namespace_name(),
                                                     table_name.table_name());
@@ -115,11 +119,11 @@ void WaitLoadBalancerIdle(client::YBClient* client) {
 typedef std::unordered_map<std::string,
                            std::pair<std::unordered_map<std::string, int>, int>> DriveStats;
 
-CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
+Status GetTabletsDriveStats(DriveStats* stats,
                                     yb::MiniCluster* mini_cluster,
                                     const yb::client::YBTableName& table_name) {
   scoped_refptr<master::TableInfo> tbl_info =
-    VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->master()->catalog_manager()->
+    VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->catalog_manager().
       GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),
                                                 table_name.namespace_name(),
                                                 table_name.table_name());
@@ -133,7 +137,7 @@ CHECKED_STATUS GetTabletsDriveStats(DriveStats* stats,
         ts = stats->insert({replica.first,
                            std::make_pair(std::unordered_map<std::string, int>(), 0)}).first;
       }
-      if (replica.second.role == consensus::RaftPeerPB::LEADER) {
+      if (replica.second.role == PeerRole::LEADER) {
         ++ts->second.second;
       }
       if (!replica.second.fs_data_dir.empty()) {
@@ -183,7 +187,7 @@ class LoadBalancerMiniClusterTest : public LoadBalancerMiniClusterTestBase {
   }
 
   void BeforeStartCluster() override {
-    for (int i = 0; i < num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < num_tablet_servers(); ++i) {
       // ts (free, used, total)
       emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 0), {150,  50, 200});
       emu_env->AddPathStats(mini_cluster()->GetTabletServerDrive(i, 1), {100, 100, 200});
@@ -251,7 +255,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
       return false;
     }
     scoped_refptr<master::TableInfo> tbl_info =
-      (*leader_mini_master)->master()->catalog_manager()->
+      (*leader_mini_master)->catalog_manager().
           GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                     table_name().namespace_name(),
                                                     table_name().table_name());
@@ -270,9 +274,7 @@ TEST_F(LoadBalancerMiniClusterTest, UninitializedTSDescriptorOnPendingAddTest) {
   master::TSDescriptorVector ts_descs;
   master::TSDescriptorPtr ts3_desc;
   ASSERT_RESULT(mini_cluster_->GetLeaderMiniMaster())
-      ->master()
-      ->ts_manager()
-      ->GetAllReportedDescriptors(&ts_descs);
+      ->ts_manager().GetAllReportedDescriptors(&ts_descs);
   for (const auto& ts_desc : ts_descs) {
     if (ts_desc->permanent_uuid() == ts3_uuid) {
       ts_desc->SetRemoved();
@@ -344,9 +346,8 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
           return false;
         }
         const auto tables = (*leader_mini_master)
-                                ->master()
                                 ->catalog_manager()
-                                ->load_balancer()
+                                .load_balancer()
                                 ->GetAllTablesLoadBalancerSkipped();
         for (const auto& table : tables) {
           if (table->name() == table_name().table_name() &&
@@ -364,25 +365,25 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
 TEST_F(LoadBalancerMiniClusterTest, CheckTabletSizeData) {
   auto num_peers = ListTabletPeers(mini_cluster(), ListPeersFilter::kAll).size();
 
-  auto* catalog_manager =
-      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager();
+  auto& catalog_manager =
+      ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager();
 
-    scoped_refptr<master::TableInfo> tbl_info = catalog_manager->
-          GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
-                                                    table_name().namespace_name(),
-                                                    table_name().table_name());
-    auto tablets = tbl_info->GetTablets();
+  scoped_refptr<master::TableInfo> tbl_info = catalog_manager.
+        GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
+                                                  table_name().namespace_name(),
+                                                  table_name().table_name());
+  auto tablets = tbl_info->GetTablets();
 
-    int updated = 0;
-    for (const auto& tablet : tablets) {
-      auto replica_map = tablet->GetReplicaLocations();
-      for (const auto& replica : *replica_map.get()) {
-        if (!replica.second.fs_data_dir.empty()) {
-          ++updated;
-        }
+  int updated = 0;
+  for (const auto& tablet : tablets) {
+    auto replica_map = tablet->GetReplicaLocations();
+    for (const auto& replica : *replica_map.get()) {
+      if (!replica.second.fs_data_dir.empty()) {
+        ++updated;
       }
     }
-    ASSERT_EQ(updated, num_peers);
+  }
+  ASSERT_EQ(updated, num_peers);
 }
 
 TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDisabledDriveAware) {
@@ -411,7 +412,7 @@ TEST_F_EX(LoadBalancerMiniClusterTest, CheckLoadBalanceWithoutDriveData,
 
   // Drive data should be empty
   scoped_refptr<master::TableInfo> tbl_info =
-    ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->master()->catalog_manager()->
+    ASSERT_RESULT(mini_cluster()->GetLeaderMiniMaster())->catalog_manager().
         GetTableInfoFromNamespaceNameAndTableName(table_name().namespace_type(),
                                                   table_name().namespace_name(),
                                                   table_name().table_name());
@@ -448,7 +449,7 @@ TEST_F(LoadBalancerMiniClusterTest, CheckLoadBalanceDriveAware) {
   ASSERT_OK(GetTabletsDriveStats(&after, mini_cluster(), table_name()));
 
   bool found = false;
-  for (int ts_index = 0; ts_index < new_ts_index; ++ts_index) {
+  for (size_t ts_index = 0; ts_index < new_ts_index; ++ts_index) {
     const auto ts_uuid = mini_cluster()->mini_tablet_server(ts_index)->server()->permanent_uuid();
     std::vector<std::string> drives;
     auto& ts_before = before[ts_uuid];

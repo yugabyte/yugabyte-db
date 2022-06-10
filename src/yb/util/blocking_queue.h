@@ -39,7 +39,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "yb/gutil/basictypes.h"
 #include "yb/util/condition_variable.h"
 #include "yb/util/mutex.h"
 
@@ -167,7 +166,7 @@ class BlockingQueue {
   QueueStatus Put(std::unique_ptr<T_VAL> *val) {
     QueueStatus s = Put(val->get());
     if (s == QUEUE_SUCCESS) {
-      ignore_result<>(val->release());
+      val->release();
     }
     return s;
   }
@@ -197,7 +196,7 @@ class BlockingQueue {
   bool BlockingPut(std::unique_ptr<T_VAL>* val) {
     bool ret = Put(val->get());
     if (ret) {
-      ignore_result(val->release());
+      val->release();
     }
     return ret;
   }

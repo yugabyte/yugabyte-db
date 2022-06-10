@@ -1,0 +1,37 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
+syntax = "proto3";
+
+package yb.encryption;
+
+option java_package = "org.yb.encryption";
+
+message EncryptionParamsPB {
+  bytes data_key = 1;
+  bytes nonce = 2;
+  int32 counter = 3;
+  // When computing counter increment, do we want to overflow the counter into the rest of the
+  // initialization vector as part of the new format.
+  bool openssl_compatible_counter_overflow  = 4;
+}
+
+message UniverseKeysPB {
+  map<string, bytes> map = 1;
+}
+
+message UniverseKeyRegistryPB {
+  bool encryption_enabled = 1;
+  map<string, EncryptionParamsPB> universe_keys = 2;
+  string latest_version_id = 3;
+}

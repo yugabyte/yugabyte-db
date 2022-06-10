@@ -16,8 +16,10 @@
 #include <vector>
 
 #include "yb/bfpg/bfpg.h"
-#include "yb/util/test_util.h"
+
 #include "yb/common/ql_value.h"
+
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace bfpg {
@@ -40,10 +42,11 @@ class BFTestValue : public QLValue {
     ql_type_id_ = DataType::UNKNOWN_DATA;
   }
 
-  virtual DataType ql_type_id() const {
+  DataType ql_type_id() const {
     return ql_type_id_;
   }
-  virtual void set_ql_type_id(DataType ql_type_id) {
+
+  void set_ql_type_id(DataType ql_type_id) {
     ql_type_id_ = ql_type_id;
   }
 
@@ -83,13 +86,13 @@ class BfPgsqlTest : public YBTest {
   Status ConvertParams(const BFDecl *bfdecl,
                        const vector<BFTestValue::SharedPtr>& params,
                        vector<BFTestValue::SharedPtr> *converted_params) {
-    const int pcount = params.size();
+    const auto pcount = params.size();
     converted_params->resize(pcount);
     const std::vector<DataType>& ptypes = bfdecl->param_types();
 
     bool is_variadic = false;
     vector<BFTestValue::SharedPtr> cast_params(2);
-    for (int pindex = 0; pindex < pcount; pindex++) {
+    for (size_t pindex = 0; pindex < pcount; pindex++) {
       if (is_variadic || ptypes[pindex] == DataType::TYPEARGS) {
         // No conversion is needed for the rest of the arguments.
         is_variadic = true;
@@ -106,7 +109,8 @@ class BfPgsqlTest : public YBTest {
         // Converting params.
         cast_params[0] = params[pindex];
         cast_params[1] = converted_param;
-        BFExecApiTest::ExecPgsqlFunc(bfpg::kCastFuncName, cast_params, converted_param);
+        RETURN_NOT_OK(BFExecApiTest::ExecPgsqlFunc(
+            bfpg::kCastFuncName, cast_params, converted_param));
 
         // Save converted value.
         (*converted_params)[pindex] = converted_param;
@@ -162,7 +166,7 @@ TEST_F(BfPgsqlTest, TestExactMatchSignature) {
 
   // Write the result to an integer and check the result.
   int expected_int_result = int_val1 + int_val2;
-  int return_int_result = result->int64_value();
+  auto return_int_result = result->int64_value();
   ASSERT_EQ(return_int_result, expected_int_result);
 
   // Test Case 2: The return type is exact match
@@ -198,7 +202,7 @@ TEST_F(BfPgsqlTest, TestExactMatchSignature) {
   // Convert int64 value (temp_result) to int16 value (result).
   result->set_ql_type_id(DataType::INT16);
   vector<BFTestValue::SharedPtr> temp_params = { temp_result, result };
-  BFExecApiTest::ExecPgsqlFunc(bfpg::kCastFuncName, temp_params, result);
+  ASSERT_OK(BFExecApiTest::ExecPgsqlFunc(bfpg::kCastFuncName, temp_params, result));
 
   // Check result.
   expected_int_result = int_val1 + int_val2;
@@ -301,7 +305,7 @@ TEST_F(BfPgsqlTest, TestCompatibleSignature) {
 
   // Find the opcode.
   ASSERT_OK(BFCompileApiTest::FindPgsqlOpcode("+", params, &opcode, &bfdecl, result));
-  ConvertParams(bfdecl, params, &converted_params);
+  ASSERT_OK(ConvertParams(bfdecl, params, &converted_params));
 
   // Execute the opcode.
   ASSERT_OK(BFExecApiTest::ExecPgsqlOpcode(opcode, converted_params, result));
@@ -325,7 +329,7 @@ TEST_F(BfPgsqlTest, TestCompatibleSignature) {
 
   // Find the opcode.
   ASSERT_OK(BFCompileApiTest::FindPgsqlOpcode("+", params, &opcode, &bfdecl, result));
-  ConvertParams(bfdecl, params, &converted_params);
+  ASSERT_OK(ConvertParams(bfdecl, params, &converted_params));
 
   // Execute the opcode.
   ASSERT_OK(BFExecApiTest::ExecPgsqlOpcode(opcode, converted_params, result));

@@ -5,12 +5,14 @@ import { toast } from 'react-toastify';
 import { UpdateRelease } from '../../../components/releases';
 import {
   deleteYugaByteRelease,
+  fetchSoftwareVersionsFailure,
+  fetchSoftwareVersionsSuccess,
   getYugaByteReleases,
   getYugaByteReleasesResponse,
   updateYugaByteRelease,
   updateYugaByteReleaseResponse
 } from '../../../actions/customers';
-import { createErrorMessage } from '../../alerts/AlertConfiguration/AlertUtils';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -25,6 +27,11 @@ const mapDispatchToProps = (dispatch) => {
         else
           dispatch(getYugaByteReleases()).then((response) => {
             dispatch(getYugaByteReleasesResponse(response.payload));
+            if (response.payload.status !== 200) {
+              dispatch(fetchSoftwareVersionsFailure(response.payload));
+            } else {
+              dispatch(fetchSoftwareVersionsSuccess(response.payload));
+            }
           });
       });
     }

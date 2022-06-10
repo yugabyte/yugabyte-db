@@ -32,7 +32,7 @@ std::future<Result<internal::RemoteTabletPtr>> LookupFirstTabletFuture(
     YBClient* client, const YBTablePtr& table);
 
 Result<std::unique_ptr<rpc::Messenger>> CreateClientMessenger(
-    const string &client_name,
+    const std::string &client_name,
     int32_t num_reactors,
     const scoped_refptr<MetricEntity> &metric_entity,
     const std::shared_ptr<MemTracker> &parent_mem_tracker,

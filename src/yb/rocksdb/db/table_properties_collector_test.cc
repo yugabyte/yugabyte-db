@@ -24,9 +24,13 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include "yb/rocksdb/db/builder.h"
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_based_table_factory.h"
@@ -35,14 +39,13 @@
 #include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include <gtest/gtest.h>
-#include "yb/rocksdb/env.h"
-#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
-class TablePropertiesTest : public testing::Test,
+class TablePropertiesTest : public RocksDBTest,
                             public testing::WithParamInterface<bool> {
  public:
   void SetUp() override { backward_mode_ = GetParam(); }
@@ -62,10 +65,10 @@ void MakeBuilder(const Options& options, const ImmutableCFOptions& ioptions,
   unique_ptr<WritableFile> wf(new test::StringSink);
   writable->reset(new WritableFileWriter(std::move(wf), EnvOptions()));
 
-  builder->reset(NewTableBuilder(
+  *builder = NewTableBuilder(
       ioptions, internal_comparator, int_tbl_prop_collector_factories,
       kTestColumnFamilyId /* column_family_id */, writable->get(),
-      options.compression, options.compression_opts));
+      options.compression, options.compression_opts);
 }
 }  // namespace
 
@@ -284,7 +287,7 @@ void TestCustomizedTablePropertiesCollector(
     builder->Add(ikey.Encode(), kv.second);
   }
   ASSERT_OK(builder->Finish());
-  writer->Flush();
+  ASSERT_OK(writer->Flush());
 
   // -- Step 2: Read properties
   test::StringSink* fwf =
@@ -427,7 +430,7 @@ void TestInternalKeyPropertiesCollector(
     }
 
     ASSERT_OK(builder->Finish());
-    writable->Flush();
+    ASSERT_OK(writable->Flush());
 
     test::StringSink* fwf =
         static_cast<test::StringSink*>(writable->writable_file());

@@ -33,21 +33,15 @@
 #define YB_MASTER_CATALOG_MANAGER_INTERNAL_H
 
 #include "yb/common/wire_protocol.h"
-#include "yb/gutil/basictypes.h"
-#include "yb/master/catalog_manager.h"
+
+
 #include "yb/master/master_error.h"
-#include "yb/master/scoped_leader_shared_lock-internal.h"
-#include "yb/rpc/rpc_context.h"
 
 namespace yb {
 
-using tserver::TabletServerErrorPB;
-
 namespace master {
 
-// Non-template helpers.
-
-inline CHECKED_STATUS SetupError(MasterErrorPB* error,
+inline Status SetupError(MasterErrorPB* error,
                                  MasterErrorPB::Code code,
                                  const Status& s) {
   StatusToPB(s, error->mutable_status());
@@ -55,15 +49,7 @@ inline CHECKED_STATUS SetupError(MasterErrorPB* error,
   return s;
 }
 
-inline CHECKED_STATUS SetupError(MasterErrorPB* error, const Status& s) {
-  StatusToPB(s, error->mutable_status());
-  error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
-  return s;
-}
-
-// Template helpers.
-
-inline CHECKED_STATUS CheckIfNoLongerLeader(const Status& s) {
+inline Status CheckIfNoLongerLeader(const Status& s) {
   // TODO (KUDU-591): This is a bit of a hack, as right now
   // there's no way to propagate why a write to a consensus configuration has
   // failed. However, since we use Status::IllegalState()/IsAborted() to
@@ -84,7 +70,7 @@ inline CHECKED_STATUS CheckIfNoLongerLeader(const Status& s) {
 // Service::UnavailableError as the error, set NOT_THE_LEADER as the
 // error code and return true.
 template<class RespClass>
-CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
+Status CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* resp) {
   auto new_status = CheckIfNoLongerLeader(s);
   if (MasterError(new_status) == MasterErrorPB::NOT_THE_LEADER) {
     return SetupError(resp->mutable_error(), MasterErrorPB::NOT_THE_LEADER, new_status);
@@ -93,26 +79,7 @@ CHECKED_STATUS CheckIfNoLongerLeaderAndSetupError(const Status& s, RespClass* re
   return s;
 }
 
-inline Status CheckStatus(const Status& status, const char* action) {
-  if (status.ok()) {
-    return status;
-  }
-
-  const Status s = status.CloneAndPrepend(std::string("An error occurred while ") + action);
-  LOG(WARNING) << s;
-  return s;
-}
-
-inline CHECKED_STATUS CheckLeaderStatus(const Status& status, const char* action) {
-  return CheckIfNoLongerLeader(CheckStatus(status, action));
-}
-
-template<class RespClass>
-CHECKED_STATUS CheckLeaderStatusAndSetupError(
-    const Status& status, const char* action, RespClass* resp) {
-  return CheckIfNoLongerLeaderAndSetupError(CheckStatus(status, action), resp);
-}
-
 }  // namespace master
 }  // namespace yb
+
 #endif // YB_MASTER_CATALOG_MANAGER_INTERNAL_H

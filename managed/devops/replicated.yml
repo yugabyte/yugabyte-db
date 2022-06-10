@@ -123,7 +123,17 @@ components:
         ports:
           - private_port: "9090"
             public_port: "9090"
-        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && exec /bin/prometheus --config.file=/prometheus_configs/prometheus.yml --storage.tsdb.path=/prometheus --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} --web.enable-admin-api --web.enable-lifecycle"]
+        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && \
+          cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && \
+          exec /bin/prometheus \
+          --config.file=/prometheus_configs/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} \
+          --query.max-concurrency={{repl ConfigOption \"prometheus_query_concurrency\"}} \
+          --query.max-samples={{repl ConfigOption \"prometheus_query_max_samples\"}} \
+          --query.timeout={{repl ConfigOption \"prometheus_query_timeout\"}} \
+          --web.enable-admin-api \
+          --web.enable-lifecycle"]
         publish_events:
           - name: Prometheus started
             trigger: container-start
@@ -141,6 +151,7 @@ components:
                       monitor: 'swamper'
               rule_files:
                 - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
+                - '/opt/yugabyte/prometheus/rules/yugaware.recording-rules.yml'
               scrape_configs:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
@@ -245,9 +256,8 @@ components:
                   params:
                     # Enable priority regex on all tables
                     # URL encoding done by prometheus
-                    max_tables_metrics_breakdowns: ["0"]
                     priority_regex:
-                      - "rocksdb_(number_db_(next|seek)
+                      - "rocksdb_(number_db_(next|seek)\
                       |block_cache_(add|single_touch_add|multi_touch_add)\
                       |current_version_(sst_files_size|num_sst_files)\
                       |db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)\
@@ -255,11 +265,11 @@ components:
                       |compact_[^_]+_bytes|compaction_times_micros_[^_]+\
                       |numfiles_in_singlecompaction_[^_]+)\
                       |async_replication_[^_]+_lag_micros|transaction_conflicts\
-                      |majority_sst_files_rejections|expired_transactions
+                      |majority_sst_files_rejections|expired_transactions\
                       |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
                       |append_latency_[^_]+|bytes_logged|reader_bytes_read\
                       |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
-                      |glog_[^_]+_messages"
+                      |glog_[^_]+_messages|follower_lag_ms"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'
@@ -309,6 +319,15 @@ components:
         env_vars:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
+          - name: HTTP_PROXY
+            value: '{{repl ConfigOption "http_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: HTTPS_PROXY
+            value: '{{repl ConfigOption "https_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: NO_PROXY
+            value: '{{repl ConfigOption "no_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
         ports:
           - private_port: "9000"
             public_port: "9000"
@@ -324,6 +343,7 @@ components:
             contents: |
               include classpath("application.common.conf")
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
+              play.http.forwarded.trustedProxies = ["172.17.0.1"]
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
 
@@ -387,6 +407,7 @@ components:
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
+                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
               }
 
   - name: nginx
@@ -422,10 +443,11 @@ components:
                   server_name  {{repl ConfigOption "hostname" }};
                 {{repl end}}
 
-                proxy_http_version 1.1;
-                proxy_set_header X-Real-IP  $remote_addr;
-                proxy_set_header X-Forwarded-For $remote_addr;
-                proxy_set_header Host $host;
+                  proxy_http_version 1.1;
+                  proxy_set_header X-Real-IP  $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header Host $host;
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
@@ -489,8 +511,8 @@ config:
         title: Support Origin URL
         type: text
         value: ""
-        default: localhost:9000
-        help_text: Specify a support origin URL to be whitelisted in the CORS filter
+        default: http://localhost:9000
+        help_text: Specify protocol-host-port to be whitelisted in the CORS filter. Omit port if default
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
@@ -506,6 +528,26 @@ config:
         help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
         type: text
         default: "10G"
+      - name: enable_proxy
+        title: Enable Proxy
+        help_text: When enabled pass the following settings for web proxy
+        type: bool
+        default: '{{repl ConsoleSetting "http.proxy.enabled"}}'
+      - name: http_proxy
+        title: HTTP Proxy setting
+        help_text: Specify the setting for HTTP_PROXY
+        type: text
+        default: '{{repl ConsoleSetting "http.proxy"}}'
+      - name: https_proxy
+        title: HTTPS Proxy setting
+        help_text: Specify the setting for HTTPS_PROXY
+        type: text
+        default: '{{repl ConsoleSetting "http.proxy"}}'
+      - name: no_proxy
+        title: HTTP no proxy setting
+        help_text: Specify the setting for NO_PROXY
+        type: text
+        default: ""
       - name: tls_version
         title: TLS Versions
         help_text: TLS version support for Platform HTTPS frontend
@@ -534,3 +576,15 @@ config:
         title: How long until a scrape request times out, default to 10 seconds
         type: text
         default: "10s"
+      - name: prometheus_query_concurrency
+        title: How many queries to execute concurrently, default to 20 queries
+        type: text
+        default: "20"
+      - name: prometheus_query_max_samples
+        title: How many samples can Prometheus load to process single query, default to 5M samples
+        type: text
+        default: "5000000"
+      - name: prometheus_query_timeout
+        title: How long until query execution times out, default to 30s
+        type: text
+        default: "30s"

@@ -20,3 +20,7 @@ azure_packages:
 
 aarch64_packages:
   - libatomic
+
+debian_aarch64_packages:
+  - libatomic1
+  - libncurses6

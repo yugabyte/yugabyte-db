@@ -1,14 +1,51 @@
 package com.yugabyte.yw.models.helpers;
 
-import java.util.List;
+import io.ebean.annotation.EnumValue;
+import java.util.EnumSet;
 
 public class BundleDetails {
 
-  public List<String> components;
+  public enum ComponentType {
+    @EnumValue("UniverseLogs")
+    UniverseLogs,
+
+    @EnumValue("ApplicationLogs")
+    ApplicationLogs,
+
+    @EnumValue("OutputFiles")
+    OutputFiles,
+
+    @EnumValue("ErrorFiles")
+    ErrorFiles,
+
+    @EnumValue("GFlags")
+    GFlags,
+
+    @EnumValue("Instance")
+    Instance,
+
+    @EnumValue("ConsensusMeta")
+    ConsensusMeta,
+
+    @EnumValue("TabletMeta")
+    TabletMeta;
+
+    public static boolean isValid(String type) {
+      for (ComponentType t : ComponentType.values()) {
+        if (t.name().equals(type)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+  }
+
+  public EnumSet<ComponentType> components;
 
   public BundleDetails() {}
 
-  public BundleDetails(List<String> components) {
+  public BundleDetails(EnumSet<ComponentType> components) {
     this.components = components;
   }
 }

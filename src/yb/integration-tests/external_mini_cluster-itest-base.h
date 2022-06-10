@@ -43,7 +43,13 @@
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
+
+#include "yb/master/master_cluster.proxy.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/pstack_watcher.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -62,7 +68,7 @@ class ExternalMiniClusterITestBase : public YBTest {
     if (cluster_) {
       if (HasFatalFailure()) {
         LOG(INFO) << "Found fatal failure";
-        for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+        for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
           if (!cluster_->tablet_server(i)->IsProcessAlive()) {
             LOG(INFO) << "Tablet server " << i << " is not running. Cannot dump its stacks.";
             continue;
@@ -78,6 +84,20 @@ class ExternalMiniClusterITestBase : public YBTest {
     }
     YBTest::TearDown();
     ts_map_.clear();
+  }
+
+  Result<TabletId> GetSingleTabletId(const TableName& table_name) {
+    TabletId tablet_id_to_split;
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto ts = cluster_->tablet_server(i);
+      const auto tablets = VERIFY_RESULT(cluster_->GetTablets(ts));
+      for (const auto& tablet : tablets) {
+        if (tablet.table_name() == table_name) {
+          return tablet.tablet_id();
+        }
+      }
+    }
+    return STATUS(NotFound, Format("No tablet found for table $0.", table_name));
   }
 
  protected:
@@ -109,12 +129,7 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
   cluster_.reset(new ExternalMiniCluster(opts));
   ASSERT_OK(cluster_->Start());
   inspect_.reset(new itest::ExternalMiniClusterFsInspector(cluster_.get()));
-  int master_leader = 0;
-  ASSERT_OK(cluster_->GetLeaderMasterIndex(&master_leader));
-
-  ASSERT_OK(itest::CreateTabletServerMap(cluster_->master_proxy(master_leader).get(),
-                                         &cluster_->proxy_cache(),
-                                         &ts_map_));
+  ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(cluster_.get()));
   client_ = ASSERT_RESULT(cluster_->CreateClient());
 }
 

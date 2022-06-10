@@ -14,6 +14,8 @@
 #ifndef YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
 #define YB_TABLET_OPERATIONS_HISTORY_CUTOFF_OPERATION_H
 
+#include "yb/consensus/consensus.pb.h"
+
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {
@@ -25,12 +27,12 @@ class HistoryCutoffOperation
   template <class... Args>
   explicit HistoryCutoffOperation(Args&&... args) : OperationBase(std::forward<Args>(args)...) {}
 
-  CHECKED_STATUS Apply(int64_t leader_term);
+  Status Apply(int64_t leader_term);
 
  private:
-  CHECKED_STATUS Prepare() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status Prepare() override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
 };
 
 } // namespace tablet

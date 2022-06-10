@@ -17,19 +17,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <assert.h>
+
 #include <memory>
 
-#include "yb/rocksdb/port/stack_trace.h"
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/cache.h"
-#include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/merge_operator.h"
-#include "yb/rocksdb/utilities/db_ttl.h"
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/utilities/merge_operators.h"
+#include "yb/rocksdb/port/stack_trace.h"
+#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
+#include "yb/rocksdb/utilities/db_ttl.h"
+#include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/test_macros.h"
+
+DECLARE_bool(never_fsync);
 
 namespace rocksdb {
 
@@ -96,7 +104,7 @@ std::shared_ptr<DB> OpenDb(const std::string &dbname, const bool ttl = false,
   options.max_successive_merges = max_successive_merges;
   options.min_partial_merge_operands = min_partial_merge_operands;
   Status s;
-  DestroyDB(dbname, Options());
+  CHECK_OK(DestroyDB(dbname, Options()));
 // DBWithTTL is not supported in ROCKSDB_LITE
 #ifndef ROCKSDB_LITE
   if (ttl) {
@@ -275,7 +283,9 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
   counters.assert_set("a", 1);
 
-  if (test_compaction) db->Flush(o);
+  if (test_compaction) {
+    ASSERT_OK(db->Flush(o));
+  }
 
   assert(counters.assert_get("a") == 1);
 
@@ -286,7 +296,9 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
 
   counters.assert_add("a", 2);
 
-  if (test_compaction) db->Flush(o);
+  if (test_compaction) {
+    ASSERT_OK(db->Flush(o));
+  }
 
   // 1+2 = 3
   assert(counters.assert_get("a") == 3);
@@ -296,7 +308,7 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
   std::cout << "1\n";
 
   // 1+...+49 = ?
-  uint64_t sum = 0;
+  uint64_t sum __attribute__((__unused__)) = 0;
   for (int i = 1; i < 50; i++) {
     counters.assert_add("b", i);
     sum += i;
@@ -309,16 +321,16 @@ void testCounters(Counters* counters_ptr, DB *db, bool test_compaction) {
   std::cout << "3\n";
 
   if (test_compaction) {
-    db->Flush(o);
+    ASSERT_OK(db->Flush(o));
 
     std::cout << "Compaction started ...\n";
-    db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+    ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     std::cout << "Compaction ended\n";
 
     dumpDb(db);
 
-    assert(counters.assert_get("a") == 3);
-    assert(counters.assert_get("b") == sum);
+    DCHECK_EQ(counters.assert_get("a"), 3);
+    DCHECK(counters.assert_get("b") == sum);
   }
 }
 
@@ -327,7 +339,7 @@ void testSuccessiveMerge(Counters *counters_ptr, size_t max_num_merges,
   Counters& counters = *counters_ptr;
 
   counters.assert_remove("z");
-  uint64_t sum = 0;
+  uint64_t sum __attribute__((__unused__)) = 0;
 
   for (size_t i = 1; i <= num_merges; ++i) {
     resetNumMergeOperatorCalls();
@@ -341,8 +353,8 @@ void testSuccessiveMerge(Counters *counters_ptr, size_t max_num_merges,
     }
 
     resetNumMergeOperatorCalls();
-    assert(counters.assert_get("z") == sum);
-    assert(num_merge_operator_calls == i % (max_num_merges + 1));
+    DCHECK(counters.assert_get("z") == sum);
+    DCHECK(num_merge_operator_calls == i % (max_num_merges + 1));
   }
 }
 
@@ -359,8 +371,8 @@ void testPartialMerge(Counters *counters, DB *db, size_t max_merge,
     counters->assert_add("b", i);
     tmp_sum += i;
   }
-  db->Flush(o);
-  db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db->Flush(o));
+  ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   ASSERT_EQ(tmp_sum, counters->assert_get("b"));
   if (count > max_merge) {
     // in this case, FullMerge should be called instead.
@@ -373,13 +385,13 @@ void testPartialMerge(Counters *counters, DB *db, size_t max_merge,
   // Test case 2: partial merge should not be called when a put is found.
   resetNumPartialMergeCalls();
   tmp_sum = 0;
-  db->Put(rocksdb::WriteOptions(), "c", "10");
+  ASSERT_OK(db->Put(rocksdb::WriteOptions(), "c", "10"));
   for (size_t i = 1; i <= count; i++) {
     counters->assert_add("c", i);
     tmp_sum += i;
   }
-  db->Flush(o);
-  db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+  ASSERT_OK(db->Flush(o));
+  ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
   ASSERT_EQ(tmp_sum, counters->assert_get("c"));
   ASSERT_EQ(num_partial_merge_calls, 0U);
 }
@@ -445,7 +457,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     }
   }
 
-  DestroyDB(dbname, Options());
+  ASSERT_OK(DestroyDB(dbname, Options()));
 
   {
     std::cout << "Test merge in memtable... \n";
@@ -455,7 +467,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     testCounters(&counters, db.get(), compact);
     testSuccessiveMerge(&counters, max_merge, max_merge * 2);
     testSingleBatchSuccessiveMerge(db.get(), 5, 7);
-    DestroyDB(dbname, Options());
+    ASSERT_OK(DestroyDB(dbname, Options()));
   }
 
   {
@@ -466,14 +478,14 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
         auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
         MergeBasedCounters counters(db, 0);
         testPartialMerge(&counters, db.get(), max_merge, min_merge, count);
-        DestroyDB(dbname, Options());
+        ASSERT_OK(DestroyDB(dbname, Options()));
       }
       {
         auto db = OpenDb(dbname, use_ttl, max_merge, min_merge);
         MergeBasedCounters counters(db, 0);
         testPartialMerge(&counters, db.get(), max_merge, min_merge,
             min_merge * 10);
-        DestroyDB(dbname, Options());
+        ASSERT_OK(DestroyDB(dbname, Options()));
       }
     }
   }
@@ -486,7 +498,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
       counters.add("test-key", 1);
       counters.add("test-key", 1);
       counters.add("test-key", 1);
-      db->CompactRange(CompactRangeOptions(), nullptr, nullptr);
+      ASSERT_OK(db->CompactRange(CompactRangeOptions(), nullptr, nullptr));
     }
 
     DB *reopen_db;
@@ -494,7 +506,7 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
     std::string value;
     ASSERT_TRUE(!(reopen_db->Get(ReadOptions(), "test-key", &value).ok()));
     delete reopen_db;
-    DestroyDB(dbname, Options());
+    ASSERT_OK(DestroyDB(dbname, Options()));
   }
 
   /* Temporary remove this test
@@ -518,6 +530,9 @@ void runTest(int argc, const std::string &dbname, const bool use_ttl = false) {
 
 int main(int argc, char *argv[]) {
   // TODO: Make this test like a general rocksdb unit-test
+  // This is set by default in RocksDBTest and YBTest, and can be removed once this test is a
+  // general rocksdb unit-test
+  FLAGS_never_fsync = true;
   rocksdb::port::InstallStackTraceHandler();
   rocksdb::runTest(argc, rocksdb::test::TmpDir() + "/merge_testdb");
 // DBWithTTL is not supported in ROCKSDB_LITE

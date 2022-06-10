@@ -19,16 +19,32 @@
 
 #include <functional>
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
-#include "yb/util/status.h"
-#include "yb/yql/cql/ql/ptree/column_arg.h"
-#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/index_column.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/master/master_defaults.h"
+
 #include "yb/util/flag_tags.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
 DEFINE_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
@@ -124,7 +140,7 @@ class Selectivity {
 
   bool supporting_orderby() const { return !full_table_scan_; }
 
-  int prefix_length() const { return prefix_length_; }
+  size_t prefix_length() const { return prefix_length_; }
 
   // Comparison operator to sort the selectivity of an index.
   bool operator>(const Selectivity& other) const {
@@ -269,9 +285,9 @@ class Selectivity {
 
     if (index_info_) {
       for (const JsonColumnOp& col_op : scan_info->col_json_ops()) {
-        int32_t idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
-        if (idx >= 0) {
-          ops[idx] = GetOperatorSelectivity(col_op.yb_op());
+        auto idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
+        if (idx) {
+          ops[*idx] = GetOperatorSelectivity(col_op.yb_op());
         } else {
           num_non_key_ops_++;
         }
@@ -280,9 +296,9 @@ class Selectivity {
       // Enable the following code-block when allowing INDEX of collection fields.
       if (false) {
         for (const SubscriptedColumnOp& col_op : scan_info->col_subscript_ops()) {
-          int32_t idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
-          if (idx >= 0) {
-            ops[idx] = GetOperatorSelectivity(col_op.yb_op());
+          auto idx = index_info_->FindKeyIndex(col_op.IndexExprToColumnName());
+          if (idx) {
+            ops[*idx] = GetOperatorSelectivity(col_op.yb_op());
           } else {
             num_non_key_ops_++;
           }
@@ -320,7 +336,7 @@ class Selectivity {
 //--------------------------------------------------------------------------------------------------
 
 PTSelectStmt::PTSelectStmt(MemoryContext *memctx,
-                           YBLocation::SharedPtr loc,
+                           YBLocationPtr loc,
                            const bool distinct,
                            PTExprListNode::SharedPtr selected_exprs,
                            PTTableRefListNode::SharedPtr from_clause,
@@ -389,7 +405,7 @@ Status PTSelectStmt::LookupIndex(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
+Status PTSelectStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
@@ -472,7 +488,7 @@ CHECKED_STATUS PTSelectStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeFromClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeFromClause(SemContext *sem_context) {
   // Table / index reference.
   if (index_id_.empty()) {
     // Get the table descriptor.
@@ -491,7 +507,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeFromClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeSelectList(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeSelectList(SemContext *sem_context) {
   // Create state variable to compile references.
   SemState sem_state(sem_context);
 
@@ -576,10 +592,10 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
   const auto& keys = child_select_ ? child_select_->key_where_ops() : key_where_ops();
   const auto& filters = child_select_ ? child_select_->where_ops() : where_ops();
   // Rebuild the conditions and filter into strings from internal format.
-  string filled_key_conds = conditionsToString<MCVector<ColumnOp>>(keys);
-  string filled_filter = conditionsToString<MCList<ColumnOp>>(filters);
+  string filled_key_conds = ConditionsToString<MCVector<ColumnOp>>(keys);
+  string filled_filter = ConditionsToString<MCList<ColumnOp>>(filters);
 
-  filled_key_conds += partitionkeyToString(partition_key_ops());
+  filled_key_conds += PartitionKeyToString(partition_key_ops());
 
   // If the query has key conditions or filters on either the index or the main table, then output
   // to query plan.
@@ -595,13 +611,13 @@ ExplainPlanPB PTSelectStmt::AnalysisResultToPB() {
   }
 
   // Set the output_width that has been calculated throughout the construction of the query plan.
-  select_plan->set_output_width(longest);
+  select_plan->set_output_width(narrow_cast<int32_t>(longest));
   return explain_plan;
 }
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
   // Create state variable to compile references.
   SemState clause_state(sem_context);
   clause_state.SetScanState(select_scan_info_);
@@ -668,7 +684,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeReferences(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec) {
+Status PTSelectStmt::AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec) {
   VLOG(3) << "AnalyzeIndexes: " << sem_context->stmt();
 
   SemState index_state(sem_context);
@@ -776,7 +792,7 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
   if (!scan_spec.covers_fully()) {
     const auto& loc = selected_exprs_->loc_ptr();
     selected_exprs = PTExprListNode::MakeShared(memctx, loc);
-    for (int i = 0; i < num_key_columns(); i++) {
+    for (size_t i = 0; i < num_key_columns(); i++) {
       const client::YBColumnSchema& column = table_->schema().Column(i);
       auto column_name_str = MCMakeShared<MCString>(memctx, column.name().c_str());
       auto column_name = PTQualifiedName::MakeShared(memctx, loc, column_name_str);
@@ -914,9 +930,9 @@ bool PTSelectStmt::CoversFully(const IndexInfo& index_info,
 
 // -------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeDistinctClause(SemContext *sem_context) {
   // Only partition and static columns are allowed to be used with distinct clause.
-  int key_count = 0;
+  size_t key_count = 0;
   for (const auto& pair : column_map_) {
     const ColumnDesc& desc = pair.second;
     if (desc.is_hash()) {
@@ -962,14 +978,14 @@ bool PTSelectStmt::IsReadableByAllSystemTable() const {
 
 namespace {
 
-PTOrderBy::Direction directionFromSortingType(ColumnSchema::SortingType sorting_type) {
-  return sorting_type == ColumnSchema::SortingType::kDescending ?
+PTOrderBy::Direction directionFromSortingType(SortingType sorting_type) {
+  return sorting_type == SortingType::kDescending ?
       PTOrderBy::Direction::kDESC : PTOrderBy::Direction::kASC;
 }
 
 } // namespace
 
-CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
+Status PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
                                                   const TableId& index_id,
                                                   bool *is_forward_scan) {
   if (order_by_clause_ == nullptr) {
@@ -1040,7 +1056,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   if (limit_clause_ == nullptr) {
     return Status::OK();
   }
@@ -1054,7 +1070,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeLimitClause(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
+Status PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
   if (offset_clause_ == nullptr) {
     return Status::OK();
   }
@@ -1070,7 +1086,7 @@ CHECKED_STATUS PTSelectStmt::AnalyzeOffsetClause(SemContext *sem_context) {
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
+Status PTSelectStmt::ConstructSelectedSchema() {
   const MCList<PTExpr::SharedPtr>& exprs = selected_exprs();
   selected_schemas_ = make_shared<vector<ColumnSchema>>();
   selected_schemas_->reserve(exprs.size());
@@ -1085,6 +1101,10 @@ CHECKED_STATUS PTSelectStmt::ConstructSelectedSchema() {
     }
   }
   return Status::OK();
+}
+
+const std::shared_ptr<client::YBTable>& PTSelectStmt::bind_table() const {
+  return child_select_ ? child_select_->bind_table() : PTDmlStmt::bind_table();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -1144,17 +1164,17 @@ PTTableRef::PTTableRef(MemoryContext *memctx,
 PTTableRef::~PTTableRef() {
 }
 
-CHECKED_STATUS PTTableRef::Analyze(SemContext *sem_context) {
+Status PTTableRef::Analyze(SemContext *sem_context) {
   if (alias_ != nullptr) {
     return sem_context->Error(this, "Alias is not allowed", ErrorCode::CQL_STATEMENT_INVALID);
   }
-  return name_->AnalyzeName(sem_context, OBJECT_TABLE);
+  return name_->AnalyzeName(sem_context, ObjectType::TABLE);
 }
 
 //--------------------------------------------------------------------------------------------------
 
 SelectScanInfo::SelectScanInfo(MemoryContext *memctx,
-                               int num_columns,
+                               size_t num_columns,
                                MCVector<const PTExpr*> *scan_filtering_exprs,
                                MCMap<MCString, ColumnDesc> *scan_column_map)
     : col_ops_(memctx),

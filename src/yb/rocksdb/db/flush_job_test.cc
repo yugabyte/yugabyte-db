@@ -22,25 +22,27 @@
 #include <map>
 #include <string>
 
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db/file_numbers.h"
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/flush_job.h"
-#include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/table/mock_table.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/table/mock_table.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
 // TODO(icanadi) Mock out everything else:
 // 1. VersionSet
 // 2. Memtable
-class FlushJobTest : public testing::Test {
+class FlushJobTest : public RocksDBTest {
  public:
   FlushJobTest()
       : env_(Env::Default()),
@@ -112,7 +114,10 @@ TEST_F(FlushJobTest, Empty) {
       *cfd->GetLatestMutableCFOptions(), env_options_, versions_.get(), &mutex_, &shutting_down_,
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
       &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
-  ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
+  {
+    InstrumentedMutexLock l(&mutex_);
+    ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
+  }
   job_context.Clean();
 }
 
@@ -137,7 +142,10 @@ TEST_F(FlushJobTest, NonEmpty) {
   for (int i = 1; i < 10000; ++i) {
     std::string key(ToString((i + 1000) % 10000));
     std::string value("value" + key);
-    new_mem->Add(SequenceNumber(i), kTypeValue, key, value);
+    Slice key_slice(key);
+    Slice value_slice(value);
+    new_mem->Add(
+        SequenceNumber(i), kTypeValue, SliceParts(&key_slice, 1), SliceParts(&value_slice, 1));
     InternalKey internal_key(key, SequenceNumber(i), kTypeValue);
     inserted_keys.emplace(internal_key.Encode().ToBuffer(), value);
     values.Feed(key);
@@ -159,9 +167,10 @@ TEST_F(FlushJobTest, NonEmpty) {
       &disable_flush_on_shutdown_, {}, kMaxSequenceNumber, MemTableFilter(), &file_numbers_provider,
       &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr, &event_logger);
   FileMetaData fd;
-  mutex_.Lock();
-  ASSERT_OK(yb::ResultToStatus(flush_job.Run(&fd)));
-  mutex_.Unlock();
+  {
+    InstrumentedMutexLock l(&mutex_);
+    ASSERT_OK(yb::ResultToStatus(flush_job.Run(&fd)));
+  }
   ASSERT_EQ(ToString(0), fd.smallest.key.user_key().ToString());
   ASSERT_EQ(ToString(9999), fd.largest.key.user_key().ToString());
   ASSERT_EQ(1, fd.smallest.seqno);
@@ -196,11 +205,14 @@ TEST_F(FlushJobTest, Snapshots) {
   auto inserted_keys = mock::MakeMockFile();
   for (int i = 1; i < keys; ++i) {
     std::string key(ToString(i));
+    Slice key_slice(key);
     int insertions = rnd.Uniform(max_inserts_per_keys);
     for (int j = 0; j < insertions; ++j) {
       std::string value(test::RandomHumanReadableString(&rnd, 10));
+      Slice value_slice(value);
       auto seqno = ++current_seqno;
-      new_mem->Add(SequenceNumber(seqno), kTypeValue, key, value);
+      new_mem->Add(SequenceNumber(seqno), kTypeValue, SliceParts(&key_slice, 1),
+                   SliceParts(&value_slice, 1));
       // a key is visible only if:
       // 1. it's the last one written (j == insertions - 1)
       // 2. there's a snapshot pointing at it
@@ -227,9 +239,10 @@ TEST_F(FlushJobTest, Snapshots) {
       &disable_flush_on_shutdown_, snapshots, kMaxSequenceNumber, MemTableFilter(),
       &file_numbers_provider, &job_context, nullptr, nullptr, nullptr, kNoCompression, nullptr,
       &event_logger);
-  mutex_.Lock();
-  ASSERT_OK(ResultToStatus(flush_job.Run()));
-  mutex_.Unlock();
+  {
+    InstrumentedMutexLock l(&mutex_);
+    ASSERT_OK(yb::ResultToStatus(flush_job.Run()));
+  }
   mock_table_factory_->AssertSingleFile(inserted_keys);
   job_context.Clean();
 }

@@ -29,13 +29,12 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <functional>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -44,9 +43,9 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"
+
 #include "yb/util/blocking_queue.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/taskstream.h"
@@ -69,7 +68,7 @@ namespace yb {
 
 namespace {
 
-static CHECKED_STATUS BuildMinMaxTestPool(
+static Status BuildMinMaxTestPool(
     int min_threads, int max_threads, std::unique_ptr<ThreadPool> *pool) {
   return ThreadPoolBuilder("test").set_min_threads(min_threads)
       .set_max_threads(max_threads)

@@ -262,6 +262,7 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 	toast_relid = heap_create_with_catalog(toast_relname,
 										   namespaceid,
 										   rel->rd_rel->reltablespace,
+										   InvalidOid, /* tablegroup */
 										   toastOid,
 										   toast_typid,
 										   InvalidOid,
@@ -340,7 +341,8 @@ create_toast_table(Relation rel, Oid toastOid, Oid toastIndexOid,
 				 rel->rd_rel->reltablespace,
 				 collationObjectId, classObjectId, coloptions, (Datum) 0,
 				 INDEX_CREATE_IS_PRIMARY, 0, true, true, NULL, NULL,
-				 true /* skip_index_backfill */, InvalidOid /* tablegroupId */);
+				 true /* skip_index_backfill */, InvalidOid /* tablegroupId */,
+				 InvalidOid /* colocationId */);
 
 	heap_close(toast_rel, NoLock);
 

@@ -14,7 +14,6 @@
 #ifndef YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H
 #define YB_MASTER_YQL_SIZE_ESTIMATES_VTABLE_H
 
-#include "yb/master/master.h"
 #include "yb/master/yql_virtual_table.h"
 
 namespace yb {
@@ -29,7 +28,7 @@ class YQLSizeEstimatesVTable : public YQLVirtualTable {
  protected:
   Schema CreateSchema() const;
  private:
-  CHECKED_STATUS PopulateColumnInformation(const Schema& schema,
+  Status PopulateColumnInformation(const Schema& schema,
                                            const std::string& keyspace_name,
                                            const std::string& table_name,
                                            const size_t col_idx,

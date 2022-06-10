@@ -10,11 +10,12 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
@@ -60,11 +61,11 @@ public class WaitForLoadBalance extends AbstractTaskBase {
     try {
       log.info("Running {}: hostPorts={}, numTservers={}.", getName(), hostPorts, numTservers);
       client = ybService.getClient(hostPorts, certificate);
-      TimeUnit.SECONDS.sleep(getSleepMultiplier() * SLEEP_TIME);
+      waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
       ret = client.waitForLoadBalance(TIMEOUT_SERVER_WAIT_MS, numTservers);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      Throwables.propagate(e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }

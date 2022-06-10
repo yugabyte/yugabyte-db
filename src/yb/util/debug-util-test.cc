@@ -29,16 +29,19 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <signal.h>
 
 #include <regex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -46,6 +49,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 using std::vector;
@@ -375,11 +379,15 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
 
   std::this_thread::sleep_for(kLongDuration);
 
-  ASSERT_EQ(log_sink.MessagesSize(), 4);
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(0), "Op2");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.MessagesSize(), 0);
+  } else {
+    ASSERT_EQ(log_sink.MessagesSize(), 4);
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(0), "Op2");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  }
 }
 
 } // namespace yb

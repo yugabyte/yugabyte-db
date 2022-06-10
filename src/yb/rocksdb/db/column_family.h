@@ -26,18 +26,17 @@
 
 #pragma once
 
-#include <unordered_map>
-#include <string>
-#include <vector>
 #include <atomic>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include "yb/rocksdb/db/memtable_list.h"
-#include "yb/rocksdb/db/write_batch_internal.h"
-#include "yb/rocksdb/db/write_controller.h"
-#include "yb/rocksdb/db/table_cache.h"
-#include "yb/rocksdb/db/table_properties_collector.h"
 #include "yb/rocksdb/compaction_job_stats.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/memtable_list.h"
+#include "yb/rocksdb/db/table_properties_collector.h"
+#include "yb/rocksdb/db/write_batch_internal.h"
+#include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
@@ -316,11 +315,13 @@ class ColumnFamilyData {
   // As argument takes a pointer to allocated SuperVersion to enable
   // the clients to allocate SuperVersion outside of mutex.
   // IMPORTANT: Only call this from DBImpl::InstallSuperVersion()
-  std::unique_ptr<SuperVersion> InstallSuperVersion(SuperVersion* new_superversion,
-                                                    InstrumentedMutex* db_mutex,
-                                                    const MutableCFOptions& mutable_cf_options);
-  std::unique_ptr<SuperVersion> InstallSuperVersion(SuperVersion* new_superversion,
-                                                    InstrumentedMutex* db_mutex);
+  MUST_USE_RESULT std::unique_ptr<SuperVersion> InstallSuperVersion(
+      SuperVersion* new_superversion,
+      InstrumentedMutex* db_mutex,
+      const MutableCFOptions& mutable_cf_options);
+  MUST_USE_RESULT std::unique_ptr<SuperVersion> InstallSuperVersion(
+      SuperVersion* new_superversion,
+      InstrumentedMutex* db_mutex);
 
   void ResetThreadLocalSuperVersions();
 

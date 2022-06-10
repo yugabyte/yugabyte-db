@@ -33,34 +33,43 @@
 #ifndef YB_RPC_CONNECTION_H_
 #define YB_RPC_CONNECTION_H_
 
+#include <stdint.h>
+
 #include <atomic>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <queue>
 #include <string>
+#include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/version.hpp>
+
 #include <ev++.h>
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/rpc/connection_context.h"
-#include "yb/rpc/server_event.h"
 #include "yb/rpc/stream.h"
 
+#include "yb/util/metrics_fwd.h"
 #include "yb/util/enums.h"
 #include "yb/util/ev_util.h"
-#include "yb/util/metrics.h"
+#include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/net/net_fwd.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/object_pool.h"
-#include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 #include "yb/util/strongly_typed_bool.h"
 
@@ -158,7 +167,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   Reactor* reactor() const { return reactor_; }
 
-  CHECKED_STATUS DumpPB(const DumpRunningRpcsRequestPB& req,
+  Status DumpPB(const DumpRunningRpcsRequestPB& req,
                         RpcConnectionPB* resp);
 
   // Do appropriate actions after adding outbound call.
@@ -167,13 +176,11 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
   // client callback.
-  CHECKED_STATUS HandleCallResponse(CallData* call_data);
+  Status HandleCallResponse(CallData* call_data);
 
   ConnectionContext& context() { return *context_; }
 
-  void CallSent(OutboundCallPtr call);
-
-  CHECKED_STATUS Start(ev::loop_ref* loop);
+  Status Start(ev::loop_ref* loop);
 
   // Try to parse already received data.
   void ParseReceived();
@@ -185,7 +192,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   }
 
  private:
-  CHECKED_STATUS DoWrite();
+  Status DoWrite();
 
   // Does actual outbound data queueing. Invoked in appropriate reactor thread.
   size_t DoQueueOutboundData(OutboundDataPtr call, bool batch);
@@ -203,6 +210,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   void Connected() override;
   StreamReadBuffer& ReadBuffer() override;
 
+  void CleanupExpirationQueue(CoarseTimePoint now);
+
   std::string LogPrefix() const;
 
   // The reactor thread that created this connection.
@@ -216,9 +225,6 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // The last time we read or wrote from the socket.
   CoarseTimePoint last_activity_time_;
 
-  // Calls which have been sent and are now waiting for a response.
-  std::unordered_map<int32_t, OutboundCallPtr> awaiting_response_;
-
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown(). Guarded by
   // outbound_data_queue_lock_.
   Status shutdown_status_;
@@ -231,22 +237,27 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // at connection level.
   scoped_refptr<Histogram> handler_latency_outbound_transfer_;
 
-  struct ExpirationEntry {
-    CoarseTimePoint time;
-    std::weak_ptr<OutboundCall> call;
-    // See Stream::Send for details.
-    size_t handle;
+  // Information about active call.
+  struct ActiveCall {
+    int32_t id; // Call id.
+    OutboundCallPtr call; // Call object, null if call has expired.
+    CoarseTimePoint expires_at; // Expiration time, kMax when call has expired.
+    size_t handle; // Call handle in outbound stream.
   };
 
-  struct CompareExpiration {
-    bool operator()(const ExpirationEntry& lhs, const ExpirationEntry& rhs) const {
-      return rhs.time < lhs.time;
-    }
-  };
-
-  std::priority_queue<ExpirationEntry,
-                      std::vector<ExpirationEntry>,
-                      CompareExpiration> expiration_queue_;
+  class ExpirationTag;
+  // Calls which have been sent and are now waiting for a response.
+  using ActiveCalls = boost::multi_index_container<
+      ActiveCall,
+      boost::multi_index::indexed_by<
+        boost::multi_index::hashed_unique<
+          boost::multi_index::member<ActiveCall, int32_t, &ActiveCall::id>
+        >,
+        boost::multi_index::ordered_non_unique<
+          boost::multi_index::tag<ExpirationTag>,
+          boost::multi_index::member<ActiveCall, CoarseTimePoint, &ActiveCall::expires_at>
+        >>>;
+  ActiveCalls active_calls_;
 
   EvTimerHolder timer_;
 

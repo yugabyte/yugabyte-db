@@ -43,6 +43,10 @@
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
@@ -75,11 +79,7 @@
 #include "yb/rocksdb/util/xfunc.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
 
-namespace yb {
-
-class UniverseKeyManager;
-
-} // namespace yb
+#include "yb/util/test_util.h" // For ASSERT_OK
 
 namespace rocksdb {
 
@@ -563,7 +563,7 @@ class SpecialEnv : public EnvWrapper {
   std::atomic<bool> is_wal_sync_thread_safe_{true};
 };
 
-class DBTestBase : public testing::Test {
+class DBHolder {
  protected:
   // Sequence of option configurations to try
   enum OptionConfig {
@@ -617,7 +617,7 @@ class DBTestBase : public testing::Test {
   Options last_options_;
 
   // For encryption
-  std::unique_ptr<yb::UniverseKeyManager> universe_key_manager_;
+  std::unique_ptr<yb::encryption::UniverseKeyManager> universe_key_manager_;
   std::unique_ptr<rocksdb::Env> encrypted_env_;
 
   static const std::string kKeyId;
@@ -637,9 +637,9 @@ class DBTestBase : public testing::Test {
     kSkipMmapReads = 128,
   };
 
-  explicit DBTestBase(const std::string path, bool encryption_enabled = false);
+  explicit DBHolder(std::string path, bool encryption_enabled = false);
 
-  ~DBTestBase();
+  virtual ~DBHolder();
 
   void CreateEncryptedEnv();
 
@@ -830,6 +830,13 @@ class DBTestBase : public testing::Test {
 
   std::unordered_map<std::string, uint64_t> GetAllSSTFiles(
       uint64_t* total_size = nullptr);
+};
+
+class DBTestBase : public RocksDBTest, public DBHolder {
+ public:
+  explicit DBTestBase(std::string path, bool encryption_enabled = false)
+    : DBHolder(std::move(path), encryption_enabled)
+  {}
 };
 
 }  // namespace rocksdb

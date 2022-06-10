@@ -31,11 +31,6 @@
 
 #include <boost/intrusive_ptr.hpp>
 
-#include <glog/logging.h> // TODO Remove after separating status_log.h
-
-#include "yb/gutil/strings/substitute.h" // TODO Remove after separating status_format.h
-
-#include "yb/util/format.h" // TODO Remove after separating status_format.h
 #include "yb/util/slice.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -59,9 +54,16 @@
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
   } while (0);
 
+// Return the given status by adding the error code if it is not OK.
+#define YB_RETURN_NOT_OK_SET_CODE(s, code) do { \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) return MoveStatus(_s).CloneAndAddErrorCode(code); \
+  } while (false)
+
 #define RETURN_NOT_OK           YB_RETURN_NOT_OK
 #define RETURN_NOT_OK_PREPEND   YB_RETURN_NOT_OK_PREPEND
 #define RETURN_NOT_OK_RET       YB_RETURN_NOT_OK_RET
+#define RETURN_NOT_OK_SET_CODE  YB_RETURN_NOT_OK_SET_CODE
 
 extern "C" {
 
@@ -79,13 +81,7 @@ YB_STRONGLY_TYPED_BOOL(AddRef);
 class StatusErrorCode;
 struct StatusCategoryDescription;
 
-#ifndef DISABLE_STATUS_NODISCARD
-#define STATUS_NODISCARD_CLASS NODISCARD_CLASS
-#else
-#define STATUS_NODISCARD_CLASS
-#endif
-
-class STATUS_NODISCARD_CLASS Status {
+class NODISCARD_CLASS Status {
  public:
   // Wrapper class for OK status to forbid creation of Result from Status::OK in compile time
   class OK {
@@ -261,12 +257,6 @@ inline std::ostream& operator<<(std::ostream& out, const Status& status) {
 
 #define STATUS(status_type, ...) \
     (Status(Status::BOOST_PP_CAT(k, status_type), __FILE__, __LINE__, __VA_ARGS__))
-
-// Utility macros to perform the appropriate check. If the check fails, returns the specified
-// (error) Status, with the given message.
-#define SCHECK(expr, status_type, msg) do { \
-    if (PREDICT_FALSE(!(expr))) return STATUS(status_type, (msg)); \
-  } while (0)
 
 #define SCHECK_NOTNULL(expr) do { \
       if ((expr) == nullptr) { \

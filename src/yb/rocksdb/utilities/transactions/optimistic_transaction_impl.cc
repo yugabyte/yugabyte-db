@@ -26,13 +26,11 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/db.h"
+#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/status.h"
 #include "yb/rocksdb/utilities/optimistic_transaction_db.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/utilities/transactions/transaction_util.h"
 
 namespace rocksdb {

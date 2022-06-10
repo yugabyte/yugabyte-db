@@ -1,0 +1,6 @@
+{
+  "AWS_ACCESS_KEY_ID":"ZZZZZ",
+  "AWS_SECRET_ACCESS_KEY":"YYYYYY",
+  "BACKUP_LOCATION":"s3://backups.yugabyte.com/test/username/common",
+  "AWS_HOST_BASE":"s3.amazonaws.com"
+}

@@ -2191,16 +2191,11 @@ typedef struct OptSplit
 typedef struct CreateTableGroupStmt
 {
 	NodeTag		type;
-	char 		 *tablegroupname;
-	RoleSpec *owner;
+	char 	   *tablegroupname;
+	RoleSpec   *owner;
 	List 	   *options;
+	char 	   *tablespacename;
 } CreateTableGroupStmt;
-
-typedef struct DropTableGroupStmt
-{
-	NodeTag		type;
-	char 		 *tablegroupname;
-} DropTableGroupStmt;
 
 /* ----------------------
  * YugaByte Tablegroup options
@@ -2814,7 +2809,7 @@ typedef struct IndexStmt
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
 	bool		initdeferred;	/* is the constraint INITIALLY DEFERRED? */
 	bool		transformed;	/* true when transformIndexStmt is finished */
-	bool		concurrent;		/* should this be a concurrent index build? */
+	YbConcurrencyContext concurrent;	/* is this a concurrent index build? */
 	bool		if_not_exists;	/* just do nothing if index already exists? */
 
 	OptSplit *split_options; /* SPLIT statement options */

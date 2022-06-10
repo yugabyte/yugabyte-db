@@ -42,18 +42,18 @@
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/retryable_requests.h"
+#include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/docdb.h"
 
-#include "yb/gutil/mathlimits.h"
-#include "yb/gutil/stl_util.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/sysinfo.h"
 
@@ -63,6 +63,14 @@
 #include "yb/rpc/strand.h"
 #include "yb/rpc/thread_pool.h"
 
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/history_cutoff_operation.h"
+#include "yb/tablet/operations/operation_driver.h"
+#include "yb/tablet/operations/snapshot_operation.h"
+#include "yb/tablet/operations/split_operation.h"
+#include "yb/tablet/operations/truncate_operation.h"
+#include "yb/tablet/operations/update_txn_operation.h"
+#include "yb/tablet/operations/write_operation.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet.pb.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
@@ -70,18 +78,16 @@
 #include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer_mm_ops.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_participant.h"
+#include "yb/tablet/write_query.h"
 
-#include "yb/tablet/operations/change_metadata_operation.h"
-#include "yb/tablet/operations/history_cutoff_operation.h"
-#include "yb/tablet/operations/operation_driver.h"
-#include "yb/tablet/operations/split_operation.h"
-#include "yb/tablet/operations/truncate_operation.h"
-#include "yb/tablet/operations/write_operation.h"
-#include "yb/tablet/operations/update_txn_operation.h"
-
+#include "yb/util/debug-util.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -101,6 +107,8 @@ DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
+
+DECLARE_int64(cdc_intent_retention_ms);
 
 namespace yb {
 namespace tablet {
@@ -186,7 +194,8 @@ Status TabletPeer::InitTabletPeer(
     const scoped_refptr<MetricEntity>& tablet_metric_entity,
     ThreadPool* raft_pool,
     ThreadPool* tablet_prepare_pool,
-    consensus::RetryableRequests* retryable_requests) {
+    consensus::RetryableRequests* retryable_requests,
+    consensus::MultiRaftManager* multi_raft_manager) {
   DCHECK(tablet) << "A TabletPeer must be provided with a Tablet";
   DCHECK(log) << "A TabletPeer must be provided with a Log";
 
@@ -211,14 +220,22 @@ Status TabletPeer::InitTabletPeer(
     messenger_ = messenger;
 
     tablet->SetMemTableFlushFilterFactory([log] {
-      auto index = log->GetLatestEntryOpId().index;
-      return [index] (const rocksdb::MemTable& memtable) -> Result<bool> {
+      auto largest_log_op_index = log->GetLatestEntryOpId().index;
+      return [largest_log_op_index] (const rocksdb::MemTable& memtable) -> Result<bool> {
         auto frontiers = memtable.Frontiers();
         if (frontiers) {
-          const auto& largest = down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest());
+          const auto largest_memtable_op_index =
+              down_cast<const docdb::ConsensusFrontier&>(frontiers->Largest()).op_id().index;
           // We can only flush this memtable if all operations written to it have also been written
           // to the log (maybe not synced, if durable_wal_write is disabled, but that's OK).
-          return largest.op_id().index <= index;
+          auto should_flush = largest_memtable_op_index <= largest_log_op_index;
+          if (!should_flush) {
+            LOG(WARNING)
+              << "Skipping flush on memtable with ops ahead of log. "
+              << "Memtable index: " << largest_memtable_op_index
+              << " - log index: " << largest_log_op_index;
+          }
+          return should_flush;
         }
 
         // It is correct to not have frontiers when memtable is empty
@@ -267,7 +284,8 @@ Status TabletPeer::InitTabletPeer(
         mark_dirty_clbk_,
         tablet_->table_type(),
         raft_pool,
-        retryable_requests);
+        retryable_requests,
+        multi_raft_manager);
     has_consensus_.store(true, std::memory_order_release);
 
     tablet_->SetHybridTimeLeaseProvider(std::bind(&TabletPeer::HybridTimeLease, this, _1, _2));
@@ -296,6 +314,11 @@ Status TabletPeer::InitTabletPeer(
   }
 
   RETURN_NOT_OK(set_cdc_min_replicated_index(meta_->cdc_min_replicated_index()));
+  if (tablet_->transaction_participant()) {
+    tablet_->transaction_participant()->SetIntentRetainOpIdAndTime(
+        meta_->cdc_sdk_min_checkpoint_op_id(),
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
+  }
 
   TRACE("TabletPeer::Init() finished");
   VLOG_WITH_PREFIX(2) << "Peer Initted";
@@ -411,13 +434,13 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
   return consensus_->CommittedConfig();
 }
 
-bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
+bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
     if (tablet_) {
-      tablet_->StartShutdown(is_drop_table);
+      tablet_->StartShutdown();
     }
   }
 
@@ -454,7 +477,7 @@ bool TabletPeer::StartShutdown(IsDropTable is_drop_table) {
   return true;
 }
 
-void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
+void TabletPeer::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) {
   auto* strand = strand_.get();
   if (strand) {
     strand->Shutdown();
@@ -479,7 +502,7 @@ void TabletPeer::CompleteShutdown(IsDropTable is_drop_table) {
   VLOG_WITH_PREFIX(1) << "Shut down!";
 
   if (tablet_) {
-    tablet_->CompleteShutdown(is_drop_table);
+    tablet_->CompleteShutdown(disable_flush_on_shutdown);
   }
 
   // Only mark the peer as SHUTDOWN when all other components have shut down.
@@ -532,13 +555,17 @@ void TabletPeer::WaitUntilShutdown() {
   }
 }
 
-Status TabletPeer::Shutdown(IsDropTable is_drop_table) {
-  bool isShutdownInitiated = StartShutdown(is_drop_table);
+Status TabletPeer::Shutdown(
+    ShouldAbortActiveTransactions should_abort_active_txns,
+    DisableFlushOnShutdown disable_flush_on_shutdown) {
+  auto is_shutdown_initiated = StartShutdown();
 
-  RETURN_NOT_OK(AbortSQLTransactions());
+  if (should_abort_active_txns) {
+    RETURN_NOT_OK(AbortSQLTransactions());
+  }
 
-  if (isShutdownInitiated) {
-    CompleteShutdown(is_drop_table);
+  if (is_shutdown_initiated) {
+    CompleteShutdown(disable_flush_on_shutdown);
   } else {
     WaitUntilShutdown();
   }
@@ -619,16 +646,16 @@ Status TabletPeer::WaitUntilConsensusRunning(const MonoDelta& timeout) {
   return Status::OK();
 }
 
-void TabletPeer::WriteAsync(std::unique_ptr<WriteOperation> operation) {
+void TabletPeer::WriteAsync(std::unique_ptr<WriteQuery> query) {
   ScopedOperation preparing_token(&preparing_operations_counter_);
   auto status = CheckRunning();
   if (!status.ok()) {
-    operation->CompleteWithStatus(status);
+    query->Cancel(status);
     return;
   }
 
-  operation->set_preparing_token(std::move(preparing_token));
-  tablet_->AcquireLocksAndPerformDocOperations(std::move(operation));
+  query->operation().set_preparing_token(std::move(preparing_token));
+  tablet_->AcquireLocksAndPerformDocOperations(std::move(query));
 }
 
 Result<HybridTime> TabletPeer::ReportReadRestart() {
@@ -669,9 +696,23 @@ Result<HybridTime> TabletPeer::WaitForSafeTime(HybridTime safe_time, CoarseTimeP
   return tablet_->SafeTime(RequireLease::kFallbackToFollower, safe_time, deadline);
 }
 
-void TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
-  data->op_id = consensus_->GetLastCommittedOpId();
-  data->log_ht = tablet_->mvcc_manager()->LastReplicatedHybridTime();
+Status TabletPeer::GetLastReplicatedData(RemoveIntentsData* data) {
+  std::shared_ptr<consensus::RaftConsensus> consensus;
+  TabletPtr tablet;
+  {
+    std::lock_guard<simple_spinlock> lock(lock_);
+    consensus = consensus_;
+    tablet = tablet_;
+  }
+  if (!consensus) {
+    return STATUS(IllegalState, "Consensus destroyed");
+  }
+  if (!tablet) {
+    return STATUS(IllegalState, "Tablet destroyed");
+  }
+  data->op_id = consensus->GetLastCommittedOpId();
+  data->log_ht = tablet->mvcc_manager()->LastReplicatedHybridTime();
+  return Status::OK();
 }
 
 void TabletPeer::UpdateClock(HybridTime hybrid_time) {
@@ -679,7 +720,7 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 }
 
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
-    tserver::TransactionStatePB* request) {
+    TransactionStatePB* request) {
   auto result = std::make_unique<UpdateTxnOperation>(tablet());
   result->TakeRequest(request);
   return result;
@@ -814,6 +855,12 @@ void TabletPeer::GetInFlightOperations(Operation::TraceType trace_type,
 }
 
 Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) const {
+  if (PREDICT_FALSE(!log_)) {
+    auto status = STATUS(Uninitialized, "Log not ready (tablet peer not yet initialized?)");
+    LOG(DFATAL) << status;
+    return status;
+  }
+
   // First, we anchor on the last OpId in the Log to establish a lower bound
   // and avoid racing with the other checks. This limits the Log GC candidate
   // segments before we check the anchors.
@@ -921,13 +968,6 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Status TabletPeer::GetMaxIndexesToSegmentSizeMap(MaxIdxToSegmentSizeMap* idx_size_map) const {
-  RETURN_NOT_OK(CheckRunning());
-  int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
-  log_->GetMaxIndexesToSegmentSizeMap(min_op_idx, idx_size_map);
-  return Status::OK();
-}
-
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
   RETURN_NOT_OK(CheckRunning());
   int64_t min_op_idx = VERIFY_RESULT(GetEarliestNeededLogIndex());
@@ -977,14 +1017,63 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
   return Status::OK();
 }
 
+Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
+  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
+                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
+  return Status::OK();
+}
+
+OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
+  return meta_->cdc_sdk_min_checkpoint_op_id();
+}
+
+Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
+    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  if (cdc_sdk_op_id == OpId::Invalid()) {
+    return Status::OK();
+  }
+  RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+  }
+  return Status::OK();
+}
+
+Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
+    const CoarseTimePoint& cdc_sdk_latest_active_time) {
+  MonoDelta cdc_sdk_intent_retention = MonoDelta::kZero;
+  // If cdc_sdk_latest_update_time is not updated to default CoarseTimePoint::min() value,
+  // It's mean that, no need to retain the intents. This can happen in below case:-
+  //      a. Only XCluster stream are defined for the tablet.
+  //      b. CDCSDK stream for the tablet is expired.
+  if (cdc_sdk_latest_active_time == CoarseTimePoint::min()) {
+    return cdc_sdk_intent_retention;
+  }
+
+  auto txn_participant = tablet()->transaction_participant();
+  if (txn_participant) {
+    // Get the current tablet LEADER's intent retention expiration time.
+    // check how much milliseconds time remaining w.r.t current time, update
+    // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
+    MonoDelta max_retain_time =
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+    MonoDelta lastest_active_time(CoarseMonoClock::Now() - cdc_sdk_latest_active_time);
+    if (max_retain_time >= lastest_active_time) {
+      cdc_sdk_intent_retention = max_retain_time - lastest_active_time;
+    }
+  }
+  return cdc_sdk_intent_retention;
+}
+
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
   switch (replicate_msg->op_type()) {
     case consensus::WRITE_OP:
-      DCHECK(replicate_msg->has_write_request()) << "WRITE_OP replica"
+      DCHECK(replicate_msg->has_write()) << "WRITE_OP replica"
           " operation must receive a WriteRequestPB";
       // We use separate preparing token only on leader, so here it could be empty.
-      return std::make_unique<WriteOperation>(
-          OpId::kUnknownTerm, CoarseTimePoint::max(), this, tablet());
+      return std::make_unique<WriteOperation>(tablet());
 
     case consensus::CHANGE_METADATA_OP:
       DCHECK(replicate_msg->has_change_metadata_request()) << "CHANGE_METADATA_OP replica"
@@ -997,7 +1086,7 @@ std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* 
       return std::make_unique<UpdateTxnOperation>(tablet());
 
     case consensus::TRUNCATE_OP:
-      DCHECK(replicate_msg->has_truncate_request()) << "TRUNCATE_OP replica"
+      DCHECK(replicate_msg->has_truncate()) << "TRUNCATE_OP replica"
           " operation must receive an TruncateRequestPB";
       return std::make_unique<TruncateOperation>(tablet());
 
@@ -1163,7 +1252,7 @@ TabletOnDiskSizeInfo TabletPeer::GetOnDiskSizeInfo() const {
   return info;
 }
 
-int TabletPeer::GetNumLogSegments() const {
+size_t TabletPeer::GetNumLogSegments() const {
   auto log = log_atomic_.load(std::memory_order_acquire);
   return log ? log->num_segments() : 0;
 }
@@ -1177,7 +1266,6 @@ scoped_refptr<OperationDriver> TabletPeer::CreateOperationDriver() {
   return scoped_refptr<OperationDriver>(new OperationDriver(
       &operation_tracker_,
       consensus_.get(),
-      log_.get(),
       prepare_thread_.get(),
       tablet_->table_type()));
 }

@@ -70,9 +70,9 @@ TEST_F(DBTablePropertiesTest, GetPropertiesOfAllTablesTest) {
   // Create 4 tables
   for (int table = 0; table < 4; ++table) {
     for (int i = 0; i < 10 + table; ++i) {
-      db_->Put(WriteOptions(), ToString(table * 100 + i), "val");
+      ASSERT_OK(db_->Put(WriteOptions(), ToString(table * 100 + i), "val"));
     }
-    db_->Flush(FlushOptions());
+    ASSERT_OK(db_->Flush(FlushOptions()));
   }
 
   // 1. Read table properties directly from file
@@ -117,7 +117,7 @@ DBTablePropertiesTest::TestGetPropertiesOfTablesInRange(
   std::vector<LiveFileMetaData> vmd;
   db_->GetLiveFilesMetaData(&vmd);
   for (auto& md : vmd) {
-    std::string fn = md.db_path + md.name;
+    std::string fn = md.FullName();
     bool in_range = false;
     for (auto& r : ranges) {
       // smallestkey < limit && largestkey >= start
@@ -165,8 +165,8 @@ TEST_F(DBTablePropertiesTest, GetPropertiesOfTablesInRange) {
   for (int i = 0; i < 10000; i++) {
     ASSERT_OK(Put(test::RandomKey(&rnd, 5), RandomString(&rnd, 102)));
   }
-  Flush();
-  db_->PauseBackgroundWork();
+  ASSERT_OK(Flush());
+  ASSERT_OK(db_->PauseBackgroundWork());
 
   // Ensure that we have at least L0, L1 and L2
   ASSERT_GT(NumTableFilesAtLevel(0), 0);

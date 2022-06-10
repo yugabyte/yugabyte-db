@@ -31,7 +31,7 @@ yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-ts-cli
+./bin/yb-ts-cli
 ```
 
 ## Commands
@@ -59,7 +59,7 @@ If all tablets are running, returns "All tablets are running".
 **Syntax**
 
 ```sh
-$ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
+yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -72,7 +72,7 @@ If all tablets have bootstrapped, returns "Tablet server is ready".
 **Syntax**
 
 ```sh
-$ yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -121,7 +121,7 @@ Prints the value of the current [hybrid time](../../../architecture/transactions
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
+yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -133,7 +133,7 @@ Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
+yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -197,11 +197,11 @@ Sets the specified configuration flag for the tablet server.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
+yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-* `--force`: Flag to to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
+* `--force`: Flag to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
 * *flag*: The `yb-tserver` configuration flag (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-flags)
 * *value*: The value to be applied.
 
@@ -222,7 +222,7 @@ Prints the status of the tablet server, including information on the node instan
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] status
+yb-ts-cli [ --server_address=<host>:<port> ] status
 ```
 
 * *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
@@ -256,7 +256,7 @@ Default: `60000` (1000 ms = 1 sec)
 ### Return the status of a tablet server
 
 ```sh
-$ ./bin/yb-ts-cli -server_address=127.0.0.1 status
+./bin/yb-ts-cli -server_address=127.0.0.1 status
 ```
 
 ```output
@@ -288,7 +288,7 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
+./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
 ```
 
 ```output

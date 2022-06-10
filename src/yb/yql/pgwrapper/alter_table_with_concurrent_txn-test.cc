@@ -11,10 +11,15 @@
 // under the License.
 
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
 #include "yb/util/test_macros.h"
+
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using std::vector;
@@ -39,7 +44,7 @@ class AlterTableWithConcurrentTxnTest : public PgMiniTestBase {
 
  protected:
   void TriggerTServerLeaderChange() {
-    for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
       tserver::TabletServer* ts = cluster_->mini_tablet_server(i)->server();
       ts->maintenance_manager()->Shutdown();
       tserver::TSTabletManager* tm = ts->tablet_manager();

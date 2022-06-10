@@ -12,7 +12,17 @@
 //
 
 #include "yb/client/snapshot_test_util.h"
+
 #include "yb/client/client_fwd.h"
+#include "yb/client/table.h"
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals;
 
@@ -56,7 +66,7 @@ Result<Snapshots> SnapshotTestUtil::ListSnapshots(
   return std::move(resp.snapshots());
 }
 
-CHECKED_STATUS SnapshotTestUtil::VerifySnapshot(
+Status SnapshotTestUtil::VerifySnapshot(
     const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state,
     size_t expected_num_tablets, size_t expected_num_namespaces, size_t expected_num_tables) {
   auto snapshots = VERIFY_RESULT(ListSnapshots());
@@ -77,19 +87,19 @@ CHECKED_STATUS SnapshotTestUtil::VerifySnapshot(
   size_t num_namespaces = 0, num_tables = 0, num_tablets = 0;
   for (const auto& entry : snapshot.entry().entries()) {
     switch (entry.type()) {
-      case master::SysRowEntry::TABLET:
+      case master::SysRowEntryType::TABLET:
         ++num_tablets;
         break;
-      case master::SysRowEntry::TABLE:
+      case master::SysRowEntryType::TABLE:
         ++num_tables;
         break;
-      case master::SysRowEntry::NAMESPACE:
+      case master::SysRowEntryType::NAMESPACE:
         ++num_namespaces;
         break;
       default:
         return STATUS_FORMAT(
             IllegalState, "Unexpected entry type: $0",
-            master::SysRowEntry::Type_Name(entry.type()));
+            master::SysRowEntryType_Name(entry.type()));
     }
   }
   SCHECK_EQ(num_namespaces, expected_num_namespaces, IllegalState,
@@ -101,7 +111,7 @@ CHECKED_STATUS SnapshotTestUtil::VerifySnapshot(
   return Status::OK();
 }
 
-CHECKED_STATUS SnapshotTestUtil::WaitSnapshotInState(
+Status SnapshotTestUtil::WaitSnapshotInState(
     const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state,
     MonoDelta duration) {
   auto state_name = master::SysSnapshotEntryPB::State_Name(state);
@@ -119,7 +129,7 @@ CHECKED_STATUS SnapshotTestUtil::WaitSnapshotInState(
   return status;
 }
 
-CHECKED_STATUS SnapshotTestUtil::WaitSnapshotDone(
+Status SnapshotTestUtil::WaitSnapshotDone(
     const TxnSnapshotId& snapshot_id, MonoDelta duration) {
   return WaitSnapshotInState(snapshot_id, master::SysSnapshotEntryPB::COMPLETE, duration);
 }
@@ -193,7 +203,7 @@ Result<TxnSnapshotId> SnapshotTestUtil::CreateSnapshot(const TableHandle& table)
   return snapshot_id;
 }
 
-CHECKED_STATUS SnapshotTestUtil::DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
+Status SnapshotTestUtil::DeleteSnapshot(const TxnSnapshotId& snapshot_id) {
   master::DeleteSnapshotRequestPB req;
   master::DeleteSnapshotResponsePB resp;
 
@@ -207,7 +217,7 @@ CHECKED_STATUS SnapshotTestUtil::DeleteSnapshot(const TxnSnapshotId& snapshot_id
   return Status::OK();
 }
 
-CHECKED_STATUS SnapshotTestUtil::WaitAllSnapshotsDeleted() {
+Status SnapshotTestUtil::WaitAllSnapshotsDeleted() {
   RETURN_NOT_OK(WaitFor([this]() -> Result<bool> {
     auto snapshots = VERIFY_RESULT(ListSnapshots());
     SCHECK_EQ(snapshots.size(), 1, IllegalState, "Wrong number of snapshots");
@@ -221,7 +231,7 @@ CHECKED_STATUS SnapshotTestUtil::WaitAllSnapshotsDeleted() {
   return Status::OK();
 }
 
-CHECKED_STATUS SnapshotTestUtil::WaitAllSnapshotsCleaned() {
+Status SnapshotTestUtil::WaitAllSnapshotsCleaned() {
   return WaitFor([this]() -> Result<bool> {
     return VERIFY_RESULT(ListSnapshots()).empty();
   }, kWaitTimeout * kTimeMultiplier, "Snapshot cleanup");
@@ -311,12 +321,12 @@ Result<TxnSnapshotId> SnapshotTestUtil::PickSuitableSnapshot(
   return STATUS_FORMAT(NotFound, "Not found suitable snapshot for $0", hybrid_time);
 }
 
-CHECKED_STATUS SnapshotTestUtil::WaitScheduleSnapshot(
+Status SnapshotTestUtil::WaitScheduleSnapshot(
     const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time) {
   return WaitScheduleSnapshot(schedule_id, std::numeric_limits<int>::max(), min_hybrid_time);
 }
 
-CHECKED_STATUS SnapshotTestUtil::WaitScheduleSnapshot(
+Status SnapshotTestUtil::WaitScheduleSnapshot(
     const SnapshotScheduleId& schedule_id, int max_snapshots,
     HybridTime min_hybrid_time) {
   return WaitFor([this, schedule_id, max_snapshots, min_hybrid_time]() -> Result<bool> {

@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.forms.UpgradeParams;
+import java.time.Duration;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.IsServerReadyResponse;
@@ -49,11 +51,7 @@ public class WaitForServerReady extends ServerSubTaskBase {
   }
 
   private void sleepFor(int waitTimeMs) {
-    try {
-      Thread.sleep(getSleepMultiplier() * waitTimeMs);
-    } catch (InterruptedException ie) {
-      // Do nothing
-    }
+    waitFor(Duration.ofMillis(getSleepMultiplier() * waitTimeMs));
   }
 
   // Helper function to sleep for any pending amount of time in userWaitTime, assuming caller
@@ -120,6 +118,8 @@ public class WaitForServerReady extends ServerSubTaskBase {
 
         sleepFor(WAIT_EACH_ATTEMPT_MS);
       }
+    } catch (CancellationException e) {
+      throw e;
     } catch (Exception e) {
       // There is no generic mechanism from proto/rpc to check if an older server does not have
       // this rpc implemented. So, we just sleep for remaining time on any such error.

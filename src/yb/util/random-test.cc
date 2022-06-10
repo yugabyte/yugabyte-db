@@ -33,7 +33,6 @@
 #include <limits>
 #include <unordered_set>
 
-
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 

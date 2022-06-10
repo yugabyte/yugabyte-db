@@ -13,28 +13,34 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.List;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.yb.master.Master;
+import org.yb.WireProtocol;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
-
-import java.util.UUID;
 
 public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplicationResponse> {
 
-  private final UUID sourceUniverseUUID;
+  private final String replicationGroupName;
+  // Default value is false.
+  private final boolean ignoreErrors;
 
-  DeleteUniverseReplicationRequest(YBTable table, UUID sourceUniverseUUID) {
+  DeleteUniverseReplicationRequest(
+      YBTable table, String replicationGroupName, boolean ignoreErrors) {
     super(table);
-    this.sourceUniverseUUID = sourceUniverseUUID;
+    this.replicationGroupName = replicationGroupName;
+    this.ignoreErrors = ignoreErrors;
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
-    final Master.DeleteUniverseReplicationRequestPB.Builder builder =
-      Master.DeleteUniverseReplicationRequestPB.newBuilder()
-        .setProducerId(sourceUniverseUUID.toString());
+    final MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.Builder builder =
+        MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.newBuilder()
+            .setProducerId(replicationGroupName)
+            .setIgnoreErrors(ignoreErrors);
 
     return toChannelBuffer(header, builder.build());
   }
@@ -52,16 +58,17 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
   @Override
   Pair<DeleteUniverseReplicationResponse, Object> deserialize(
     CallResponse callResponse, String tsUUID) throws Exception {
-    final Master.DeleteUniverseReplicationResponsePB.Builder builder =
-      Master.DeleteUniverseReplicationResponsePB.newBuilder();
+    final MasterReplicationOuterClass.DeleteUniverseReplicationResponsePB.Builder builder =
+      MasterReplicationOuterClass.DeleteUniverseReplicationResponsePB.newBuilder();
 
     readProtobuf(callResponse.getPBMessage(), builder);
 
-    final Master.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final List<WireProtocol.AppStatusPB> warnings = builder.getWarningsList();
 
     DeleteUniverseReplicationResponse response =
       new DeleteUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error);
+        tsUUID, error, warnings);
 
     return new Pair<>(response, error);
   }

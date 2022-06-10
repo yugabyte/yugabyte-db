@@ -1,7 +1,7 @@
 name: Core-YCQL
 description: Create a YCQL issue.
 title: "[YCQL] Title"
-labels: ["area/ycql"]
+labels: ["area/ycql", "status/awaiting-triage"]
 body:
 - type: textarea
   id: ycql

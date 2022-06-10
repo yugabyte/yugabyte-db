@@ -21,7 +21,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
 import java.io.File;
@@ -333,7 +333,7 @@ public class PlatformReplicationManager {
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName);
     if (replicationDir.toFile().exists() || replicationDir.toFile().mkdirs()) {
       try {
-        Util.moveFile(uploadedFile.toPath(), saveAsFile);
+        FileUtils.moveFile(uploadedFile.toPath(), saveAsFile);
         log.debug(
             "Store platform backup received from leader {} via {} as {}.",
             leader.toString(),
@@ -468,7 +468,7 @@ public class PlatformReplicationManager {
   }
 
   /**
-   * Create a backup of the Yugabyte Platform
+   * Create a backup of the YugabyteDB Anywhere
    *
    * @return the output/results of running the script
    */
@@ -486,7 +486,7 @@ public class PlatformReplicationManager {
   }
 
   /**
-   * Restore a backup of the Yugabyte Platform
+   * Restore a backup of the YugabyteDB Anywhere
    *
    * @param input is the path to the backup to be restored
    * @return the output/results of running the script

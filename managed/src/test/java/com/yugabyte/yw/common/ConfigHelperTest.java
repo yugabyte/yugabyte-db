@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.ReleaseManagerTest.TMP_STORAGE_PATH;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -36,6 +35,7 @@ import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ConfigHelperTest extends FakeDBApplication {
+  String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/releases";
 
   @InjectMocks ConfigHelper configHelper;
 

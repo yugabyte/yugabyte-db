@@ -22,12 +22,10 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/clock.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/transaction.pb.h"
 
 #include "yb/rpc/rpc_fwd.h"
-
-#include "yb/util/result.h"
 
 namespace yb {
 namespace client {
@@ -44,13 +42,9 @@ class TransactionManager {
   TransactionManager(TransactionManager&& rhs);
   TransactionManager& operator=(TransactionManager&& rhs);
 
-  // Updates transaction table versions hash of transaction table ids and versions, to let
+  // Updates version for list of transaction table and placements, to let
   // TransactionManager decide whether a refresh of cached status tablets is needed.
-  //
-  // In the unlikely case of a hash collision (~1/2^32), where the hash calculated before
-  // and after an update is identical, the change will not be observed by the transaction
-  // manager, and the old list of cached tablets will be used.
-  void UpdateTxnTableVersionsHash(uint64_t hash);
+  void UpdateTransactionTablesVersion(uint64_t version);
 
   void PickStatusTablet(PickStatusTabletCallback callback, TransactionLocality locality);
 
@@ -63,9 +57,11 @@ class TransactionManager {
 
   void UpdateClock(HybridTime time);
 
-  bool LocalTransactionsPossible();
+  bool PlacementLocalTransactionsPossible();
 
   uint64_t GetLoadedStatusTabletsVersion();
+
+  void Shutdown();
 
  private:
   class Impl;

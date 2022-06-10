@@ -13,8 +13,22 @@
 
 #include "yb/master/yql_columns_vtable.h"
 
+#include <stdint.h>
+
+#include <glog/logging.h>
+
 #include "yb/common/ql_name.h"
-#include "yb/master/catalog_manager.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace master {
@@ -49,12 +63,12 @@ Status YQLColumnsVTable::PopulateColumnInformation(const Schema& schema,
 
 Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
-  auto tables = master_->catalog_manager()->GetTables(GetTablesMode::kVisibleToClient);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (scoped_refptr<TableInfo> table : tables) {
 
     // Skip non-YQL tables.
-    if (!CatalogManager::IsYcqlTable(*table)) {
+    if (!IsYcqlTable(*table)) {
       continue;
     }
 
@@ -69,7 +83,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     const string& table_name = table->name();
 
     // Fill in the hash keys first.
-    int32_t num_hash_columns = schema.num_hash_key_columns();
+    auto num_hash_columns = narrow_cast<int32_t>(schema.num_hash_key_columns());
     for (int32_t i = 0; i < num_hash_columns; i++) {
       QLRow& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
@@ -79,7 +93,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     }
 
     // Now fill in the range columns
-    int32_t num_range_columns = schema.num_range_key_columns();
+    auto num_range_columns = narrow_cast<int32_t>(schema.num_range_key_columns());
     for (int32_t i = num_hash_columns; i < num_hash_columns + num_range_columns; i++) {
       QLRow& row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
@@ -89,7 +103,8 @@ Result<std::shared_ptr<QLRowBlock>> YQLColumnsVTable::RetrieveData(
     }
 
     // Now fill in the rest of the columns.
-    for (int32_t i = num_hash_columns + num_range_columns; i < schema.num_columns(); i++) {
+    auto num_columns = narrow_cast<int32_t>(schema.num_columns());
+    for (auto i = num_hash_columns + num_range_columns; i < num_columns; i++) {
       QLRow &row = vtable->Extend();
       RETURN_NOT_OK(PopulateColumnInformation(schema, keyspace_name, table_name, i, &row));
       // kind (always regular for regular columns)

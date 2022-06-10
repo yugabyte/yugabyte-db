@@ -22,18 +22,14 @@
 
 #include <assert.h>
 #include <string.h>
+
 #include <algorithm>
+
 using std::copy;
 using std::max;
 using std::min;
-using std::reverse;
-using std::sort;
 using std::swap;
-#include <string>
 using std::string;
-
-#include "yb/gutil/strings/ascii_ctype.h"
-#include "yb/gutil/strings/stringpiece.h"
 
 string StripPrefixString(GStringPiece str, const GStringPiece& prefix) {
   if (str.starts_with(prefix))
@@ -98,7 +94,7 @@ void StripString(string* s, GStringPiece remove, char replacewith) {
 // ----------------------------------------------------------------------
 // StripWhiteSpace
 // ----------------------------------------------------------------------
-void StripWhiteSpace(const char** str, int* len) {
+void StripWhiteSpace(const char** str, size_t* len) {
   // strip off trailing whitespace
   while ((*len) > 0 && ascii_isspace((*str)[(*len)-1])) {
     (*len)--;
@@ -123,11 +119,11 @@ bool StripTrailingNewline(string* s) {
 }
 
 void StripWhiteSpace(string* str) {
-  int str_length = str->length();
+  size_t str_length = str->length();
 
   // Strip off leading whitespace.
-  int first = 0;
-  while (first < str_length && ascii_isspace(str->at(first))) {
+  size_t first = 0;
+  while (first < str_length && ascii_isspace((*str)[first])) {
     ++first;
   }
   // If entire string is white space.
@@ -141,8 +137,8 @@ void StripWhiteSpace(string* str) {
   }
 
   // Strip off trailing whitespace.
-  int last = str_length - 1;
-  while (last >= 0 && ascii_isspace(str->at(last))) {
+  size_t last = str_length - 1;
+  while (last >= 0 && ascii_isspace((*str)[last])) {
     --last;
   }
   if (last != (str_length - 1) && last >= 0) {
@@ -189,8 +185,8 @@ string OutputWithMarkupTagsStripped(const string& s) {
 }
 
 
-int TrimStringLeft(string* s, const GStringPiece& remove) {
-  int i = 0;
+size_t TrimStringLeft(string* s, const GStringPiece& remove) {
+  size_t i = 0;
   while (i < s->size() && memchr(remove.data(), (*s)[i], remove.size())) {
     ++i;
   }
@@ -198,8 +194,8 @@ int TrimStringLeft(string* s, const GStringPiece& remove) {
   return i;
 }
 
-int TrimStringRight(string* s, const GStringPiece& remove) {
-  int i = s->size(), trimmed = 0;
+size_t TrimStringRight(string* s, const GStringPiece& remove) {
+  size_t i = s->size(), trimmed = 0;
   while (i > 0 && memchr(remove.data(), (*s)[i-1], remove.size())) {
     --i;
   }
@@ -213,7 +209,7 @@ int TrimStringRight(string* s, const GStringPiece& remove) {
 // ----------------------------------------------------------------------
 // Various removal routines
 // ----------------------------------------------------------------------
-int strrm(char* str, char c) {
+size_t strrm(char* str, char c) {
   char *src, *dest;
   for (src = dest = str; *src != '\0'; ++src)
     if (*src != c) *(dest++) = *src;
@@ -221,14 +217,16 @@ int strrm(char* str, char c) {
   return dest - str;
 }
 
-int memrm(char* str, int strlen, char c) {
+size_t memrm(char* str, size_t strlen, char c) {
   char *src, *dest;
-  for (src = dest = str; strlen-- > 0; ++src)
+  for (src = dest = str; strlen > 0; ++src) {
+    --strlen;
     if (*src != c) *(dest++) = *src;
+  }
   return dest - str;
 }
 
-int strrmm(char* str, const char* chars) {
+size_t strrmm(char* str, const char* chars) {
   char *src, *dest;
   for (src = dest = str; *src != '\0'; ++src) {
     bool skip = false;
@@ -244,7 +242,7 @@ int strrmm(char* str, const char* chars) {
   return dest - str;
 }
 
-int strrmm(string* str, const string& chars) {
+size_t strrmm(string* str, const string& chars) {
   size_t str_len = str->length();
   size_t in_index = str->find_first_of(chars);
   if (in_index == string::npos)
@@ -269,14 +267,14 @@ int strrmm(string* str, const string& chars) {
 //       StripDupCharacters("a//b/c//d", '/', 0) => "a/b/c/d"
 //    Return the number of characters removed
 // ----------------------------------------------------------------------
-int StripDupCharacters(string* s, char dup_char, int start_pos) {
+size_t StripDupCharacters(string* s, char dup_char, int64 start_pos) {
   if (start_pos < 0)
     start_pos = 0;
 
   // remove dups by compaction in-place
-  int input_pos = start_pos;   // current reader position
-  int output_pos = start_pos;  // current writer position
-  const int input_end = s->size();
+  size_t input_pos = start_pos;   // current reader position
+  size_t output_pos = start_pos;  // current writer position
+  const size_t input_end = s->size();
   while (input_pos < input_end) {
     // keep current character
     const char curr_char = (*s)[input_pos];
@@ -290,7 +288,7 @@ int StripDupCharacters(string* s, char dup_char, int start_pos) {
         ++input_pos;
     }
   }
-  const int num_deleted = input_pos - output_pos;
+  const size_t num_deleted = input_pos - output_pos;
   s->resize(s->size() - num_deleted);
   return num_deleted;
 }
@@ -306,9 +304,9 @@ void RemoveExtraWhitespace(string* s) {
   if (s->empty())
     return;
 
-  int input_pos = 0;   // current reader position
-  int output_pos = 0;  // current writer position
-  const int input_end = s->size();
+  size_t input_pos = 0;   // current reader position
+  size_t output_pos = 0;  // current writer position
+  const size_t input_end = s->size();
   // Strip off leading space
   while (input_pos < input_end && ascii_isspace((*s)[input_pos])) input_pos++;
 

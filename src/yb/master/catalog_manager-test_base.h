@@ -16,18 +16,25 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/cluster_balance.h"
-#include "yb/master/ts_descriptor.h"
-#include "yb/util/test_util.h"
+
 #include "yb/master/catalog_manager_util.h"
+#include "yb/master/cluster_balance.h"
 #include "yb/master/cluster_balance_mocked.h"
+#include "yb/master/ts_descriptor.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 
 DECLARE_bool(load_balancer_count_move_as_add);
 
+DECLARE_bool(load_balancer_ignore_cloud_info_similarity);
+
 namespace yb {
 namespace master {
+using std::shared_ptr;
 
 const string default_cloud = "aws";
 const string default_region = "us-west-1";
@@ -55,8 +62,8 @@ inline scoped_refptr<TabletInfo> CreateTablet(
 
 void CreateTable(const vector<string> split_keys, const int num_replicas, bool setup_placement,
                  TableInfo* table, vector<scoped_refptr<TabletInfo>>* tablets) {
-  const int kNumSplits = split_keys.size();
-  for (int i = 0; i <= kNumSplits; i++) {
+  const size_t kNumSplits = split_keys.size();
+  for (size_t i = 0; i <= kNumSplits; i++) {
     const string& start_key = (i == 0) ? "" : split_keys[i - 1];
     const string& end_key = (i == kNumSplits) ? "" : split_keys[i];
     string tablet_id = strings::Substitute("tablet-$0-$1", start_key, end_key);
@@ -75,7 +82,7 @@ void CreateTable(const vector<string> split_keys, const int num_replicas, bool s
   ASSERT_EQ(tablets->size(), split_keys.size() + 1);
 }
 
-void SetupRaftPeer(consensus::RaftPeerPB::MemberType member_type, std::string az,
+void SetupRaftPeer(consensus::PeerMemberType member_type, std::string az,
                    consensus::RaftPeerPB* raft_peer) {
   raft_peer->Clear();
   raft_peer->set_member_type(member_type);
@@ -120,8 +127,7 @@ void SetupClusterConfigWithReadReplicas(vector<string> live_azs,
 }
 
 void NewReplica(
-    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, consensus::RaftPeerPB::Role role,
-    TabletReplica* replica) {
+    TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, PeerRole role, TabletReplica* replica) {
   replica->ts_desc = ts_desc;
   replica->state = state;
   replica->role = role;
@@ -150,7 +156,8 @@ template<class ClusterLoadBalancerMockedClass>
 class TestLoadBalancerBase {
  public:
   TestLoadBalancerBase(ClusterLoadBalancerMockedClass* cb, const string& table_id)
-      : cb_(cb), blacklist_(cb->blacklist_),
+      : cb_(cb),
+        blacklist_(cb->blacklist_),
         leader_blacklist_(cb->leader_blacklist_),
         ts_descs_(cb->ts_descs_),
         affinitized_zones_(cb->affinitized_zones_),
@@ -166,7 +173,7 @@ class TestLoadBalancerBase {
     // Generate 12 tablets total: 4 splits and 3 replicas each.
     vector<string> splits = {"a", "b", "c"};
     const int num_replicas = 3;
-    total_num_tablets_ = num_replicas * (splits.size() + 1);
+    total_num_tablets_ = narrow_cast<int>(num_replicas * (splits.size() + 1));
 
     CreateTable(splits, num_replicas, false, table.get(), &tablets);
 
@@ -203,6 +210,13 @@ class TestLoadBalancerBase {
     PrepareTestState(ts_descs_multi_az);
     TestWithBlacklist();
 
+    gflags::SetCommandLineOption("load_balancer_ignore_cloud_info_similarity", "true");
+    PrepareTestState(ts_descs_multi_az);
+    TestChooseTabletInSameZone();
+    gflags::SetCommandLineOption("load_balancer_ignore_cloud_info_similarity", "false");
+    PrepareTestState(ts_descs_multi_az);
+    TestChooseTabletInSameZone();
+
     PrepareTestState(ts_descs_multi_az);
     TestWithMissingTabletServers();
 
@@ -233,6 +247,11 @@ class TestLoadBalancerBase {
  protected:
   Status AnalyzeTablets() NO_THREAD_SAFETY_ANALYSIS /* don't need locks for mock class  */ {
     cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
+
+    const auto& replication_info =
+        VERIFY_RESULT(cb_->GetTableReplicationInfo(table_map_[cur_table_uuid_]));
+    RETURN_NOT_OK(cb_->PopulateReplicationInfo(table_map_[cur_table_uuid_], replication_info));
+
     cb_->InitializeTSDescriptors();
     return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
   }
@@ -240,6 +259,23 @@ class TestLoadBalancerBase {
   void ResetState() {
     cb_->global_state_ = std::make_unique<GlobalLoadState>();
     cb_->ResetTableStatePtr(cur_table_uuid_, nullptr);
+  }
+
+  void StopTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    ts_desc->last_heartbeat_ = MonoTime::kMin;
+  }
+
+  void ResumeTsHeartbeat(std::shared_ptr<TSDescriptor> ts_desc) {
+    ts_desc->last_heartbeat_ = MonoTime::Now();
+  }
+
+  void AddLeaderBlacklist(const ::std::string& host_uuid) {
+    leader_blacklist_.add_hosts()->set_host(host_uuid);
+  }
+
+  void ClearLeaderBlacklist() {
+    leader_blacklist_.Clear();
+    cb_->state_->leader_blacklisted_servers_.clear();
   }
 
   Result<bool> HandleLeaderMoves(
@@ -261,7 +297,7 @@ class TestLoadBalancerBase {
     ASSERT_OK(AnalyzeTablets());
 
     // Leader blacklist ts2
-    leader_blacklist_.add_hosts()->set_host(ts_descs_[2]->permanent_uuid());
+    AddLeaderBlacklist(ts_descs_[2]->permanent_uuid());
     LOG(INFO) << "Leader distribution: 2 1 1. Leader Blacklist: ts2";
 
     ResetState();
@@ -282,8 +318,7 @@ class TestLoadBalancerBase {
     LOG(INFO) << "Leader distribution: 2 2 0";
 
     // Clear leader blacklist.
-    leader_blacklist_.Clear();
-    cb_->state_->leader_blacklisted_servers_.clear();
+    ClearLeaderBlacklist();
     LOG(INFO) << "Leader distribution: 2 2 0. Leader Blacklist cleared.";
 
     ASSERT_OK(AnalyzeTablets());
@@ -358,6 +393,53 @@ class TestLoadBalancerBase {
     ASSERT_FALSE(ASSERT_RESULT(HandleAddReplicas(&placeholder, &placeholder, &placeholder)));
   }
 
+  void TestChooseTabletInSameZone() {
+    LOG(INFO) << Format("Testing that (if possible) we move a tablet whose leader is in the same "
+                        "zone/region as the new tserver with "
+                        "FLAGS_load_balancer_ignore_cloud_info_similarity=$0.",
+                        GetAtomicFlag(&FLAGS_load_balancer_ignore_cloud_info_similarity));
+    // Setup cluster config. Do not set placement info for the table, so its tablets can be moved
+    // freely from ts0 to the new tserver.
+    PlacementInfoPB* placement_info = replication_info_.mutable_live_replicas();
+    placement_info->set_num_replicas(kDefaultNumReplicas);
+
+    // Add three more tablet servers
+    ts_descs_.push_back(SetupTS("3333", "a"));
+    ts_descs_.push_back(SetupTS("4444", "b"));
+    ts_descs_.push_back(SetupTS("5555", "c"));
+
+    // Move 2 tablets from ts1 and ts2 each to ts3 and ts4, leaving ts0 with 4 tablets, ts1..4
+    // with 2 tablets and ts5 with none.
+    RemoveReplica(tablets_[0].get(), ts_descs_[1]);
+    AddRunningReplica(tablets_[0].get(), ts_descs_[3]);
+    RemoveReplica(tablets_[1].get(), ts_descs_[1]);
+    AddRunningReplica(tablets_[1].get(), ts_descs_[3]);
+    RemoveReplica(tablets_[0].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[0].get(), ts_descs_[4]);
+    RemoveReplica(tablets_[1].get(), ts_descs_[2]);
+    AddRunningReplica(tablets_[1].get(), ts_descs_[4]);
+
+    // Tablet leaders are as follows: Tablet 0: ts0, tablet 1: unassigned (because of the move
+    // above), tablet 2: ts2, tablet 3: ts0. Assign tablet 1's leader to be to ts4 now.
+    MoveTabletLeader(tablets_[1].get(), ts_descs_[4]);
+    ASSERT_OK(AnalyzeTablets());
+
+    string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id;
+    expected_from_ts = ts_descs_[0]->permanent_uuid();
+    expected_to_ts = ts_descs_[5]->permanent_uuid();
+    TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id);
+
+    const auto* moved_tablet_leader = ASSERT_RESULT(tablet_map_[actual_tablet_id]->GetLeader());
+    // If ignoring cloud info, we should move a tablet whose leader is not in zone c (by the order
+    // of the tablets, the first non-leader tablet we encounter is tablet 1 and we do not expect
+    // to replace it). Otherwise, we should pick the tablet whose leader IS in zone c.
+    if (GetAtomicFlag(&FLAGS_load_balancer_ignore_cloud_info_similarity)) {
+      ASSERT_NE(moved_tablet_leader->GetCloudInfo().placement_zone(), "c");
+    } else {
+      ASSERT_EQ(moved_tablet_leader->GetCloudInfo().placement_zone(), "c");
+    }
+  }
+
   void TestOverReplication() NO_THREAD_SAFETY_ANALYSIS /* disabling for controlled test */ {
     LOG(INFO) << "Testing with tablet servers with over-replication";
     // Setup cluster config.
@@ -366,8 +448,8 @@ class TestLoadBalancerBase {
     // Remove the 2 tablet peers that are wrongly placed and assign a new one that is properly
     // placed.
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
-        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      std::shared_ptr<TabletReplicaMap> replica_map =
+        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
       replica_map->erase(ts_descs_[1]->permanent_uuid());
       replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
@@ -493,8 +575,8 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
-        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      std::shared_ptr<TabletReplicaMap> replica_map =
+        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
       replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
@@ -561,7 +643,7 @@ class TestLoadBalancerBase {
     PlacementInfoPB* cluster_placement = replication_info_.mutable_live_replicas();
     cluster_placement->set_num_replicas(kDefaultNumReplicas);
     // Analyze the tablets into the internal state.
-    AnalyzeTablets();
+    ASSERT_OK(AnalyzeTablets());
 
     // Check some base expectations for balanced cluster.
     ASSERT_EQ(0, cb_->get_total_over_replication());
@@ -629,17 +711,21 @@ class TestLoadBalancerBase {
     RemoveReplica(tablets_[1].get(), ts_descs_[2]);
     AddRunningReplica(tablets_[1].get(), ts_descs_[4]);
 
+    // Tablet leaders are as follows: Tablet 0: ts0, tablet 1: unassigned (because of the move
+    // above), tablet 2: ts2, tablet 3: ts0. Assign tablet 1's leader to be ts4.
+    MoveTabletLeader(tablets_[1].get(), ts_descs_[4]);
     ASSERT_OK(AnalyzeTablets());
 
-    // ENG-348: Check that 2 different tablets are moved from ts0 to ts5.
-    // Since tablet 0 on ts0 is the leader, it won't be moved and tablet 1 and 2 will be instead.
-    string expected_tablet_id, expected_from_ts, expected_to_ts;
+    // Since tablet 0 on ts0 is the leader, it won't be moved.
+    string placeholder, expected_from_ts, expected_to_ts, actual_tablet_id1, actual_tablet_id2;
     expected_from_ts = ts_descs_[0]->permanent_uuid();
     expected_to_ts = ts_descs_[5]->permanent_uuid();
-    expected_tablet_id = tablets_[1]->tablet_id();
-    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
-    expected_tablet_id = tablets_[2]->tablet_id();
-    TestAddLoad(expected_tablet_id, expected_from_ts, expected_to_ts);
+    TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id1);
+    TestAddLoad(placeholder, expected_from_ts, expected_to_ts, &actual_tablet_id2);
+    ASSERT_NE(actual_tablet_id1, actual_tablet_id2);
+    ASSERT_EQ(ts_descs_[0]->permanent_uuid(),
+              ASSERT_RESULT(tablets_[0]->GetLeader())->permanent_uuid());
+    ASSERT_EQ(tablets_[0]->GetReplicaLocations()->count(ts_descs_[0]->permanent_uuid()), 1);
   }
 
   void TestWithMissingPlacementAndLoadImbalance() {
@@ -649,8 +735,8 @@ class TestLoadBalancerBase {
 
     // Remove the only tablet peer from AZ "c".
     for (const auto& tablet : tablets_) {
-      std::shared_ptr<TabletInfo::ReplicaMap> replica_map =
-        std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+      std::shared_ptr<TabletReplicaMap> replica_map =
+        std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
       replica_map->erase(ts_descs_[2]->permanent_uuid());
       tablet->SetReplicaLocations(replica_map);
     }
@@ -891,7 +977,7 @@ class TestLoadBalancerBase {
     ResetState();
     replication_info_.Clear();
     blacklist_.Clear();
-    leader_blacklist_.Clear();
+    ClearLeaderBlacklist();
     tablet_map_.clear();
     TSDescriptorVector old_ts_descs;
     old_ts_descs.swap(ts_descs_);
@@ -907,16 +993,14 @@ class TestLoadBalancerBase {
 
     // Prepare the replicas.
     tablet::RaftGroupStatePB state = tablet::RUNNING;
-    for (int i = 0; i < tablets_.size(); ++i) {
-      auto replica_map = std::make_shared<TabletInfo::ReplicaMap>();
-      for (int j = 0; j < ts_descs_.size(); ++j) {
+    for (size_t i = 0; i < tablets_.size(); ++i) {
+      auto replica_map = std::make_shared<TabletReplicaMap>();
+      for (size_t j = 0; j < ts_descs_.size(); ++j) {
         TabletReplica replica;
         auto ts_desc = ts_descs_[j];
         bool is_leader = i % ts_descs_.size() == j;
-        consensus::RaftPeerPB::Role role = is_leader ?
-            consensus::RaftPeerPB::LEADER :
-            consensus::RaftPeerPB::FOLLOWER;
-        NewReplica(ts_desc.get(), state, role , &replica);
+        PeerRole role = is_leader ? PeerRole::LEADER : PeerRole::FOLLOWER;
+        NewReplica(ts_desc.get(), state, role, &replica);
         InsertOrDie(replica_map.get(), ts_desc->permanent_uuid(), replica);
       }
       // Set the replica locations directly into the tablet map.
@@ -939,10 +1023,23 @@ class TestLoadBalancerBase {
 
   void TestAddLoad(const string& expected_tablet_id,
                    const string& expected_from_ts,
-                   const string& expected_to_ts) NO_THREAD_SAFETY_ANALYSIS {
+                   const string& expected_to_ts,
+                   string* actual_tablet_id = nullptr,
+                   string* actual_from_ts = nullptr,
+                   string* actual_to_ts = nullptr) NO_THREAD_SAFETY_ANALYSIS {
     string tablet_id, from_ts, to_ts;
     auto over_replication_at_start = cb_->get_total_over_replication();
     ASSERT_TRUE(ASSERT_RESULT(HandleAddReplicas(&tablet_id, &from_ts, &to_ts)));
+    if (actual_tablet_id) {
+      *actual_tablet_id = tablet_id;
+    }
+    if (actual_from_ts) {
+      *actual_from_ts = from_ts;
+    }
+    if (actual_to_ts) {
+      *actual_to_ts = to_ts;
+    }
+
     if (!expected_tablet_id.empty()) {
       ASSERT_EQ(expected_tablet_id, tablet_id);
     }
@@ -974,33 +1071,30 @@ class TestLoadBalancerBase {
 
   void AddRunningReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc,
                          bool is_live = true) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
 
     TabletReplica replica;
-    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING,
-               consensus::RaftPeerPB::FOLLOWER, &replica);
+    NewReplica(ts_desc.get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::FOLLOWER, &replica);
     InsertOrDie(replicas.get(), ts_desc->permanent_uuid(), replica);
     tablet->SetReplicaLocations(replicas);
   }
 
   void RemoveReplica(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
-    int before_size = replicas->size();
-    replicas->erase(ts_desc->permanent_uuid());
-    ASSERT_TRUE(before_size > replicas->size());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
+    ASSERT_TRUE(replicas->erase(ts_desc->permanent_uuid()));
     tablet->SetReplicaLocations(replicas);
   }
 
   void MoveTabletLeader(TabletInfo* tablet, std::shared_ptr<TSDescriptor> ts_desc) {
-    std::shared_ptr<TabletInfo::ReplicaMap> replicas =
-      std::const_pointer_cast<TabletInfo::ReplicaMap>(tablet->GetReplicaLocations());
+    std::shared_ptr<TabletReplicaMap> replicas =
+      std::const_pointer_cast<TabletReplicaMap>(tablet->GetReplicaLocations());
     for (auto& replica : *replicas) {
       if (replica.second.ts_desc->permanent_uuid() == ts_desc->permanent_uuid()) {
-        replica.second.role = consensus::RaftPeerPB::LEADER;
+        replica.second.role = PeerRole::LEADER;
       } else {
-        replica.second.role = consensus::RaftPeerPB::FOLLOWER;
+        replica.second.role = PeerRole::FOLLOWER;
       }
     }
     tablet->SetReplicaLocations(replicas);
@@ -1025,7 +1119,7 @@ class TestLoadBalancerBase {
   BlacklistPB& leader_blacklist_;
   TableId cur_table_uuid_;
   TSDescriptorVector& ts_descs_;
-  AffinitizedZonesSet& affinitized_zones_;
+  vector<AffinitizedZonesSet>& affinitized_zones_;
   TabletInfoMap& tablet_map_;
   TableInfoMap& table_map_;
   ReplicationInfoPB& replication_info_;

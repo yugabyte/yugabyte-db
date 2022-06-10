@@ -12,10 +12,11 @@
 // under the License.
 //
 //
+
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 
-#include "yb/yql/cql/cqlserver/cql_service.h"
-#include "yb/yql/cql/cqlserver/cql_statement.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
@@ -23,7 +24,11 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/cql/cqlserver/cql_service.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -51,7 +56,7 @@ DEFINE_int32(throttle_cql_calls_policy, kRejectPolicy,
               "Policy for throttling CQL calls. 1 - drop throttled calls. "
               "0 - respond with OVERLOADED error.");
 
-DECLARE_int32(rpc_max_message_size);
+DECLARE_uint64(rpc_max_message_size);
 
 // Max msg length for CQL.
 // Since yb_rpc limit is 255MB, we limit consensensus size to 254MB,
@@ -100,8 +105,7 @@ Status CQLConnectionContext::HandleCall(
   auto reactor = connection->reactor();
   DCHECK(reactor->IsCurrentThread());
 
-  auto call = rpc::InboundCall::Create<CQLInboundCall>(
-      connection, call_processed_listener(), ql_session_);
+  auto call = rpc::InboundCall::Create<CQLInboundCall>(connection, this, ql_session_);
 
   Status s = call->ParseFrom(call_tracker_, call_data);
   if (!s.ok()) {
@@ -145,9 +149,9 @@ void CQLConnectionContext::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 }
 
 CQLInboundCall::CQLInboundCall(rpc::ConnectionPtr conn,
-                               CallProcessedListener call_processed_listener,
+                               CallProcessedListener* call_processed_listener,
                                ql::QLSession::SharedPtr ql_session)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, std::move(call_processed_listener)),
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
       ql_session_(std::move(ql_session)),
       deadline_(CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms) {
 }
@@ -319,7 +323,7 @@ void CQLInboundCall::GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_p
 
 void CQLInboundCall::LogTrace() const {
   MonoTime now = MonoTime::Now();
-  int total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
+  auto total_time = now.GetDeltaSince(timing_.time_received).ToMilliseconds();
   if (PREDICT_FALSE(FLAGS_rpc_dump_all_traces
           || (trace_ && trace_->must_print())
           || total_time > FLAGS_rpc_slow_query_threshold_ms)) {
@@ -352,6 +356,11 @@ bool CQLInboundCall::DumpPB(const rpc::DumpRunningRpcsRequestPB& req,
 
 CoarseTimePoint CQLInboundCall::GetClientDeadline() const {
   return deadline_;
+}
+
+rpc::ThreadPoolTask* CQLInboundCall::BindTask(rpc::InboundCallHandler* handler) {
+  int64_t rpc_queue_limit = CQLRequest::ParseRpcQueueLimit(serialized_request_);
+  return rpc::InboundCall::BindTask(handler, rpc_queue_limit);
 }
 
 } // namespace cqlserver

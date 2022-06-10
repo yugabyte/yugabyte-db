@@ -15,12 +15,14 @@
 #define YB_CLIENT_SNAPSHOT_TEST_UTIL_H
 
 #include "yb/client/txn-test-base.h"
+#include "yb/common/snapshot.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/master_backup.proxy.h"
 #include "yb/rpc/proxy.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -50,38 +52,41 @@ class SnapshotTestUtil {
   void SetCluster(MiniCluster* cluster) {
       cluster_ = cluster;
   }
-  Result<master::MasterBackupServiceProxy> MakeBackupServiceProxy() {
-    return master::MasterBackupServiceProxy(
+
+  Result<master::MasterBackupProxy> MakeBackupServiceProxy() {
+    return master::MasterBackupProxy(
         proxy_cache_, VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
   }
+
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
+
   Result<bool> IsSnapshotDone(const TxnSnapshotId& snapshot_id);
   Result<Snapshots> ListSnapshots(
       const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(),
       ListDeleted list_deleted = ListDeleted::kTrue,
       PrepareForBackup prepare_for_backup = PrepareForBackup::kFalse);
-  CHECKED_STATUS VerifySnapshot(
+  Status VerifySnapshot(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state,
       size_t expected_num_tablets, size_t expected_num_namespaces = 1,
       size_t expected_num_tables = 1);
-  CHECKED_STATUS WaitSnapshotInState(
+  Status WaitSnapshotInState(
       const TxnSnapshotId& snapshot_id, master::SysSnapshotEntryPB::State state,
       MonoDelta duration = kWaitTimeout);
-  CHECKED_STATUS WaitSnapshotDone(
+  Status WaitSnapshotDone(
       const TxnSnapshotId& snapshot_id, MonoDelta duration = kWaitTimeout);
 
   Result<TxnSnapshotRestorationId> StartRestoration(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
   Result<bool> IsRestorationDone(const TxnSnapshotRestorationId& restoration_id);
-  CHECKED_STATUS RestoreSnapshot(
+  Status RestoreSnapshot(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
   Result<TxnSnapshotId> StartSnapshot(const TableHandle& table);
   Result<TxnSnapshotId> CreateSnapshot(const TableHandle& table);
-  CHECKED_STATUS DeleteSnapshot(const TxnSnapshotId& snapshot_id);
-  CHECKED_STATUS WaitAllSnapshotsDeleted();
+  Status DeleteSnapshot(const TxnSnapshotId& snapshot_id);
+  Status WaitAllSnapshotsDeleted();
 
   Result<ImportedSnapshotData> StartImportSnapshot(const master::SnapshotInfoPB& snapshot);
-  CHECKED_STATUS WaitAllSnapshotsCleaned();
+  Status WaitAllSnapshotsCleaned();
 
   Result<SnapshotScheduleId> CreateSchedule(
       const TableHandle& table,
@@ -95,10 +100,10 @@ class SnapshotTestUtil {
   Result<TxnSnapshotId> PickSuitableSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime hybrid_time);
 
-  CHECKED_STATUS WaitScheduleSnapshot(
+  Status WaitScheduleSnapshot(
       const SnapshotScheduleId& schedule_id, HybridTime min_hybrid_time);
 
-  CHECKED_STATUS WaitScheduleSnapshot(
+  Status WaitScheduleSnapshot(
       const SnapshotScheduleId& schedule_id, int max_snapshots = 1,
       HybridTime min_hybrid_time = HybridTime::kMin);
 

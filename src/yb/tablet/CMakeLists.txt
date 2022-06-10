@@ -1,4 +1,4 @@
-# Licensed to the Apache Software Foundation (ASF) under one
+  # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
 # regarding copyright ownership.  The ASF licenses this file
@@ -30,12 +30,16 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX tablet)
+set(YB_PCH_DEP_LIBS opid_proto)
+
 set(TABLET_SRCS
   abstract_tablet.cc
   apply_intents_task.cc
   cleanup_aborts_task.cc
   cleanup_intents_task.cc
   remove_intents_task.cc
+  restore_util.cc
   running_transaction.cc
   tablet_snapshots.cc
   tablet.cc
@@ -64,18 +68,23 @@ set(TABLET_SRCS
   tablet_metadata.cc
   tablet_retention_policy.cc
   preparer.cc
-  ${TABLET_SRCS_EXTENSIONS})
+  write_query.cc
+  )
 
 set(TABLET_DEPS pq_utils)
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES
+  NO_SERVICE_PROTO_FILES
+    metadata.proto
+    operations.proto
     tablet.proto
-    metadata.proto)
+    tablet_types.proto
+  )
 set(TABLET_PROTO_LIBS
+  docdb_proto
   protobuf
   fs_proto
   consensus_metadata_proto
@@ -89,6 +98,10 @@ ADD_YB_LIBRARY(
   tablet
   SRCS ${TABLET_SRCS}
   DEPS ${TABLET_DEPS})
+
+# read_query.h and write_query.h include tserver.fwd.h, and are included from some sources in the
+# tablet code, so tserver proto generation has to happen before compiling this library.
+add_dependencies(tablet gen_src_yb_tserver_tserver_proto)
 
 ADD_YB_LIBRARY(
   tablet_error
@@ -112,10 +125,12 @@ target_link_libraries(tablet
 
 add_library(tablet_test_util
             local_tablet_writer.cc
+            tablet-harness.cc
+            tablet-test-base.cc
             tablet-test-util.cc)
 target_link_libraries(tablet_test_util tablet yb_common yb_test_util yb_util)
 
-set(YB_TEST_LINK_LIBS tablet tablet_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS tablet tablet_test_util yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(tablet-test)
 ADD_YB_TEST(tablet-split-test)
 ADD_YB_TEST(tablet-metadata-test)

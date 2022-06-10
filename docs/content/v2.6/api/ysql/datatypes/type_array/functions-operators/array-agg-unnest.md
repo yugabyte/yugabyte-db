@@ -51,7 +51,7 @@ values
 It produces this result:
 
 ```
- column1 | column2 
+ column1 | column2
 ---------+---------
        1 | dog
        2 | cat
@@ -75,7 +75,7 @@ from tab;
 It produces this result:
 
 ```
-               arr               
+               arr
 ---------------------------------
  {"(1,dog)","(2,cat)","(3,ant)"}
 ```
@@ -157,7 +157,7 @@ from tab;
 It produces this result:
 
 ```
-        arr        
+        arr
 -------------------
  {{a,b,c},{d,e,f}}
 ```
@@ -223,7 +223,7 @@ order by 1;
 The parentheses around the column alias _"rec"_ are required to remove what the SQL compiler would otherwise see as an ambiguity, and would report as a _"42P01 undefined_table"_ error. This is the result:
 
 ```
- f1 |  f2  
+ f1 |  f2
 ---+-----
  1 | dog
  2 | cat
@@ -261,7 +261,7 @@ as result(arr1, arr2, arr3, arr4_a, arr4_n, n);
 It produces this result:
 
 ```
-   arr1    | arr2 |   arr3    |  arr4_a   |  arr4_n   | n 
+   arr1    | arr2 |   arr3    |  arr4_a   |  arr4_n   | n
 -----------+------+-----------+-----------+-----------+---
          1 |   10 | a         |         1 | p         | 1
          2 |   20 | b         |         2 | q         | 2
@@ -297,14 +297,14 @@ Notice that the SQL statement, this time, is _not_ terminated with a semicolon. 
 You recognize this as the literal for a two-dimensional array. Now use this as the actual argument for `unnest()`:
 
 ```plpgsql
-select unnest(:unnest_arg) as val 
+select unnest(:unnest_arg) as val
 order by 1;
 ```
 
 It produces this result:
 
 ```
- val 
+ val
 -----
    1
    2
@@ -330,7 +330,7 @@ select array_agg(val order by val) from a;
 It produces this result:
 
 ```
-      array_agg      
+      array_agg
 ---------------------
  {1,2,3,4,5,6,7,8,9}
 ```
@@ -346,7 +346,7 @@ select array_to_string(:unnest_arg, ',');
 It produces this result:
 
 ```
-  array_to_string  
+  array_to_string
 -------------------
  1,2,3,4,5,6,7,8,9
 ```
@@ -416,7 +416,7 @@ master_pk, seq;
 This is the result:
 
 ```
- master_pk | master_name | seq | detail_name 
+ master_pk | master_name | seq | detail_name
 -----------+-------------+-----+-------------
          1 | John        |   1 | cat
          1 | John        |   2 | dog
@@ -462,7 +462,7 @@ This is the result:
 
 ```
 
- master_pk | master_name |                       details                        
+ master_pk | master_name |                       details
 -----------+-------------+------------------------------------------------------
          1 | John        | {"(1,cat)","(2,dog)"}
          2 | Mary        | {"(1,rabbit)","(2,hare)","(3,squirrel)","(4,horse)"}
@@ -513,10 +513,10 @@ order by 1;
 It produces this result:
 
 ```
- master_pk | master_name |                        pretty_details                        
+ master_pk | master_name |                        pretty_details
 -----------+-------------+--------------------------------------------------------------
-         1 | John        | 1: cat       | 2: dog       | 
-         2 | Mary        | 1: rabbit    | 2: hare      | 3: squirrel  | 4: horse     | 
+         1 | John        | 1: cat       | 2: dog       |
+         2 | Mary        | 1: rabbit    | 2: hare      | 3: squirrel  | 4: horse     |
          3 | Joze        | 1: swan      | 2: duck      | 3: turkey    |
 ```
 
@@ -552,7 +552,7 @@ The result is identical to what the _"original&#95;data"_ view represents. But r
 ```plpgsql
 with
   original_except_new as (
-    select master_pk, master_name, seq, detail_name 
+    select master_pk, master_name, seq, detail_name
     from original_data
     except
     select master_pk, master_name, seq, detail_name
@@ -583,7 +583,7 @@ from original_except_new_union_new_except_original;
 This is the result:
 
 ```
-                   result                    
+                   result
 ---------------------------------------------
  "new_data" is identical to "original_data."
 ```
@@ -617,7 +617,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
 &#160;&#160;&#160;&#160;This is the result:
 
   ```
-   master_pk | master_name |            agg             
+   master_pk | master_name |            agg
   -----------+-------------+----------------------------
            2 | Mary        | {"(1,rabbit)","(4,horse)"}
            3 | Joze        | {"(2,duck)","(3,turkey)"}
@@ -646,7 +646,7 @@ Notice that if you choose the _"masters&#95;with&#95;details"_ approach (either 
 &#160;&#160;&#160;&#160;This is the result:
 
   ```
-   master_pk | master_name | seq | detail_name 
+   master_pk | master_name | seq | detail_name
   -----------+-------------+-----+-------------
            2 | Mary        |   1 | rabbit
            2 | Mary        |   2 | hare
@@ -702,14 +702,14 @@ Here is a simple example:
 ```plpgsql
 select generate_subscripts(
     array[17, 42, 53], 1
-  ) 
+  )
 as subscript;
 ```
 
 This is the result:
 
 ```
- subscript 
+ subscript
 -----------
          1
          2
@@ -721,14 +721,14 @@ The example asks for the index values to be generated reverse order.
 ```plpgsql
 select generate_subscripts(
     array[17, 42, 53], 1, true
-  ) 
+  )
 as subscript;
 ```
 
 This is the result:
 
 ```
- subscript 
+ subscript
 -----------
          3
          2
@@ -794,7 +794,7 @@ $body$;
 
 ### The g(i) table(column) aliasing locution
 
-Both of the built-ins, `generate_series()` and `generate_subscripts()` are table functions. For this reason, they are amenable to this aliasing aliasing locution:
+Both of the built-ins, `generate_series()` and `generate_subscripts()` are table functions. For this reason, they are amenable to this aliasing locution:
 
 ```plpgsql
 select my_table_alias.my_column_alias
@@ -804,7 +804,7 @@ from generate_series(1, 3) as my_table_alias(my_column_alias);
 This is the result:
 
 ```
- my_column_alias 
+ my_column_alias
 -----------------
                1
                2
@@ -821,7 +821,7 @@ from generate_subscripts('[5:7]={17, 42, 53}'::int[], 1) as g(i);
 with this result:
 
 ```
- i 
+ i
 ---
  5
  6
@@ -852,7 +852,7 @@ from generate_subscripts((select arr from t where k = 1), 1) as g(i);
 It produces this result:
 
 ```
- i | arr 
+ i | arr
 ---+-----
  5 |  17
  6 |  42
@@ -895,9 +895,9 @@ $body$;
 The result (after manually stripping the "INFO:" prompts), is the same as the SQL approach that uses `generate_subscripts()`, shown above, produces:
 
 ```
-7 | 53 
-6 | 42 
-5 | 17 
+7 | 53
+6 | 42
+5 | 17
 ```
 
 Notice that having made the transition to a procedural approach, there is no longer any need to use
@@ -941,7 +941,7 @@ select unnest((select arr from v)) as val;
 Each uses the same array, _"array[1, 2, 3]::int[]"_, and each produces the same result, thus:
 
 ```
- val 
+ val
 -----
   17
   42
@@ -976,7 +976,7 @@ order by s1.i, s2.j;
 Again, each uses the same array (this time _'{{17, 42, 53},{57, 67, 73}}'::int[]_) and each produces the same result, thus:
 
 ```
- element 
+ element
 ---------
       17
       42

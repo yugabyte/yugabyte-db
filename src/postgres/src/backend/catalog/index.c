@@ -50,6 +50,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/storage.h"
 #include "commands/tablecmds.h"
+#include "commands/defrem.h"
 #include "commands/event_trigger.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -59,6 +60,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/planner.h"
 #include "parser/parser.h"
+#include "parser/parse_utilcmd.h"
 #include "rewrite/rewriteManip.h"
 #include "storage/bufmgr.h"
 #include "storage/lmgr.h"
@@ -786,7 +788,8 @@ index_create(Relation heapRelation,
 			 Oid *constraintId,
 			 OptSplit *split_options,
 			 const bool skip_index_backfill,
-			 Oid tablegroupId)
+			 Oid tablegroupId,
+			 Oid colocationId)
 {
 	Oid			heapRelationId = RelationGetRelid(heapRelation);
 	Relation	pg_class;
@@ -941,7 +944,7 @@ index_create(Relation heapRelation,
 	if (!OidIsValid(indexRelationId))
 	{
 		/* Use binary-upgrade override for pg_class.oid/relfilenode? */
-		if (IsBinaryUpgrade)
+		if (IsBinaryUpgrade && !yb_binary_restore)
 		{
 			if (!OidIsValid(binary_upgrade_next_index_pg_class_oid))
 				ereport(ERROR,
@@ -972,6 +975,7 @@ index_create(Relation heapRelation,
 	indexRelation = heap_create(indexRelationName,
 								namespaceId,
 								tableSpaceId,
+								tablegroupId,
 								indexRelationId,
 								relFileNode,
 								indexTupDesc,
@@ -999,6 +1003,7 @@ index_create(Relation heapRelation,
 					   split_options,
 					   skip_index_backfill,
 					   tablegroupId,
+					   colocationId,
 					   tableSpaceId);
 	}
 
@@ -2413,7 +2418,7 @@ index_build(Relation heapRelation,
 	 * Call the access method's build procedure
 	 */
 	stats = indexRelation->rd_amroutine->ambuild(heapRelation, indexRelation,
-	                        indexInfo);
+							indexInfo);
 	Assert(PointerIsValid(stats));
 
 	/*
@@ -4267,11 +4272,24 @@ reindex_relation(Oid relid, int flags, int options)
 		{
 			Oid			indexOid = lfirst_oid(indexId);
 
-			if (is_pg_class)
-				RelationSetIndexList(rel, doneIndexes, InvalidOid);
+			if (IsYBRelationById(indexOid))
+			{
+				Relation new_rel = heap_open(YbGetStorageRelid(rel), AccessExclusiveLock);
+				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(RelationGetDescr(new_rel),
+											  	RelationGetDescr(rel),
+											  	gettext_noop("could not convert row type"));
+				heap_close(new_rel, AccessExclusiveLock);
+				YbDropAndRecreateIndex(indexOid, relid, rel, new_to_old_attmap);
+				RemoveReindexPending(indexOid);
+			}
+			else
+			{
+				if (is_pg_class)
+					RelationSetIndexList(rel, doneIndexes, InvalidOid);
 
-			reindex_index(indexOid, !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
+				reindex_index(indexOid, !(flags & REINDEX_REL_CHECK_CONSTRAINTS),
 						  persistence, options);
+			}
 
 			CommandCounterIncrement();
 

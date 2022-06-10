@@ -14,7 +14,14 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
+
+#include "yb/common/common.pb.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+
 #include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_expr.h"
 
 namespace yb {

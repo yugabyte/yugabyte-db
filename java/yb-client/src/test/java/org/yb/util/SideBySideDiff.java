@@ -12,8 +12,13 @@
 //
 package org.yb.util;
 
+import static org.yb.AssertionWrappers.*;
+
+import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.yb.client.TestUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,56 +33,33 @@ public class SideBySideDiff {
 
   private File f1, f2;
 
-  private List<String> sxsDiffLines;
-
-  /**
-   * Zero-based column of the middle of the side-by-side diff output as produced by the diff
-   * command.
-   */
-  private int midColumn;
-
   private static Set<Character> VALID_MID_CHAR_SUPERSET = new TreeSet<>(
-      Arrays.asList(new Character[] {' ', '<', '>', '|'})
+      Arrays.asList(' ', '<', '>', '|')
   );
 
   private static Set<Character> VALID_LEFT_RIGHT_CHAR_SUPERSET = new TreeSet<>(
-      Arrays.asList(new Character[] {' '})
+      Arrays.asList(' ')
   );
-
-  /**
-   * charSetAtColumn[i] is the the set of characters in the diff at the 0-based column i.
-   * This is used to find the divider that is not always exactly in the middle of the width
-   * passed to the diff command.
-   */
-  private List<Set<Character>> charSetAtColumn = new ArrayList<>();
 
   /**
    * This width is given to the side-by-side diff call. Not necessarily the final displayed width.
    */
-
   public SideBySideDiff(File f1, File f2) {
     this.f1 = f1;
     this.f2 = f2;
   }
 
-  private Set<Character> getCharSetAtColumn(int i) {
-    while (i >= charSetAtColumn.size()) {
-      charSetAtColumn.add(null);
+  private List<Set<Character>> getColumnCharacters(List<String> diffLines, int maxDiffLineLength) {
+    List<Set<Character>> result = new ArrayList<>();
+    for (int i = 0; i < maxDiffLineLength; ++i) {
+      result.add(new TreeSet<>());
     }
-    Set<Character> set = charSetAtColumn.get(i);
-    if (set != null) {
-      return set;
-    }
-
-    set = new TreeSet<>();
-    charSetAtColumn.set(i, set);
-
-    for (String line : sxsDiffLines) {
-      if (i < line.length()) {
-        set.add(line.charAt(i));
+    for (String line : diffLines) {
+      for (int i = 0; i < line.length(); ++i) {
+        result.get(i).add(line.charAt(i));
       }
     }
-    return set;
+    return result;
   }
 
   private static List<String> readLinesAndNormalize(File f) throws IOException {
@@ -87,15 +69,16 @@ public class SideBySideDiff {
   private static void sanityCheckLinesMatch(
       String fileDescription, List<String> lines, int i, String lineFromDiff) {
     if (i < 0 || i >= lines.size()) {
-      LOG.error("SideBySideDiff sanity check failed: trying to get line " + (i + 1) + " in the " +
-          fileDescription + " file (it has " + lines.size() + " lines)");
-      return;
+      throw new RuntimeException(
+          "SideBySideDiff sanity check failed: trying to get line " + (i + 1) + " in the " +
+              fileDescription + " file (it has " + lines.size() + " lines)");
     }
     String lineFromFile = lines.get(i);
     if (!lineFromFile.equals(lineFromDiff)) {
-      LOG.error("SideBySideDiff sanity check failed: line " + (i + 1) + " from the " +
-          fileDescription + " file is\n" + lineFromFile + "<EOL>" +
-          "\nbut the diff tool implies it should be\n" + lineFromDiff + "<EOL>");
+      throw new RuntimeException(
+          "SideBySideDiff sanity check failed: line " + (i + 1) + " from the " +
+              fileDescription + " file is\n" + lineFromFile + "<EOL>" +
+              "\nbut the diff tool implies it should be\n" + lineFromDiff + "<EOL>");
     }
   }
 
@@ -132,93 +115,144 @@ public class SideBySideDiff {
     List<String> lines1 = readLinesAndNormalize(f1);
     List<String> lines2 = readLinesAndNormalize(f2);
 
+    // Might be the difference between diff implementations,
+    // but adding 4 or 8 is not enough on macOS.
     final int diffWidth = Math.max(
         StringUtil.getMaxLineLength(lines1),
-        StringUtil.getMaxLineLength(lines2)) * 2 + 4;
+        StringUtil.getMaxLineLength(lines2)) * 2 + 12;
 
-    String diffCmd = String.format("diff -W%d -y --expand-tabs '%s' '%s'", diffWidth, f1, f2);
+    // Diff has no way to strip trailing spaces, so we do preprocessing for it.
+    File f1copy = new File(TestUtils.getBaseTmpDir(), "f1_" + f1.getName());
+    File f2copy = new File(TestUtils.getBaseTmpDir(), "f2_" + f2.getName());
+    FileUtils.writeLines(f1copy, lines1);
+    FileUtils.writeLines(f2copy, lines2);
+
+    String diffCmd = String.format("diff --width=%d --side-by-side '%s' '%s'",
+        diffWidth, f1copy, f2copy);
     CommandResult commandResult = CommandUtil.runShellCommand(diffCmd);
     List<String> stdoutLines = commandResult.getStdoutLines();
 
-    sxsDiffLines = new ArrayList<>();
+    List<String> diffLines = new ArrayList<>();
 
-    int maxSxsDiffLineLength = 0;
+    int maxDiffLineLength = 0;
     for (String line : stdoutLines) {
       String expandedLine = StringUtil.expandTabs(line);
-      sxsDiffLines.add(expandedLine);
-      maxSxsDiffLineLength = Math.max(maxSxsDiffLineLength, expandedLine.length());
+      diffLines.add(expandedLine);
+      maxDiffLineLength = Math.max(maxDiffLineLength, expandedLine.length());
     }
 
-    // This is not necessarily exactly where the mid-column is, but pretty close to it in practice.
-    final int midColumnGuess = diffWidth / 2 - 1;
+    int rhsColumnOffset = -1;
 
-    midColumn = -1;
+    // Our previous attempts to devise middle column and offset by bruteforce from the middle
+    // had proven to be quite inconsistent between platforms/diff versions.
+    // Instead, let's try to use the first matching row of a right-hand side and work from there.
+    outer:
+    for (int i = 0; i < diffLines.size(); ++i) {
+      String diffLine = diffLines.get(i);
 
-    outerLoop:
-    for (int offsetFromMiddle = 0; offsetFromMiddle <= maxSxsDiffLineLength / 2;
-         ++offsetFromMiddle) {
-      for (int offsetDirection = -1; offsetDirection <= 1; offsetDirection += 2) {
-        int offset = midColumnGuess + offsetDirection * offsetFromMiddle;
-        if (offset >= 0 && offset < maxSxsDiffLineLength) {
-          Set<Character> leftSet = getCharSetAtColumn(offset - 1);
-          Set<Character> midSet = getCharSetAtColumn(offset);
-          Set<Character> rightSet = getCharSetAtColumn(offset + 1);
-          if (VALID_LEFT_RIGHT_CHAR_SUPERSET.containsAll(leftSet) &&
-              VALID_LEFT_RIGHT_CHAR_SUPERSET.containsAll(rightSet) &&
-              VALID_MID_CHAR_SUPERSET.containsAll(midSet)) {
-            midColumn = offset;
-            break outerLoop;
+      // "<" might mean that this is unique to a left-hand side.
+      // (Could also be used for other purposes, but we have plenty of lines.)
+      if (diffLine.matches("\\s*") || diffLine.contains("<"))
+        continue;
+
+      for (int j = i; j >= 0; --j) {
+        String rhsLine = lines2.get(j);
+
+        if (rhsLine.matches("\\s*")) {
+          continue;
+        }
+
+        List<Integer> possibleRhsOffsets = new ArrayList<>();
+        int offset = -1;
+        do {
+          offset = diffLine.indexOf(rhsLine, offset + 1);
+          if (offset > -1) {
+            possibleRhsOffsets.add(offset);
           }
+        } while (offset != -1);
+
+        // If there are too many possible offsets, it becomes ambiguous and we search
+        // for a better line.
+        if (!possibleRhsOffsets.isEmpty() && possibleRhsOffsets.size() <= 2) {
+          rhsColumnOffset = possibleRhsOffsets.get(possibleRhsOffsets.size() - 1);
+          break outer;
         }
       }
     }
 
-    if (midColumn == -1) {
+    if (rhsColumnOffset == -1) {
       LOG.error("Side-by-side diff raw output with tabs expanded:\n" +
-          StringUtil.expandTabsAndConcatenate(sxsDiffLines));
+          StringUtil.expandTabsAndConcatenate(diffLines));
       throw new IOException(
-          "Was not able to find the mid-column of the side-by-side diff. " +
+          "Was not able to find the right-hand side offset of the side-by-side diff. " +
               "See the raw output with tabs expanded in the log.");
     }
 
-    int i1 = 0;
-    int i2 = 0;
-    List<SideBySideDiffLine> outLines = new ArrayList<>();
-    for (String diffLine : sxsDiffLines) {
-      String s1 = diffLine.substring(0, Math.min(midColumn - 1, diffLine.length()));
-      s1 = StringUtil.rtrim(s1);
+    List<Set<Character>> columnChars = getColumnCharacters(diffLines, maxDiffLineLength);
 
-      int offset2 = midColumn + 3;
-      String s2 = diffLine.length() > offset2 ? diffLine.substring(offset2) : "";
-      s2 = StringUtil.rtrim(s2);
+    // Zero-based column of the middle of the side-by-side diff output as produced by the diff
+    // command.
+    // This column contains mismatch character markers.
+    int midColumn = -1;
+
+    for (int i = rhsColumnOffset - 2; i > 0; --i) {
+      Set<Character> midSet = columnChars.get(i);
+      if (VALID_MID_CHAR_SUPERSET.containsAll(midSet)) {
+        if (!VALID_LEFT_RIGHT_CHAR_SUPERSET.containsAll(midSet)) {
+          // We definitely found a middle column
+          midColumn = i;
+          break;
+        }
+        // Otherwise, could either be middle column of a no-mismatch diff,
+        // or column added as padding.
+      } else {
+        // Found a data column, we've looked too far.
+        // This means there are no mismatches and we can treat ANY space-only
+        // column as a middle column.
+        midColumn = rhsColumnOffset - 1;
+        assertTrue(VALID_LEFT_RIGHT_CHAR_SUPERSET.containsAll(columnChars.get(midColumn)));
+      }
+    }
+
+    int lLineIdx = 0;
+    int rLineIdx = 0;
+    List<SideBySideDiffLine> sxsLines = new ArrayList<>();
+
+    for (String diffLine : diffLines) {
+      String lStr =
+          StringUtil.rtrim(diffLine.substring(0, Math.min(midColumn - 1, diffLine.length())));
+      String rStr =
+          diffLine.length() > rhsColumnOffset
+              ? StringUtil.rtrim(diffLine.substring(rhsColumnOffset))
+              : "";
 
       char diffChar = midColumn < diffLine.length() ? diffLine.charAt(midColumn) : ' ';
 
-      outLines.add(new SideBySideDiffLine(i1, s1, i2, s2, diffChar));
-      if (diffChar != '<') {
-        // "<" would mean this line is unique to the left-hand-side file.
-        sanityCheckLinesMatch("rhs", lines2, i2, s2);
-        i2++;
-      }
+      sxsLines.add(new SideBySideDiffLine(lLineIdx, lStr, rLineIdx, rStr, diffChar));
       if (diffChar != '>') {
         // ">" would mean this line is unique to the right-hand-side file.
-        sanityCheckLinesMatch("lhs", lines1, i1, s1);
-        i1++;
+        sanityCheckLinesMatch("lhs", lines1, lLineIdx, lStr);
+        lLineIdx++;
+      }
+      if (diffChar != '<') {
+        // "<" would mean this line is unique to the left-hand-side file.
+        sanityCheckLinesMatch("rhs", lines2, rLineIdx, rStr);
+        rLineIdx++;
       }
     }
 
     int valueWidth1 = 0;
-    for (SideBySideDiffLine sxsLine : outLines) {
+    for (SideBySideDiffLine sxsLine : sxsLines) {
       valueWidth1 = Math.max(valueWidth1, sxsLine.s1.length());
     }
     int lineNumWidth1 = String.valueOf(lines1.size()).length();
     int lineNumWidth2 = String.valueOf(lines2.size()).length();
     String fmt = "%" + lineNumWidth1 + "s  " +
         "%-" + valueWidth1 + "s  %c  %" + lineNumWidth2 + "s  %s";
-    for (SideBySideDiffLine sxsLine: outLines) {
+    for (SideBySideDiffLine diffLine: sxsLines) {
       result.append(StringUtil.rtrim(
-          String.format(fmt, sxsLine.getLeftLineNumStr(), sxsLine.s1, sxsLine.diffChar,
-              sxsLine.getRightLineNumStr(), sxsLine.s2)));
+          String.format(fmt, diffLine.getLeftLineNumStr(), diffLine.s1, diffLine.diffChar,
+              diffLine.getRightLineNumStr(), diffLine.s2)));
       result.append('\n');
     }
 

@@ -13,12 +13,13 @@
 
 #ifndef YB_TSERVER_UNIVERSE_KEY_TEST_UTIL_H
 #define YB_TSERVER_UNIVERSE_KEY_TEST_UTIL_H
-#include "yb/util/universe_key_manager.h"
+
+#include "yb/encryption/universe_key_manager.h"
 
 namespace yb {
 namespace tserver {
 
-std::unique_ptr<UniverseKeyManager> GenerateTestUniverseKeyManager();
+std::unique_ptr<encryption::UniverseKeyManager> GenerateTestUniverseKeyManager();
 
 }  // tserver
 }  // yb

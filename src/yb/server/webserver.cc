@@ -43,23 +43,21 @@
 
 #include "yb/server/webserver.h"
 
+#include <cds/init.h>
 #include <stdio.h>
 
 #include <algorithm>
 #include <functional>
 #include <map>
-#include <mutex>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
-
 #include <glog/logging.h>
 #include <squeasel.h>
 
-#include <cds/init.h>
-
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -68,13 +66,16 @@
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/strip.h"
+
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
-#include "yb/util/url-coding.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/url-coding.h"
 #include "yb/util/zlib.h"
 
 #if defined(__APPLE__)
@@ -93,11 +94,14 @@ DEFINE_int32(webserver_zlib_compression_level, 1,
 TAG_FLAG(webserver_zlib_compression_level, advanced);
 TAG_FLAG(webserver_zlib_compression_level, runtime);
 
-DEFINE_int64(webserver_compression_threshold_kb, 4,
-             "The threshold of response size above which compression is performed."
-             "Default value is 4KB");
+DEFINE_uint64(webserver_compression_threshold_kb, 4,
+              "The threshold of response size above which compression is performed."
+              "Default value is 4KB");
 TAG_FLAG(webserver_compression_threshold_kb, advanced);
 TAG_FLAG(webserver_compression_threshold_kb, runtime);
+
+DEFINE_test_flag(bool, mini_cluster_mode, false,
+                 "Enable special fixes for MiniCluster test cluster.");
 
 namespace yb {
 
@@ -113,7 +117,7 @@ Webserver::Webserver(const WebserverOptions& opts, const std::string& server_nam
     context_(nullptr),
     server_name_(server_name) {
   string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
-  http_address_ = host + ":" + boost::lexical_cast<string>(opts.port);
+  http_address_ = host + ":" + std::to_string(opts.port);
 }
 
 Webserver::~Webserver() {
@@ -355,7 +359,7 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
                                     struct sq_request_info* request_info) {
   PathHandler* handler;
   {
-    SharedLock<boost::shared_mutex> lock(lock_);
+    SharedLock<std::shared_timed_mutex> lock(lock_);
     PathHandlerMap::const_iterator it = path_handlers_.find(request_info->uri);
     if (it == path_handlers_.end()) {
       // Let Mongoose deal with this request; returning NULL will fall through
@@ -388,6 +392,12 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     req.query_string = request_info->query_string;
     BuildArgumentMap(request_info->query_string, &req.parsed_args);
   }
+
+  if (FLAGS_TEST_mini_cluster_mode) {
+    // Pass custom G-flags into the request handler.
+    req.parsed_args["TEST_custom_varz"] = opts_.TEST_custom_varz;
+  }
+
   req.request_method = request_info->request_method;
   if (req.request_method == "POST") {
     const char* content_len_str = sq_get_header(connection, "Content-Length");
@@ -502,7 +512,7 @@ void Webserver::RegisterPathHandler(const string& path,
                                     bool is_styled,
                                     bool is_on_nav_bar,
                                     const std::string icon) {
-  std::lock_guard<boost::shared_mutex> lock(lock_);
+  std::lock_guard<std::shared_timed_mutex> lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
     it = path_handlers_.insert(
@@ -563,12 +573,12 @@ bool Webserver::static_pages_available() const {
 }
 
 void Webserver::set_footer_html(const std::string& html) {
-  std::lock_guard<boost::shared_mutex> l(lock_);
+  std::lock_guard<std::shared_timed_mutex> l(lock_);
   footer_html_ = html;
 }
 
 void Webserver::BootstrapPageFooter(stringstream* output) {
-  SharedLock<boost::shared_mutex> l(lock_);
+  SharedLock<std::shared_timed_mutex> l(lock_);
   *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
     *output << "<footer class='footer'><div class='yb-footer container text-muted'>";

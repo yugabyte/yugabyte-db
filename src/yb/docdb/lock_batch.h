@@ -18,8 +18,12 @@
 
 #include <glog/logging.h>
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/value_type.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/intent.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -40,12 +44,8 @@ struct LockBatchEntry {
   // Memory is owned by SharedLockManager.
   LockedBatchEntry* locked = nullptr;
 
-  std::string ToString() const {
-    return Format("{ key: $0 intent_types: $1 }", key.as_slice().ToDebugHexString(), intent_types);
-  }
+  std::string ToString() const;
 };
-
-typedef std::vector<LockBatchEntry> LockBatchEntries;
 
 // A LockBatch encapsulates a mapping from lock keys to lock types (intent types) to be acquired
 // for each key. It also keeps track of a lock manager when locked, and auto-releases the locks

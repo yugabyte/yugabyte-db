@@ -30,16 +30,18 @@
 // under the License.
 //
 
-#include "yb/consensus/log-test-base.h"
-
+#include "yb/common/index.h"
+#include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/log-test-base.h"
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
-
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
 
@@ -47,15 +49,22 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
@@ -103,7 +112,7 @@ class TabletServerTest : public TabletServerTestBase {
     StartTabletServer();
   }
 
-  CHECKED_STATUS CallDeleteTablet(const std::string& uuid,
+  Status CallDeleteTablet(const std::string& uuid,
                     const char* tablet_id,
                     tablet::TabletDataState state) {
     DeleteTabletRequestPB req;
@@ -569,7 +578,8 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   // We're expecting the write to fail.
   ASSERT_OK(DCHECK_NOTNULL(proxy_.get())->Write(req, &resp, &controller));
   ASSERT_EQ(TabletServerErrorPB::TABLET_NOT_RUNNING, resp.error().code());
-  ASSERT_STR_CONTAINS(resp.error().status().message(), "Tablet not RUNNING: FAILED");
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(), Format("Tablet $0 not RUNNING: FAILED", kTabletId));
 }
 
 TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
@@ -690,14 +700,14 @@ TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
 
   scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
-  uint64_t warmup = AllowSlowTests() ?
+  auto warmup = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_warmup_rows : 10;
 
   for (int i = 0; i < warmup; i++) {
     InsertTestRowsRemote(0, i, 1);
   }
 
-  uint64_t max_rows = AllowSlowTests() ?
+  auto max_rows = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_insert_rows : 100;
 
   MonoTime start = MonoTime::Now();
@@ -802,8 +812,8 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
 
   Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
-      "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE, schema, IndexMap(),
-      boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+      tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE,
+      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 

@@ -1,7 +1,9 @@
 import React from 'react';
+import { useSelector } from 'react-redux';
 import { Col, ListGroup, ListGroupItem, Row } from 'react-bootstrap';
 import { useQueries, useQuery } from 'react-query';
 import { Link } from 'react-router';
+
 import {
   fetchUniversesList,
   getUniverseInfo,
@@ -9,109 +11,118 @@ import {
 } from '../../actions/xClusterReplication';
 import { YBLoading } from '../common/indicators';
 import { IReplication } from './IClusterReplication';
-
-import './ReplicationList.scss';
 import {
+  convertToLocalTime,
   GetConfiguredThreshold,
   GetCurrentLag,
-  getMasterNodeAddress,
   getReplicationStatus
 } from './ReplicationUtils';
+import RightArrow from './ArrowIcon';
+
+import './ReplicationList.scss';
 
 function ReplicationEmptyItem() {
   return <div className="replication-item replication-item-empty">No replications to show</div>;
 }
 
+function ReplicationNameCard({
+  isSource,
+  clusterName,
+  isCurrentCluster
+}: {
+  isSource: boolean;
+  clusterName: string;
+  isCurrentCluster: boolean;
+}) {
+  return (
+    <div className={`replication-name-card ${isCurrentCluster ? 'active' : ''}`}>
+      <div className="name-header">{isSource ? 'Source' : 'Target'}</div>
+      <div className="cluster-name">{clusterName}</div>
+    </div>
+  );
+}
+
 function ReplicationItem({
   replication,
   currentUniverseUUID,
-  universeName,
-  masterNodeAddress
+  targetUniverseName,
+  sourceUniverseName,
+  currentUserTimezone
 }: {
   replication: IReplication;
   currentUniverseUUID: string;
-  universeName: string;
-  masterNodeAddress: string;
+  targetUniverseName: string;
+  sourceUniverseName: string;
+  currentUserTimezone: string;
 }) {
   return (
     <div className="replication-item" key={replication.uuid}>
       <ListGroupItem>
         <Link to={`/universes/${currentUniverseUUID}/replication/${replication.uuid}`}>
           <Row>
-            <Col lg={5} className="replication-name">
+            <Col lg={6} className="replication-name">
               {replication.name}
-              {currentUniverseUUID !== replication.sourceUniverseUUID && (
-                <span className="replication-target-universe">Target Universe</span>
-              )}
             </Col>
-
-            <Col lg={2} className="replication-date">
-              <div className="replication-label">Started</div>
-              <div className="replication-label-value">{replication.createTime}</div>
-            </Col>
-            <Col lg={2} className="replication-date">
-              <div className="replication-label">Last Modified</div>
-              <div>{replication.modifyTime}</div>
-            </Col>
-            <Col lg={1} lgPush={2} className="replication-status">
-              {getReplicationStatus(replication.status)}
+            <Col lg={6}>
+              <Row className="replication-meta-details">
+                <Col lg={4} className="replication-date">
+                  <span className="replication-label">Started</span>
+                  <span className="replication-label-value">
+                    {convertToLocalTime(replication.createTime, currentUserTimezone)}
+                  </span>
+                </Col>
+                <Col lg={4} className="replication-date">
+                  <span className="replication-label">Last modified</span>
+                  <span>{convertToLocalTime(replication.modifyTime, currentUserTimezone)}</span>
+                </Col>
+                <Col lg={4} className="replication-status">
+                  {getReplicationStatus(replication.status)}
+                </Col>
+              </Row>
             </Col>
           </Row>
         </Link>
       </ListGroupItem>
       <Row className="replication-item-details">
-        <Col lg={6}>
-          <Row>
-            <Col lg={12} className="noPadding">
-              <span className="replication-label">Target Universe Name</span>
-              <span className="replication-label-value">{universeName}</span>
-              <br />
+        <Col lg={6} md={12}>
+          <Row className="replication-cluster-graph">
+            <Col lg={5} className="noPaddingLeft">
+              <ReplicationNameCard
+                isSource={true}
+                clusterName={sourceUniverseName}
+                isCurrentCluster={currentUniverseUUID === replication.sourceUniverseUUID}
+              />
             </Col>
-          </Row>
-          <div className="replication-divider" />
-          <Row>
-            <Col lg={12} className="noPadding">
-              <span className="replication-label">Master Node Address </span>
-              <span className="replication-label-value">{masterNodeAddress}</span>
+            <Col lg={2} className="center-align-text">
+              <span className="replication-name-arrow">
+                <RightArrow />
+              </span>
+            </Col>
+            <Col lg={5}>
+              <ReplicationNameCard
+                isSource={false}
+                clusterName={targetUniverseName}
+                isCurrentCluster={currentUniverseUUID === replication.targetUniverseUUID}
+              />
             </Col>
           </Row>
         </Col>
-        <Col lg={6} className="replication-charts"></Col>
-        <Col lg={6} className="replication-lag-details">
-          <Row>
-            <Col lg={12}>
-              <Row style={{ display: 'flex', alignItems: 'center' }}>
-                <Col lg={10} className="noPadding">
-                  <span className="lag-text">Current lag</span>
-                </Col>
-                <Col lg={2} className="noPadding text-align-left">
-                  <span className="lag">
-                    <span className="lag-time">
-                      <GetCurrentLag
-                        replicationUUID={replication.uuid}
-                        sourceUniverseUUID={replication.sourceUniverseUUID}
-                      />
-                    </span>
-                    <span className="replication-label"> ms</span>
-                  </span>
-                </Col>
-              </Row>
+        <Col lg={6} md={12} className="replication-lag-details">
+          <Row style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <Col lg={3} className="lag noPadding">
+              <div className="lag-text">Max acceptable lag</div>
+              <div className="lag-time">
+                <GetConfiguredThreshold currentUniverseUUID={currentUniverseUUID} />
+              </div>
             </Col>
-            <div className="replication-divider" />
-            <Col lg={12}>
-              <Row>
-                <Col lg={10} className="noPadding">
-                  <span className="lag-text">Max acceptable lag</span>
-                </Col>
-                <Col lg={2} className="noPadding text-align-left">
-                  <span className="lag">
-                    <span className="lag-value">
-                      <GetConfiguredThreshold currentUniverseUUID={currentUniverseUUID} />
-                    </span>
-                    <span className="replication-label"> ms</span>
-                  </span>
-                </Col>
-              </Row>
+            <Col lg={3} className="lag noPadding">
+              <div className="lag-text">Current Lag</div>
+              <div className="lag-time">
+                <GetCurrentLag
+                  replicationUUID={replication.uuid}
+                  sourceUniverseUUID={replication.sourceUniverseUUID}
+                />
+              </div>
             </Col>
           </Row>
         </Col>
@@ -134,7 +145,7 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
     sourceXClusterConfigs: [],
     targetXClusterConfigs: []
   };
-
+  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
   const XclusterConfigList = Array.from(
     new Set([...sourceXClusterConfigs, ...targetXClusterConfigs])
   );
@@ -148,15 +159,6 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
       };
     })
   );
-
-  let masterNodeAddress = '';
-
-  if (universeInfo?.data) {
-    const {
-      universeDetails: { nodeDetailsSet }
-    } = universeInfo.data;
-    masterNodeAddress = getMasterNodeAddress(nodeDetailsSet);
-  }
 
   const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universeList'], () =>
     fetchUniversesList().then((res) => res.data)
@@ -183,8 +185,9 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
             key={replication.data.uuid}
             replication={replication.data}
             currentUniverseUUID={currentUniverseUUID}
-            universeName={findTargetUniverseName(replication.data.targetUniverseUUID)}
-            masterNodeAddress={masterNodeAddress}
+            targetUniverseName={findTargetUniverseName(replication.data.targetUniverseUUID)}
+            sourceUniverseName={findTargetUniverseName(replication.data.sourceUniverseUUID)}
+            currentUserTimezone={currentUserTimezone}
           />
         )
       )}

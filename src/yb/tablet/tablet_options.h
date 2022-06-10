@@ -13,6 +13,7 @@
 #ifndef YB_TABLET_TABLET_OPTIONS_H
 #define YB_TABLET_TABLET_OPTIONS_H
 
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -37,11 +38,10 @@ class Env;
 namespace yb {
 
 class Env;
+class MemTracker;
 class MetricRegistry;
 
 namespace tablet {
-
-YB_STRONGLY_TYPED_BOOL(IsDropTable);
 
 // Common for all tablets within TabletManager.
 struct TabletOptions {
@@ -50,7 +50,10 @@ struct TabletOptions {
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
+  std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
 };
+
+using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -70,6 +73,7 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  TransactionManagerProvider transaction_manager_provider;
 };
 
 } // namespace tablet

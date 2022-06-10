@@ -34,24 +34,30 @@
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus.pb.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_index.h"
+#include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/peer_manager.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replica_state.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/consensus/log_reader.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/logical_clock.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -123,7 +129,7 @@ class RaftConsensusQuorumTest : public YBTest {
       opts.server_type = "tserver_test";
       std::unique_ptr<FsManager> fs_manager(new FsManager(env_.get(), opts));
       RETURN_NOT_OK(fs_manager->CreateInitialFileSystemLayout());
-      RETURN_NOT_OK(fs_manager->Open());
+      RETURN_NOT_OK(fs_manager->CheckAndOpenFileSystemRoots());
 
       scoped_refptr<Log> log;
       RETURN_NOT_OK(Log::Open(LogOptions(),
@@ -155,6 +161,7 @@ class RaftConsensusQuorumTest : public YBTest {
       string peer_uuid = Substitute("peer-$0", i);
 
       std::unique_ptr<ConsensusMetadata> cmeta;
+      fs_managers_[i]->SetTabletPathByDataPath(kTestTablet, fs_managers_[i]->GetDataRootDirs()[0]);
       ASSERT_OK(ConsensusMetadata::Create(fs_managers_[i], kTestTablet, peer_uuid, config_,
                                          kMinimumTerm, &cmeta));
 
@@ -180,7 +187,7 @@ class RaftConsensusQuorumTest : public YBTest {
           proxy_factory.get(),
           queue.get(),
           pool_token.get(),
-          logs_[i]);
+          nullptr);
 
       shared_ptr<RaftConsensus> peer(new RaftConsensus(
           options_,
@@ -404,10 +411,9 @@ class RaftConsensusQuorumTest : public YBTest {
     std::unique_ptr<LogReader> log_reader;
     EXPECT_OK(log::LogReader::Open(fs_managers_[idx]->env(),
                                    scoped_refptr<log::LogIndex>(),
-                                   kTestTablet,
+                                   "Log reader: ",
                                    fs_managers_[idx]->GetFirstTabletWalDirOrDie(kTestTable,
                                                                                 kTestTablet),
-                                   fs_managers_[idx]->uuid(),
                                    table_metric_entity_.get(),
                                    tablet_metric_entity_.get(),
                                    &log_reader));
@@ -474,16 +480,14 @@ class RaftConsensusQuorumTest : public YBTest {
     auto leader_ids = ExtractReplicateIds(leader_entries);
     auto replica_ids = ExtractReplicateIds(replica_entries);
     ASSERT_EQ(leader_ids.size(), replica_ids.size());
-    for (int i = 0; i < leader_ids.size(); i++) {
+    for (size_t i = 0; i < leader_ids.size(); i++) {
       ASSERT_EQ(leader_ids[i].ShortDebugString(),
                 replica_ids[i].ShortDebugString());
     }
   }
 
   void VerifyNoCommitsBeforeReplicates(const log::LogEntries& entries) {
-    unordered_set<OpIdPB,
-                  OpIdHashFunctor,
-                  OpIdEqualsFunctor> replication_ops;
+    std::unordered_set<OpIdPB, OpIdHashFunctor, OpIdEqualsFunctor> replication_ops;
 
     for (const auto& entry : entries) {
       if (entry->has_replicate()) {
@@ -568,7 +572,7 @@ class RaftConsensusQuorumTest : public YBTest {
   scoped_refptr<MetricEntity> table_metric_entity_;
   scoped_refptr<MetricEntity> tablet_metric_entity_;
   const Schema schema_;
-  unordered_map<ConsensusRound*, Synchronizer*> syncs_;
+  std::unordered_map<ConsensusRound*, Synchronizer*> syncs_;
 };
 
 TEST_F(RaftConsensusQuorumTest, TestConsensusContinuesIfAMinorityFallsBehind) {
@@ -825,7 +829,10 @@ TEST_F(RaftConsensusQuorumTest, TestLeaderElectionWithQuiescedQuorum) {
     // This will force an election in which we expect to make the last
     // non-shutdown peer in the list become leader.
     LOG(INFO) << "Running election for future leader with index " << (current_config_size - 1);
-    ASSERT_OK(new_leader->StartElection({ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE}));
+    ASSERT_OK(new_leader->StartElection(LeaderElectionData{
+        .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        .pending_commit = false,
+        .must_be_committed_opid = OpId()}));
     ASSERT_OK(new_leader->WaitUntilLeaderForTests(MonoDelta::FromSeconds(15)));
     LOG(INFO) << "Election won";
 

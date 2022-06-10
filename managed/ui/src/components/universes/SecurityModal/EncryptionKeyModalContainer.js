@@ -3,7 +3,12 @@
 import { connect } from 'react-redux';
 import { EncryptionKeyModal } from '../';
 import { fetchAuthConfigList, fetchAuthConfigListResponse } from '../../../actions/cloud';
-import { setEncryptionKey, setEncryptionKeyResponse } from '../../../actions/universe';
+import {
+  fetchUniverseInfo,
+  fetchUniverseInfoResponse,
+  setEncryptionKey,
+  setEncryptionKeyResponse
+} from '../../../actions/universe';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -16,13 +21,19 @@ const mapDispatchToProps = (dispatch) => {
       return dispatch(setEncryptionKey(universeUUID, data)).then((response) => {
         return dispatch(setEncryptionKeyResponse(response.payload));
       });
+    },
+    fetchCurrentUniverse: (universeUUID) => {
+      dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+        dispatch(fetchUniverseInfoResponse(response.payload));
+      });
     }
   };
 };
 
 function mapStateToProps(state) {
   return {
-    configList: state.cloud.authConfig
+    configList: state.cloud.authConfig,
+    featureFlags: state.featureFlags
   };
 }
 

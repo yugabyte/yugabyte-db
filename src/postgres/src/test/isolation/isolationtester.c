@@ -42,6 +42,10 @@ static void run_permutation(TestSpec *testspec, int nsteps, Step **steps);
 
 #define STEP_NONBLOCK	0x1		/* return 0 as soon as cmd waits for a lock */
 #define STEP_RETRY		0x2		/* this is a retry of a previously-waiting cmd */
+
+/* This is YB specific logic. See usage for description */
+#define YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED 4
+
 static bool try_complete_step(Step *step, int flags);
 
 static int	step_qsort_cmp(const void *a, const void *b);
@@ -764,6 +768,22 @@ try_complete_step(Step *step, int flags)
 			td = (int64) current_time.tv_sec - (int64) start_time.tv_sec;
 			td *= USECS_PER_SEC;
 			td += (int64) current_time.tv_usec - (int64) start_time.tv_usec;
+
+			/* Yugabyte specific logic:
+			 *   Since we don't use pg_locks, we can't determine if a session is blocked on another
+			 *   session using the PREP_WAITING function above. So, we instead assume that waiting for
+			 *   for >= 2 second means the session is blocked on another session.
+			 *
+			 *   This is not a perfect check but good enough for now.
+			 *
+			 *   TODO(Piyush): Replace this by a deterministic check when pessimistic locking is
+			 *   implemented and wait queue information is exposed via Pg.
+			 */
+			if (td > YB_NUM_SECONDS_TO_WAIT_TO_ASSUME_SESSION_BLOCKED * USECS_PER_SEC && !canceled) {
+					if (!(flags & STEP_RETRY))
+						printf("step %s: %s <waiting ...>\n", step->name, step->sql);
+					return true;
+			}
 
 			/*
 			 * After 180 seconds, try to cancel the query.

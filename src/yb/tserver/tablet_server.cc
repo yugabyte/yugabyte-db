@@ -41,34 +41,49 @@
 
 #include <glog/logging.h>
 
+#include "yb/client/client.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/universe_key_client.h"
 
+#include "yb/common/common_flags.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/master/master_heartbeat.pb.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/yb_rpc.h"
+
 #include "yb/server/rpc_server.h"
 #include "yb/server/webserver.h"
+
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/heartbeater.h"
 #include "yb/tserver/heartbeater_factory.h"
 #include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/pg_client_service.h"
+#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tablet_service.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
-#include "yb/tserver/remote_bootstrap_service.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
-#include "yb/util/env.h"
-#include "yb/util/universe_key_manager.h"
-#include "yb/gutil/sysinfo.h"
-#include "yb/rocksdb/env.h"
+#include "yb/util/status_log.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -112,6 +127,10 @@ DEFINE_int32(ts_remote_bootstrap_svc_queue_length, 50,
              "RPC queue length for the TS remote bootstrap service");
 TAG_FLAG(ts_remote_bootstrap_svc_queue_length, advanced);
 
+DEFINE_int32(pg_client_svc_queue_length, yb::tserver::TabletServer::kDefaultSvcQueueLength,
+             "RPC queue length for the Pg Client service.");
+TAG_FLAG(pg_client_svc_queue_length, advanced);
+
 DEFINE_bool(enable_direct_local_tablet_server_call,
             true,
             "Enable direct call to local tablet server");
@@ -134,6 +153,12 @@ DEFINE_bool(start_pgsql_proxy, false,
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(svc_queue_length_default);
+
+constexpr int kTServerYbClientDefaultTimeoutMs = 60 * 1000;
+
+DEFINE_int32(tserver_yb_client_default_timeout_ms, kTServerYbClientDefaultTimeoutMs,
+             "Default timeout for the YBClient embedded into the tablet server that is used "
+             "for distributed transactions.");
 
 namespace yb {
 namespace tserver {
@@ -163,6 +188,21 @@ std::string TabletServer::ToString() const {
   return strings::Substitute("TabletServer : rpc=$0, uuid=$1",
                              yb::ToString(first_rpc_address()),
                              fs_manager_->uuid());
+}
+
+MonoDelta TabletServer::default_client_timeout() {
+  return std::chrono::milliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
+}
+
+void TabletServer::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+  // If enabled, creates a proxy to call this tablet server locally.
+  if (FLAGS_enable_direct_local_tablet_server_call) {
+    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
+    async_client_init->AddPostCreateHook(
+        [proxy = proxy_, uuid = permanent_uuid(), tserver = this](client::YBClient* client) {
+      client->SetLocalTabletServer(uuid, proxy, tserver);
+    });
+  }
 }
 
 Status TabletServer::ValidateMasterAddressResolution() const {
@@ -230,14 +270,13 @@ Status TabletServer::UpdateMasterAddresses(const consensus::RaftConfigPB& new_co
   return Status::OK();
 }
 
-void TabletServer::SetUniverseKeys(const yb::UniverseKeysPB& universe_keys) {
+void TabletServer::SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys) {
   opts_.universe_key_manager->SetUniverseKeys(universe_keys);
 }
 
 void TabletServer::GetUniverseKeyRegistrySync() {
   universe_key_client_->GetUniverseKeyRegistrySync();
 }
-
 
 Status TabletServer::Init() {
   CHECK(!initted_.load(std::memory_order_acquire));
@@ -248,7 +287,8 @@ Status TabletServer::Init() {
   // our heartbeat thread will loop until successfully connecting.
   RETURN_NOT_OK(ValidateMasterAddressResolution());
 
-  RETURN_NOT_OK(RpcAndWebServerBase::Init());
+  RETURN_NOT_OK(DbServerBase::Init());
+
   RETURN_NOT_OK(path_handlers_->Register(web_server_.get()));
 
   log_prefix_ = Format("P $0: ", permanent_uuid());
@@ -267,7 +307,7 @@ Status TabletServer::Init() {
   }
 
   universe_key_client_ = std::make_unique<client::UniverseKeyClient>(
-      hps, proxy_cache_.get(), [&] (const UniverseKeysPB& universe_keys) {
+      hps, proxy_cache_.get(), [&] (const encryption::UniverseKeysPB& universe_keys) {
         opts_.universe_key_manager->SetUniverseKeys(universe_keys);
   });
   opts_.universe_key_manager->SetGetUniverseKeysCallback([&]() {
@@ -365,9 +405,11 @@ Status TabletServer::RegisterServices() {
                                                      std::move(forward_service)));
 
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
-      FLAGS_svc_queue_length_default,
+      FLAGS_pg_client_svc_queue_length,
       std::make_unique<PgClientServiceImpl>(
-          tablet_manager_->client_future(), std::bind(&TabletServer::TransactionPool, this),
+          tablet_manager_->client_future(),
+          clock(),
+          std::bind(&TabletServer::TransactionPool, this),
           metric_entity(),
           &messenger()->scheduler())));
 
@@ -380,12 +422,7 @@ Status TabletServer::Start() {
   AutoInitServiceFlags();
 
   RETURN_NOT_OK(RegisterServices());
-  RETURN_NOT_OK(RpcAndWebServerBase::Start());
-
-  // If enabled, creates a proxy to call this tablet server locally.
-  if (FLAGS_enable_direct_local_tablet_server_call) {
-    proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
-  }
+  RETURN_NOT_OK(DbServerBase::Start());
 
   RETURN_NOT_OK(tablet_manager_->Start());
 
@@ -437,6 +474,13 @@ Status TabletServer::PopulateLiveTServers(const master::TSHeartbeatResponsePB& h
   return Status::OK();
 }
 
+Status TabletServer::GetLiveTServers(
+    std::vector<master::TSInformationPB> *live_tservers) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+  *live_tservers = live_tservers_;
+  return Status::OK();
+}
+
 Status TabletServer::GetTabletStatus(const GetTabletStatusRequestPB* req,
                                      GetTabletStatusResponsePB* resp) const {
   VLOG(3) << "GetTabletStatus called for tablet " << req->tablet_id();
@@ -457,7 +501,7 @@ bool TabletServer::LeaderAndReady(const TabletId& tablet_id, bool allow_stale) c
 }
 
 Status TabletServer::SetUniverseKeyRegistry(
-    const yb::UniverseKeyRegistryPB& universe_key_registry) {
+    const encryption::UniverseKeyRegistryPB& universe_key_registry) {
   return Status::OK();
 }
 
@@ -549,15 +593,20 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
     ysql_catalog_version_ = new_version;
     shared_object().SetYSQLCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
+    if (FLAGS_log_ysql_catalog_versions) {
+      LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
+                          << new_breaking_version;
+    }
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
   }
 }
 
-void TabletServer::UpdateTxnTableVersionsHash(uint64_t new_hash) {
-  if (transaction_manager_holder_) {
-    transaction_manager_holder_->UpdateTxnTableVersionsHash(new_hash);
+void TabletServer::UpdateTransactionTablesVersion(uint64_t new_version) {
+  const auto transaction_manager = transaction_manager_.load(std::memory_order_acquire);
+  if (transaction_manager) {
+    transaction_manager->UpdateTransactionTablesVersion(new_version);
   }
 }
 
@@ -566,15 +615,23 @@ TabletPeerLookupIf* TabletServer::tablet_peer_lookup() {
 }
 
 const std::shared_future<client::YBClient*>& TabletServer::client_future() const {
-  return tablet_manager_->client_future();
+  return DbServerBase::client_future();
 }
 
-client::TransactionPool* TabletServer::TransactionPool() {
+client::TransactionPool& TabletServer::TransactionPool() {
   return DbServerBase::TransactionPool();
 }
 
 client::LocalTabletFilter TabletServer::CreateLocalTabletFilter() {
   return std::bind(&TSTabletManager::PreserveLocalLeadersOnly, tablet_manager(), _1);
+}
+
+const std::shared_ptr<MemTracker>& TabletServer::mem_tracker() const {
+  return RpcServerBase::mem_tracker();
+}
+
+void TabletServer::SetPublisher(rpc::Publisher service) {
+  publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
 }
 
 }  // namespace tserver

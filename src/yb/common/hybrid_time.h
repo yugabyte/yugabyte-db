@@ -37,15 +37,17 @@
 
 #include <inttypes.h>
 
-#include <string>
 #include <limits>
+#include <string>
 
-#include "yb/util/enums.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/faststring.h"
 #include "yb/util/monotime.h"
 #include "yb/util/physical_time.h"
-#include "yb/util/status.h"
 
 namespace yb {
+
+class Slice;
 
 // An alias for the raw in-memory representation of a HybridTime.
 using HybridTimeRepr = uint64_t;
@@ -164,7 +166,7 @@ class HybridTime {
   }
 
   // Sets this hybrid time from 'value'
-  CHECKED_STATUS FromUint64(uint64_t value);
+  Status FromUint64(uint64_t value);
 
   static HybridTime FromPB(uint64_t value) {
     return value ? HybridTime(value) : HybridTime();
@@ -186,8 +188,6 @@ class HybridTime {
       default:
         return false;
     }
-    LOG(FATAL) << "Should never happen";
-    return false;  // Never reached.
   }
 
   bool operator <(const HybridTime& other) const {
@@ -245,7 +245,7 @@ class HybridTime {
   //  1. HybridTime Timestamp (in Microseconds)
   //  2. Interval
   //  3. Human readable string
-  static Result<HybridTime> ParseHybridTime(string input);
+  static Result<HybridTime> ParseHybridTime(std::string input);
 
  private:
 

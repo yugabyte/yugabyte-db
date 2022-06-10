@@ -190,7 +190,7 @@ public class MiniYBCluster implements AutoCloseable {
 
   public void startSyncClient(boolean waitForMasterLeader) throws Exception {
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
-        .defaultAdminOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
+        .defaultAdminOperationTimeoutMs(clusterParameters.defaultAdminOperationTimeoutMs)
         .defaultOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
         .sslCertFile(certFile)
         .sslClientCertFiles(clientCertFile, clientKeyFile)
@@ -198,7 +198,7 @@ public class MiniYBCluster implements AutoCloseable {
         .build();
 
     if (waitForMasterLeader) {
-      syncClient.waitForMasterLeader(clusterParameters.defaultTimeoutMs);
+      syncClient.waitForMasterLeader(clusterParameters.defaultAdminOperationTimeoutMs);
     }
   }
 
@@ -590,7 +590,8 @@ public class MiniYBCluster implements AutoCloseable {
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false",
-        "--TEST_process_info_dir=" + getProcessInfoDir());
+        "--TEST_process_info_dir=" + getProcessInfoDir(),
+        "--never_fsync=true");
     addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
     if (clusterParameters.startYsqlProxy) {
@@ -641,7 +642,8 @@ public class MiniYBCluster implements AutoCloseable {
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
       "--callhome_enabled=false",
-      "--TEST_process_info_dir=" + getProcessInfoDir());
+      "--TEST_process_info_dir=" + getProcessInfoDir(),
+      "--never_fsync=true");
     if (clusterParameters.tserverHeartbeatTimeoutMsOpt.isPresent()) {
       masterCmdLine.add(
           "--tserver_unresponsive_timeout_ms=" +
@@ -996,40 +998,76 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
-   * Stops all the processes and deletes the folders used to store data and the flagfile.
+   * Stops all the processes and deletes the paths used to store data and the flagfile.
    */
   public void shutdown() throws Exception {
     LOG.info("Shutting down mini cluster");
+
+    // Before shutdownDaemons, collect postgres coreFileDirs if needed.
+    List<File> coreFileDirs;
+    if (CoreFileUtil.IS_MAC) {
+      // Use default dir specified in CoreFileUtil.processCoreFile.
+      coreFileDirs = Collections.<File>singletonList(null);
+    } else {
+      // Unlike master and tserver, postgres processes have working directory in their pg_data
+      // directory.  Simply check all tserver pg_data directories since we don't readily know which
+      // one this postgres process belonged to.
+      // TODO(#11753): handle tservers that were removed from the list using
+      //               killTabletServerOnHostPort
+      // TODO(#11754): don't assume core files are put in the current working directory of the
+      //               process
+      coreFileDirs = new ArrayList<>(tserverProcesses.size());
+      for (MiniYBDaemon tserverProcess : tserverProcesses.values()) {
+        coreFileDirs.add(Paths.get(tserverProcess.getDataDirPath()).resolve("pg_data").toFile());
+      }
+    }
+
     shutdownDaemons();
+
     String processInfoDir = getProcessInfoDir();
-    processCoreFiles(processInfoDir);
+    processCoreFiles(processInfoDir, coreFileDirs);
     pathsToDelete.add(processInfoDir);
-    for (String path : pathsToDelete) {
-      try {
-        File f = new File(path);
-        LOG.info("Deleting path: " + path);
-        if (f.isDirectory()) {
-          FileUtils.deleteDirectory(f);
-        } else {
-          f.delete();
+
+    if (ConfForTesting.keepData()) {
+      LOG.info("Skipping deletion of data paths");
+    } else {
+      for (String path : pathsToDelete) {
+        try {
+          File f = new File(path);
+          LOG.info("Deleting path: " + path);
+          if (f.isDirectory()) {
+            FileUtils.deleteDirectory(f);
+          } else {
+            f.delete();
+          }
+        } catch (Exception e) {
+          LOG.warn("Could not delete path {}", path, e);
         }
-      } catch (Exception e) {
-        LOG.warn("Could not delete path {}", path, e);
       }
     }
     LOG.info("Mini cluster shutdown finished");
   }
 
-  private void processCoreFiles(String folder) {
-    File[] files = (new File(folder)).listFiles();
+  /**
+   * Process core files for processes listed in processInfoDir.  For now, only postgres processes
+   * are listed.  More specifically, for now, only postgres backend processes are listed, not
+   * postmaster or background workers.  Those core files need to be inspected manually.
+   * TODO(#11755): inspect other postgres processes
+   * Hint: To manually inspect core files, make sure the core files aren't deleted.  By default,
+   *       data directories are deleted when the test is over.  If core files are dumped into the
+   *       pg_data directory, use YB_JAVATEST_KEEPDATA to keep the data directories.
+   */
+  private void processCoreFiles(String processInfoDir, List<File> coreFileDirs) {
+    File[] files = (new File(processInfoDir)).listFiles();
     for (File file : files == null ? new File[]{} : files) {
       String fileName = file.getAbsolutePath();
       try {
         String exeFile = new String(Files.readAllBytes(Paths.get(fileName)));
         int pid = Integer.parseInt(file.getName());
-        CoreFileUtil.processCoreFile(
-            pid, exeFile, exeFile, null /* coreFileDir */,
-            CoreFileUtil.CoreFileMatchMode.EXACT_PID);
+        for (File coreFileDir : coreFileDirs) {
+          CoreFileUtil.processCoreFile(
+              pid, exeFile, exeFile, coreFileDir, CoreFileUtil.CoreFileMatchMode.EXACT_PID);
+        }
       } catch (Exception e) {
         LOG.warn("Failed to analyze PID from '{}' file", fileName, e);
       }

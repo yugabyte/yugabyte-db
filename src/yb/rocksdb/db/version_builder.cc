@@ -43,7 +43,9 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/table/table_reader.h"
 
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

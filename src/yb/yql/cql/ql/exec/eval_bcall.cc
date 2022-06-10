@@ -13,7 +13,12 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/bfql/bfql.h"
+
+#include "yb/util/status_format.h"
+
 #include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/pt_bcall.h"
 
 namespace yb {
 namespace ql {
@@ -21,7 +26,7 @@ namespace ql {
 using yb::bfql::BFOpcode;
 using yb::bfql::BFOPCODE_NOOP;
 
-CHECKED_STATUS Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (!bcall_pt->is_server_operator()) {
     // Regular builtin function call.
     return BFCallToPB(bcall_pt, expr_pb);
@@ -31,7 +36,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
   }
 }
 
-CHECKED_STATUS Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
       QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
@@ -73,7 +78,7 @@ CHECKED_STATUS Executor::BFCallToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
+Status Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *expr_pb) {
   if (bcall_pt->result_cast_op() != BFOPCODE_NOOP) {
       QLBCallPB *cast_pb = expr_pb->mutable_bfcall();
       cast_pb->set_opcode(static_cast<int32_t>(bcall_pt->result_cast_op()));
@@ -109,7 +114,7 @@ CHECKED_STATUS Executor::TSCallToPB(const PTBcall *bcall_pt, QLExpressionPB *exp
 }
 
 // Forming constructor call for collection and user-defined types.
-CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB *expr_pb) {
   bool is_frozen = false;
   DataType data_type = expr->ql_type()->main();
   if (data_type == FROZEN) {
@@ -168,7 +173,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB
       auto field_values = expr->udtype_field_values();
       if (is_frozen) {
         bcall_pb->set_opcode(static_cast<int32_t>(BFOpcode::OPCODE_UDT_FROZEN));
-        for (int i = 0; i < field_values.size(); i++) {
+        for (size_t i = 0; i < field_values.size(); i++) {
           // Add values for all attributes in frozen UDT, including NULL values.
           arg_pb = bcall_pb->add_operands();
           if (field_values[i] != nullptr) {
@@ -178,12 +183,12 @@ CHECKED_STATUS Executor::PTExprToPB(const PTCollectionExpr *expr, QLExpressionPB
 
       } else {
         bcall_pb->set_opcode(static_cast<int32_t>(BFOpcode::OPCODE_UDT_CONSTRUCTOR));
-        for (int i = 0; i < field_values.size(); i++) {
+        for (size_t i = 0; i < field_values.size(); i++) {
           // Add [key, value] pairs to attributes if the value is not NULL.
           if (field_values[i] != nullptr) {
             // Add key.
             arg_pb = bcall_pb->add_operands();
-            arg_pb->mutable_value()->set_int16_value(i);
+            arg_pb->mutable_value()->set_int16_value(narrow_cast<int16_t>(i));
 
             // Add value.
             arg_pb = bcall_pb->add_operands();

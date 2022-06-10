@@ -518,7 +518,7 @@ void ThreadMgr::ThreadPathHandler(const WebCallbackRegistry::WebRequest& req,
       RenderThreadCategoryRows(*category, groups.data());
     }
 
-    for (auto g : kStackTraceGroupList) {
+    for (auto g : StackTraceGroupList()) {
       *output << groups[to_underlying(g)];
     }
     (*output) << "</table>";
@@ -551,7 +551,7 @@ std::once_flag init_threading_internal_once_flag;
 void InitThreadingInternal() {
   // Warm up the stack trace library. This avoids a race in libunwind initialization
   // by making sure we initialize it before we start any other threads.
-  ignore_result(GetStackTraceHex());
+  GetStackTraceHex();
   thread_manager = std::make_shared<ThreadMgr>();
 }
 

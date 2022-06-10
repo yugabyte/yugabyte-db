@@ -34,13 +34,17 @@
 
 #include <mutex>
 #include <unordered_set>
+
 #include <glog/logging.h>
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/blocking_queue.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 
@@ -119,14 +123,14 @@ Status Ysck::FetchTableAndTabletInfo() {
 
 Status Ysck::CheckTabletServersRunning() {
   VLOG(1) << "Getting the Tablet Servers list";
-  int servers_count = cluster_->tablet_servers().size();
+  auto servers_count = cluster_->tablet_servers().size();
   VLOG(1) << Substitute("List of $0 Tablet Servers retrieved", servers_count);
 
   if (servers_count == 0) {
     return STATUS(NotFound, "No tablet servers found");
   }
 
-  int bad_servers = 0;
+  size_t bad_servers = 0;
   VLOG(1) << "Connecting to all the Tablet Servers";
   for (const YsckMaster::TSMap::value_type& entry : cluster_->tablet_servers()) {
     Status s = ConnectToTabletServer(entry.second);
@@ -158,7 +162,7 @@ Status Ysck::ConnectToTabletServer(const shared_ptr<YsckTabletServer>& ts) {
 
 Status Ysck::CheckTablesConsistency() {
   VLOG(1) << "Getting the tables list";
-  int tables_count = cluster_->tables().size();
+  auto tables_count = cluster_->tables().size();
   VLOG(1) << Substitute("List of $0 tables retrieved", tables_count);
 
   if (tables_count == 0) {
@@ -167,7 +171,7 @@ Status Ysck::CheckTablesConsistency() {
   }
 
   VLOG(1) << "Verifying each table";
-  int bad_tables_count = 0;
+  size_t bad_tables_count = 0;
   for (const shared_ptr<YsckTable> &table : cluster_->tables()) {
     if (!VerifyTable(table)) {
       bad_tables_count++;
@@ -277,13 +281,14 @@ void TabletServerChecksumCallback(
 Status Ysck::ChecksumData(const vector<string>& tables,
                           const vector<string>& tablets,
                           const ChecksumOptions& opts) {
-  const unordered_set<string> tables_filter(tables.begin(), tables.end());
-  const unordered_set<string> tablets_filter(tablets.begin(), tablets.end());
+  const std::unordered_set<std::string> tables_filter(tables.begin(), tables.end());
+  const std::unordered_set<std::string> tablets_filter(tablets.begin(), tablets.end());
 
   // Copy options so that local modifications can be made and passed on.
   ChecksumOptions options = opts;
 
-  typedef unordered_map<shared_ptr<YsckTablet>, std::vector<shared_ptr<YsckTable>>> TabletTableMap;
+  using TabletTableMap = std::unordered_map<
+      std::shared_ptr<YsckTablet>, std::vector<std::shared_ptr<YsckTable>>>;
   TabletTableMap tablet_table_map;
 
   int num_tablet_replicas = 0;
@@ -445,7 +450,7 @@ Status Ysck::ChecksumData(const vector<string>& tables,
 bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   bool good_table = true;
   vector<shared_ptr<YsckTablet> > tablets = table->tablets();
-  int tablets_count = tablets.size();
+  auto tablets_count = tablets.size();
   if (tablets_count == 0) {
     LOG(WARNING) << Substitute("Table $0 has 0 tablets", table->name().ToString());
     return false;
@@ -453,7 +458,7 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   int table_num_replicas = table->num_replicas();
   VLOG(1) << Substitute("Verifying $0 tablets for table $1 configured with num_replicas = $2",
                         tablets_count, table->name().ToString(), table_num_replicas);
-  int bad_tablets_count = 0;
+  size_t bad_tablets_count = 0;
   // TODO check if the tablets are contiguous and in order.
   for (const shared_ptr<YsckTablet> &tablet : tablets) {
     if (!VerifyTablet(tablet, table_num_replicas)) {
@@ -470,7 +475,7 @@ bool Ysck::VerifyTable(const shared_ptr<YsckTable>& table) {
   return good_table;
 }
 
-bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_replicas) {
+bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, size_t table_num_replicas) {
   vector<shared_ptr<YsckTabletReplica> > replicas = tablet->replicas();
   bool good_tablet = true;
   if (replicas.size() != table_num_replicas) {
@@ -504,6 +509,10 @@ bool Ysck::VerifyTablet(const shared_ptr<YsckTablet>& tablet, int table_num_repl
 Status Ysck::CheckAssignments() {
   // TODO
   return STATUS(NotSupported, "CheckAssignments hasn't been implemented");
+}
+
+std::string YsckTabletReplica::ToString() const {
+  return YB_CLASS_TO_STRING(is_leader, is_follower, ts_uuid);
 }
 
 } // namespace tools

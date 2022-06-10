@@ -15,6 +15,9 @@
 
 #include <deque>
 
+#include <gflags/gflags.h>
+
+#include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
@@ -24,8 +27,9 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
-#include "yb/util/metrics.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -96,7 +100,7 @@ class SingleLocalityPool {
     }
   }
 
-  YBTransactionPtr Take() {
+  YBTransactionPtr Take(CoarseTimePoint deadline) {
     YBTransactionPtr result, new_txn;
     uint64_t old_taken;
     IncrementCounter(cache_queries_);
@@ -123,9 +127,9 @@ class SingleLocalityPool {
       ++preparing_transactions_;
     }
     IncrementGauge(gauge_preparing_);
-    InFlightOpsGroupsWithMetadata ops_info;
-    if (new_txn->Prepare(
-        &ops_info, ForceConsistentRead::kFalse, TransactionRpcDeadline(), Initial::kFalse,
+    internal::InFlightOpsGroupsWithMetadata ops_info;
+    if (new_txn->batcher_if().Prepare(
+        &ops_info, ForceConsistentRead::kFalse, deadline, Initial::kFalse,
         std::bind(&SingleLocalityPool::TransactionReady, this, _1, new_txn, old_taken))) {
       TransactionReady(Status::OK(), new_txn, old_taken);
     }
@@ -251,7 +255,7 @@ class SingleLocalityPool {
   std::condition_variable cond_;
   std::deque<TransactionEntry> transactions_ GUARDED_BY(mutex_);
   bool closing_ GUARDED_BY(mutex_) = false;
-  int preparing_transactions_ GUARDED_BY(mutex_) = 0;
+  size_t preparing_transactions_ GUARDED_BY(mutex_) = 0;
   rpc::ScheduledTaskId scheduled_task_ GUARDED_BY(mutex_) = rpc::kUninitializedScheduledTaskId;
   uint64_t taken_transactions_ GUARDED_BY(mutex_) = 0;
   uint64_t taken_during_preparation_sum_ GUARDED_BY(mutex_) = 0;
@@ -269,11 +273,12 @@ class TransactionPool::Impl {
 
   ~Impl() = default;
 
-  YBTransactionPtr Take(ForceGlobalTransaction force_global_transaction) EXCLUDES(mutex_) {
+  YBTransactionPtr Take(
+      ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     const auto is_global = force_global_transaction ||
                            FLAGS_force_global_transactions ||
-                           !manager_->LocalTransactionsPossible();
-    auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take();
+                           !manager_->PlacementLocalTransactionsPossible();
+    auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take(deadline);
     if (FLAGS_TEST_track_last_transaction) {
       std::lock_guard<std::mutex> lock(mutex_);
       last_transaction_ = transaction;
@@ -281,7 +286,7 @@ class TransactionPool::Impl {
     return transaction;
   }
 
-  YBTransactionPtr GetLastTransaction() EXCLUDES(mutex_) {
+  YBTransactionPtr TEST_GetLastTransaction() EXCLUDES(mutex_) {
     std::lock_guard<std::mutex> lock(mutex_);
     return last_transaction_;
   }
@@ -301,30 +306,32 @@ TransactionPool::TransactionPool(TransactionManager* manager, MetricEntity* metr
 TransactionPool::~TransactionPool() {
 }
 
-YBTransactionPtr TransactionPool::Take(ForceGlobalTransaction force_global_transaction) {
-  return impl_->Take(force_global_transaction);
+YBTransactionPtr TransactionPool::Take(
+    ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline) {
+  return impl_->Take(force_global_transaction, deadline);
 }
 
 Result<YBTransactionPtr> TransactionPool::TakeAndInit(
-    IsolationLevel isolation, const ReadHybridTime& read_time) {
-  auto result = impl_->Take(ForceGlobalTransaction::kTrue);
+    IsolationLevel isolation, CoarseTimePoint deadline, const ReadHybridTime& read_time) {
+  auto result = impl_->Take(ForceGlobalTransaction::kTrue, deadline);
   RETURN_NOT_OK(result->Init(isolation, read_time));
   return result;
 }
 
-Result<YBTransactionPtr> TransactionPool::TakeRestarted(const YBTransactionPtr& source) {
-  const auto &metadata = source->GetMetadata().get();
+Result<YBTransactionPtr> TransactionPool::TakeRestarted(
+    const YBTransactionPtr& source, CoarseTimePoint deadline) {
+  const auto &metadata = source->GetMetadata(deadline).get();
   RETURN_NOT_OK(metadata);
   const auto force_global =
       metadata->locality == TransactionLocality::GLOBAL ? ForceGlobalTransaction::kTrue
                                                         : ForceGlobalTransaction::kFalse;
-  auto result = impl_->Take(force_global);
+  auto result = impl_->Take(force_global, deadline);
   RETURN_NOT_OK(source->FillRestartedTransaction(result));
   return result;
 }
 
-YBTransactionPtr TransactionPool::GetLastTransaction() {
-  return impl_->GetLastTransaction();
+YBTransactionPtr TransactionPool::TEST_GetLastTransaction() {
+  return impl_->TEST_GetLastTransaction();
 }
 
 } // namespace client

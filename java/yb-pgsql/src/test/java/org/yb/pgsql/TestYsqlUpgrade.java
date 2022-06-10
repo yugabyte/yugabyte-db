@@ -15,6 +15,7 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
 
+import java.io.File;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.sql.Timestamp;
@@ -33,10 +34,13 @@ import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.LineIterator;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -44,15 +48,17 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
-import com.yugabyte.jdbc.PgArray;
 import com.yugabyte.util.PGobject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.YsqlSnapshotVersion;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
+
+import com.google.common.collect.ImmutableMap;
 
 /**
  * For now, this test covers creation of system and shared system relations that should be created
@@ -86,6 +92,23 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   /** Tests are performed on a fresh database. */
   private final String customDbName = SHARED_ENTITY_PREFIX + "sys_tables_db";
 
+  private static final int MASTER_REFRESH_TABLESPACE_INFO_SECS = 2;
+  private static final int MASTER_LOAD_BALANCER_WAIT_TIME_MS = 60 * 1000;
+
+  private static final List<Map<String, String>> perTserverZonePlacementFlags = Arrays.asList(
+      ImmutableMap.of(
+          "placement_cloud", "cloud1",
+          "placement_region", "region1",
+          "placement_zone", "zone1"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud2",
+          "placement_region", "region2",
+          "placement_zone", "zone2"),
+      ImmutableMap.of(
+          "placement_cloud", "cloud3",
+          "placement_region", "region3",
+          "placement_zone", "zone3"));
+
   /** Since shared relations aren't cleared between tests, we can't reuse names. */
   private String sharedRelName;
 
@@ -105,6 +128,15 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   @Rule
   public TestName name = new TestName();
+
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    super.customizeMiniClusterBuilder(builder);
+    builder.addMasterFlag("ysql_tablespace_info_refresh_secs",
+                          Integer.toString(MASTER_REFRESH_TABLESPACE_INFO_SECS));
+
+    builder.perTServerFlags(perTserverZonePlacementFlags);
+  }
 
   @Before
   public void beforeTestYsqlUpgrade() throws Exception {
@@ -470,6 +502,14 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtTpl.execute(createSharedIndexSql);
       LOG.info("Created shared index {}", sharedIndexName);
 
+      // Create index concurrently is not supported for system catalog.
+      String sharedIndexNameConcurrently = sharedIndexName + "_concurrently";
+      String createConcurrentIndexSql = "CREATE INDEX CONCURRENTLY " + sharedIndexNameConcurrently
+          + " ON pg_catalog." + sharedRelName + " (v ASC)"
+          + " WITH (table_oid = " + newSysOid() + ")";
+      runInvalidQuery(stmtTpl, createConcurrentIndexSql,
+          "CREATE INDEX CONCURRENTLY is currently not supported for system catalog");
+
       // Checking index flags.
       String indexFlagsSql = "SELECT indislive, indisready, indisvalid FROM pg_index"
           + " WHERE indexrelid = '" + sharedIndexName + "'::regclass";
@@ -593,6 +633,42 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       stmtA.execute(createViewSql);
 
       assertTablesAreSimilar(origTi, newTi, stmtA, stmtB);
+    }
+  }
+
+  /**
+   * CREATE OR REPLACE VIEW should filter out upgrade-specific reloptions on both CREATE and REPLACE
+   * paths.
+   */
+  @Test
+  public void viewReloptionsAreFilteredOnReplace() throws Exception {
+    String viewName = "replaceable_system_view";
+
+    try (Connection conn = getConnectionBuilder().withDatabase(customDbName).connect();
+         Statement stmt = conn.createStatement()) {
+      setSystemRelsModificationGuc(stmt, true);
+
+      String createViewSql = "CREATE OR REPLACE VIEW pg_catalog." + viewName + " WITH ("
+          + "  security_barrier = true"
+          + ", use_initdb_acl = true"
+          + ") AS SELECT 1";
+
+      String getReloptionsSql = "SELECT reloptions FROM pg_class"
+          + " WHERE oid = 'pg_catalog." + viewName + "'::regclass";
+
+      // CREATE part.
+      LOG.info("Executing '{}'", createViewSql);
+      stmt.execute(createViewSql);
+
+      assertQuery(stmt, getReloptionsSql,
+          new Row(Arrays.asList("security_barrier=true")));
+
+      // REPLACE part.
+      LOG.info("Executing '{}' again", createViewSql);
+      stmt.execute(createViewSql);
+
+      assertQuery(stmt, getReloptionsSql,
+          new Row(Arrays.asList("security_barrier=true")));
     }
   }
 
@@ -740,8 +816,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
    * <p>
    * If you see this test failing, please make sure you've added a new YSQL migration as described
    * in {@code src/yb/yql/pgwrapper/ysql_migrations/README.md}.
-   * <p>
-   * After that's done, fix this test by updating values to new ones.
    */
   @Test
   public void migratingIsEquivalentToReinitdb() throws Exception {
@@ -790,6 +864,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       postSnapshotTemplate1 = takeSysCatalogSnapshot(stmt);
     }
 
+    assertYbbasectidIsConsistent("template1");
+    assertYbbasectidIsConsistent(customDbName);
+
     assertMigrationsWorked(preSnapshotCustom, postSnapshotCustom);
     assertMigrationsWorked(preSnapshotTemplate1, postSnapshotTemplate1);
 
@@ -797,6 +874,61 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
         + " Migration bug?",
         getMaxSysGeneratedOid(postSnapshotTemplate1),
         getMaxSysGeneratedOid(postSnapshotCustom));
+  }
+
+  /** Test that migrations run without error in a geo-partitioned setup. */
+  @Test
+  public void migrationInGeoPartitionedSetup() throws Exception {
+    setupGeoPartitioning();
+    runMigrations();
+  }
+
+  /** Ensure migration filename comment makes sense. */
+  @Test
+  public void migrationFilenameComment() throws Exception {
+    Pattern commentRe = Pattern.compile("^# .*(V(\\d+)(\\.\\d+)?__\\S+__\\S+.sql)$");
+    Pattern recordRe = Pattern.compile("^\\{ major => '(\\d+)', minor => '(\\d+)',");
+
+    File datFile = new File(
+        TestUtils.getBuildRootDir(), "postgres_build/src/include/catalog/pg_yb_migration.dat");
+    assertTrue(datFile + " does not exist", datFile.exists());
+
+    LineIterator it = FileUtils.lineIterator(datFile);
+    try {
+      String filename = null, commentMajor = null, commentMinor = null;
+      while (it.hasNext()) {
+        Matcher matcher = commentRe.matcher(it.nextLine());
+        if (matcher.find()) {
+          filename = matcher.group(1);
+          commentMajor = matcher.group(2);
+          commentMinor = matcher.group(3) == null ? "0" : matcher.group(3);
+          break;
+        }
+      }
+      assertNotNull("Failed to find migration filename comment line", filename);
+
+      // Check that a file with that filename exists.
+      File migrationFile = new File(TestUtils.getBuildRootDir(),
+                                    "share/ysql_migrations/" + filename);
+      assertTrue("Migration file " + filename + " does not exist", migrationFile.exists());
+
+      // Get record version.  Record line comes right after comment line:
+      //         | # For better version control conflict detection, list latest migration filename
+      // comment | # here: V19__6560__pg_collation_icu_70.sql
+      // record  | { major => '19', minor => '0', name => '<baseline>', time_applied => '_null_' }
+      assertTrue("Expected line after filename comment line", it.hasNext());
+      String recordLine = it.nextLine();
+      Matcher matcher = recordRe.matcher(recordLine);
+      assertTrue(recordLine + " does not match regex " + recordRe, matcher.find());
+      String recordMajor = matcher.group(1);
+      String recordMinor = matcher.group(2);
+
+      // Check comment version matches record version.
+      assertEquals("Major version mismatch between comment and record:", commentMajor, recordMajor);
+      assertEquals("Minor version mismatch between comment and record:", commentMinor, recordMinor);
+    } finally {
+      it.close();
+    }
   }
 
   /** Invalid stuff which doesn't belong to other test cases. */
@@ -1171,7 +1303,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
   /** Whether this OID looks like it was auto-generated during initdb. */
   private boolean isSysGeneratedOid(Long oid) {
-    return oid >= 10000 /* FirstBootstrapObjectId */ && oid < 16384 /* FirstNormalObjectId */;
+    return oid >= FIRST_BOOTSTRAP_OID && oid < FIRST_NORMAL_OID;
   }
 
   private void assertAllOidsAreSysGenerated(Statement stmt, String tableName) throws Exception {
@@ -1211,7 +1343,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
   private void assertMigrationsWorked(
       SysCatalogSnapshot freshSnapshot,
       SysCatalogSnapshot migratedSnapshot) {
-    assertCollectionSizes("Migrated table set differs from the fresh one! ",
+    assertCollectionSizes("Migrated table set differs from the fresh one!",
         freshSnapshot.catalog.keySet(), migratedSnapshot.catalog.keySet());
 
     {
@@ -1220,23 +1352,34 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       assertEquals(
           "Expected \"fresh\" migrations table to have just one row, got " + reinitdbMigrations,
           1, reinitdbMigrations.size());
-      final int latestVersion = reinitdbMigrations.get(0).getInt(0);
-      assertRow(new Row(latestVersion, 0, "<baseline>", null), reinitdbMigrations.get(0));
+      final int latestMajorVersion = reinitdbMigrations.get(0).getInt(0);
+      final int latestMinorVersion = reinitdbMigrations.get(0).getInt(1);
+      final int totalMigrations = latestMajorVersion + latestMinorVersion;
+      assertRow(new Row(latestMajorVersion, latestMinorVersion, "<baseline>", null),
+                reinitdbMigrations.get(0));
 
       // Applied migrations table has a baseline row
       // followed by rows for all migrations (up to the latest).
       List<Row> appliedMigrations = migratedSnapshot.catalog.get(MIGRATIONS_TABLE);
       assertEquals(
-          "Expected applied migrations table to have exactly " + (latestVersion + 1) + " rows, got "
-              + appliedMigrations,
-          latestVersion + 1, appliedMigrations.size());
+          "Expected applied migrations table to have exactly "
+              + (totalMigrations + 1) + " rows, got " + appliedMigrations,
+          totalMigrations + 1, appliedMigrations.size());
       assertRow(new Row(0, 0, "<baseline>", null), appliedMigrations.get(0));
-      for (int ver = 1; ver <= latestVersion; ++ver) {
+      for (int ver = 1; ver <= totalMigrations; ++ver) {
         // Rows should be like [1, 0, 'V1__...', <recent timestamp in ms>]
         Row migrationRow = appliedMigrations.get(ver);
-        assertEquals(ver, migrationRow.getInt(0).intValue());
-        assertEquals(0, migrationRow.getInt(1).intValue());
-        assertTrue(migrationRow.getString(2).startsWith("V" + ver + "__"));
+        final int majorVersion = Math.min(ver, latestMajorVersion);
+        final int minorVersion = ver - majorVersion;
+        assertEquals(majorVersion, migrationRow.getInt(0).intValue());
+        assertEquals(minorVersion, migrationRow.getInt(1).intValue());
+        String migrationNamePrefix;
+        if (minorVersion > 0) {
+          migrationNamePrefix = "V" + majorVersion + "." + minorVersion + "__";
+        } else {
+          migrationNamePrefix = "V" + majorVersion + "__";
+        }
+        assertTrue(migrationRow.getString(2).startsWith(migrationNamePrefix));
         assertTrue("Expected migration timestamp to be at most 10 mins old!",
             migrationRow.getLong(3) != null &&
                 System.currentTimeMillis() - migrationRow.getLong(3) < 10 * 60 * 1000);
@@ -1326,6 +1469,43 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     });
   }
 
+  /**
+   * In issue #12258 we found that index's ybbasectid referencing table's ybctid was broken for
+   * shared inserts (operations used to insert a row across all databases) and indexed tables
+   * without primary key.
+   * <p>
+   * This test ensures this is no longer the case.
+   */
+  private void assertYbbasectidIsConsistent(String databaseName) throws Exception {
+    try (Connection conn = getConnectionBuilder().withDatabase(databaseName).connect();
+         Statement stmt = conn.createStatement()) {
+      // pg_depend has no primary key, so we use it and its pg_depend_reference_index to ensure
+      // index consistency after upgrade.
+      String seqScanSql = "SELECT * FROM pg_depend";
+      assertFalse(isIndexScan(stmt, seqScanSql, "" /* should not use any index */));
+      List<Row> seqScanRows =
+          getRowList(stmt, seqScanSql)
+              .stream()
+              .filter(r -> r.getLong(3) == 1259L /* pg_class oid*/)
+              .filter(r -> r.getLong(4) >= FIRST_YB_OID && r.getLong(4) < FIRST_BOOTSTRAP_OID)
+              .sorted()
+              .collect(Collectors.toList());
+      assertFalse(seqScanRows.isEmpty());
+
+      // Without a fix for #12258, this query results in "DocKey(...) not found in indexed table".
+      String indexScanSql =
+          "SELECT * FROM pg_depend"
+              + " WHERE refclassid = 1259"
+              + " AND refobjid >= " + FIRST_YB_OID
+              + " AND refobjid < " + FIRST_BOOTSTRAP_OID;
+      assertTrue(isIndexScan(stmt, indexScanSql, "pg_depend_reference_index"));
+      List<Row> indexScanRows = getRowList(stmt, indexScanSql);
+      Collections.sort(indexScanRows);
+
+      assertEquals(seqScanRows, indexScanRows);
+    }
+  }
+
   /** Returns the deep copy with referenced OIDs replaced with entity names. */
   private List<Row> copyWithResolvedOids(
       String tableName,
@@ -1340,6 +1520,9 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     final long pgProcOid = 1255;
     final long pgClassOid = 1259;
     final long pgNamespaceOid = 2615;
+    final long pgTsDictOid = 3600;
+    final long pgTsConfigOid = 3602;
+    final long pgTsTemplateOid = 3764;
 
     Map<Long, String> flatEntityNamesMap = new HashMap<>();
     entityNamesMap.values().forEach(flatEntityNamesMap::putAll);
@@ -1379,7 +1562,7 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
      * In pg_node_tree string-wrapping structure:
      * <ul>
      * <li>Replace auto-generated OIDs with resolved names.
-     * <li>Replace values for :location and :stmt_len with placeholders.
+     * <li>Replace values for :location, :stmt_location and :stmt_len with placeholders.
      * </ul>
      * Format the result as a plain string. We don't care about minor formatting losses as long as
      * it's consistent.
@@ -1397,6 +1580,8 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
             }
           } else if (nodeTreeParts[i].equals(":location")) {
             nodeTreeParts[i + 1] = "<location>";
+          } else if (nodeTreeParts[i].equals(":stmt_location")) {
+            nodeTreeParts[i + 1] = "<stmt_location>";
           } else if (nodeTreeParts[i].equals(":stmt_len")) {
             nodeTreeParts[i + 1] = "<stmt_len>";
           }
@@ -1448,6 +1633,13 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
       case "pg_proc":
         replace.accept(2 /* pronamespace */, entityNamesMap.get(pgNamespaceOid));
         break;
+      case "pg_ts_dict":
+        replace.accept(4 /* dicttemplate */, entityNamesMap.get(pgTsTemplateOid));
+        break;
+      case "pg_ts_config_map":
+        replace.accept(0 /* mapcfg */, entityNamesMap.get(pgTsConfigOid));
+        replace.accept(3 /* mapdict */, entityNamesMap.get(pgTsDictOid));
+        break;
       default:
         return copy;
     }
@@ -1469,6 +1661,39 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
     if (!joined.toLowerCase().contains("successfully upgraded")) {
       throw new IllegalStateException("Unexpected migrations result: " + joined);
     }
+  }
+
+  private void setupGeoPartitioning() throws Exception {
+    // Setup tablespaces and tables to emulate a geo-partitioned setup.
+    try (Statement stmt = connection.createStatement()) {
+      for (Map<String, String> tserverPlacement : perTserverZonePlacementFlags) {
+        String cloud = tserverPlacement.get("placement_cloud");
+        String region = tserverPlacement.get("placement_region");
+        String zone = tserverPlacement.get("placement_zone");
+        String suffix = cloud + "_" + region + "_" + zone;
+
+        stmt.execute(
+            "CREATE TABLESPACE tablespace_" + suffix + " WITH (replica_placement=" +
+            "'{\"num_replicas\": 1, \"placement_blocks\":" +
+            "[{\"cloud\":\"" + cloud + "\",\"region\":\"" + region + "\",\"zone\":\"" + zone +
+            "\",\"min_num_replicas\":1}]}')");
+        stmt.execute("CREATE TABLE table_" + suffix + " (a int) TABLESPACE tablespace_" + suffix);
+      }
+    }
+
+    // Wait for tablespace info to be refreshed in load balancer.
+    Thread.sleep(MASTER_REFRESH_TABLESPACE_INFO_SECS); // TODO(esheng) 2x?
+
+    int expectedTServers = miniCluster.getTabletServers().size() + 1;
+    miniCluster.startTServer(perTserverZonePlacementFlags.get(1));
+    miniCluster.waitForTabletServers(expectedTServers);
+
+    // Wait for loadbalancer to run.
+    assertTrue(miniCluster.getClient().waitForLoadBalancerActive(
+      MASTER_LOAD_BALANCER_WAIT_TIME_MS));
+
+    // Wait for load balancer to become idle.
+    assertTrue(miniCluster.getClient().waitForLoadBalance(Long.MAX_VALUE, expectedTServers));
   }
 
   @FunctionalInterface

@@ -158,7 +158,7 @@ create_backup() {
   prometheus_host="${9}"
   k8s_namespace="${10}"
   k8s_pod="${11}"
-  exclude_releases_flag=""
+  include_releases_flag="**/releases/**"
 
   mkdir -p "${output_path}"
 
@@ -201,16 +201,13 @@ create_backup() {
   fi
 
   if [[ "$exclude_releases" = true ]]; then
-    exclude_releases_flag="--exclude release*"
+    include_releases_flag=""
   fi
-
-  exclude_dirs="--exclude postgres* --exclude devops --exclude yugaware/lib \
-  --exclude yugaware/logs --exclude yugaware/README.md --exclude yugaware/bin \
-  --exclude yugaware/conf --exclude backup_*.tgz --exclude helm"
 
   modify_service yb-platform stop
 
-  tar_name="${output_path}/backup_${now}.tgz"
+  tar_name="${output_path}/backup_${now}.tar"
+  tgz_name="${output_path}/backup_${now}.tgz"
   db_backup_path="${data_dir}/${PLATFORM_DUMP_FNAME}"
   trap 'delete_postgres_backup ${db_backup_path}' RETURN
   create_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" "${verbose}"
@@ -228,13 +225,21 @@ create_backup() {
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/snapshots/${snapshot_dir}"
   fi
   echo "Creating platform backup package..."
+  cd ${data_dir}
   if [[ "${verbose}" = true ]]; then
-    tar ${exclude_releases_flag} ${exclude_dirs} -czvf "${tar_name}" -C "${data_dir}" .
+    find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
+              -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
+              -o -path "${include_releases_flag}" \) -exec tar -rvf "${tar_name}" {} +
   else
-    tar ${exclude_releases_flag} ${exclude_dirs} -czf "${tar_name}" -C "${data_dir}" .
+    find . \( -path "**/data/certs/**" -o -path "**/data/keys/**" -o -path "**/data/provision/**" \
+              -o -path "**/${PLATFORM_DUMP_FNAME}" -o -path "**/${PROMETHEUS_SNAPSHOT_DIR}/**" \
+              -o -path "${include_releases_flag}" \) -exec tar -rf "${tar_name}" {} +
   fi
 
-  echo "Finished creating backup ${tar_name}"
+  gzip -9 < ${tar_name} > ${tgz_name}
+  cleanup "${tar_name}"
+
+  echo "Finished creating backup ${tgz_name}"
   modify_service yb-platform restart
 }
 

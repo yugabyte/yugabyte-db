@@ -22,17 +22,24 @@
 
 #include "yb/client/meta_data_cache.h"
 
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/substitute.h"
+
+#include "yb/tserver/tablet_server_interface.h"
+
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
+
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
-
-#include "yb/gutil/strings/substitute.h"
-
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/crypt.h"
-
-#include "yb/util/mem_tracker.h"
+#include "yb/yql/cql/ql/parser/parser.h"
 
 using namespace std::placeholders;
 using namespace yb::size_literals;
@@ -374,7 +381,7 @@ void CQLServiceImpl::CollectGarbage(size_t required) {
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }
 
-client::TransactionPool* CQLServiceImpl::TransactionPool() {
+client::TransactionPool& CQLServiceImpl::TransactionPool() {
   return server_->tserver()->TransactionPool();
 }
 

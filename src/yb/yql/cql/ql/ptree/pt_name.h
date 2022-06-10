@@ -36,7 +36,7 @@ class PTName : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   explicit PTName(MemoryContext *memctx = nullptr,
-                  YBLocation::SharedPtr loc = nullptr,
+                  YBLocationPtr loc = nullptr,
                   const MCSharedPtr<MCString>& name = nullptr);
   virtual ~PTName();
 
@@ -50,7 +50,7 @@ class PTName : public TreeNode {
     return MCMakeShared<PTName>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override {
+  virtual Status Analyze(SemContext *sem_context) override {
     return Status::OK();
   }
 
@@ -62,7 +62,7 @@ class PTName : public TreeNode {
     return name_;
   }
 
-  virtual string QLName() const {
+  virtual std::string QLName() const {
     return name_->c_str();
   }
 
@@ -80,7 +80,7 @@ class PTNameAll : public PTName {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  PTNameAll(MemoryContext *memctx, YBLocation::SharedPtr loc);
+  PTNameAll(MemoryContext *memctx, YBLocationPtr loc);
   virtual ~PTNameAll();
 
   template<typename... TypeArgs>
@@ -88,7 +88,7 @@ class PTNameAll : public PTName {
     return MCMakeShared<PTNameAll>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual string QLName() const override {
+  virtual std::string QLName() const override {
     // We should not get here as '*' should have been converted into a list of column name before
     // the selected tuple is constructed and described.
     LOG(INFO) << "Calling QLName before '*' is converted into a list of column name";
@@ -107,10 +107,10 @@ class PTQualifiedName : public PTName {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTQualifiedName(MemoryContext *mctx,
-                  YBLocation::SharedPtr loc,
+                  YBLocationPtr loc,
                   const PTName::SharedPtr& ptname);
   PTQualifiedName(MemoryContext *mctx,
-                  YBLocation::SharedPtr loc,
+                  YBLocationPtr loc,
                   const MCSharedPtr<MCString>& name);
   virtual ~PTQualifiedName();
 
@@ -126,7 +126,7 @@ class PTQualifiedName : public PTName {
   void Prepend(const PTName::SharedPtr& ptname);
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   const MCString& first_name() const {
     return ptnames_.front()->name();
@@ -151,14 +151,14 @@ class PTQualifiedName : public PTName {
   }
 
   // Analyze this qualified name as an object name.
-  CHECKED_STATUS AnalyzeName(SemContext *sem_context, ObjectType object_type);
+  Status AnalyzeName(SemContext *sem_context, ObjectType object_type);
 
   client::YBTableName ToTableName() const {
     return client::YBTableName(YQL_DATABASE_CQL, first_name().c_str(), last_name().c_str());
   }
 
-  virtual string QLName() const override {
-    string full_name;
+  virtual std::string QLName() const override {
+    std::string full_name;
     for (auto name : ptnames_) {
       if (!full_name.empty()) {
         full_name += '.';

@@ -33,37 +33,38 @@
 #include <unordered_map>
 #include <utility>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include <glog/logging.h>
+
+#include "yb/gutil/macros.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
-
 #include "yb/rocksdb/table/block.h"
+#include "yb/rocksdb/table/block_based_filter_block.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/filter_block.h"
-#include "yb/rocksdb/table/block_based_filter_block.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
-#include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/index_builder.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/table_builder.h"
-
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/mem_tracker.h"
-
-#include "yb/gutil/macros.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 
@@ -453,7 +454,9 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   DCHECK(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
-    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0);
+    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0)
+        << "New key: " << key.ToDebugHexString()
+        << ", last key: " << Slice(r->last_key).ToDebugHexString();
   }
 
   const auto should_flush_data = r->flush_block_policy->Update(key, value);
@@ -888,6 +891,10 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
     CHECK_OK(collector->Finish(&ret.user_collected_properties));
   }
   return ret;
+}
+
+const std::string& BlockBasedTableBuilder::LastKey() const {
+  return rep_->last_key;
 }
 
 void BlockBasedTableBuilder::TEST_skip_writing_key_value_encoding_format() {

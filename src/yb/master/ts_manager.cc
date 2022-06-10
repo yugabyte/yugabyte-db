@@ -35,9 +35,10 @@
 #include <mutex>
 #include <vector>
 
-#include "yb/master/master.pb.h"
+#include "yb/gutil/map-util.h"
+
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
 using std::string;
@@ -147,7 +148,7 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
     }
 
     if (!ts_count_callback_.empty()) {
-      int new_count = GetCountUnlocked();
+      auto new_count = GetCountUnlocked();
       if (new_count >= ts_count_callback_min_count_) {
         callback_to_call = std::move(ts_count_callback_);
         ts_count_callback_min_count_ = 0;
@@ -255,7 +256,7 @@ const TSDescriptorPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) co
   return nullptr;
 }
 
-int TSManager::GetCountUnlocked() const {
+size_t TSManager::GetCountUnlocked() const {
   TSDescriptorVector descs;
   GetAllDescriptorsUnlocked(&descs);
   return descs.size();

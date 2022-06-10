@@ -78,6 +78,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
 #include "catalog/pg_yb_tablegroup.h"
+#include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
@@ -1213,50 +1214,23 @@ YBPreloadCatalogCache(int cache_id, int idx_cache_id)
 				continue;
 			}
 
-			char *fname          = NameStr(*DatumGetName(ndt));
-			char *internal_fname = TextDatumGetCString(heap_getattr(ntp,
-			                                                        Anum_pg_proc_prosrc,
-			                                                        tupdesc,
-			                                                        &is_null));
-
-			/*
-			 * The internal name must be unique so if this is the
-			 * same as the function name, then this must be the only
-			 * or at least first occurrence of this function name.
-			 * TODO this assumption holds for standard procs (i.e.
-			 * initdb) but we should clean this up when enabling
-			 * CREATE PROCEDURE.
-			 */
-			bool is_canonical = strcmp(fname, internal_fname) == 0;
-
-			if (!is_canonical)
+			/* Look for an existing list for functions with this name. */
+			foreach(lc, list_of_lists)
 			{
-				/*
-				 * Look for an existing list for functions with
-				 * this name.
-				 */
-				foreach(lc, list_of_lists)
-				{
-					List      *fnlist = lfirst(lc);
-					HeapTuple otp     = (HeapTuple) linitial(fnlist);
-					Datum     odt     = heap_getattr(otp,
-					                                 key.sk_attno,
-					                                 tupdesc,
-					                                 &is_null);
+				List      *fnlist = lfirst(lc);
+				HeapTuple otp     = (HeapTuple) linitial(fnlist);
+				Datum     odt     = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
 
-					Datum test = FunctionCall2Coll(&key.sk_func,
-					                               key.sk_collation,
-					                               ndt,
-					                               odt);
-					found_match = DatumGetBool(test);
-					if (found_match)
-					{
-						fnlist = lappend(fnlist, ntp);
-						lc->data.ptr_value = fnlist;
-						break;
-					}
+				Datum test = FunctionCall2Coll(&key.sk_func, key.sk_collation, ndt, odt);
+				found_match = DatumGetBool(test);
+				if (found_match)
+				{
+					fnlist = lappend(fnlist, ntp);
+					lc->data.ptr_value = fnlist;
+					break;
 				}
 			}
+
 			if (!found_match)
 			{
 				List *new_list = lappend(NIL, ntp);
@@ -1327,9 +1301,29 @@ YBPreloadCatalogCache(int cache_id, int idx_cache_id)
  *
  * Used during initdb.
  */
+static bool
+YBIsEssentialCache(int cache_id)
+{
+	switch (cache_id)
+	{
+		case RELOID:           switch_fallthrough();
+		case TYPEOID:          switch_fallthrough();
+		case ATTNAME:          switch_fallthrough();
+		case PROCOID:          switch_fallthrough();
+		case OPEROID:          switch_fallthrough();
+		case CASTSOURCETARGET: return true;
+		default:
+			break;
+	}
+	return false;
+}
+
 static void
 YBPreloadCatalogCacheIfEssential(int cache_id)
 {
+	if (!YBIsEssentialCache(cache_id))
+		return;
+
 	int idx_cache_id = -1;
 
 	switch (cache_id)
@@ -1349,12 +1343,8 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
 		case OPEROID:
 			idx_cache_id = OPERNAMENSP;
 			break;
-		case CASTSOURCETARGET:
-			/* No index cache */
-			break;
 		default:
-			/* non-essential table -- nothing to do */
-			return;
+			break;
 	}
 
 	YBPreloadCatalogCache(cache_id, idx_cache_id);
@@ -1369,14 +1359,16 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
 void
 YBPreloadCatalogCaches(void)
 {
-	int			cacheId;
-
 	Assert(CacheInitialized);
 
 	/* Ensure individual caches are initialized */
 	InitCatalogCachePhase2();
 
-	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+	for (int cacheId = 0; cacheId < SysCacheSize; ++cacheId)
+		if (YBIsEssentialCache(cacheId))
+			YbRegisterSysTableForPrefetching(SysCache[cacheId]->cc_reloid);
+
+	for (int cacheId = 0; cacheId < SysCacheSize; ++cacheId)
 		YBPreloadCatalogCacheIfEssential(cacheId);
 }
 

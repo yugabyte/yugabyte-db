@@ -32,6 +32,7 @@ public class CloudQueryHelper extends DevopsBase {
 
   private static final String YB_CLOUD_COMMAND_TYPE = "query";
   private static final String DEFAULT_IMAGE_KEY = "default_image";
+  public static final String ARCHITECTURE_KEY = "architecture";
 
   @Override
   protected String getCommandType() {
@@ -155,6 +156,34 @@ public class CloudQueryHelper extends DevopsBase {
       }
     }
     return defaultImage;
+  }
+
+  public JsonNode queryImage(UUID regionUUID, String ybImage) {
+    List<String> commandArgs = new ArrayList<>();
+    commandArgs.add("--machine_image");
+    commandArgs.add(ybImage);
+    return execAndParseCommandRegion(regionUUID, "image", commandArgs);
+  }
+
+  public String getImageArchitecture(Region region) {
+
+    if (region.ybImage == null || region.ybImage == "") {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "ybImage not set for region " + region.code);
+    }
+    JsonNode result = queryImage(region.uuid, region.ybImage);
+
+    if (result.has("error")) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Error querying image architecture " + result.get("error"));
+    }
+
+    String arch = null;
+    JsonNode archJson = result.get(ARCHITECTURE_KEY);
+    if (archJson != null) {
+      arch = archJson.asText();
+    }
+    return arch;
   }
 
   public JsonNode queryVnet(UUID regionUUID) {

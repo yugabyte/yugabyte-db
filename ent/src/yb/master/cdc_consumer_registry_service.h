@@ -17,9 +17,9 @@
 #include <vector>
 #include <unordered_set>
 
-#include "yb/master/catalog_entity_info.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include "yb/master/master_fwd.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
 namespace yb {
@@ -36,29 +36,37 @@ class GetTableLocationsResponsePB;
 
 namespace enterprise {
 
+struct KeyRange {
+  std::string start_key;
+  std::string end_key;
+};
+
 struct CDCConsumerStreamInfo {
   std::string stream_id;
   std::string consumer_table_id;
   std::string producer_table_id;
 };
 
-Status CreateTabletMapping(
+Status InitCDCStream(
     const std::string& producer_table_id,
     const std::string& consumer_table_id,
-    const std::string& producer_id,
-    const std::string& producer_master_addrs,
-    const GetTableLocationsResponsePB& consumer_tablets_resp,
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
     std::unordered_set<HostPort, HostPortHash>* tserver_addrs,
+    cdc::StreamEntryPB* stream_entry,
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks);
+
+Status UpdateTabletMappingOnConsumerSplit(
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
+    const SplitTabletIds& split_tablet_ids,
     cdc::StreamEntryPB* stream_entry);
 
-// After split_tablet_ids.source splits, remove its entry and replace it with its children tablets.
-Status UpdateTableMappingOnTabletSplit(
-    cdc::StreamEntryPB* stream_entry,
-    const SplitTabletIds& split_tablet_ids);
-
-Result<std::vector<CDCConsumerStreamInfo>> TEST_GetConsumerProducerTableMap(
-    const std::string& producer_master_addrs,
-    const ListTablesResponsePB& resp);
+Status UpdateTabletMappingOnProducerSplit(
+    const std::map<std::string, KeyRange>& consumer_tablet_keys,
+    const SplitTabletIds& split_tablet_ids,
+    const string& split_key,
+    bool* found_source,
+    bool* found_all_split_childs,
+    cdc::StreamEntryPB* stream_entry);
 
 } // namespace enterprise
 } // namespace master

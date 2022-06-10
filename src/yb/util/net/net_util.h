@@ -48,19 +48,22 @@ DECLARE_string(net_address_filter);
 namespace yb {
 
 class FileLock;
+class Slice;
 
 // A container for a host:port pair.
 class HostPort {
  public:
   HostPort();
+  HostPort(Slice host, uint16_t port);
   HostPort(std::string host, uint16_t port);
+  HostPort(const char* host, uint16_t port);
   explicit HostPort(const Endpoint& endpoint);
 
   static HostPort FromBoundEndpoint(const Endpoint& endpoint);
 
   // Parse a "host:port" pair into this object.
   // If there is no port specified in the string, then 'default_port' is used.
-  CHECKED_STATUS ParseString(const std::string& str, uint16_t default_port);
+  Status ParseString(const std::string& str, uint16_t default_port);
 
   static Result<HostPort> FromString(const std::string& str, uint16_t default_port);
 
@@ -69,7 +72,7 @@ class HostPort {
   //
   // 'addresses' may be NULL, in which case this function simply checks that
   // the host/port pair can be resolved, without returning anything.
-  CHECKED_STATUS ResolveAddresses(std::vector<Endpoint>* addresses) const;
+  Status ResolveAddresses(std::vector<Endpoint>* addresses) const;
 
   std::string ToString() const;
 
@@ -83,7 +86,7 @@ class HostPort {
   // HostPort objects. If no port is specified for an entry in the
   // comma separated list, 'default_port' is used for that entry's
   // pair.
-  static CHECKED_STATUS ParseStrings(
+  static Status ParseStrings(
       const std::string& comma_sep_addrs,
       uint16_t default_port,
       std::vector<HostPort>* res,
@@ -108,7 +111,7 @@ class HostPort {
 
   // Remove a given host/port from a vector of comma separated server multiple addresses, each in
   // [host:port,]+ format and returns a final list as a remaining vector of hostports.
-  static CHECKED_STATUS RemoveAndGetHostPortList(
+  static Status RemoveAndGetHostPortList(
       const Endpoint& remove,
       const std::vector<std::string>& multiple_server_addresses,
       uint16_t default_port,
@@ -142,7 +145,7 @@ struct HostPortHash {
 // the 'addresses' vector.
 //
 // Any elements which do not include a port will be assigned 'default_port'.
-CHECKED_STATUS ParseAddressList(const std::string& addr_list,
+Status ParseAddressList(const std::string& addr_list,
                                 uint16_t default_port,
                                 std::vector<Endpoint>* addresses);
 
@@ -150,25 +153,25 @@ CHECKED_STATUS ParseAddressList(const std::string& addr_list,
 bool IsPrivilegedPort(uint16_t port);
 
 // Return the local machine's hostname.
-CHECKED_STATUS GetHostname(std::string* hostname);
+Status GetHostname(std::string* hostname);
 
 // Return the local machine's hostname as a Result.
 Result<std::string> GetHostname();
 
 // Return the local machine's FQDN.
-CHECKED_STATUS GetFQDN(std::string* fqdn);
+Status GetFQDN(std::string* fqdn);
 
 // Returns a single socket address from a HostPort.
 // If the hostname resolves to multiple addresses, returns the first in the
 // list and logs a message in verbose mode.
-CHECKED_STATUS EndpointFromHostPort(const HostPort& host_port, Endpoint* endpoint);
+Status EndpointFromHostPort(const HostPort& host_port, Endpoint* endpoint);
 
 // Converts the given Endpoint into a HostPort, substituting the FQDN
 // in the case that the provided address is the wildcard.
 //
 // In the case of other addresses, the returned HostPort will contain just the
 // stringified form of the IP.
-CHECKED_STATUS HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp);
+Status HostPortFromEndpointReplaceWildcard(const Endpoint& addr, HostPort* hp);
 
 // Try to run 'lsof' to determine which process is preventing binding to
 // the given 'addr'. If pids can be determined, outputs full 'ps' and 'pstree'
@@ -203,7 +206,7 @@ static std::string HostPortPBToString(const PB& pb) {
   return HostPortToString(pb.host(), pb.port());
 }
 
-CHECKED_STATUS HostToAddresses(
+Status HostToAddresses(
     const std::string& host,
     boost::container::small_vector_base<IpAddress>* addresses);
 
@@ -213,6 +216,8 @@ Result<IpAddress> ParseIpAddress(const std::string& host);
 
 // Returns true if host_str is 0.0.0.0 or [::]
 bool IsWildcardAddress(const std::string& host_str);
+
+void TEST_SetFailToFastResolveAddress(const std::string& address);
 
 } // namespace yb
 

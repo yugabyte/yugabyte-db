@@ -58,7 +58,8 @@ function mapStateToProps(state) {
   return {
     refreshReleases: state.customer.refreshReleases,
     customer: state.customer,
-    modal: state.modal
+    modal: state.modal,
+    featureFlags: state.featureFlags
   };
 }
 

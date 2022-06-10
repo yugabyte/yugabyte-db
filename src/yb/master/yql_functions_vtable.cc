@@ -13,6 +13,12 @@
 
 #include "yb/master/yql_functions_vtable.h"
 
+#include <boost/asio/ip/address.hpp>
+
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+#include "yb/util/status_log.h"
+
 namespace yb {
 namespace master {
 

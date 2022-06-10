@@ -17,9 +17,9 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_types.pb.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace consensus {
@@ -39,7 +39,7 @@ class ConsensusContext {
   //   instance immediately stores the ReplicateMsg in the Log. Once the replicate
   //   message is stored in stable storage an ACK is sent to the leader (i.e. the
   //   replica Consensus instance does not wait for Prepare() to finish).
-  virtual CHECKED_STATUS StartReplicaOperation(
+  virtual Status StartReplicaOperation(
       const ConsensusRoundPtr& context, HybridTime propagated_safe_time) = 0;
 
   virtual void SetPropagatedSafeTime(HybridTime ht) = 0;
@@ -71,7 +71,7 @@ class ConsensusContext {
   virtual void ListenNumSSTFilesChanged(std::function<void()> listener) = 0;
 
   // Checks whether operation with provided op id and type could be added to the log.
-  virtual CHECKED_STATUS CheckOperationAllowed(
+  virtual Status CheckOperationAllowed(
       const OpId& op_id, consensus::OperationType op_type) = 0;
 
   virtual ~ConsensusContext() = default;

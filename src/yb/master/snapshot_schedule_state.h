@@ -22,7 +22,8 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_backup.pb.h"
 
-#include "yb/util/async_task_tracker.h"
+#include "yb/util/async_task_util.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {
@@ -40,6 +41,11 @@ struct SnapshotScheduleOperation {
     return YB_STRUCT_TO_STRING(
         type, schedule_id, snapshot_id, filter, previous_snapshot_hybrid_time);
   }
+};
+
+struct CreatingSnapshotData {
+  CoarseTimePoint start_time;
+  TxnSnapshotId snapshot_id = TxnSnapshotId::Nil();
 };
 
 using SnapshotScheduleOperations = std::vector<SnapshotScheduleOperation>;
@@ -65,6 +71,10 @@ class SnapshotScheduleState {
     return options_;
   }
 
+  SnapshotScheduleOptionsPB& mutable_options() {
+    return options_;
+  }
+
   AsyncTaskTracker& CleanupTracker() {
     return cleanup_tracker_;
   }
@@ -80,9 +90,13 @@ class SnapshotScheduleState {
   static Result<docdb::KeyBytes> EncodedKey(
       const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
 
-  CHECKED_STATUS StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
-  CHECKED_STATUS ToPB(SnapshotScheduleInfoPB* pb) const;
+  Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;
+  Status ToPB(SnapshotScheduleInfoPB* pb) const;
   std::string ToString() const;
+
+  const CreatingSnapshotData& creating_snapshot_data() const {
+    return creating_snapshot_data_;
+  }
 
  private:
   std::string LogPrefix() const;
@@ -95,7 +109,7 @@ class SnapshotScheduleState {
 
   // When snapshot is being created for this schedule, this field contains id of this snapshot.
   // To prevent creating other snapshots during that time.
-  TxnSnapshotId creating_snapshot_id_ = TxnSnapshotId::Nil();
+  CreatingSnapshotData creating_snapshot_data_;
 
   AsyncTaskTracker cleanup_tracker_;
 };

@@ -20,16 +20,14 @@
 #ifndef YB_ROCKSDB_UTIL_STATISTICS_H
 #define YB_ROCKSDB_UTIL_STATISTICS_H
 
-#include "yb/rocksdb/statistics.h"
-
-#include <vector>
 #include <atomic>
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
-#include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/port/likely.h"
+
+#include "yb/rocksdb/statistics.h"
 
 namespace yb {
 class MetricEntity;
@@ -62,6 +60,8 @@ class StatisticsMetricImpl : public Statistics {
   void recordTick(uint32_t ticker_type, uint64_t count) override;
   void measureTime(uint32_t histogram_type, uint64_t value) override;
   void resetTickersForTest() override;
+
+  const char* GetTickerName(uint32_t ticker_type) const override;
 
  private:
   std::vector<scoped_refptr<yb::Histogram>> histograms_;

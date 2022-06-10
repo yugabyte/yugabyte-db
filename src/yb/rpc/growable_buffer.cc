@@ -17,17 +17,15 @@
 
 #include <stdint.h>
 
-#include <thread>
 #include <functional>
+#include <thread>
 
 #include <boost/lockfree/stack.hpp>
-
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/mem_tracker.h"
-#include "yb/gutil/sysinfo.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::placeholders;
 
@@ -158,7 +156,7 @@ GrowableBuffer::GrowableBuffer(GrowableBufferAllocator* allocator, size_t limit)
 }
 
 std::string GrowableBuffer::ToString() const {
-  return Format("{ size: $0 limit: $1 }", size_, limit_);
+  return YB_CLASS_TO_STRING(size, limit);
 }
 
 void GrowableBuffer::Consume(size_t count, const Slice& prepend) {

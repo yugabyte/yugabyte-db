@@ -30,12 +30,13 @@
 // under the License.
 //
 
-#include "yb/util/slice.h"
-
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
+
 #include "yb/util/random_util.h"
+#include "yb/util/slice.h"
 #include "yb/util/tostring.h"
 
 using std::string;

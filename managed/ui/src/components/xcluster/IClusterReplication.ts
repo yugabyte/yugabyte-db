@@ -8,7 +8,7 @@ export interface IReplicationTable {
 
 export enum IReplicationStatus {
   INIT = 'Init',
-  SUCCESS = 'Success',
+  UPDATING = 'Updating',
   FAILED = 'Failed',
   PAUSED = 'Paused',
   RUNNING = 'Running'

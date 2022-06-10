@@ -18,11 +18,12 @@ import com.google.protobuf.Message;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.consensus.Consensus;
 import org.yb.consensus.Metadata;
 import org.yb.consensus.Metadata.RaftPeerPB;
-import org.yb.master.Master;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 
 import java.util.ArrayList;
@@ -30,10 +31,10 @@ import java.util.List;
 
 @InterfaceAudience.Public
 class ChangeMasterClusterConfigRequest extends YRpc<ChangeMasterClusterConfigResponse> {
-  private Master.SysClusterConfigEntryPB clusterConfig;
+  private CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig;
 
   public ChangeMasterClusterConfigRequest(
-      YBTable masterTable, Master.SysClusterConfigEntryPB config) {
+      YBTable masterTable, CatalogEntityInfo.SysClusterConfigEntryPB config) {
     super(masterTable);
     clusterConfig = config;
   }
@@ -41,8 +42,8 @@ class ChangeMasterClusterConfigRequest extends YRpc<ChangeMasterClusterConfigRes
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.ChangeMasterClusterConfigRequestPB.Builder builder =
-      Master.ChangeMasterClusterConfigRequestPB.newBuilder();
+    final MasterClusterOuterClass.ChangeMasterClusterConfigRequestPB.Builder builder =
+      MasterClusterOuterClass.ChangeMasterClusterConfigRequestPB.newBuilder();
     builder.setClusterConfig(clusterConfig);
 
     return toChannelBuffer(header, builder.build());
@@ -59,8 +60,8 @@ class ChangeMasterClusterConfigRequest extends YRpc<ChangeMasterClusterConfigRes
   @Override
   Pair<ChangeMasterClusterConfigResponse, Object> deserialize(CallResponse callResponse,
                                                  String masterUUID) throws Exception {
-    final Master.ChangeMasterClusterConfigResponsePB.Builder respBuilder =
-      Master.ChangeMasterClusterConfigResponsePB.newBuilder();
+    final MasterClusterOuterClass.ChangeMasterClusterConfigResponsePB.Builder respBuilder =
+      MasterClusterOuterClass.ChangeMasterClusterConfigResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     boolean hasErr = respBuilder.hasError();
     ChangeMasterClusterConfigResponse response =

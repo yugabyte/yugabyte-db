@@ -76,7 +76,6 @@ drop table if exists t cascade;
 create table t(c1 text primary key, c2 text, c3 text);
 ```
 
-
 And prepare `t.sql` thus:
 
 ```
@@ -85,6 +84,7 @@ c1,c2,c3
 dog,cat,frog
 \.
 ```
+
 Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option) prompt to copy in the data.
 
 {{< note title="Some client-side languages have a dedicated exposure of COPY" >}}

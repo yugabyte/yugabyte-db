@@ -3,6 +3,7 @@ import { isEmptyArray, isNonEmptyArray, isNonEmptyObject } from '../../../../uti
 import { YBLoading } from '../../../common/indicators';
 import { TaskListTable, TaskProgressContainer } from '../../../tasks';
 import { TASK_SHORT_TIMEOUT } from '../../../tasks/constants';
+import { YUGABYTE_TITLE } from '../../../../config';
 
 export class UniverseTaskList extends Component {
   componentDidMount() {
@@ -50,13 +51,17 @@ export class UniverseTaskList extends Component {
       universeTaskUUIDs = currentUniverseTasks
         .map(function (task) {
           universeTaskHistoryArray.push(task);
-          return task.status !== 'Failure' && task.percentComplete !== 100 ? task.id : false;
+          return task.status !== 'Aborted' &&
+            task.status !== 'Failure' &&
+            task.percentComplete !== 100
+            ? task.id
+            : false;
         })
         .filter(Boolean);
     }
     if (isNonEmptyArray(universeTaskHistoryArray)) {
       const errorPlatformMessage = (
-        <div className="oss-unavailable-warning">Only available on Yugabyte Platform.</div>
+        <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
       );
       universeTaskHistory = (
         <TaskListTable
@@ -64,6 +69,10 @@ export class UniverseTaskList extends Component {
           isCommunityEdition={isCommunityEdition}
           overrideContent={errorPlatformMessage}
           title={'Task History'}
+          abortCurrentTask={this.props.abortCurrentTask}
+          hideTaskAbortModal={this.props.hideTaskAbortModal}
+          showTaskAbortModal={this.props.showTaskAbortModal}
+          visibleModal={this.props.visibleModal}
         />
       );
     }

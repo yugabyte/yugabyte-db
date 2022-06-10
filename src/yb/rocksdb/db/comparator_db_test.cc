@@ -19,16 +19,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <map>
 #include <string>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/kv_map.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
 
 using std::unique_ptr;
 
@@ -265,7 +270,7 @@ class TwoStrComparator : public Comparator {
 };
 }  // namespace
 
-class ComparatorDBTest : public testing::Test {
+class ComparatorDBTest : public RocksDBTest {
  private:
   std::string dbname_;
   Env* env_;

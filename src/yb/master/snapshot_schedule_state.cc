@@ -15,11 +15,15 @@
 
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/master_error.h"
 #include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 
@@ -39,7 +43,7 @@ SnapshotScheduleState::SnapshotScheduleState(
 
 Result<docdb::KeyBytes> SnapshotScheduleState::EncodedKey(
     const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context) {
-  return master::EncodedKey(SysRowEntry::SNAPSHOT_SCHEDULE, schedule_id.AsSlice(), context);
+  return master::EncodedKey(SysRowEntryType::SNAPSHOT_SCHEDULE, schedule_id.AsSlice(), context);
 }
 
 Result<docdb::KeyBytes> SnapshotScheduleState::EncodedKey() const {
@@ -51,9 +55,8 @@ Status SnapshotScheduleState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out
   auto pair = out->add_write_pairs();
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
   auto* value = pair->mutable_value();
-  value->push_back(docdb::ValueTypeAsChar::kString);
-  pb_util::AppendPartialToString(options_, value);
-  return Status::OK();
+  value->push_back(docdb::ValueEntryTypeAsChar::kString);
+  return pb_util::AppendPartialToString(options_, value);
 }
 
 Status SnapshotScheduleState::ToPB(SnapshotScheduleInfoPB* pb) const {
@@ -72,7 +75,7 @@ bool SnapshotScheduleState::deleted() const {
 
 void SnapshotScheduleState::PrepareOperations(
     HybridTime last_snapshot_time, HybridTime now, SnapshotScheduleOperations* operations) {
-  if (creating_snapshot_id_) {
+  if (creating_snapshot_data_.snapshot_id) {
     return;
   }
   auto delete_time = HybridTime::FromPB(options_.delete_time());
@@ -88,6 +91,8 @@ void SnapshotScheduleState::PrepareOperations(
         .type = SnapshotScheduleOperationType::kCleanup,
         .schedule_id = id_,
         .snapshot_id = TxnSnapshotId::Nil(),
+        .filter = {},
+        .previous_snapshot_hybrid_time = {},
       });
     }
     return;
@@ -101,12 +106,13 @@ void SnapshotScheduleState::PrepareOperations(
 
 SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
     HybridTime last_snapshot_time) {
-  creating_snapshot_id_ = TxnSnapshotId::GenerateRandom();
-  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_id_;
+  creating_snapshot_data_.snapshot_id = TxnSnapshotId::GenerateRandom();
+  creating_snapshot_data_.start_time = CoarseMonoClock::now();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << creating_snapshot_data_.snapshot_id;
   return SnapshotScheduleOperation {
     .type = SnapshotScheduleOperationType::kCreateSnapshot,
     .schedule_id = id_,
-    .snapshot_id = creating_snapshot_id_,
+    .snapshot_id = creating_snapshot_data_.snapshot_id,
     .filter = options_.filter(),
     .previous_snapshot_hybrid_time = last_snapshot_time,
   };
@@ -114,20 +120,22 @@ SnapshotScheduleOperation SnapshotScheduleState::MakeCreateSnapshotOperation(
 
 Result<SnapshotScheduleOperation> SnapshotScheduleState::ForceCreateSnapshot(
     HybridTime last_snapshot_time) {
-  if (creating_snapshot_id_) {
+  if (creating_snapshot_data_.snapshot_id) {
+    auto passed = CoarseMonoClock::now() - creating_snapshot_data_.start_time;
     return STATUS_EC_FORMAT(
         IllegalState, MasterError(MasterErrorPB::PARALLEL_SNAPSHOT_OPERATION),
-        "Creating snapshot in progress: $0", creating_snapshot_id_);
+        "Creating snapshot in progress: $0 (passed $1)",
+        creating_snapshot_data_.snapshot_id, passed);
   }
   return MakeCreateSnapshotOperation(last_snapshot_time);
 }
 
 void SnapshotScheduleState::SnapshotFinished(
     const TxnSnapshotId& snapshot_id, const Status& status) {
-  if (creating_snapshot_id_ != snapshot_id) {
+  if (creating_snapshot_data_.snapshot_id != snapshot_id) {
     return;
   }
-  creating_snapshot_id_ = TxnSnapshotId::Nil();
+  creating_snapshot_data_.snapshot_id = TxnSnapshotId::Nil();
 }
 
 std::string SnapshotScheduleState::LogPrefix() const {

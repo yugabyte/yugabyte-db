@@ -15,9 +15,14 @@
 
 #include "yb/common/ql_rowblock.h"
 
+#include "yb/bfql/bfql.h"
 
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_serialization.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 
@@ -39,9 +44,18 @@ QLRow::QLRow(QLRow&& other)
 QLRow::~QLRow() {
 }
 
+size_t QLRow::column_count() const {
+  return schema_->num_columns();
+}
+
+// Column's datatype
+const std::shared_ptr<QLType>& QLRow::column_type(const size_t col_idx) const {
+  return schema_->column(col_idx).type();
+}
+
 void QLRow::Serialize(const QLClient client, faststring* buffer) const {
   for (size_t col_idx = 0; col_idx < schema_->num_columns(); ++col_idx) {
-    values_[col_idx].Serialize(column_type(col_idx), client, buffer);
+    SerializeValue(column_type(col_idx), client, values_[col_idx].value(), buffer);
   }
 }
 
@@ -168,7 +182,7 @@ Status QLRowBlock::AppendRowsData(const QLClient client, const string& src, stri
     if (dst_cnt == 0) {
       *dst = src;
     } else {
-      dst->append(to_char_ptr(src_slice.data()), src_slice.size());
+      dst->append(src_slice.cdata(), src_slice.size());
       dst_cnt += src_cnt;
       CQLEncodeLength(dst_cnt, &(*dst)[0]);
     }

@@ -2,8 +2,11 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.XClusterConfig;
+import java.util.UUID;
+import lombok.NoArgsConstructor;
 
-public class XClusterConfigTaskParams extends UniverseTaskParams {
+@NoArgsConstructor
+public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
 
   public XClusterConfig xClusterConfig;
   public XClusterConfigCreateFormData createFormData;
@@ -26,5 +29,9 @@ public class XClusterConfigTaskParams extends UniverseTaskParams {
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig) {
     this.universeUUID = xClusterConfig.targetUniverseUUID;
     this.xClusterConfig = xClusterConfig;
+  }
+
+  public XClusterConfigTaskParams(UUID targetUniverseUUID) {
+    this.universeUUID = targetUniverseUUID;
   }
 }

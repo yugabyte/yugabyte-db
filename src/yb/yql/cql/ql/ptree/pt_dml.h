@@ -18,55 +18,20 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_DML_H_
 #define YB_YQL_CQL_QL_PTREE_PT_DML_H_
 
-#include "yb/yql/cql/ql/ptree/column_desc.h"
-#include "yb/yql/cql/ql/ptree/list_node.h"
+#include <iosfwd>
+
+#include "yb/client/client_fwd.h"
+
+#include "yb/common/common_fwd.h"
+
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
-#include "yb/yql/cql/ql/ptree/pt_bcall.h"
-#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
-#include "yb/yql/cql/ql/ptree/column_arg.h"
-#include "yb/common/table_properties_constants.h"
-#include "yb/common/common.pb.h"
-#include "yb/client/client.h"
 
 namespace yb {
 namespace ql {
-
-inline ostream& operator<< (ostream& out, const QLOperator& ql_op) {
-  switch (ql_op) {
-    case QL_OP_AND:
-      out << "AND";
-      break;
-    case QL_OP_EQUAL:
-      out << "=";
-      break;
-    case QL_OP_LESS_THAN:
-      out << "<";
-      break;
-    case QL_OP_LESS_THAN_EQUAL:
-      out << "<=";
-      break;
-    case QL_OP_GREATER_THAN:
-      out << ">";
-      break;
-    case QL_OP_GREATER_THAN_EQUAL:
-      out << ">=";
-      break;
-    case QL_OP_IN:
-      out << "IN";
-      break;
-    case QL_OP_NOT_IN:
-      out << "NOT IN";
-      break;
-    case QL_OP_NOT_EQUAL:
-      out << "!=";
-      break;
-    default:
-      out << "";
-      break;
-  }
-  return out;
-}
 
 //--------------------------------------------------------------------------------------------------
 // Counter of operators on each column. "gt" includes ">" and ">=". "lt" includes "<" and "<=".
@@ -83,7 +48,7 @@ class ColumnOpCounter {
   void increase_eq(bool col_arg = false) { !col_arg ? eq_count_++ : partial_col_eq_count_++; }
   void increase_in(bool col_arg = false) { !col_arg ? in_count_++ : partial_col_in_count_++; }
 
-  bool isValid() {
+  bool is_valid() {
     // A. At most one condition can be set for a column.
     // B. More than one condition can be set for a partial column such as col[1] or col->'a'.
     // C. Conditions on a column and its partial member cannot co-exist in the same statement.
@@ -140,20 +105,20 @@ class WhereExprState {
       func_ops_(func_ops) {
   }
 
-  CHECKED_STATUS AnalyzeColumnOp(SemContext *sem_context,
+  Status AnalyzeColumnOp(SemContext *sem_context,
                                  const PTRelationExpr *expr,
                                  const ColumnDesc *col_desc,
-                                 PTExpr::SharedPtr value,
-                                 PTExprListNode::SharedPtr args = nullptr);
+                                 PTExprPtr value,
+                                 PTExprListNodePtr args = nullptr);
 
-  CHECKED_STATUS AnalyzeColumnFunction(SemContext *sem_context,
+  Status AnalyzeColumnFunction(SemContext *sem_context,
                                        const PTRelationExpr *expr,
-                                       PTExpr::SharedPtr value,
-                                       PTBcall::SharedPtr call);
+                                       PTExprPtr value,
+                                       PTBcallPtr call);
 
-  CHECKED_STATUS AnalyzePartitionKeyOp(SemContext *sem_context,
+  Status AnalyzePartitionKeyOp(SemContext *sem_context,
                                        const PTRelationExpr *expr,
-                                       PTExpr::SharedPtr value);
+                                       PTExprPtr value);
 
   MCList<FuncOp> *func_ops() {
     return func_ops_;
@@ -209,7 +174,7 @@ class PTCollection : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor. Define them in protected section to prevent application from
   // declaring them.
-  PTCollection(MemoryContext *memctx, YBLocation::SharedPtr loc)
+  PTCollection(MemoryContext *memctx, YBLocationPtr loc)
       : TreeNode(memctx, loc) {
   }
   virtual ~PTCollection() {
@@ -226,11 +191,11 @@ class PTDmlStmt : public PTCollection {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTDmlStmt(MemoryContext *memctx,
-            YBLocation::SharedPtr loc,
-            PTExpr::SharedPtr where_clause = nullptr,
-            PTExpr::SharedPtr if_clause = nullptr,
+            YBLocationPtr loc,
+            PTExprPtr where_clause = nullptr,
+            PTExprPtr if_clause = nullptr,
             bool else_error = false,
-            PTDmlUsingClause::SharedPtr using_clause = nullptr,
+            PTDmlUsingClausePtr using_clause = nullptr,
             bool returns_status = false);
   // Clone a DML tnode for re-analysis.
   PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if_clause);
@@ -242,7 +207,7 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   virtual ExplainPlanPB AnalysisResultToPB() = 0;
 
@@ -273,13 +238,13 @@ class PTDmlStmt : public PTCollection {
     return column_map_;
   }
 
-  int num_columns() const;
+  size_t num_columns() const;
 
-  int num_key_columns() const;
+  size_t num_key_columns() const;
 
-  int num_hash_key_columns() const;
+  size_t num_hash_key_columns() const;
 
-  string hash_key_columns() const;
+  std::string hash_key_columns() const;
 
   const MCVector<ColumnOp>& key_where_ops() const {
     return key_where_ops_;
@@ -313,21 +278,17 @@ class PTDmlStmt : public PTCollection {
     return returns_status_;
   }
 
-  const PTExpr::SharedPtr& where_clause() const {
+  const PTExprPtr& where_clause() const {
     return where_clause_;
   }
 
-  const PTExpr::SharedPtr& if_clause() const {
+  const PTExprPtr& if_clause() const {
     return if_clause_;
   }
 
-  PTExpr::SharedPtr ttl_seconds() const {
-    return using_clause_ ? using_clause_->ttl_seconds() : nullptr;
-  }
+  PTExprPtr ttl_seconds() const;
 
-  PTExpr::SharedPtr user_timestamp_usec() const {
-    return using_clause_ ? using_clause_->user_timestamp_usec() : nullptr;
-  }
+  PTExprPtr user_timestamp_usec() const;
 
   virtual const std::shared_ptr<client::YBTable>& bind_table() const {
     return table_;
@@ -340,14 +301,7 @@ class PTDmlStmt : public PTCollection {
     return bind_variables_;
   }
 
-  virtual std::vector<int64_t> hash_col_indices() const {
-    std::vector<int64_t> indices;
-    indices.reserve(hash_col_bindvars_.size());
-    for (const PTBindVar* bindvar : hash_col_bindvars_) {
-      indices.emplace_back(bindvar->pos());
-    }
-    return indices;
-  }
+  virtual std::vector<int64_t> hash_col_indices() const;
 
   // Access for column_args.
   const MCVector<ColumnArg>& column_args() const {
@@ -360,29 +314,13 @@ class PTDmlStmt : public PTCollection {
   }
 
   // Add column ref to be read by DocDB.
-  void AddColumnRef(const ColumnDesc& col_desc) {
-    if (col_desc.is_static()) {
-      static_column_refs_.insert(col_desc.id());
-    } else {
-      column_refs_.insert(col_desc.id());
-    }
-
-    if (column_ref_cnts_.find(col_desc.id()) == column_ref_cnts_.end())
-      column_ref_cnts_[col_desc.id()] = 0;
-    column_ref_cnts_[col_desc.id()]++;
-  }
+  void AddColumnRef(const ColumnDesc& col_desc);
 
   // Add column ref to be read.
-  void AddHashColumnBindVar(PTBindVar* bindvar) {
-    hash_col_bindvars_.insert(bindvar);
-  }
+  void AddHashColumnBindVar(PTBindVar* bindvar);
 
   // Add all column refs to be read by DocDB.
-  void AddRefForAllColumns() {
-    for (const auto& pair : column_map_) {
-      AddColumnRef(pair.second);
-    }
-  }
+  void AddRefForAllColumns();
 
   // Access for column_args.
   const MCSet<int32>& column_refs() const {
@@ -410,11 +348,7 @@ class PTDmlStmt : public PTCollection {
     return selected_schemas_;
   }
 
-  bool IsWriteOp() const {
-    return opcode() == TreeNodeOpcode::kPTInsertStmt ||
-           opcode() == TreeNodeOpcode::kPTUpdateStmt ||
-           opcode() == TreeNodeOpcode::kPTDeleteStmt;
-  }
+  virtual bool IsWriteOp() const = 0;
 
   bool RequiresTransaction() const;
 
@@ -445,47 +379,24 @@ class PTDmlStmt : public PTCollection {
  protected:
 
   template <typename T>
-  string conditionsToString(T conds) {
-    string str;
-    for (auto col_op = conds.begin(); col_op != conds.end(); ++col_op) {
-      std::stringstream s;
-      if (col_op != conds.begin()) {
-        s << " AND ";
-      }
-      s << "(" << col_op->desc()->name() << " " << col_op->yb_op();
-
-      if (col_op->expr()->expr_op() != ExprOperator::kBindVar &&
-          col_op->expr()->ql_type_id() == DataType::STRING) {
-        s << " '" << col_op->expr()->QLName() << "')";
+  static std::string ConditionsToString(T conds) {
+    std::stringstream s;
+    bool first = true;
+    for (const auto& col_op : conds) {
+      if (first) {
+        first = false;
       } else {
-        s << " " << col_op->expr()->QLName() << ")";
-      }
-      str += s.str();
-    }
-    return str;
-  }
-
-  string partitionkeyToString(MCList<PartitionKeyOp> conds) {
-    string str;
-    for (auto col_op = conds.begin(); col_op != conds.end(); ++col_op) {
-      std::stringstream s;
-      if (col_op != conds.begin()) {
         s << " AND ";
       }
-      // Partition_hash is stored as INT32, token is stored as INT64, unless you specify the
-      // rhs expression e.g partition_hash(h1, h2) >= 3 in which case it's stored as an VARINT.
-      // So setting the default to the yql partition_hash in that case seems reasonable.
-      string label = (col_op->expr()->expected_internal_type() == InternalType::kInt64Value) ?
-          "token" : "partition_hash";
-      s << "(" << label << "(" << hash_key_columns() <<  ") " << col_op->yb_op()
-        << " " << col_op->expr()->QLName() << ")";
-      str += s.str();
+      col_op.OutputTo(&s);
     }
-    return str;
+    return s.str();
   }
+
+  std::string PartitionKeyToString(const MCList<PartitionKeyOp>& conds);
 
   // Lookup table from the metadata database.
-  CHECKED_STATUS LookupTable(SemContext *sem_context);
+  Status LookupTable(SemContext *sem_context);
 
   // Load table schema into symbol table.
   static void LoadSchema(SemContext *sem_context,
@@ -494,35 +405,35 @@ class PTDmlStmt : public PTCollection {
                          bool is_index);
 
   // Semantic-analyzing the where clause.
-  CHECKED_STATUS AnalyzeWhereClause(SemContext *sem_context);
+  Status AnalyzeWhereClause(SemContext *sem_context);
 
   // Semantic-analyzing the if clause.
-  CHECKED_STATUS AnalyzeIfClause(SemContext *sem_context);
+  Status AnalyzeIfClause(SemContext *sem_context);
 
   // Semantic-analyzing the USING TTL clause.
-  CHECKED_STATUS AnalyzeUsingClause(SemContext *sem_context);
+  Status AnalyzeUsingClause(SemContext *sem_context);
 
   // Semantic-analyzing the indexes for write operations.
-  CHECKED_STATUS AnalyzeIndexesForWrites(SemContext *sem_context);
+  Status AnalyzeIndexesForWrites(SemContext *sem_context);
 
   // Protected functions.
-  CHECKED_STATUS AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
+  Status AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr);
 
   // Semantic-analyzing the bind variables for hash columns.
-  CHECKED_STATUS AnalyzeHashColumnBindVars(SemContext *sem_context);
+  Status AnalyzeHashColumnBindVars(SemContext *sem_context);
 
   // Semantic-analyzing the modified columns for inter-statement dependency.
-  CHECKED_STATUS AnalyzeColumnArgs(SemContext *sem_context);
+  Status AnalyzeColumnArgs(SemContext *sem_context);
 
   // Does column_args_ contain static columns only (i.e. writing static column only)?
   bool StaticColumnArgsOnly() const;
 
   // --- The parser will decorate this node with the following information --
 
-  const PTExpr::SharedPtr where_clause_;
-  const PTExpr::SharedPtr if_clause_;
+  const PTExprPtr where_clause_;
+  const PTExprPtr if_clause_;
   const bool else_error_ = false;
-  const PTDmlUsingClause::SharedPtr using_clause_;
+  const PTDmlUsingClausePtr using_clause_;
   const bool returns_status_ = false;
   MCVector<PTBindVar*> bind_variables_;
 
@@ -550,8 +461,13 @@ class PTDmlStmt : public PTCollection {
   // restrictions involving all hash/partition columns -- i.e. read requests using Token builtin
   MCList<PartitionKeyOp> partition_key_ops_;
 
+  // Compare 2 bind variables for their hash column ids.
+  struct HashColCmp {
+    bool operator()(const PTBindVar* v1, const PTBindVar* v2) const;
+  };
+
   // List of bind variables associated with hash columns ordered by their column ids.
-  MCSet<PTBindVar*, PTBindVar::HashColCmp> hash_col_bindvars_;
+  MCSet<PTBindVar*, HashColCmp> hash_col_bindvars_;
 
   MCSharedPtr<MCVector<ColumnArg>> column_args_;
   MCSharedPtr<MCVector<SubscriptedColumnArg>> subscripted_col_args_;

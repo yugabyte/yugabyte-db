@@ -18,25 +18,28 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+@Getter
 public abstract class AbstractInitializer {
 
   public static final Logger LOG = LoggerFactory.getLogger(AbstractInitializer.class);
 
-  @Inject ApiHelper apiHelper;
+  @Inject private ApiHelper apiHelper;
 
-  @Inject CloudQueryHelper cloudQueryHelper;
+  @Inject private CloudQueryHelper cloudQueryHelper;
 
   public abstract void initialize(UUID customerUUID, UUID providerUUID);
 
-  protected static class InitializationContext {
+  @Getter
+  public static class InitializationContext {
 
-    final Provider provider;
-    final List<Map<String, String>> availableInstances = new ArrayList<>();
+    private final Provider provider;
+    private final List<Map<String, String>> availableInstances = new ArrayList<>();
 
-    protected InitializationContext(Provider provider) {
+    public InitializationContext(Provider provider) {
       this.provider = provider;
     }
   }

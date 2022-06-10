@@ -27,6 +27,7 @@
 #include <algorithm>
 #include "yb/rocksdb/statistics.h"
 #include "yb/rocksdb/port/likely.h"
+#include "yb/util/format.h"
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
 
@@ -146,10 +147,10 @@ StatisticsMetricImpl::StatisticsMetricImpl(
     histograms_.push_back(prototypes.hist_prototypes()[i]->Instantiate(hist_entity));
   }
 
+  auto& ticker_prototypes = for_intents ? prototypes.intents_ticker_prototypes()
+                                        : prototypes.regular_ticker_prototypes();
   for (size_t i = 0; tick_entity && i < kNumTickers; i++) {
-    tickers_.push_back(
-        for_intents ? prototypes.intents_ticker_prototypes()[i]->Instantiate(tick_entity, 0)
-                    : prototypes.regular_ticker_prototypes()[i]->Instantiate(tick_entity, 0));
+    tickers_.push_back(ticker_prototypes[i]->Instantiate(tick_entity, 0));
   }
 }
 
@@ -163,6 +164,11 @@ uint64_t StatisticsMetricImpl::getTickerCount(uint32_t tickerType) const {
   }
 
   return 0;
+}
+
+const char* StatisticsMetricImpl::GetTickerName(uint32_t ticker_type) const {
+  CHECK_LT(ticker_type, tickers_.size());
+  return tickers_[ticker_type]->prototype()->name();
 }
 
 void StatisticsMetricImpl::histogramData(uint32_t histogramType, HistogramData* const data) const {

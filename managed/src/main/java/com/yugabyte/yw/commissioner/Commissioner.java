@@ -8,15 +8,19 @@ import akka.actor.ActorSystem;
 import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.base.Strings;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
 import java.util.Iterator;
@@ -24,12 +28,16 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
 import scala.concurrent.ExecutionContext;
@@ -37,22 +45,28 @@ import scala.concurrent.ExecutionContext;
 @Singleton
 public class Commissioner {
 
+  public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
+
   public static final Logger LOG = LoggerFactory.getLogger(Commissioner.class);
 
   private final ExecutorService executor;
 
-  // A map of all task UUID's to the task runner objects for all the user tasks that are currently
+  private final TaskExecutor taskExecutor;
+
+  // A map of all task UUID's to the task runnable objects for all the user tasks that are currently
   // active. Recently completed tasks are also in this list, their completion percentage should be
   // persisted before removing the task from this map.
-  private final Map<UUID, TaskRunner> runningTasks = new ConcurrentHashMap<>();
+  private final Map<UUID, RunnableTask> runningTasks = new ConcurrentHashMap<>();
 
   @Inject
   public Commissioner(
       ProgressMonitor progressMonitor,
       ApplicationLifecycle lifecycle,
-      PlatformExecutorFactory platformExecutorFactory) {
+      PlatformExecutorFactory platformExecutorFactory,
+      TaskExecutor taskExecutor) {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-%d").build();
+    this.taskExecutor = taskExecutor;
     executor = platformExecutorFactory.createExecutor("commissioner", namedThreadFactory);
     LOG.info("Started Commissioner TaskPool.");
     progressMonitor.start(runningTasks);
@@ -60,32 +74,90 @@ public class Commissioner {
   }
 
   /**
-   * Creates a new task runner to run the required task, and submits it to a threadpool if needed.
+   * Returns true if the task identified by the task type is abortable.
+   *
+   * @param taskType the task type.
+   * @return true if abortable.
+   */
+  public static boolean isTaskAbortable(TaskType taskType) {
+    return TaskExecutor.isTaskAbortable(TaskExecutor.getTaskClass(taskType));
+  }
+
+  /**
+   * Returns true if the task identified by the task type is retryable.
+   *
+   * @param taskType the task type.
+   * @return true if retryable.
+   */
+  public static boolean isTaskRetryable(TaskType taskType) {
+    return TaskExecutor.isTaskRetryable(TaskExecutor.getTaskClass(taskType));
+  }
+
+  /**
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @return
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
+    RunnableTask taskRunnable = null;
     try {
-      // Claim the task if we can - check if we will go above the max local concurrent task
-      // threshold. If we can claim it, set ourselves as the owner of the task. Otherwise, do not
-      // claim the task so that some other process can claim it.
-      // TODO: enforce a limit on number of tasks here.
-      boolean claimTask = true;
+      final int subTaskAbortPosition = getSubTaskAbortPosition();
+      // Create the task runnable object based on the various parameters passed in.
+      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
+      if (subTaskAbortPosition >= 0) {
+        taskRunnable.setTaskExecutionListener(
+            new TaskExecutionListener() {
+              @Override
+              public void beforeTask(TaskInfo taskInfo) {
+                if (taskInfo.getPosition() >= subTaskAbortPosition) {
+                  LOG.debug("Aborting task {} at position {}", taskInfo, taskInfo.getPosition());
+                  throw new CancellationException("Subtask cancelled");
+                }
+              }
 
-      // Create the task runner object based on the various parameters passed in.
-      TaskRunner taskRunner = TaskRunner.createTask(taskType, taskParams, claimTask);
-
-      if (claimTask) {
-        // Add this task to our queue.
-        runningTasks.put(taskRunner.getTaskUUID(), taskRunner);
-
-        // If we had claimed ownership of the task, submit it to the task threadpool.
-        executor.submit(taskRunner);
+              @Override
+              public void afterTask(TaskInfo taskInfo, Throwable t) {
+                LOG.info("Task {} is completed", taskInfo);
+              }
+            });
       }
-      return taskRunner.getTaskUUID();
+      UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
+      // Add this task to our queue.
+      runningTasks.put(taskUUID, taskRunnable);
+      return taskRunnable.getTaskUUID();
     } catch (Throwable t) {
+      if (taskRunnable != null) {
+        // Destroy the task initialization in case of failure.
+        taskRunnable.task.terminate();
+      }
       String msg = "Error processing " + taskType + " task for " + taskParams.toString();
       LOG.error(msg, t);
       throw new RuntimeException(msg, t);
     }
+  }
+
+  /**
+   * Triggers task abort asynchronously. It can take some time for the task to abort. Caller can
+   * check the task status for the final state.
+   *
+   * @param taskUUID the UUID of the task to be aborted.
+   * @return true if the task is found running and abort is triggered successfully, else false.
+   */
+  public boolean abortTask(UUID taskUUID) {
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    if (!isTaskAbortable(taskInfo.getTaskType())) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
+    }
+
+    if (taskInfo.getTaskState() != TaskInfo.State.Running) {
+      LOG.warn("Task {} is not running", taskUUID);
+      return false;
+    }
+    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
+    return optional.isPresent();
   }
 
   public ObjectNode getStatusOrBadRequest(UUID taskUUID) {
@@ -94,33 +166,56 @@ public class Commissioner {
             () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
-  public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
-    ObjectNode responseJson = Json.newObject();
-
-    // Check if the task is in the DB
-    TaskInfo taskInfo = TaskInfo.get(taskUUID);
-    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
-    if (taskInfo != null && task != null) {
-      // Add some generic information about the task
-      responseJson.put("title", task.getFriendlyDescription());
-      responseJson.put("createTime", task.getCreateTime().toString());
-      responseJson.put("target", task.getTargetName());
-      responseJson.put("targetUUID", task.getTargetUUID().toString());
-      responseJson.put("type", task.getType().name());
-      // Find out the state of the task.
-      responseJson.put("status", taskInfo.getTaskState().toString());
-      // Get the percentage of subtasks that ran and completed
-      responseJson.put("percent", taskInfo.getPercentCompleted());
-      // Get subtask groups
-      UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
-      responseJson.set("details", Json.toJson(userTaskDetails));
-      return Optional.of(responseJson);
+  public Optional<ObjectNode> buildTaskStatus(CustomerTask task, TaskInfo taskInfo) {
+    if (task == null || taskInfo == null) {
+      return Optional.empty();
     }
+    ObjectNode responseJson = Json.newObject();
+    // Add some generic information about the task
+    responseJson.put("title", task.getFriendlyDescription());
+    responseJson.put("createTime", task.getCreateTime().toString());
+    responseJson.put("target", task.getTargetName());
+    responseJson.put("targetUUID", task.getTargetUUID().toString());
+    responseJson.put("type", task.getType().name());
+    // Find out the state of the task.
+    responseJson.put("status", taskInfo.getTaskState().toString());
+    // Get the percentage of subtasks that ran and completed
+    responseJson.put("percent", taskInfo.getPercentCompleted());
+    // Get subtask groups
+    UserTaskDetails userTaskDetails = taskInfo.getUserTaskDetails();
+    responseJson.set("details", Json.toJson(userTaskDetails));
+    // Set abortable if eligible.
+    responseJson.put("abortable", false);
+    if (taskExecutor.isTaskRunning(task.getTaskUUID())) {
+      // Task is abortable only when it is running.
+      responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
+    }
+    // Set retryable if eligible.
+    responseJson.put("retryable", false);
+    if (isTaskRetryable(taskInfo.getTaskType())
+        && task.getTarget().isUniverseTarget()
+        && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
+      // Retryable depends on the updating task UUID in the Universe.
+      Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
+          .ifPresent(
+              updatingTaskUUID -> {
+                responseJson.put(
+                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
+              });
+    }
+    return Optional.of(responseJson);
+  }
 
-    // We are not able to find the task. Report an error.
-    LOG.error(
-        "Error fetching Task Progress for " + taskUUID + ", TaskInfo with that taskUUID not found");
-    return Optional.empty();
+  public Optional<ObjectNode> mayGetStatus(UUID taskUUID) {
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", taskUUID).findOne();
+    // Check if the task is in the DB.
+    TaskInfo taskInfo = TaskInfo.get(taskUUID);
+    if (task == null || taskInfo == null) {
+      // We are not able to find the task. Report an error.
+      LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
+      return Optional.empty();
+    }
+    return buildTaskStatus(task, taskInfo);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
@@ -132,6 +227,20 @@ public class Commissioner {
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to retrieve task params for Task UUID: " + taskUUID);
     }
+  }
+
+  private int getSubTaskAbortPosition() {
+    int abortPosition = -1;
+    String value = (String) MDC.get(SUBTASK_ABORT_POSITION_PROPERTY);
+    if (!Strings.isNullOrEmpty(value)) {
+      try {
+        abortPosition = Integer.parseInt(value);
+      } catch (NumberFormatException e) {
+        LOG.warn("Error in parsing subtask abort position, ignoring it.", e);
+        abortPosition = -1;
+      }
+    }
+    return abortPosition;
   }
 
   /**
@@ -158,43 +267,53 @@ public class Commissioner {
       this.executionContext = executionContext;
     }
 
-    public void start(Map<UUID, TaskRunner> runningTasks) {
+    public void start(Map<UUID, RunnableTask> runningTasks) {
       Duration checkInterval = this.progressCheckInterval();
       if (checkInterval.isZero()) {
         log.info(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL + " set to 0.");
         log.warn("!!! TASK GC DISABLED !!!");
       } else {
+        AtomicBoolean isRunning = new AtomicBoolean();
         log.info("Scheduling Progress Check every " + checkInterval);
         scheduler.schedule(
             Duration.ZERO, // InitialDelay
             checkInterval,
-            () -> scheduleRunner(runningTasks),
+            () -> {
+              if (isRunning.compareAndSet(false, true)) {
+                try {
+                  scheduleRunner(runningTasks);
+                } finally {
+                  isRunning.set(false);
+                }
+              } else {
+                LOG.warn("Skipping task heartbeating as it is running.");
+              }
+            },
             this.executionContext);
       }
     }
 
-    private void scheduleRunner(Map<UUID, TaskRunner> runningTasks) {
+    private void scheduleRunner(Map<UUID, RunnableTask> runningTasks) {
       // Loop through all the active tasks.
       try {
-        Iterator<Entry<UUID, TaskRunner>> iter = runningTasks.entrySet().iterator();
+        Iterator<Entry<UUID, RunnableTask>> iter = runningTasks.entrySet().iterator();
         while (iter.hasNext()) {
-          Entry<UUID, TaskRunner> entry = iter.next();
-          TaskRunner taskRunner = entry.getValue();
+          Entry<UUID, RunnableTask> entry = iter.next();
+          RunnableTask taskRunnable = entry.getValue();
 
           // If the task is still running, update its latest timestamp as a part of the heartbeat.
-          if (taskRunner.isTaskRunning()) {
-            taskRunner.doHeartbeat();
-          } else if (taskRunner.hasTaskSucceeded()) {
-            LOG.info("Task " + taskRunner.toString() + " has succeeded.");
+          if (taskRunnable.isTaskRunning()) {
+            taskRunnable.doHeartbeat();
+          } else if (taskRunnable.hasTaskSucceeded()) {
+            LOG.info("Task {} has succeeded.", taskRunnable.toString());
             // Remove task from the set of live tasks.
             iter.remove();
-          } else if (taskRunner.hasTaskFailed()) {
-            LOG.info("Task " + taskRunner.toString() + " has failed.");
+          } else if (taskRunnable.hasTaskFailed()) {
+            LOG.info("Task {} has failed.", taskRunnable.toString());
             // Remove task from the set of live tasks.
             iter.remove();
           }
         }
-
         // TODO: Scan the DB for tasks that have failed to make progress and claim one if possible.
       } catch (Exception e) {
         log.error("Error running commissioner progress checker", e);

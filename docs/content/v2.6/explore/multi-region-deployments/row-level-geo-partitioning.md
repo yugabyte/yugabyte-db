@@ -101,30 +101,36 @@ First, we create the parent table that contains a `geo_partition` column which i
     );
     ```
 
-1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third partition for US region called `transactions_us`.
+1. Next, create one partition per desired geography under the parent table, and assign each to the  applicable tablespace. Here, you create three table partitions: one for the EU region called `transactions_eu`, another for the India region called `transactions_india,` and a third partition for US region called `transactions_us`. Create any required indexes for each partition, making sure to associate each index with the same tablespace as that of the partition table.
 
-    ```sql
-    CREATE TABLE transactions_eu
+     ```sql
+     CREATE TABLE transactions_eu
         PARTITION OF transactions
           (user_id, account_id, geo_partition, account_type,
           amount, txn_type, created_at,
           PRIMARY KEY (user_id HASH, account_id, geo_partition))
         FOR VALUES IN ('EU') TABLESPACE eu_central_1_tablespace;
 
-    CREATE TABLE transactions_india
-        PARTITION OF transactions
-          (user_id, account_id, geo_partition, account_type,
-          amount, txn_type, created_at,
-          PRIMARY KEY (user_id HASH, account_id, geo_partition))
-        FOR VALUES IN ('India') TABLESPACE ap_south_1_tablespace;
+     CREATE INDEX ON transactions_eu(account_id) TABLESPACE eu_central_1_tablespace;
 
-    CREATE TABLE transactions_us
-        PARTITION OF transactions
-          (user_id, account_id, geo_partition, account_type,
-          amount, txn_type, created_at,
-          PRIMARY KEY (user_id HASH, account_id, geo_partition))
-        FOR VALUES IN ('US') TABLESPACE us_west_2_tablespace;
-    ```
+     CREATE TABLE transactions_india
+         PARTITION OF transactions
+           (user_id, account_id, geo_partition, account_type,
+           amount, txn_type, created_at,
+           PRIMARY KEY (user_id HASH, account_id, geo_partition))
+         FOR VALUES IN ('India') TABLESPACE ap_south_1_tablespace;
+
+     CREATE INDEX ON transactions_india(account_id) TABLESPACE ap_south_1_tablespace;
+
+     CREATE TABLE transactions_us
+         PARTITION OF transactions
+           (user_id, account_id, geo_partition, account_type,
+           amount, txn_type, created_at,
+           PRIMARY KEY (user_id HASH, account_id, geo_partition))
+         FOR VALUES IN ('US') TABLESPACE us_west_2_tablespace;
+
+     CREATE INDEX ON transactions_us(account_id) TABLESPACE us_west_2_tablespace;
+     ```
 
 1. Use the `\d` command to view the table and partitions you've created so far.
 

@@ -13,10 +13,27 @@
 
 #include "yb/master/master_tserver.h"
 
+#include <map>
+#include <set>
+
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
+
 #include "yb/client/async_initializer.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/sys_catalog.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/scoped_leader_shared_lock.h"
+#include "yb/master/sys_catalog_constants.h"
+
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {
@@ -46,7 +63,7 @@ const scoped_refptr<MetricEntity>& MasterTabletServer::MetricEnt() const {
 Status MasterTabletServer::GetTabletPeer(const string& tablet_id,
                                          std::shared_ptr<tablet::TabletPeer>* tablet_peer) const {
   if (tablet_id == kSysCatalogTabletId) {
-    *tablet_peer = master_->catalog_manager()->sys_catalog()->tablet_peer();
+    *tablet_peer = master_->catalog_manager()->tablet_peer();
     return Status::OK();
   }
   return STATUS_FORMAT(NotFound, "tablet $0 not found", tablet_id);
@@ -101,7 +118,7 @@ void MasterTabletServer::get_ysql_catalog_version(uint64_t* current_version,
   };
   // Ensure that we are currently the Leader before handling catalog version.
   {
-    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager());
+    SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
     if (!l.catalog_status().ok()) {
       LOG(WARNING) << "Catalog status failure: " << l.catalog_status().ToString();
       fill_vers();
@@ -129,6 +146,24 @@ tserver::TServerSharedData& MasterTabletServer::SharedObject() {
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {
   return master_->async_client_initializer().get_client_future();
+}
+
+Status MasterTabletServer::GetLiveTServers(
+    std::vector<master::TSInformationPB> *live_tservers) const {
+  return Status::OK();
+}
+
+const std::shared_ptr<MemTracker>& MasterTabletServer::mem_tracker() const {
+  return master_->mem_tracker();
+}
+
+void MasterTabletServer::SetPublisher(rpc::Publisher service) {
+}
+
+client::TransactionPool& MasterTabletServer::TransactionPool() {
+  LOG(FATAL) << "Unexpected call of TransactionPool()";
+  client::TransactionPool* temp = nullptr;
+  return *temp;
 }
 
 } // namespace master

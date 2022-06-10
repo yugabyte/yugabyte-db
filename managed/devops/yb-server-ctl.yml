@@ -8,15 +8,50 @@
 
 - name: Perform command {{ command }} on YB {{ process }}
   hosts: "{{ instance_search_pattern }}"
-  gather_facts: no
+  gather_facts: yes
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   vars:
     script_to_run: "{{ yb_home_dir | default('/home/yugabyte') }}/bin/yb-server-ctl.sh"
+    systemd_option: "{{ systemd_services | default(false) }}"
   tasks:
     - name: Call the ctl script with appropriate args
       shell: "{{ script_to_run }} {{ process }} {{ command }}"
-      when: process != "thirdparty" and process != "platform-services"
+      when: not systemd_option and process != "thirdparty" and process != "platform-services"
+
+    - name: Control the master and tserver with systemd
+      block:
+        - name: Systemd system scope
+          block:
+            - name: Enable the {{ process }}
+              shell: "sudo systemctl enable yb-{{ process }}"
+              when: command == 'start'
+            - name: Perform {{ command }} on the {{ process }}
+              shell: "sudo systemctl {{ command }} yb-{{ process }}"
+            - name: Disable the {{ process }}
+              shell: "sudo systemctl disable yb-{{ process }}"
+              when: command == 'stop'
+          when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+
+        - name: Systemd unit scope
+          block:
+          - name: Start the {{ process }}
+            systemd:
+              name: "yb-{{ process }}"
+              state: started
+              enabled: yes
+              scope: user
+            when: command == 'start'
+          - name: Stop the {{ process }}
+            systemd:
+              name: "yb-{{ process }}"
+              state: stopped
+              enabled: no
+              scope: user
+            when: command == 'stop'
+          when: ansible_os_family != 'RedHat' or ansible_distribution_major_version != '7'
+      when: systemd_option and process != "thirdparty" and process != "platform-services"
+
 
 - name: Stopping thirdparty services
   hosts: "{{ instance_search_pattern }}"
@@ -97,7 +132,7 @@
       - name: Remove cron job that collects metrics
         cron:
           name: "metric collection every minute"
-          user: "{{ ssh_user }}"
+          user: "yugabyte"
           state: absent
         become: yes
         become_method: sudo

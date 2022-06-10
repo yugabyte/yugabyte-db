@@ -44,6 +44,7 @@
 #include "yb/gutil/casts.h"
 
 #include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/file_numbers.h"
@@ -59,6 +60,7 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/merge_operator.h"
 #include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/table/table_reader.h"
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/table/two_level_iterator.h"
@@ -69,6 +71,7 @@
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/logging.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/sync_point.h"
 
@@ -747,7 +750,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
         file_path = ioptions->db_paths.back().path;
       }
       files.emplace_back(
-          MakeTableFileName("", file->fd.GetNumber()),
+          file->fd.GetNumber(),
           file_path,
           file->fd.GetTotalFileSize(),
           file->fd.GetBaseFileSize(),
@@ -755,6 +758,7 @@ void Version::GetColumnFamilyMetaData(ColumnFamilyMetaData* cf_meta) {
               file->raw_key_size + file->raw_value_size,
           ConvertBoundaryValues(file->smallest),
           ConvertBoundaryValues(file->largest),
+          file->imported,
           file->being_compacted);
       level_size += file->fd.GetTotalFileSize();
     }
@@ -2063,7 +2067,7 @@ std::string Version::DebugString(bool hex) const {
   return r;
 }
 
-Result<std::string> Version::GetMiddleKey() {
+Result<TableCache::TableReaderWithHandle> Version::GetLargestSstTableReader() {
   // Largest files are at lowest level.
   const auto level = storage_info_.num_levels_ - 1;
   const FileMetaData* largest_sst_meta = nullptr;
@@ -2077,11 +2081,20 @@ Result<std::string> Version::GetMiddleKey() {
     return STATUS(Incomplete, "No SST files.");
   }
 
-  const auto trwh = VERIFY_RESULT(table_cache_->GetTableReader(
+  return table_cache_->GetTableReader(
       vset_->env_options_, cfd_->internal_comparator(), largest_sst_meta->fd, kDefaultQueryId,
-      /* no_io =*/ false, cfd_->internal_stats()->GetFileReadHist(level),
-      IsFilterSkipped(level, /* is_file_last_in_level =*/ true)));
+      /* no_io = */ false, cfd_->internal_stats()->GetFileReadHist(level),
+      IsFilterSkipped(level, /* is_file_last_in_level = */ true));
+}
+
+Result<std::string> Version::GetMiddleKey() {
+  const auto trwh = VERIFY_RESULT(GetLargestSstTableReader());
   return trwh.table_reader->GetMiddleKey();
+}
+
+Result<TableReader*> Version::TEST_GetLargestSstTableReader() {
+  const auto trwh = VERIFY_RESULT(GetLargestSstTableReader());
+  return trwh.table_reader;
 }
 
 // this is used to batch writes to the manifest file
@@ -2521,7 +2534,7 @@ class ManifestReader {
     return Status::OK();
   }
 
-  CHECKED_STATUS Next() {
+  Status Next() {
     Slice record;
     if (!reader_->ReadRecord(&record, &scratch_)) {
       return STATUS(EndOfFile, "");
@@ -2540,7 +2553,7 @@ class ManifestReader {
   uint64_t current_manifest_file_size() const { return current_manifest_file_size_; }
   const std::string& manifest_filename() const { return manifest_filename_; }
  private:
-  CHECKED_STATUS ReadManifestFilename() {
+  Status ReadManifestFilename() {
     // Read "CURRENT" file, which contains a pointer to the current manifest file
     Status s = ReadFileToString(env_, CurrentFileName(dbname_), &manifest_filename_);
     if (!s.ok()) {
@@ -3336,7 +3349,7 @@ void VersionSet::MarkFileNumberUsedDuringRecovery(uint64_t number) {
 
 namespace {
 
-CHECKED_STATUS AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer* log) {
+Status AddEdit(const VersionEdit& edit, const DBOptions* db_options, log::Writer* log) {
   std::string record;
   if (!edit.AppendEncodedTo(&record)) {
     return STATUS(Corruption,
@@ -3567,7 +3580,7 @@ InternalIterator* VersionSet::MakeInputIterator(Compaction* c) {
         const LevelFilesBrief* flevel = c->input_levels(which);
         for (size_t i = 0; i < flevel->num_files; i++) {
           FileMetaData* fmd = c->input(which, i);
-          if (c->input(which, i)->delete_after_compaction) {
+          if (c->input(which, i)->delete_after_compaction()) {
             RLOG(
                 InfoLogLevel::INFO_LEVEL, db_options_->info_log,
                 yb::Format(
@@ -3689,27 +3702,18 @@ void VersionSet::GetLiveFilesMetaData(std::vector<LiveFileMetaData>* metadata) {
     for (int level = 0; level < cfd->NumberLevels(); level++) {
       for (const auto& file :
            cfd->current()->storage_info()->LevelFiles(level)) {
-        LiveFileMetaData filemetadata;
-        filemetadata.column_family_name = cfd->GetName();
-        uint32_t path_id = file->fd.GetPathId();
-        if (path_id < db_options_->db_paths.size()) {
-          filemetadata.db_path = db_options_->db_paths[path_id].path;
-        } else {
-          assert(!db_options_->db_paths.empty());
-          filemetadata.db_path = db_options_->db_paths.back().path;
-        }
-        filemetadata.name = MakeTableFileName("", file->fd.GetNumber());
-        filemetadata.level = level;
-        filemetadata.total_size = file->fd.GetTotalFileSize();
-        filemetadata.base_size = file->fd.GetBaseFileSize();
-        // TODO: replace base_size with an accurate metadata size for
-        // uncompressed data. Look into: BlockBasedTableBuilder
-        filemetadata.uncompressed_size = filemetadata.base_size +
-            file->raw_key_size + file->raw_value_size;
-        filemetadata.smallest = ConvertBoundaryValues(file->smallest);
-        filemetadata.largest = ConvertBoundaryValues(file->largest);
-        filemetadata.imported = file->imported;
-        metadata->push_back(filemetadata);
+        const auto path_id = file->fd.GetPathId();
+        const auto& db_path = path_id < db_options_->db_paths.size()
+                                  ? db_options_->db_paths[path_id].path
+                                  : db_options_->db_paths.back().path;
+        // TODO: replace base_size with an accurate metadata size for uncompressed data.
+        // Look into: BlockBasedTableBuilder
+        const auto uncompressed_size =
+            file->fd.GetBaseFileSize() + file->raw_key_size + file->raw_value_size;
+        metadata->emplace_back(
+            cfd->GetName(), level, file->fd.GetNumber(), db_path, file->fd.GetTotalFileSize(),
+            file->fd.GetBaseFileSize(), uncompressed_size, ConvertBoundaryValues(file->smallest),
+            ConvertBoundaryValues(file->largest), file->imported, file->being_compacted);
       }
     }
   }

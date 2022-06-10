@@ -29,9 +29,10 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* timeout_ms: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
-* certs_dir_name: The directory with certificates to use for secure server connections. Default value is `""`.
-  * To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
+* *timeout_ms*: The RPC timeout, in milliseconds. Default value is `60000`. A value of `0` means don't wait; `-1` means wait indefinitely.
+* *certs_dir_name*: The directory with certificates to use for secure server connections. Default value is `""`.
+
+  To connect to a cluster with TLS enabled, you must include the `-certs_dir_name` flag with the directory location where the root certificate is located.
 * *command*: The operation to be performed. See command for syntax details and examples.
 * *command_flags*: Configuration flags that can be applied to the command.
 
@@ -40,7 +41,7 @@ yb-admin \
 To display the online help, run `yb-admin --help` from the YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-admin --help
+./bin/yb-admin --help
 ```
 
 ## Commands
@@ -57,6 +58,7 @@ $ ./bin/yb-admin --help
 * [Change data capture (CDC)](#change-data-capture-cdc-commands)
 * [Decommissioning](#decommissioning-commands)
 * [Rebalancing](#rebalancing-commands)
+* [Upgrade YSQL system catalog](#upgrade-ysql-system-catalog)
 
 ---
 
@@ -91,11 +93,11 @@ yb-admin \
     [ PRE_VOTER | PRE_OBSERVER ]
 ```
 
-* master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *tablet_id*: The identifier (ID) of the tablet.
-* ADD SERVER | REMOVE SERVER: Subcommand to add or remove the server.
+* ADD_SERVER | REMOVE_SERVER: Subcommand to add or remove the server.
 * *peer_uuid*: The UUID of the tablet server hosting the peer tablet.
-* PRE_VOTER | PRE_OBSERVER: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
+* *PRE_VOTER | PRE_OBSERVER*: Role of the new peer joining the quorum. Required when using the `ADD_SERVER` subcommand.
 
 **Notes:**
 
@@ -104,7 +106,7 @@ If you need to take a node down temporarily, but intend to bring it back up, you
 * If the node is down for less than 15 minutes, it will catch up through RPC calls when it comes back online.
 * If the node is offline longer than 15 minutes, then it will go through Remote Bootstrap, where the current leader will forward all relevant files to catch up.
 
-If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOTE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
+If you do not intend to bring a node back up (perhaps you brought it down for maintenance, but discovered that the disk is bad), then you want to decommission the node (using the `REMOVE_SERVER` subcommand) and then add in a new node (using the `ADD_SERVER` subcommand).
 
 #### change_master_config
 
@@ -118,15 +120,15 @@ yb-admin \
     change_master_config \
     [ ADD_SERVER|REMOVE_SERVER ] \
     <ip_addr> <port> \
-    [ 0 | 1 ]
+    [<uuid>]
 ```
 
-* master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * ADD_SERVER | REMOVE_SERVER: Adds or removes a new YB-Master server.
   * After adding or removing a node, verify the status of the YB-Master server on the YB-Master UI page (<http://node-ip:7000>) or run the [`yb-admin dump_masters_state` command](#dump-masters-state).
 * *ip_addr*: The IP address of the server node.
 * *port*: The port of the server node.
-* `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
+* *uuid*: The UUID for the server that is being added/removed.
 
 #### list_tablet_servers
 
@@ -138,7 +140,7 @@ yb-admin \
     list_tablet_servers <tablet_id>
 ```
 
-* master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *tablet_id*: The identifier (ID) of the tablet.
 
 #### list_tablets
@@ -155,7 +157,7 @@ yb-admin \
     list_tablets <keyspace> <table_name> [max_tablets]
 ```
 
-* master_addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * *keyspace*: The namespace, or name of the database or keyspace.
 * *table_name*: The name of the table.
 * *max_tablets*: The maximum number of tables to be returned. Default is `10`. Set to `0` to return all tablets.
@@ -163,7 +165,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tablets ydb test_tb 0
 ```
@@ -186,7 +188,7 @@ yb-admin \
     list_all_tablet_servers
 ```
 
-* master-addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 
 #### list_all_masters
 
@@ -200,12 +202,12 @@ yb-admin \
     list_all_masters
 ```
 
-* master-addresses: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses node7:7100,node8:7100,node9:7100 \
     list_all_masters
 ```
@@ -338,7 +340,7 @@ yb-admin \
 **Example**
 
 ```sh
-yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     ysql_catalog_version
 ```
@@ -396,7 +398,7 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_tables
 ```
@@ -445,7 +447,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     compact_table ycql.kong test
 ```
@@ -480,17 +482,17 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* keyspace: The namespace, or name of the database or keyspace.
-* table_name: The name of the table.
-* table_id: The unique uuid associated with the table whose placement policy is being changed.
+* *keyspace*: The namespace, or name of the database or keyspace.
+* *table_name*: The name of the table.
+* *table_id*: The unique uuid associated with the table whose placement policy is being changed.
 * *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
 * *replication_factor*: The number of replicas for each tablet.
-* *placement_id*: Identifier of the primary cluster. Optional. If set, it has to match the placement_id specified for the primary cluster in the cluster configuration.
+* *placement_id*: Identifier of the primary cluster. Optional. If set, it has to match the `placement_id` specified for the primary cluster in the cluster configuration.
 
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_table_placement_info  testdatabase testtable \
     aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
@@ -502,8 +504,48 @@ Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:700
 
 Setting placement for tables is not supported for clusters with read-replicas or leader affinity policies enabled.
 
-Use this command to create custom placement policies only for YCQL tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
+Use this command to create custom placement policies only for YCQL tables or transaction status tables. For YSQL tables, use [Tablespaces](../../explore/ysql-language-features/tablespaces) instead.
 {{< /note >}}
+
+#### create_transaction_table
+
+Creates a transaction status table to be used within a region. This command should always be followed by [`modify_table_placement_info`](#modify-table-placement-info) to set the placement information for the newly created transaction status table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_transaction_table \
+    <table_name>
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *table_name*: The name of the transaction status table to be created; this must start with `transactions_`.
+
+The transaction status table will be created as `system.<table_name>`.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    create_transaction_table \
+    transactions_us_east
+```
+
+Verify this in the Master UI by opening the **YB-Master UI** (`<master_host>:7000/`) and clicking **Tables** in the navigation bar. You should see a new system table with keyspace `system` and table name `transactions_us_east`.
+
+Next, set the placement on the newly created transactions table:
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    modify_table_placement_info system transactions_us_east \
+    aws.us-east.us-east-1a,aws.us-east.us-east-1b,aws.us-east.us-east-1c 3
+```
+
+After the load balancer runs, all tablets of `system.transactions_us_east` should now be solely located within the AWS us-east region.
 
 ---
 
@@ -543,7 +585,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_database_snapshot
 ```
@@ -570,7 +612,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_keyspace_snapshot
 ```
@@ -634,7 +676,7 @@ When `show_details` is included, the `list_snapshot` command prints the followin
 In this example, the optional `show_details` flag is added to generate the snapshot details.
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshots show_details
 ```
@@ -688,7 +730,7 @@ When this command runs, a `snapshot_id` is generated and printed.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     create_snapshot ydb test_tb
 ```
@@ -722,7 +764,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469
+./bin/yb-admin restore_snapshot 72ad2eb1-65a2-4e88-a448-7ef4418bc469
 ```
 
 When the restore starts, the `snapshot_id` and the generated `restoration_id` are displayed.
@@ -735,7 +777,7 @@ Restoration id: 5a9bc559-2155-4c38-ac8b-b6d0f7aa1af6
 To see if the snapshot was successfully restored, you can run the [`yb-admin list_snapshots`](#list-snapshots) command.
 
 ```sh
-$ ./bin/yb-admin list_snapshots
+./bin/yb-admin list_snapshots
 ```
 
 For the example above, the restore failed, so the following displays:
@@ -759,12 +801,12 @@ yb-admin \
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * _snapshot_id_: The identifier (ID) for the snapshot.
-* *file_name*: The name of the the file to contain the metadata. Recommended file extension is `.snapshot`.
+* *file_name*: The name of the file to contain the metadata. Recommended file extension is `.snapshot`.
 
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     export_snapshot 4963ed18fc1e4f1ba38c8fcf4058b295 \
     test_tb.snapshot
@@ -802,7 +844,7 @@ The *keyspace* and the *table* can be different from the exported one.
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     import_snapshot test_tb.snapshot ydb test_tb
 ```
@@ -900,7 +942,7 @@ Where _snapshot-id_ is the snapshot's unique identifier. The ID is optional; omi
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -965,7 +1007,7 @@ Relative times can be in any of the following formats (again, note that you can 
 Restore from an absolute timestamp:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     1617670679185100
 ```
@@ -973,7 +1015,7 @@ $ ./bin/yb-admin \
 Restore from a relative time:
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
@@ -1007,18 +1049,23 @@ yb-admin \
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
-* *replication_factor*: The number of replicas for each tablet.
+* *placement_info*: Comma-delimited list of placements for *cloud*.*region*.*zone*. Optionally, after each placement block, we can also specify a minimum replica count separated by a colon. This count indicates how many minimum replicas of each tablet we want in that placement block. Its default value is 1. It is not recommended to repeat the same placement multiple times but instead specify the total count after the colon. However, in the event that the user specifies a placement multiple times, the total count from all mentions is taken.
+* *replication_factor*: The number of replicas for each tablet. This value should be greater than or equal to the total of replica counts specified in *placement_info*.
 * *placement_id*: The identifier of the primary cluster, which can be any unique string. Optional. If not set, a randomly-generated ID will be used.
 
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses $MASTER_RPC_ADDRS \
     modify_placement_info  \
-    aws.us-west.us-west-2a,aws.us-west.us-west-2b,aws.us-west.us-west-2c 3
+    aws.us-west.us-west-2a:2,aws.us-west.us-west-2b:2,aws.us-west.us-west-2c 5
 ```
+
+This will place a minimum of:
+1. 2 replicas in aws.us-west.us-west-2a
+2. 2 replicas in aws.us-west.us-west-2b
+3. 1 replica in aws.us-west.us-west-2c
 
 You can verify the new placement information by running the following `curl` command:
 
@@ -1151,7 +1198,7 @@ replication_info {
 
 #### setup_universe_replication
 
-Sets up the universe replication for the specified producer universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
+Sets up the universe replication for the specified source universe. Use this command only if no tables have been configured for replication. If tables are already configured for replication, use [`alter_universe_replication`](#alter-universe-replication) to add more tables.
 
 To verify if any tables are already configured for replication, use [`list_cdc_streams`](#list-cdc-streams).
 
@@ -1161,15 +1208,21 @@ To verify if any tables are already configured for replication, use [`list_cdc_s
 yb-admin \
     -master_addresses <master-addresses> \
     setup_universe_replication \
-    <producer_universe_uuid> \
-    <producer_master_addresses> \
-    <comma_separated_list_of_table_ids>
+    <source_universe_uuid> \
+    <source_master_addresses> \
+    <comma_separated_list_of_table_ids> \
+    [comma_separated_list_of_producer_bootstrap_ids]
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *producer_universe_uuid*: The UUID of the producer universe.
-* *producer_master_addresses*: Comma-separated list of master producer addresses.
+* *source_universe_uuid*: The UUID of the source universe.
+* *source_master_addresses*: Comma-separated list of the source master addresses.
 * *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
+
+{{< note title="Note" >}}
+It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+{{< /note >}}
 
 {{< note title="Tip" >}}
 
@@ -1189,10 +1242,10 @@ To display a list of tables and their UUID (`table_id`) values, open the **YB-Ma
 
 #### alter_universe_replication
 
-Changes the universe replication for the specified producer universe. Use this command to:
+Changes the universe replication for the specified source universe. Use this command to:
 
 * Add or remove tables in an existing replication UUID
-* Modify the producer master addresses
+* Modify the source master addresses
 
 If no tables have been configured for replication, use [`setup_universe_replication`](#setup-universe-replication).
 
@@ -1200,49 +1253,62 @@ To check if any tables are configured for replication, use [`list_cdc_streams`](
 
 **Syntax**
 
-Use the `set_master_addresses` subcommand to replace the producer master address list. Use this if the set of masters on the producer changes:
+Use the `set_master_addresses` subcommand to replace the source master address list. Use this if the set of masters on the source changes:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
-    alter_universe_replication <producer_universe_uuid> \
-    set_master_addresses <producer_master_addresses>
+    alter_universe_replication <source_universe_uuid> \
+    set_master_addresses <source_master_addresses>
 ```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source_universe_uuid*: The UUID of the source universe.
+* *source_master_addresses*: Comma-separated list of the source master addresses.
 
 Use the `add_table` subcommand to add one or more tables to the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
-    alter_universe_replication <producer_universe_uuid> \
-    add_table <table_id>[, <table_id>...]
+    alter_universe_replication <source_universe_uuid> \
+    add_table [comma_separated_list_of_table_ids] \
+    [comma_separated_list_of_producer_bootstrap_ids]
 ```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *source_universe_uuid*: The UUID of the source universe.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+* *comma_separated_list_of_producer_bootstrap_ids*: Comma-separated list of bootstrap identifiers (`bootstrap_id`). These are obtained from using [`bootstrap_cdc_producer`](#bootstrap-cdc-producer).
+
+{{< note title="Note" >}}
+It is important that the bootstrap_ids are in the same order as their corresponding table_ids!
+{{< /note >}}
 
 Use the `remove_table` subcommand to remove one or more tables from the existing list:
 
 ```sh
 yb-admin -master_addresses <master-addresses> \
-    alter_universe_replication <producer_universe_uuid> \
-    remove_table <table_id>[, <table_id>...]
+    alter_universe_replication <source_universe_uuid> \
+    remove_table [comma_separated_list_of_table_ids]
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* _producer_universe_uuid_: The UUID of the producer universe.
-* _producer_master_addresses_: Comma-separated list of new producer master addresses.
-* _table_id_: The identifier (ID) of the table.
+* _source_universe_uuid_: The UUID of the source universe.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
 
-#### delete_universe_replication <producer_universe_uuid>
+#### delete_universe_replication <source_universe_uuid>
 
-Deletes universe replication for the specified producer universe.
+Deletes universe replication for the specified source universe.
 
 **Syntax**
 
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    delete_universe_replication <producer_universe_uuid>
+    delete_universe_replication <source_universe_uuid>
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *producer_universe_uuid*: The UUID of the producer universe.
+* *source_universe_uuid*: The UUID of the source universe.
 
 #### set_universe_replication_enabled
 
@@ -1253,11 +1319,11 @@ Sets the universe replication to be enabled or disabled.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    set_universe_replication_enabled <producer_universe_uuid>
+    set_universe_replication_enabled <source_universe_uuid>
 ```
 
 * _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *producer_universe_uuid*: The UUID of the producer universe.
+* *source_universe_uuid*: The UUID of the source universe.
 * `0` | `1`: Disabled (`0`) or enabled (`1`). Default is `1`.
 
 ### Read replica deployment commands
@@ -1363,6 +1429,8 @@ The [`all_masters_have_universe_key_in_memory`](#all-masters-have-universe-key-i
 
 {{< /note >}}
 
+**Syntax**
+
 ```sh
 yb-admin \
     -master_addresses <master-addresses> rotate_universe_key_in_memory <key_id>
@@ -1407,7 +1475,7 @@ The new key ID (`<key_id_2>`) should be different from the previous one (`<key_i
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     is_encryption_enabled
 ```
@@ -1467,6 +1535,58 @@ yb-admin \
     list_cdc_streams
 ```
 
+#### delete_cdc_stream <stream_id> [force_delete]
+
+Deletes underlying CDC stream for the specified YB-Master servers.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_cdc_stream <stream_id [force_delete]>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *stream_id*: The ID of the CDC stream.
+* `force_delete`: (Optional) Force the delete operation.
+
+{{< note title="Note" >}}
+This command should only be needed for advanced operations, such as doing manual cleanup of old bootstrapped streams that were never fully initialized, or otherwise failed replication streams.
+For normal xcluster replication cleanup, please use [`delete_universe_replication`](#delete-universe-replication).
+{{< /note >}}
+
+#### bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+
+Mark a set of tables in preparation for setting up universe level replication.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    bootstrap_cdc_producer <comma_separated_list_of_table_ids>
+```
+
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *comma_separated_list_of_table_ids*: Comma-separated list of table identifiers (`table_id`).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    bootstrap_cdc_producer 000030ad000030008000000000004000
+```
+
+```output
+table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9ebd6c7b6d05972c
+```
+
+{{< note title="Note" >}}
+The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
+{{< /note >}}
+
 ---
 
 ### Decommissioning commands
@@ -1488,7 +1608,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_leader_blacklist_completion
 ```
@@ -1515,7 +1635,7 @@ yb-admin \
 **Example**
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     change_blacklist \
       ADD node1:9100 node2:9100 node3:9100 node4:9100 node5:9100 node6:9100
@@ -1602,6 +1722,8 @@ yb-admin \
 
 Returns the cluster load balancer state.
 
+**Syntax**
+
 ```sh
 yb-admin \
     -master_addresses <master-addresses> get_load_balancer_state
@@ -1643,7 +1765,7 @@ For an example of performing a data move and the use of this command, refer to [
 In the following example, the data move is `66.6` percent done.
 
 ```sh
-$ ./bin/yb-admin \
+./bin/yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_load_move_completion
 ```
@@ -1675,3 +1797,46 @@ yb-admin \
     -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     get_is_load_balancer_idle
 ```
+
+---
+
+### Upgrade YSQL system catalog
+
+#### upgrade_ysql
+
+Upgrades the YSQL system catalog after a successful [YugabyteDB cluster upgrade](../../manage/upgrade-deployment/).
+YSQL upgrades are not required for clusters where YSQL is not enabled. Learn more about configuring YSQL flags [here](../../reference/configuration/yb-tserver/#ysql-flags).
+
+**Syntax**
+
+```sh
+yb-admin upgrade_ysql
+```
+
+**Example**
+
+```sh
+./bin/yb-admin upgrade_ysql
+```
+
+A successful upgrade returns the following message:
+
+```output
+YSQL successfully upgraded to the latest version
+```
+
+In certain scenarios, a YSQL upgrade can take longer than 60 seconds, which is the default timeout value for `yb-admin`. To account for that, run the command with a higher timeout value:
+
+```sh
+./bin/yb-admin \
+      -timeout_ms 180000 \
+      upgrade_ysql
+```
+
+Running the above command is an online operation and doesn't require stopping a running cluster. This command is idempotent and can be run multiple times without any side effects.
+
+{{< note title="Note" >}}
+Concurrent operations in a cluster can lead to various transactional conflicts, catalog version mismatches, and read restart errors. This is expected, and should be addressed by rerunning the upgrade command.
+{{< /note >}}
+
+Refer [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about YB-Master and YB-Tserver upgrades, followed by YSQL system catalog upgrades.
