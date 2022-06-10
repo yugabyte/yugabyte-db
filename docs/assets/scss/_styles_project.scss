@@ -374,3 +374,74 @@ body:not(.td-home) .td-main main {
     padding: 10px;
   }
 }
+
+/******* For Color Theme Switcher **********/
+
+:root {
+  --theme-color: #f75821;
+  --theme-dark-color: #ed3d00;
+  --left_menu_bg: rgba(249, 176, 151, 0.05);
+}
+
+[data-theme="purple"] {
+  --theme-color: #312965;
+  --theme-dark-color: #5b5480;
+  --left_menu_bg: #cecdd6;
+}
+
+.activity-timeline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: red;
+  font-size: 16px;
+  line-height: 19px;
+  margin-right: 15px;
+}
+
+.switcher {
+  background: #fff;
+  border-radius: 15px;
+  width: 60px;
+  height: 30px;
+  margin-left: 30px;
+  cursor: pointer;
+  position: relative;
+  border: 2px solid #f75821;
+}
+
+.switcher::before {
+  content: '';
+  width: 15px;
+  height: 15px;
+  position: absolute;
+  background: #f75821;
+  border-radius: 100%;
+  top: 5px;
+  left: 5px;
+  transition: all 0.2s linear;
+}
+
+.switcher.change::before {
+  left: calc(100% - 20px);
+  background: #312965;
+}
+
+.switcher.change {
+  border-color: #312965;
+}
+
+div#main_navbar {
+  display: flex;
+  flex-flow: row-reverse;
+}
+
+@media (max-width: 767px) {
+  body > header .navbar-expand #main_navbar {
+    flex-flow: row-reverse !important;
+  }
+
+  .switcher {
+    margin-left: 0;
+  }
+}

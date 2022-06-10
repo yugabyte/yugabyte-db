@@ -1,5 +1,3 @@
-// Copyright (c) Yugabyte Inc.
-
 import Clipboard from 'clipboard';
 
 const $ = window.jQuery;
@@ -102,6 +100,18 @@ $(document).ready(() => {
 
   // Open current page menu
   $(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
+
+  // Theme color switcher
+  document.querySelector('.switcher').onclick = function () {
+    const html_attr = document.querySelector('html');
+    const current_mode = html_attr.getAttribute('data-theme');
+    this.classList.toggle('change');
+    if (current_mode === 'purple') {
+      html_attr.setAttribute('data-theme', 'orange');
+    } else {
+      html_attr.setAttribute('data-theme', 'purple');
+    }
+  };
 
   // For Section nav.
   $(document).on('click', '.docs-menu', () => {

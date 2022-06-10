@@ -101,7 +101,7 @@ body {
           height: 4px;
           margin-bottom: 4px;
           border-radius: 4px;
-          background-color: $YB_ORANGE;
+          background-color: var(--theme-color);
           transform-origin: 50% 50%;
           -webkit-transition: 0.125s cubic-bezier(0.375, 0.885, 0.6, 1) all;
           -moz-transition: 0.125s cubic-bezier(0.375, 0.885, 0.6, 1) all;
@@ -164,7 +164,7 @@ body {
         li:nth-child(3) a {
           margin-right: 0 !important;
           color: white;
-          background-color: $YB_ORANGE;
+          background-color: var(--theme-color);
           border: none;
           padding: 0 10px;
           padding-bottom: 2px;
@@ -172,7 +172,7 @@ body {
 
           &:hover {
             transform: scale(1.02, 1.02);
-            background-color: $YB_ORANGE;
+            background-color: var(--theme-color);
           }
 
           &:focus {
@@ -295,7 +295,7 @@ ol:last-child {
   justify-content: space-between;
   padding: 0;
   margin: auto !important;
-  background-color: $YB_ORANGE;
+  background-color: var(--theme-color);
 }
 
 #api-header {
@@ -305,7 +305,7 @@ ol:last-child {
 
 .page-header:not(#api-header)::before {
   content: "";
-  background-color: $YB_ORANGE;
+  background-color: var(--theme-color);
   position: absolute;
   height: 100%;
   width: 200vw;
@@ -325,7 +325,7 @@ ol:last-child {
 .header-submenu {
   display: none;
   position: absolute;
-  background: $YB_ORANGE;
+  background: var(--theme-dark-color);
   z-index: 1000;
   top: 53px;
   margin-left: 0;
@@ -336,7 +336,7 @@ ol:last-child {
 
 #controls-header-menu {
   height: 100%;
-  background: $YB_ORANGE;
+  background: var(--theme-color);
   color: #fff;
   font-weight: 500;
   padding-right: 20px;
@@ -366,7 +366,7 @@ ol:last-child {
   left: 15px;
   font-size: 18px;
   z-index: 1000;
-  color: $YB_ORANGE;
+  color: var(--theme-color);
 }
 
 .header-menu > li {
@@ -414,11 +414,11 @@ ol:last-child {
 .header-link:hover,
 .header-link.active,
 .header-link button {
-  background: #ed3d00;
+  background: var(--theme-dark-color);
 }
 
 .header-submenu li:hover {
-  background: #ed3d00;
+  background: var(--theme-color);
 }
 
 .header-submenu li:hover a {
@@ -517,7 +517,7 @@ div.operation {
   .header-menu-mobile.collapse.show {
     max-width: unset;
     position: absolute;
-    background: $YB_ORANGE;
+    background: var(--theme-color);
     max-height: unset;
     top: 40px;
     display: block;
@@ -528,7 +528,7 @@ div.operation {
     position: absolute;
     flex-direction: column !important;
     top: 40px;
-    background: $YB_ORANGE;
+    background: var(--theme-color);
     height: unset !important;
     align-items: baseline;
   }
@@ -542,7 +542,7 @@ div.operation {
   }
 
   .header-menu li {
-    background: $YB_ORANGE;
+    background: var(--theme-color);
     padding-bottom: 8px;
   }
 
@@ -763,7 +763,10 @@ div.operation {
     left: 0;
     font-size: 0;
   }
-  ul.header-submenu:not(.open) { display: none !important; }
+
+  ul.header-submenu:not(.open) {
+    display: none !important;
+  }
 
   ul.header-submenu.open {
     display: block;
@@ -791,7 +794,7 @@ div.operation {
   }
 
   .header-menu > li.dropdown {
-    corsor: pointer;
+    cursor: pointer;
   }
 
   .header-menu > li {
@@ -826,7 +829,7 @@ div.operation {
 
   .page-header.open::after,
   .page-header.open-search::after {
-    background-color: #f75821;
+    background-color: var(--theme-color);
     position: fixed;
     width: 100%;
     height: 100%;
@@ -846,7 +849,7 @@ div.operation {
     top: 4px;
     height: 2px;
     border-top: 0;
-    background: #f75821;
+    background: var(--theme-color);
     width: 20px;
     position: absolute;
     content: '';
@@ -906,7 +909,7 @@ div.operation {
   }
 
   .mobile-search.desktop-hide.open {
-    color: #f75821;
+    color: var(--theme-color);
   }
 }
 

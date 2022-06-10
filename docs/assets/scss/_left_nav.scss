@@ -147,8 +147,8 @@ aside.td-sidebar {
     content: "";
     width: 10px;
     height: 10px;
-    border-top: 2px solid $YB_ORANGE;
-    border-right: 2px solid $YB_ORANGE;
+    border-top: 2px solid var(--theme-color);
+    border-right: 2px solid var(--theme-color);
     transform: rotate(-135deg);
     margin-right: -3px;
     transition: margin-right 0.2s linear;
@@ -237,8 +237,8 @@ aside.td-sidebar {
       content: "";
       width: 10px;
       height: 10px;
-      border-top: 2px solid $YB_ORANGE;
-      border-right: 2px solid $YB_ORANGE;
+      border-top: 2px solid var(--theme-color);
+      border-right: 2px solid var(--theme-color);
       transform: rotate(-135deg);
       margin-right: -3px;
       transition: margin-right 0.2s linear;
@@ -327,7 +327,7 @@ aside.td-sidebar {
     }
 
     &::-webkit-scrollbar-thumb {
-      background: #f96c36;
+      background: var(--theme-color);
       border-radius: 6px;
 
       &:hover {
@@ -368,7 +368,7 @@ aside.td-sidebar {
               content: "";
               width: 7px;
               height: 1px;
-              background: $YB_ORANGE;
+              background: var(--theme-color);
               display: inline-block;
               transform: rotate(45deg);
               transition: all 300ms ease;
@@ -381,7 +381,7 @@ aside.td-sidebar {
               content: "";
               width: 7px;
               height: 1px;
-              background: $YB_ORANGE;
+              background: var(--theme-color);
               display: inline-block;
               transform: rotate(-45deg);
               transition: all 300ms ease;
@@ -439,12 +439,12 @@ aside.td-sidebar {
         padding: 4px 0;
 
         &:hover {
-          color: $YB_ORANGE;
+          color: var(--theme-color);
         }
       }
 
       .current {
-        color: $YB_ORANGE;
+        color: var(--theme-color);
       }
 
       > li:not(:last-child) >,
@@ -529,7 +529,7 @@ aside.td-sidebar {
 
                 > ul {
                   padding-left: 15px;
-                  border-left: 1px solid $YB_ORANGE;
+                  border-left: 1px solid var(--theme-color);
                 }
 
                 &.open > i::before {
@@ -576,15 +576,15 @@ aside.td-sidebar {
           }
 
           &.current {
-            background: rgba(249, 176, 151, 0.05);
+            background: var(--left_menu_bg);
 
             + i {
               transition: none !important;
-              border-color: $YB_ORANGE;
+              border-color: var(--theme-color);
 
               &::before {
                 transition: none !important;
-                background: $YB_ORANGE !important;
+                background: var(--theme-color) !important;
               }
             }
           }
@@ -594,10 +594,10 @@ aside.td-sidebar {
       > li:not(:last-child):hover >,
       > li:not(:last-child).open > {
         i {
-          border-color: $YB_ORANGE;
+          border-color: var(--theme-color);
 
           &::before {
-            background: $YB_ORANGE !important;
+            background: var(--theme-color) !important;
           }
         }
       }
@@ -720,7 +720,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i {
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
 aside.td-sidebar nav > ul > li.unlink-list li.open > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::before {
-  background: $YB_ORANGE !important;
+  background: var(--theme-color) !important;
 }
 
 aside.td-sidebar nav > ul > li.view-all-products::before {
@@ -848,12 +848,12 @@ aside.td-sidebar nav > ul > li.view-all-products > {
       padding: 4px 0;
 
       &:hover {
-        color: $YB_ORANGE;
+        color: var(--theme-color);
       }
     }
 
     .current {
-      color: $YB_ORANGE;
+      color: var(--theme-color);
     }
 
     > li > {
@@ -945,7 +945,7 @@ aside.td-sidebar nav > ul > li.view-all-products > {
 
               > ul {
                 padding-left: 15px;
-                border-left: 1px solid $YB_ORANGE;
+                border-left: 1px solid var(--theme-color);
               }
             }
           }
@@ -982,11 +982,11 @@ aside.td-sidebar nav > ul > li.view-all-products > {
 
           + i {
             transition: none !important;
-            border-color: $YB_ORANGE;
+            border-color: var(--theme-color);
 
             &::before {
               transition: none !important;
-              background: $YB_ORANGE !important;
+              background: var(--theme-color) !important;
             }
           }
         }
@@ -1028,15 +1028,15 @@ aside.td-sidebar nav > ul > li.view-all-products > {
 }
 
 aside.td-sidebar nav > ul > li.view-all-products.open > i {
-  border-color: $YB_ORANGE !important;
+  border-color: var(--theme-color) !important;
 
   &::before {
-    background: $YB_ORANGE !important;
+    background: var(--theme-color) !important;
   }
 }
 
 .active-scroll {
-  color: $YB_ORANGE !important;
+  color: var(--theme-color) !important;
 }
 
 aside.td-sidebar nav > ul li.bottom-link.submenu {
@@ -1069,10 +1069,10 @@ aside.td-sidebar nav > ul li.bottom-link.submenu {
 
   &:hover {
     > i {
-      border-color: $YB_ORANGE;
+      border-color: var(--theme-color);
 
       &::before {
-        background: $YB_ORANGE !important;
+        background: var(--theme-color) !important;
       }
     }
   }
