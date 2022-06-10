@@ -52,6 +52,7 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+#include "pg_yb_utils.h"
 
 #define DIRECTORY_LOCK_FILE		"postmaster.pid"
 
