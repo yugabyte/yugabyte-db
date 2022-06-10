@@ -20,14 +20,17 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
+import com.yugabyte.yw.commissioner.tasks.params.ScheduledAccessKeyRotateParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
@@ -42,6 +45,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -54,6 +59,8 @@ public class Scheduler {
   private final PlatformScheduler platformScheduler;
 
   private final Commissioner commissioner;
+
+  @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
   @Inject
   Scheduler(PlatformScheduler platformScheduler, Commissioner commissioner) {
@@ -164,6 +171,8 @@ public class Scheduler {
               case CreateBackup:
                 this.runCreateBackupTask(schedule, alreadyRunning);
                 break;
+              case CreateAndRotateAccessKey:
+                this.runAccessKeyRotation(schedule, alreadyRunning);
               default:
                 log.error(
                     "Cannot schedule task {} for scheduler {}",
@@ -296,10 +305,6 @@ public class Scheduler {
       }
       String stateLogMsg = CommonUtils.generateStateLogMsg(universe, alreadyRunning);
       log.warn(
-          "Cannot run Backup task on universe {} due to the state {}",
-          taskParams.universeUUID.toString(),
-          stateLogMsg);
-      log.warn(
           "Cannot run External Script task on universe {} due to the state {}",
           taskParams.universeUUID.toString(),
           stateLogMsg);
@@ -321,5 +326,75 @@ public class Scheduler {
         "Submitted external script task with task uuid = {} for universe {}.",
         taskUUID,
         universe.universeUUID);
+  }
+
+  private void runAccessKeyRotation(Schedule schedule, boolean alreadyRunning) {
+    JsonNode params = schedule.getTaskParams();
+    ScheduledAccessKeyRotateParams taskParams =
+        Json.fromJson(params, ScheduledAccessKeyRotateParams.class);
+    UUID providerUUID = taskParams.getProviderUUID();
+    UUID customerUUID = taskParams.getCustomerUUID();
+    boolean rotateAllUniverses = taskParams.isRotateAllUniverses();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
+
+    List<UUID> universeUUIDs =
+        rotateAllUniverses
+            ? customer
+                .getUniversesForProvider(providerUUID)
+                .stream()
+                .map(universe -> universe.universeUUID)
+                .collect(Collectors.toList())
+            : taskParams.getUniverseUUIDs();
+
+    // filter out deleted universes
+    universeUUIDs = accessKeyRotationUtil.removeDeletedUniverses(universeUUIDs);
+    if (universeUUIDs.size() == 0) {
+      log.info(
+          "Scheduled access key rotation is stopped for schedule {} "
+              + "as all universes are deleted.",
+          schedule.getScheduleUUID());
+      schedule.stopSchedule();
+      return;
+    }
+
+    // filter out paused universes
+    universeUUIDs = accessKeyRotationUtil.removePausedUniverses(universeUUIDs);
+    if (universeUUIDs.size() == 0) {
+      log.info(
+          "Scheduled access key rotation is skipped for schedule {} "
+              + "as all universes are paused.",
+          schedule.getScheduleUUID());
+      schedule.updateBacklogStatus(true);
+      return;
+    }
+
+    if (alreadyRunning) {
+      log.warn(
+          "Did not run scheduled access key rotation for schedule {} "
+              + "due to ongoing scheduled rotation task",
+          schedule.getScheduleUUID());
+      return;
+    }
+
+    if (schedule.getBacklogStatus()) {
+      schedule.updateBacklogStatus(false);
+    }
+
+    taskParams.setUniverseUUIDs(universeUUIDs);
+    UUID taskUUID = commissioner.submit(TaskType.CreateAndRotateAccessKey, taskParams);
+    ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
+    CustomerTask.create(
+        customer,
+        providerUUID,
+        taskUUID,
+        CustomerTask.TargetType.Provider,
+        CustomerTask.TaskType.CreateAndRotateAccessKey,
+        provider.name);
+    log.info(
+        "Submitted create and rotate accesss key task with task uuid = {} "
+            + "for provider uuid = {}.",
+        taskUUID,
+        providerUUID);
   }
 }
