@@ -17,17 +17,13 @@ The Sandbox cluster provides a fully functioning single node YugabyteDB cluster 
 
 {{< youtube id="KZSrl12x1ew" title="Create your first YugabyteDB Managed cluster" >}}
 
-After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed. YugabyteDB Managed has the following main sections, accessed via the left menu:
+After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed.
 
-- **Getting Started** - Create your Sandbox cluster and access documentation.
+The first time you sign in, YugabyteDB Managed provides a guided tour to help you get started. Follow the tour to:
 
-- **Clusters** - Add, monitor, and manage clusters.
-
-- **Alerts** - Configure cluster and billing alerts, and view notifications.
-
-- **Network Access** - Set up VPC networks and authorize access to your clusters using IP allow lists.
-
-- **Admin** - Manage billing and payment methods, add users, and review account activity.
+- create your free Sandbox cluster
+- connect to your cluster and explore distributed SQL using the Cloud Shell tutorial
+- explore a sample application
 
 ## Create your Sandbox cluster
 
@@ -35,7 +31,7 @@ To create your Sandbox cluster:
 
 ![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
 
-1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard.
+1. On the welcome page, click **Create a Free cluster**.
 
 1. Select **Sandbox** and click **Choose**.
 
@@ -47,7 +43,7 @@ To create your Sandbox cluster:
 
 1. Click **Create Cluster**.
 
-After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes.
+After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
 When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 

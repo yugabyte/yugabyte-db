@@ -25,7 +25,7 @@ You can scale the following cluster properties:
 
 For clusters with Node level and Availability zone level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
-The **Infrastructure** section on the cluster **Settings** tab summarizes the cluster configuration, including the region, number of nodes and vCPUs, total disk size, and fault tolerance.
+The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
 
 ## Recommendations
 
@@ -91,7 +91,7 @@ To scale and migrate nodes in a multi-region synchronous cluster:
 
 Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
 
-### Multi-region geo-partioned cluster
+<!--### Multi-region geo-partioned cluster
 
 You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can add new regions; these must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster.
 
@@ -110,4 +110,4 @@ To scale a multi-region geo-partioned cluster:
 
 1. Click **Confirm and Save Changes** when you are done.
 
-Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
+Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.-->
