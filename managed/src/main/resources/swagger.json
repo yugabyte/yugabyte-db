@@ -7270,6 +7270,26 @@
       },
       "type" : "object"
     },
+    "UnusedIndexFinderResponse" : {
+      "properties" : {
+        "current_database" : {
+          "type" : "string"
+        },
+        "description" : {
+          "type" : "string"
+        },
+        "index_command" : {
+          "type" : "string"
+        },
+        "index_name" : {
+          "type" : "string"
+        },
+        "table_name" : {
+          "type" : "string"
+        }
+      },
+      "type" : "object"
+    },
     "UpgradeTaskParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -14175,6 +14195,38 @@
         } ],
         "summary" : "Trigger a universe health check",
         "tags" : [ "Universe information" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/unused_indexes" : {
+      "get" : {
+        "description" : "Returns list of unused indexes, along with their database and table.",
+        "operationId" : "getUnusedIndexes",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnusedIndexFinderResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Return list of each unused index across the universe",
+        "tags" : [ "Universe performance suggestions" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_backup_state" : {

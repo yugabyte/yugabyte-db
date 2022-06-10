@@ -19,6 +19,7 @@ import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.controllers.handlers.HashedTimestampColumnFinder;
 import com.yugabyte.yw.controllers.handlers.UniversePerfHandler;
+import com.yugabyte.yw.controllers.handlers.UnusedIndexFinder;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import junitparams.JUnitParamsRunner;
@@ -62,20 +63,25 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   private UniversePerfHandler universePerfHandler;
   private HashedTimestampColumnFinder hashedTimestampColumnFinder;
   private AuditService auditService;
+  private UnusedIndexFinder unusedIndexFinder;
   private NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   private Customer customer;
   private Universe universe;
   private OffsetDateTime mockedTime = OffsetDateTime.now();
   private List<ShellResponse> shellResponses = new ArrayList<>();
   private List<ShellResponse> shellResponsesHashTimestamp = new ArrayList<>();
+  private List<ShellResponse> shellResponsesUnusedIndex = new ArrayList<>();
 
   @Override
   protected Application provideApplication() {
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     hashedTimestampColumnFinder = spy(new HashedTimestampColumnFinder(mockNodeUniverseManager));
+    unusedIndexFinder = spy(new UnusedIndexFinder(mockNodeUniverseManager));
     universePerfHandler = spy(new TestUniversePerfHandler(mockNodeUniverseManager));
     universePerfController =
-        spy(new UniversePerfController(universePerfHandler, hashedTimestampColumnFinder));
+        spy(
+            new UniversePerfController(
+                universePerfHandler, hashedTimestampColumnFinder, unusedIndexFinder));
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -114,6 +120,19 @@ public class UniversePerfControllerTest extends FakeDBApplication {
                       + i
                       + ".txt"));
       shellResponsesHashTimestamp.add(shellResponse);
+    }
+
+    // Parse different shell responses and populate in shellResponsesUnusedIndex list
+    for (int i = 0; i <= 5; i++) {
+      ShellResponse shellResponse =
+          ShellResponse.create(
+              ShellResponse.ERROR_CODE_SUCCESS,
+              TestUtils.readResource(
+                  "com/yugabyte/yw/controllers/universe_performance_advisor/"
+                      + "unused_index_shell_response_"
+                      + i
+                      + ".txt"));
+      shellResponsesUnusedIndex.add(shellResponse);
     }
 
     customer = ModelFactory.testCustomer();
@@ -486,6 +505,111 @@ public class UniversePerfControllerTest extends FakeDBApplication {
     assertEquals(
         json.get(0).get("index_command").asText(),
         "CREATE UNIQUE INDEX ts_test_pkey ON public.ts_test USING lsm (ts1 HASH)");
+  }
+
+  @Test
+  public void testUnusedIndexFinder1() {
+    // Base case, no unused indexes exist and getUnusedIndexes returns an empty list.
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(shellResponsesUnusedIndex.get(0), shellResponsesUnusedIndex.get(1));
+
+    Result unusedIndexResponse =
+        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+
+    JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
+    assertEquals(OK, unusedIndexResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(0, json.size());
+  }
+
+  @Test
+  public void testUnusedIndexFinder2() {
+    // 1 unused index, 1 DB
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(shellResponsesUnusedIndex.get(0), shellResponsesUnusedIndex.get(2));
+    // Seems like there are 3 nodes, and shellResponsesUnusedIndex.get(2) just gets called again for
+    // the two nodes following the first because it is the last parameter in thenReturn.
+    Result unusedIndexResponse =
+        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+
+    JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
+    assertEquals(OK, unusedIndexResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+
+    assertEquals(json.get(0).get("current_database").asText(), "yugabyte");
+    assertEquals(json.get(0).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(0).get("index_name").asText(), "ts_test_b_idx");
+    assertEquals(
+        json.get(0).get("index_command").asText(),
+        "CREATE INDEX ts_test_b_idx ON public.ts_test USING lsm (b HASH)");
+  }
+
+  @Test
+  public void testUnusedIndexFinder3() {
+    // 3 unused indexes, 2 DBs (3 nodes means 3 of the same command per DB).
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(
+            shellResponsesUnusedIndex.get(4),
+            shellResponsesUnusedIndex.get(2),
+            shellResponsesUnusedIndex.get(2),
+            shellResponsesUnusedIndex.get(2),
+            shellResponsesUnusedIndex.get(3),
+            shellResponsesUnusedIndex.get(3),
+            shellResponsesUnusedIndex.get(3));
+
+    Result unusedIndexResponse =
+        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+
+    JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
+    assertEquals(OK, unusedIndexResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(3, json.size());
+
+    assertEquals(json.get(0).get("current_database").asText(), "yugabyte");
+    assertEquals(json.get(0).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(0).get("index_name").asText(), "ts_test_b_idx");
+    assertEquals(
+        json.get(0).get("index_command").asText(),
+        "CREATE INDEX ts_test_b_idx ON public.ts_test USING lsm (b HASH)");
+    assertEquals(json.get(1).get("current_database").asText(), "yb_test");
+    assertEquals(json.get(1).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(1).get("index_name").asText(), "ts_test_pkey");
+    assertEquals(
+        json.get(1).get("index_command").asText(),
+        "CREATE UNIQUE INDEX ts_test_pkey ON public.ts_test USING lsm (ts1 HASH)");
+    assertEquals(json.get(2).get("current_database").asText(), "yb_test");
+    assertEquals(json.get(2).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(2).get("index_name").asText(), "ts_test_ts2_idx");
+    assertEquals(
+        json.get(2).get("index_command").asText(),
+        "CREATE INDEX ts_test_ts2_idx ON public.ts_test USING lsm (ts2 HASH)");
+  }
+
+  @Test
+  public void testUnusedIndexFinder4() {
+    // 2 indexes, 1 DB, one index eliminated since it only shows up twice across three nodes
+    when(mockNodeUniverseManager.runYsqlCommand(anyObject(), anyObject(), anyObject(), anyObject()))
+        .thenReturn(
+            shellResponsesUnusedIndex.get(0),
+            shellResponsesUnusedIndex.get(3),
+            shellResponsesUnusedIndex.get(3),
+            shellResponsesUnusedIndex.get(5));
+
+    Result unusedIndexResponse =
+        universePerfController.getUnusedIndexes(customer.uuid, universe.universeUUID);
+
+    JsonNode json = Json.parse(contentAsString(unusedIndexResponse));
+    assertEquals(OK, unusedIndexResponse.status());
+    assertTrue(json.isArray());
+    assertEquals(1, json.size());
+
+    assertEquals(json.get(0).get("current_database").asText(), "yb_test");
+    assertEquals(json.get(0).get("table_name").asText(), "ts_test");
+    assertEquals(json.get(0).get("index_name").asText(), "ts_test_ts2_idx");
+    assertEquals(
+        json.get(0).get("index_command").asText(),
+        "CREATE INDEX ts_test_ts2_idx ON public.ts_test USING lsm (ts2 HASH)");
   }
 
   private class TestUniversePerfHandler extends UniversePerfHandler {
