@@ -525,3 +525,22 @@ amount        | 1000
 txn_type      | credit
 created_at    | 2020-11-07 22:09:04.8537
 ```
+
+## Step 7. Fault tolerance during a region outage
+
+So far we have setup replication with 3 copies which is helpful to handle single node outages, but since all nodes are in the same region we are still susceptible to unavailability during an outage of the entire region. Placing each replica in a different region helps solve this issue.
+
+Lets modify our `us_west_2_tablespace` tablespace from before to place one copy each in us-west2, us-west1 and us-east1. We will use `leader_preference` to continue placing all leaders in us-west-2 so that they are still close to the client and we get the best performance. You can find more information about why in [Leader preference](../../ysql-language-features/going-beyond-sql/tablespaces/#leader-preference).
+
+```sql
+CREATE TABLESPACE us_west_2_tablespace WITH (
+  replica_placement='{"num_replicas": 3, "placement_blocks":
+  [{"cloud":"aws","region":"us-west-2","zone":"us-west-2a","min_num_replicas":1,"leader_preference":1},
+  {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1,"leader_preference":2},
+  {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1}]}'
+);
+```
+
+{{< note title="Write latency" >}}
+Having the client and leader in the same zone helps eliminate the extra network roundtrip between them. But the write latency will still be higher than a single region tablespace, as the quorum commit need to wait for data to replicate to a different region.
+{{< /note >}}

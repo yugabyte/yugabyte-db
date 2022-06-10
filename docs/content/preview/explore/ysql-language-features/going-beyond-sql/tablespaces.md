@@ -212,18 +212,24 @@ Time: 337.154 ms
 ```
 
 ## Leader preference
-Leader preference helps improve performance of workloads that require distribution of data over multiple zones for zone   level fault tolerance, but its clients are running in a subset of these zones. The default behavior is to spread the tablet leaders across all requested zones. Since the leader handles all [reads](../../../../architecture/core-functions/read-path/) and [writes](../../../../architecture/core-functions/write-path/), having leaders reside closer to the client reduces the number of network hops, which reduces latency and increases performance. Leader preference allows you to specify the zones where you want the leaders to be placed when the system is stable and fallback zones during an outage of the preferred zones. You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly balanced between them. Zones without any values are least preferred.
+Leader preference helps improve performance of workloads that require distribution of data over multiple zones for zone   level fault tolerance, but has clients only in a subset of these zones. It overrides the default behavior of spreading the tablet leaders across all placement zones of the tablespace (even if there is a [cluster level leader preference](../../../../admin/yb-admin/#set-preferred-zones)), and instead places them closer to the clients. Since the leaders handles all [reads](../../../../architecture/core-functions/read-path/) and [writes](../../../../architecture/core-functions/write-path/), this reduces the number of network hops, which reduces latency and increases performance. Leader preference allows you to specify the zones where you want the leaders to be placed when the system is stable and fallback zones when an outage or upgrade of the preferred zones occurs.
 
-![Multi Region Table](/images/explore/tablespaces/multi_zone_latency.png)
+In the following example our tablespace is setup to have replicas in us-east-1, us-east-2 and us-west-1. This enables it to survive a loss of an entire Region. And the clients are located in us-east-1.
+![Multi Region Table](/images/explore/tablespaces/multi_region_latency.png)
 
 ```sql
-CREATE TABLESPACE us_east_region_tablespace
+CREATE TABLESPACE us_east1_region_tablespace
   WITH (replica_placement='{"num_replicas": 3, "placement_blocks": [
     {"cloud":"aws","region":"us-east-1","zone":"us-east-1a","min_num_replicas":1,"leader_preference":1},
-    {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1,"leader_preference":2},
-    {"cloud":"aws","region":"us-east-1","zone":"us-east-1c","min_num_replicas":1}]}');
+    {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1,"leader_preference":2},
+    {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1}]}');
 ```
-Any table or index associated with this tablespace will have all its tablet leaders placed in nodes of us-east-1a. If all nodes of this zone are unavailable, then the leaders are placed in nodes of the next zone in the hierarchy, us-east-1b.
+Setting `leader_preference` of us-east-1a to 1 will inform the YugabyteDB load balancer to place all associated tablet leaders in this zone. If all our nodes in us-east-1a are unavailable, it we will fallback to the next preferred zone us-east2.
+You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly balanced between them. Zones without any values are least preferred.
+
+You can check the overall leader distribution and cluster level leader preference in the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page.
+
+![Multi Region Table](/images/explore/tablespaces/leader_preference_admin_ui.png)
 
 ## Indexes
 
