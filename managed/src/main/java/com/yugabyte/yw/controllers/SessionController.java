@@ -276,10 +276,7 @@ public class SessionController extends AbstractPlatformController {
             .globalRuntimeConf()
             .getString("yb.security.ldap.use_ldap")
             .equals("true");
-    if (useOAuth) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Platform login not supported when using SSO.");
-    }
+
     CustomerLoginFormData data =
         formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get();
 
@@ -305,6 +302,12 @@ public class SessionController extends AbstractPlatformController {
     if (user == null) {
       throw new PlatformServiceException(UNAUTHORIZED, "Invalid User Credentials.");
     }
+
+    if (useOAuth && !user.getRole().equals(Role.SuperAdmin)) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Only SuperAdmin access permitted via normal login when SSO is enabled.");
+    }
+
     Customer cust = Customer.get(user.customerUUID);
 
     String authToken = user.createAuthToken();

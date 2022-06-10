@@ -5,7 +5,9 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.models.Users.Role;
 import static com.yugabyte.yw.models.Users.UserType;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -22,6 +24,7 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -39,6 +42,10 @@ import play.mvc.Result;
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
+  private static final List<String> specialCharacters =
+      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
+
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   private final PasswordPolicyService passwordPolicyService;
   private final UserService userService;
@@ -105,6 +112,23 @@ public class UsersController extends AuthenticatedController {
         formFactory.getFormDataOrBadRequest(UserRegisterFormData.class);
 
     UserRegisterFormData formData = form.get();
+
+    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth")) {
+      byte[] passwordOidc = new byte[16];
+      new Random().nextBytes(passwordOidc);
+      String generatedPassword = new String(passwordOidc, Charset.forName("UTF-8"));
+      // To be consistent with password policy
+      Integer randomInt = new Random().nextInt(26);
+      String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
+      String uppercaseLetter = lowercaseLetter.toUpperCase();
+      generatedPassword +=
+          (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+              + lowercaseLetter
+              + uppercaseLetter
+              + String.valueOf(randomInt));
+      formData.setPassword(generatedPassword); // Password is not used.
+    }
+
     passwordPolicyService.checkPasswordPolicy(customerUUID, formData.getPassword());
     Users user =
         Users.create(
