@@ -318,7 +318,9 @@ public enum TaskType {
 
   CreateTableSpaces("subtasks.CreateTableSpaces"),
 
-  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade");
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
+
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload");
 
   private String relativeClassPath;
 

@@ -41,6 +41,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
@@ -599,6 +600,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createMarkUniverseForHealthScriptReUploadTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("MarkUniverseForHealthScriptReUpload", executor);
+    MarkUniverseForHealthScriptReUpload task =
+        createTask(MarkUniverseForHealthScriptReUpload.class);
+    task.initialize(taskParams());
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
