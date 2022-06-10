@@ -178,6 +178,7 @@
   url = "/preview/quick-start-yugabytedb-managed/"
   [preview.params]
     section = true
+    hideChildren = true
 
 [[preview]]
   name = "Explore"
@@ -291,6 +292,7 @@
   url = "/stable/quick-start-yugabytedb-managed/"
   [stable.params]
     section = true
+    hideChildren = true
 
 [[stable]]
   name = "Explore"
@@ -402,6 +404,7 @@
   url = "/v2.8/quick-start-yugabytedb-managed/"
   ["v2.8".params]
     section = true
+    hideChildren = true
 
 [["v2.8"]]
   name = "Explore"
@@ -513,6 +516,7 @@
   url = "/v2.6/quick-start-yugabytedb-managed/"
   ["v2.6".params]
     section = true
+    hideChildren = true
 
 [["v2.6"]]
   name = "Explore"
@@ -624,6 +628,7 @@
   url = "/v2.4/quick-start-yugabytedb-managed/"
   ["v2.4".params]
     section = true
+    hideChildren = true
 
 [["v2.4"]]
   name = "Explore"

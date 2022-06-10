@@ -31,7 +31,7 @@
                     <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
                   {{ end }}
 
-                  {{- if .HasChildren }}
+                  {{- if and (.HasChildren) (not .Params.hideChildren) }}
                     {{ $parentIdentifier := printf "%s" .Identifier }}
                     {{ if not .Params.hideLink }}
                       <i></i>
