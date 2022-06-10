@@ -67,7 +67,8 @@ TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
-
+DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
+                 "Don't fill YSQL's internal cache for FK check to force read row from a table");
 namespace yb {
 namespace pggate {
 
@@ -594,7 +595,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
   // If the reader fails to get the result, we fail the whole operation (and transaction).
   // Hence it's ok to extract (erase) the keys from intent before calling reader.
   auto node = fk_reference_intent_.extract(it);
-  ybctids.emplace_back(key.table_id, std::move(node.value().ybctid));
+  ybctids.push_back(std::move(node.value()));
 
   // Read up to session max batch size keys.
   for (auto it = fk_reference_intent_.begin();
@@ -625,7 +626,8 @@ void PgSession::AddForeignKeyReferenceIntent(
 }
 
 void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
-  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
+  if (fk_reference_cache_.find(key) == fk_reference_cache_.end() &&
+      PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
     fk_reference_cache_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
