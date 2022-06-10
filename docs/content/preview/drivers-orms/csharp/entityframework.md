@@ -1,13 +1,12 @@
 ---
-title: C# ORMs
-linkTitle: C# ORMs
-description: EntityFramework ORM support for YugabyteDB
-headcontent: EntityFramework ORM support for YugabyteDB
+title: Use an ORM
+linkTitle: Use an ORM
+description: C# ORM support for YugabyteDB
+headcontent: C# ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: C# ORMs
-    identifier: entityframework-orm
+    identifier: csharp-orm
     parent: csharp-drivers
     weight: 600
 isTocNested: true
@@ -28,22 +27,21 @@ showAsideToc: true
 
 ## CRUD operations with EntityFramework
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/csharp/ysql-entity-framework/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for C# application development using EntityFramework.
 
 ### Step 1: Add the ORM dependency
 
-If you are using Visual Studio IDE, follow these steps:
+If you are using Visual Studio, add the Npgsql package to the project as follows:
 
-1. Open your Project Solution View.
-1. Right-click on **Packages** and click **Add Packages**.
-1. Search for `Npgsql.EntityFrameworkCore.PostgreSQL` and click **Add Package**.
+1. Right-click **Dependencies** and choose **Manage Nuget Packages**.
+1. Search for `Npgsql` and click **Add Package**.
 
 To add the Npgsql package to your project when not using an IDE, use the following `dotnet` command:
 
 ```csharp
-dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL 
+dotnet add package Npgsql.EntityFrameworkCore.PostgreSQL
 ```
 
 or any of the other methods mentioned on the [nuget page](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL) for EntityFramework.
@@ -152,5 +150,5 @@ Deleting the blog
 
 ## Next steps
 
-- Explore [scaling C# applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop C# applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).
+- Explore [scaling C# applications](../../../explore/linear-scalability/) with YugabyteDB.
+- Learn how to [develop C# applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/).
