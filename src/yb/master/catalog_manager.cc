@@ -4801,7 +4801,7 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
 }
 
-Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgTypeOid(
+Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
     const TableInfoPtr& table_info) {
   RSTATUS_DCHECK_EQ(
       table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
@@ -4813,7 +4813,16 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgTypeOid(
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  return sys_catalog_->ReadPgTypeOid(database_oid, table_oid);
+  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+}
+
+Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
+    const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids) {
+  RSTATUS_DCHECK_EQ(
+      namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
+      Format("Expected YSQL database, got: $0", namespace_info->database_type()));
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+  return sys_catalog_->ReadPgTypeInfo(database_oid, type_oids);
 }
 
 // Truncate a Table.
