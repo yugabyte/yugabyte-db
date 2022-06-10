@@ -4456,6 +4456,31 @@
       "required" : [ "nodes" ],
       "type" : "object"
     },
+    "NodeQueryDistributionDetails" : {
+      "properties" : {
+        "node" : {
+          "type" : "string"
+        },
+        "numDelete" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "numInsert" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "numSelect" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "numUpdate" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "node", "numDelete", "numInsert", "numSelect", "numUpdate" ],
+      "type" : "object"
+    },
     "Package" : {
       "properties" : {
         "arch" : {
@@ -4725,6 +4750,33 @@
         }
       },
       "required" : [ "regions" ],
+      "type" : "object"
+    },
+    "QueryDistributionSuggestionResponse" : {
+      "properties" : {
+        "adviceType" : {
+          "type" : "string"
+        },
+        "description" : {
+          "type" : "string"
+        },
+        "details" : {
+          "items" : {
+            "$ref" : "#/definitions/NodeQueryDistributionDetails"
+          },
+          "type" : "array"
+        },
+        "endTime" : {
+          "type" : "string"
+        },
+        "startTime" : {
+          "type" : "string"
+        },
+        "suggestion" : {
+          "type" : "string"
+        }
+      },
+      "required" : [ "adviceType", "description", "details", "endTime", "startTime", "suggestion" ],
       "type" : "object"
     },
     "Region" : {
@@ -13029,6 +13081,38 @@
         "tags" : [ "Universe management" ]
       }
     },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/query_distribution_suggestions" : {
+      "get" : {
+        "description" : "",
+        "operationId" : "getQueryDistributionSuggestions",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/QueryDistributionSuggestionResponse"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Get query distribution improvement suggestion for a universe",
+        "tags" : [ "Universe performance suggestions" ]
+      }
+    },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/redisservers" : {
       "get" : {
         "description" : "",
@@ -15464,6 +15548,8 @@
     "name" : "Universe management"
   }, {
     "name" : "Universe node metadata (metamaster)"
+  }, {
+    "name" : "Universe performance suggestions"
   }, {
     "name" : "UniverseClusterMutations"
   }, {

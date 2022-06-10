@@ -1,0 +1,5 @@
+
+                    jsonb_agg
+-----------------------------------------------------
+[{"calls": 100,"query": "select * from tablename;"},{"calls": 200,"query": "delete from tablename;"},{"calls": 300,"query": "insert into tablename (column1) values (100);"},{"calls": 400,"query": "update tablename set column1=200;"}]
+(1 row)
