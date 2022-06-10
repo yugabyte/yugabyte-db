@@ -5,8 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey;
-
 /** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
@@ -346,7 +344,9 @@ public enum TaskType {
 
   CreateTableSpaces("subtasks.CreateTableSpaces"),
 
-  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade");
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
+
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload");
 
   private String relativeClassPath;
 
