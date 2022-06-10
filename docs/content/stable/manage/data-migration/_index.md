@@ -10,6 +10,7 @@ menu:
     identifier: manage-bulk-import-export
     parent: manage
     weight: 703
+type: indexpage
 ---
 
 <div class="row">

@@ -9,10 +9,8 @@ menu:
     identifier: interval-representation
     parent: type-interval
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 {{< tip title="Download and install the date-time utilities code." >}}
 The code on this page and on its child, [Modeling the internal representation and comparing the model with the actual implementation](./internal-representation-model/), depends on the code presented in the section [User-defined _interval_ utility functions](../interval-utilities/). This is included in the larger [code kit](../../../download-date-time-utilities/) that includes all of the reusable code that the overall _[date-time](../../../../type_datetime/)_ section describes and uses.
 {{< /tip >}}

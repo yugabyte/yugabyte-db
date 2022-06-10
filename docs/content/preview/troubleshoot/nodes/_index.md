@@ -9,6 +9,7 @@ menu:
     identifier: troubleshoot-nodes
     parent: troubleshoot
     weight: 840
+type: indexpage
 ---
 
 <div class="row">

@@ -9,9 +9,7 @@ menu:
     name: 2. Create a local cluster
     identifier: create-local-cluster-2-linux
     weight: 120
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

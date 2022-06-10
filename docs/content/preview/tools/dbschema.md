@@ -8,8 +8,7 @@ menu:
     identifier: dbschema
     parent: tools
     weight: 60
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [DbSchema](https://dbschema.com/) is a visual database tool that supports over 40 databases from a single interface, and can be used to reverse-engineer schemas, edit entity-relationship (ER) diagrams, browse data, visually build queries, and synchronize schemas. This document describes how to connect DbSchema to YugabyteDB databases.

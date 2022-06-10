@@ -7,13 +7,12 @@ headcontent: Drivers and ORMs for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /drivers-orms/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: drivers-orms
     weight: 570
+type: indexpage
 ---
-
 Connect applications to YugabyteDB databases using Yugabyte-supported drivers, ORMs, and application development frameworks.
 
 YugabyteDB **smart language drivers** enable client applications to connect to YugabyteDB clusters without the need for external load balancers. YugabyteDB smart drivers have the following features:

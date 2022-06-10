@@ -8,8 +8,7 @@ menu:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```

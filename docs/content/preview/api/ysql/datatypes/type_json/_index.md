@@ -11,8 +11,7 @@ menu:
     parent: api-ysql-datatypes
 aliases:
   - /preview/api/ysql/datatypes/type_json
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Synopsis

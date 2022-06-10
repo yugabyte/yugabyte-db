@@ -10,8 +10,7 @@ menu:
     identifier: docdb-performance
     parent: docdb
     weight: 1148
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 DocDB uses a highly customized version of [RocksDB](http://rocksdb.org/), a log-structured merge tree (LSM) based key-value store.

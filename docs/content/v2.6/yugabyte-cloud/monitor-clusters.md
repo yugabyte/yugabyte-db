@@ -10,8 +10,7 @@ menu:
     identifier: monitor-clusters
     parent: yugabyte-cloud
     weight: 642
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the Yugabyte Cloud Console to monitor your clusters in Yugabyte Cloud. The console displays

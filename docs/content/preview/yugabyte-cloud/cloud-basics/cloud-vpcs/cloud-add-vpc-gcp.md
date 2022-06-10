@@ -8,8 +8,7 @@ menu:
     identifier: cloud-add-vpc-1-gcp
     parent: cloud-vpcs
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

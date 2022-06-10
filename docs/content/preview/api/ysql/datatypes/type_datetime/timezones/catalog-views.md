@@ -8,8 +8,7 @@ menu:
     identifier: catalog-views
     parent: timezones
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are just two relevant catalog views:

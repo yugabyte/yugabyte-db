@@ -8,8 +8,7 @@ menu:
     identifier: troubleshooting-overview
     parent: troubleshoot
     weight: 702
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## 1. Verify that YugabyteDB is running

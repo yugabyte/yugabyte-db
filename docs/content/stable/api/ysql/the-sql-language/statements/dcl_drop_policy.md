@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dcl_drop_policy
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

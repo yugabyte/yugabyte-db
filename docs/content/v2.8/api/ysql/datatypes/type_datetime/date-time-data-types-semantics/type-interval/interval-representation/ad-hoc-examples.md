@@ -8,8 +8,7 @@ menu:
     identifier: ad-hoc-examples
     parent: interval-representation
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The general way to specify an _interval_ value is by giving values for each of _years_, _months_, _days_, _hours_, _minutes_, and _seconds_ as real numbers. The algorithm for computing the internal _months_, _days_, and _seconds_ is complex—so much so that a precise statement in prose would be tortuous and hard to comprehend. Rather, the rules are given in the section [Modeling the internal representation and comparing the model with the actual implementation](../internal-representation-model/) as PL/pgSQL code.
@@ -153,7 +152,7 @@ select
 This is the result:
 
 ```output
-       i1       |       i2        
+       i1       |       i2
 ----------------+-----------------
  1 day 04:48:00 | 1 day -02:24:00
 ```
@@ -169,7 +168,7 @@ select
 This is the result:
 
 ```output
- 17.4 - 0.54*30 | 17.4 - 0.55*30 
+ 17.4 - 0.54*30 | 17.4 - 0.55*30
 ----------------+----------------
            1.20 |           0.90
 ```
@@ -185,7 +184,7 @@ select
 This is the result:
 
 ```output
-       i1       |    i2    
+       i1       |    i2
 ----------------+----------
  1 day 04:48:00 | 21:36:00
 ```
@@ -203,7 +202,7 @@ select (
 This is the result:
 
 ```output
- are they equal? 
+ are they equal?
 -----------------
  true
 ```

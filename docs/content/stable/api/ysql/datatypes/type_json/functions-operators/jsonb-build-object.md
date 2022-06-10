@@ -1,15 +1,14 @@
 ---
 title: jsonb_build_object() and json_build_object()
 headerTitle: jsonb_build_object() and json_build_object()
-linkTitle: jsonb_build_object() 
+linkTitle: jsonb_build_object()
 description: Build a JSON object from a variadic list that specifies keys with values of arbitrary SQL data type.
 menu:
   stable:
     identifier: jsonb-build-object
     parent: json-functions-operators
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a JSON _object_ from a variadic list that specifies keys with values of arbitrary SQL data type.
@@ -51,7 +50,7 @@ declare
     'b', v_dog,
     'c', v_true,
     'd', v_t);
-  expected_j constant jsonb := 
+  expected_j constant jsonb :=
     '{"a": 17, "b": "dog", "c": true, "d": {"a": 17, "b": "cat"}}';
 begin
   assert

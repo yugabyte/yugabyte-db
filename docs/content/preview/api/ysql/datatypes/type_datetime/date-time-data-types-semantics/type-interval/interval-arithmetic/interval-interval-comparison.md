@@ -8,8 +8,7 @@ menu:
     identifier: interval-interval-comparison
     parent: interval-arithmetic
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

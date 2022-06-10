@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: savepoint_create
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -77,7 +76,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   3 |  4
@@ -92,7 +91,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
 (1 row)
@@ -107,7 +106,7 @@ SELECT * FROM SAMPLE;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   5 |  6

@@ -11,9 +11,7 @@ menu:
     weight: 623
 aliases:
   - /preview/deploy/kubernetes/gke/statefulset-yaml-local-ssd
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

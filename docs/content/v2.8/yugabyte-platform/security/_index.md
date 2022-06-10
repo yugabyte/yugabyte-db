@@ -7,9 +7,11 @@ image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
 menu:
   v2.8:
+    parent: yugabytedb-anywhere
     parent: yugabyte-platform
     identifier: security
 weight: 645
+type: indexpage
 ---
 
 <div class="row">

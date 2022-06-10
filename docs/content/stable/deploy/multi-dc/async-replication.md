@@ -8,9 +8,7 @@ menu:
     parent: multi-dc
     identifier: async-replication
     weight: 633
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).

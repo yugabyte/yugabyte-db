@@ -8,8 +8,7 @@ menu:
     identifier: extract
     parent: miscellaneous
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The function _extract()_, and the alternative syntax that the function _date_part()_ supports for the same semantics, return a _double precision_ value corresponding to a nominated so-called _field_, like _year_ or _second_, from the input _date-time_ value.

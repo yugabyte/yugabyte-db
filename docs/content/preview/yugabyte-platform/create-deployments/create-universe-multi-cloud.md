@@ -8,8 +8,7 @@ menu:
     identifier: create-multi-cloud-universe
     parent: create-deployments
     weight: 35
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use YugabyteDB Anywhere to create a YugabyteDB universe spanning multiple geographic regions and cloud providers. For example, you can deploy a single universe across AWS (US-West-2), Google Cloud Provider (Central-1), and Microsoft Azure (US-East1).

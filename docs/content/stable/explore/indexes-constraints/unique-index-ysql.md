@@ -8,8 +8,7 @@ menu:
     identifier: unique-index-ysql
     parent: explore-indexes-constraints
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

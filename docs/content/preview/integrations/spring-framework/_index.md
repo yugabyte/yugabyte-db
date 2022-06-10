@@ -7,13 +7,12 @@ headcontent: Using Spring Framework with YugabyteDB
 aliases:
   - /preview/reference/drivers/spring-data-yugabytedb
 image: /images/section_icons/develop/ecosystem/spring.png
-section: INTEGRATIONS
 menu:
   preview:
     identifier: spring-framework
     weight: 571
+type: indexpage
 ---
-
 
 <div class="row">
 

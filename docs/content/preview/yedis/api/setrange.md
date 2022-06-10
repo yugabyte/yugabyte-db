@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/setrange
   - /preview/api/yedis/setrange
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

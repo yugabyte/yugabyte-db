@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/ddl_create_sequence/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

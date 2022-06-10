@@ -9,8 +9,7 @@ menu:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 **On this page**<br>
@@ -93,7 +92,7 @@ This section describes the minimal table structure for representing graphs.
 
 ### Common code for traversing all kinds of graph — [here](./common-code/)
 
-The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. This section describes them. 
+The described traversal schemes all depend upon some common artifacts, like tables into which to insert the results to support subsequent _ad hoc_ queries and various helper functions and procedures. This section describes them.
 
 ### Path finding approaches
 

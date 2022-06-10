@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-object
     parent: json-functions-operators
     weight: 150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a JSON _object_ from SQL _arrays_ that specify keys with their values of SQL data type `text`.

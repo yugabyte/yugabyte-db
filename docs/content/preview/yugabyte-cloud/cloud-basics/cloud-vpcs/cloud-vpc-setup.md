@@ -8,8 +8,6 @@ menu:
     identifier: cloud-vpc-setup
     parent: cloud-vpcs
     weight: 20
-isTocNested: true
-showAsideToc: true
 --->
 
 ## Before you begin

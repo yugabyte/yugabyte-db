@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_truncate
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -100,7 +99,7 @@ order by p.k, c.k;
 This is the result:
 
 ```output
- parents.v |  children.v  
+ parents.v |  children.v
 -----------+--------------
  dog       | dog-child-a
  dog       | dog-child-b
@@ -159,7 +158,7 @@ select
 The `truncate` statement now finishes without error. This is the result:
 
 ```
- parents count | children count 
+ parents count | children count
 ---------------+----------------
              0 |              0
 ```

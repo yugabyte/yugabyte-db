@@ -9,8 +9,7 @@ menu:
   v2.4:
     identifier: api-ysql-datatypes-json
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Synopsis

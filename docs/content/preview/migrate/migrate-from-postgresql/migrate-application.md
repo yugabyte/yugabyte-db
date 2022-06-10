@@ -8,8 +8,7 @@ menu:
     identifier: migrate-postgresql-app
     parent: migrate-from-postgresql
     weight: 740
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This section outlines the recommended changes for porting an existing PostgreSQL application to YugabyteDB.

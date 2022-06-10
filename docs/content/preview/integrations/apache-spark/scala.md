@@ -4,13 +4,11 @@ headerTitle: Apache Spark
 linkTitle: Apache Spark
 description: Build a Scala application using Apache Spark and YugabyteDB
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: apache-spark-1-scala
     weight: 572
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

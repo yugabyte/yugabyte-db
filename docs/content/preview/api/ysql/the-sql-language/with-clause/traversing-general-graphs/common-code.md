@@ -8,8 +8,7 @@ menu:
     identifier: common-code
     parent: traversing-general-graphs
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Make sure that you have run [`cr-edges.sql`](../graph-representation/#cr-edges-sql) before you run the following code. Once you've done this, you can leave all of the common code that you create by following the steps described below in place while you run the various code examples in the following sections that show how to traverse the various different kinds of graph.

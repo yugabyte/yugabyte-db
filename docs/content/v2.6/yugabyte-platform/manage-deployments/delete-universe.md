@@ -8,8 +8,7 @@ menu:
     identifier: delete-universe
     parent: manage-deployments
     weight: 85
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To delete a universe, in the Yugabyte Platform console, select **Delete Universe** from the **More** drop-down list on the **Universe Detail** page.

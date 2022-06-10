@@ -8,8 +8,7 @@ menu:
     identifier: table-t2
     parent: data-sets
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}
@@ -130,4 +129,3 @@ Here is the result of the second `SELECT`. To make it easier to see the pattern,
 
      2 | 18 |     9
 ```
-

@@ -5,11 +5,12 @@ linkTitle: Manage
 description: Manage YugabyteDB clusters.
 image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
-section: YUGABYTEDB CORE
 menu:
   v2.4:
     identifier: manage
+    parent: launch-and-manage
     weight: 900
+type: indexpage
 ---
 
 <div class="row">

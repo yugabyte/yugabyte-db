@@ -8,8 +8,7 @@ menu:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <!--

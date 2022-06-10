@@ -8,8 +8,7 @@ menu:
     identifier: deploy-manual-deployment-start-tservers
     parent: deploy-manual-deployment
     weight: 614
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="Note" >}}

@@ -11,8 +11,7 @@ menu:
     identifier: explore-json-support-2-ycql
     parent: explore
     weight: 232
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. There are also assorted JSON-specific functions and operators available for data stored in these data types.
@@ -248,5 +247,3 @@ ycqlsh> SELECT * FROM store.books WHERE id = 6;
 {{< note title="Note" >}}
 JSONB upsert only works for JSON objects and not for other data types like arrays, integers, strings, etc. Additionally, only the leaf property of an object will be inserted if it is missing. We do not support upsert on non-leaf properties.
 {{< /note >}}
-
-

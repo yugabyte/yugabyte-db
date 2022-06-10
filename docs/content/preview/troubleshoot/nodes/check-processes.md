@@ -7,8 +7,7 @@ menu:
   preview:
     parent: troubleshoot-nodes
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## 1. Are the YugabyteDB servers running?

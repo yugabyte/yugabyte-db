@@ -11,8 +11,7 @@ menu:
     identifier: develop-quality-of-service-transaction-priorities
     parent: develop-quality-of-service
     weight: 235
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB allows external applications to set the priority of individual transactions. When using optimistic concurrency control, it is possible to ensure that a *higher priority* transaction gets priority over a lower priority transaction. In this scenario, if these transactions conflict, the *lower priority* transaction is aborted. This behavior can be achieved by setting the pair of session variables `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is computed and assigned as the transaction priority for the transactions in that session. If this transaction conflicts with another, the value of transaction priority is compared with that of the conflicting transaction. The transaction with a higher priority value wins.
@@ -87,18 +86,18 @@ set yb_transaction_priority_upper_bound= 0.9;
     Initiate the withdrawal of $100.
     <pre><code style="padding: 0 10px;">
 begin transaction /* lower priority transaction */;
-update account set balance = balance - 100::money 
+update account set balance = balance - 100::money
     where name='kevin' and type='checking';
     </code></pre>
     The transaction has started, though not committed yet.
     <pre><code style="padding: 0 10px;">
 select * from account;
- name  |   type   | balance 
+ name  |   type   | balance
 -------+----------+---------
  kevin | checking | $400.00
  kevin | saving   | $500.00
 (2 rows)
-    </code></pre> 
+    </code></pre>
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
     </td>
@@ -111,18 +110,18 @@ select * from account;
     Next, initiate the deposit of $200, which should have higher priority.
     <pre><code style="padding: 0 10px;">
 begin transaction /* high priority transaction */;
-update account set balance = balance + 200::money 
+update account set balance = balance + 200::money
     where name='kevin' and type='checking';
     </code></pre>
     The transaction has started, though not committed yet.
     <pre><code style="padding: 0 10px;">
 select * from account;
- name  |   type   | balance 
+ name  |   type   | balance
 -------+----------+---------
  kevin | checking | $700.00
  kevin | saving   | $500.00
 (2 rows)
-    </code></pre> 
+    </code></pre>
     </td>
   </tr>
 
@@ -131,9 +130,9 @@ select * from account;
     The withdrawal transaction will now abort because it conflicts with the higher priority deposit transaction.
     <pre><code style="padding: 0 10px;">
 select * from account;
-ERROR:  Operation failed. Try again: Unknown transaction, 
+ERROR:  Operation failed. Try again: Unknown transaction,
         could be recently aborted: XXXX
-    </code></pre> 
+    </code></pre>
     </td>
     <td style="width:50%; border-left:1px solid rgba(158,159,165,0.5);">
     </td>
@@ -148,14 +147,13 @@ ERROR:  Operation failed. Try again: Unknown transaction,
 commit;
 COMMIT
 yugabyte=> select * from account;
- name  |   type   | balance 
+ name  |   type   | balance
 -------+----------+---------
  kevin | checking | $700.00
  kevin | saving   | $500.00
 (2 rows)
-    </code></pre> 
+    </code></pre>
     </td>
   </tr>
 
 </table>
-

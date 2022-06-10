@@ -9,8 +9,7 @@ menu:
     identifier: array-to-json
     parent: json-functions-operators
     weight: 53
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a JSON _array_ from a SQL array.
@@ -34,7 +33,7 @@ declare
   j_true  constant json := array_to_json(sql_array, true);
 
   expected_j_false constant json := '["a","b","c"]';
-  expected_j_true  constant json := 
+  expected_j_true  constant json :=
 '["a",
  "b",
  "c"]';

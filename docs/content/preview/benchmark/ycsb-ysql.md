@@ -11,8 +11,7 @@ menu:
     weight: 5
 aliases:
   - /benchmark/ycsb/
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

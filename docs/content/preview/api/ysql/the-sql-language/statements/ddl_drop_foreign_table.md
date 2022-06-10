@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_drop_foreign_table
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -46,7 +45,7 @@ Use the `DROP FOREIGN TABLE` command to remove a foreign table. The user who exe
 Drop a foreign table named **table_name**. If it doesn’t exist in the database, an error will be thrown unless the `IF EXISTS` clause is used.
 
 ### RESTRICT/CASCADE:
-`RESTRICT` is the default and it will not drop the foreign table if any objects depend on it. 
+`RESTRICT` is the default and it will not drop the foreign table if any objects depend on it.
 `CASCADE` will drop the foreign table and any objects that transitively depend on it.
 
 ## Examples

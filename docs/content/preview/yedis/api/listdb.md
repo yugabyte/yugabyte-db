@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/listdb
   - /preview/api/yedis/listdb
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

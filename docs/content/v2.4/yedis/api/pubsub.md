@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2550
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -27,9 +26,9 @@ Returns the number of patterns that are subscribed to on the YEDIS server that i
 
 ## See also
 
-[`pubsub`](../pubsub/), 
-[`publish`](../publish/), 
-[`subscribe`](../subscribe/), 
-[`unsubscribe`](../unsubscribe/), 
-[`psubscribe`](../psubscribe/), 
+[`pubsub`](../pubsub/),
+[`publish`](../publish/),
+[`subscribe`](../subscribe/),
+[`unsubscribe`](../unsubscribe/),
+[`psubscribe`](../psubscribe/),
 [`punsubscribe`](../punsubscribe/)

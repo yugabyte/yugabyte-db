@@ -8,8 +8,7 @@ menu:
     identifier: visualstudioworkbench
     parent: tools
     weight: 2760
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Introduction

@@ -5,12 +5,12 @@ linkTitle: Quick start
 description: Get started using YugabyteDB Managed in less than five minutes.
 image: /images/section_icons/index/quick_start.png
 headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on YugabyteDB Managed.
-type: page
-section: YUGABYTEDB MANAGED
 menu:
   preview:
+    parent: yugabytedb-managed
     identifier: cloud-quickstart
     weight: 15
+type: indexpage
 ---
 
 The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.

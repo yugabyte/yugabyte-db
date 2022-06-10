@@ -13,8 +13,8 @@ menu:
     identifier: architecture-query-layer
     parent: architecture
     weight: 1110
+type: indexpage
 ---
-
 {{< note title="Note" >}}
 
 YugabyteDB has an extensible query layer. It currently implements the following APIs:

@@ -8,8 +8,7 @@ menu:
     identifier: restore-data-ycql
     parent: backup-restore
     weight: 703
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

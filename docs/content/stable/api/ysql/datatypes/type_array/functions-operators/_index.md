@@ -9,8 +9,7 @@ menu:
     identifier: array-functions-operators
     parent: api-ysql-datatypes-array
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 **On this page**<br>

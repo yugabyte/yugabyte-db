@@ -4,14 +4,12 @@ headerTitle: Docs style guide
 linkTitle: Style guide
 description: YugabyteDB documentation style guide
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: docs-style
     parent: docs
     weight: 2950
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YugabyteDB documentation style is based on the [Microsoft style guide](https://docs.microsoft.com/en-us/style-guide/welcome/), with some input from [Apple's style guide](https://help.apple.com/applestyleguide/#/). We aim to automate as much as possible through Vale.

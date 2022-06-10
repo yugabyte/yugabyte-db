@@ -8,8 +8,7 @@ menu:
     identifier: interval-interval-comparison
     parent: interval-arithmetic
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
@@ -93,7 +92,7 @@ select
 It finishes silently, showing that the _assert_ holds, and produces this result:
 
 ```output
-   e1    |   e2    
+   e1    |   e2
 ---------+---------
  i1 = i2 | i1 = i2
 ```

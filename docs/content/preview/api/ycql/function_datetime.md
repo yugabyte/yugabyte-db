@@ -12,8 +12,7 @@ menu:
 aliases:
   - /preview/api/cassandra/function_datetime
   - /preview/api/ycql/function_datetime
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This section covers the set of YCQL built-in functions that work on the date and time data types: [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime/), or [`TIMEUUID`](../type_uuid).
@@ -119,10 +118,10 @@ ycqlsh:example> SELECT todate(ts) FROM test_todate;
 
 ## minTimeUUID(<timestamp>)
 
-This function generates corresponding (`TIMEUUID`) with minimum node/clock component so that it includes all regular 
+This function generates corresponding (`TIMEUUID`) with minimum node/clock component so that it includes all regular
 `TIMEUUID` with that timestamp when comparing with another `TIMEUUID`.
 
-- It takes in an argument of type `TIMESTAMP`. 
+- It takes in an argument of type `TIMESTAMP`.
 - The return value is a `TIMEUUID`.
 
 ### Examples
@@ -164,11 +163,11 @@ ycqlsh:ybdemo> SELECT * FROM test_min WHERE v > minTimeUUID('2022-04-04 13:42:00
 
 ## maxTimeUUID(<timestamp>)
 
-This function generates corresponding (`TIMEUUID`) with maximum clock component so that it includes all regular 
+This function generates corresponding (`TIMEUUID`) with maximum clock component so that it includes all regular
 `TIMEUUID` with that timestamp when comparing with another `TIMEUUID`.
 
 
-- It takes in an argument of type `TIMESTAMP`. 
+- It takes in an argument of type `TIMESTAMP`.
 - The return value is a `TIMEUUID`.
 
 ### Examples

@@ -11,8 +11,7 @@ menu:
 aliases:
   - /preview/api/cassandra/ddl_create_index
   - /preview/api/ycql/ddl_create_index
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

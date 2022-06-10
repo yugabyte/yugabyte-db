@@ -9,8 +9,7 @@ menu:
     identifier: create-clusters-overview
     parent: cloud-basics
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before deploying a production cluster, you need to consider the following factors.

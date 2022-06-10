@@ -2,13 +2,11 @@
 title: Metabase
 linkTitle: Metabase
 description: Metabase
-section: INTEGRATIONS
 menu:
   preview:
     identifier: metabase
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool.

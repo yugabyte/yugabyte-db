@@ -8,9 +8,7 @@ menu:
     parent: multi-dc
     identifier: read-replica-clusters
     weight: 634
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In a YugabyteDB deployment, replication of data between nodes of your primary cluster runs synchronously and guarantees strong consistency. Optionally, you can create a read replica cluster that asynchronously replicates data from the primary cluster and guarantees timeline consistency (with bounded staleness). A synchronously replicated primary cluster can accept writes to the system. Using a read replica cluster allows applications to serve low latency reads in remote regions.

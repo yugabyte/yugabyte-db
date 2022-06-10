@@ -8,8 +8,7 @@ menu:
     identifier: dbeaver-ysql
     parent: tools
     weight: 2710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 

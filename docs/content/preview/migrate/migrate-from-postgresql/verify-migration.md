@@ -8,8 +8,7 @@ menu:
     identifier: migrate-postgresql-verify
     parent: migrate-from-postgresql
     weight: 780
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Here are some things that can be verified to ensure that the migration was successful.

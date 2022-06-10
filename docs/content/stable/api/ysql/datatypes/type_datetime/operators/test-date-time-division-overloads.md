@@ -8,8 +8,7 @@ menu:
     identifier: test-date-time-division-overloads
     parent: date-time-operators
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Try this:

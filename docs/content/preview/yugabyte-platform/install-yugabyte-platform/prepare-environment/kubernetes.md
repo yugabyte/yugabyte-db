@@ -10,8 +10,7 @@ menu:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

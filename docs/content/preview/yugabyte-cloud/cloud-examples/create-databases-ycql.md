@@ -10,9 +10,6 @@ menu:
     name: Create a database
     identifier: create-databases-2-ycql
     weight: 600
-type: page
-isTocNested: false
-showAsideToc: true
 --->
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

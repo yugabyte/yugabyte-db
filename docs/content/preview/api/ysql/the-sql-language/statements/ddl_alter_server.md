@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_alter_server
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -46,7 +45,7 @@ Use the `ALTER SERVER` command to alter the definition of a foreign server. The 
 Alter the foreign server named **server_name**.
 
 ### Version
-The `VERSION` clause can be used to specify the updated version of the server. 
+The `VERSION` clause can be used to specify the updated version of the server.
 
 ### Options
 The `OPTIONS` clause can be used to specify the new options of the foreign server. `ADD`, `SET`, and `DROP` specify the action to be performed. `ADD` is assumed if no operation is explicitly specified.

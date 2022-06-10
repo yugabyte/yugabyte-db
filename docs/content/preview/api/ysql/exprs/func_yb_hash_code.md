@@ -9,8 +9,7 @@ menu:
     parent: api-ysql-exprs
 aliases:
   - /preview/api/ysql/exprs/func_yb_hash_code
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

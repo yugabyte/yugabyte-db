@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/ddl_revoke_permission
   - /preview/api/ycql/ddl_revoke_permission
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

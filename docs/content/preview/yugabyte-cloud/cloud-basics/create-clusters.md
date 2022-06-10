@@ -12,8 +12,7 @@ menu:
     identifier: create-clusters
     parent: cloud-basics
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Standard clusters support multi-node and highly available deployments and are suitable for production deployments.

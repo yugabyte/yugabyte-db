@@ -8,8 +8,7 @@ menu:
     parent: back-up-restore-universes
     identifier: restore-universe-data-2-ycql
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

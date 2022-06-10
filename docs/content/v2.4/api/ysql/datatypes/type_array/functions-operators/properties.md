@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: array-properties
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 These functions return the various dimensional properties that jointly characterize an array. These three together completely specify the shape and size:
@@ -56,7 +55,7 @@ from t where k = 1;
 ```
 It produces this result:
 ```
-  ndims_1 | ndims_2 
+  ndims_1 | ndims_2
 ---------+---------
        1 |       2
 ```
@@ -80,7 +79,7 @@ from t where k = 1;
 ```
 It produces this result:
 ```
- arr_1_lb | arr_2_lb_1 | arr_2_lb_2 
+ arr_1_lb | arr_2_lb_1 | arr_2_lb_2
 ----------+------------+------------
         3 |          2 |          4
 ```
@@ -104,7 +103,7 @@ from t where k = 1;
 ```
 It produces this result:
 ```
- arr_1_ub | arr_2_ub_1 | arr_2_ub_2 
+ arr_1_ub | arr_2_ub_1 | arr_2_ub_2
 ----------+------------+------------
        10 |          3 |          7
 ```
@@ -129,7 +128,7 @@ from t where k = 1;
 ```
 It produces this result:
 ```
- arr_1_len | arr_2_len_1 | arr_2_len_2 
+ arr_1_len | arr_2_len_1 | arr_2_len_2
 -----------+-------------+-------------
          8 |           2 |           4
 ```
@@ -152,7 +151,7 @@ from t where k = 1;
 ```
 It produces this result:
 ```
- card_1 | card_2 
+ card_1 | card_2
 --------+--------
       8 |      8
 ```
@@ -176,7 +175,7 @@ from t where k = 1;
 ```
 It produces this result:
 ```
- arr_1_dims | arr_2_dims 
+ arr_1_dims | arr_2_dims
 ------------+------------
  [3:10]     | [2:3][4:7]
 ```
@@ -268,7 +267,7 @@ begin
   '"dims" overspecification rule assert failed.';
 
   -- Do the row-major order traversal and
-  -- check that the values are pairwise-identical. 
+  -- check that the values are pairwise-identical.
   for j in 0..(a_len - 1) loop
     declare
       -- Traversing a 1-d array is trivial.
@@ -283,7 +282,7 @@ begin
       b_txt_2 constant text := lpad(b_idx_2::text,  2);
       val     constant text := lpad(a[a_idx]::text, 2);
 
-      line constant text := 
+      line constant text :=
         'a['||a_txt||'] = '||
         'b['||b_txt_1||']['||b_txt_2||'] = '||
         val;

@@ -7,13 +7,12 @@ menu:
   v2.6:
     parent: troubleshoot-nodes
     weight: 842
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## 1. Are the YugabyteDB servers running?
 
-Connect to the local node where YugabyteDB is running. 
+Connect to the local node where YugabyteDB is running.
 
 On the local setup, this is your local machine (or a Docker instance running on your local machine). On a multi-node cluster, you may need to `ssh` into the machines where the YugabyteDB nodes are running.
 

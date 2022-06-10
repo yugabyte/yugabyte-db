@@ -8,8 +8,7 @@ menu:
     identifier: chinook
     parent: sample-data
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The Chinook sample database for a digital media store can be used to explore and learn YugabyteDB.

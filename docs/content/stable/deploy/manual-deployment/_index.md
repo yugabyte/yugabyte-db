@@ -10,9 +10,10 @@ menu:
     identifier: deploy-manual-deployment
     parent: deploy
     weight: 610
+type: indexpage
 ---
 
-This section covers the generic manual deployment of a YugabyteDB cluster in a single region or data center with a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node. 
+This section covers the generic manual deployment of a YugabyteDB cluster in a single region or data center with a multi-zone/multi-rack configuration. Note that single zone configuration is a special case of multi-zone where all placement related flags are set to the same value across every node.
 
 <p>
 

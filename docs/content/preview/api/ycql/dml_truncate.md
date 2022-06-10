@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/dml_truncate
   - /preview/api/ycql/dml_truncate
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

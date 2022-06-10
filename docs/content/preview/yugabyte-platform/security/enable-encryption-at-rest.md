@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. The YugabyteDB Anywhere UI allows you to do the following:

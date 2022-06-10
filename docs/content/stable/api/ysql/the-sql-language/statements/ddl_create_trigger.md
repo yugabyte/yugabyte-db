@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_create_trigger
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -43,7 +42,7 @@ Use the `CREATE TRIGGER` statement to create a trigger.
 
 ## Semantics
 
-- the `WHEN` condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns. 
+- the `WHEN` condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns.
 - multiple triggers can be defined for the same event. In that case, they will be fired in alphabetical order by name.
 
 ## Examples

@@ -9,9 +9,7 @@ menu:
     name: Rust
     identifier: rust-1
     weight: 950
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -186,7 +184,7 @@ ysql_diesel=#  \d
 
 ```output
                       List of relations
- Schema |             Name              |   Type   |  Owner   
+ Schema |             Name              |   Type   |  Owner
 --------+-------------------------------+----------+----------
  public | __diesel_schema_migrations    | table    | yugabyte
  public | order_lines                   | table    | yugabyte
@@ -243,7 +241,7 @@ ysql_diesel=# SELECT * FROM order_lines;
 ```
 
 ```output
- order_line_id | order_id | product_id | units 
+ order_line_id | order_id | product_id | units
 ---------------+----------+------------+-------
              1 |        1 |          1 |     2
              2 |        2 |          1 |     2

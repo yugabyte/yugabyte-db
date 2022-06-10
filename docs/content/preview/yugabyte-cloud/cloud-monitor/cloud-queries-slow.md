@@ -9,8 +9,7 @@ menu:
     identifier: cloud-queries-slow
     parent: cloud-monitor
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Evaluate the performance of slow queries that have run on your cluster using the **Slow Queries** option on the cluster **Performance** tab. Use this data to:

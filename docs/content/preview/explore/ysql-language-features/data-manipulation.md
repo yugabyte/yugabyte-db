@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-features-data-manipulation
     parent: explore-ysql-language-features
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to manipulate data in YugabyteDB using the YSQL `INSERT`, `UPDATE`, and `DELETE` statements.
@@ -381,6 +380,3 @@ You can remove all rows from the table as follows:
 ```sql
 DELETE FROM employees;
 ```
-
-
-

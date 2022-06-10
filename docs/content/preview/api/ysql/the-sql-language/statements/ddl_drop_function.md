@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/ddl_drop_function/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

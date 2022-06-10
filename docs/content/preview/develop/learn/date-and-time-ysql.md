@@ -12,9 +12,7 @@ menu:
     name: 7. Date and time
     identifier: date-and-time-1-ysql
     weight: 569
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

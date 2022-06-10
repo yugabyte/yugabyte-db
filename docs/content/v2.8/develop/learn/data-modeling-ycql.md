@@ -8,8 +8,7 @@ menu:
     identifier: data-modeling-1-ycql
     parent: learn
     weight: 562
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -107,7 +106,7 @@ In the case of the `users` table, you can make `user_id` column the only primary
 
 The clustering columns specify the order in which the column data is sorted and stored on disk for a given unique partition key value. More than one clustering column can be specified, and the columns are sorted in the order they are declared in the clustering column. It is also possible to control the sort order (ascending or descending sort) for these columns. Note that the sort order respects the data type.
 
-In a table that has both partition keys and clustering keys, it is possible for two rows to have the same partition key value and therefore they end up on the same node. However, those rows must have different clustering key values in order to satisfy the primary key requirements. Tables without clustering key columns are said to have *simple primary keys*. 
+In a table that has both partition keys and clustering keys, it is possible for two rows to have the same partition key value and therefore they end up on the same node. However, those rows must have different clustering key values in order to satisfy the primary key requirements. Tables without clustering key columns are said to have *simple primary keys*.
 
 In the case of the `books` table, `author` is a good partition key and `book_title` is a good clustering key. Such a data model would allow easily listing all the books for a given author, as well as look up details of a specific book. This would cause the data to be stored as follows.
 

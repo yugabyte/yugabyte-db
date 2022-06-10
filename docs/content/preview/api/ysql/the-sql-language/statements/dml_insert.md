@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/dml_insert/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

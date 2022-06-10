@@ -10,6 +10,7 @@ menu:
     identifier: resilience
     parent: benchmark
     weight: 21
+type: indexpage
 ---
 
 For a tutorial that explores how YugabyteDB handles component failure and provides high availability (HA), see [Fault tolerance](../../../explore/fault-tolerance).

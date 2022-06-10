@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: authorization-platform
     weight: 27
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The role-based access control (RBAC) model in the platform is a collection of privileges on resources given to roles. Thus, the entire RBAC model is built around roles, resources, and privileges. It is essential to understand these concepts in order to understand the RBAC model.

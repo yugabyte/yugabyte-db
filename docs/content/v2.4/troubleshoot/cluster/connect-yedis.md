@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: troubleshoot-cluster
     weight: 824
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## 1. Are YugabyteDB processes running?
@@ -46,13 +45,13 @@ yb-tserve 81596 centos   92u  IPv4 0xdeadbeef      0t0  TCP 127.0.0.3:6379 (LIST
 ```
 
 If there is another process using this port you might need to stop that and restart the tserver process.
-Otherwise, if no process is listening but the tserver is running, check the value of the `--redis_proxy_bind_address` flag passed to the 
+Otherwise, if no process is listening but the tserver is running, check the value of the `--redis_proxy_bind_address` flag passed to the
 tserver process.
 
 ## 3. Can redis-cli connect locally?
 
 Use `redis-cli` to connect to the local node.
-You may need to install `redis-cli`, otherwise you can find it in the Yugabyte bin directory). 
+You may need to install `redis-cli`, otherwise you can find it in the Yugabyte bin directory).
 Try running:
 
 ```sh

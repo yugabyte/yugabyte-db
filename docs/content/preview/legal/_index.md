@@ -5,14 +5,12 @@ linkTitle: Legal
 description: Learn about Yugabyte licenses and third party software.
 image: /images/section_icons/index/quick_start.png
 headcontent: Learn about YugabyteDB licenses and third party software.
-type: page
-section: MISC
 menu:
   preview:
     identifier: legal
     weight: 3000
+type: indexpage
 ---
-
 ## Licenses
 
 Source code in the [YugabyteDB repository](https://github.com/yugabyte/yugabyte-db/) is variously licensed under the Apache License 2.0 and the Polyform Free Trial License 1.0.0. A copy of each license can be found in the [licenses](https://github.com/yugabyte/yugabyte-db/tree/master/licenses) directory.

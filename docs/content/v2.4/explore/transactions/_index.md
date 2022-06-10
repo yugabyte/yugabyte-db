@@ -10,6 +10,7 @@ menu:
     identifier: explore-transactions
     parent: explore
     weight: 230
+type: indexpage
 ---
 
 YugabyteDB is a transactional database that supports distributed transactions. A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
@@ -68,7 +69,7 @@ The various features are explained in the sections below.
       </div>
     </a>
   </div>
-<!-- ADD THIS ONCE READY: 
+<!-- ADD THIS ONCE READY:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ddl-operations/">
       <div class="head">
@@ -93,4 +94,3 @@ The various features are explained in the sections below.
   </div>
 -->
 </div>
-

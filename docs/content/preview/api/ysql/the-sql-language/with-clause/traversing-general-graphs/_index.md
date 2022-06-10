@@ -9,10 +9,8 @@ menu:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 **On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Undirected cyclic graph](./#undirected-cyclic-graph)<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Directed cyclic graph](./#directed-cyclic-graph)<br>

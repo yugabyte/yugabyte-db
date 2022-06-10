@@ -11,8 +11,7 @@ menu:
 aliases:
   - /preview/api/cassandra/type_uuid
   - /preview/api/ycql/type_uuid
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

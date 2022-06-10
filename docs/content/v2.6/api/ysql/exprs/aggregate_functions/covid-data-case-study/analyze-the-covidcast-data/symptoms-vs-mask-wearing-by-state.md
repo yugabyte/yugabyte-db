@@ -8,8 +8,7 @@ menu:
     identifier: symptoms-vs-mask-wearing-by-state
     parent: analyze-the-covidcast-data
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This query:
@@ -27,7 +26,7 @@ order by 1;
 selects out the data for 21-Oct-2020 so that they can be used to draw a scatter-plot. This is the result:
 
 ```
- % wearing mask | % with symptoms | state 
+ % wearing mask | % with symptoms | state
 ----------------+-----------------+-------
              66 |              34 | wy
              71 |              49 | sd

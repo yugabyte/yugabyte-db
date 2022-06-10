@@ -11,8 +11,7 @@ menu:
     identifier: follower-reads-ysql
     parent: going-beyond-sql
     weight: 280
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

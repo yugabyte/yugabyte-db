@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: cmd_copy
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -59,7 +58,7 @@ Specify a `SELECT`, `VALUES`, `INSERT`, `UPDATE`, or `DELETE` statement whose re
 
 Specify the path of the file to be copied. An input file name can be an absolute or relative path, but an output file name must be an absolute path. Critically, the file must be located _server-side_ on the local filesystem of the YB-TServer that you connect to.
 
-To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.  
+To work with files that reside on the client, nominate `stdin` as the argument for `FROM` or `stdout` as the argument for `TO`.
 
 Alternatively, you can use the `\copy` metacommand in [`ysqlsh`](../../../../../admin/ysqlsh#copy-table-column-list-query-from-to-filename-program-command-stdin-stdout-pstdin-pstdout-with-option).
 

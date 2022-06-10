@@ -7,8 +7,7 @@ menu:
     parent: alerts-monitoring
     identifier: live-queries-dashboard
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the Live Queries dashboard to monitor and display current running queries on your YugabyteDB universes. You can use this data to:

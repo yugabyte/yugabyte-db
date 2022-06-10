@@ -8,8 +8,7 @@ menu:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes environments.
@@ -66,7 +65,7 @@ To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes enviro
 
     ```sh
     $ kubectl delete namespace yw-test
-  
+
     ```
 
     You should see the following message:

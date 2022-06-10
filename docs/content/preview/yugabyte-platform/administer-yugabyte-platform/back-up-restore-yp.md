@@ -8,8 +8,7 @@ menu:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

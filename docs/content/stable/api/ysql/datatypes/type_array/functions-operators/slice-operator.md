@@ -1,6 +1,6 @@
 ---
 title: The array slice operator
-linkTitle: Array slice operator 
+linkTitle: Array slice operator
 headerTitle: The array slice operator
 description: The array slice operator
 menu:
@@ -8,8 +8,7 @@ menu:
     identifier: array-slice-operator
     parent: array-functions-operators
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Return a new array whose length is defined by specifying the slice's lower and upper bound along each dimension.
@@ -57,13 +56,13 @@ from t where k = 1;
 ```
 It produces these results:
 ```
-                                        old value of arr                                         
+                                        old value of arr
 -------------------------------------------------------------------------------------------------
  [2:4][3:6][4:5]={{{a,b},{c,d},{e,f},{g,h}},{{i,j},{k,l},{m,n},{o,p}},{{q,r},{s,t},{u,v},{w,x}}}
 ```
 and:
 ```
- lb-1 | ub-1 | lb-2 | ub-2 | lb-3 | ub-3 
+ lb-1 | ub-1 | lb-2 | ub-2 | lb-3 | ub-3
 ------+------+------+------+------+------
     2 |    4 |    3 |    6 |    4 |    5
 ```
@@ -86,13 +85,13 @@ from t where k = 1;
 ```
 It produces these results:
 ```
-   new value of arr    
+   new value of arr
 -----------------------
  {{{c},{e}},{{k},{m}}}
 ```
 and:
 ```
- lb-1 | ub-1 | lb-2 | ub-2 | lb-3 | ub-3 
+ lb-1 | ub-1 | lb-2 | ub-2 | lb-3 | ub-3
 ------+------+------+------+------+------
     1 |    2 |    1 |    2 |    1 |    1
 ```

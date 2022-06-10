@@ -9,9 +9,7 @@ menu:
     identifier: ysql-grant-permissions
     parent: authorization
     weight: 735
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -216,7 +214,7 @@ dev_database=# \du
 
 ```output
                                        List of roles
-  Role name   |                         Attributes                         |   Member of   
+  Role name   |                         Attributes                         |   Member of
 --------------+------------------------------------------------------------+---------------
  db_admin     | Superuser, Cannot login                                    | {engineering}
  developer    | Cannot login                                               | {engineering}
@@ -246,7 +244,7 @@ You should see the following output.
 
 ```output
                                        List of roles
-  Role name   |                         Attributes                         |   Member of   
+  Role name   |                         Attributes                         |   Member of
 --------------+------------------------------------------------------------+---------------
  db_admin     | Cannot login                                               | {engineering}
  developer    | Cannot login                                               | {engineering}

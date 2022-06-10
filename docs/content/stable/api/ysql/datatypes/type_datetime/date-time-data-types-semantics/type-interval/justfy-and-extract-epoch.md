@@ -8,8 +8,7 @@ menu:
     identifier: justfy-and-extract-epoch
     parent: type-interval
     weight: 35
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

@@ -8,8 +8,7 @@ menu:
     identifier: timestamptz-interval-day-arithmetic
     parent: timezone-sensitive-operations
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The [moment-moment overloads of the "-" operator for _timestamptz_, _timestamp_, and _time_](../../../date-time-data-types-semantics/type-interval/interval-arithmetic/moment-moment-overloads-of-minus/) section recommends that you avoid arithmetic that uses _hybrid interval_ semantics—in other words that you perform _interval_ arithmetic using only values that have just one of the fields of the internal _[\[mm, dd, ss\]](../../../date-time-data-types-semantics/type-interval/interval-representation/)_ representation tuple non-zero. The section [Custom domain types for specializing the native _interval_ functionality](../../../date-time-data-types-semantics/type-interval/custom-interval-domains/) explains a coding practice that supports this recommendation.

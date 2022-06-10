@@ -10,8 +10,7 @@ menu:
     weight: 220
 aliases:
   - /preview/explore/ysql-language-features/cursor/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use YSQL cursors to process a result set query one row at a time.
@@ -257,12 +256,3 @@ The following is the output produced by the preceding example:
  1222        | Bette Davis  | Sales
  1223        | Lucille Ball | Operations
 ```
-
-
-
-
-
-
-
-
-

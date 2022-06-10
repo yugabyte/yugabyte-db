@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: security-checklist-yp
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Below is a list of security measures that can be implemented to protect your Yugabyte Platform and YugabyteDB universes.

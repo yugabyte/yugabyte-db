@@ -7,8 +7,7 @@ menu:
   v2.6:
     parent: api-cassandra
     weight: 1360
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 An expression with operators is a compound expression that combines multiple expressions using built-in operators. The following sections discuss the YCQL operators in YugabyteDB.

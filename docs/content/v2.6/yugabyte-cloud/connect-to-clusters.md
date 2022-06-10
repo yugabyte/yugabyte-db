@@ -9,8 +9,7 @@ menu:
     identifier: connect-to-clusters
     parent: yugabyte-cloud
     weight: 645
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Connect to your YugabyteDB clusters in Yugabyte Cloud using Yugabyte Cloud shells, remote clients, and third party clients.

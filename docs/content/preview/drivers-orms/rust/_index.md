@@ -9,10 +9,8 @@ menu:
     identifier: rust-drivers
     parent: drivers-orms
     weight: 570
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 Following are the recommended projects for implementing Rust Applications for YugabyteDB YSQL API.
 
 | Project | Type | Support Level |

@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/expr_simple
   - /preview/api/ycql/expr_simple
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A simple expression can be a column, a constant, or NULL.
@@ -39,4 +38,3 @@ When an expression, typically a column, does not have a value, it is represented
 ```
 null_expression ::= NULL
 ```
-

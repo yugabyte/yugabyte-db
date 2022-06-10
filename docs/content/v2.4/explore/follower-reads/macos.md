@@ -8,8 +8,7 @@ menu:
     identifier: follower-reads-1-macos
     parent: explore
     weight: 235
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

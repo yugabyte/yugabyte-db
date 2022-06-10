@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: network-security
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You need to ensure that YugabyteDB Anywhere and the database run in a trusted network environment. You should restrict machine and port access, based on the following guidelines:

@@ -9,6 +9,7 @@ menu:
     identifier: going-beyond-sql
     parent: explore-ysql-language-features
     weight: 330
+type: indexpage
 ---
 
 <div class="row">

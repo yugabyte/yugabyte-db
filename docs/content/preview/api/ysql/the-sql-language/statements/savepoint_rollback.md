@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/savepoint_rollback/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

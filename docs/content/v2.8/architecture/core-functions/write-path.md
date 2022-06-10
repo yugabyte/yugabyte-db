@@ -8,8 +8,7 @@ menu:
     identifier: write-path
     parent: core-functions
     weight: 1186
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 For purposes of simplicity, let us take the case of a single key write. The case of distributed

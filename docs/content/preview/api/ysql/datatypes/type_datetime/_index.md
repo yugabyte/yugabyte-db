@@ -8,8 +8,7 @@ menu:
   preview:
     identifier: api-ysql-datatypes-datetime
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 ## Synopsis
 

@@ -8,8 +8,7 @@ menu:
     identifier: remove-operators
     parent: json-functions-operators
     weight: 13
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Remove key-value pairs from an _object_ or a single value from an _array_. The plain `-` variant takes the specified object itself. The `#-` variant takes the path from the specified object.

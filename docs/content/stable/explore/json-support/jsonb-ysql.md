@@ -11,8 +11,7 @@ menu:
     identifier: explore-json-support-1-ysql
     parent: explore
     weight: 260
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 JSON data types are for storing JSON (JavaScript Object Notation) data, as specified in [RFC 7159](https://tools.ietf.org/html/rfc7159). Such data can also be stored as `text`, but the JSON data types have the advantage of enforcing that each stored value is valid according to the JSON rules. There are also assorted JSON-specific functions and operators available for data stored in these data types.

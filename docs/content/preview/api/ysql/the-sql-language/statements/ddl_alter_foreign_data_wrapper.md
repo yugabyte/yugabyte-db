@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_alter_foreign_data_wrapper
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -47,7 +46,7 @@ Alter the foreign-data wrapper named **fdw_name**.
 
 ### Handler:
 The `HANDLER` clause can be used to specify the handler function.
-The `NO HANDLER` clause can be used to specify that the foreign-data wrapper has no handler function. 
+The `NO HANDLER` clause can be used to specify that the foreign-data wrapper has no handler function.
 
 ### Validator
 The `VALIDATOR` clause can be used to specify the validator function.

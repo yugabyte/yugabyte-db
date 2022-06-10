@@ -8,8 +8,7 @@ menu:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -86,4 +85,3 @@ To restore the Yugabyte Platform content from your saved backup, perform the fol
     *destination* is optional. It specifies the output location for data. Default is `/opt/yugabyte`.
 
 Upon completion of the preceding steps, the restored Yugabyte Platform is ready to continue orchestrating and managing your universes and clusters.
-

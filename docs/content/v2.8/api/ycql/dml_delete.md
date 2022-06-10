@@ -2,13 +2,12 @@
 title: DELETE statement [YCQL]
 headerTitle: DELETE
 linkTitle: DELETE
-description: Use the DELETE statement to remove rows from a specified table that meet a given condition. 
+description: Use the DELETE statement to remove rows from a specified table that meet a given condition.
 menu:
   v2.8:
     parent: api-cassandra
     weight: 1330
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -24,9 +23,9 @@ Use the `DELETE` statement to remove rows from a specified table that meet a giv
 ### Grammar
 
 ```
-delete ::= DELETE FROM table_name 
-               [ USING TIMESTAMP timestamp_expression ] WHERE 
-               where_expression [ IF { [ NOT ] EXISTS | if_expression } ] 
+delete ::= DELETE FROM table_name
+               [ USING TIMESTAMP timestamp_expression ] WHERE
+               where_expression [ IF { [ NOT ] EXISTS | if_expression } ]
                [ RETURNS STATUS AS ROW ]
 ```
 
@@ -70,9 +69,9 @@ The `timestamp_expression` must be an integer value (or a bind variable marker f
 ### Delete a row from a table
 
 ```sql
-ycqlsh:example> CREATE TABLE employees(department_id INT, 
-                                      employee_id INT, 
-                                      name TEXT, 
+ycqlsh:example> CREATE TABLE employees(department_id INT,
+                                      employee_id INT,
+                                      name TEXT,
                                       PRIMARY KEY(department_id, employee_id));
 ```
 

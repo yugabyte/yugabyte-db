@@ -11,13 +11,12 @@ aliases:
   - /preview/explore/high-performance/
   - /preview/explore/planet-scale/
   - /preview/explore/cloud-native/orchestration-readiness/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: explore
     weight: 540
+type: indexpage
 ---
-
 {{< tip title="Tip" >}}
 
 Use [yb-ctl](../admin/yb-ctl/) local cluster management utility to explore the core features of YugabyteDB.

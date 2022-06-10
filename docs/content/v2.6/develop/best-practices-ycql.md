@@ -8,8 +8,7 @@ menu:
     identifier: best-practices-ycql
     parent: develop
     weight: 582
-isTocNested: 4
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -93,9 +92,9 @@ Big columns add up when selecting full rows or multiple of them. For consistent 
 
 ### Don't use big collections
 
-Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages). 
-While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. 
-In particular, some list operations (insert at an index and remove elements) require a read-before-write. 
+Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages).
+While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them.
+In particular, some list operations (insert at an index and remove elements) require a read-before-write.
 
 ### Use `partition_hash` for large table scans
 

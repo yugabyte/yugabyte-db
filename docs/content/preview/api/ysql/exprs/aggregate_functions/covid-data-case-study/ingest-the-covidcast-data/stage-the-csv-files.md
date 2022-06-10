@@ -8,8 +8,7 @@ menu:
     identifier: stage-the-csv-files
     parent: ingest-the-covidcast-data
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## First, create a dedicated ordinary user for the project

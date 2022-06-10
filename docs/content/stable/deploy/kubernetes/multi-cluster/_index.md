@@ -10,6 +10,7 @@ menu:
     identifier: deploy-kubernetes-mc
     parent: deploy-kubernetes
     weight: 623
+type: indexpage
 ---
 
 As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multiple-zones/">Kubernetes documentation</a>, a single Kubernetes cluster can run only inside a single zone of a single region. This means workloads will be distributed across multiple nodes of a single Kubernetes cluster running in a single region. When geo-distributed SQL workloads like YugabyteDB need to run on Kubernetes, the preferred approach is to create a single YugabyteDB cluster that spans <a href="../multi-zone">multiple zones of a single Kubernetes cluster</a> or multiple geo-distributed Kubernetes clusters. This page documents the latter configuration.

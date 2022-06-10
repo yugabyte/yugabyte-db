@@ -4,23 +4,22 @@ linkTitle: API reference
 description: API reference
 summary: Reference for the YEDIS API
 image: /images/section_icons/api/yedis.png
-headcontent: 
+headcontent:
 menu:
   v2.4:
     identifier: api-yedis
     parent: yedis
     weight: 4000
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Introduction
 
-The YEDIS API provides a clustered, auto-sharded, globally distributed and persistent key-value API that is compatible with the Redis commands library.  A Redis client can connect, send requests, and receive results from YugabyteDB. 
+The YEDIS API provides a clustered, auto-sharded, globally distributed and persistent key-value API that is compatible with the Redis commands library.  A Redis client can connect, send requests, and receive results from YugabyteDB.
 
 ## Data types
 
-The following data types can be read and written via the YEDIS API. 
+The following data types can be read and written via the YEDIS API.
 
 Data type | Development status |
 ---------|-------------|

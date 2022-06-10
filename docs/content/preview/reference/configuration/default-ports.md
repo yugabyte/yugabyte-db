@@ -3,7 +3,6 @@ title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
-section: REFERENCE
 menu:
   preview:
     identifier: default-ports
@@ -11,8 +10,7 @@ menu:
     weight: 2740
 aliases:
   - /preview/reference/default-ports
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Client APIs

@@ -8,8 +8,7 @@ menu:
     identifier: ysql_hba_conf-configuration
     parent: enable-authentication
     weight: 730
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

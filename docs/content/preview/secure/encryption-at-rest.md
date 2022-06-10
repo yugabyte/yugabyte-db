@@ -12,8 +12,7 @@ menu:
     identifier: encryption-at-rest
     parent: secure
     weight: 735
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page describes how to enable and disable encryption at rest in a YugabyteDB cluster with a user-generated key.

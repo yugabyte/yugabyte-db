@@ -8,24 +8,23 @@ menu:
     identifier: explore-multi-region-deployments-follower-reads-ysql
     parent: explore-multi-region-deployments
     weight: 285
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-  
+
   <li >
     <a href="../follower-reads-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>YSQL</a>
   </li>
-  
+
   <li >
     <a href="../read-replicas-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
-  </li>  
+  </li>
 
 </ul>
 
-YSQL follower reads support is currently in Beta. 
+YSQL follower reads support is currently in Beta.
 
 No documentation is available at this time.

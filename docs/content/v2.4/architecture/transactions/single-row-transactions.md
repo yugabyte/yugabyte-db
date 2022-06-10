@@ -8,8 +8,7 @@ menu:
     identifier: architecture-single-row-transactions
     parent: architecture-acid-transactions
     weight: 1154
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB offers ACID semantics for mutations involving a single row or rows that fall

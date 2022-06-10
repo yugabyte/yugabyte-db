@@ -8,8 +8,7 @@ menu:
     identifier: build-apps-csharp-2-ycql
     parent: build-apps
     weight: 554
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

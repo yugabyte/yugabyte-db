@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: cmd_reset
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

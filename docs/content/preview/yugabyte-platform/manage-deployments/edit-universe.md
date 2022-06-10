@@ -10,8 +10,7 @@ menu:
     identifier: edit-universe
     parent: manage-deployments
     weight: 60
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere allows you to expand a universe to add more nodes and shrink the universe to reduce the number of nodes. Typically, you do this by navigating to **Universes > Edit Universe**, as shown in the following illustration:

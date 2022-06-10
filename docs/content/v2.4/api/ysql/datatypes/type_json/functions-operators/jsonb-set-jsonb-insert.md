@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-set-jsonb-insert
     parent: json-functions-operators
     weight: 210
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose**: Use `jsonb_set()` to change a JSON value that is the value of an existing key-value pair in a JSON _object_ or the value at an existing index in a JSON array. Use `jsonb_insert()` to insert a value, either as the value for a key that doesn't yet exist in a JSON _object_ or beyond the end or before the start of the index range, for a JSON _array_.
@@ -112,7 +111,7 @@ $body$;
 ```
 ## Semantics when "jsonb&#95;in" is an JSON array
 
-A JSON _array_ is a list of index-addressable values—in other words, the order is defined and significant. Again, the functionality is sufficiently illustrated by a `json_in` value that has just primitive values. Now the result of `jsonb_set()` differs from that of `jsonb_insert()`. 
+A JSON _array_ is a list of index-addressable values—in other words, the order is defined and significant. Again, the functionality is sufficiently illustrated by a `json_in` value that has just primitive values. Now the result of `jsonb_set()` differs from that of `jsonb_insert()`.
 
 ```plpgsql
 do $body$
@@ -219,6 +218,6 @@ end;
 $body$;
 ```
 
-The path, for `jsonb_set()`, is taken to mean a new first value (implying that the existing values all move along one place). So, again, with _"create_if_missing"_ set to `FALSE`, `jsonb_set()` has no effect. 
+The path, for `jsonb_set()`, is taken to mean a new first value (implying that the existing values all move along one place). So, again, with _"create_if_missing"_ set to `FALSE`, `jsonb_set()` has no effect.
 
 The path, for `jsonb_insert()`, is also taken to mean a new first value. So again, the choice of `TRUE` or `FALSE` for _"insert_after"_ makes no difference because before or after, a nonexistent element is taken to mean insert it.

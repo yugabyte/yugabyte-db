@@ -8,11 +8,10 @@ menu:
     identifier: window-functions-functionality-overview
     parent: window-functions
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-A good sense of the general functionality of window functions is given by examples that use [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number), [`nth_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#nth-value), [`last_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value), [`lag()`](../function-syntax-semantics/lag-lead/#lag), and [`lead()`](../function-syntax-semantics/lag-lead/#lead). 
+A good sense of the general functionality of window functions is given by examples that use [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number), [`nth_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#nth-value), [`last_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value), [`lag()`](../function-syntax-semantics/lag-lead/#lag), and [`lead()`](../function-syntax-semantics/lag-lead/#lead).
 
 Aggregate functions can be invoked with the `OVER` clause. Examples are given using `avg()` and `sum()`.
 
@@ -43,7 +42,7 @@ order by k asc;
 The syntax and semantics of the `ORDER BY` clause, within the parentheses of the `OVER` clause, are identical to what you're used to when an `ORDER BY` clause is used after the `FROM` clause in a subquery. The `DESC` keyword is used in this example to emphasize this point. It says that the values returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) are to be assigned in the order corresponding to sorting the values of _"k"_ in descending order—and it specifies nothing else. Here is the result:
 
 ```
- k  | r  
+ k  | r
 ----+----
   1 | 25
   2 | 24
@@ -60,7 +59,7 @@ The syntax and semantics of the `ORDER BY` clause, within the parentheses of the
 
 The output lines for values of _"r"_ between _6_ and _20_ were manually removed to reduce the clutter.
 
-Because the `OVER` clause doesn't specify a `PARTITION BY` clause, the so-called [_window_](../invocation-syntax-semantics/#the-window-definition-rule) that [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) operates on coincides with all of the rows in table _"t1"_. 
+Because the `OVER` clause doesn't specify a `PARTITION BY` clause, the so-called [_window_](../invocation-syntax-semantics/#the-window-definition-rule) that [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) operates on coincides with all of the rows in table _"t1"_.
 
 The next example emphasizes the point that a window function is often used in a subquery which, like any other subquery, is used to define a `WITH` clause view to allow further logic to be applied—in this case, a `WHERE` cause restriction on the values returned by [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number) (and, of course, a final query-level `ORDER BY` rule).
 
@@ -81,7 +80,7 @@ order by r asc;
 This is the result:
 
 ```
- k  | r  
+ k  | r
 ----+----
  25 |  1
  24 |  2
@@ -122,33 +121,33 @@ order by r;
 To see the most dramatic effect of the unpredictability of the result set, save the code from [table t1](../function-syntax-semantics/data-sets/table-t1/) into a file called, say, _"unpredictable.sql"_. Then copy the SQL statement, above, at the end of this file and invoke it time and again in `ysqlsh`. Here is a typical result:
 
 ```
- r  | class | k  | chk  
+ r  | class | k  | chk
 ----+-------+----+------
-  1 |     5 | 23 | 
-  2 |     5 | 25 | 
-  3 |     2 |  9 | 
+  1 |     5 | 23 |
+  2 |     5 | 25 |
+  3 |     2 |  9 |
   4 |     1 |  4 | true
-  5 |     3 | 11 | 
-  6 |     1 |  1 | 
-  7 |     3 | 13 | 
-  8 |     4 | 16 | 
-  9 |     1 |  2 | 
- 10 |     2 |  7 | 
- 11 |     1 |  3 | 
- 12 |     4 | 18 | 
- 13 |     3 | 15 | 
- 14 |     5 | 21 | 
- 15 |     3 | 14 | 
- 16 |     3 | 12 | 
+  5 |     3 | 11 |
+  6 |     1 |  1 |
+  7 |     3 | 13 |
+  8 |     4 | 16 |
+  9 |     1 |  2 |
+ 10 |     2 |  7 |
+ 11 |     1 |  3 |
+ 12 |     4 | 18 |
+ 13 |     3 | 15 |
+ 14 |     5 | 21 |
+ 15 |     3 | 14 |
+ 16 |     3 | 12 |
  17 |     4 | 17 | true
- 18 |     1 |  5 | 
- 19 |     2 | 10 | 
+ 18 |     1 |  5 |
+ 19 |     2 | 10 |
  20 |     4 | 20 | true
- 21 |     5 | 24 | 
+ 21 |     5 | 24 |
  22 |     5 | 22 | true
- 23 |     2 |  6 | 
- 24 |     2 |  8 | 
- 25 |     4 | 19 | 
+ 23 |     2 |  6 |
+ 24 |     2 |  8 |
+ 25 |     4 | 19 |
 ```
 
 Sometimes, you'll see that, by chance, not a single output row is marked _"true"_. Sometimes, you'll see that a few are so marked.
@@ -179,7 +178,7 @@ order by class, r;
 This is the result:
 
 ```
- class | v  | r 
+ class | v  | r
 -------+----+---
      2 | ?? | 1
      2 |  9 | 2
@@ -217,7 +216,7 @@ order by class;
 It produces this result:
 
 ```
- class |    nv     
+ class |    nv
 -------+-----------
      3 | (3,13,13)
      3 | (3,13,13)
@@ -258,7 +257,7 @@ order by class;
 This example uses [`last_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value) because the data set has different values for _"k"_ and _"v"_ for the last row in each [_window_](../invocation-syntax-semantics/#the-window-definition-rule). This is the result:
 
 ```
- class | k  | v  
+ class | k  | v
 -------+----+----
      1 |  5 | ??
      2 | 10 | ??
@@ -299,7 +298,7 @@ order by day;
 This is the result:
 
 ```
-    Day     | moving_avg 
+    Day     | moving_avg
 ------------+------------
  Wed 17-Sep |     $18.98
  Thu 18-Sep |     $19.13
@@ -392,7 +391,7 @@ order by class, k;
 This is the result:
 
 ```
- class | k  | s  
+ class | k  | s
 -------+----+----
      2 |  6 |  6
      2 |  7 | 13

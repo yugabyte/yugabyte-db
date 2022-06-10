@@ -8,8 +8,7 @@ menu:
     identifier: report-daily-regression-analysis
     parent: analyze-the-covidcast-data
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This is the semantic essence of the query:
@@ -60,7 +59,7 @@ order by survey_date;
 See the [`analysis-queries.sql`](./../analysis-scripts/analysis-queries-sql/) script. Here are the results:
 
 ```
- survey_date | mask_wearing_pct | symptoms_pct |  r2   |   s   |   i    
+ survey_date | mask_wearing_pct | symptoms_pct |  r2   |   s   |   i
 -------------+------------------+--------------+-------+-------+--------
  09/13       |  85              |  19          |  0.54 |  -0.6 |   71.0
  09/14       |  85              |  19          |  0.55 |  -0.6 |   71.9
@@ -140,7 +139,7 @@ from a;
 This is the result:
 
 ```
- avg(R-squared) | avg(s) | avg(i)  
+ avg(R-squared) | avg(s) | avg(i)
 ----------------+--------+---------
   0.63          | -0.97  |  105.59
 ```

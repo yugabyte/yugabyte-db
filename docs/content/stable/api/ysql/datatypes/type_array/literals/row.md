@@ -8,8 +8,7 @@ menu:
     identifier: row
     parent: array-literals
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The word "row" has two different uses; but these uses are really different sides of the same coin. A row in a schema-level table is actually an occurrence of a _"row"_ type—in other words, a _"row"_ type value. In this case, the schema-level _"row"_ type is created automatically as a side effect of executing the `CREATE TABLE` statement. It has the same name as the table. (This is allowed because tables and types are in different namespaces.) Further, a column in a schema-level table can have a user-defined _"row"_ type as its data type, and in this case the _"row"_ type need not be partnered with a table.
@@ -53,7 +52,7 @@ Exactly the same considerations apply here as were explained in [Always write ar
 
 ## Examples to illustrate the rules
 
-It will be sufficient to consider _"row"_ types with fields of just these data types: 
+It will be sufficient to consider _"row"_ types with fields of just these data types:
 
 - numeric data types (like `int` and `numeric`)
 - stringy data types (like `text`, `varchar`, and `char`)
@@ -76,7 +75,7 @@ select v1::text as text_typecast from t where k = 1
 ```
 The keyword `ROW` names the _"row"_ type constructor function. It is optional, but is used here for emphasis.
 
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
+The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
 
 Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -109,7 +108,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -172,7 +171,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -226,7 +225,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -264,7 +263,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```

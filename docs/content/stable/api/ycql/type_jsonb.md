@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1470
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -41,9 +40,9 @@ type_specification ::= { JSONB }
 
 {{< note title="Note" >}}
 
-Internally, numbers that appear in a JSONB string (used without quotes. e.g `{'a': 3.14}` ) are stored as floating point values. 
-Due to the inherent imprecision in storing floating-point numbers, one should avoid comparing them for equality. 
-Users can either use error bounds while querying for these values in order to perform the correct floating-point comparison, or store them as strings (e.g: `{'a': "3.14"}`). 
+Internally, numbers that appear in a JSONB string (used without quotes. e.g `{'a': 3.14}` ) are stored as floating point values.
+Due to the inherent imprecision in storing floating-point numbers, one should avoid comparing them for equality.
+Users can either use error bounds while querying for these values in order to perform the correct floating-point comparison, or store them as strings (e.g: `{'a': "3.14"}`).
 [#996 issue](https://github.com/yugabyte/yugabyte-db/issues/996)
 
 
@@ -52,8 +51,8 @@ Users can either use error bounds while querying for these values in order to pe
 
 ## Operators and functions
 
-We currently support two operators which can be applied to the `JSONB` data type. The `->` operator 
-returns a result of type `JSONB` and further json operations can be applied to the result. The `->>` 
+We currently support two operators which can be applied to the `JSONB` data type. The `->` operator
+returns a result of type `JSONB` and further json operations can be applied to the result. The `->>`
 operator converts `JSONB` to its string representation and returns the same. As a result, you can't
 apply further `JSONB` operators to the result of the `->>` operator. These operators can either have
 a string (for keys in a json object) or integer (for array indices in a json array) as a parameter.
@@ -79,13 +78,13 @@ ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```sql
 INSERT INTO store.books (id, details) VALUES
   (1, '{ "name": "Macbeth", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1623, "editors": ["John", "Elizabeth", "Jeff"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (2, '{ "name": "Hamlet", "author": { "first_name": "William", "last_name": "Shakespeare" }, "year": 1603, "editors": ["Lysa", "Mark", "Robert"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (3, '{ "name": "Oliver Twist", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1838, "genre": "novel", "editors": ["Mark", "Tony", "Britney"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (4, '{ "name": "Great Expectations", "author": { "first_name": "Charles", "last_name": "Dickens" }, "year": 1950, "genre": "novel", "editors": ["Robert", "John", "Melisa"] }');
-INSERT INTO store.books (id, details) VALUES 
+INSERT INTO store.books (id, details) VALUES
   (5, '{ "name": "A Brief History of Time", "author": { "first_name": "Stephen", "last_name": "Hawking" }, "year": 1988, "genre": "science", "editors": ["Melisa", "Mark", "John"] }');
 ```
 

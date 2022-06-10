@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/dcl_set_session_authorization/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

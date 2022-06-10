@@ -11,8 +11,7 @@ menu:
 aliases:
   - /preview/admin/yb-tserver
   - /preview/deploy/reference/configuration/yb-tserver
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.

@@ -8,8 +8,7 @@ menu:
     identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere can check universes for issues that may affect deployment. Should problems arise, YugabyteDB Anywhere can automatically issue alert notifications

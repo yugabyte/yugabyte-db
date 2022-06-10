@@ -5,14 +5,12 @@ linkTitle: Run the tests
 description: Run the tests
 image: /images/section_icons/index/quick_start.png
 headcontent: Run the tests.
-type: page
 menu:
   preview:
     identifier: run-unit-tests
     parent: core-database
     weight: 2913
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 

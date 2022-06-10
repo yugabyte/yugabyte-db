@@ -8,8 +8,7 @@ menu:
     identifier: variance-stddev
     parent: aggregate-function-syntax-semantics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes the [`variance()`](./#variance), [`var_pop()`](./#var-pop),  [`var_samp()`](./#var-samp), [`stddev()`](./#stddev), [`stddev_pop()`](./#stddev-pop), and [`stddev_samp()`](./#stddev-samp) aggregate functions. They provide a confidence measure for the computed arithmetic mean of a set of values.
@@ -48,7 +47,7 @@ select to_char(v, '999.99') as v from t order by v;
 This is the the result:
 
 ```
-    v    
+    v
 ---------
    99.95
    99.96
@@ -140,7 +139,7 @@ Each one of the "confidence measure" aggregate functions has the same signature:
 
 ```
 input value:       smallint, int, bigint, numeric, double precision, real
-                   
+
 return value:      numeric, double precision
 ```
 
@@ -199,7 +198,7 @@ begin
 end;
 $body$;
 ```
-Of course, the larger is the value that you choose for _"no_of_rows"_, the closer will be the values returned by the "sample" variants of the confidence measures to the values returned by the "population" variants. 
+Of course, the larger is the value that you choose for _"no_of_rows"_, the closer will be the values returned by the "sample" variants of the confidence measures to the values returned by the "population" variants.
 
 Because the demonstration (for convenience) uses a table with a single `double precision` column, _"v"_,  this must be the primary key. It's just possible that `normal_rand()` will create some duplicate values. However, this is so very rare that it was never seen while the script was repeated, many times, during the development of this code example. If `insert into t(v)` does fail because of this, just repeat the script by hand.
 
@@ -224,10 +223,7 @@ from a;
 Because of the pseudorandom nature of `normal_rand()`, the values produced will change from run to run. Here are some typical values:
 
 ```
-  avg   | stddev_samp | stddev_pop  | stddev_samp/stddev_pop 
+  avg   | stddev_samp | stddev_pop  | stddev_samp/stddev_pop
 --------+-------------+-------------+------------------------
   0.138 |   49.880052 |   49.879802 |   1.000005
 ```
-
-
-

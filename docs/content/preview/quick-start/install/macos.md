@@ -12,9 +12,7 @@ menu:
     name: 1. Install YugabyteDB
     identifier: install-1-macos
     weight: 110
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

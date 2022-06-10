@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-each
     parent: json-functions-operators
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a row set with columns _"key"_ (as a SQL `text`) and _"value"_ (as a SQL `jsonb`) from a JSON _object_.
@@ -32,7 +31,7 @@ declare
     '{"a": 17, "b": "dog", "c": true, "d": {"a": 17, "b": "cat"}}';
 
   k_v_pairs t[] := null;
-  expected_k_v_pairs constant t[] := 
+  expected_k_v_pairs constant t[] :=
     array[
       ('a', '17'::jsonb),
       ('b', '"dog"'::jsonb),

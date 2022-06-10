@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/expire
   - /preview/api/yedis/expire
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

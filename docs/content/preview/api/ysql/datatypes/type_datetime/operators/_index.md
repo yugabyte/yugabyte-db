@@ -9,8 +9,7 @@ menu:
     identifier: date-time-operators
     parent: api-ysql-datatypes-datetime
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Each of the comparison operators, `<`, `<=`, `=`, `>=`, `>`, and `<>`, each of the arithmetic operators, `+`, `-`, `*`, and `/`, and, of course, the `::` typecast operator has one or several overloads whose two operands are among the _date_, _time_, plain _timestamp_, _timestamptz_, and _interval_ data types. The [parent section](../../type_datetime/) explains why _timetz_ is not covered in this overall _date-time_ section. This is why there are _five_ interesting _date-time_ data types.

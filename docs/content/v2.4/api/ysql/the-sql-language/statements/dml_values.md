@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: dml_values
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -53,7 +52,7 @@ values ('dog'::text);
 This is the result:
 
 ```
- column1 
+ column1
 ---------
  dog
 ```
@@ -68,7 +67,7 @@ values
 This is the result:
 
 ```
- column1 |       column2       | column3 
+ column1 |       column2       | column3
 ---------+---------------------+---------
        1 | 2019-06-25 12:05:30 | dog
        2 | 2020-07-30 13:10:45 | cat
@@ -117,7 +116,7 @@ select chr(v) as c from (
 This is the result:
 
 ```
- c 
+ c
 ---
  a
  b
@@ -137,14 +136,9 @@ select chr(v) as c from (
 This is the result:
 
 ```
- c 
+ c
 ---
  d
  o
  g
 ```
-
-
-
-
-

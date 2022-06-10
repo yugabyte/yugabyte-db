@@ -8,8 +8,7 @@ menu:
     identifier: cr-do-cume-dist
     parent: analyzing-a-normal-distribution
     weight: 130
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_do_cume_dist.sql`.
 ```plpgsql

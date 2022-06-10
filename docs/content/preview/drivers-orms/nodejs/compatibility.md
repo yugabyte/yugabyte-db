@@ -9,8 +9,7 @@ menu:
     identifier: nodejs-compatibility
     parent: nodejs-drivers
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## node-postres driver compatibility matrix

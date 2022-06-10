@@ -8,8 +8,7 @@ menu:
     identifier: stress-test
     parent: traversing-general-graphs
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying the code in this section, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/). Make sure that you start by choosing the option that adds a tracing column and a trigger to the _"raw_paths"_ table. (You will later re-create the _"raw_paths"_ table without the tracing code before you do some timing tests.)

@@ -9,8 +9,7 @@ menu:
     identifier: miscellaneous
     parent: date-time-functions
     weight: 60
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## function isfinite() returns boolean

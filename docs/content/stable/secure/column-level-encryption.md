@@ -10,8 +10,7 @@ menu:
     identifier: column-level-encryption
     parent: secure
     weight: 745
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

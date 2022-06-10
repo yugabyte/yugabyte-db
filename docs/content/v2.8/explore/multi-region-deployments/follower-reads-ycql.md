@@ -8,8 +8,7 @@ menu:
     identifier: explore-multi-region-deployments-follower-reads-ycql
     parent: explore-multi-region-deployments
     weight: 285
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -18,12 +17,12 @@ showAsideToc: true
     <a href="../follower-reads-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>YSQL</a>
   </li>
-  
+
   <li >
     <a href="../follower-reads-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>YCQL</a>
   </li>
-  
+
 </ul>
 
 With YugabyteDB, you can use follower reads to lower read latencies since the DB now has less work to do at read time including serving the read from the tablet followers. Follower reads is similar to reading from a cache, which can give more read IOPS with low latency but might have slightly stale yet timeline-consistent data (that is, no out of order is possible). In this tutorial, you will update a single key-value over and over, and read it from the tablet leader. While that workload is running, you will start another workload to read from a follower and verify that you are able to read from a tablet follower.

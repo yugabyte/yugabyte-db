@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: array-properties
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 These functions return the various dimensional properties that jointly characterize an array. These three together completely specify the shape and size:

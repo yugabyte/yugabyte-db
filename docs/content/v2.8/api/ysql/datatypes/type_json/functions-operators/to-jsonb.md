@@ -7,8 +7,7 @@ menu:
   v2.8:
     identifier: to-jsonb
     parent: json-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Convert a single SQL value of any primitive or compound data type, that allows a JSON representation, to a semantically equivalent `jsonb` value.

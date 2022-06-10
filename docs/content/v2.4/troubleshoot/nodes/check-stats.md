@@ -7,8 +7,7 @@ menu:
   v2.4:
     parent: troubleshoot-nodes
     weight: 846
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Host resource usage
@@ -16,7 +15,7 @@ showAsideToc: true
 To check the CPU, memory, and disk usage on a Linux machine, you can run the following command.
 
 ```sh
-$ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem; 
+$ sudo echo -n "CPUs: ";cat /proc/cpuinfo | grep processor | wc -l; echo -n "Mem: ";free -h | grep Mem | tr -s " " | cut -d" " -f 2; echo -n "Disk: "; df -h / | grep -v Filesystem;
 ```
 
 ```

@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2234
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -47,4 +46,4 @@ $ PTTL yugakey
 
 ## See also
 
-[`expireat`](../expireat/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/) 
+[`expireat`](../expireat/), [`ttl`](../ttl/), [`pttl`](../pttl/), [`set`](../set/)

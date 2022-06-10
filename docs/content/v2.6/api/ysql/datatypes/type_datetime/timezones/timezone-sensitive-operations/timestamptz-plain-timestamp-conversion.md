@@ -8,8 +8,7 @@ menu:
     identifier: timestamptz-plain-timestamp-conversion
     parent: timezone-sensitive-operations
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The semantic rules for the conversion, in each direction, rest on a common-sense convention. Each conversion uses a value for the _UTC offset_. And this value is always known: _either_ because the _at time zone_ operator specifies it (either explicitly or implicitly via a timezone name); or from the session's current _TimeZone_ setting. This is explained in the section [Four ways to specify the _UTC offset_](../../ways-to-spec-offset/).
@@ -32,7 +31,7 @@ The demonstration uses the table function [_plain_timestamp_to_from_timestamp_tz
 
 - _Goal two:_ to use _assert_ statements to test the _assumed rules_ for the conversions in each direction, as empirical observations suggest they might be..
 
-- _Goal three_: to let you vizualize the rules for the conversions by outputting the _"from-to"_ value pairs for each conversion direction on a single line, doing the conversions at each of a set of representative timezones, each of which has a different _UTC offset_. (The visualization is enriched by showing the conversion outcomes first with _UTC_ as the session's current _TimeZone_ setting and then with, for each outcome, the timezone at which the conversions are done as the session's current _TimeZone_ setting. 
+- _Goal three_: to let you vizualize the rules for the conversions by outputting the _"from-to"_ value pairs for each conversion direction on a single line, doing the conversions at each of a set of representative timezones, each of which has a different _UTC offset_. (The visualization is enriched by showing the conversion outcomes first with _UTC_ as the session's current _TimeZone_ setting and then with, for each outcome, the timezone at which the conversions are done as the session's current _TimeZone_ setting.
 
 The demonstration that follows is designed like this:
 
@@ -102,7 +101,7 @@ The demonstration that follows is designed like this:
 
   - According to the choice for _at_utc:_ _either_ the timezone is set to _UTC;_ _or_ it is simply left at what the loop iterand, _z_, set it to. Then these values are formatted as a _text_ line using the _to_char()_ built-in function: _ts_plain_, _ts_with_tz_1_, _ts_with_tz_, and _ts_plain_1_. The row is labeled with the value of the loop iterand, _z_.
 
-- Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.) 
+- Finally, after the loop completes and before exiting, the session's _TimeZone_ setting is restored to the value that it had on entry to the function. (It's always good practice to do this for any settings that your programs need, temporarily, to change.)
 
 ## The demonstration
 
@@ -314,7 +313,7 @@ This is the result:
  ---------------------------------------------------------------------------------------------
  Displaying all results using UTC.
  ---------------------------------------------------------------------------------------------
- 
+
                                 From        To                    From               To
  [Timezone            Offset]   ts_plain    ts_with_tz            ts_with_tz         ts_plain
  ----------------------------   ---------   ----------------      ----------------   ---------
@@ -387,7 +386,7 @@ This is the new result:
  ---------------------------------------------------------------------------------------------
  Displaying each set of results using the timezone in which they were computed.
  ---------------------------------------------------------------------------------------------
- 
+
                                 From        To                    From               To
  [Timezone            Offset]   ts_plain    ts_with_tz            ts_with_tz         ts_plain
  ----------------------------   ---------   ----------------      ----------------   ---------
@@ -400,7 +399,7 @@ This is the new result:
  [Pacific/Kiritimati     +14]   Sat 10:15   Sat 10:15 +14:00      Sun 00:15 +14:00   Sun 00:15
 ```
 
-### The results at _"Displaying all results using UTC"_ 
+### The results at _"Displaying all results using UTC"_
 
 These show what is really happening at the level of the internal representation—albeit that you have to deal with a degree of circularity of logic to accept this claim. It's equivalent to looking at the numbers of seconds from _12:00_ on _1-Jan-1070_. (You could write your own formatter, using the _trunc()_ and _mod()_ built-in functions, to produce the same display.) Of course, only the display of _timestamptz_ values is sensitive to the current value of the session's _TimeZone_ setting.
 
@@ -431,4 +430,3 @@ You should aim to be comfortable with these three different ways to state the ru
 - _Third_ in terms of the _text_ display of the results using the timezones at which the conversions are done.
 
 Notice that the first way to state the rules is by far the most terse and precise—and therefore the most reliable. The other two ways are subject to the limitations of composing, and interpreting, tortuous natural language prose.
-

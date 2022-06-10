@@ -8,8 +8,7 @@ menu:
     identifier: create-universe-multi-region
     parent: create-deployments
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere allows you to create a universe spanning multiple geographic regions.

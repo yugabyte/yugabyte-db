@@ -8,8 +8,7 @@ menu:
     identifier: docdb-tablet-splitting
     parent: architecture-docdb-sharding
     weight: 1143
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview

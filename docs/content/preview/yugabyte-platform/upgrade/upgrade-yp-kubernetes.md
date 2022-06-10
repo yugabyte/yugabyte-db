@@ -8,8 +8,7 @@ menu:
     identifier: upgrade-yp-kubernetes
     parent: upgrade
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.

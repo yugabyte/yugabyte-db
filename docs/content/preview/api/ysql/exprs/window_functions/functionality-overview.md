@@ -8,8 +8,7 @@ menu:
     identifier: window-functions-functionality-overview
     parent: window-functions
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A good sense of the general functionality of window functions is given by examples that use [`row_number()`](../function-syntax-semantics/row-number-rank-dense-rank/#row-number), [`nth_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#nth-value), [`last_value()`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value), [`lag()`](../function-syntax-semantics/lag-lead/#lag), and [`lead()`](../function-syntax-semantics/lag-lead/#lead).

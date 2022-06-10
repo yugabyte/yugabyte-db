@@ -8,8 +8,7 @@ menu:
     identifier: prepare-on-prem-nodes
     parent: install-yugabyte-platform
     weight: 79
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 For on-premises deployments of YugabyteDB universes, you need to import nodes that can be managed by YugabyteDB Anywhere.

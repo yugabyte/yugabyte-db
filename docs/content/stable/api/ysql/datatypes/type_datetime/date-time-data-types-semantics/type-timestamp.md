@@ -8,8 +8,7 @@ menu:
     identifier: type-timestamp
     parent: date-time-data-types-semantics
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Understanding this section depends on understanding the 'Timezones' section." >}}
@@ -45,7 +44,7 @@ select
 This is the result:
 
 ```output
-  starting midnight  | just before ending midnight |   ending midnight   
+  starting midnight  | just before ending midnight |   ending midnight
 ---------------------+-----------------------------+---------------------
  2021-02-14 00:00:00 | 2021-02-14 23:59:59.999999  | 2021-02-15 00:00:00
 ```
@@ -60,7 +59,7 @@ select
 This is the result:
 
 ```output
- the interval 
+ the interval
 --------------
  1 day
 ```
@@ -167,7 +166,7 @@ execute qry_mtg;
 This is Rickie's result:
 
 ```output
- Mtg |                       When                        
+ Mtg |                       When
 -----+---------------------------------------------------
    1 | Tue 08-00 on 09-Mar-2021 PST [with offset -08:00]
    2 | Tue 08-00 on 16-Mar-2021 PDT [with offset -07:00]
@@ -185,7 +184,7 @@ execute qry_mtg;
 This is Vincent's result:
 
 ```output
- Mtg |                       When                        
+ Mtg |                       When
 -----+---------------------------------------------------
    1 | Tue 17-00 on 09-Mar-2021 CET [with offset +01:00]
    2 | Tue 16-00 on 16-Mar-2021 CET [with offset +01:00]
@@ -226,7 +225,7 @@ select
 This is the result:
 
 ```output
-         before         |         wierd          |         after          
+         before         |         wierd          |         after
 ------------------------+------------------------+------------------------
  2021-03-14 01:30:00-08 | 2021-03-14 03:30:00-07 | 2021-03-14 03:30:00-07
 ```
@@ -245,7 +244,7 @@ select
 This is the result:
 
 ```output
-      1st 1:30      |      2nd 1:30      
+      1st 1:30      |      2nd 1:30
 --------------------+--------------------
  01:30:00 PDT (-07) | 01:30:00 PST (-08)
 ```
@@ -269,7 +268,7 @@ select
 This is the result:
 
 ```output
- Ambiguous 
+ Ambiguous
 -----------
  09:30:00
 ```
@@ -286,7 +285,7 @@ select
 This is the result:
 
 ```output
- Before fallback | After fallback 
+ Before fallback | After fallback
 -----------------+----------------
  08:30:00 UTC    | 09:30:00 UTC
 ```
@@ -303,7 +302,7 @@ select
 This is the now result:
 
 ```output
- Before fallback | After fallback 
+ Before fallback | After fallback
 -----------------+----------------
  01:30:00 PDT    | 01:30:00 PST
 ```
@@ -321,15 +320,15 @@ order by utc_offset;
 This is the result:
 
 ```output
-         name         | abbrev | UTC offset 
+         name         | abbrev | UTC offset
 ----------------------+--------+------------
  Canada/Yukon         | PDT    | -07:00:00
  ...
  America/Los_Angeles  | PDT    | -07:00:00
  ...
  Canada/Pacific       | PDT    | -07:00:00
- 
- 
+
+
  Asia/Manila          | PST    |  08:00:00
 ```
 
@@ -537,10 +536,10 @@ select t from timestamptz_vs_plain_timestamp();
 This is the result:
 
 ```output
-Timezone          ts_plain    ts_with_tz      
+Timezone          ts_plain    ts_with_tz
 ---------------   ---------   ----------------
 UTC               Sat 11:00   Sat 11:00 +00:00
- 
+
 Etc/GMT+12        Sat 11:00   Fri 23:00 -12:00
 Etc/GMT+11        Sat 11:00   Sat 00:00 -11:00
 Etc/GMT+10        Sat 11:00   Sat 01:00 -10:00
@@ -576,7 +575,7 @@ The execution finishes without error, confirming that the four tested assertions
 - The _assert_ statements confirm that the _extract(epoch from timestamptz_value)_ result is unaffected by the session's _timeZone_ setting. This is, of course, what your intuition tells you to expect.
 - The output confirms that the display of a _timestamptz_ value (formatted as _text_) is sensitive to the session's _timeZone_ setting and that the _text_ display of a plain _timestamp_ value is not sensitive in this way.
 - The timezone-sensitive formatting of the displayed _timestamptz_ values lines up consistently with what the examples in the previous sections on this page (and on other pages in this overall _date-time_ section) show: informally (as was stated above) that _(10 + 1)_ and _(14 - 3)_ both represent the same value.
-- This is the careful statement of the rule, supported by the fact that all the _assert_ statements succeeded: 
+- This is the careful statement of the rule, supported by the fact that all the _assert_ statements succeeded:
 
   ```output
   [timestamptz-value] display ◄—

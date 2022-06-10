@@ -10,10 +10,8 @@ menu:
     identifier: java-drivers
     parent: drivers-orms
     weight: 540
-isTocNested: true
-showAsideToc: true
----
-The following projects can be used to implement Java applications using the YugabyteDB YSQL API.
+type: indexpage
+---The following projects can be used to implement Java applications using the YugabyteDB YSQL API.
 
 | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |

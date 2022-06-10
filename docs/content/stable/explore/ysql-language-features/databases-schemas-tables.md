@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-features-databases-schemas-tables
     parent: explore-ysql-language-features
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section covers basic topics such as the YSQL shell `ysqlsh`, databases, schemas and tables.
@@ -351,6 +350,3 @@ NOTICE:  00000: drop cascades to table myschema.company
 LOCATION:  reportDependentObjects, dependency.c:1004
 DROP SCHEMA
 ```
-
-
-

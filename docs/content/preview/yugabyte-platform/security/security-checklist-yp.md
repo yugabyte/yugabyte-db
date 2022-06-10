@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: security-checklist-yp
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can apply security measures to protect your YugabyteDB Anywhere and YugabyteDB universes.

@@ -2,13 +2,11 @@
 title: Using Liquibase with YugabyteDB
 linkTitle: Liquibase
 description: Using Liquibase with YugabyteDB
-section: INTEGRATIONS
 menu:
   preview:
     identifier: liquibase
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to migrate data using [Liquibase](https://www.liquibase.com/) with YugabyteDB.

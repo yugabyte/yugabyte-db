@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: client-drivers-yedis-nodejs
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Installation

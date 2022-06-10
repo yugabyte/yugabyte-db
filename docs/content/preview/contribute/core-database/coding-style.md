@@ -5,14 +5,12 @@ linkTitle: Coding style
 description: YugabyteDB coding style
 image: /images/section_icons/index/quick_start.png
 headcontent: YugabyteDB coding style
-type: page
 menu:
   preview:
     identifier: coding-style
     parent: core-database
     weight: 2914
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB is primarily written in C++ (the distributed storage and transactions layer and the YCQL query layer) and C (the YSQL layer based on PostgreSQL), with some parts of the build system and test suite written in Python, Java, and Bash. We also use [Protocol Buffers](https://developers.google.com/protocol-buffers) to define some data and network message formats.

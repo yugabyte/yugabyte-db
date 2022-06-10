@@ -8,8 +8,7 @@ menu:
     identifier: create-admin-user
     parent: configure-yugabyte-platform
     weight: 10
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 You can create an admin account via `http://<yugabytedbanywhere-host-ip>/register`, replacing *yugabytedbanywhere-host-ip* with the IP address hosting your YugabyteDB Anywhere instance, as per the following example:

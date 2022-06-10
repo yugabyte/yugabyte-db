@@ -9,8 +9,7 @@ menu:
     identifier: qs-connect
     parent: cloud-quickstart
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 After [creating a free cluster](../qs-add/), the easiest way to connect to it is to use Cloud Shell.

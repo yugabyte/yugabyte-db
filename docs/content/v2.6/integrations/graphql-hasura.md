@@ -7,8 +7,7 @@ menu:
     identifier: graphql-hasura
     parent: integrations
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to power your GraphQL applications with a distributed SQL database.

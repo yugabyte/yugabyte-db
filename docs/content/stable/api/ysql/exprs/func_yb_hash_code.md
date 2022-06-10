@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-exprs-yb_hash_code
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -8,8 +8,7 @@ menu:
     identifier: acid-transactions-1-ycql
     parent: learn
     weight: 566
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

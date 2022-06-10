@@ -8,8 +8,7 @@ menu:
   stable:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;[Synopsis](./#synopsis)<br>

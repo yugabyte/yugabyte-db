@@ -9,8 +9,7 @@ menu:
     identifier: extended-timezone-names
     parent: timezones
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

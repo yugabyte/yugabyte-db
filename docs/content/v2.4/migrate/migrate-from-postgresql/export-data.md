@@ -8,8 +8,7 @@ menu:
     identifier: migrate-postgresql-export
     parent: migrate-from-postgresql
     weight: 750
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is using the CSV format.
@@ -66,5 +65,3 @@ COPY (
 
 ...
 ```
-
-

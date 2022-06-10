@@ -9,8 +9,7 @@ menu:
     identifier: go-compatibility
     parent: go-drivers
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## PGX driver compatibility matrix

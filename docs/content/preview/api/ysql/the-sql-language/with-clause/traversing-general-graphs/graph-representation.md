@@ -8,8 +8,7 @@ menu:
     identifier: graph-representation
     parent: traversing-general-graphs
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Representing a graph in a SQL database

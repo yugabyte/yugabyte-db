@@ -8,8 +8,7 @@ menu:
     identifier: aggregate-functions-invocation-syntax-semantics
     parent: aggregate-functions
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Syntax
@@ -456,6 +455,3 @@ from a
 where count > 4
 order by class;
 ```
-
-
-

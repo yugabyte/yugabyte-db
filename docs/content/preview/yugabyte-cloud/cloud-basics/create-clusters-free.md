@@ -9,8 +9,7 @@ menu:
     identifier: create-clusters-free
     parent: cloud-basics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use a free cluster to get started with YugabyteDB. Although not suitable for production workloads, a free cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.

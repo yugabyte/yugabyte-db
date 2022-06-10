@@ -10,8 +10,7 @@ menu:
     identifier: postgres-node-driver
     parent: nodejs-drivers
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -111,7 +110,7 @@ async function createTableAndInsertData(client){
                 }).catch((err) => {
                     console.log(err.stack);
                 })
-    
+
     var insert_emp1 = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')"
     await client.query(insert_emp1).then(() => {
         console.log("Inserted Employee 1");

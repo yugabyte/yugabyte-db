@@ -8,8 +8,7 @@ menu:
     identifier: directed-cyclic-graph
     parent: traversing-general-graphs
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying the code in this section, make sure that you have created the _"edges"_ table (see [`cr-edges.sql`](../graph-representation/#cr-edges-sql)) and installed all the code shown in the section [Common code for traversing all kinds of graph](../common-code/).

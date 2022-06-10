@@ -11,8 +11,7 @@ menu:
 aliases:
    - /preview/explore/ysql-language-features/indexes-1/
    - /preview/explore/indexes-constraints/indexes-1/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

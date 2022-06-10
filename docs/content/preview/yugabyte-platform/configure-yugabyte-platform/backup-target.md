@@ -8,8 +8,7 @@ menu:
     identifier: backup-target
     parent: configure-yugabyte-platform
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can configure a variety of backup targets for your YugabyteDB universe data.

@@ -8,8 +8,7 @@ menu:
     identifier: do-compare-dp-results
     parent: analyzing-a-normal-distribution
     weight: 160
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_compare_dp_results.sql`.
 ```plpgsql

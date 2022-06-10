@@ -8,8 +8,7 @@ menu:
     identifier: migration-overview
     parent: migrate
     weight: 720
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page describes the general migration process from other RDBMS to YugabyteDB (YSQL API).

@@ -11,8 +11,7 @@ menu:
     identifier: iot-spark-kafka
     parent: realworld-apps
     weight: 583
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview

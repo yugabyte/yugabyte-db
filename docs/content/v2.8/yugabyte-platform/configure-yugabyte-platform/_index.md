@@ -7,9 +7,11 @@ image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
 menu:
   v2.8:
+    parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     parent: yugabyte-platform
     weight: 642
+type: indexpage
 ---
 
 <div class="row">

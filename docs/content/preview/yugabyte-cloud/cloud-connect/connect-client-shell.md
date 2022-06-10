@@ -9,8 +9,7 @@ menu:
     identifier: connect-client-shell
     parent: cloud-connect
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.

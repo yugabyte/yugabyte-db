@@ -8,8 +8,7 @@ menu:
     identifier: read-path
     parent: core-functions
     weight: 1188
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 Let us take the case of a single key read.

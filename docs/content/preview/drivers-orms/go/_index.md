@@ -10,10 +10,8 @@ menu:
     identifier: go-drivers
     parent: drivers-orms
     weight: 550
-isTocNested: true
-showAsideToc: true
----
-The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
+type: indexpage
+---The following projects can be used to implement Golang applications using the YugabyteDB YSQL API.
 
 | Project (* Recommended) | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |

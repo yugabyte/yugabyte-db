@@ -7,8 +7,7 @@ menu:
   preview:
     parent: troubleshoot-nodes
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Skipping add replicas

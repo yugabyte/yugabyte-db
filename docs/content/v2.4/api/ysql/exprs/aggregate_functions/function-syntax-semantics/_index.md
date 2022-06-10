@@ -9,8 +9,7 @@ menu:
     identifier: aggregate-function-syntax-semantics
     parent: aggregate-functions
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The aggregate functions are categorized into four classes:
@@ -19,7 +18,7 @@ The aggregate functions are categorized into four classes:
 
 - [statistical aggregate functions](#statistical-aggregate-functions)
 
-- [_within-group ordered-set_ aggregate functions](#within-group-ordered-set-aggregate-functions) 
+- [_within-group ordered-set_ aggregate functions](#within-group-ordered-set-aggregate-functions)
 
 - [_within-group hypothetical-set_ aggregate functions](#within-group-hypothetical-set-aggregate-functions)
 
@@ -106,7 +105,3 @@ These functions as invoked, as within-group hypothetical-set aggregate functions
 | [`dense_rank()`](./rank-dense-rank-percent-rank-cume-dist/#dense-rank) | Returns the integer ordinal rank of the distinct value of each row according to what the window `ORDER` BY clause specifies. The series of values starts with 1 and, even when the window contains ties, the series is dense. See the account of [dense_rank()](../../window_functions/function-syntax-semantics/row-number-rank-dense-rank/#dense-rank) in the [Window functions](../../window_functions/) section for more information.|
 | [`percent_rank()`](./rank-dense-rank-percent-rank-cume-dist/#percent-rank) | Returns the percentile rank of each row within the window, with respect to the argument of the window_definition's window `ORDER BY` clause. See the account of [percent_rank()](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) in the [Window functions](../../window_functions/) section for more information. |
 | [`cume_dist()`](./rank-dense-rank-percent-rank-cume-dist/#cume-dist) | Returns a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. See the account of [cume_dist()](../../window_functions/function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) in the [Window functions](../../window_functions/) section for more information. |
-
-
-
-

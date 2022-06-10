@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/hexists
   - /preview/api/yedis/hexists
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

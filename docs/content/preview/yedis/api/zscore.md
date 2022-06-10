@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/zscore
   - /preview/api/yedis/zscore
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

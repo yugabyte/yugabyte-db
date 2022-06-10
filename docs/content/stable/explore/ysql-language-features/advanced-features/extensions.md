@@ -9,8 +9,7 @@ menu:
     identifier: advanced-features-extensions
     parent: advanced-features
     weight: 245
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB comes bundled with a number of [PostgreSQL extensions](/preview/api/ysql/extensions/#pre-bundled-extensions) that are tested to work with YSQL. We're incrementally developing support for as many extensions as possible. (Since YugabyteDB’s underlying storage architecture is not the same as PostgreSQL, many PostgreSQL extensions, particularly those that interact with the storage layer, won't work as-is on YugabyteDB.)

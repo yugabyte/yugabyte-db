@@ -8,8 +8,7 @@ menu:
     identifier: synthetic-data
     parent: bacon-numbers
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying the code in this section, make sure that you have created the supporting infrastructure:
@@ -71,7 +70,7 @@ begin
     ('Twelfth Night');
 
   insert into cast_members(actor, movie) values
- 
+
     ( 'Alfie'  ,  'Hamlet'                 ),
     ( 'Alfie'  ,  'Macbeth'                ),
     ( 'Alfie'  ,  'Measure for Measure'    ),
@@ -129,7 +128,7 @@ select distinct actor from v order by 1;
 This is the result:
 
 ```
- actor 
+ actor
 -------
  Alfie
  Chloe
@@ -150,7 +149,7 @@ order by 1;
 This is the result:
 
 ```
-         movie          
+         movie
 ------------------------
  As You Like It
  Coriolanus
@@ -184,7 +183,7 @@ The same crude technique to make the paths more readily human-readable is used h
 You see the expected nine edges:
 
 ```
- node_1 | node_2 |                       movies                       
+ node_1 | node_2 |                       movies
 --------+--------+----------------------------------------------------
  Alfie  | Chloe  | Hamlet
  Alfie  | Helen  | Hamlet > Measure for Measure > Taming of the Shrew
@@ -212,7 +211,7 @@ order by 2, 1;
 Again, you see the expected nine edges:
 
 ```
- node_1 | node_2 |                       movies                       
+ node_1 | node_2 |                       movies
 --------+--------+----------------------------------------------------
  Chloe  | Alfie  | Hamlet
  Helen  | Alfie  | Hamlet > Measure for Measure > Taming of the Shrew
@@ -243,7 +242,7 @@ select count(*) as "total number of paths" from raw_paths;
 This is the result.
 
 ```
- total number of paths 
+ total number of paths
 -----------------------
                     44
 ```
@@ -260,7 +259,7 @@ order by 1;
 This is the result:
 
 ```
- repeat_nr | number_of_paths 
+ repeat_nr | number_of_paths
 -----------+-----------------
          0 |               2
          1 |               4

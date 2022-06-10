@@ -10,8 +10,7 @@ menu:
     identifier: key-value-workload-1-ycql
     parent: benchmark
     weight: 6
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -60,7 +59,7 @@ For this benchmark, you will set up a three-node YugabyteDB cluster with a repli
 
 ### Benchmark tool
 
-We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-sample-apps) to perform this benchmark. 
+We will use the [YugabyteDB Workload Generator](https://github.com/yugabyte/yb-sample-apps) to perform this benchmark.
 
 To get the tool (``yb-sample-apps.jar`), run the following command.
 
@@ -79,7 +78,7 @@ ENDPOINTS="X.X.X.X:9042,X.X.X.X:9042,X.X.X.X:9042"
 
 ## Run the write-heavy key-value workload
 
-Run the key-value workload with higher number of write threads (representing write-heavy workload).  
+Run the key-value workload with higher number of write threads (representing write-heavy workload).
 
 Load 1B keys of 256 bytes each across 256 writer threads
 
@@ -129,7 +128,7 @@ CPU (User + Sys) | 60%
 
 ## Batch write-heavy KV workload
 
-Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).  
+Run the key-value workload in batch mode and higher number of write threads (representing batched, write-heavy workload).
 
 Load 1B keys of 256 bytes each across 64 writer threads in batches of 25 each.
 

@@ -7,11 +7,11 @@ image: /images/section_icons/quick_start/install.png
 headcontent: Install Yugabyte Platform to begin creating and managing deployments.
 menu:
   v2.6:
+    parent: yugabytedb-anywhere
     parent: yugabyte-platform
     identifier: install-yugabyte-platform
 weight: 641
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 <div class="row">

@@ -13,8 +13,7 @@ menu:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-1-ysql
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -45,7 +44,7 @@ By default, the list displays all the backups generated for the universe regardl
 
 To view detailed information about an existing backup, click on it to open **Backup Details**.
 
-The **Backups** page allows you to create new backups that start immediately, as follows: 
+The **Backups** page allows you to create new backups that start immediately, as follows:
 
 - Click **Backup now** to open the dialog shown in the following illustration:<br><br>
 

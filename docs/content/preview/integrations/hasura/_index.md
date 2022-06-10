@@ -5,13 +5,12 @@ linkTitle: Hasura
 description: Using Hasura with YugabyteDB
 headcontent: Using Hasura with YugabyteDB
 image: /images/develop/graphql/hasura/hasura.png
-section: INTEGRATIONS
 menu:
   preview:
     identifier: hasura
     weight: 571
+type: indexpage
 ---
-
 
 <div class="row">
 

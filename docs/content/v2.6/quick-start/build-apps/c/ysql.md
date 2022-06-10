@@ -8,8 +8,7 @@ menu:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -34,7 +33,7 @@ The tutorial assumes that you have:
 ## Install the libpq C driver
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
-  
+
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
@@ -154,5 +153,5 @@ You should see the following output:
 ```output
 Created table employee
 Inserted data (1, 'John', 35, 'C')
-Query returned: John 35 C 
+Query returned: John 35 C
 ```

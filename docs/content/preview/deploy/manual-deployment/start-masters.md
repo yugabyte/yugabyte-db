@@ -8,8 +8,7 @@ menu:
     identifier: deploy-manual-deployment-start-masters
     parent: deploy-manual-deployment
     weight: 613
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="Note" >}}

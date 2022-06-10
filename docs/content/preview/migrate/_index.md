@@ -5,14 +5,13 @@ linkTitle: Migrate
 description: Migrate existing PostgreSQL and other RDBMS applications to YugabyteDB.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Migrate your PostgreSQL and other existing applications to YugabyteDB.
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: migrate
     weight: 625
 
+type: indexpage
 ---
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

@@ -7,9 +7,6 @@ menu:
     parent: spring-boot
     identifier: spring-boot-eks
     weight: 20
-type: page
-isTocNested: true
-showAsideToc: true
 -->
 
 Deploy a Spring application connected to YugabyteDB Managed on Amazon Elastic Kubernetes Service (EKS) by following the steps below.

@@ -8,9 +8,6 @@ menu:
     parent: spring-boot
     identifier: spring-boot-gke
     weight: 30
-type: page
-isTocNested: true
-showAsideToc: true
 -->
 
 Deploy a Spring application connected to YugabyteDB Managed on Google Kubernetes Engine (GKE) by following the steps below.

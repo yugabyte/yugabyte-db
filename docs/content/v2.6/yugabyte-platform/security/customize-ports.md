@@ -8,6 +8,7 @@ menu:
     parent: security
     identifier: customize-ports
     weight: 15
+type: docs
 ---
 
 Follow the steps below to customize your YugabyteDB ports for security purposes.

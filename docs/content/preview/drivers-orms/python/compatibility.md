@@ -8,8 +8,7 @@ menu:
     identifier: python-compatibility
     parent: python-drivers
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Yugabyte Psycopg2 compatibility matrix

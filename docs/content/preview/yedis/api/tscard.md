@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/tscard
   - /preview/api/yedis/tscard
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

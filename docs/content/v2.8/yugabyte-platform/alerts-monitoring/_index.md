@@ -7,9 +7,11 @@ image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform for alerts and monitoring of YugabyteDB universe data.
 menu:
   v2.8:
+    parent: yugabytedb-anywhere
     parent: yugabyte-platform
     identifier: alerts-monitoring
 weight: 647
+type: indexpage
 ---
 
 <div class="row">

@@ -10,8 +10,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/txn_set_constraints/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

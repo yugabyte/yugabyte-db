@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: dcl_reassign_owned
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

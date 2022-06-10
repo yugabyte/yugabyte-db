@@ -8,8 +8,7 @@ menu:
     identifier: manage-upgrade-deployment
     parent: manage
     weight: 706
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The basic flow is to upgrade each YB-Master and YB-TServer one at a time, verifying after each step from the yb-master Admin UI that the cluster is healthy and the upgraded process is back online.
@@ -24,12 +23,12 @@ Your data/log/conf directories are generally stored in a separate location which
 
 ## Install new version of YugabyteDB
 
-First you need to install the new version of YugabyteDB in a new location. 
+First you need to install the new version of YugabyteDB in a new location.
 For CentOS, this would be something like:
 
 ```
 1. wget https://downloads.yugabyte.com/yugabyte-$VER.tar.gz
-2. tar xf yugabyte-$VER.tar.gz -C /home/yugabyte/softwareyb-$VER/ 
+2. tar xf yugabyte-$VER.tar.gz -C /home/yugabyte/softwareyb-$VER/
 3. cd /home/yugabyte/softwareyb-$VER/
 4. ./bin/post_install.sh
 ```
@@ -37,7 +36,7 @@ For CentOS, this would be something like:
 
 {{< note title="Note" >}}
 
-If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading. Follow the steps in [Install and use extensions](../../api/ysql/extensions). 
+If you are using PostgreSQL extensions, make sure to install the extensions in the new YugabyteDB version before upgrading. Follow the steps in [Install and use extensions](../../api/ysql/extensions).
 
 {{< /note >}}
 
@@ -45,7 +44,7 @@ If you are using PostgreSQL extensions, make sure to install the extensions in t
 
 ```
 1. pkill yb-master  (i.e. stop the older version of the yb-master process)
-2. make sure we're on the dir of the new version (cd /home/yugabyte/softwareyb-$VER/) 
+2. make sure we're on the dir of the new version (cd /home/yugabyte/softwareyb-$VER/)
 3. start  (the newer version of) the yb-master process
 4. verify in http://<any-yb-master>:7000/ that all masters are alive
 5. pause ~60 secs before upgrading next yb-master
@@ -55,7 +54,7 @@ If you are using PostgreSQL extensions, make sure to install the extensions in t
 
 ```
 1. pkill yb-tserver (i.e. stop the older version of the yb-tserver process)
-2. make sure we're on the dir of the new version (cd /home/yugabyte/softwareyb-$VER/) 
+2. make sure we're on the dir of the new version (cd /home/yugabyte/softwareyb-$VER/)
 3. start  (the newer version of) yb-tserver process
 4. verify in http://<any-yb-master>:7000/tablet-servers to see if the new YB-TServer is alive and heart beating
 5. pause ~60 secs before upgrading next YB-TServer

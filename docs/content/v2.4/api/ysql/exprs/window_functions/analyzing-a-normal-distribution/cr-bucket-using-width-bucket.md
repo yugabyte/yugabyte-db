@@ -8,8 +8,7 @@ menu:
     identifier: cr-bucket-using-width-bucket
     parent: analyzing-a-normal-distribution
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_bucket_using_width_bucket.sql`.
 ```plpgsql

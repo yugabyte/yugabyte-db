@@ -7,15 +7,12 @@ image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/
   - /preview/releases/whats-new/
-section: RELEASES
 menu:
   preview:
     identifier: releases
     weight: 1060
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 {{< tip title="Versioning" >}}
 As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and YugabyteDB Anywhere releases. For details, see [Release versioning](versioning/).
 {{< /tip >}}

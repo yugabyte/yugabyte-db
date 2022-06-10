@@ -11,9 +11,7 @@ menu:
     identifier: export-import-data-ycql
     parent: backup-restore
     weight: 703
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

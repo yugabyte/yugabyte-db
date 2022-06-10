@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: dml_delete
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -49,7 +48,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 - While the `WHERE` clause allows a wide range of operators, the exact conditions used in the `WHERE` clause have significant performance considerations (especially for large datasets). For the best performance, use a `WHERE` clause that provides values for all columns in `PRIMARY KEY` or `INDEX KEY`.
 
-### *delete* 
+### *delete*
 
 #### WITH [ RECURSIVE ] *with_query* [ , ... ] DELETE FROM [ ONLY ] *table_name* [ * ] [ [ AS ] *alias* ] [ WHERE *condition* | WHERE CURRENT OF *cursor_name* ] [ [*returning_clause*] (#returning-clause) ]
 

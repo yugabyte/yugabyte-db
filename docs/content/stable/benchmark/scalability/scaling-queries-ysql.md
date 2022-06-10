@@ -8,8 +8,7 @@ menu:
     identifier: scaling-queries-1-ysql
     parent: scalability
     weight: 11
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 
@@ -178,4 +177,3 @@ To those new to the Raft consensus protocol, the simplest explanation is that it
 ## Next steps
 
 You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
-

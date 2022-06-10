@@ -10,8 +10,7 @@ menu:
     identifier: explore-security
     parent: explore
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Like PostgreSQL, YugabyteDB provides security in multiple ways:
@@ -27,7 +26,7 @@ Like PostgreSQL, YugabyteDB provides security in multiple ways:
 * **Network access restriction** - limit connections to the database using RPC binding
 
 ## Authentication
- 
+
 Using client authentication, you can define how the database server establishes the identity of the client, and whether the client application (or the user who runs the client application) is allowed to connect with the database user name that was requested. YugabyteDB offers a number of different client authentication methods, all of which can be configured using the YB-TServer `--ysql_hba_conf` flag.
 
 The methods include the following:
@@ -52,7 +51,7 @@ Read more about [how to enable authentication in YugabyteDB](../../../secure/aut
 
 ## Authorization
 
-YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles. 
+YugabyteDB provides role-based access control (RBAC), consisting of a collection of privileges on resources given to roles.
 
 Read more about [authorization in YugabyteDB](../../../secure/authorization).
 
@@ -193,7 +192,7 @@ Object logging logs statements that affect a particular relation, and is intende
 
 YugabyteDB implements object-level audit logging by reusing the PostgreSQL role system. The `pgaudit.role` setting defines the role that will be used for audit logging. A relation (such as `TABLE` or `VIEW`) will be audit logged when the audit role has permissions for the command executed or inherits the permissions from another role. This allows you to effectively have multiple audit roles even though there is a single master role in any context.
 
-For example, to enable object logging for the `auditor` role: 
+For example, to enable object logging for the `auditor` role:
 
 ```sql
 yugabyte=# set pgaudit.role = 'auditor';

@@ -8,8 +8,7 @@ menu:
     identifier: row-number-rank-dense-rank
     parent: window-function-syntax-semantics
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 These three window functions bear a strong family resemblance to each other. If the values that the expression that the window `ORDER BY` clause specifies are unique within a [_window_](../../invocation-syntax-semantics/#the-window-definition-rule), then all three functions return the same value for each row. They return different values only when the ordering results in ties. The fact that this family has three members reflects the three possible ways to handle ties.
 
@@ -65,7 +64,7 @@ order by 1, 2;
 ```
 Here is a typical result. The exact ordering or the `row_number()` values within tie groups changes (exactly according to how the table is populated for maximum pedagogic effect) each time you re-create table _"t2"_. To make it easier to see the pattern, several blank lines have been manually inserted here between each successive set of rows with the same value for _"class"_. And in the second set, which has ties, one blank line has been inserted between each tie group.
 ```
- class | k  | score | row_number | rank | dense_rank 
+ class | k  | score | row_number | rank | dense_rank
 -------+----+-------+------------+------+------------
      1 |  1 |     1 |          1 |    1 |          1
      1 |  2 |     2 |          2 |    2 |          2
@@ -76,22 +75,22 @@ Here is a typical result. The exact ordering or the `row_number()` values within
      1 |  7 |     7 |          7 |    7 |          7
      1 |  8 |     8 |          8 |    8 |          8
      1 |  9 |     9 |          9 |    9 |          9
-     
-     
-     
+
+
+
      2 | 10 |     2 |          2 |    1 |          1
      2 | 11 |     2 |          3 |    1 |          1
      2 | 12 |     2 |          1 |    1 |          1
-     
+
      2 | 13 |     4 |          4 |    4 |          2
-     
+
      2 | 14 |     5 |          5 |    5 |          3
-     
+
      2 | 15 |     6 |          6 |    6 |          4
-     
+
      2 | 16 |     7 |          7 |    7 |          5
      2 | 17 |     7 |          8 |    7 |          5
-     
+
      2 | 18 |     9 |          9 |    9 |          6
 ```
 

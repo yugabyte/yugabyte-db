@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2160
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

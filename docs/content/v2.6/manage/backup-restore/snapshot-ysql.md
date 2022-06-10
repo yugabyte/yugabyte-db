@@ -9,8 +9,7 @@ menu:
     identifier: snapshots-1-ysql
     parent: backup-restore
     weight: 705
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

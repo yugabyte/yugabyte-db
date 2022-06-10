@@ -8,8 +8,7 @@ menu:
     identifier: row-number-rank-dense-rank
     parent: window-function-syntax-semantics
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 These three window functions bear a strong family resemblance to each other. If the values that the expression that the window `ORDER BY` clause specifies are unique within a [_window_](../../invocation-syntax-semantics/#the-window-definition-rule), then all three functions return the same value for each row. They return different values only when the ordering results in ties. The fact that this family has three members reflects the three possible ways to handle ties.
 

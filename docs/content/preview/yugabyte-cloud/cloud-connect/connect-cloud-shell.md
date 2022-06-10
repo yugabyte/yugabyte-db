@@ -9,8 +9,7 @@ menu:
     identifier: connect-cloud-shell
     parent: cloud-connect
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use any browser to connect to YugabyteDB Managed by using Cloud Shell. Cloud Shell doesn't require a CA certificate or any special network access configured.

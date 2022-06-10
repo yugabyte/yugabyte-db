@@ -7,13 +7,12 @@ menu:
   preview:
     identifier: ddl_alter_foreign_table
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
-Use the `ALTER FOREIGN TABLE` command to alter a foreign table. 
+Use the `ALTER FOREIGN TABLE` command to alter a foreign table.
 
 ## Syntax
 
@@ -43,7 +42,7 @@ Use the `ALTER FOREIGN TABLE` command to alter a foreign table.
 
 ## Semantics
 
-Alter the foreign table named *table_name*. 
+Alter the foreign table named *table_name*.
 
 ### Add a column
 The `ADD COLUMN` clause can be used to add a new column to the foreign table. There's no effect on the underlying storage: the `ADD COLUMN` action just indicates that the newly added column can be accessed through the foreign table.

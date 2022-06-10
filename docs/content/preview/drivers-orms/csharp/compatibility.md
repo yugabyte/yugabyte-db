@@ -9,8 +9,7 @@ menu:
     identifier: csharp-compatibility
     parent: csharp-drivers
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Npgsql driver compatibility matrix

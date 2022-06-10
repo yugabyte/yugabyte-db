@@ -9,9 +9,7 @@ menu:
     name: Python
     identifier: python-1
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -8,8 +8,7 @@ menu:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte’s distributed architecture enables database clusters (also referred to as universes) to have extremely high availability.

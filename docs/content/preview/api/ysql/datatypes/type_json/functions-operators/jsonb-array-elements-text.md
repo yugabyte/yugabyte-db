@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-array-elements-text
     parent: json-functions-operators
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Transform the JSON values of JSON _array_ into a SQL table of (i.e., `SETOF`) `text` values.

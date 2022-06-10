@@ -3,15 +3,13 @@ title: FAQs about YugabyteDB Anywhere
 headerTitle: YugabyteDB Anywhere FAQ
 linkTitle: YugabyteDB Anywhere FAQ
 description: Answers to common questions about YugabyteDB Anywhere.
-section: FAQ
 aliases:
   - /preview/faq/enterprise-edition/
 menu:
   preview:
     identifier: faq-yugabyte-platform
     weight: 2750
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 ## What is YugabyteDB Anywhere?

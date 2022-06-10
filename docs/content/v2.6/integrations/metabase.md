@@ -7,17 +7,16 @@ menu:
     identifier: metabase
     parent: integrations
     weight: 576
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-[Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool. 
+[Metabase](https://www.metabase.com/) is a Business Intelligence (BI) tool.
 
 This document shows how to set up Metabase to integrate with YugabyteDB's PostgreSQL-compatible API.
 
 ## 1. Start local cluster
 
-Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL-compatible YSQL API as [documented](../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL-compatible service running on `localhost:5433`. 
+Follow [Quick Start](../../quick-start/) instructions to run a local YugabyteDB cluster. Test YugabyteDB's PostgreSQL-compatible YSQL API as [documented](../../quick-start/test-postgresql/) so that you can confirm that you have a PostgresSQL-compatible service running on `localhost:5433`.
 
 ## 2. Load data
 
@@ -109,4 +108,3 @@ Detailed steps on how to use Metabase are available in the [Metabase documentati
 - Use built-in functions such as SUM, MIN, MAX, and so on
 
 Click **Ask a Question > Custom Query**. Choose the database you just set up, and enter the SQL queries noted in the [Retail Analytics](../../develop/realworld-apps/retail-analytics/) section.
-

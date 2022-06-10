@@ -1,6 +1,6 @@
 ---
 title: Four ways to specify the UTC offset [YSQL]
-headerTitle: Four ways to specify the UTC offset  
+headerTitle: Four ways to specify the UTC offset
 linkTitle: four ways to specify offset
 description: Explains the four ways to specify the UTC offset. [YSQL]
 image: /images/section_icons/api/subsection.png
@@ -9,8 +9,7 @@ menu:
     identifier: ways-to-spec-offset
     parent: timezones
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The  _UTC offset_ is, ultimately, expressed as an [_interval_](../../date-time-data-types-semantics/type-interval/) value. It can be specified in various different ways as this page explains.
@@ -58,7 +57,7 @@ You can also specify an _interval_ value within the text of a _timestamptz_ lite
 ```plpgsql
 select '2021-05-27 12:00:00 -03:15:00'::timestamptz;
 ```
-The same rule applies if you use the _make_timestamptz()_ built-in function. Its _timezone_ formal parameter has data type _text_. There is no overload where this parameter has data type _interval_. 
+The same rule applies if you use the _make_timestamptz()_ built-in function. Its _timezone_ formal parameter has data type _text_. There is no overload where this parameter has data type _interval_.
 
 ### Directly using POSIX syntax
 
@@ -92,7 +91,7 @@ show timezone;
 This is the result:
 
 ```output
- TimeZone 
+ TimeZone
 ----------
  FOOBAR5
 ```
@@ -145,4 +144,3 @@ This is overwhelmingly the preferred approach because it's this, and only this, 
 ### Indirectly using a timezone abbreviation
 
 Though this is possible, Yugabyte strongly recommends that you avoid this approach. The best that it can do for you is to bring you a fix value for the _UTC offset_ that's independent of the moment of lookup. But this is an exceedingly rare use case. If this is what you want, you can do it in a self-documenting way by specifying the _UTC offset_ [Directly as an interval value](#directly-as-an-interval-value)  as was explained above. Moreover, there are other risks brought by the attempt to use a timezone abbreviation to specify a _UTC offset_. See the section [Rules for resolving a string that's intended to identify a _UTC offset_](./name-res-rules/).
-

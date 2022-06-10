@@ -10,10 +10,8 @@ menu:
     parent: explore
     identifier: change-data-capture
     weight: 299
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
 
 ### On this page

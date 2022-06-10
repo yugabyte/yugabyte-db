@@ -13,8 +13,7 @@ menu:
     identifier: explore-multi-region-deployments-async-replication-2-ycql
     parent: explore-multi-region-deployments
     weight: 720
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

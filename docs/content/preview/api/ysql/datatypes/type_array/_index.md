@@ -10,8 +10,7 @@ menu:
     parent: api-ysql-datatypes
 aliases:
   - /preview/api/ysql/datatypes/type_array
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;[Synopsis](./#synopsis)<br>

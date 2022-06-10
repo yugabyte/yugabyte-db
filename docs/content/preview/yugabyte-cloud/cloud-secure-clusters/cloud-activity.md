@@ -9,8 +9,7 @@ menu:
     identifier: cloud-activity
     parent: cloud-secure-clusters
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Audit your account activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.

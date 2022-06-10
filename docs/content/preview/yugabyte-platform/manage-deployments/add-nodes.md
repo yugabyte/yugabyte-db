@@ -10,8 +10,7 @@ menu:
     identifier: add-nodes
     parent: manage-deployments
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In some cases, depending on the node's status, YugabyteDB Anywhere allows you to recover a removed node on a new backing instance, as follows:

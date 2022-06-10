@@ -9,9 +9,7 @@ menu:
     name: Go
     identifier: cloud-go
     weight: 200
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [Go application](https://github.com/yugabyte/yugabyte-simple-go-app) that connects to a YugabyteDB cluster using the [Go PostgreSQL driver](../../../../reference/drivers/ysql-client-drivers/#go-postgresql-driver-pq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Go.

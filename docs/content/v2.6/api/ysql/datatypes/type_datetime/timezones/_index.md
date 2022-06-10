@@ -9,8 +9,7 @@ menu:
     identifier: timezones
     parent: api-ysql-datatypes-datetime
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 {{< tip title="Understanding the purpose of specifying the timezone depends on understanding the 'timestamp and timestamptz' section." >}}

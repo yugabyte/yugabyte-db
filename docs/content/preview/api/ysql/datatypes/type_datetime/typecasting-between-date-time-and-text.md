@@ -8,8 +8,7 @@ menu:
     identifier: typecasting-between-date-time-and-text
     parent: api-ysql-datatypes-datetime
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section and its peer, [Timezones and _UTC offsets_](../timezones/), are placed, with respect to the sequential reading order of the overall _date-time_ time data types section that the [table of contents](../../type_datetime/toc/) presents, before the main treatment of the [semantics of the _date-time_ data types](../date-time-data-types-semantics/) because the code examples in those subsequent sections rely on typecasting between _date-time_ values and _text_ values and on setting the timezone, either as a session parameter or as part of a _date-time_ expression with the _at time zone_ operator.

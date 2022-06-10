@@ -10,8 +10,7 @@ menu:
     identifier: instance-tags
     parent: manage-deployments
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The instances created on a cloud provider can be assigned special metadata to help manage, bill, or audit the resources.

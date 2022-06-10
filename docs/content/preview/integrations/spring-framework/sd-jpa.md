@@ -8,8 +8,7 @@ menu:
     identifier: spring-JPA
     parent: spring-framework
     weight: 579
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -136,17 +135,17 @@ Spring Data JPA repositories provide support for `CRUDRepository`, `JPARepositor
 ```java
 public interface CrudRepository<T, ID> extends Repository<T, ID> {
 
-  <S extends T> S save(S entity);      
+  <S extends T> S save(S entity);
 
-  Optional<T> findById(ID primaryKey); 
+  Optional<T> findById(ID primaryKey);
 
-  Iterable<T> findAll();               
+  Iterable<T> findAll();
 
-  long count();                        
+  long count();
 
-  void delete(T entity);               
+  void delete(T entity);
 
-  boolean existsById(ID primaryKey);   
+  boolean existsById(ID primaryKey);
 
   // … more functionality omitted.
 }

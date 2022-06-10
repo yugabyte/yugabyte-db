@@ -9,9 +9,7 @@ menu:
     name: Python
     identifier: python-2
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -227,7 +225,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -251,7 +249,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -289,7 +287,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

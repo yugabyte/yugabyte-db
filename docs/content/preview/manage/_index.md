@@ -7,13 +7,13 @@ image: /images/section_icons/quick_start/sample_apps.png
 headcontent:
 aliases:
   - /preview/manage/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: manage
+    parent: launch-and-manage
     weight: 900
+type: indexpage
 ---
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="backup-restore/">

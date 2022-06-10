@@ -8,8 +8,7 @@ menu:
     identifier: emps-hierarchy
     parent: with-clause
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A hierarchy is a specialization of the general notion of a graph—and, as such, it's the simplest kind of graph that still deserves that name. The taxonomy of successive specializations starts with the most general (the _undirected cyclic graph_) and successively descends to the most restricted, a hierarchy. The taxonomy refers to a hierarchy as a _rooted tree_. All this is explained in the section [Using a recursive CTE to traverse graphs of all kinds](../traversing-general-graphs/).

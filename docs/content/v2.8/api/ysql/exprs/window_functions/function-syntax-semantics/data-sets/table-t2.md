@@ -8,8 +8,7 @@ menu:
     identifier: table-t2
     parent: data-sets
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title=" " >}}
@@ -101,7 +100,7 @@ order by class, k;
 ```
 Here is the result of the second `SELECT`. To make it easier to see the pattern, several blank lines have been manually inserted here between each successive set of rows with the same value for _"class"_. And in the second set, which has ties, one blank line has been inserted between each tie group.
 ```
- class | k  | score 
+ class | k  | score
 -------+----+-------
      1 |  1 |     1
      1 |  2 |     2
@@ -130,4 +129,3 @@ Here is the result of the second `SELECT`. To make it easier to see the pattern,
 
      2 | 18 |     9
 ```
-

@@ -7,13 +7,12 @@ image: /images/section_icons/index/comparisons.png
 headcontent: See how YugabyteDB compares with other operational databases in the distributed SQL and NoSQL categories. For a detailed comparison, click the database name.
 aliases:
   - /comparisons/
-section: FAQ
 menu:
   preview:
     identifier: comparisons
     weight: 2710
+type: indexpage
 ---
-
 ## Distributed SQL databases
 
 Feature | [CockroachDB](cockroachdb/) | [TiDB](tidb/) | [Vitess](vitess/) | [Amazon Aurora](amazon-aurora/)  | [Google Cloud Spanner](google-spanner/) | YugabyteDB

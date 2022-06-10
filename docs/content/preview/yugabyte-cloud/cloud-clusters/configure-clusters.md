@@ -9,8 +9,7 @@ menu:
     identifier: configure-clusters
     parent: cloud-clusters
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed supports both horizontal and vertical scaling of clusters. If your workloads have increased, you can dynamically add nodes to a running cluster to improve latency, throughput, and memory. Likewise, if your cluster is over-scaled, you can reduce nodes to reduce costs.

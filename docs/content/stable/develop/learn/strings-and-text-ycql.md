@@ -8,8 +8,7 @@ menu:
     identifier: strings-and-text-2-ycql
     parent: learn
     weight: 570
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

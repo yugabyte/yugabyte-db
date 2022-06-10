@@ -7,8 +7,7 @@ menu:
   preview:
     parent: troubleshoot-nodes
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## YugabyteDB base folder

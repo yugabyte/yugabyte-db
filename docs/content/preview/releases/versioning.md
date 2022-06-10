@@ -3,13 +3,11 @@ title: Release versioning
 headerTitle: Release versioning
 linkTitle: Release versioning
 description: Explains the new release versioning convention for preview and stable releases.
-section: RELEASES
 menu:
   preview:
     identifier: versioning
     weight: 4000
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Starting with v2.2, Yugabyte follows a new release versioning convention for stable and preview (development) releases. The following sections cover the new release versioning convention and includes descriptions of stable and preview releases.

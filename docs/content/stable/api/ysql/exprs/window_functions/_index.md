@@ -8,8 +8,7 @@ menu:
   stable:
     identifier: window-functions
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 If you are already familiar with window functions, then you can skip straight to the [syntax and semantics](./invocation-syntax-semantics/) section or the section that lists all of [the YSQL window functions](./function-syntax-semantics/) and that links, in turn, to the definitive account of each function.

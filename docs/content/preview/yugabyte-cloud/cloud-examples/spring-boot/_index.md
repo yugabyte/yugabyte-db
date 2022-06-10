@@ -7,6 +7,7 @@ headcontent: Deploy a Spring application connected to YugabyteDB Managed on Kube
 image: /images/section_icons/deploy/kubernetes.png
 menu:
   preview:
+    parent: yugabytedb-managed
     identifier: spring-boot
     parent: cloud-develop
     weight: 621

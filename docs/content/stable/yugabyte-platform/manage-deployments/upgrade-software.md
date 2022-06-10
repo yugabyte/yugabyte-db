@@ -8,8 +8,7 @@ menu:
     identifier: upgrade-software
     parent: manage-deployments
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YugabyteDB release that is powering a universe can be upgraded to get the new features and fixes in a release.

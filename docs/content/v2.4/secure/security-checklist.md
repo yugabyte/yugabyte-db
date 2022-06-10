@@ -8,8 +8,7 @@ menu:
     identifier: security-checklist
     parent: secure
     weight: 710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Below are a list of security measures that can be implemented to protect your YugabyteDB installation.

@@ -8,8 +8,7 @@ menu:
     identifier: aggregate-functions-functionality-overview
     parent: aggregate-functions
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Aggregate functions fall into two kinds according to the syntax that you use to invoke them.

@@ -8,8 +8,7 @@ menu:
     identifier: synthetic-data-sql
     parent: analysis-scripts
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Save this script as "synthetic-data.sql"**

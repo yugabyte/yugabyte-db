@@ -8,8 +8,7 @@ menu:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Metrics page

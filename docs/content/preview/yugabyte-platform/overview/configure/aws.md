@@ -9,8 +9,7 @@ menu:
     identifier: configure-1-aws
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 For overview of how to configure database nodes, select one of the following cloud providers:
@@ -65,4 +64,3 @@ For overview of how to configure database nodes, select one of the following clo
     <area target="_blank" alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect">
     <area target="_blank" alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect">
 </map>
-

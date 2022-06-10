@@ -8,8 +8,7 @@ menu:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -104,7 +103,3 @@ Using your custom Virtual Network is supported. This allows you the highest leve
 ![Prepare Azure cloud to install Yugabyte Platform](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-5.png)
 
 Hit Save, and it will take a few minutes for the cloud provider to be configured. After that, you will be ready to create a YugabyteDB universe on Azure.
-
-
-
-

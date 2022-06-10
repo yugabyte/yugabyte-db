@@ -5,15 +5,13 @@ linkTitle: Core database
 description: Contribute to the core database
 image: /images/section_icons/index/quick_start.png
 headcontent: How to contribute code to the core database
-type: page
-section: CONTRIBUTOR GUIDES
 menu:
   preview:
     identifier: core-database
     parent: contribute
     weight: 2910
+type: indexpage
 ---
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="checklist/">

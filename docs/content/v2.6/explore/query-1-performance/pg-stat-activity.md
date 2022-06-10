@@ -9,8 +9,7 @@ menu:
     identifier: pg-stat-activity
     parent: query-tuning
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte uses PostgreSQL’s `pg_stat_activity` view to analyze live queries.
@@ -62,7 +61,7 @@ yugabyte=# SELECT datname, pid, application_name, state, query
 ```
 
 ```output
- datname  |  pid  | application_name | state  |                                   query                                   
+ datname  |  pid  | application_name | state  |                                   query
 ----------+-------+------------------+--------+----------------------------------------------------------------------------
  yugabyte | 10027 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
           | 10013 |                  |        |
@@ -71,9 +70,9 @@ yugabyte=# SELECT datname, pid, application_name, state, query
 
 In this listing:
 
-* `datname` is the database connected to this process.                               
+* `datname` is the database connected to this process.
 * `pid` is the process ID.
-* `application_name` is the application connected to this process.                                
+* `application_name` is the application connected to this process.
 * `state` is the operational condition of the process.
 * `query` is the latest query executed for this process.
 
@@ -126,7 +125,7 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-     datname  |  pid  | application_name |        state        |                                   query                                   
+     datname  |  pid  | application_name |        state        |                                   query
     ----------+-------+------------------+---------------------+----------------------------------------------------------------------------
      yugabyte | 10381 | ysqlsh           | active              | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
      yb_demo  | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212;
@@ -159,7 +158,7 @@ Since the transaction never ends, it wastes resources as an open process.
     ```
 
     ```output
-     datname  |  pid  | application_name | state  |                                   query                                   
+     datname  |  pid  | application_name | state  |                                   query
     ----------+-------+------------------+--------+----------------------------------------------------------------------------
      yugabyte | 10381 | ysqlsh           | active | SELECT datname, pid, application_name, state, query FROM pg_stat_activity;
               | 10013 |                  |        |
@@ -180,27 +179,27 @@ yugabyte=# SELECT datname, pid, application_name, state, query, now() - xact_sta
 ```
 
 ```output
- datname  |  pid  | application_name | state  |                                  query                                  | txn_duration 
+ datname  |  pid  | application_name | state  |                                  query                                  | txn_duration
 ----------+-------+------------------+--------+-------------------------------------------------------------------------+--------------
- yugabyte | 17695 | ysqlsh           | idle   |                                                                         | 
-          | 17519 |                  |        |                                                                         | 
+ yugabyte | 17695 | ysqlsh           | idle   |                                                                         |
+          | 17519 |                  |        |                                                                         |
  yugabyte | 17540 | ysqlsh           | active | SELECT datname, pid, application_name, state, query, now() - xact_start+| 00:00:00
-          |       |                  |        |     AS txn_duration                                                    +| 
-          |       |                  |        |     FROM pg_stat_activity                                              +| 
-          |       |                  |        |     ORDER BY txn_duration desc;                                         | 
+          |       |                  |        |     AS txn_duration                                                    +|
+          |       |                  |        |     FROM pg_stat_activity                                              +|
+          |       |                  |        |     ORDER BY txn_duration desc;                                         |
 (3 rows)
 ```
 
 **Get a list of processes where the current transaction has taken more than 1 minute**:
 
 ```sql
-yugabyte=# SELECT datname, pid, application_name, state, query, xact_start 
-    FROM pg_stat_activity 
+yugabyte=# SELECT datname, pid, application_name, state, query, xact_start
+    FROM pg_stat_activity
     WHERE now() - xact_start > '1 min';
 ```
 
 ```output
- datname |  pid  | application_name |        state        |                     query                     |          xact_start         
+ datname |  pid  | application_name |        state        |                     query                     |          xact_start
 ---------+-------+------------------+---------------------+-----------------------------------------------+------------------------------
  yb_demo | 10033 | ysqlsh           | idle in transaction | UPDATE users SET state = 'IA' WHERE id = 212; | 2021-05-06 15:26:28.74615-04
 (1 row)

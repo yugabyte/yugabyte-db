@@ -10,6 +10,7 @@ menu:
     identifier: core-functions
     parent: architecture
     weight: 1107
+type: indexpage
 ---
 
 <div class="row">

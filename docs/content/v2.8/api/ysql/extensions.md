@@ -9,8 +9,7 @@ menu:
     identifier: api-ysql-extensions
     parent: api-ysql
     weight: 4400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions, especially those that interact with the storage layer, are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible.
@@ -87,7 +86,7 @@ SELECT * FROM pgcrypto_example;
 
 ### pg_stat_statements
 
-The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried. 
+The [`pg_stat_statements`](https://www.postgresql.org/docs/11/pgstatstatements.html) extension module is installed by default, but must be enabled before the `pg_stat_statements` view can be queried.
 
 ```sql
 CREATE EXTENSION pg_stat_statements;
@@ -220,7 +219,7 @@ ORDER BY k;
 You'll see results similar to the following:
 
 ```
- k  |    v     
+ k  |    v
 ----+----------
   1 |   988.53
   2 |  1005.18
@@ -265,7 +264,7 @@ In order to install an extension, you need to copy these files into the respecti
 
 Shared library files will be in the `pkglibdir` directory, while SQL and control files should be in the `extension` subdirectory of the `libdir` directory.
 To find these directories on your local installation, you can use the YugabyteDB `pg_config` executable.
-First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the command below and then running it.  
+First, alias it to `yb_pg_config` by replacing `<yugabyte-path>` with the path to your YugabyteDB installation in the command below and then running it.
 
 ```sh
 $ alias yb_pg_config=/<yugabyte-path>/postgres/bin/pg_config
@@ -283,7 +282,7 @@ List SQL and control files for already-installed extensions with:
 $ ls "$(yb_pg_config --sharedir)"/extension/
 ```
 
-To get these files for your target extension, you can build it from scratch following the extension's build instructions. 
+To get these files for your target extension, you can build it from scratch following the extension's build instructions.
 
 **Or**, if you already have PostgreSQL (ideally version `11.2` for best YSQL compatibility) with that extension installed, you can find these files as follows:
 
@@ -348,7 +347,7 @@ $ /usr/lib/postgresql/11/bin/pg_config --version
 PostgreSQL 11.9 (Ubuntu 11.9-1.pgdg18.04+1)
 ```
 
-In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`. 
+In this case, you should be using `/usr/lib/postgresql/11/bin/pg_config`.
 
 On CentOS, the correct path is `/usr/pgsql-11/bin/pg_config`.
 
@@ -515,8 +514,8 @@ The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extens
 The easiest way to install the extension is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension && 
+$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" &&
+  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension &&
   cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
   ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\"";
 ```

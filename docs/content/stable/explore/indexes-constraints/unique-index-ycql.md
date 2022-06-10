@@ -8,8 +8,7 @@ menu:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
     weight: 231
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 

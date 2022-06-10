@@ -8,9 +8,7 @@ menu:
     name: C++
     identifier: cloud-cpp
     weight: 500
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [C++ application](https://github.com/yugabyte/yugabyte-simple-cpp-app) that connects to a YugabyteDB cluster using the [libpqxx driver](../../../../reference/drivers/ysql-client-drivers/#libpqxx) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in C++.

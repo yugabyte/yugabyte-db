@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: dml_select
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -100,7 +99,7 @@ When you understand the story of the invocation of these two kinds of functions 
   42809: WITHIN GROUP is required for ordered-set aggregate mode
   ```
 
-**Note:** The documentation in the [Aggregate functions](../../../exprs/aggregate_functions/) major section usually refers to the syntax that the `ordinary_aggregate_fn_invocation` rule and the `within_group_aggregate_fn_invocation` rule jointly govern as the [`GROUP BY` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#group-by-syntax) because it's these two syntax variants (and _only_ these two) can be used together with the `GROUP BY` clause (and therefore the `HAVING` clause). And it usually refers to the syntax that the `fn_over_window` rule governs as the [`OVER` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#over-syntax) because this syntax variant _requires_ the use of the `OVER` clause. Moreover, the use of the `GROUP BY` clause (and therefore the `HAVING` clause) is illegal with this syntax variant. 
+**Note:** The documentation in the [Aggregate functions](../../../exprs/aggregate_functions/) major section usually refers to the syntax that the `ordinary_aggregate_fn_invocation` rule and the `within_group_aggregate_fn_invocation` rule jointly govern as the [`GROUP BY` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#group-by-syntax) because it's these two syntax variants (and _only_ these two) can be used together with the `GROUP BY` clause (and therefore the `HAVING` clause). And it usually refers to the syntax that the `fn_over_window` rule governs as the [`OVER` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#over-syntax) because this syntax variant _requires_ the use of the `OVER` clause. Moreover, the use of the `GROUP BY` clause (and therefore the `HAVING` clause) is illegal with this syntax variant.
 
 ## Examples
 

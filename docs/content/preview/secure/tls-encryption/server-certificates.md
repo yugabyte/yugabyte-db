@@ -13,8 +13,7 @@ menu:
     identifier: prepare-nodes
     parent: tls-encryption
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before you can enable server-to-server and client-to-server encryptions using Transport Security Layer (TLS), you need to prepare each node in a YugabyteDB cluster.

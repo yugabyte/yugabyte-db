@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: api-ysql-datatypes-range
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YSQL supports six built-in range data types. Each defines a range of values of a specific underlying data type. (The [PostgreSQL documentation](https://www.postgresql.org/docs/11/rangetypes.html) uses the term "subtype" for "underlying data type".) It's also possible to create user-defined range data types. A later version of the YSQL documentation will explain this.

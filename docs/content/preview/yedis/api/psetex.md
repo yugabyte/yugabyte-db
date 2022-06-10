@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/psetex
   - /preview/api/yedis/psetex
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -7,8 +7,7 @@ menu:
     identifier: apache-kafka
     parent: ecosystem-integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In this tutorial, you are going to use the [Kafka Connect-based Sink Connector for YugabyteDB](https://github.com/yugabyte/yb-kafka-connector) to store events from Apache Kafka into YugabyteDB using the [YCQL](../../../api/ycql) API.

@@ -9,8 +9,7 @@ menu:
     identifier: covid-data-case-study
     parent: aggregate-functions
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Overview of the data and the code

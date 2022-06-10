@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: api-ysql-datatypes-serial
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

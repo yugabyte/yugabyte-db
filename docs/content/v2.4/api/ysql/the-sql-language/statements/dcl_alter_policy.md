@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: dcl_alter_policy
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -49,11 +48,11 @@ Where
 - `new_name` is the new name of the policy.
 - `role_name` is the role(s) to which the policy applies. Use `PUBLIC` if the policy should be
   applied to all roles.
-- `using_expression` is a SQL conditional expression. Only rows for which the condition returns to   
-  true will be visible in a `SELECT` and available for modification in an `UPDATE` or `DELETE`.      
-- `check_expression` is a SQL conditional expression that is used only for `INSERT` and `UPDATE`     
-  queries. Only rows for which the expression evaluates to true will be allowed in an `INSERT` or    
-  `UPDATE`. Note that unlike `using_expression`, this is evaluated against the proposed new contents 
+- `using_expression` is a SQL conditional expression. Only rows for which the condition returns to
+  true will be visible in a `SELECT` and available for modification in an `UPDATE` or `DELETE`.
+- `check_expression` is a SQL conditional expression that is used only for `INSERT` and `UPDATE`
+  queries. Only rows for which the expression evaluates to true will be allowed in an `INSERT` or
+  `UPDATE`. Note that unlike `using_expression`, this is evaluated against the proposed new contents
   of the row.
 
 ## Examples

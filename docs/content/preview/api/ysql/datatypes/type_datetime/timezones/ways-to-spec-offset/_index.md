@@ -9,8 +9,7 @@ menu:
     identifier: ways-to-spec-offset
     parent: timezones
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The  _UTC offset_ is, ultimately, expressed as an [_interval_](../../date-time-data-types-semantics/type-interval/) value. It can be specified in various different ways as this page explains.

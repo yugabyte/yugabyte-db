@@ -10,8 +10,7 @@ menu:
     identifier: change-data-capture-2-cdc-kafka
     parent: integrations
     weight: 610
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 -->
 

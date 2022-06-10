@@ -8,8 +8,7 @@ menu:
     parent: cloud-security
     identifier: shared-responsibility
 weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed security and compliance is a shared responsibility between public cloud providers, Yugabyte, and YugabyteDB Managed customers.

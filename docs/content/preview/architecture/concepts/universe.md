@@ -11,8 +11,7 @@ menu:
     identifier: architecture-concepts-universe
     parent: key-concepts
     weight: 1122
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A YugabyteDB universe is a group of nodes (VMs, physical machines, or containers) that collectively function as a resilient and scalable distributed database.

@@ -8,8 +8,7 @@ menu:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 60
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe can be edited and customized to:

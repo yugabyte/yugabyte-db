@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-object-keys
     parent: json-functions-operators
     weight: 160
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Transform the list of key names in the supplied JSON _object_ into a set (that is, table) of `text` values.

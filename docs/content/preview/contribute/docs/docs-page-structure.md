@@ -4,14 +4,12 @@ headerTitle: Docs page structure
 linkTitle: Docs page structure
 description: Docs page structure
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: docs-page-structure
     parent: docs-edit
     weight: 2914
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Structure of a documentation page
@@ -31,8 +29,7 @@ menu:
     identifier: page-identifier
     parent: parent-page-identifier
     weight: number-to-decide-display-order
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 ```
 

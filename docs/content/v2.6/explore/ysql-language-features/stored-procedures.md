@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-stored-procedures
     parent: explore-ysql-language-features
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to use stored procedures to perform transactions.
@@ -104,7 +103,7 @@ In the following example, you'll create a new table and a stored procedure to pe
     ```
 
     ```
-    id | name  | balance  
+    id | name  | balance
     ----+-------+----------
       1 | User1 | 20000.00
       2 | User2 | 20000.00
@@ -116,20 +115,20 @@ In the following example, you'll create a new table and a stored procedure to pe
     ```sql
     create or replace procedure move_money(
       origin integer,
-      destination integer, 
+      destination integer,
       amount decimal
     )
     language plpgsql
     as $$
     begin
-        -- subtracting the amount from the origin account 
-        update accounts 
-        set balance = balance - amount 
+        -- subtracting the amount from the origin account
+        update accounts
+        set balance = balance - amount
         where id = origin;
 
         -- adding the amount to the destination account
-        update accounts 
-        set balance = balance + amount 
+        update accounts
+        set balance = balance + amount
         where id = destination;
 
         commit;
@@ -147,7 +146,7 @@ In the following example, you'll create a new table and a stored procedure to pe
     ```
 
     ```
-    id | name  | balance  
+    id | name  | balance
     ----+-------+----------
       1 | User1 | 19000.00
       2 | User2 | 21000.00

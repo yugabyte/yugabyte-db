@@ -10,8 +10,7 @@ menu:
     weight: 260
 aliases:
    - /preview/explore/ysql-language-features/gin/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

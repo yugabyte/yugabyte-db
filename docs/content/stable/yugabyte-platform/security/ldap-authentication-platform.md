@@ -8,8 +8,7 @@ menu:
     identifier: ldap-authentication-platform
     parent: security
     weight: 25
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -11,6 +11,7 @@ menu:
     identifier: troubleshoot-cluster
     parent: troubleshoot
     weight: 820
+type: indexpage
 ---
 
 <div class="row">

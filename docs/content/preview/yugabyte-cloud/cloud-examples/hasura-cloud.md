@@ -10,8 +10,7 @@ menu:
     identifier: hasura-cloud
     parent: cloud-examples
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB Managed to power your GraphQL applications with a distributed SQL database.

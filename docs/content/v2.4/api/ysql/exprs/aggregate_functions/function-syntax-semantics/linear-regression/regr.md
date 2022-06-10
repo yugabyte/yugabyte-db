@@ -8,8 +8,7 @@ menu:
     identifier: regr
     parent: linear-regression
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes these aggregate functions for linear regression analysis:
@@ -32,7 +31,7 @@ $body$;
 
 ## regr_avgy(), regr_avgx()
 
-**Purpose:** `regr_avgy()` returns the average of the first argument for those rows where both arguments are `NOT NULL`. `regr_avgx()` returns the average of the second argument for those rows where both arguments are `NOT NULL`.  
+**Purpose:** `regr_avgy()` returns the average of the first argument for those rows where both arguments are `NOT NULL`. `regr_avgx()` returns the average of the second argument for those rows where both arguments are `NOT NULL`.
 
 ## regr_count()
 
@@ -74,7 +73,7 @@ select * from test;
 This is the result:
 
 ```
- r_avgy = avgy | r_avgx = avgx | r_count = county | r_count = countx 
+ r_avgy = avgy | r_avgx = avgx | r_count = county | r_count = countx
 ---------------+---------------+------------------+------------------
  true          | true          | true             | true
 ```
@@ -107,7 +106,7 @@ from t;
 This is a typical result:
 
 ```
- noise-free slope | noise-free intercept | noisy slope | noisy intercept 
+ noise-free slope | noise-free intercept | noisy slope | noisy intercept
 ------------------+----------------------+-------------+-----------------
   5.00000000      |  3.00000000          |  4.99778685 |  3.70820546
 ```
@@ -145,7 +144,7 @@ from t;
 This is the result:
 
 ```
- test for noise-free data | test for noisy data 
+ test for noise-free data | test for noisy data
 --------------------------+---------------------
  true                     | true
 ```
@@ -187,7 +186,7 @@ select * from test;
 This is the result:
 
 ```
- regr_syy() test | regr_sxx() test | regr_sxy() test 
+ regr_syy() test | regr_sxx() test | regr_sxy() test
 -----------------+-----------------+-----------------
  true            | true            | true
 ```
@@ -200,7 +199,7 @@ select * from test;
 ```
 The result is the same as the result for the noise-free data.
 
-## Checking the formulas for regr_syy(), regr_sxx(), regr_sxy() 
+## Checking the formulas for regr_syy(), regr_sxx(), regr_sxy()
 
 Now try this:
 
@@ -263,13 +262,13 @@ select t as "noisy data" from f();
 This is a typical result:
 
 ```
-       noise-free data        
+       noise-free data
 ------------------------------
  regr_syy:   2083125.00000000
  regr_sxx:     83325.00000000
  regr_sxy:    416625.00000000
 
-          noisy data          
+          noisy data
 ------------------------------
  regr_syy:   2121737.65951556
  regr_sxx:     83325.00000000

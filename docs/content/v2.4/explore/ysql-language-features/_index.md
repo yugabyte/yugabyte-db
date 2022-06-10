@@ -10,8 +10,7 @@ menu:
     identifier: explore-ysql-language-features
     parent: explore
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 
@@ -20,7 +19,7 @@ The YSQ API of YugabyteDB reuses a fork of the query layer of PostgreSQL as its 
 {{< tip title="Tip" >}}
 A large portion of the documentation and examples written for PostgreSQL would work against YugabyteDB.
 
-**Why is this true?** The reuse of the *upper half* of PostgreSQL means that applications in effect interact with the PostgreSQL query layer. Thus, not only are most of the features supported, they also working exactly the same way as they would in PostgreSQL.  
+**Why is this true?** The reuse of the *upper half* of PostgreSQL means that applications in effect interact with the PostgreSQL query layer. Thus, not only are most of the features supported, they also working exactly the same way as they would in PostgreSQL.
 {{< /tip >}}
 
 

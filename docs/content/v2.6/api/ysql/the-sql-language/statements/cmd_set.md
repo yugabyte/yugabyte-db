@@ -1,14 +1,13 @@
 ---
 title: SET statement [YSQL]
 headerTitle: SET
-linkTitle: SET 
+linkTitle: SET
 description: Use the SET statement to update a run-time control parameter.
 menu:
   v2.6:
     identifier: cmd_set
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -12,9 +12,7 @@ menu:
 aliases:
   - /preview/deploy/kubernetes/operator-hub/
   - /preview/deploy/kubernetes/oss/operator-hub/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

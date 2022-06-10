@@ -10,8 +10,7 @@ menu:
     identifier: api-ysql-reserved-names
     parent: api-ysql
     weight: 4600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YSQL reserves the following names for internal usage. Exception will be raised when these names are used even when they are double-quoted.

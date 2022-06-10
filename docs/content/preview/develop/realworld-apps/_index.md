@@ -12,8 +12,8 @@ menu:
     identifier: realworld-apps
     parent: develop
     weight: 580
----
-The following examples illustrate how real-world, end-to-end applications can be built using YugabyteDB and its ecosystem integrations with Apache Spark, Apache Kafka, Spring Boot and KairosDB, just to name a few.
+type: indexpage
+---The following examples illustrate how real-world, end-to-end applications can be built using YugabyteDB and its ecosystem integrations with Apache Spark, Apache Kafka, Spring Boot and KairosDB, just to name a few.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

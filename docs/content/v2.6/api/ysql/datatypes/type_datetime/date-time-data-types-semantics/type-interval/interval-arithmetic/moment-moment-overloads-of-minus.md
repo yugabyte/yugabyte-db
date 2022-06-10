@@ -8,8 +8,7 @@ menu:
     identifier: moment-moment-overloads-of-minus
     parent: interval-arithmetic
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The function _moment_moment_subtraction()_ models the algorithm for this operation for a pair of _timestamp_ values. Create it thus:

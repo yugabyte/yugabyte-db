@@ -8,8 +8,7 @@ menu:
     identifier: typecasting-between-date-time-values
     parent: api-ysql-datatypes-datetime
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Each of the two axes of the [Summary table](#summary-table) below lists the five _date-time_ data types shown in [the table](../../type_datetime#table-of-five) at the end of the overall "Date and time data types" section along with the _text_ data type—so there are _thirty-six_ cells. The cells on the diagonal represent the typecast from _some_type_ to the same type—and so they are tautologically uninteresting. This leaves _thirty_ cells and therefore _thirty_ rules to understand. See the section [Code to fill out the thirty interesting table cells](#code-to-fill-out-the-thirty-interesting-table-cells). This shows that _ten_ of the remaining typecasts are simply unsupported. The attempts cause the _42846_ error. This maps in PL/pgSQL code to the _cannot_coerce_ exception. You get one of these messages:
@@ -191,7 +190,7 @@ The rule here is trivial. The to-be-typecasted _time_ value is taken as a real n
 
 ```plpgsql
 select (
-    (select time_value()::interval) = 
+    (select time_value()::interval) =
     (
       select make_interval(secs=>
         (
@@ -258,7 +257,7 @@ You might prefer to understand it like this:
 
 ```plpgsql
 select (
-    (select plain_timestamp_value()::date) = 
+    (select plain_timestamp_value()::date) =
     (
       select (
         extract(year  from plain_timestamp_value())::text||'-'||
@@ -293,7 +292,7 @@ You might prefer to understand it like this:
 
 ```plpgsql
 select (
-    (select plain_timestamp_value()::time) = 
+    (select plain_timestamp_value()::time) =
     (
     select (
       extract(hours   from plain_timestamp_value())::text||':'||
@@ -328,7 +327,7 @@ This best defines the semantics:
 ```plpgsql
 set time zone interval '-7 hours';
 select (
-    (select plain_timestamp_value()::timestamptz) = 
+    (select plain_timestamp_value()::timestamptz) =
     (select plain_timestamp_value() at time zone interval '-7 hours')
   )::text;
 ```
@@ -739,7 +738,7 @@ execute qry;
 This is the first result:
 
 ```output
-          winter           |          summer           
+          winter           |          summer
 ---------------------------+---------------------------
  2021-01-01 12:00:00+03:30 | 2021-07-01 12:00:00+04:30
 ```
@@ -754,7 +753,7 @@ execute qry;
 This is the second result:
 
 ```output
-         winter         |         summer         
+         winter         |         summer
 ------------------------+------------------------
  2021-01-01 12:00:00+02 | 2021-07-01 12:00:00+03
 ```

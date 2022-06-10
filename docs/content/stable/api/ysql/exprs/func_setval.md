@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-exprs-setval
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -57,7 +56,7 @@ yugabyte=# SELECT nextval('s');
 ```
 
 ```output
- nextval 
+ nextval
 ---------
       22
 (1 row)
@@ -70,7 +69,7 @@ yugabyte=# SELECT nextval('s');
 ```
 
 ```output
- nextval 
+ nextval
 ---------
       21
 (1 row)

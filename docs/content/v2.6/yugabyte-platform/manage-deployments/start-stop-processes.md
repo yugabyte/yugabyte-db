@@ -8,8 +8,7 @@ menu:
     identifier: start-stop-processes
     parent: manage-deployments
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Start a process

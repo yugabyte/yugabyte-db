@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: savepoint_rollback
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -107,7 +106,7 @@ SELECT * FROM sample;
 ```
 
 ```output
- k  | v  
+ k  | v
 ----+----
   1 |  2
   3 |  4

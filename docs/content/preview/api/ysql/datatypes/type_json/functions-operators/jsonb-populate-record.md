@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-populate-record
     parent: json-functions-operators
     weight: 180
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Convert a JSON _object_ into the equivalent SQL `record`.
@@ -47,4 +46,3 @@ begin
 end;
 $body$;
 ```
-

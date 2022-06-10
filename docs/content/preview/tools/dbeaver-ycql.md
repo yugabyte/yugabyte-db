@@ -7,8 +7,7 @@ menu:
     identifier: dbeaver-2-ycql
     parent: tools
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

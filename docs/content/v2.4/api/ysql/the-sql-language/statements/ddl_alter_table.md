@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: ddl_alter_table
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -72,7 +71,7 @@ Renaming a table is a non blocking metadata change operation.
 
 #### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
 
-Drop the named column from the table. 
+Drop the named column from the table.
 
 - `RESTRICT` — Remove only the specified
 

@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: enable-encryption-in-transit
     weight: 29
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere allows you to protect data in transit by using the following:

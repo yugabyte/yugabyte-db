@@ -8,8 +8,7 @@ menu:
     identifier: create-multi-zone-universe-kubernetes
     parent: create-deployments
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
   <ul class="nav nav-tabs-alt nav-tabs-yb">

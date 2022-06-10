@@ -10,6 +10,7 @@ menu:
     identifier: key-concepts
     parent: architecture
     weight: 1106
+type: indexpage
 ---
 
 <div class="row">
@@ -50,4 +51,4 @@ menu:
     </a>
   </div>
 
-</div>  
+</div>

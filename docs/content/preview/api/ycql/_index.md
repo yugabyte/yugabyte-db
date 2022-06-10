@@ -14,8 +14,7 @@ menu:
 aliases:
   - /preview/api/ycql/
   - /preview/api/cassandra/
-isTocNested: false
-showAsideToc: true
+type: indexpage
 ---
 
 ## Introduction

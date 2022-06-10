@@ -13,8 +13,7 @@ menu:
     parent: change-data-capture
     identifier: debezium-connector-yugabytedb
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.

@@ -3,13 +3,14 @@ title: Explore YugabyteDB sample applications
 headerTitle: Explore sample applications
 linkTitle: Explore sample apps
 description: Explore sample applications running on YugabyteDB.
-headcontent: 
+headcontent:
 image: /images/section_icons/index/develop.png
 menu:
   v2.6:
     identifier: explore-sample-apps
     parent: develop
     weight: 581
+type: docs
 ---
 
 After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to run the Yugastore application.

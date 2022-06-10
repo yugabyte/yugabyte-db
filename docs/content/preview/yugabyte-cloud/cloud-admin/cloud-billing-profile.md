@@ -9,8 +9,7 @@ menu:
     identifier: cloud-billing-profile
     parent: cloud-admin
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Review your charges and manage your billing profile and payment methods using the **Billing** tab.

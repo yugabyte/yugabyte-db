@@ -10,8 +10,7 @@ menu:
     identifier: delete-universe
     parent: manage-deployments
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To delete a universe via the YugabyteDB Anywhere UI, navigate to **Universes**, select your universe, then click **Actions > Delete Universe**.

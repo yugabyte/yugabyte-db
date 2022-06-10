@@ -8,8 +8,7 @@ menu:
     identifier: interval-number-multiplication
     parent: interval-arithmetic
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

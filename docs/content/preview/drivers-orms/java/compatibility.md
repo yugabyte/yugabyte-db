@@ -9,8 +9,7 @@ menu:
     identifier: java-compatibility
     parent: java-drivers
     weight: 800
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Yugabyte JDBC driver compatibility matrix

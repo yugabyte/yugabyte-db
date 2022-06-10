@@ -6,8 +6,7 @@ menu:
   v2.8:
     identifier: dcl_drop_group
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

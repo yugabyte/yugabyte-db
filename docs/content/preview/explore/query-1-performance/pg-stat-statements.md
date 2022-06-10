@@ -9,8 +9,7 @@ menu:
     identifier: pg-stat-statements
     parent: query-tuning
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Databases can be resource-intensive, consuming a lot of memory CPU, IO, and network resources. Optimizing your SQL can be very helpful in minimizing resource utilization. The `pg_stat_statements` module helps you track planning and execution statistics for all the SQL statements executed by a server. It is installed by default.

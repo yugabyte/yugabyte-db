@@ -8,8 +8,7 @@ menu:
     identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To help you stay aware of potential deployment issues, the Yugabyte Platform has the capability to check on each individual universe for several types of issues and proactively send out email alerts when problems arise.

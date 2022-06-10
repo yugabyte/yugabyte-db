@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dcl_create_group
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

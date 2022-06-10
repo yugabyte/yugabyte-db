@@ -8,9 +8,6 @@ menu:
     parent: spring-boot
     identifier: spring-boot-mini
     weight: 40
-type: page
-isTocNested: true
-showAsideToc: true
 -->
 
 Deploy a Spring application connected to YugabyteDB Managed on Kubernetes locally using minikube by following the steps below.

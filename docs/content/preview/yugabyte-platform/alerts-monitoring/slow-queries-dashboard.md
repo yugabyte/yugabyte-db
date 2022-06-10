@@ -7,8 +7,7 @@ menu:
     parent: alerts-monitoring
     identifier: slow-queries-dashboard
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the **Slow Queries** dashboard to analyze statistics of past queries on your YugabyteDB universes. You can use this data for the following:

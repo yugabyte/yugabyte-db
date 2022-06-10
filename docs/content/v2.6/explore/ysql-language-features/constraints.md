@@ -9,15 +9,14 @@ menu:
     identifier: constraints
     parent: explore-ysql-language-features
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YSQL allows you to define primary and foreign keys, as well as check values based on various criteria.
 
 ## Primary Key
 
-A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns. 
+A primary key is a means to identify a specific row in a table via one or more columns. To define a primary key, you create a constraint that is, functionally, a [unique index](../indexes-1/#using-a-unique-index) applied to the table columns.
 
 Most commonly, the primary key is added to the table when the table is created, as demonstrated by the following syntax:
 
@@ -95,7 +94,7 @@ The following example shows how to remove the primary key constraint from the `e
 ALTER TABLE employees DROP CONSTRAINT employees_pkey;
 ```
 
-For more information and examples, refer to the following: 
+For more information and examples, refer to the following:
 
 - [Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#primary-key)
 - [Table with Primary Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-primary-key)
@@ -103,7 +102,7 @@ For more information and examples, refer to the following:
 
 ## Foreign Key
 
-A foreign key represents one or more columns in a table referencing the following: 
+A foreign key represents one or more columns in a table referencing the following:
 
 - A primary key in another table.
 - A [unique index](../indexes-1#using-a-unique-index) or columns restricted with a [unique constraint](#unique-constraint) in another table.
@@ -115,17 +114,17 @@ You use a foreign key constraint to maintain the referential integrity of data b
 You define the foreign key constraint using the following syntax:
 
 ```sql
-[CONSTRAINT fk_name] 
-  FOREIGN KEY(fk_columns) 
+[CONSTRAINT fk_name]
+  FOREIGN KEY(fk_columns)
     REFERENCES parent_table(parent_key_columns)
     [ON DELETE delete_action]
     [ON UPDATE update_action]
 ```
 
-Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you omit it, an auto-generated name is provided by YSQL. The `REFERENCES` clause specifies the parent table and its columns referenced by the *fk_columns*. Defining actions is also optional; if defined, they determine the behaviors when the primary key in the parent table is deleted or updated. YSQL allows you to perform the following actions: 
+Defining the `CONSTRAINT` clause and naming the foreign key is optional. If you omit it, an auto-generated name is provided by YSQL. The `REFERENCES` clause specifies the parent table and its columns referenced by the *fk_columns*. Defining actions is also optional; if defined, they determine the behaviors when the primary key in the parent table is deleted or updated. YSQL allows you to perform the following actions:
 
 - `SET NULL` - when the referenced rows in the parent table are deleted or updated, foreign key columns in the referencing rows of the child table are automatically set to `NULL` .
-- `SET DEFAULT` - when the referenced rows of the parent table are deleted or updated, the default value is set to the foreign key column of the referencing rows in the child table. 
+- `SET DEFAULT` - when the referenced rows of the parent table are deleted or updated, the default value is set to the foreign key column of the referencing rows in the child table.
 - `RESTRICT` - when the referenced rows in the parent table are deleted or updated, deletion of a referenced row is prevented.
 - `CASCADE` - when the referenced rows in the parent table are deleted or updated, the referencing rows in the child table are deleted or updated.
 - `NO ACTION` (default) - when the referenced rows in the parent table are deleted or updated, no action is taken.
@@ -148,7 +147,7 @@ CREATE TABLE contacts(
   email text,
   PRIMARY KEY(contact_id),
   CONSTRAINT fk_employee
-    FOREIGN KEY(employee_no) 
+    FOREIGN KEY(employee_no)
       REFERENCES employees(employee_no)
 );
 ```
@@ -168,9 +167,9 @@ CREATE TABLE contacts(
 YSQL enables you to ads a foreign key constraint to an existing table by using the `ALTER TABLE` statement, as demonstrated by the following syntax:
 
 ```sql
-ALTER TABLE child_table 
-  ADD CONSTRAINT constraint_name 
-    FOREIGN KEY (fk_columns) 
+ALTER TABLE child_table
+  ADD CONSTRAINT constraint_name
+    FOREIGN KEY (fk_columns)
       REFERENCES parent_table (parent_key_columns);
 ```
 
@@ -216,7 +215,7 @@ CREATE TABLE employees (
 The following example attempts to insert a row that violates the `CHECK` constraint into the `employees` table:
 
 ```sql
-INSERT INTO employees (employee_no, name, department, birth, salary) 
+INSERT INTO employees (employee_no, name, department, birth, salary)
   VALUES (2001, 'Hugh Grant', 'Sales', '1963-05-05', 0);
 ```
 
@@ -270,7 +269,7 @@ CREATE TABLE employees (
   employee_no integer PRIMARY KEY,
   name text,
   department text,
-  phone integer, 
+  phone integer,
   UNIQUE(phone)
 );
 ```

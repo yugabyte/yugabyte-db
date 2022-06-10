@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-to-recordset
     parent: json-functions-operators
     weight: 240
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.

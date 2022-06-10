@@ -10,8 +10,7 @@ menu:
     parent: legal
     identifier: third-party-software
     weight:   30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Acknowledgements

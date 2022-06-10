@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/txn_lock/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -9,8 +9,7 @@ menu:
     identifier: timezone-sensitive-operations
     parent: timezones
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 All possible operations are inevitably executed in the context of a specified _UTC offset_ because the default scheme for the _TimeZone_ session setting ensures that this is never a zero-length _text_ value or _null_. (See the section [Specify the _UTC offset_ using the session environment parameter _TimeZone_](../syntax-contexts-to-spec-offset/#specify-the-utc-offset-using-the-session-environment-parameter-timezone).) The _TimeZone_ setting might specify the _UTC offset_ directly as an _interval_ value or it might specify it indirectly by identifying the timezone.

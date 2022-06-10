@@ -8,8 +8,7 @@ menu:
     identifier: declaring-intervals
     parent: type-interval
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and [re]install the date-time utilities code." >}}
@@ -303,7 +302,7 @@ declare
   i_hour   constant interval hour   not null := i_bare;
   i_minute constant interval minute not null := i_bare;
   i_second constant interval second not null := i_bare;
-begin  
+begin
   return
     case mode
       when 'bare'   then i_bare

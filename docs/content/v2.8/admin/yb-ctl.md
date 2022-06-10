@@ -8,8 +8,7 @@ menu:
     identifier: yb-ctl
     parent: admin
     weight: 2410
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
@@ -485,7 +484,7 @@ $ ./bin/yb-ctl restart
 - Restart with cloud, region and zone flags
 
 ```sh
-$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1"
 ```
 
 ### Restart with custom flags
@@ -534,7 +533,7 @@ $ ./bin/yb-ctl wipe_restart
 #### Wipe and restart with placement info flags
 
 ```sh
-$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1"
 ```
 
 #### Wipe and restart with custom flags

@@ -10,9 +10,7 @@ menu:
     name: 3. Explore distributed SQL
     identifier: explore-dsql-1-ysql
     weight: 130
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

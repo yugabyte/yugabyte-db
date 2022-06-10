@@ -13,9 +13,7 @@ aliases:
   - /preview/deploy/kubernetes/gke/
   - /preview/deploy/kubernetes/gke/helm-chart/
   - /preview/deploy/kubernetes/single-zone/gke/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

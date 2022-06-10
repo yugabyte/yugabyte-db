@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dcl_create_policy
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -51,7 +50,7 @@ Where
 - `table_name` is the name of the table that the policy applies to.
 - `PERMISSIVE` / `RESTRICTIVE` specifies that the policy is permissive or restrictive.
 While applying policies to a table, permissive policies are combined together using a logical OR operator,
-while restrictive policies are combined using logical AND operator. Restrictive policies are used to 
+while restrictive policies are combined using logical AND operator. Restrictive policies are used to
 reduce the number of records that can be accessed. Default is permissive.
 - `role_name` is the role(s) to which the policy is applied. Default is `PUBLIC` which applies the
   policy to all roles.

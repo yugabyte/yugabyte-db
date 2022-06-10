@@ -8,8 +8,7 @@ menu:
   v2.4:
     identifier: ddl_create_extension
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

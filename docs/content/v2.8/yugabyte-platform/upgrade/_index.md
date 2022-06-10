@@ -6,9 +6,11 @@ description: Upgrade Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
 menu:
   v2.8:
+    parent: yugabytedb-anywhere
     identifier: upgrade
     parent: yugabyte-platform
     weight: 649
+type: indexpage
 ---
 
 You can upgrade Yugabyte Platform to a newer version.
@@ -22,10 +24,9 @@ You can upgrade Yugabyte Platform to a newer version.
         <div class="title">Upgrade Yugabyte Platform using Replicated</div>
       </div>
       <div class="body">
-        Use Replicated to upgrade Yugabyte Platform 
+        Use Replicated to upgrade Yugabyte Platform
       </div>
     </a>
   </div>
 
 </div>
-

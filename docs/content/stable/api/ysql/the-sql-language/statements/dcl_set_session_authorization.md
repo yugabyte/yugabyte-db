@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dcl_set_session_authorization
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

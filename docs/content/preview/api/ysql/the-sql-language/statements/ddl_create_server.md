@@ -7,13 +7,12 @@ menu:
   preview:
     identifier: ddl_create_server
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
-Use the `CREATE SERVER` command to create a foreign table. 
+Use the `CREATE SERVER` command to create a foreign table.
 
 ## Syntax
 
@@ -56,7 +55,7 @@ The `VERSION` clause can be optionally used to specify the server version.
 The `FOREIGN DATA WRAPPER` clause can be used to specify the name of the foreign-data wrapper.
 
 ### Options:
-The `OPTIONS` clause specifies options for the foreign server. They typically define the connection details of the server, but the actual permitted option names and values are specific to the server’s foreign data wrapper. 
+The `OPTIONS` clause specifies options for the foreign server. They typically define the connection details of the server, but the actual permitted option names and values are specific to the server’s foreign data wrapper.
 
 ## Examples
 

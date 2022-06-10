@@ -4,14 +4,12 @@ headerTitle: Widgets and shortcodes
 linkTitle: Widgets and shortcodes
 description: Widgets and shortcodes
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: widgets-and-shortcodes
     parent: docs-edit
     weight: 2915
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/).

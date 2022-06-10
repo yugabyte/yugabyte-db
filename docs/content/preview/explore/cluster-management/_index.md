@@ -10,8 +10,8 @@ menu:
     identifier: explore-cluster-management
     parent: explore
     weight: 290
+type: indexpage
 ---
-
 
 <div class="row">
 

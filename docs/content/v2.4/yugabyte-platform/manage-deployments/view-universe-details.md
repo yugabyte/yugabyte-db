@@ -10,8 +10,7 @@ menu:
     identifier: view-universe-details
     parent: manage-deployments
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 */

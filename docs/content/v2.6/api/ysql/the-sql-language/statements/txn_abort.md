@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: txn_abort
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -66,7 +65,7 @@ yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1,
 Begin a transaction and insert some rows.
 
 ```plpgsql
-yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; 
+yugabyte=# BEGIN TRANSACTION; SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 ```
 
 ```plpgsql

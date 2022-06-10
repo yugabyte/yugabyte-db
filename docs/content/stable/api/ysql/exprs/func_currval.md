@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: api-ysql-exprs-currval
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -8,8 +8,7 @@ menu:
     identifier: best-practices-ycql
     parent: develop
     weight: 582
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

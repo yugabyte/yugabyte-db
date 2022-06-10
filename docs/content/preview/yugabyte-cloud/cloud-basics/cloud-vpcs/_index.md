@@ -10,11 +10,12 @@ aliases:
   - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
   preview:
+    parent: yugabytedb-managed
     identifier: cloud-vpcs
     parent: cloud-basics
     weight: 200
+type: indexpage
 ---
-
 A Virtual Private Cloud (VPC) network allows applications running on instances on the same cloud provider as your YugabyteDB Managed clusters to communicate with those clusters without traversing the public internet; all traffic stays in the cloud provider's network.
 
 Use VPC networks to lower network latencies, make your application and database infrastructure more secure, and reduce network data transfer costs.

@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/zcard
   - /preview/api/yedis/zcard
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

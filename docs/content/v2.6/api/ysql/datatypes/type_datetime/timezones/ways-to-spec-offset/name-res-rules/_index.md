@@ -9,8 +9,7 @@ menu:
     identifier: name-res-rules
     parent: ways-to-spec-offset
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 **Note:** If the text contains a digit, then it is taken as POSIX syntax. See the appendix [B.5. POSIX Time Zone Specifications](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) in the PostgreSQL documentation.
@@ -55,7 +54,7 @@ This table summarises [Rule 2](./rule-3/), [Rule 3](./rule-3/), and [Rule 4](./r
 
 ```plpgsql
      select (
-         (select '2021-06-02 12:00:00'::timestamp at time zone 'Europe/Amsterdam') = 
+         (select '2021-06-02 12:00:00'::timestamp at time zone 'Europe/Amsterdam') =
          (select timezone('Europe/Amsterdam', '2021-06-02 12:00:00'::timestamp))
        )::text;
 ```
@@ -65,7 +64,7 @@ You usually see the _operator syntax_ in blog posts and the like. But there are 
 
 ```plpgsql
      select (
-         (select '2021-06-02 12:00:00 Europe/Amsterdam'::timestamptz) = 
+         (select '2021-06-02 12:00:00 Europe/Amsterdam'::timestamptz) =
          (select make_timestamptz(2021, 6, 2, 12, 0, 0, 'Europe/Amsterdam'))
        )::text;
 ```
@@ -76,7 +75,7 @@ The rules for resolving a string that's intended to specify a _UTC offset_ can b
 
 - The resolution of a string is case-insensitive.
 - A string is never resolved in _pg_timezone_names.abbrev_.
-- A string is always resolved in _pg_timezone_names.name_. 
+- A string is always resolved in _pg_timezone_names.name_.
 - A string used in _set timezone_ is resolved only in _pg_timezone_names.name_.
 - A string that's used in _at time zone_ or in the explicit specification of a _timestamptz_ value is resolved first in _pg_timezone_abbrevs.abbrev_ and only if this fails, then in _pg_timezone_names.name_.
 - If a string escapes all of the attempts at resolution that the previous five bullet points set out, then an attempt is made to resolve it as [POSIX](https://www.postgresql.org/docs/11/datetime-posix-timezone-specs.html) syntax.

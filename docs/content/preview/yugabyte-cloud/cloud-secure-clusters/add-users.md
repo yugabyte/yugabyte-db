@@ -9,8 +9,7 @@ menu:
     identifier: add-users
     parent: cloud-secure-clusters
     weight: 350
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Add database users to provide team members and applications access to the cluster's YugabyteDB database.

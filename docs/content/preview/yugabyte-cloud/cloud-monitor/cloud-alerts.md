@@ -9,8 +9,7 @@ menu:
     identifier: cloud-alerts
     parent: cloud-monitor
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use alerts to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues.

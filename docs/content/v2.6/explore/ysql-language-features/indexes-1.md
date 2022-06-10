@@ -9,8 +9,7 @@ menu:
     identifier: indexes-1
     parent: explore-ysql-language-features
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster.

@@ -7,8 +7,7 @@ menu:
   v2.4:
     parent: api-cassandra
     weight: 1350
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -88,13 +87,13 @@ CAST function converts the value returned from a table column to the specified d
 
 
 ## partition_hash function
-`partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
+`partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and
 returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
-The hash values used for partitioning fall in the `0-65535` (uint16) range. 
-Tables are partitioned into tablets, with each tablet being responsible for a range of partition values. 
+The hash values used for partitioning fall in the `0-65535` (uint16) range.
+Tables are partitioned into tablets, with each tablet being responsible for a range of partition values.
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
-`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown 
+`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
@@ -102,7 +101,7 @@ One use of `partition_hash` is to query a subset of the data and get approximate
 For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
 
 ```sql
-create table t (h1 int, h2 int, r1 int, r2 int, v int, 
+create table t (h1 int, h2 int, r1 int, r2 int, v int,
                          primary key ((h1, h2), r1, r2));
 ```
 We can use this function to query a subset of the data (in this case, 1/128 of the data):
@@ -149,7 +148,7 @@ For example, suppose you have a table `page_views` with a column named `views`:
 
 ## TTL function
 
-The TTL function returns the number of seconds until a column or row expires. 
+The TTL function returns the number of seconds until a column or row expires.
 Assuming you have a table `page_views` and a column named `views`:
 
 ```sql

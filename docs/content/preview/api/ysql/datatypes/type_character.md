@@ -9,8 +9,7 @@ menu:
     parent: api-ysql-datatypes
 aliases:
   - /preview/api/ysql/type_text/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

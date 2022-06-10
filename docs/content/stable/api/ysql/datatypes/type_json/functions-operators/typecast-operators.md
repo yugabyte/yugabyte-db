@@ -8,8 +8,7 @@ menu:
     identifier: typecast-operators
     parent: json-functions-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Typecast between any pair of `text`, `json`, and `jsonb` values in both directions.

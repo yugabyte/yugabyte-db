@@ -9,8 +9,7 @@ menu:
     identifier: cloud-authentication
     parent: cloud-secure-clusters
     weight: 450
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed uses TLS 1.2 for communicating with clusters, and digital certificates to verify the identity of clusters. Using TLS with a digital certificate encrypts the data in transit to ensure a secure connection to your cluster, and prevents man in the middle (MITM) attacks, impersonation attacks, and eavesdropping.

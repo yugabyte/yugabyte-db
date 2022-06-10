@@ -8,8 +8,7 @@ menu:
     identifier: grow-cluster
     parent: manage
     weight: 709
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To grow a YugabyteDB cluster, add new yb-tserver nodes, just like you would when creating the cluster.

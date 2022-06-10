@@ -10,6 +10,7 @@ menu:
     identifier: architecture-acid-transactions
     parent: architecture
     weight: 1120
+type: indexpage
 ---
 
 {{< note title="Note" >}}

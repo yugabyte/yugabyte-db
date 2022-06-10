@@ -9,8 +9,7 @@ menu:
     identifier: pg_hint_plan
     parent: query-tuning
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte leverages PostgreSQL’s pg_hint_plan Extension to control query execution plans with hinting phrases using comments.

@@ -8,8 +8,7 @@ menu:
     identifier: sql-nosql
     parent: learn
     weight: 561
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Most application developers have used SQL, and possibly some NoSQL databases, to build applications. YugabyteDB brings the best of these two databases together into one unified platform to simplify development of scalable cloud services.

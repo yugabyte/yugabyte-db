@@ -8,8 +8,7 @@ menu:
     identifier: upgrade-software
     parent: manage-deployments
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YugabyteDB release that is powering a universe can be upgraded to obtain new features and bug fixes.
@@ -30,5 +29,4 @@ A rolling upgrade can be performed on a live universe deployment by following th
 
 If you have upgraded the YugabyteDB software to version 2.8.0.0 or later, you need to manually run the `upgrade_sql` command on your universes.
 
-{{< /note >}}  
-
+{{< /note >}}

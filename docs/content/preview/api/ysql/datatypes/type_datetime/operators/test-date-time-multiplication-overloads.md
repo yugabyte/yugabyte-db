@@ -8,8 +8,7 @@ menu:
     identifier: test-date-time-multiplication-overloads
     parent: date-time-operators
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Try this:

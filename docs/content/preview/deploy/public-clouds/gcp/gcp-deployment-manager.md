@@ -8,6 +8,7 @@ menu:
     identifier: deploy-in-gcp-1-deployment-manager
     parent: public-clouds
     weight: 640
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: cmd_call
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -194,7 +193,7 @@ call x(10, 20, 30, 40, 50);
 This is the result:
 
 ```
- a  | b  | c  | d  | e  
+ a  | b  | c  | d  | e
 ----+----+----+----+----
  11 | 22 | 33 | 44 | 55
 ```
@@ -203,4 +202,3 @@ You cannot create a procedure with `OUT` formal parameters. The attempt causes t
 ```
 0A000: procedures cannot have OUT arguments
 ```
-

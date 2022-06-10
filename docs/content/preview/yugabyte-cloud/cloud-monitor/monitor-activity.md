@@ -9,8 +9,7 @@ menu:
     identifier: monitor-activity
     parent: cloud-monitor
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time.

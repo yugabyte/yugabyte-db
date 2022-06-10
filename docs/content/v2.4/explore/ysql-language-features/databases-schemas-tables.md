@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-databases-schemas-tables
     parent: explore-ysql-language-features
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section covers basic topics such as the YSQL shell `ysqlsh`, databases, schemas and tables.
@@ -274,7 +273,7 @@ Indexes:
 
 ## Schemas
 
-A schema is a named collection of tables, views, indexes, sequences, data types, operators, and functions. 
+A schema is a named collection of tables, views, indexes, sequences, data types, operators, and functions.
 
 To create the schema with name `myschema`, run the following command.
 ```sql
@@ -352,6 +351,3 @@ NOTICE:  00000: drop cascades to table myschema.company
 LOCATION:  reportDependentObjects, dependency.c:1004
 DROP SCHEMA
 ```
-
-
-

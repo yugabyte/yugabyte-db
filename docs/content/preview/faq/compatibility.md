@@ -3,7 +3,6 @@ title: FAQs about YugabyteDB API compatibility
 headerTitle: API compatibility FAQ
 linkTitle: API compatibility FAQ
 description: Answers to common questions about YugabyteDB API compatibility.
-section: FAQ
 aliases:
   - /faq/cassandra/
   - /preview/faq/cassandra/
@@ -11,8 +10,7 @@ menu:
   preview:
     identifier: faq-api-compatibility
     weight: 2730
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## What does API compatibility exactly mean?

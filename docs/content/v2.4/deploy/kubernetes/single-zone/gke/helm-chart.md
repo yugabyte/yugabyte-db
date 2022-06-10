@@ -9,9 +9,7 @@ menu:
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

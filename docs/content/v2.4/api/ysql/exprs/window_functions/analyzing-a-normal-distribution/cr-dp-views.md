@@ -8,8 +8,7 @@ menu:
     identifier: cr-dp-views
     parent: analyzing-a-normal-distribution
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_dp_views.sql`.
 ```plpgsql

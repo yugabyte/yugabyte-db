@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-tablespaces
     parent: explore-ysql-language-features
     weight: 320
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document provides an overview of YSQL Tablespaces and demonstrates how they can be used to specify data placement for tables and indexes in the cloud.

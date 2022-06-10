@@ -9,10 +9,8 @@ menu:
     identifier: with-clause
     parent: the-sql-language
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
 
 ## Introduction
@@ -157,5 +155,3 @@ All of these studies make heavy use of regular (i.e. non-recursive) CTEs. They t
 
 After unzipping it on a convenient new directory, you'll see a `README.txt`.  It tells you how to start, in turn, a few master-scripts. Simply start each in `ysqlsh`. You can run these time and again. Each one always finishes silently. You can see the reports that they produce on the dedicated spool directories and confirm that the files that are spooled are identical to the corresponding reference copies that are delivered in the zip-file.
 {{< /tip >}}
-
-

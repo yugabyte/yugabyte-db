@@ -8,8 +8,7 @@ menu:
     identifier: sql-workbench
     parent: tools
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [SQL Workbench/J](https://www.sql-workbench.eu/index.html) is a free, DBMS-independent, cross-platform SQL query tool that also works with YugabyteDB. SQL Workbench/J is written in Java and should run on any operating system that provides a Java Runtime Environment (JRE).

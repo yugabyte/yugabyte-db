@@ -8,8 +8,7 @@ menu:
     identifier: prepare-environment-4-OpenShift
     parent: install-yugabyte-platform
     weight: 55
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

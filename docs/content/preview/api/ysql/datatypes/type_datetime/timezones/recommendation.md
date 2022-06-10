@@ -8,8 +8,7 @@ menu:
     identifier: recommendation
     parent: timezones
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Write user-defined functions to wrap 'set timezone' and the overloads of the built-in function 'timezone()'." >}}

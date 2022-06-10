@@ -9,9 +9,7 @@ menu:
     name: 2. Create a local cluster
     identifier: create-local-cluster-3-docker
     weight: 120
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -101,7 +99,7 @@ The Masters section highlights the cloud, region and zone placement for the yb-m
 
 ### YB-TServer status
 
-Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats. 
+Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats.
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 

@@ -8,8 +8,7 @@ menu:
     identifier: creating-date-time values
     parent: date-time-functions
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Notice that there is no built-in function to create a _timetz_ value—but this is of no consequence because of the recommendation, stated on the [Date and time data types](../../../type_datetime/#avoid-timetz) section's main page, to avoid using this data type.
@@ -35,7 +34,7 @@ select pg_typeof(d)::text as "type", d::text from c;
 This is the result:
 
 ```output
- type |     d      
+ type |     d
 ------+------------
  date | 2019-04-22
 ```
@@ -51,7 +50,7 @@ select pg_typeof(d)::text as "type", d::text from c;
 This is the result:
 
 ```output
- type |       d       
+ type |       d
 ------+---------------
  date | 0010-01-31 BC
 ```
@@ -114,7 +113,7 @@ select pg_typeof(t)::text as "type", t::text from c;
 This is the result:
 
 ```output
-          type          |        t        
+          type          |        t
 ------------------------+-----------------
  time without time zone | 13:25:20.123456
 ```
@@ -177,7 +176,7 @@ select pg_typeof(ts)::text as "type", ts::text from c;
 This is the result:
 
 ```output
-            type             |             ts             
+            type             |             ts
 -----------------------------+----------------------------
  timestamp without time zone | 2019-04-22 13:25:20.123456
 ```
@@ -245,7 +244,7 @@ select pg_typeof(tstz)::text as "type", tstz::text from c;
 This is the result:
 
 ```output
-           type           |             tstz              
+           type           |             tstz
 --------------------------+-------------------------------
  timestamp with time zone | 2019-06-22 10:25:20.123456+00
 ```
@@ -354,7 +353,7 @@ Here is an example:
 ```plpgsql
 set timezone = 'UTC';
 with c as (
-  -- 100 days after the start of the Unix epoch. 
+  -- 100 days after the start of the Unix epoch.
   select to_timestamp((60*60*24*1000)::double precision) as t)
 select pg_typeof(t)::text as "type", t::text from c;
 ```
@@ -362,7 +361,7 @@ select pg_typeof(t)::text as "type", t::text from c;
 This is the result:
 
 ```output
-           type           |           t            
+           type           |           t
 --------------------------+------------------------
  timestamp with time zone | 1972-09-27 00:00:00+00
 ```
@@ -388,7 +387,7 @@ select pg_typeof(i)::text as "type", i::text from c;
 This is the result:
 
 ```output
-   type   |        i        
+   type   |        i
 ----------+-----------------
  interval | 69:26:40.123456
 ```
@@ -418,7 +417,7 @@ from c;
 This is the result:
 
 ```output
- years | months | days | hours | mins | secs 
+ years | months | days | hours | mins | secs
 -------+--------+------+-------+------+------
     -1 |     -1 |   -8 |    -1 |   -1 | -1.1
 ```

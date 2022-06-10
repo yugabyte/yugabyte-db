@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/ysql/type_number/
   - /preview/api/ysql/type_int/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

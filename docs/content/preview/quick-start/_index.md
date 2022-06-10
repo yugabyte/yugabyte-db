@@ -5,16 +5,14 @@ linkTitle: Quick start
 description: Get started using YugabyteDB in less than five minutes on macOS, Linux, Docker, and Kubernetes (Minikube).
 image: /images/section_icons/index/quick_start.png
 headcontent: The easiest way to test YugabyteDB's APIs and core features is to create a local cluster on a single host.
-type: page
 aliases:
   - /quick-start/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: quick-start
     weight: 5
+type: indexpage
 ---
-
 {{< note title="Note" >}}
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).

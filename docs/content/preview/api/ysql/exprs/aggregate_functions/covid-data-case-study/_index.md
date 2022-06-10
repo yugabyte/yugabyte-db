@@ -9,10 +9,8 @@ menu:
     identifier: covid-data-case-study
     parent: aggregate-functions
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 ## Overview of the data and the code
 
 [Carnegie Mellon’s COVIDcast](https://covidcast.cmu.edu/) is an academic project that tracks real-time coronavirus statistics. The team uses various data collection methods and exposes data for download in various formats. This case study uses data that were collected using daily Facebook surveys with the aim of examining the possible correlation between wearing a face-mask and showing symptoms like those of SARS-CoV-2—hereinafter COVID. Specifically, three so-called signals are recorded.

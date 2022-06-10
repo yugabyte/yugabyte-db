@@ -8,8 +8,7 @@ menu:
     identifier: window-functions-aggregate-functions-syntax-semantics
     parent: window-functions
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="The rules described in this section also govern the invocation of aggregate functions." >}}

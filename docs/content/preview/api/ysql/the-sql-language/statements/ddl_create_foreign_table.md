@@ -7,13 +7,12 @@ menu:
   preview:
     identifier: ddl_create_foreign_table
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
-Use the `CREATE FOREIGN TABLE` command to create a foreign table. 
+Use the `CREATE FOREIGN TABLE` command to create a foreign table.
 
 ## Syntax
 
@@ -53,7 +52,7 @@ The `COLLATE` clause can be used to specify a collation for the column.
 The `SERVER` clause can be used to specify the name of the foreign server to use.
 
 ### Options:
-The `OPTIONS` clause specifies options for the foreign table. The permitted option names and values are specific to each foreign data wrapper. The options are validated using the FDW’s validator function. 
+The `OPTIONS` clause specifies options for the foreign table. The permitted option names and values are specific to each foreign data wrapper. The options are validated using the FDW’s validator function.
 
 ## Examples
 

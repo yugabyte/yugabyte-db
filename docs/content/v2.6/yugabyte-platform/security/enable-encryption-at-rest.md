@@ -8,8 +8,7 @@ menu:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -72,7 +71,7 @@ To enable encryption at rest on an existing universe:
 
 2. Select the universe for which to enable encryption.
 
-3. Select **Edit Universe > Edit Security > Encryption-at-Rest**. 
+3. Select **Edit Universe > Edit Security > Encryption-at-Rest**.
 
 4. Deselect **Enable Encryption-at-Rest for <UNIVERSE_NAME>** and click **Submit**.
 

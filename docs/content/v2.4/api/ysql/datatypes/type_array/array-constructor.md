@@ -8,17 +8,16 @@ menu:
     identifier: array-constructor
     parent: api-ysql-datatypes-array
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `array[]` value constructor is a special variadic function. Uniquely among all the functions described in this _"Array data types and functionality"_ major section, it uses square brackets (`[]`) to surround its list of actual arguments.
 
 ## Purpose and signature
 
-**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/). 
+**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/).
 
-**Signature** 
+**Signature**
 ```
 input value:       [anyarray | [ anyelement, [anyelement]* ]
 return value:      anyarray
@@ -38,7 +37,7 @@ select array[(1, 'a')::rt, (2, 'b')::rt, (3, 'dog \ house')::rt]::rt[] as arr;
 ```
 This is the result:
 ```
-                    arr                     
+                    arr
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
@@ -131,7 +130,7 @@ begin
     arr := two_d::text;
     return next;
   end;
-  
+
 end;
 $body$;
 
@@ -140,7 +139,7 @@ select arr from some_arrays();
 It produces two rows. This is the first:
 
 ```
-                    arr                     
+                    arr
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
@@ -186,7 +185,7 @@ select
 It shows this:
 
 ```
- result 
+ result
 --------
  true
 ```

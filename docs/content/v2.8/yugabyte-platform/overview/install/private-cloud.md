@@ -10,8 +10,7 @@ menu:
     identifier: install-3-private-cloud
     parent: overview-yp
     weight: 20
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your installation type to see the installation flow. Click on the elements to see detailed steps.
@@ -50,5 +49,3 @@ Select your installation type to see the installation flow. Click on the element
     <area target="_blank" alt="Airgapped installation - pre reqs" title="Airgapped installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="482,1008,688,1141" shape="rect">
     <area target="_blank" alt="Online installation - pre reqs" title="Online installation - pre reqs" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="" shape="rect">
 </map>
-
-

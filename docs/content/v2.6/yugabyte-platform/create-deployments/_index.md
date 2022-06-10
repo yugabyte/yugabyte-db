@@ -6,11 +6,11 @@ description: Create YugabyteDB universe deployments.
 image: /images/section_icons/index/deploy.png
 menu:
   v2.6:
+    parent: yugabytedb-anywhere
     identifier: create-deployments
     parent: yugabyte-platform
     weight: 643
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 <div class="row">
@@ -64,7 +64,7 @@ showAsideToc: true
       </div>
     </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="async-replication-platform/">
       <div class="head">

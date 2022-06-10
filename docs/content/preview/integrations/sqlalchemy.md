@@ -3,13 +3,11 @@ title: Using SQLAlchemy with YugabyteDB
 linkTitle: SQLAlchemy
 description: Using SQLAlchemy with YugabyteDB
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: sqlalchemy
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [SQLAlchemy](https://www.sqlalchemy.org/), a Python SQL tool and object-relational mapping (ORM) tool, with YugabetyDB.

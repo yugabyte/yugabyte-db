@@ -9,8 +9,7 @@ menu:
     identifier: manage-cloud-access
     parent: cloud-admin
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Invite team members to your account so that they can create, manage, and connect to clusters.

@@ -8,8 +8,6 @@ menu:
     identifier: secondary-indexes
     parent: explore-indexes-constraints
     weight: 220
-isTocNested: true
-showAsideToc: true
 
 ---
 

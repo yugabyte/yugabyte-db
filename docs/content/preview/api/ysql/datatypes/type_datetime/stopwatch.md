@@ -8,8 +8,7 @@ menu:
     identifier: stopwatch
     parent: api-ysql-datatypes-datetime
     weight: 130
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You sometimes want to time a sequence of several SQL statements, issued from _ysqlsh_, and to record the time in the spool file. The \\_timing on_ metacommand doesn't help here because it reports the time after every individual statement and, on Unix-like operating systems, does this using _stderr_. The \\_o_ metacommand doesn't redirect _stderr_ to the spool file. This case study shows you how to implement a SQL stopwatch that allows you to start it with a procedure call before starting what you want to time and to read it with a _select_ statement when what you want to time finishes. This reading goes to the spool file along with all other _select_ results.

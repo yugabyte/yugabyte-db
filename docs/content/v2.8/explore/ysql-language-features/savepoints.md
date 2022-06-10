@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-savepoints
     parent: explore-ysql-language-features
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document provides an overview of YSQL savepoints, and demonstrates how to use them to checkpoint your progress within a transaction. The `SAVEPOINT` command establishes a new savepoint within the current transaction.
@@ -53,7 +52,7 @@ The relevant savepoint commands are:
     ```
 
     ```output
-    k  | v  
+    k  | v
     ----+----
       1 |  2
       3 |  4
@@ -68,7 +67,7 @@ The relevant savepoint commands are:
     ```
 
     ```output
-    k  | v  
+    k  | v
     ----+----
       1 |  2
     (1 row)
@@ -83,7 +82,7 @@ The relevant savepoint commands are:
     ```
 
     ```output
-    k  | v  
+    k  | v
     ----+----
       5 |  6
       1 |  2

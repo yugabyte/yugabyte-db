@@ -8,8 +8,7 @@ menu:
     identifier: upgrade-yp-replicated
     parent: upgrade
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use [Replicated](https://www.replicated.com/) to upgrade your YugabyteDB Anywhere to a newer version.

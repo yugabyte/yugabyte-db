@@ -11,9 +11,7 @@ menu:
     name: 1. Install YugabyteDB
     identifier: install-2-linux
     weight: 110
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

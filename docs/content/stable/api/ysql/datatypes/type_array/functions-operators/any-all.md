@@ -8,8 +8,7 @@ menu:
     identifier: any-all
     parent: array-functions-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -101,7 +100,7 @@ $body$;
 
 The combination `= ANY` is functionally equivalent to `IN` (but `IN` is illegal syntax when the RHS is an array).
 
-The combination `= ALL` has no functional equivalent in the way that `= ANY` is functionally equivalent to `IN`. 
+The combination `= ALL` has no functional equivalent in the way that `= ANY` is functionally equivalent to `IN`.
 
 The following small test emphasizes the symmetry between `ANY` and `IN`.
 
@@ -109,12 +108,12 @@ The following small test emphasizes the symmetry between `ANY` and `IN`.
 select (
     42 = any (array[17, 42, 53])
     and
-    42 in (17, 42, 53)  
+    42 in (17, 42, 53)
   )::text as b;
 ```
 See [The `array[]` value constructor](../../array-constructor/). This is the result:
 ```
-  b   
+  b
 ------
  true
 ```
@@ -128,7 +127,7 @@ select pg_typeof(r)::text from v;
 This is the result:
 
 ```
- pg_typeof 
+ pg_typeof
 -----------
  record
 ```

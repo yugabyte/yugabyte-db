@@ -6,14 +6,13 @@ description: Tuning and optimizing query performance
 headcontent: Tuning and optimizing query performance
 image: /images/section_icons/index/develop.png
 aliases:
-section: Explore
 menu:
   preview:
     identifier: query-tuning
     parent: explore
     weight: 280
+type: indexpage
 ---
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">

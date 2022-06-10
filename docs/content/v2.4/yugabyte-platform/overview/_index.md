@@ -7,9 +7,11 @@ image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of the Yugabyte Platform and architecture.
 menu:
   v2.4:
+    parent: yugabytedb-anywhere
     identifier: overview-yp
     parent: yugabyte-platform
     weight: 640
+type: indexpage
 ---
 
 The Yugabyte Platform is best fit for mission-critical deployments, such as production or pre-production testing. The Yugabyte Platform console is used in a highly available mode and orchestrates and manages YugabyteDB universes, or clusters, on one or more regions (across public cloud and private on-premises data centers).

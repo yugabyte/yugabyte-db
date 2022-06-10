@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/ddl_use
   - /preview/api/ycql/ddl_use
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

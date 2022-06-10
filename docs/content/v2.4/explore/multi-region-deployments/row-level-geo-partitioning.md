@@ -9,8 +9,7 @@ menu:
     identifier: explore-multi-region-geo-partitioning
     parent: explore-multi-region-deployments
     weight: 750
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -368,6 +367,3 @@ amount        | 1000
 txn_type      | credit
 created_at    | 2020-11-07 22:09:04.8537
 ```
-
-
-

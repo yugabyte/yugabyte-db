@@ -8,8 +8,7 @@ menu:
     identifier: int-results
     parent: normal-distribution-analysis-reports
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```

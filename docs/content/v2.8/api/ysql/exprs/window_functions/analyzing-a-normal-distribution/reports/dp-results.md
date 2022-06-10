@@ -8,14 +8,13 @@ menu:
     identifier: dp-results
     parent: normal-distribution-analysis-reports
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```
 Using ntile().
 
- bucket |  n   |   min_s    |   max_s    
+ bucket |  n   |   min_s    |   max_s
 --------+------+------------+------------
       1 | 5000 |    0.00000 |   33.41577
       2 | 5000 |   33.41745 |   37.61929

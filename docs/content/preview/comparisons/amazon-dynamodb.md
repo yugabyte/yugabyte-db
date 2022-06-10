@@ -9,8 +9,7 @@ menu:
   preview:
     parent: comparisons
     weight: 1105
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 ## Astronomical AWS bills and slow releases

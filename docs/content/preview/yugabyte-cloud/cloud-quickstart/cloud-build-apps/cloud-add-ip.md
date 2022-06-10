@@ -8,9 +8,7 @@ menu:
     name: Before you begin
     identifier: cloud-add-ip
     weight: 20
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In addition to having a [cluster deployed in YugabyteDB Managed](../../qs-add/), you need the following to run the sample applications with YugabyteDB Managed:

@@ -9,8 +9,7 @@ menu:
     identifier: window-function-syntax-semantics
     parent: window-functions
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;[Aggregate function variants](./#aggregate-function-variants)<br>

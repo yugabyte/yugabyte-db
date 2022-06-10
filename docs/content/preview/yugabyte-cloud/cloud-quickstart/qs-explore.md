@@ -9,9 +9,7 @@ menu:
     identifier: qs-explore-1-ysql
     parent: cloud-quickstart
     weight: 400
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 After [creating a free cluster](../qs-add/) and [connecting to the cluster](../qs-connect/) using Cloud Shell, you can start exploring YugabyteDB's PostgreSQL-compatible, fully-relational Yugabyte SQL API.

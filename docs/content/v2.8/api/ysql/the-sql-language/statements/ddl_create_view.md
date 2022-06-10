@@ -2,18 +2,17 @@
 title: CREATE VIEW statement [YSQL]
 headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
-description: Use the CREATE VIEW statement to create a view in a database. 
+description: Use the CREATE VIEW statement to create a view in a database.
 menu:
   v2.8:
     identifier: ddl_create_view
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
-Use the `CREATE VIEW` statement to create a view in a database. It defines the view name and the (select) statement defining it.  
+Use the `CREATE VIEW` statement to create a view in a database. It defines the view name and the (select) statement defining it.
 
 ## Syntax
 

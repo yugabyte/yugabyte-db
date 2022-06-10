@@ -11,8 +11,7 @@ menu:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere allows you to monitor and troubleshoot issues that arise from universes.
@@ -317,7 +316,7 @@ A support bundle is an archive generated at a universe level. It contains all th
 - Consensus meta files containing consensus metadata information from the Master and T-Server.
 - Tablet meta files containing the tablet metadata from the Master and T-Server.
 
-The diagnostic information can be analyzed locally or the bundle can be forwarded to the Yugabyte Support team. 
+The diagnostic information can be analyzed locally or the bundle can be forwarded to the Yugabyte Support team.
 
 You can create a support bundle as follows:
 
@@ -359,8 +358,7 @@ For more information, see [Kubernetes: volume binding mode](https://kubernetes.i
 
 On Google Cloud Provider (GCP), if you choose not to set binding mode to `WaitForFirstConsumer`, you might use regional persistent disks to replicate data between two zones in the same region on Google Kubernetes Engine (GKE). This can be used by the pod, in cases when the pod reschedules to another node in a different  zone.
 
-For more information, see the following: 
+For more information, see the following:
 
 - [Google Kubernetes Engine: persistent volumes and dynamic provisioning](https://cloud.google.com/kubernetes-engine/docs/concepts/persistent-volumes)
 - [Google Cloud: regional persistent disks](https://cloud.google.com/compute/docs/disks/high-availability-regional-persistent-disk)
-

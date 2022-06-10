@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dml_select
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

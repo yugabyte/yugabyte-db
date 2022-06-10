@@ -7,8 +7,7 @@ menu:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Depending on your cloud or on-premises environment, YugabyteDB universe data can be saved to the following storage options.

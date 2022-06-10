@@ -8,8 +8,7 @@ menu:
     identifier: recommendation
     parent: timezones
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Write user-defined functions to wrap 'set timezone' and the overloads of the built-in function 'timezone()'." >}}
@@ -301,13 +300,13 @@ begin
     declare
       msg constant text not null := tz_in||' assert failed';
     begin
-      assert tz_out = tz_in, msg; 
+      assert tz_out = tz_in, msg;
     end;
   end loop;
 
   begin
     call set_timezone('Bad');
-    assert false, 'Logic error'; 
+    assert false, 'Logic error';
   exception when invalid_parameter_value then
     declare
       msg  text not null := '';
@@ -353,7 +352,7 @@ begin
 
   begin
     call set_timezone(make_interval(hours=>19));
-    assert false, 'Logic error'; 
+    assert false, 'Logic error';
   exception when invalid_parameter_value then
     declare
       msg  text not null := '';
@@ -405,7 +404,7 @@ begin
     declare
       msg constant text not null := tz||' assert failed';
     begin
-      assert tz_result = tz_expected, msg; 
+      assert tz_result = tz_expected, msg;
     end;
   end loop;
 end;
@@ -443,7 +442,7 @@ begin
     declare
       msg constant text not null := i::text||' assert failed';
     begin
-      assert tz_result = tz_expected, msg; 
+      assert tz_result = tz_expected, msg;
     end;
   end loop;
 end;

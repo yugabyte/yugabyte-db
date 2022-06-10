@@ -10,8 +10,7 @@ menu:
     identifier: performance-troubleshooting
     parent: benchmark
     weight: 22
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 Use this page for general guidance and steps you can take when troubleshooting the performance of your Yugabyte cluster.

@@ -9,8 +9,7 @@ menu:
     identifier: qs-add
     parent: cloud-quickstart
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.

@@ -8,8 +8,7 @@ menu:
     identifier: retail-analytics
     parent: sample-data
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Install the PostgreSQL-compatible Retail Analytics dataset on the YugabyteDB distributed SQL database.

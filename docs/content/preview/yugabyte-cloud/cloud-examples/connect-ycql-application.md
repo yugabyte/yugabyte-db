@@ -10,9 +10,7 @@ menu:
     parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following instructions show how you can build a Java application connected to YugabyteDB Managed using the Yugabyte Java Driver for YCQL v4.6.

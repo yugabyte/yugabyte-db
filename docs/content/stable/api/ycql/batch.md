@@ -8,21 +8,20 @@ menu:
   stable:
     parent: api-cassandra
     weight: 19991
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size, 
-the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation, 
+Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size,
+the higher the latency for the entire batch. Although the latency for the entire batch of operations is higher than the latency of any single operation,
 the throughput of the batch of operations is much higher.
 
 ## Example in Java
 
 To perform a batch insert operation in Java:
 
-1.  Create a BatchStatement object. 
-2. Add the desired number of prepared and bound insert statements to it. 
-3. Execute the batch object. 
+1.  Create a BatchStatement object.
+2. Add the desired number of prepared and bound insert statements to it.
+3. Execute the batch object.
 
 ```java
 // Create a batch statement object.
@@ -98,7 +97,7 @@ When executing a batch in YCQL, the protocol allows returning only one error or 
 
 If one statement fails with an error or for conditional DMLs, some are not applied because of failing the IF condition, the driver or application cannot accurately identify the relevant statements, it will just receive one general error or return-status for the batch.
 
-Therefore, it is not possible for an application to react to such failures appropriately (for example, retry, abort, 
+Therefore, it is not possible for an application to react to such failures appropriately (for example, retry, abort,
 and change some parameters for either the entire batch or just the relevant statements).
 
 You can address this limitation by using the `RETURNS STATUS AS ROW` feature.
@@ -113,7 +112,7 @@ When executing `n` statements in a batch with `RETURN STATUS AS ROW`, `n` rows a
 
 For batches containing conditional DMLs, `RETURN STATUS AS ROW` must be used.
 
-For conditional DMLs (not normally allowed in batches), any subset of them could fail due to 
+For conditional DMLs (not normally allowed in batches), any subset of them could fail due to
 their `IF` condition and thus returning rows only for them makes it impossible to identify which ones actually failed.
 
 To distinguish between the two not-applied cases (error vs condition is false), there is an error `message` column in the return row that will be null for not-applied and filled-in for errors.
@@ -161,6 +160,6 @@ cqlsh:sample> SELECT * FROM test;
 
 {{< note Type="Note" >}}
 
-`BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`. 
+`BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 
 {{< /note >}}

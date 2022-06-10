@@ -10,10 +10,8 @@ menu:
     identifier: nodejs-drivers
     parent: drivers-orms
     weight: 570
-isTocNested: true
-showAsideToc: true
----
-The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
+type: indexpage
+---The following projects are recommended for implementing Node applications using the YugabyteDB YSQL API.
 
 | Project | Type | Support | Examples |
 | :------ | :--- | :------ | :------- |

@@ -8,8 +8,7 @@ menu:
     identifier: current-date-time-moment
     parent: date-time-functions
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Each of the nine functions in this group returns a moment value of the specified data type that honors the "moment kind" semantics. (See the note "Don't use "_timeofday()_" above. For the reasons that it explains, that function is not included in the count of ten that the table in the subsection [Functions that return the current date-time moment](../#functions-that-return-the-current-date-time-moment-current-date-time-moment) presents. This is why the present paragraph starts with "Each of the _nine_ functions...")

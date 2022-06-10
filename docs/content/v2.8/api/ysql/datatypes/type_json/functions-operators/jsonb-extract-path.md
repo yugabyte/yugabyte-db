@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-extract-path
     parent: json-functions-operators
     weight: 130
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Provide the identical functionality to the [`#>`](../subvalue-operators/) operator.

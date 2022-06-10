@@ -8,8 +8,7 @@ menu:
     identifier: synthetic-data
     parent: bacon-numbers
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before trying the code in this section, make sure that you have created the supporting infrastructure:

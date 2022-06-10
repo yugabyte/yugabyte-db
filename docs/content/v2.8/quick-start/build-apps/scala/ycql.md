@@ -9,9 +9,7 @@ menu:
     name: Scala
     identifier: scala-1
     weight: 558
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

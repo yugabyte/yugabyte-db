@@ -4,14 +4,12 @@ headerTitle: Build the docs
 linkTitle: Build the docs
 description: Build the YugabyteDB docs locally
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: docs-build
     parent: docs
     weight: 2913
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Prerequisites

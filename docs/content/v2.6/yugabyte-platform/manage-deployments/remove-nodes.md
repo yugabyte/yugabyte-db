@@ -8,8 +8,7 @@ menu:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Remove an unresponsive node

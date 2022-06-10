@@ -8,8 +8,7 @@ menu:
     identifier: do-clean-start
     parent: analyzing-a-normal-distribution
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_clean_start.sql`.
 ```plpgsql

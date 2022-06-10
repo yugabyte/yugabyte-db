@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/pexpireat
   - /preview/api/yedis/pexpireat
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

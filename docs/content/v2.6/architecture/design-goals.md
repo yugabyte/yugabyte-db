@@ -8,8 +8,7 @@ menu:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page outlines the design goals with which YugabyteDB has been built.

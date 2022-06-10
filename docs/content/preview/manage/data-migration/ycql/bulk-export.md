@@ -10,8 +10,7 @@ menu:
     identifier: manage-bulk-export
     parent: manage-bulk-import-export
     weight: 707
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -9,8 +9,7 @@ menu:
     parent: api-ysql-datatypes
 aliases:
   - /preview/api/ysql/datatypes/type_serial
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

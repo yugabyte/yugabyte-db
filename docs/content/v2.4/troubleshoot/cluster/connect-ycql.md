@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: troubleshoot-cluster
     weight: 822
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## 1. Are YugabyteDB processes running?

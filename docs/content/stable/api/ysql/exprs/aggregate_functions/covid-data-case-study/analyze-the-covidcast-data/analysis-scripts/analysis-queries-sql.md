@@ -8,8 +8,7 @@ menu:
     identifier: analysis-queries-sql
     parent: analysis-scripts
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Save this script as "analysis-queries.sql"**

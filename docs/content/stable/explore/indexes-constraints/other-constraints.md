@@ -8,8 +8,6 @@ menu:
     identifier: other-constraints
     parent: explore-indexes-constraints
     weight: 270
-isTocNested: true
-showAsideToc: true
 
 ---
 

@@ -11,8 +11,7 @@ menu:
     identifier: replace-failed-master
     parent: troubleshoot-cluster
     weight: 831
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To replace a failed YB-Master server in a YugabyteDB cluster, follow these steps:

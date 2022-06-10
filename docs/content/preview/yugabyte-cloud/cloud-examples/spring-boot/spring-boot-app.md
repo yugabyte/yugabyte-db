@@ -9,8 +9,6 @@ menu:
     identifier: spring-boot-app
     parent: spring-boot
     weight: 10
-isTocNested: true
-showAsideToc: true
 -->
 
 [Spring Boot](https://spring.io/projects/spring-boot) is a popular framework for building cloud-native applications. Each Spring Boot application is stand-alone and self-contained, which makes them easy to deploy in a distributed fashion – whether to containers or on Kubernetes.

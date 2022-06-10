@@ -8,8 +8,7 @@ menu:
     identifier: interval-interval-equality
     parent: interval-arithmetic
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="Inequality comparisons." >}}
@@ -111,7 +110,7 @@ select
 It finishes silently, showing that the _assert_ holds, and produces this result:
 
 ```
-  e1  |  e2  
+  e1  |  e2
 ------+------
  true | true
 ```

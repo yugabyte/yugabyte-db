@@ -8,8 +8,7 @@ menu:
     identifier: case-study-the-68–95–997-rule
     parent: aggregate-functions
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This case study shows the use of aggregate functions to demonstrate the so-called "68–95–99.7 rule"—described in [this Wikipedia article](https://en.wikipedia.org/wiki/68–95–99.7_rule). This case-study focuses on just one part of the rule:

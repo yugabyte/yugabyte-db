@@ -10,8 +10,7 @@ menu:
     parent: security
     identifier: create-kms-config-3-hashicorp-kms
     weight: 27
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

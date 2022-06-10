@@ -8,8 +8,7 @@ menu:
     identifier: interval-utilities
     parent: type-interval
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download the '.zip' file to create the reusable code that supports the pedagogy of the overall 'date-time' major section." >}}

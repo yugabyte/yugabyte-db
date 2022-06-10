@@ -7,8 +7,7 @@ menu:
   v2.4:
     parent: api-cassandra
     weight: 1330
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -137,7 +136,7 @@ ycqlsh:example> SELECT account_name, account_type, balance, writetime(balance) F
 
 
 {{< note Type="Note" >}}
-`BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`. 
+`BEGIN/END TRANSACTION` doesn't currently support `RETURNS STATUS AS ROW`.
 {{< /note >}}
 
 

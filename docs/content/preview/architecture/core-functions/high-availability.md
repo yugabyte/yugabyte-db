@@ -8,8 +8,7 @@ menu:
     identifier: high-availability
     parent: core-functions
     weight: 1190
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 As discussed before, YugabyteDB is a CP database (consistent and partition tolerant), but achieves very high availability (HA). It achieves this HA by having an active replica that is ready to take over as a new leader in a matter of seconds after the failure of the current leader and serve requests.
