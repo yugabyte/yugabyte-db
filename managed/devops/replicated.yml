@@ -256,7 +256,6 @@ components:
                   params:
                     # Enable priority regex on all tables
                     # URL encoding done by prometheus
-                    max_tables_metrics_breakdowns: ["0"]
                     priority_regex:
                       - "rocksdb_(number_db_(next|seek)\
                       |block_cache_(add|single_touch_add|multi_touch_add)\
