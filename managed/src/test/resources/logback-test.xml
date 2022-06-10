@@ -39,7 +39,7 @@
       </then>
       <else>
         <encoder>
-          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5coloredLevel %F:%L [%thread] %msg%n</pattern>
+          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5coloredLevel %X{correlation-id} %F:%L [%thread] %msg%n</pattern>
         </encoder>
       </else>
     </if>

@@ -51,8 +51,6 @@ public class MDCPropagatingDispatcher extends Dispatcher {
     }
   }
 
-  private final boolean cloudLoggingEnabled;
-
   public MDCPropagatingDispatcher(
       MessageDispatcherConfigurator _configurator,
       String id,
@@ -67,16 +65,10 @@ public class MDCPropagatingDispatcher extends Dispatcher {
         throughputDeadlineTime,
         executorServiceFactoryProvider,
         shutdownTimeout);
-    cloudLoggingEnabled =
-        _configurator.prerequisites().settings().config().getBoolean("yb.cloud.enabled");
   }
 
   @Override
   public ExecutionContext prepare() {
-    if (!cloudLoggingEnabled) {
-      return super.prepare();
-    }
-
     return new MDCPropagatingExecutionContext();
   }
 }

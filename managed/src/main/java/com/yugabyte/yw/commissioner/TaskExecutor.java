@@ -877,11 +877,17 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       JsonNode taskDetails = taskInfo.getTaskDetails();
+      Throwable cause = t;
+      // If an exception is eaten up by just wrapping the cause as RuntimeException(e),
+      // this can find the actual cause.
+      while (StringUtils.isEmpty(cause.getMessage()) && cause.getCause() != null) {
+        cause = cause.getCause();
+      }
       String errorString =
           "Failed to execute task "
               + StringUtils.abbreviate(taskDetails.toString(), 500)
               + ", hit error:\n\n"
-              + StringUtils.abbreviateMiddle(t.getMessage(), "...", 3000)
+              + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
               + ".";
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
