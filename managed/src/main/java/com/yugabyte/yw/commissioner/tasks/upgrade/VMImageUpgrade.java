@@ -75,6 +75,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                     taskParams().ybSoftwareVersion, true /*isSoftwareUpdateViaVm*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
+
+          createMarkUniverseForHealthScriptReUploadTask();
         });
   }
 

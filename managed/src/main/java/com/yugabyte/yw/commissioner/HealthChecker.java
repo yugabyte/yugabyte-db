@@ -122,6 +122,8 @@ public class HealthChecker {
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
 
+  private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
+
   private static final long NODE_CHECK_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
 
   private final Environment environment;
@@ -536,6 +538,16 @@ public class HealthChecker {
     lastCheckForUUID.cancel(true);
   }
 
+  public void markUniverseForReUpload(UUID universeUUID) {
+    List<Pair<UUID, String>> universeNodeInfos =
+        uploadedNodeInfo
+            .keySet()
+            .stream()
+            .filter(key -> key.getFirst().equals(universeUUID))
+            .collect(Collectors.toList());
+    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+  }
+
   public void handleUniverseRemoval(UUID universeUUID) {
     cancelHealthCheck(universeUUID);
     runningHealthChecks.remove(universeUUID);
@@ -882,31 +894,38 @@ public class HealthChecker {
             .traceLogging(true)
             .timeoutSecs(NODE_CHECK_TIMEOUT_SEC)
             .build();
-    if (uploadedInfo == null) {
-      // Only upload iut once for new node, as it only depends on yb home dir
+    if (uploadedInfo == null && !nodeInfo.isK8s()) {
+      // Only upload it once for new node, as it only depends on yb home dir.
+      // Also skip upload for k8s as no one will call it on k8s pod.
       String generatedScriptPath = generateCollectMetricsScript(universe.universeUUID, nodeInfo);
 
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
-      nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
-          generatedScriptPath,
-          scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
+      nodeUniverseManager
+          .uploadFileToNode(
+              nodeInfo.nodeDetails,
+              universe,
+              generatedScriptPath,
+              scriptPath,
+              SCRIPT_PERMISSIONS,
+              context)
+          .processErrors();
     }
-    String scriptPath = nodeInfo.getYbHomeDir() + "/bin/node_health.py";
+
+    String scriptPath =
+        (nodeInfo.isK8s() ? K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()) + "/bin/node_health.py";
     if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.universeUUID, nodeInfo);
 
-      nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
-          generatedScriptPath,
-          scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
+      nodeUniverseManager
+          .uploadFileToNode(
+              nodeInfo.nodeDetails,
+              universe,
+              generatedScriptPath,
+              scriptPath,
+              SCRIPT_PERMISSIONS,
+              context)
+          .processErrors();
     }
     uploadedNodeInfo.put(nodeKey, nodeInfo);
 

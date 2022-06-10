@@ -140,6 +140,10 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
         .thenReturn(dummyShellResponse);
 
+    ShellResponse dummyShellUploadResponse = ShellResponse.create(0, "");
+    when(mockNodeUniverseManager.uploadFileToNode(any(), any(), anyString(), any(), any(), any()))
+        .thenReturn(dummyShellUploadResponse);
+
     testRegistry = new CollectorRegistry();
     report = spy(new HealthCheckerReport());
     healthMetrics = new HealthCheckMetrics(testRegistry);
