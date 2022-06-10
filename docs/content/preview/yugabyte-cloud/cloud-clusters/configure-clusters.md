@@ -72,7 +72,7 @@ Depending on the number of nodes, the scaling operation can take several minutes
 
 ### Multi-region synchronous clusters
 
-You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can migrate node to different regions; migrated nodes can be deployed to different VPCs.
+You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.
 
 To scale and migrate nodes in a multi-region synchronous cluster:
 
