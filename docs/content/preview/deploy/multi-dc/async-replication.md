@@ -124,7 +124,7 @@ For bidirectional replication, repeat the procedure described in [Unidirectional
 
 To avoid primary key conflict errors, keep the key ranges for the two universes separate. This is done automatically by the applications included in the `yb-sample-apps.jar`.
 
-### Replication Lag
+### Replication lag
 
 Replication lag is computed at the tablet level as follows:
 
@@ -132,15 +132,7 @@ Replication lag is computed at the tablet level as follows:
 
 *hybrid_clock_time* is the hybrid clock timestamp on the source's tablet-server, and *last_read_hybrid_time* is the hybrid clock timestamp of the latest record pulled from the source.
 
-An example script [`determine_replication_lag.sh`](/files/determine_replication_lag.sh) calculates the replication lag. The script requires the [`jq`](https://stedolan.github.io/jq/) package.
-
-The following example generates a replication lag summary for all tables on a cluster. You can also request an individual table.
-
-```sh
-./determine_repl_latency.sh -m 10.150.255.114,10.150.255.115,10.150.255.113
-```
-
-To obtain a summary of all command options, execute `determine_repl_latency.sh -h` .
+To obtain information about the overall maximum lag, you should check `/metrics` or `/prometheus-metrics` for `async_replication_sent_lag_micros` or `async_replication_committed_lag_micros` and take the maximum of these values across each source's T-Server. For information on how to set up the node exporter and Prometheus manually, see [Prometheus integration](../../../explore/observability/prometheus-integration/linux/).
 
 ## Set up replication with TLS
 
