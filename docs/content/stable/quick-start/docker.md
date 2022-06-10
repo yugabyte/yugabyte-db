@@ -1,18 +1,17 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on macOS.
+description: Get started using YugabyteDB in less than five minutes on Docker.
 aliases:
-  - /quick-start/
-layout: single
+  - /docker/
 type: docs
 ---
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
@@ -26,26 +25,26 @@ type: docs
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
+    <li>
+      <a href="../" class="nav-link">
         <i class="fab fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
     <li>
-      <a href="../quick-start/linux/" class="nav-link">
+      <a href="../linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
-    <li>
-      <a href="../quick-start/docker/" class="nav-link">
+    <li class="active">
+      <a href="../docker/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
+      <a href="../kubernetes/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
@@ -55,192 +54,91 @@ type: docs
 
 ## 1. Install YugabyteDB
 
-### Prerequisites
+{{< note title="Note" >}}
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
-
-1. Verify that you have Python 2 or 3 installed.
-
-    ```sh
-    $ python --version
-    ```
-
-    ```output
-    Python 3.7.3
-    ```
-
-1. `wget` or `curl` is available.
-
-    The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
-
-    To install `wget` on your Mac, you can run the following command if you use Homebrew:
-
-    ```sh
-    $ brew install wget
-    ```
-
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
-
-    ```sh
-    $ launchctl limit maxfiles
-    ```
-
-    We recommend setting the soft and hard limits to 1048576.
-
-    Edit `/etc/sysctl.conf`, if it exists, to include the following:
-
-    ```sh
-    kern.maxfiles=1048576
-    kern.maxproc=2500
-    kern.maxprocperuid=2500
-    kern.maxfilesperproc=1048576
-    ```
-
-    If this file does not exist, then create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
-
-    ```xml
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-    ```
-
-    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
-
-    ```sh
-    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
-    ```
-
-    You might have to `unload` the service before loading it.
-
-### Download YugabyteDB
-
-1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
-
-    ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
-    ```
-
-1. Extract the package and then change directories to the YugabyteDB home.
-
-    ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
-    ```
-
-### Configure
-
-Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
-
-To add six loopback addresses, run the following commands, which require `sudo` access.
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
-```
-
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
-
-To verify that the extra loopback addresses exist, run the following command.
-
-```sh
-$ ifconfig lo0
-```
-
-You should see some output like the following:
-
-```output
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
-```
-
-## 2. Create a local cluster
-
-To create a single-node local cluster with a replication factor (RF) of 1, run the following command.
-
-```sh
-$ ./bin/yugabyted start
-```
-
-{{<note title="Note for macOS Monterey" >}}
-
-macOS Monterey turns on AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on. Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
-
-```sh
-$ ./bin/yugabyted start --master_webserver_port=9999
-```
+The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than stateless apps.
 
 {{< /note >}}
 
-After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
+### Prerequisites
 
-### 2. Check cluster status
+You must have the Docker runtime installed on your localhost. Follow the links below to download and install Docker if you have not done so already.
+
+<i class="fab fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
+
+<i class="fab fa-centos"></i> [Docker for CentOS](https://store.docker.com/editions/community/docker-ce-server-centos)
+
+<i class="fab fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
+
+<i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
+
+<i class="fab fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
+
+### Install
+
+Pull the YugabyteDB container.
 
 ```sh
-$ ./bin/yugabyted status
+$ docker pull yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}
+```
+
+### 2. Create a local cluster
+
+To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
+
+```sh
+$ docker run -d --name yugabyte  -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042\
+ yugabytedb/yugabyte:latest bin/yugabyted start\
+ --daemon=false
+```
+
+In the preceding `docker run` command, the data stored in YugabyteDB doesn't persist across container restarts. To make YugabyteDB persist data across restarts, add a volume mount option to the docker run command.
+First, create a `~/yb_data` directory:
+
+```sh
+$ mkdir ~/yb_data
+```
+
+Next, run docker with the volume mount option:
+
+```sh
+$ docker run -d --name yugabyte \
+         -p7000:7000 -p9000:9000 -p5433:5433 -p9042:9042 \
+         -v ~/yb_data:/home/yugabyte/yb_data \
+         yugabytedb/yugabyte:latest bin/yugabyted start \
+         --base_dir=/home/yugabyte/yb_data --daemon=false
+```
+
+Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
+
+## 2. Check cluster status
+
+```sh
+$ docker ps
 ```
 
 ```output
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
-| Web console         : http://127.0.0.1:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-| YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/var/data                                                     |
-| Log Dir             : /Users/myuser/var/logs                                                     |
-| Universe UUID       : fad6c687-e1dc-4dfd-af4b-380021e19be3                                       |
-+--------------------------------------------------------------------------------------------------+
+CONTAINER ID        IMAGE                 COMMAND                  CREATED             STATUS              PORTS                                                                                                                                                                     NAMES
+5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```
 
 ### 3. Check cluster status with Admin UI
 
-The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
+The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 ### Overview and YB-Master status
 
-The yb-master Admin UI home page shows that you have a cluster with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. `Num User Tables` is 0 since there are no user tables created yet. The YugabyteDB version number is also shown for your reference.
+The yb-master home page shows that you have a cluster (or universe) with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. The `Num User Tables` is `0` since there are no user tables created yet. YugabyteDB version number is also shown for your reference.
 
-![master-home](/images/admin/master-home-binary-rf1.png)
+![master-home](/images/admin/master-home-docker-rf1.png)
 
-The Masters section highlights the 1 yb-master along with its corresponding cloud, region and zone placement.
+The Masters section highlights the cloud, region and zone placement for the yb-master servers.
 
 ### YB-TServer status
 
-Clicking `See all nodes` takes you to the Tablet Servers page where you can observe the 1 yb-tserver along with the time since it last connected to this yb-master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
+Clicking on the `See all nodes` takes us to the Tablet Servers page where you can observe the 1 tserver along with the time since it last connected to this master via regular heartbeats.
 
-![master-home](/images/admin/master-tservers-list-binary-rf1.png)
+![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 
 ## 3. Build a Java application
 

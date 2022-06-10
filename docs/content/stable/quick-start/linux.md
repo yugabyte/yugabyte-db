@@ -1,23 +1,22 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on macOS.
+description: Get started using YugabyteDB in less than five minutes on Linux.
 aliases:
-  - /quick-start/
-layout: single
+  - /quick-start/linux/
 type: docs
 ---
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
     <li class="active">
-      <a href="../" class="nav-link">
+      <a href="../../" class="nav-link">
         Use a local cluster
       </a>
     </li>
@@ -26,26 +25,26 @@ type: docs
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
+    <li>
+      <a href="../" class="nav-link">
         <i class="fab fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
-    <li>
-      <a href="../quick-start/linux/" class="nav-link">
+    <li class="active">
+      <a href="../linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
-      <a href="../quick-start/docker/" class="nav-link">
+      <a href="../docker/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
+      <a href="../kubernetes/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
@@ -57,7 +56,11 @@ type: docs
 
 ### Prerequisites
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+1. One of the following operating systems:
+
+    * <i class="icon-centos"></i> CentOS 7 or later
+
+    * <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
 
 1. Verify that you have Python 2 or 3 installed.
 
@@ -69,118 +72,65 @@ type: docs
     Python 3.7.3
     ```
 
+    {{< note title="Note" >}}
+
+By default, CentOS 8 doesn't have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
+One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
+
+Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`.
+
+    {{< /note >}}
+
 1. `wget` or `curl` is available.
 
-    The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
+    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
 
-    To install `wget` on your Mac, you can run the following command if you use Homebrew:
+    To install `wget`:
 
-    ```sh
-    $ brew install wget
-    ```
+    * CentOS: `yum install wget`
+    * Ubuntu: `apt install wget`
 
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
+    To install `curl`:
 
-    ```sh
-    $ launchctl limit maxfiles
-    ```
+    * CentOS: `yum install curl`
+    * Ubuntu: `apt install curl`
 
-    We recommend setting the soft and hard limits to 1048576.
-
-    Edit `/etc/sysctl.conf`, if it exists, to include the following:
-
-    ```sh
-    kern.maxfiles=1048576
-    kern.maxproc=2500
-    kern.maxprocperuid=2500
-    kern.maxfilesperproc=1048576
-    ```
-
-    If this file does not exist, then create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
-
-    ```xml
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-    ```
-
-    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
-
-    ```sh
-    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
-    ```
-
-    You might have to `unload` the service before loading it.
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
 
 ### Download YugabyteDB
 
-1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
+1. Download the YugabyteDB package using the following `wget` command.
 
     ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
+    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    ```
+
+    \
+    OR:
+
+    ```sh
+    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz
     ```
 
 1. Extract the package and then change directories to the YugabyteDB home.
 
     ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-linux-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
     ```
 
-### Configure
+    \
+    OR:
 
-Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
+    ```sh
+    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-el8-aarch64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
+    ```
 
-To add six loopback addresses, run the following commands, which require `sudo` access.
+### Configure YugabyteDB
 
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
-```
-
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
-
-To verify that the extra loopback addresses exist, run the following command.
+To configure YugabyteDB, run the following shell script.
 
 ```sh
-$ ifconfig lo0
-```
-
-You should see some output like the following:
-
-```output
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
+$ ./bin/post_install.sh
 ```
 
 ## 2. Create a local cluster
@@ -190,16 +140,6 @@ To create a single-node local cluster with a replication factor (RF) of 1, run t
 ```sh
 $ ./bin/yugabyted start
 ```
-
-{{<note title="Note for macOS Monterey" >}}
-
-macOS Monterey turns on AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on. Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
-
-```sh
-$ ./bin/yugabyted start --master_webserver_port=9999
-```
-
-{{< /note >}}
 
 After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
@@ -218,8 +158,8 @@ $ ./bin/yugabyted status
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
 | YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
 | YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/var/data                                                     |
-| Log Dir             : /Users/myuser/var/logs                                                     |
+| Data Dir            : /home/myuser/var/data                                                      |
+| Log Dir             : /home/myuser/var/logs                                                      |
 | Universe UUID       : fad6c687-e1dc-4dfd-af4b-380021e19be3                                       |
 +--------------------------------------------------------------------------------------------------+
 ```

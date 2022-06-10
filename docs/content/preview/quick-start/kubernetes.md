@@ -1,51 +1,56 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on macOS.
+description: Get started using YugabyteDB in less than five minutes on Kubernetes (Minikube).
 aliases:
-  - /quick-start/
-layout: single
+  - /quick-start-kubernetes/
 type: docs
 ---
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="./quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
     <li class="active">
-      <a href="../" class="nav-link">
+      <a href="../../quick-start/" class="nav-link">
         Use a local cluster
       </a>
     </li>
   </ul>
 </div>
 
+{{< note title="Note" >}}
+
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
+
+{{< /note >}}
+
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
+    <li>
+      <a href="../" class="nav-link">
         <i class="fab fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
     <li>
-      <a href="../quick-start/linux/" class="nav-link">
+      <a href="../linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
-      <a href="../quick-start/docker/" class="nav-link">
+      <a href="../docker/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
-    <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
+    <li class="active">
+      <a href="../kubernetes/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
@@ -53,194 +58,180 @@ type: docs
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 ### Prerequisites
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+- [Minikube](https://github.com/kubernetes/minikube) is installed on your localhost machine.
 
-1. Verify that you have Python 2 or 3 installed.
+    The Kubernetes version used by Minikube should be v1.18.0 or later. The default Kubernetes version being used by Minikube displays when you run the `minikube start` command. To install Minikube, see [Install Minikube](https://kubernetes.io/docs/tasks/tools/install-minikube/) in the Kubernetes documentation.
+
+- [kubectl](https://kubernetes.io/docs/reference/kubectl/overview/) is installed.
+
+    To install `kubectl`, see [Install kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/) in the Kubernetes documentation.
+
+- [Helm 3.4 or later](https://helm.sh/) is installed.
+
+    To install `helm`, see [Install helm](https://helm.sh/docs/intro/install/) in the Helm documentation.
+
+### Start Kubernetes
+
+- Start Kubernetes using Minikube by running the following command. Note that minikube by default brings up a single-node Kubernetes environment with 2GB RAM, 2 CPUS, and a disk of 20GB. We recommend starting minkube with at least 8GB RAM, 4 CPUs and 40GB disk as shown below.
 
     ```sh
-    $ python --version
+    $ minikube start --memory=8192 --cpus=4 --disk-size=40g --vm-driver=virtualbox
     ```
 
     ```output
-    Python 3.7.3
+    ...
+    Configuring environment for Kubernetes v1.14.2 on Docker 18.09.6
+    ...
     ```
 
-1. `wget` or `curl` is available.
-
-    The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
-
-    To install `wget` on your Mac, you can run the following command if you use Homebrew:
+- Review Kubernetes dashboard by running the following command.
 
     ```sh
-    $ brew install wget
+    $ minikube dashboard
     ```
 
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
+- Confirm that your kubectl is configured correctly by running the following command.
 
     ```sh
-    $ launchctl limit maxfiles
+    $ kubectl version
     ```
 
-    We recommend setting the soft and hard limits to 1048576.
+    ```output
+    Client Version: version.Info{Major:"1", Minor:"14+", GitVersion:"v1.14.10-dispatcher", ...}
+    Server Version: version.Info{Major:"1", Minor:"14", GitVersion:"v1.14.2", ...}
+    ```
 
-    Edit `/etc/sysctl.conf`, if it exists, to include the following:
+- Confirm that your Helm is configured correctly by running the following command.
 
     ```sh
-    kern.maxfiles=1048576
-    kern.maxproc=2500
-    kern.maxprocperuid=2500
-    kern.maxfilesperproc=1048576
+    $ helm version
     ```
 
-    If this file does not exist, then create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
-
-    ```xml
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
+    ```output
+    version.BuildInfo{Version:"v3.0.3", GitCommit:"...", GitTreeState:"clean", GoVersion:"go1.13.6"}
     ```
 
-    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
+### Download YugabyteDB Helm Chart
 
-    ```sh
-    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
-    ```
+#### Add charts repository
 
-    You might have to `unload` the service before loading it.
-
-### Download YugabyteDB
-
-1. Download the YugabyteDB `tar.gz` file using the following `wget` command.
-
-    ```sh
-    $ wget https://downloads.yugabyte.com/releases/{{< yb-version version="stable">}}/yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz
-    ```
-
-1. Extract the package and then change directories to the YugabyteDB home.
-
-    ```sh
-    $ tar xvfz yugabyte-{{< yb-version version="stable" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="stable">}}/
-    ```
-
-### Configure
-
-Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
-
-To add six loopback addresses, run the following commands, which require `sudo` access.
+To add the YugabyteDB charts repository, run the following command.
 
 ```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
+$ helm repo add yugabytedb https://charts.yugabyte.com
 ```
 
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
+#### Fetch updates from the repository
 
-To verify that the extra loopback addresses exist, run the following command.
+Make sure that you have the latest updates to the repository by running the following command.
 
 ```sh
-$ ifconfig lo0
+$ helm repo update
 ```
 
-You should see some output like the following:
+#### Validate the chart version
+
+```sh
+$ helm search repo yugabytedb/yugabyte
+```
 
 ```output
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  2.13.0          2.13.0.1-b2  YugabyteDB is the high-performance distributed ...
 ```
+
+Now you are ready to create a local YugabyteDB cluster.
 
 ## 2. Create a local cluster
 
-To create a single-node local cluster with a replication factor (RF) of 1, run the following command.
+Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
 ```sh
-$ ./bin/yugabyted start
+$ kubectl create namespace yb-demo
+$ helm install yb-demo yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+replicas.master=1,replicas.tserver=1 --namespace yb-demo
 ```
 
-{{<note title="Note for macOS Monterey" >}}
-
-macOS Monterey turns on AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. The workaround is to turn AirPlay receiving off, then start YugabyteDB, and then (optionally) turn AirPlay receiving back on. Alternatively(recommended), you can change the default port number using the `--master_webserver_port` flag when you start the cluster as follows:
+Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-service` will remain in pending state since load balancers are not available in a Minikube environment. If you would like to turn off these services then pass the `enableLoadBalancer=False` flag as shown below.
 
 ```sh
-$ ./bin/yugabyted start --master_webserver_port=9999
+$ helm install yb-demo yugabytedb/yugabyte \
+--set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
+resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
+replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
 ```
 
-{{< /note >}}
+### Check cluster status with kubectl
 
-After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
-
-### 2. Check cluster status
+Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/) in the Concepts section.
 
 ```sh
-$ ./bin/yugabyted status
+$ kubectl --namespace yb-demo get pods
 ```
 
 ```output
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running. Leader Master is present                                          |
-| Web console         : http://127.0.0.1:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-| YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/var/data                                                     |
-| Log Dir             : /Users/myuser/var/logs                                                     |
-| Universe UUID       : fad6c687-e1dc-4dfd-af4b-380021e19be3                                       |
-+--------------------------------------------------------------------------------------------------+
+NAME           READY     STATUS              RESTARTS   AGE
+yb-master-0    0/2       ContainerCreating   0          5s
+yb-tserver-0   0/2       ContainerCreating   0          4s
 ```
 
-### 3. Check cluster status with Admin UI
+Eventually, all the pods will have the `Running` state.
 
-The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
+```output
+NAME           READY     STATUS    RESTARTS   AGE
+yb-master-0    2/2       Running   0          13s
+yb-tserver-0   2/2       Running   0          12s
+```
 
-### Overview and YB-Master status
+To see the status of the three services, run the following command.
 
-The yb-master Admin UI home page shows that you have a cluster with `Replication Factor` of 1 and `Num Nodes (TServers)` as 1. `Num User Tables` is 0 since there are no user tables created yet. The YugabyteDB version number is also shown for your reference.
+```sh
+$ kubectl --namespace yb-demo get services
+```
 
-![master-home](/images/admin/master-home-binary-rf1.png)
+```output
+NAME                 TYPE           CLUSTER-IP     EXTERNAL-IP   PORT(S)                                        AGE
+yb-master-ui         LoadBalancer   10.98.66.255   <pending>     7000:31825/TCP                                 119s
+yb-masters           ClusterIP      None           <none>        7100/TCP,7000/TCP                              119s
+yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,9042:30391/TCP,5433:30537/TCP   119s
+yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
+```
 
-The Masters section highlights the 1 yb-master along with its corresponding cloud, region and zone placement.
 
-### YB-TServer status
 
-Clicking `See all nodes` takes you to the Tablet Servers page where you can observe the 1 yb-tserver along with the time since it last connected to this yb-master via regular heartbeats. Since there are no user tables created yet, you can see that the `Load (Num Tablets)` is 0. As new tables get added, new tablets (aka shards) will be created automatically and distributed evenly across all the available tablet servers.
+### Check cluster status with Admin UI
 
-![master-home](/images/admin/master-tservers-list-binary-rf1.png)
+Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
+
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations.
+
+To get access to the Admin UI, you first need to set up port forwarding for port 7000:
+
+```sh
+$ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
+```
+
+Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
+
+#### Overview and YB-Master status
+
+The YB-Master home page shows that you have a cluster (or universe) with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
+
+![master-home](/images/admin/master-home-kubernetes-rf1.png)
+
+The **Masters** section highlights the 1 YB-Master along with its corresponding cloud, region, and zone placement.
+
+#### YB-TServer status
+
+Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats.
+
+![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
 ## 3. Build a Java application
 
@@ -307,11 +298,11 @@ This tutorial assumes that:
     $ mvn install
     ```
 
-### Create the sample Java application
+### 3. Create the sample Java application
 
-You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
+You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 
-### Uniform load balancing
+#### Uniform load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java`.
 
@@ -415,7 +406,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.UniformLoadBalanceApp
     ```
 
-### Topology-aware load balancing
+#### Topology-aware load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java`.
 
