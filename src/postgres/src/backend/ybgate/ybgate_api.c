@@ -79,6 +79,15 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
 	return PG_STATUS_OK;
 }
 
+YbgStatus
+YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype, uint32_t typbasetype,
+					   uint32_t *primitive_type_oid)
+{
+	PG_SETUP_ERROR_REPORTING();
+	*primitive_type_oid = YbGetPrimitiveTypeOid(type_oid, typtype, typbasetype);
+	return PG_STATUS_OK;
+}
+
 //-----------------------------------------------------------------------------
 // Expression Evaluation
 //-----------------------------------------------------------------------------

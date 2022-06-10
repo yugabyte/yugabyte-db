@@ -8,6 +8,7 @@ YbgDeleteMemoryContext
 
 # Types API
 YbgGetTypeTable
+YbgGetPrimitiveTypeOid
 
 # Expression Evaluation API
 YbgExprContextCreate
