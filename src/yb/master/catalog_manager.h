@@ -72,6 +72,7 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/xcluster_split_driver.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -793,8 +794,11 @@ class CatalogManager :
 
   Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
-  Result<std::unordered_map<std::string, uint32_t>> GetPgTypeOid(const TableInfoPtr& table_info)
-      REQUIRES_SHARED(mutex_);
+  Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
+      const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
+      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
