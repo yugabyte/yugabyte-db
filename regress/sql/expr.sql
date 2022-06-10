@@ -1557,22 +1557,22 @@ SELECT * FROM age_replace('Hello', 1, 'E');
 --
 -- sin, cos, tan, cot
 --
-SELECT * FROM cypher('expr', $$
+SELECT sin = results FROM cypher('expr', $$
     RETURN sin(3.1415)
 $$) AS (results agtype), sin(3.1415);
-SELECT * FROM cypher('expr', $$
+SELECT cos = results FROM cypher('expr', $$
     RETURN cos(3.1415)
 $$) AS (results agtype), cos(3.1415);
-SELECT * FROM cypher('expr', $$
+SELECT tan = results FROM cypher('expr', $$
     RETURN tan(3.1415)
 $$) AS (results agtype), tan(3.1415);
-SELECT * FROM cypher('expr', $$
+SELECT cot = results FROM cypher('expr', $$
     RETURN cot(3.1415)
 $$) AS (results agtype), cot(3.1415);
-SELECT * FROM sin(3.1415), age_sin(3.1415);
-SELECT * FROM cos(3.1415), age_cos(3.1415);
-SELECT * FROM tan(3.1415), age_tan(3.1415);
-SELECT * FROM cot(3.1415), age_cot(3.1415);
+SELECT sin = age_sin FROM sin(3.1415), age_sin(3.1415);
+SELECT cos = age_cos FROM cos(3.1415), age_cos(3.1415);
+SELECT tan = age_tan FROM tan(3.1415), age_tan(3.1415);
+SELECT cot = age_cot FROM cot(3.1415), age_cot(3.1415);
 -- should return null
 SELECT * FROM cypher('expr', $$
     RETURN sin(null)

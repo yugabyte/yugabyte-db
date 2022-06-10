@@ -3634,60 +3634,60 @@ ERROR:  replace() unsupported argument type 23
 --
 -- sin, cos, tan, cot
 --
-SELECT * FROM cypher('expr', $$
+SELECT sin = results FROM cypher('expr', $$
     RETURN sin(3.1415)
 $$) AS (results agtype), sin(3.1415);
-       results        |         sin          
-----------------------+----------------------
- 9.26535896604903e-05 | 9.26535896604903e-05
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM cypher('expr', $$
+SELECT cos = results FROM cypher('expr', $$
     RETURN cos(3.1415)
 $$) AS (results agtype), cos(3.1415);
-      results       |        cos         
---------------------+--------------------
- -0.999999995707656 | -0.999999995707656
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM cypher('expr', $$
+SELECT tan = results FROM cypher('expr', $$
     RETURN tan(3.1415)
 $$) AS (results agtype), tan(3.1415);
-        results        |          tan          
------------------------+-----------------------
- -9.26535900581913e-05 | -9.26535900581913e-05
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM cypher('expr', $$
+SELECT cot = results FROM cypher('expr', $$
     RETURN cot(3.1415)
 $$) AS (results agtype), cot(3.1415);
-      results      |        cot        
--------------------+-------------------
- -10792.8899395258 | -10792.8899395258
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM sin(3.1415), age_sin(3.1415);
-         sin          |       age_sin        
-----------------------+----------------------
- 9.26535896604903e-05 | 9.26535896604903e-05
+SELECT sin = age_sin FROM sin(3.1415), age_sin(3.1415);
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM cos(3.1415), age_cos(3.1415);
-        cos         |      age_cos       
---------------------+--------------------
- -0.999999995707656 | -0.999999995707656
+SELECT cos = age_cos FROM cos(3.1415), age_cos(3.1415);
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM tan(3.1415), age_tan(3.1415);
-          tan          |        age_tan        
------------------------+-----------------------
- -9.26535900581913e-05 | -9.26535900581913e-05
+SELECT tan = age_tan FROM tan(3.1415), age_tan(3.1415);
+ ?column? 
+----------
+ t
 (1 row)
 
-SELECT * FROM cot(3.1415), age_cot(3.1415);
-        cot        |      age_cot      
--------------------+-------------------
- -10792.8899395258 | -10792.8899395258
+SELECT cot = age_cot FROM cot(3.1415), age_cot(3.1415);
+ ?column? 
+----------
+ t
 (1 row)
 
 -- should return null
