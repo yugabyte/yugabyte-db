@@ -3,6 +3,7 @@
 import argparse
 from collections import namedtuple
 from node_client_utils import SshParamikoClient, KubernetesClient
+from pathlib import Path
 import sys
 import uuid
 import warnings
@@ -183,20 +184,21 @@ def upload_file_ssh(args, client):
     finally:
         sftp_client.close()
 
-    client.exec_command(['chmod', args.permissions, args.target_file])
-
 
 def upload_file_k8s(args, client):
     client.put_file(args.source_file, args.target_file)
 
-    client.exec_command(['chmod', args.permissions, args.target_file])
-
 
 def handle_upload_file(args, client):
+    target_path = Path(args.target_file)
+    client.exec_command(['mkdir', '-p', str(target_path.parent.absolute())])
+
     if args.node_type == 'ssh':
         upload_file_ssh(args, client)
     else:
         upload_file_k8s(args, client)
+
+    client.exec_command(['chmod', args.permissions, args.target_file])
 
 
 node_types = {
