@@ -40,6 +40,13 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
   }
 
   @Override
+  public String getName() {
+    return String.format(
+        "%s(xClusterConfig=%s,forceDelete=%s)",
+        super.getName(), taskParams().xClusterConfig, taskParams().forceDelete);
+  }
+
+  @Override
   public void run() {
     log.info("Running {}", getName());
 
@@ -51,17 +58,27 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
               + "to an xCluster config");
     }
 
-    // Get the bootstrap IDs to delete.
+    if (xClusterConfig.sourceUniverseUUID == null) {
+      log.info("Skipped {}: the source universe is destroyed", getName());
+      return;
+    }
+
+    // Force delete when it is requested by the user or target universe is deleted.
+    boolean forceDelete = taskParams().forceDelete || xClusterConfig.targetUniverseUUID == null;
+
+    // Get the bootstrap IDs to delete. Either the bootstrap flow had error, or the target universe
+    // is deleted.
     Set<XClusterTableConfig> tableConfigsWithBootstrapId =
         xClusterConfig
             .tables
             .stream()
             .filter(
                 tableConfig ->
-                    tableConfig.needBootstrap
-                        && !tableConfig.replicationSetupDone
-                        && tableConfig.bootstrapCreateTime != null
-                        && tableConfig.streamId != null)
+                    (tableConfig.needBootstrap
+                            && !tableConfig.replicationSetupDone
+                            && tableConfig.bootstrapCreateTime != null
+                            && tableConfig.streamId != null)
+                        || xClusterConfig.targetUniverseUUID == null)
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
         tableConfigsWithBootstrapId
@@ -79,12 +96,13 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
           sourceUniverse.universeUUID);
       return;
     }
+    log.info("Bootstrap ids to be deleted: {}", bootstrapIds);
 
     try (YBClient client =
         ybService.getClient(sourceUniverseMasterAddresses, sourceUniverseCertificate)) {
       // The `OBJECT_NOT_FOUND` error will be ignored.
       DeleteCDCStreamResponse resp =
-          client.deleteCDCStream(bootstrapIds, true /* ignoreErrors */, taskParams().forceDelete);
+          client.deleteCDCStream(bootstrapIds, true /* ignoreErrors */, forceDelete);
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(

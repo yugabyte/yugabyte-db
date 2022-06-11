@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -105,6 +106,7 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Create xCluster config object.
     XClusterConfig xClusterConfig = XClusterConfig.create(createFormData);
+    verifyTaskAllowed(xClusterConfig, TaskType.CreateXClusterConfig);
 
     // Submit task to set up xCluster config.
     XClusterConfigTaskParams taskParams =
@@ -211,6 +213,7 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigEditFormData editFormData = parseEditFormData();
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
+    verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
 
     // Only one type of edit is allowed in one call.
     int editName = editFormData.name == null ? 0 : 1;
@@ -278,20 +281,39 @@ public class XClusterConfigController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     XClusterConfig xClusterConfig =
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
-    Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
+    verifyTaskAllowed(xClusterConfig, TaskType.DeleteXClusterConfig);
+
+    Universe sourceUniverse = null;
+    Universe targetUniverse = null;
+    if (xClusterConfig.sourceUniverseUUID != null) {
+      sourceUniverse =
+          Universe.getValidUniverseOrBadRequest(xClusterConfig.sourceUniverseUUID, customer);
+    }
+    if (xClusterConfig.targetUniverseUUID != null) {
+      targetUniverse =
+          Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
+    }
 
     // Submit task to delete xCluster config
     XClusterConfigTaskParams params = new XClusterConfigTaskParams(xClusterConfig);
     UUID taskUUID = commissioner.submit(TaskType.DeleteXClusterConfig, params);
-    CustomerTask.create(
-        customer,
-        targetUniverse.universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.XClusterConfig,
-        CustomerTask.TaskType.Delete,
-        xClusterConfig.name);
-
+    if (targetUniverse != null) {
+      CustomerTask.create(
+          customer,
+          targetUniverse.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.XClusterConfig,
+          CustomerTask.TaskType.Delete,
+          xClusterConfig.name);
+    } else if (sourceUniverse != null) {
+      CustomerTask.create(
+          customer,
+          sourceUniverse.universeUUID,
+          taskUUID,
+          CustomerTask.TargetType.XClusterConfig,
+          CustomerTask.TaskType.Delete,
+          xClusterConfig.name);
+    }
     log.info("Submitted delete XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
 
     auditService()
@@ -349,8 +371,14 @@ public class XClusterConfigController extends AuthenticatedController {
     XClusterConfigCreateFormData formData =
         formFactory.getFormDataOrBadRequest(
             request().body().asJson(), XClusterConfigCreateFormData.class);
-    validateTables(formData.tables);
 
+    validateTables(formData.tables);
+    if (Objects.equals(formData.sourceUniverseUUID, formData.targetUniverseUUID)) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Source and target universe cannot be the same: both are %s",
+              formData.sourceUniverseUUID));
+    }
     return formData;
   }
 
@@ -399,6 +427,18 @@ public class XClusterConfigController extends AuthenticatedController {
       if (tables.size() == 0) {
         throw new PlatformServiceException(BAD_REQUEST, "Table set must be non-empty");
       }
+    }
+  }
+
+  private void verifyTaskAllowed(XClusterConfig xClusterConfig, TaskType taskType) {
+    if (!XClusterConfigTaskBase.isTaskAllowed(xClusterConfig, taskType)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "%s task is not allowed; with status `%s`, the allowed tasks are %s",
+              taskType,
+              xClusterConfig.status,
+              XClusterConfigTaskBase.getAllowedTasks(xClusterConfig)));
     }
   }
 
