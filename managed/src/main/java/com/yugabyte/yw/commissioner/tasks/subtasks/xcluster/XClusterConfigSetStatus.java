@@ -3,13 +3,11 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -25,12 +23,12 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
   // It contains the transitions from current status to a list of target statuses that happen
   // when a user wants to pause/enable a running xCluster config.
   private static final Map<XClusterConfigStatusType, List<XClusterConfigStatusType>>
-      enableAndDisableTransitions = new HashMap<>();
+      TRANSITIONS_NEED_YBDB_INVOLVEMENT = new HashMap<>();
 
   static {
-    enableAndDisableTransitions.put(
+    TRANSITIONS_NEED_YBDB_INVOLVEMENT.put(
         XClusterConfigStatusType.Running, Arrays.asList(XClusterConfigStatusType.Paused));
-    enableAndDisableTransitions.put(
+    TRANSITIONS_NEED_YBDB_INVOLVEMENT.put(
         XClusterConfigStatusType.Paused, Arrays.asList(XClusterConfigStatusType.Running));
   }
 
@@ -56,9 +54,9 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s %s(currentStatus=%s, desiredStatus=%s)",
+        "%s(xClusterConfig=%s,currentStatus=%s,desiredStatus=%s)",
         super.getName(),
-        this.getClass().getSimpleName(),
+        taskParams().xClusterConfig,
         taskParams().xClusterConfig.status,
         taskParams().desiredStatus);
   }
@@ -116,7 +114,7 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
       return false;
     }
     List<XClusterConfigStatusType> destinationStatusList =
-        enableAndDisableTransitions.get(currentStatus);
+        TRANSITIONS_NEED_YBDB_INVOLVEMENT.get(currentStatus);
     if (destinationStatusList == null) {
       return false;
     }

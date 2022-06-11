@@ -2,6 +2,7 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.api.client.util.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -11,9 +12,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigFromDb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
@@ -30,12 +29,15 @@ import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
 import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -57,6 +59,36 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   private static final String GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS = "certs_for_cdc_dir";
   private static final String GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS =
       "/home/yugabyte/yugabyte-tls-producer/";
+
+  public static final List<XClusterConfig.XClusterConfigStatusType>
+      X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST =
+          ImmutableList.of(
+              XClusterConfig.XClusterConfigStatusType.Deleted,
+              XClusterConfig.XClusterConfigStatusType.DeletedUniverse);
+
+  private static final Map<XClusterConfigStatusType, List<TaskType>> STATUS_TO_ALLOWED_TASKS =
+      new HashMap<>();
+
+  static {
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.Init,
+        ImmutableList.of(TaskType.CreateXClusterConfig, TaskType.DeleteXClusterConfig));
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.Running,
+        ImmutableList.of(TaskType.EditXClusterConfig, TaskType.DeleteXClusterConfig));
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.Updating, ImmutableList.of(TaskType.DeleteXClusterConfig));
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.Paused,
+        ImmutableList.of(TaskType.EditXClusterConfig, TaskType.DeleteXClusterConfig));
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.DeletedUniverse, ImmutableList.of(TaskType.DeleteXClusterConfig));
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.Deleted, ImmutableList.of(TaskType.DeleteXClusterConfig));
+    STATUS_TO_ALLOWED_TASKS.put(
+        XClusterConfigStatusType.Failed,
+        ImmutableList.of(TaskType.EditXClusterConfig, TaskType.DeleteXClusterConfig));
+  }
 
   protected XClusterConfigTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -105,6 +137,39 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   protected void setXClusterConfigStatus(XClusterConfigStatusType status) {
     taskParams().xClusterConfig.status = status;
     taskParams().xClusterConfig.update();
+  }
+
+  public static boolean isInMustDeleteStatus(XClusterConfig xClusterConfig) {
+    if (xClusterConfig == null) {
+      throw new RuntimeException("xClusterConfig cannot be null");
+    }
+    return X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST.contains(xClusterConfig.status);
+  }
+
+  public static boolean isTaskAllowed(XClusterConfig xClusterConfig, TaskType taskType) {
+    if (taskType == null) {
+      throw new RuntimeException("taskType cannot be null");
+    }
+    List<TaskType> allowedTaskTypes = getAllowedTasks(xClusterConfig);
+    // Allow unknown situations to avoid bugs for now.
+    if (allowedTaskTypes == null) {
+      return true;
+    }
+    return allowedTaskTypes.contains(taskType);
+  }
+
+  public static List<TaskType> getAllowedTasks(XClusterConfig xClusterConfig) {
+    if (xClusterConfig == null) {
+      throw new RuntimeException(
+          "Cannot retrieve the list of allowed tasks because xClusterConfig is null");
+    }
+    List<TaskType> allowedTaskTypes = STATUS_TO_ALLOWED_TASKS.get(xClusterConfig.status);
+    if (allowedTaskTypes == null) {
+      log.warn(
+          "Cannot retrieve the list of allowed tasks because it is not defined for status={}",
+          xClusterConfig.status);
+    }
+    return allowedTaskTypes;
   }
 
   protected SubTaskGroup createXClusterConfigSetupTask(Set<String> tableIds) {
@@ -179,29 +244,23 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
-  protected SubTaskGroup createXClusterConfigRenameTask() {
+  protected SubTaskGroup createXClusterConfigRenameTask(String newName) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("XClusterConfigRename", executor);
+    XClusterConfigRename.Params xClusterConfigRenameParams = new XClusterConfigRename.Params();
+    xClusterConfigRenameParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
+    xClusterConfigRenameParams.xClusterConfig = taskParams().xClusterConfig;
+    xClusterConfigRenameParams.newName = newName;
+
     XClusterConfigRename task = createTask(XClusterConfigRename.class);
-    task.initialize(taskParams());
+    task.initialize(xClusterConfigRenameParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }
 
   protected SubTaskGroup createDeleteBootstrapIdsTask(boolean forceDelete) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteBootstrapIds", executor);
-    DeleteBootstrapIds.Params deleteBootstrapIdsParams = new DeleteBootstrapIds.Params();
-    deleteBootstrapIdsParams.universeUUID = taskParams().xClusterConfig.sourceUniverseUUID;
-    deleteBootstrapIdsParams.xClusterConfig = taskParams().xClusterConfig;
-    deleteBootstrapIdsParams.forceDelete = forceDelete;
-
-    DeleteBootstrapIds task = createTask(DeleteBootstrapIds.class);
-    task.initialize(deleteBootstrapIdsParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return createDeleteBootstrapIdsTask(taskParams().xClusterConfig, forceDelete);
   }
 
   protected SubTaskGroup createDeleteBootstrapIdsTask() {
@@ -209,18 +268,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createDeleteReplicationTask(boolean ignoreErrors) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigDelete", executor);
-    DeleteReplication.Params deleteXClusterConfigParams = new DeleteReplication.Params();
-    deleteXClusterConfigParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
-    deleteXClusterConfigParams.xClusterConfig = taskParams().xClusterConfig;
-    deleteXClusterConfigParams.ignoreErrors = ignoreErrors;
-
-    DeleteReplication task = createTask(DeleteReplication.class);
-    task.initialize(deleteXClusterConfigParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return createDeleteReplicationTask(taskParams().xClusterConfig, ignoreErrors);
   }
 
   protected SubTaskGroup createDeleteReplicationTask() {
@@ -228,19 +276,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected SubTaskGroup createDeleteXClusterConfigFromDbTask(boolean forceDelete) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteXClusterConfigFromDb", executor);
-    DeleteXClusterConfigFromDb.Params deleteXClusterConfigFromDbParams =
-        new DeleteXClusterConfigFromDb.Params();
-    deleteXClusterConfigFromDbParams.universeUUID = taskParams().xClusterConfig.targetUniverseUUID;
-    deleteXClusterConfigFromDbParams.xClusterConfig = taskParams().xClusterConfig;
-    deleteXClusterConfigFromDbParams.forceDelete = forceDelete;
-
-    DeleteXClusterConfigFromDb task = createTask(DeleteXClusterConfigFromDb.class);
-    task.initialize(deleteXClusterConfigFromDbParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
+    return createDeleteXClusterConfigFromDbTask(taskParams().xClusterConfig, forceDelete);
   }
 
   protected SubTaskGroup createDeleteXClusterConfigFromDbTask() {
@@ -417,32 +453,16 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     createTransferXClusterCertsCopyTasks(nodes, configName, certificate, null);
   }
 
-  protected void createTransferXClusterCertsRemoveTasks(
-      Collection<NodeDetails> nodes, String configName, File producerCertsDir) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
-    for (NodeDetails node : nodes) {
-      TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
-      transferParams.universeUUID = taskParams().universeUUID;
-      transferParams.nodeName = node.nodeName;
-      transferParams.azUuid = node.azUuid;
-      transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
-      transferParams.replicationGroupName = configName;
-      if (producerCertsDir != null) {
-        transferParams.producerCertsDirOnTarget = producerCertsDir;
-      }
-
-      TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
-      transferXClusterCertsTask.initialize(transferParams);
-      subTaskGroup.addSubTask(transferXClusterCertsTask);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(File producerCertsDir) {
+    return createTransferXClusterCertsRemoveTasks(taskParams().xClusterConfig, producerCertsDir);
   }
 
-  protected void createTransferXClusterCertsRemoveTasks(
-      Collection<NodeDetails> nodes, String configName) {
-    createTransferXClusterCertsRemoveTasks(nodes, configName, null);
+  protected SubTaskGroup createTransferXClusterCertsRemoveTasks() {
+    return createTransferXClusterCertsRemoveTasks(null /* producerCertsDir */);
+  }
+
+  protected void createDeleteXClusterConfigSubtasks() {
+    createDeleteXClusterConfigSubtasks(taskParams().xClusterConfig);
   }
 
   protected void upgradeMismatchedXClusterCertsGFlags(
