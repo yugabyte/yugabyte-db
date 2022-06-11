@@ -1,17 +1,19 @@
+// Copyright (c) YugaByte, Inc.
+
 import akka.stream.Materializer;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.logging.LogUtil;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Function;
 import org.slf4j.MDC;
 import play.mvc.Filter;
 import play.mvc.Http;
 import play.mvc.Result;
-
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.CompletionStage;
-import java.util.function.Function;
-import com.typesafe.config.Config;
 
 /**
  * This filter is used to inject a request ID into logging events. This is used in cloud to trace
@@ -32,12 +34,18 @@ public class RequestLoggingFilter extends Filter {
   @Override
   public CompletionStage<Result> apply(
       Function<Http.RequestHeader, CompletionStage<Result>> next, Http.RequestHeader rh) {
+    String correlationId;
     Map<String, String> context = MDC.getCopyOfContextMap();
-    rh.header(this.requestIdHeader).ifPresent(h -> MDC.put("request-id", h));
-    String correlationId =
-        rh.header(this.requestIdHeader).isPresent()
-            ? rh.header(this.requestIdHeader).get()
-            : UUID.randomUUID().toString();
+    Optional<String> optional = rh.header(this.requestIdHeader);
+    if (optional.isPresent()) {
+      // Internally, correlation ID is same as request ID.
+      // But, correlation ID is tracked even if request ID is absent.
+      // E.g background jobs are tracked with correlation ID.
+      correlationId = optional.get();
+      MDC.put("request-id", correlationId);
+    } else {
+      correlationId = UUID.randomUUID().toString();
+    }
     MDC.put(LogUtil.CORRELATION_ID, correlationId);
     return next.apply(rh)
         .thenApply(

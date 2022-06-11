@@ -1,9 +1,11 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.logging;
 
+import com.google.common.collect.Maps;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import com.google.common.collect.Maps;
 import lombok.NonNull;
 import org.slf4j.MDC;
 
@@ -36,13 +38,10 @@ public class MDCAwareRunnable implements Runnable {
 
   public void run() {
     Map<String, String> previous = getCopyOfContextMap();
-    /*[PLAT-3932] Insert correlation-id into the MDC to trace the internal calls given the
-     * MDC doesn't already have correlation-id. The old MDC context is later
-     * restored to avoid leakage.
-     * */
+    // Insert correlation-id into the MDC to trace the internal calls given the MDC
+    // doesn't already have correlation-id. The old MDC context is later restored.
     context.computeIfAbsent(LogUtil.CORRELATION_ID, k -> UUID.randomUUID().toString());
     setMDC(context);
-
     try {
       runnable.run();
     } finally {
