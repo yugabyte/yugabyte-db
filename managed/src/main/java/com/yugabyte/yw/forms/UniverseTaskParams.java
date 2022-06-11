@@ -9,6 +9,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -121,13 +122,12 @@ public class UniverseTaskParams extends AbstractTaskParams {
   @ApiModelProperty(value = "The source universe's xcluster replication relationships")
   public List<UUID> getSourceXClusterConfigs() {
     if (universeUUID == null) {
-      return new ArrayList<>();
+      return Collections.emptyList();
     }
-    return new ArrayList<>(
-        XClusterConfig.getBySourceUniverseUUID(universeUUID)
-            .stream()
-            .map(xClusterConfig -> xClusterConfig.uuid)
-            .collect(Collectors.toList()));
+    return XClusterConfig.getBySourceUniverseUUID(universeUUID)
+        .stream()
+        .map(xClusterConfig -> xClusterConfig.uuid)
+        .collect(Collectors.toList());
   }
 
   // Which user to run the node exporter service on nodes with

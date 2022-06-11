@@ -7897,6 +7897,10 @@
           "description" : "XCluster config name",
           "type" : "string"
         },
+        "replicationGroupName" : {
+          "description" : "Replication group name in DB",
+          "type" : "string"
+        },
         "sourceUniverseUUID" : {
           "description" : "Source Universe UUID",
           "format" : "uuid",
@@ -8016,6 +8020,10 @@
         },
         "name" : {
           "description" : "XCluster config name",
+          "type" : "string"
+        },
+        "replicationGroupName" : {
+          "description" : "Replication group name in DB",
           "type" : "string"
         },
         "sourceUniverseUUID" : {
