@@ -55,6 +55,18 @@ public class MDCPropagatingDispatcherTest extends MDCPropagatingDispatcherTestBa
           }
         };
 
+    dispatcher.execute(runnable);
+    cdl.await();
+    assertNull(error.get());
+
+    cdl = new CountDownLatch(1);
+    cdlRef.set(cdl);
+    dispatcher.execute(batchable);
+    cdl.await();
+    assertNull(error.get());
+
+    cdl = new CountDownLatch(1);
+    cdlRef.set(cdl);
     dispatcher.prepare().execute(runnable);
     cdl.await();
     assertNull(error.get());
