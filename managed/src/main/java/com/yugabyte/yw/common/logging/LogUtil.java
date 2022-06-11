@@ -40,6 +40,11 @@ public class LogUtil {
   private static final String AUDIT_LOG_MAX_HISTORY_KEY = "yb.audit.log.maxHistory";
   private static final String AUDIT_LOG_MAX_HISTORY_SYS_PROPERTY = "auditLogMaxHistory";
 
+  /*[PLAT-3932]: Key for storing the Correlation ID of HTTP requests in the MDC for logging
+   * purposes.
+   * */
+  public static final String CORRELATION_ID = "correlation-id";
+
   public static void updateLoggingFromConfig(
       SettableRuntimeConfigFactory sConfigFactory, Config config) {
     String logLevel = LogUtil.getLoggingLevel(sConfigFactory);
