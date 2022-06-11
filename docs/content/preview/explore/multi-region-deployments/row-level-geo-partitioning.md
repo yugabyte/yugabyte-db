@@ -542,5 +542,5 @@ CREATE TABLESPACE us_west_2_tablespace WITH (
 ```
 
 {{< note title="Write latency" >}}
-Having the client and leader in the same zone helps eliminate the extra network roundtrip between them. But the write latency will still be higher than a single region tablespace, as the quorum commit need to wait for data to replicate to a different region.
+Having the client and leader in the same zone helps eliminate the extra network roundtrip between them. The read latency will be similar to having all replicas in the same zone. But the write latency will be slightly higher, as the quorum commit needs to wait for the data to get replicated in a different region.
 {{< /note >}}
