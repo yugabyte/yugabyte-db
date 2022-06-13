@@ -1,3 +1,9 @@
+# Settings in the [build] context are global and are applied to
+# all contexts unless otherwise overridden by more specific contexts.
+[build]
+  # Default build command.
+  command = "npm run build"
+
 # Deploy contexts
 # Environment variables here override variables set in the web UI.
 #
