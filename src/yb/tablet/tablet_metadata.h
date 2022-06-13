@@ -294,7 +294,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   Status set_cdc_min_replicated_index(int64 cdc_min_replicated_index);
 
+  Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id);
+
   int64_t cdc_min_replicated_index() const;
+
+  OpId cdc_sdk_min_checkpoint_op_id() const;
 
   Status SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication);
 
@@ -559,6 +563,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // The minimum index that has been replicated by the cdc service.
   int64_t cdc_min_replicated_index_ GUARDED_BY(data_mutex_) = std::numeric_limits<int64_t>::max();
+
+  // The minimum CDCSDK checkpoint Opid that has been consumed by client.
+  OpId cdc_sdk_min_checkpoint_op_id_ GUARDED_BY(data_mutex_);
 
   bool is_under_twodc_replication_ GUARDED_BY(data_mutex_) = false;
 

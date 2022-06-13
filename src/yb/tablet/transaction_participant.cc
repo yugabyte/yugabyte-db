@@ -353,19 +353,20 @@ class TransactionParticipant::Impl
   }
 
   // Cleans the intents those are consumed by consumers.
-  void SetRetainOpId(const OpId& op_id) {
+  void SetIntentRetainOpIdAndTime(const OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
-    if (cdc_sdk_min_checkpint_op_id_ != op_id) {
-      cdc_sdk_min_checkpint_op_id_expiration_ =
-          CoarseMonoClock::now() +
-          MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
-    }
-    cdc_sdk_min_checkpint_op_id_ = op_id;
+    cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseMonoClock::now() + cdc_sdk_op_id_expiration;
+    cdc_sdk_min_checkpoint_op_id_ = op_id;
 
-    // If new op_id same as  cdc_sdk_min_checkpint_op_id_ it means already intent before it are
+    // If new op_id same as  cdc_sdk_min_checkpoint_op_id_ it means already intent before it are
     // already cleaned up, so no need call clean transactions, else call clean the transactions.
     CleanTransactionsUnlocked(&min_running_notifier);
+  }
+
+  OpId GetRetainOpId() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return cdc_sdk_min_checkpoint_op_id_;
   }
 
   // Cleans transactions that are requested and now is safe to clean.
@@ -1499,9 +1500,9 @@ class TransactionParticipant::Impl
   }
 
   OpId GetLatestCheckPoint() REQUIRES(mutex_) {
-    return CoarseMonoClock::Now() < cdc_sdk_min_checkpint_op_id_expiration_ &&
-                   cdc_sdk_min_checkpint_op_id_ != OpId::Invalid()
-               ? cdc_sdk_min_checkpint_op_id_
+    return CoarseMonoClock::Now() < cdc_sdk_min_checkpoint_op_id_expiration_ &&
+                   cdc_sdk_min_checkpoint_op_id_ != OpId::Invalid()
+               ? cdc_sdk_min_checkpoint_op_id_
                : OpId::Max();
   }
 
@@ -1608,8 +1609,8 @@ class TransactionParticipant::Impl
 
   rpc::Poller poller_;
 
-  OpId cdc_sdk_min_checkpint_op_id_ = OpId::Invalid();
-  CoarseTimePoint cdc_sdk_min_checkpint_op_id_expiration_ = CoarseTimePoint::min();
+  OpId cdc_sdk_min_checkpoint_op_id_ = OpId::Invalid();
+  CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseTimePoint::min();
 };
 
 TransactionParticipant::TransactionParticipant(
@@ -1785,9 +1786,14 @@ HybridTime TransactionParticipantContext::Now() {
   return clock_ptr()->Now();
 }
 
-void TransactionParticipant::SetRetainOpId(const yb::OpId& op_id) const {
-  impl_->SetRetainOpId(op_id);
+void TransactionParticipant::SetIntentRetainOpIdAndTime(
+    const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  impl_->SetIntentRetainOpIdAndTime(op_id, cdc_sdk_op_id_expiration);
 }
 
-} // namespace tablet
-} // namespace yb
+OpId TransactionParticipant::TEST_GetRetainOpId() const {
+  return impl_->GetRetainOpId();
+}
+
+}  // namespace tablet
+}  // namespace yb

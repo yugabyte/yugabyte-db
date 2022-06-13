@@ -552,7 +552,8 @@ RaftGroupMetadata::RaftGroupMetadata(
       wal_dir_(wal_dir),
       tablet_data_state_(data.tablet_data_state),
       colocated_(data.colocated),
-      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()) {
+      cdc_min_replicated_index_(std::numeric_limits<int64_t>::max()),
+      cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
@@ -624,6 +625,7 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
       tombstone_last_logged_opid_ = OpId();
     }
     cdc_min_replicated_index_ = superblock.cdc_min_replicated_index();
+    cdc_sdk_min_checkpoint_op_id_ = OpId::FromPB(superblock.cdc_sdk_min_checkpoint_op_id());
     is_under_twodc_replication_ = superblock.is_under_twodc_replication();
     hidden_ = superblock.hidden();
     auto restoration_hybrid_time = HybridTime::FromPB(superblock.restoration_hybrid_time());
@@ -730,6 +732,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   pb.set_primary_table_id(primary_table_id_);
   pb.set_colocated(colocated_);
   pb.set_cdc_min_replicated_index(cdc_min_replicated_index_);
+  cdc_sdk_min_checkpoint_op_id_.ToPB(pb.mutable_cdc_sdk_min_checkpoint_op_id());
   pb.set_is_under_twodc_replication(is_under_twodc_replication_);
   pb.set_hidden(hidden_);
   if (restoration_hybrid_time_) {
@@ -964,6 +967,19 @@ Status RaftGroupMetadata::set_cdc_min_replicated_index(int64 cdc_min_replicated_
 int64_t RaftGroupMetadata::cdc_min_replicated_index() const {
   std::lock_guard<MutexType> lock(data_mutex_);
   return cdc_min_replicated_index_;
+}
+
+OpId RaftGroupMetadata::cdc_sdk_min_checkpoint_op_id() const {
+  std::lock_guard<MutexType> lock(data_mutex_);
+  return cdc_sdk_min_checkpoint_op_id_;
+}
+
+Status RaftGroupMetadata::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_min_checkpoint_op_id) {
+  {
+    std::lock_guard<MutexType> lock(data_mutex_);
+    cdc_sdk_min_checkpoint_op_id_ = cdc_min_checkpoint_op_id;
+  }
+  return Flush();
 }
 
 Status RaftGroupMetadata::SetIsUnderTwodcReplicationAndFlush(bool is_under_twodc_replication) {
