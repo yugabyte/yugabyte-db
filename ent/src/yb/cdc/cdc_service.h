@@ -170,6 +170,7 @@ class CDCServiceImpl : public CDCServiceIf {
   // Returns true if this server has received a GetChanges call.
   bool CDCEnabled();
 
+  void SetCDCServiceEnabled();
 
  private:
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);

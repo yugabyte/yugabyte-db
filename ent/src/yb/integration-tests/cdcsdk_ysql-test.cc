@@ -153,7 +153,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     table.AddColumns({master::kCdcCheckpoint}, req);
 
     auto session = client->NewSession();
-    ASSERT_OK(session->TEST_ApplyAndFlush(op));
+    ASSERT_OK(session->ApplyAndFlush(op));
 
     LOG(INFO) << strings::Substitute(
         "Verifying tablet: $0, stream: $1, op_id: $2", tablet_id, stream_id,
@@ -195,7 +195,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
     ASSERT_OK(WaitFor(
         [&]() {
-          EXPECT_OK(session->TEST_ApplyAndFlush(op));
+          EXPECT_OK(session->ApplyAndFlush(op));
           auto row_block = ql::RowsResult(op.get()).GetRowBlock();
           if (row_block->row_count() == 0) {
             return true;
