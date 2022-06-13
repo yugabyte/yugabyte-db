@@ -1,7 +1,7 @@
 ---
 title: Reference
 linkTitle: Reference
-description: YB Voyager reference information.
+description: YugabyteDB Voyager reference information.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:

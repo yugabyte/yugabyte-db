@@ -19,7 +19,7 @@ showAsideToc: true
 The steps below cover how to manually migrate PostgreSQL data and applications to YugabyteDB.
 
 {{< note title="Note" >}}
-Use [YB Voyager](../yb-voyager/) to automate the entire migration from PostgreSQL to YugabyteDB.
+Use [YugabyteDB Voyager](../yb-voyager/) to automate the entire migration from PostgreSQL to YugabyteDB.
 {{< /note >}}
 
 <div class="row">

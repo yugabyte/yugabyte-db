@@ -1,11 +1,11 @@
 ---
-title: YB Voyager
-headerTitle: YB Voyager
-linkTitle: YB Voyager
-description: Migrate to YugabyteDB with YB Voyager.
+title: YugabyteDB Voyager
+headerTitle: YugabyteDB Voyager
+linkTitle: YugabyteDB Voyager
+description: Migrate to YugabyteDB with YugabyteDB Voyager.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 image: /images/section_icons/develop/learn.png
-headcontent: Migrate to YugabyteDB with YB Voyager.
+headcontent: Migrate to YugabyteDB with YugabyteDB Voyager.
 menu:
   preview:
     identifier: yb-voyager
@@ -13,24 +13,23 @@ menu:
     weight: 100
 ---
 
-YB Voyager is an open-source database migration engine provided by YugabyteDB. The engine manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration and data-migration, using [yb-voyager](https://github.com/yugabyte/yb-voyager).
+YugabyteDB Voyager is an open-source database migration engine provided by YugabyteDB. The engine manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration and data-migration, using [yb-voyager](https://github.com/yugabyte/yb-voyager).
 
-Learn more about the [Migration workflow](/preview/migrate/yb-voyager/reference/) using YB Voyager in the reference section.
+Learn more about the [Migration workflow](../../migrate/yb-voyager/reference/) using YugabyteDB Voyager in the reference section.
 
 ## Migration modes
 
-| Mode |  Description |
-| :------------- | :----------- |
-| Offline | In this mode, the source database should not change during the migration.<br> The offline migration is considered complete when all the requested schema objects and data are migrated to the target database. |
-| Online | In this mode, the source database can continue to change. After the full initial migration, yb-voyager continues replicating source database changes to the target database. <br> The process runs continuously till you decide to switch over to the YugabyteDB database. |
+- Live migration : The source database can continue to change during the migration. After the full initial migration, yb-voyager continues replicating source database changes to the target database. The process runs continuously till you decide to switch over to the YugabyteDB database.
+
+- Offline migration: The source database should not change during the migration. The offline migration is considered complete when all the requested schema objects and data are migrated to the target database.
 
 {{< note title="Note" >}}
-yb-voyager supports only `offline` migration mode. The `online` migration mode is currently under development. For more details, refer to this [github issue](https://github.com/yugabyte/yb-voyager/issues/50).
+yb-voyager supports only `offline` migration mode. The `live` migration mode is currently under development. For more details, refer to the [github issue](https://github.com/yugabyte/yb-voyager/issues/50).
 {{< /note >}}
 
 ## Source databases
 
-YugabyteDB currently supports migrating schema and data from your existing RDBMS to a YugabyteDB cluster using  **YB Voyager**. Using YB Voyager, you can:
+YugabyteDB currently supports migrating schema and data from your existing RDBMS to a YugabyteDB cluster using  **YugabyteDB Voyager**. Using YugabyteDB Voyager, you can:
 
 - [Migrate from PostgreSQL](../yb-voyager/install-yb-voyager/#postgresql)
 - [Migrate from MySQL](../yb-voyager/install-yb-voyager/#mysql)
@@ -93,7 +92,7 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
     <a class="section-link icon-offset" href="yb-voyager-cli/">
       <div class="head">
        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
-        <div class="title">YB Voyager CLI</div>
+        <div class="title">YugabyteDB Voyager CLI</div>
       </div>
       <div class="body">
         Learn about the yb-voyager CLI options and SSL connectivity.

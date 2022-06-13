@@ -40,9 +40,7 @@ Create a database user and provide the user with READ access to all the resource
    ```sh
    export SOURCE_DB_TYPE=mysql
    export SOURCE_DB_HOST=localhost
-   export SOURCE_DB_PORT=1521
    export SOURCE_DB_USER=ybvoyager
-   export SOURCE_DB_PASSWORD=password
-   export SOURCE_DB_NAME=pdb1
-   export SOURCE_DB_SCHEMA=sakila
+   export SOURCE_DB_PASSWORD=Password#123
+   export SOURCE_DB_NAME=source_db_name
    ```

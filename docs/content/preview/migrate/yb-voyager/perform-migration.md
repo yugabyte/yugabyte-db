@@ -22,7 +22,7 @@ This page describes the steps to perform and verify a successful migration to Yu
 
 ### Export schema
 
-`yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL); and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
+`yb-voyager export schema` command extracts the schema from the source database, converts it into PostgreSQL format (if the source database is Oracle or MySQL), and dumps the SQL DDL files in the `EXPORT_DIR/schema/*` directories.
 
 An example invocation of the command is as follows:
 
@@ -36,13 +36,17 @@ yb-voyager export schema --export-dir ${EXPORT_DIR} \
         --source-db-schema ${SOURCE_DB_SCHEMA}
 ```
 
+{{< note title="Note" >}}
+`source-db-schema` is only applicable for Oracle. Use this field only when migrating from Oracle to YugabyteDB for the [export schema](#export-schema), [analyze schema](#analyze-schema) and [export data](#export-data) phases.
+{{< /note >}}
+
 ### Analyze Schema
 
-Using [ora2pg](https://ora2pg.darold.net) and [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html), yb-voyager can extract and convert the source database schema to an equivalent PostgreSQL schema. The schema, however, may not be suitable yet to be imported into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, you may need minor manual changes to the schema.
+Using [ora2pg](https://ora2pg.darold.net) and [pg_dump](https://www.postgresql.org/docs/current/app-pgdump.html), yb-voyager can extract and convert the source database schema to an equivalent PostgreSQL schema. The schema, however, may not be suitable yet to be imported into YugabyteDB. Even though YugabyteDB is PostgreSQL compatible, given its distributed nature, minor manual changes may be needed to the schema.
 
 Refer to [Data modeling](../../yb-voyager/reference/#data-modeling) to learn more about modeling strategies using YugabyteDB.
 
-The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) phase and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command is as follows:
+The `yb-voyager analyze-schema` command analyses the PostgreSQL schema dumped in the [export schema](#export-schema) phase, and prepares a report that lists the DDL statements which need manual changes. An example invocation of the command is as follows:
 
 ```sh
 yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
@@ -77,7 +81,7 @@ yb-voyager export data --export-dir ${EXPORT_DIR} \
         --source-db-schema ${SOURCE_DB_SCHEMA}
 ```
 
-The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma separated list of table names in the `--table-list` argument. To speed up the data export of larger source databases, you can pass values greater than 1 to the `--parallel-jobs` argument. It will cause yb-voyager to dump multiple tables concurrently.
+The options passed to the command are similar to the [`yb-voyager export schema`](#export-schema) command. To export only a subset of the tables, pass a comma separated list of table names in the `--table-list` argument.
 
 ## Import schema
 
@@ -102,7 +106,7 @@ The `yb-voyager import schema` command does not import indexes yet. This is done
 
 ## Import data
 
-After you have successfully exported the source data and imported the schema in the target database, you can now import the data using the `yb-voyager import data` command:
+After you have successfully exported the source data and imported the schema in the target database, you can import the data using the `yb-voyager import data` command:
 
 ```sh
 yb-voyager import data --export-dir ${EXPORT_DIR} \
@@ -113,11 +117,14 @@ yb-voyager import data --export-dir ${EXPORT_DIR} \
         --target-db-name ${TARGET_DB_NAME}
 ```
 
-In the import data phase, yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ ,each of which contains at most `--batch-size` number of records. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are utilized. This phase is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. Upon a restart, the data import resumes from its current state.
+The `yb-voyager import data` command reads data files located in the `EXPORT_DIR/data` directory.
+yb-voyager splits the data dump files (from the `$EXPORT_DIR/data` directory) into smaller _batches_ , each of which contains at most `--batch-size` number of records. By default, the `--batch-size` is 100,000 records. yb-voyager concurrently ingests the batches such that all nodes of the target YugabyteDB cluster are utilized. This phase is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. Upon a restart, the data import resumes from its current state.
 
-The `yb-voyager import data` command reads data files located in the `EXPORT_DIR/data`. The command, by default, creates one database connection to each of the nodes of the target YugabyteDB cluster. You can increase the number of connections by specifying the total connection count in the `--parallel-jobs` argument. The command will equally distribute the connections among all the nodes of the cluster. It splits the larger tables into smaller chunks, each containing at most `--batch-size` number of records. By default, the `--batch-size` is 100,000 records.
+By default, the command creates one database connection to each of the nodes of the target YugabyteDB cluster. You can increase the number of connections by specifying the total connection count, using the `--parallel-jobs` argument. The command will equally distribute the connections among all the nodes of the cluster.
 
-Run the `yb-voyager import data status --export-dir ${EXPORT_DIR}` command to get an overall progress of the data import operation. While importing a very large database, you should run the import data command in a `screen` session, so that the import is not terminated when the terminal session stops. If the `yb-voyager import data` command terminates before it could complete the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
+### Import data status
+
+Run the `yb-voyager import data status --export-dir ${EXPORT_DIR}` command to get an overall progress of the data import operation.
 
 ### Import data file
 
@@ -133,9 +140,16 @@ yb-voyager import data file --export-dir ${EXPORT_DIR} \
         –-data-dir “/path/to/files/dir/” \
         --file-table-map “filename1:table1,filename2:table2” \
         --delimiter “|” \
-        --file-type csv \
         –-has-header \
 ```
+
+{{< note title="Warnings" >}}
+
+- While importing a very large database, you should run the import data command in a `screen` session, so that the import is not terminated when the terminal session stops.
+
+- If the `yb-voyager import data` command terminates before it could complete the data ingestion, you can re-run it with the same arguments and the command will resume the data import operation.
+
+{{< /note >}}
 
 ## Finalize DDL
 

@@ -52,8 +52,8 @@ Check that the list of tables, indexes, constraints, and triggers match between 
 
 ## Learn more
 
-* Refer to [Prerequisites](../../yb-voyager/prerequisites/), to learn about the requirements to install YB Voyager.
+* Refer to [Prerequisites](../../yb-voyager/prerequisites/), to learn about the requirements to install YugabyteDB Voyager.
 
-* Refer to [Install YB Voyager](../../yb-voyager/install-yb-voyager/), and get started with preparing your databases for migration.
+* Refer to [Install YugabyteDB Voyager](../../yb-voyager/install-yb-voyager/), and get started with preparing your databases for migration.
 
 * Refer to [Perform migration](../../yb-voyager/perform-migration/), for more information on the steps required to perform and verify a successful migration.

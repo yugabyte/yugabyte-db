@@ -16,7 +16,7 @@ yb-voyager is a command line executable program that supports migrating database
 
 The following sections include steps to install yb-voyager, and preparing the source and target databases.
 
-Follow the steps to install YB Voyager on a machine which satisfies the [Prerequisites](../../yb-voyager/prerequisites/).
+Follow the steps to install yb-voyager on a machine which satisfies the [Prerequisites](../../yb-voyager/prerequisites/).
 
 - Clone the yb-voyager repository.
 
@@ -30,21 +30,15 @@ git clone https://github.com/yugabyte/yb-voyager.git
 cd yb-voyager/installer_scripts
 ```
 
-- Depending on the Linux distribution (CentOS or Ubuntu) you're running, execute the appropriate installer script:
+- Install yb-voyager using the following script:
 
 ```sh
-#CentOS
-./yb_voyager_installer__centos.sh
+./install-yb-voyager.sh
 ```
 
-```sh
-#Ubuntu
-./yb_voyager_installer__ubuntu.sh
-```
+It is safe to execute the script multiple times. On each run, the script regenerates the `yb-voyager` executable based on the latest commit in the git repository. If the script fails, check the `/tmp/install-yb-voyager.log` file.
 
-It is safe to execute the script multiple times. On each run, the script regenerates the `yb-voyager` executable based on the latest commit in the git repository. If the script fails for some reason, check the `yb_migrate_installer.log` in the current working directory.
-
-- The script generates a `.yb_migrate_installer_bashrc` file in the home directory. Source the file to ensure that the correct environment variables are set using the following command:
+- The script generates a `.yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:
 
 ```sh
 source ~/.yb_migrate_installer_bashrc

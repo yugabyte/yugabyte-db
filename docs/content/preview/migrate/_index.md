@@ -19,10 +19,10 @@ menu:
     <a class="section-link icon-offset" href="yb-voyager/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">YB Voyager</div>
+        <div class="title">YugabyteDB Voyager</div>
       </div>
       <div class="body">
-        Migrate to YugabyteDB using YB Voyager.
+        Migrate to YugabyteDB using YugabyteDB Voyager.
       </div>
     </a>
   </div>

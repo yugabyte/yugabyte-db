@@ -1,7 +1,7 @@
 ---
-title: YB Voyager CLI
-linkTitle: YB Voyager CLI
-description: YB Voyager CLI and SSL connectivity.
+title: YugabyteDB Voyager CLI
+linkTitle: YugabyteDB Voyager CLI
+description: YugabyteDB Voyager CLI and SSL connectivity.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
@@ -107,19 +107,17 @@ The path to the directory containing the data files to import.
 
 #### --file-table-map
 
-Comma-separated mapping between the file in data-dir to the corresponding table in the database. Default is to assume the file name in `table1_data.sql` format where `table1` name will be used as table name.
+Comma-separated mapping between the file in [data-dir](#–-data-dir) to the corresponding table in the database.
+Default : The file name in `table1_data.sql` format where `table1` name will be used as the table name.
 
 #### --delimiter
 
-default is “\t” (tab), can be changed to comma(,), pipe(|) or anything
-
-#### --file-type
-
-default is csv (currently supported file types are csv and sql)
+Default: “\t” (tab); can be changed to comma(,), pipe(|) or any other chanracter.
 
 #### –-has-header
 
-default is false, required in case the csv file contains column names as a header. (only valid for csv file-type)
+This argument is to be specified only for csv file type.
+Default: false, Change to true in case the csv file contains column names as a header.
 
 ## SSL Connectivity
 

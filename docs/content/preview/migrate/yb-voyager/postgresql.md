@@ -19,7 +19,7 @@ Create a database user and provide the user with READ access to all the resource
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
-   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the user creation related statements.
+   The above `SELECT` statement generates a list of `GRANT USAGE` statements which are then executed by `psql` because of the `\gexec` switch. The `\gexec` switch works for PostgreSQL v9.6 and later. For older versions, you'll have to manually execute the `GRANT USAGE ON SCHEMA schema_name TO ybvoyager` statement, for each schema in the source PostgreSQL database.
 
 1. Grant `SELECT` permission on all the tables and sequences.
 
@@ -36,9 +36,7 @@ Create a database user and provide the user with READ access to all the resource
    ```sh
    export SOURCE_DB_TYPE=postgresql
    export SOURCE_DB_HOST=localhost
-   export SOURCE_DB_PORT=1521
    export SOURCE_DB_USER=ybvoyager
    export SOURCE_DB_PASSWORD=password
-   export SOURCE_DB_NAME=pdb1
-   export SOURCE_DB_SCHEMA=sakila
+   export SOURCE_DB_NAME=source_db_name
    ```
