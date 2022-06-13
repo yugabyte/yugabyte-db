@@ -119,9 +119,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return (XClusterConfigTaskParams) taskParams;
   }
 
-  protected XClusterConfig getXClusterConfig() {
-    taskParams().xClusterConfig = XClusterConfig.getOrBadRequest(taskParams().xClusterConfig.uuid);
-    return taskParams().xClusterConfig;
+  protected XClusterConfig getXClusterConfigFromTaskParams() {
+    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    if (xClusterConfig == null) {
+      throw new RuntimeException("xClusterConfig in task params is null");
+    }
+    return xClusterConfig;
   }
 
   protected Optional<XClusterConfig> maybeGetXClusterConfig() {
@@ -450,7 +453,8 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   protected void createTransferXClusterCertsCopyTasks(
       Collection<NodeDetails> nodes, String configName, File certificate) {
-    createTransferXClusterCertsCopyTasks(nodes, configName, certificate, null);
+    createTransferXClusterCertsCopyTasks(
+        nodes, configName, certificate, null /* producerCertsDir */);
   }
 
   protected SubTaskGroup createTransferXClusterCertsRemoveTasks(File producerCertsDir) {

@@ -41,20 +41,16 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
-    if (xClusterConfig == null) {
-      throw new RuntimeException("xClusterConfig in task params cannot be null");
-    }
-
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
     Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
     Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
-
-    // Lock the source universe.
-    lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
     try {
-      // Lock the target universe.
-      lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
+      // Lock the source universe.
+      lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
       try {
+        // Lock the target universe.
+        lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
+
         if (xClusterConfig.status != XClusterConfigStatusType.Init) {
           throw new RuntimeException(
               String.format(
