@@ -77,6 +77,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           TaskType.XClusterConfigSetStatus,
           TaskType.XClusterConfigRename,
           TaskType.XClusterConfigSetStatus,
+          TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
 
   List<TaskType> ADD_TABLE_IS_ALTER_DONE_FAILURE =
@@ -84,6 +85,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
           TaskType.XClusterConfigSetStatus,
           TaskType.XClusterConfigModifyTables,
           TaskType.XClusterConfigSetStatus,
+          TaskType.UniverseUpdateSucceeded,
           TaskType.UniverseUpdateSucceeded);
 
   @Before
