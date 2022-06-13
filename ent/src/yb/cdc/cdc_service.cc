@@ -538,9 +538,9 @@ class CDCServiceImpl::Impl {
 
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
-    // This happen when node is restarted, but Getchange call happen for some stream, not for this
-    // stream, so there is no cache entry for the searched producer_tablet.
-    // create an entry for this.
+    // This happens when node is restarted, but Getchange is called for some other stream, not for
+    // this stream, so there is no cache entry for the searched producer_tablet. In which case we
+    // create an entry for this producer_tablet.
     if (it == tablet_checkpoints_.end()) {
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
           .producer_tablet_info = producer_tablet,
@@ -1667,14 +1667,13 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
 
     // Check stream associated with the tablet is active or not.
-    // don't consider those inactive stream for the min_checkpoint
-    // calculation.
+    // Don't consider those inactive stream for the min_checkpoint calculation.
     CoarseTimePoint latest_active_time = CoarseTimePoint ::min();
     if (record.source_type == CDCSDK) {
       auto status = impl_->CheckStreamActive(producer_tablet);
       if (!status.ok()) {
-        // Give dummy entry in tablet_min_checkpoint_map for the tablet,
-        // if tablet is associated with a single stream.
+        // Give dummy entry in tablet_min_checkpoint_map for the tablet, if tablet is
+        // Associated with a single stream.
         auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
         tablet_info.cdc_op_id = *result;
         tablet_info.cdc_sdk_op_id = *result;
