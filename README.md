@@ -100,7 +100,11 @@ Settings may be modified only by a superuser. Allowing normal users to change th
 
 Settings can be specified globally (in `postgresql.conf` or using `ALTER SYSTEM ... SET`), at the database level (using `ALTER DATABASE ... SET`), or at the role level (using `ALTER ROLE ... SET`). Note that settings are not inherited through normal role inheritance and `SET ROLE` will not alter a user's pgAudit settings. This is a limitation of the roles system and not inherent to pgAudit.
 
-The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/13/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur. In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set. If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
+The pgAudit extension must be loaded in [shared_preload_libraries](http://www.postgresql.org/docs/13/runtime-config-client.html#GUC-SHARED-PRELOAD-LIBRARIES). Otherwise, an error will be raised at load time and no audit logging will occur.
+
+In addition, `CREATE EXTENSION pgaudit` must be called before `pgaudit.log` is set to ensure proper pgaudit functionality. The extension installs event triggers which add additional auditing for DDL. pgAudit will work without the extension installed but DDL statements will not have information about the object type and name.
+
+If the `pgaudit` extension is dropped and needs to be recreated then `pgaudit.log` must be unset first otherwise an error will be raised.
 
 ### pgaudit.log
 
