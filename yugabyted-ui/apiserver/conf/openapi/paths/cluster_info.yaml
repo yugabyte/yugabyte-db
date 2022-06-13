@@ -1,0 +1,252 @@
+'/public/accounts/{accountId}/projects/{projectId}/cluster_metrics':
+  get:
+    description: Get bulk cluster metrics
+    tags:
+      - cluster-info
+    summary: Get bulk cluster metrics
+    operationId: getBulkClusterMetrics
+    parameters:
+      - name: accountId
+        in: path
+        description: ID of the associated account
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        description: ID of the associated project
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: cluster_ids
+        in: query
+        description: Clusters to get metrics data for
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+          uniqueItems: true
+          nullable: false
+          minItems: 1
+          maxItems: 25
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterInstantMetricsListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/live_queries':
+  get:
+    summary: Get the live queries in a cluster
+    description: Get the Live Queries in a Yugabyte Cluster
+    operationId: getLiveQueries
+    tags:
+      - cluster-info
+    parameters:
+      - name: api
+        in: query
+        description: type of queries for which to retrieve Live Queries (YSQL or YCQL)
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          enum: [YSQL, YCQL]
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/LiveQueryResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/slow_queries':
+  get:
+    summary: Get the slow queries in a cluster
+    description: Get the Slow Queries in a Yugabyte Cluster
+    operationId: getSlowQueries
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/SlowQueryResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/nodes':
+  get:
+    summary: Get the nodes for a cluster
+    description: Get nodes for a Yugabyte cluster
+    operationId: getClusterNodes
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterNodeListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+'/metrics':
+  parameters:
+    - name: metrics
+      in: query
+      description: Which metrics to retrieve results for
+      required: true
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: node_name
+      in: query
+      description: Node name within the cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: region
+      in: query
+      description: Region name to filter for the given cluster
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: string
+    - name: start_time
+      in: query
+      description: Start of range of time series data (in epoch seconds)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    - name: end_time
+      in: query
+      description: End of range of time series data (in epoch seconds)
+      required: false
+      style: form
+      explode: false
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+  get:
+    summary: Get a metric for a cluster
+    description: Get metrics for a Yugabyte cluster
+    operationId: getClusterMetric
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/MetricResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tables:
+  get:
+    description: Get list of tables per YB API (YCQL/YSQL)
+    operationId: getClusterTables
+    summary: Get list of DB tables per YB API (YCQL/YSQL)
+    tags:
+      - cluster-info
+    parameters:
+      - name: accountId
+        in: path
+        description: ID of the associated account
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        description: ID of the associated project
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: clusterId
+        in: path
+        description: ID of the cluster
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: api
+        in: query
+        description: Which DB API to get tables for (YCQL/YSQL)
+        required: false
+        style: form
+        explode: false
+        schema:
+          type: string
+          enum: [YCQL, YSQL]
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterTableListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}/tablespaces:
+  get:
+    description: Get list of tablespaces for YSQL
+    operationId: getClusterTablespaces
+    summary: Get list of DB tables for YSQL
+    tags:
+      - cluster-info
+    parameters:
+      - name: accountId
+        in: path
+        description: ID of the associated account
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: projectId
+        in: path
+        description: ID of the associated project
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+      - name: clusterId
+        in: path
+        description: ID of the cluster
+        required: true
+        style: simple
+        explode: false
+        schema:
+          type: string
+          format: uuid
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ClusterTablespacesListResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
