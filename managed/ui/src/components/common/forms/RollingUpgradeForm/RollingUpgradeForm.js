@@ -21,6 +21,7 @@ import { FlexShrink, FlexContainer } from '../../flexbox/YBFlexBox';
 import clsx from 'clsx';
 import { TASK_LONG_TIMEOUT } from '../../../tasks/constants';
 import WarningIcon from './images/warning.svg';
+import { sortVersion } from '../../../releases';
 
 export default class RollingUpgradeForm extends Component {
   constructor(props) {
@@ -202,11 +203,13 @@ export default class RollingUpgradeForm extends Component {
     const submitAction = handleSubmit(this.setRollingUpgradeProperties);
     let softwareVersionOptions = [];
     if (getPromiseState(supportedReleases).isSuccess()) {
-      softwareVersionOptions = (supportedReleases?.data || [])?.map((item, idx) => (
-        <option key={idx} disabled={item === currentVersion} value={item}>
-          {item}
-        </option>
-      ));
+      softwareVersionOptions = (supportedReleases?.data || [])
+        ?.sort(sortVersion)
+        .map((item, idx) => (
+          <option key={idx} disabled={item === currentVersion} value={item}>
+            {item}
+          </option>
+        ));
     }
 
     const tlsCertificateOptions = certificates.map((item) => (
