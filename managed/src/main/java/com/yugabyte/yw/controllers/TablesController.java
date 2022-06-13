@@ -311,6 +311,9 @@ public class TablesController extends AuthenticatedController {
 
     @ApiModelProperty(value = "Parent Table UUID")
     public final UUID parentTableUUID;
+
+    @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
+    public final String pgSchemaName;
   }
 
   @ApiOperation(
@@ -1029,6 +1032,9 @@ public class TablesController extends AuthenticatedController {
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (table.hasPgschemaName()) {
+      builder.pgSchemaName(table.getPgschemaName());
     }
     return builder;
   }
