@@ -1137,15 +1137,13 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Assert(object->objectSubId == 0);
 
-					if (IsYBRelationById(object->objectId))
-					{
-						Relation index = RelationIdGetRelation(object->objectId);
+					Relation index = RelationIdGetRelation(object->objectId);
 
-						if (!index->rd_index->indisprimary)
-							YBCDropIndex(object->objectId);
+					if (IsYBRelation(index) && !index->rd_index->indisprimary)
+						YBCDropIndex(index);
 
-						RelationClose(index);
-					}
+					RelationClose(index);
+
 					index_drop(object->objectId, concurrent);
 				}
 				else
@@ -1155,8 +1153,13 @@ doDeletion(const ObjectAddress *object, int flags)
 											object->objectSubId);
 					else
 					{
-						if (IsYBRelationById(object->objectId))
-							YBCDropTable(object->objectId);
+						Relation rel = RelationIdGetRelation(object->objectId);
+
+						if (IsYBRelation(rel))
+							YBCDropTable(rel);
+
+						RelationClose(rel);
+
 						heap_drop_with_catalog(object->objectId);
 					}
 				}
