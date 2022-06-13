@@ -1090,7 +1090,7 @@ ybExcludeNonPersistentReloptions(Datum options)
 
 		/*
 		 * We do not want colocation ID to be persisted in reloptions,
-		 * we can get it via YbGetTableDescAndProps.
+		 * we can get it via YbLoadTablePropertiesIfNeeded.
 		 */
 		if (strcmp(s, "colocation_id") == 0)
 			continue;
