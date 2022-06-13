@@ -528,7 +528,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.debug(
           "gflag {} set to {} for masters",
           GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS,
-          GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS);
+          userIntent.masterGFlags.get(GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS));
       gFlagsUpdated = true;
     }
     if (verifyAndSetCertsForCdcDirGFlag(
@@ -539,7 +539,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       log.debug(
           "gflag {} set to {} for tservers",
           GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS,
-          GFLAG_VALUE_TO_SUPPORT_MISMATCH_CERTS);
+          userIntent.tserverGFlags.get(GFLAG_NAME_TO_SUPPORT_MISMATCH_CERTS));
       gFlagsUpdated = true;
     }
     if (gFlagsUpdated) {
