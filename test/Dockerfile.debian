@@ -14,14 +14,14 @@ RUN useradd -m -u $UID -g $GID -o -s /bin/bash postgres
 
 # Add PostgreSQL repository
 RUN RELEASE_CODENAME=`lsb_release -c | awk '{print $2}'` && \
-    echo 'deb http://apt.postgresql.org/pub/repos/apt/ '${RELEASE_CODENAME?}'-pgdg main' | \
+    echo 'deb http://apt.postgresql.org/pub/repos/apt/ '${RELEASE_CODENAME?}'-pgdg main 15' | \
         tee -a /etc/apt/sources.list.d/pgdg.list
 RUN APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1 && \
     wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
 RUN apt-get update
 
 # Install PostgreSQL
-ENV PGVERSION=14
+ENV PGVERSION=15
 
 RUN apt-get install -y postgresql-${PGVERSION?} postgresql-server-dev-${PGVERSION?}
 
