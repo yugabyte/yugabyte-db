@@ -494,6 +494,11 @@ class CatalogManager :
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
+  // Delete CDC streams metadata for a table.
+  virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
+
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
