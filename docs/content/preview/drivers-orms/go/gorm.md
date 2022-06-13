@@ -39,9 +39,9 @@ Learn how to establish a connection to a YugabyteDB database and begin basic CRU
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using GORM.
 
-### Step 1: Import the driver package
+### Step 1: Import the ORM package
 
-Import the GORM packages by adding the following import statement in your Go code.
+Import the GORM packages by adding the following import statement in your application's `main.go` code.
 
 ```go
 import (
@@ -115,5 +115,5 @@ for _, employee := range employees {
 
 ## Next steps
 
-- Explore [Scaling Go Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Go applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
+- Explore [Scaling Go Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Go applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

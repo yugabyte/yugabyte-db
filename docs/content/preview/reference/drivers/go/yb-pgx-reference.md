@@ -7,23 +7,23 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Go Drivers
-    identifier: ref-pgx-go-driver
+    identifier: ref-yb-pgx-go-driver
     parent: drivers
-    weight: 610
+    weight: 600
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
-    <a href="/preview/reference/drivers/go/yb-pgx-reference/" class="nav-link">
+    <a href="/preview/reference/drivers/go/yb-pgx-reference/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
        YugabyteDB PGX Driver
     </a>
   </li>
 
   <li >
-    <a href="/preview/reference/drivers/go/pgx-reference/" class="nav-link active">
+    <a href="/preview/reference/drivers/go/pgx-reference/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       PGX Driver
     </a>
@@ -38,72 +38,106 @@ showAsideToc: true
 
 </ul>
 
-The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained
-drivers for PostgreSQL.
+[YugabyteDB PGX driver](https://github.com/yugabyte/pgjdbc) is a Go driver for [YSQL](/preview/api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/).
 
-This driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using
-the PGX APIs. It also supports the standard `database/sql` package.
+## Quick start
 
-## CRUD Operations with PGX driver
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a C# application](../../../../quick-start/build-apps/go/ysql-yb-pgx/).
 
-Learn how to establish a connection to YugabyteDB database and begin simple CRUD operations using
-the steps in the [Build an application](../../../../quick-start/build-apps/go/ysql-pgx) page under the
-Quick start section.
+This page provides details for getting started with [YugabyteDB PGX driver](https://github.com/yugabyte/pgx) for connecting to YugabyteDB YSQL API.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
+## Import the driver package
 
-### Import the driver package
-
-You can import the PGX driver package by adding the following import statement in your Go code.
+You can import the YugabyteDB PGX driver package by adding the following import statement in your Go code.
 
 ```go
 import (
-  "github.com/jackc/pgx/v4"
+  "github.com/yugabyte/pgx/v4"
 )
 ```
 
+Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](#using-pgxpool-api) to learn more.
+
+## Fundamentals
+
+Learn how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
+
 ### Connect to YugabyteDB database
 
-Go applications can connect to YugabyteDB using the `pgx.Connect()` function.
-The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
+After setting up the driver, implement the Go client application that uses the driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
-Use the `pgx.Connect()` method to create the connection object, for
-performing DDLs and DMLs against the database.
+The YugabyteDB PGX driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
-PGX Connection url is in the format given below:
+Use the `pgx.Connect()` method or `pgxpool.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
+
+The driver has the following features:
+
+- It is **cluster-aware**, which eliminates the need for an external load balancer.
+
+Connections are distributed across all the [YB-Tservers](/preview/architecture/concepts/yb-tserver/) in the cluster, irrespective of their placements.
+
+The following table describes the connection parameters required to connect to the YugabyteDB database with **Uniform load balancing**.
+
+| Parameters | Description | Default |
+| :---------- | :---------- | :------ |
+| host  | hostname of the YugabyteDB instance | localhost
+| port |  Listen port for YSQL | 5433
+| database | Database name | yugabyte
+| user | User connecting to the database | yugabyte
+| password | Password for the user | yugabyte
+| load_balance | enables uniform load balancing | true
+
+To enable the cluster-aware connection load balancing, provide the parameter `load_balance=true` in the connection string as follows:
 
 ```go
-postgresql://username:password@hostname:port/database
+"postgres://username:password@localhost:5433/database_name?load_balance=true"
 ```
 
-Code snippet for connecting to YugabyteDB:
+- It is **topology-aware**, which is essential for geographically-distributed applications.
+
+The following is a code snippet for connecting to YugabyteDB using the connection parameters.
 
 ```go
-url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
                     user, password, host, port, dbname)
+url := fmt.Sprintf("%s?load_balance=true", baseUrl)
 conn, err := pgx.Connect(context.Background(), url)
 ```
 
-| Parameters | Description | Default |
+Connections are distributed equally with the [YB-Tservers](/preview/architecture/concepts/yb-tserver/) in specific zones by specifying these zones as `topology_keys` with values in the format `cloud-name.region-name.zone-name`. Multiple zones can be specified with comma separated values.
+
+The following table describes the connection parameters required to connect to the YugabyteDB database with **Topology-aware load balancing**.
+
+| Parameter | Description | Default |
 | :---------- | :---------- | :------ |
 | user | user for connecting to the database | yugabyte
 | password | password for connecting to the database | yugabyte
 | host  | hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
+| load_balance | enables load balancing | true
+| topology_keys | enables topology-aware load balancing | true
+
+```sh
+postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
+```
+
+The following is a code snippet for connecting to YugabyteDB using the connection parameters.
+
+```go
+baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+                    user, password, host, port, dbname)
+url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
+conn, err := pgx.Connect(context.Background(), url)
+```
 
 ### Create table
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn`
-instance.
-
-The CREATE DDL statement:
+Tables can be created in YugabyteDB by passing the `CREATE TABLE` DDL statement to the `Exec()` function on the `conn`instance.
 
 ```sql
 CREATE TABLE employee (id int PRIMARY KEY, name varchar, age int, language varchar)
 ```
-
-Code snippet:
 
 ```go
 var createStmt = 'CREATE TABLE employee (id int PRIMARY KEY,
@@ -126,13 +160,9 @@ Read more on designing [Database schemas and tables](../../../../explore/ysql-la
 To write data into YugabyteDB, execute the `INSERT` statement using the same `conn.Exec()`
 function.
 
-The INSERT DML statement:
-
 ```sql
 INSERT INTO employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')
 ```
-
-Code snippet:
 
 ```go
 var insertStmt string = "INSERT INTO employee(id, name, age, language)" +
@@ -143,8 +173,7 @@ if err != nil {
 }
 ```
 
-The pgx driver automatically prepares and caches statements by default, so that the developer does
-not have to.
+By default, the YugabyteDB PGX driver automatically prepares and caches statements.
 
 #### Query data
 
@@ -188,11 +217,11 @@ if err != nil {
 
 ### Using pgxpool API
 
-The PGX driver also provides pool APIs via its `pgxpool` package. One can import it as below.
+The YugabyteDB PGX driver also provides pool APIs via the `pgxpool` package. You can import it as follows:
 
 ```go
 import (
-  "github.com/jackc/pgx/v4/pgxpool"
+  "github.com/yugabyte/pgx/tree/master/pgxpool"
 )
 ```
 

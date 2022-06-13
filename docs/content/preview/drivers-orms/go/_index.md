@@ -18,8 +18,9 @@ The following projects can be used to implement Golang applications using the Yu
 
 | Project | Documentation and Guides | Latest Driver Version | Supported YugabyteDB Version |
 | ------- | ------------------------ | ------------------------ | ---------------------|
-| PGX Driver [Recommended] | [Documentation](pgx)<br />[Hello World App](/preview/quick-start/build-apps/go/ysql-pgx/)<br /> [Reference Page](../../reference/drivers/go/pgx-reference/) | [v4](https://pkg.go.dev/github.com/yugabyte/pgx/v4) | 2.8 and above
-| PQ Driver | [Documentation](pq)<br />[Hello World App](/preview/quick-start/build-apps/go/ysql-pq/)<br />[Reference Page](../../reference/drivers/go/pq-reference/) | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2) | 2.6 and above
+| YugabyteDB PGX Driver [Recommended] | [Documentation](yb-pgx)<br />[Hello World App](../../quick-start/build-apps/go/ysql-yb-pgx/)<br /> [Reference Page](../../reference/drivers/go/yb-pgx-reference/) | [v4](https://pkg.go.dev/github.com/yugabyte/pgx) | 2.8 and above
+| PGX Driver | [Documentation](pgx)<br />[Hello World App](../../quick-start/build-apps/go/ysql-pgx/)<br /> [Reference Page](../../reference/drivers/go/pgx-reference/) | [v4](https://pkg.go.dev/github.com/jackc/pgx) | 2.8 and above
+| PQ Driver | [Documentation](pq)<br />[Hello World App](../../quick-start/build-apps/go/ysql-pq/)<br />[Reference Page](../../reference/drivers/go/pq-reference/) | [v1.10.2](https://github.com/lib/pq/releases/tag/v1.10.2) | 2.6 and above
 
 | Project | Documentation and Guides | Example Apps |
 | ------- | ------------------------ | ------------ |
@@ -41,7 +42,7 @@ To develop Golang applications for YugabyteDB, you need the following:
   Run `go --version` in a terminal to check your version of Go. To install Go, visit [Go Downloads](https://golang.org/dl/).
 
 - **Create a Go project**\
-  For ease-of-use, use an integrated development environment (IDE), such as IntelliJ IDEA or Visual Studio Code, to develop your Go project.
+  For ease-of-use, use an integrated development environment (IDE) such as Visual Studio. To download and install Visual Studio, visit the [Visual Studio Downloads](https://visualstudio.microsoft.com/downloads/) page.
 
 - **YugabyteDB cluster**
   - Create a free cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/). Refer to [Create a free cluster](../../yugabyte-cloud/cloud-basics/create-clusters-free/). Note that YugabyteDB Managed requires SSL.
