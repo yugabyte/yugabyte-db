@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import axios from 'axios';
-import { IN_DEVELOPMENT_MODE, isSSOLogin, ROOT_URL } from '../config';
+import { IN_DEVELOPMENT_MODE, isSSOEnabled, ROOT_URL } from '../config';
 import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
 
@@ -178,10 +178,10 @@ export function validateToken() {
     cUUID = localStorage.getItem('customerId');
   }
 
-  // in single sign-on mode authentication happens via PLAY_SESSION cookie and not via headers
-  if (!isSSOLogin()) {
-    axios.defaults.headers.common['X-AUTH-TOKEN'] =
-      Cookies.get('authToken') || localStorage.getItem('authToken');
+  // we support both sso and user login together
+  const authToken = Cookies.get('authToken') || localStorage.getItem('authToken');
+  if (authToken && authToken !== '') {
+    axios.defaults.headers.common['X-AUTH-TOKEN'] = authToken;
   }
   const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
   if (apiToken && apiToken !== '') {
@@ -272,8 +272,14 @@ export function insecureLoginResponse(response) {
 }
 
 export function logout() {
-  const url = isSSOLogin() ? `${ROOT_URL}/third_party_logout` : `${ROOT_URL}/logout`;
-  const request = axios.get(url);
+  const logout_url = `${ROOT_URL}/logout`;
+  const request = axios.get(logout_url);
+
+  if (isSSOEnabled()) {
+    const sso_logout = `${ROOT_URL}/third_party_logout`;
+    axios.get(sso_logout);
+  }
+
   return {
     type: LOGOUT,
     payload: request
@@ -992,12 +998,14 @@ export function setLogsLoading() {
   };
 }
 
-export function getLogs(maxLines, regex, universe) {
+export function getLogs(maxLines, regex, universe, startDate, endDate) {
   const request = axios.get(`${ROOT_URL}/logs`, {
     params: {
       maxLines,
       queryRegex: regex,
-      universeName: universe
+      universeName: universe,
+      startDate,
+      endDate
     }
   });
   return {
