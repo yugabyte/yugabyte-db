@@ -71,7 +71,7 @@ function mapStateToProps(state, ownProps) {
     if (isNonEmptyArray(storageConfigs)) {
       initialFormValues.storageConfigUUID = {
         value: storageConfigs[0].configUUID,
-        label: storageConfigs[0].name + ' Storage'
+        label: storageConfigs[0].configName
       };
     }
   }

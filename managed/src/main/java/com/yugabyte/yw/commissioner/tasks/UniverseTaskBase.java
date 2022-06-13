@@ -43,6 +43,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ModifyBlackList;
+import com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
@@ -57,6 +58,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.SetFlagInMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeState;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SetNodeStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.SwamperTargetsFileUpdate;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UnivSetCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistGFlags;
@@ -75,6 +77,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigFromDb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigUpdateMasterAddresses;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -110,6 +115,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.File;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -505,8 +511,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *     version. -1 implies always lock the universe.
    */
   public Universe lockUniverse(int expectedUniverseVersion) {
+    return lockUniverse(taskParams().universeUUID, expectedUniverseVersion);
+  }
+
+  public Universe lockUniverse(UUID universeUuid, int expectedUniverseVersion) {
     UniverseUpdater updater = getLockingUniverseUpdater(expectedUniverseVersion, false);
-    return lockUniverseForUpdate(expectedUniverseVersion, updater);
+    return lockUniverseForUpdate(universeUuid, expectedUniverseVersion, updater);
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUuid) {
@@ -639,6 +649,18 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.isSoftwareUpdateViaVm = isSoftwareUpdateViaVm;
     UpdateSoftwareVersion task = createTask(UpdateSoftwareVersion.class);
     task.initialize(params);
+    task.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createMarkUniverseForHealthScriptReUploadTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("MarkUniverseForHealthScriptReUpload", executor);
+    MarkUniverseForHealthScriptReUpload task =
+        createTask(MarkUniverseForHealthScriptReUpload.class);
+    task.initialize(taskParams());
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1205,7 +1227,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             MIN_WRITE_READ_TABLE_CREATION_RELEASE, primaryCluster.userIntent.ybSoftwareVersion)) {
       // Create read-write test table
       List<NodeDetails> tserverLiveNodes =
-          universe
+          getUniverse()
               .getUniverseDetails()
               .getNodesInCluster(primaryCluster.uuid)
               .stream()
@@ -1900,44 +1922,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * It updates the source master addresses on the target universe cluster config for all xCluster
-   * configs on the source universe.
-   */
-  public void createXClusterConfigUpdateMasterAddressesTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("XClusterConfigUpdateMasterAddresses", executor);
-    List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getBySourceUniverseUUID(taskParams().universeUUID);
-    Set<UUID> updatedTargetUniverses = new HashSet<>();
-    for (XClusterConfig config : xClusterConfigs) {
-      UUID targetUniverseUUID = config.targetUniverseUUID;
-      // Each target universe needs to be updated only once, even though there could be several
-      // xCluster configs between each source and target universe pair.
-      if (updatedTargetUniverses.contains(targetUniverseUUID)) {
-        continue;
-      }
-      updatedTargetUniverses.add(targetUniverseUUID);
-
-      XClusterConfigUpdateMasterAddresses.Params params =
-          new XClusterConfigUpdateMasterAddresses.Params();
-      // Set the target universe UUID to be told the new master addresses.
-      params.universeUUID = targetUniverseUUID;
-      // Set the source universe UUID to get the new master addresses.
-      params.sourceUniverseUuid = taskParams().universeUUID;
-
-      XClusterConfigUpdateMasterAddresses task =
-          createTask(XClusterConfigUpdateMasterAddresses.class);
-      task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
-      // Add it to the task list.
-      subTaskGroup.addSubTask(task);
-    }
-    if (subTaskGroup.getSubTaskCount() > 0) {
-      getRunnableTask().addSubTaskGroup(subTaskGroup);
-    }
-  }
-
-  /**
    * Creates a task list to manipulate the DNS record available for this universe.
    *
    * @param eventType the type of manipulation to do on the DNS records.
@@ -2414,12 +2398,12 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    *
    * @return true if we should increment the version, false otherwise
    */
-  protected boolean shouldIncrementVersion() {
-
+  protected boolean shouldIncrementVersion(UUID universeUuid) {
     final VersionCheckMode mode =
         runtimeConfigFactory
-            .forUniverse(getUniverse())
+            .forUniverse(Universe.getOrBadRequest(universeUuid))
             .getEnum(VersionCheckMode.class, "yb.universe_version_check_mode");
+
     if (mode == VersionCheckMode.NEVER) {
       return false;
     }
@@ -2575,7 +2559,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   protected Universe saveUniverseDetails(UUID universeUUID, UniverseUpdater updater) {
-    return UniverseTaskBase.saveUniverseDetails(universeUUID, shouldIncrementVersion(), updater);
+    return UniverseTaskBase.saveUniverseDetails(
+        universeUUID, shouldIncrementVersion(universeUUID), updater);
   }
 
   protected Universe saveUniverseDetails(UniverseUpdater updater) {
@@ -2596,4 +2581,145 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       healthChecker.cancelHealthCheck(universe.universeUUID);
     }
   }
+
+  // XCluster: All the xCluster related code resides in this section.
+  // --------------------------------------------------------------------------------
+  protected SubTaskGroup createDeleteReplicationTask(
+      XClusterConfig xClusterConfig, boolean ignoreErrors) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigDelete", executor);
+    DeleteReplication.Params deleteXClusterConfigParams = new DeleteReplication.Params();
+    deleteXClusterConfigParams.universeUUID = xClusterConfig.targetUniverseUUID;
+    deleteXClusterConfigParams.xClusterConfig = xClusterConfig;
+    deleteXClusterConfigParams.ignoreErrors = ignoreErrors;
+
+    DeleteReplication task = createTask(DeleteReplication.class);
+    task.initialize(deleteXClusterConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createDeleteBootstrapIdsTask(
+      XClusterConfig xClusterConfig, boolean forceDelete) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteBootstrapIds", executor);
+    DeleteBootstrapIds.Params deleteBootstrapIdsParams = new DeleteBootstrapIds.Params();
+    deleteBootstrapIdsParams.universeUUID = xClusterConfig.sourceUniverseUUID;
+    deleteBootstrapIdsParams.xClusterConfig = xClusterConfig;
+    deleteBootstrapIdsParams.forceDelete = forceDelete;
+
+    DeleteBootstrapIds task = createTask(DeleteBootstrapIds.class);
+    task.initialize(deleteBootstrapIdsParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createDeleteXClusterConfigFromDbTask(
+      XClusterConfig xClusterConfig, boolean forceDelete) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteXClusterConfigFromDb", executor);
+    DeleteXClusterConfigFromDb.Params deleteXClusterConfigFromDbParams =
+        new DeleteXClusterConfigFromDb.Params();
+    deleteXClusterConfigFromDbParams.universeUUID = xClusterConfig.targetUniverseUUID;
+    deleteXClusterConfigFromDbParams.xClusterConfig = xClusterConfig;
+    deleteXClusterConfigFromDbParams.forceDelete = forceDelete;
+
+    DeleteXClusterConfigFromDb task = createTask(DeleteXClusterConfigFromDb.class);
+    task.initialize(deleteXClusterConfigFromDbParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createTransferXClusterCertsRemoveTasks(
+      XClusterConfig xClusterConfig, File producerCertsDir) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("TransferXClusterCerts", executor);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Collection<NodeDetails> nodes = targetUniverse.getNodes();
+    for (NodeDetails node : nodes) {
+      TransferXClusterCerts.Params transferParams = new TransferXClusterCerts.Params();
+      transferParams.universeUUID = targetUniverse.universeUUID;
+      transferParams.nodeName = node.nodeName;
+      transferParams.azUuid = node.azUuid;
+      transferParams.action = TransferXClusterCerts.Params.Action.REMOVE;
+      transferParams.replicationGroupName = xClusterConfig.getReplicationGroupName();
+      if (producerCertsDir != null) {
+        transferParams.producerCertsDirOnTarget = producerCertsDir;
+      }
+
+      TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
+      transferXClusterCertsTask.initialize(transferParams);
+      subTaskGroup.addSubTask(transferXClusterCertsTask);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected void createDeleteXClusterConfigSubtasks(XClusterConfig xClusterConfig) {
+    // Delete the replication CDC streams on the target universe.
+    createDeleteReplicationTask(xClusterConfig, true /* ignoreErrors */)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    // Delete bootstrap IDs created by bootstrap universe subtask.
+    // forceDelete is true to prevent errors until the user can choose if they want forceDelete.
+    createDeleteBootstrapIdsTask(xClusterConfig, true /* forceDelete */)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+
+    // If target universe is destroyed, ignore creating this subtask.
+    if (xClusterConfig.targetUniverseUUID != null) {
+      // Delete the source universe root cert from the target universe.
+      createTransferXClusterCertsRemoveTasks(xClusterConfig, null /* producerCertsDir */)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Delete the xCluster config from DB.
+    createDeleteXClusterConfigFromDbTask(xClusterConfig, false /* forceDelete */)
+        .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
+   * It updates the source master addresses on the target universe cluster config for all xCluster
+   * configs on the source universe.
+   */
+  public void createXClusterConfigUpdateMasterAddressesTask() {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("XClusterConfigUpdateMasterAddresses", executor);
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getBySourceUniverseUUID(taskParams().universeUUID)
+            .stream()
+            .filter(xClusterConfig -> !XClusterConfigTaskBase.isInMustDeleteStatus(xClusterConfig))
+            .collect(Collectors.toList());
+    Set<UUID> updatedTargetUniverses = new HashSet<>();
+    for (XClusterConfig config : xClusterConfigs) {
+      UUID targetUniverseUUID = config.targetUniverseUUID;
+      // Each target universe needs to be updated only once, even though there could be several
+      // xCluster configs between each source and target universe pair.
+      if (updatedTargetUniverses.contains(targetUniverseUUID)) {
+        continue;
+      }
+      updatedTargetUniverses.add(targetUniverseUUID);
+
+      XClusterConfigUpdateMasterAddresses.Params params =
+          new XClusterConfigUpdateMasterAddresses.Params();
+      // Set the target universe UUID to be told the new master addresses.
+      params.universeUUID = targetUniverseUUID;
+      // Set the source universe UUID to get the new master addresses.
+      params.sourceUniverseUuid = taskParams().universeUUID;
+
+      XClusterConfigUpdateMasterAddresses task =
+          createTask(XClusterConfigUpdateMasterAddresses.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+    }
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+  }
+  // --------------------------------------------------------------------------------
+  // End of XCluster.
 }

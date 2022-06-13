@@ -380,6 +380,10 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
+  if (pg_callbacks_.YbPgMemUpdateMax) {
+    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
+  }
+
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -1666,6 +1670,14 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
 Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
   pg_session_->DropBufferedOperations();
   return pg_session_->RollbackSubTransaction(id);
+}
+
+double PgApiImpl::GetTransactionPriority() const {
+  return pg_txn_manager_->GetTransactionPriority();
+}
+
+TxnPriorityRequirement PgApiImpl::GetTransactionPriorityType() const {
+  return pg_txn_manager_->GetTransactionPriorityType();
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

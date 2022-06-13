@@ -105,7 +105,8 @@ const initialValues = {
   selected_ycql_tables: [],
   keep_indefinitely: false,
   search_text: '',
-  parallel_threads: PARALLEL_THREADS_RANGE.MIN
+  parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+  storage_config: null as any
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -184,6 +185,12 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   });
 
   const groupedStorageConfigs = useMemo(() => {
+    // if user has only one storage config, select it by default
+    if (storageConfigs.data.length === 1) {
+      const { configUUID, configName, name } = storageConfigs.data[0];
+      initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
+    }
+
     const configs = storageConfigs.data
       .filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {

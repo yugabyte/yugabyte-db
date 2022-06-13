@@ -405,7 +405,8 @@ public class AsyncYBClient implements AutoCloseable {
       format,
       checkpointType);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
-    Deferred d = rpc.getDeferred().addErrback(new Callback<Object, Object>() {
+    Deferred<CreateCDCStreamResponse> d = rpc.getDeferred().addErrback(
+        new Callback<Object, Object>() {
       @Override
       public Object call(Object o) throws Exception {
         return o;
@@ -434,7 +435,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
       index, key, write_id, time, needSchemaInfo);
-    Deferred d = rpc.getDeferred();
+    Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
       public Exception call(Exception o) throws Exception {
@@ -462,7 +463,7 @@ public class AsyncYBClient implements AutoCloseable {
                                                        String streamId, String tabletId) {
     checkIsClosed();
     GetCheckpointRequest rpc = new GetCheckpointRequest(table, streamId, tabletId);
-    Deferred d = rpc.getDeferred();
+    Deferred<GetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -476,7 +477,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
       tabletId, term, index, initialCheckpoint);
-    Deferred d = rpc.getDeferred();
+    Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -492,7 +493,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
         tabletId, term, index, initialCheckpoint, bootstrap);
-    Deferred d = rpc.getDeferred();
+    Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1361,7 +1362,7 @@ public class AsyncYBClient implements AutoCloseable {
   public Deferred<GetDBStreamInfoResponse> getDBStreamInfo(String streamId) {
     checkIsClosed();
     GetDBStreamInfoRequest rpc = new GetDBStreamInfoRequest(this.masterTable, streamId);
-    Deferred d = rpc.getDeferred();
+    Deferred<GetDBStreamInfoResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1863,13 +1864,18 @@ public class AsyncYBClient implements AutoCloseable {
    */
   static <R> Deferred<R> tooManyAttemptsOrTimeout(final YRpc<R> request,
                                                   final YBException cause) {
-    String message;
+    StringBuilder sb = new StringBuilder();
     if (request.deadlineTracker.timedOut()) {
-      message = "Time out: ";
+      sb.append("Time out: ");
     } else {
-      message = "Too many attempts: ";
+      sb.append("Too many attempts: ");
     }
-    final Exception e = new NonRecoverableException(message + request, cause);
+    sb.append(request);
+    if (cause != null) {
+      sb.append(". ");
+      sb.append(cause.getMessage());
+    }
+    final Exception e = new NonRecoverableException(sb.toString(), cause);
     request.errback(e);
     return Deferred.fromError(e);
   }

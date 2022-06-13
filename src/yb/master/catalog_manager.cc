@@ -4820,7 +4820,7 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
 }
 
-Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgTypeOid(
+Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
     const TableInfoPtr& table_info) {
   RSTATUS_DCHECK_EQ(
       table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
@@ -4832,7 +4832,16 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgTypeOid(
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  return sys_catalog_->ReadPgTypeOid(database_oid, table_oid);
+  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+}
+
+Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
+    const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids) {
+  RSTATUS_DCHECK_EQ(
+      namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
+      Format("Expected YSQL database, got: $0", namespace_info->database_type()));
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+  return sys_catalog_->ReadPgTypeInfo(database_oid, type_oids);
 }
 
 // Truncate a Table.
@@ -6082,19 +6091,21 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->mutable_schema()->CopyFrom(l->pb.schema());
   }
 
-  // Due to pgschema_name being added after 2.13, older tables may not have this field.
-  // So backfill pgschema_name for non-system YSQL table schema.
-  if (!table->is_system() && l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      !resp->schema().has_pgschema_name()) {
+  // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
+  // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
+  if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      !resp->schema().has_pgschema_name() &&
+      !table->is_system() &&
+      !IsSequencesSystemTable(*table) &&
+      !table->IsColocationParentTable()) {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock for schema name lookup");
 
     auto pgschema_name = GetPgSchemaName(table);
     if (!pgschema_name.ok() || pgschema_name->empty()) {
-      Status s = STATUS_SUBSTITUTE(NotFound,
+      LOG(WARNING) << Format(
           "Unable to find schema name for YSQL table $0.$1 due to error: $2",
           table->namespace_name(), table->name(), pgschema_name.ToString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     } else {
       resp->mutable_schema()->set_pgschema_name(*pgschema_name);
     }
@@ -7085,6 +7096,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         .tablet_id = tablet_id,
         .info = tablet,
         .report = &report,
+        .tables = {}
       });
       // For colocated tablet, update all the tables that need processing.
       for (const auto& id_to_version : report.table_to_version()) {

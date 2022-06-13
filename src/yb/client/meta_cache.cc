@@ -32,12 +32,12 @@
 
 #include "yb/client/meta_cache.h"
 
-#include <shared_mutex>
 #include <stdint.h>
 
 #include <atomic>
 #include <list>
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -1113,7 +1113,8 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
     tablet_requests.emplace(
         tablet.tablet_id(),
         YBClient::Data::TabletRequests {
-            .request_id_seq = kInitializeFromMinRunning
+            .request_id_seq = kInitializeFromMinRunning,
+            .running_requests = {}
         });
     return;
   }

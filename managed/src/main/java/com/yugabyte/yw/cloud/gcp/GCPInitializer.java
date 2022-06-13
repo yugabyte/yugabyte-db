@@ -8,10 +8,12 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.cloud;
+package com.yugabyte.yw.cloud.gcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AbstractInitializer;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
@@ -60,7 +62,8 @@ public class GCPInitializer extends AbstractInitializer {
         priceDetails.effectiveDate = now;
         priceDetails.description = instanceTypeToDetailsMap.get("description").asText();
 
-        PriceComponent.upsert(context.provider.uuid, regionCode, instanceTypeCode, priceDetails);
+        PriceComponent.upsert(
+            context.getProvider().uuid, regionCode, instanceTypeCode, priceDetails);
       }
     }
   }
@@ -83,8 +86,8 @@ public class GCPInitializer extends AbstractInitializer {
     List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
 
     JsonNode instanceTypes =
-        cloudQueryHelper.getInstanceTypes(
-            regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
+        getCloudQueryHelper()
+            .getInstanceTypes(regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
 
     // Iterate through each instance type and store their details in the db.
     Iterator<String> itr = instanceTypes.fieldNames();

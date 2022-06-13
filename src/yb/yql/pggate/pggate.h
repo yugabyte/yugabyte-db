@@ -529,6 +529,8 @@ class PgApiImpl {
   void ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackSubTransaction(SubTransactionId id);
+  double GetTransactionPriority() const;
+  TxnPriorityRequirement GetTransactionPriorityType() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -589,6 +591,8 @@ class PgApiImpl {
   Status ValidatePlacement(const char *placement_info);
 
   Result<bool> CheckIfPitrActive();
+
+  const MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
   // Metrics.

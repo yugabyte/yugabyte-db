@@ -11,12 +11,15 @@ import {
 } from '../../actions/xClusterReplication';
 import { YBLoading } from '../common/indicators';
 import { IReplication } from './IClusterReplication';
+
 import {
   convertToLocalTime,
+  findUniverseName,
   GetConfiguredThreshold,
   GetCurrentLag,
   getReplicationStatus
 } from './ReplicationUtils';
+
 import RightArrow from './ArrowIcon';
 
 import './ReplicationList.scss';
@@ -76,7 +79,7 @@ function ReplicationItem({
                   <span>{convertToLocalTime(replication.modifyTime, currentUserTimezone)}</span>
                 </Col>
                 <Col lg={4} className="replication-status">
-                  {getReplicationStatus(replication.status)}
+                  {getReplicationStatus(replication)}
                 </Col>
               </Row>
             </Col>
@@ -172,9 +175,6 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
     return <ReplicationEmptyItem />;
   }
 
-  const findTargetUniverseName = (universeUUID: string) =>
-    universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
-
   return (
     <ListGroup>
       {replicationData.map((replication: any) =>
@@ -185,8 +185,8 @@ export function ReplicationList({ currentUniverseUUID }: Props) {
             key={replication.data.uuid}
             replication={replication.data}
             currentUniverseUUID={currentUniverseUUID}
-            targetUniverseName={findTargetUniverseName(replication.data.targetUniverseUUID)}
-            sourceUniverseName={findTargetUniverseName(replication.data.sourceUniverseUUID)}
+            targetUniverseName={findUniverseName(universeList, replication.data.targetUniverseUUID)}
+            sourceUniverseName={findUniverseName(universeList, replication.data.sourceUniverseUUID)}
             currentUserTimezone={currentUserTimezone}
           />
         )

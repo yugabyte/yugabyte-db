@@ -8,10 +8,11 @@
  *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-package com.yugabyte.yw.cloud;
+package com.yugabyte.yw.cloud.azu;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.AbstractInitializer;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
@@ -46,7 +47,7 @@ public class AZUInitializer extends AbstractInitializer {
       priceDetails.currency = PriceDetails.Currency.USD;
       priceDetails.effectiveDate = now;
 
-      PriceComponent.upsert(context.provider.uuid, regionCode, instanceTypeCode, priceDetails);
+      PriceComponent.upsert(context.getProvider().uuid, regionCode, instanceTypeCode, priceDetails);
     }
   }
 
@@ -67,8 +68,8 @@ public class AZUInitializer extends AbstractInitializer {
     List<Region> regionList = Region.fetchValidRegions(customerUUID, providerUUID, 0);
 
     JsonNode instanceTypes =
-        cloudQueryHelper.getInstanceTypes(
-            regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
+        getCloudQueryHelper()
+            .getInstanceTypes(regionList, Json.stringify(Json.toJson(provider.getCloudParams())));
 
     Iterator<String> itr = instanceTypes.fieldNames();
 

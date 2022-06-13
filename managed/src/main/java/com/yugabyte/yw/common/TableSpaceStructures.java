@@ -107,4 +107,12 @@ public class TableSpaceStructures {
     @JsonProperty("placement_blocks")
     public List<PlacementBlock> placementBlocks;
   }
+
+  public static class QueryDistributionAcrossNodesResponse {
+    @JsonProperty("calls")
+    public Integer calls;
+
+    @JsonProperty("query")
+    public String query;
+  }
 }

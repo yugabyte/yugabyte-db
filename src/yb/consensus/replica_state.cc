@@ -41,6 +41,7 @@
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/casts.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
@@ -193,17 +194,31 @@ LeaderState ReplicaState::GetLeaderState(bool allow_stale) const {
     }
   }
 
-  LeaderState result = {cache.status()};
-  if (result.status == LeaderStatus::LEADER_AND_READY) {
-    result.term = cache.extra_value();
-  } else {
-    if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
-      result.remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value());
-    }
-    result.MakeNotReadyLeader(result.status);
+  switch (cache.status()) {
+    case LeaderStatus::LEADER_AND_READY:
+      return LeaderState {
+        .status = cache.status(),
+        .term = static_cast<int64_t>(cache.extra_value()),
+        .remaining_old_leader_lease = MonoDelta(),
+      };
+    case LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
+      return LeaderState {
+        .status = cache.status(),
+        .term = OpId::kUnknownTerm,
+        .remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value()),
+      };
+    case LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
+      FALLTHROUGH_INTENDED;
+    case LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED:
+      FALLTHROUGH_INTENDED;
+    case LeaderStatus::NOT_LEADER:
+      return LeaderState {
+        .status = cache.status(),
+        .term = OpId::kUnknownTerm,
+        .remaining_old_leader_lease = MonoDelta(),
+      };
   }
-
-  return result;
+  FATAL_INVALID_ENUM_VALUE(LeaderStatus, cache.status());
 }
 
 LeaderState ReplicaState::GetLeaderStateUnlocked(

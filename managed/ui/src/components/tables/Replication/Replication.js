@@ -155,7 +155,7 @@ export default class Replication extends Component {
       )
         .sort((a, b) => b.x.length - a.x.length);
 
-      if (replicationNodeMetrics.length) {
+      if (replicationNodeMetrics.length > 0) {
         // Get max-value and avg-value metric array
         let avgArr = null,
           maxArr = null;

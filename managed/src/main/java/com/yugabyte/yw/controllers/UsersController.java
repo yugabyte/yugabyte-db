@@ -5,6 +5,7 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.models.Users.Role;
 import static com.yugabyte.yw.models.Users.UserType;
 
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
@@ -41,6 +42,8 @@ import play.mvc.Result;
 public class UsersController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(UsersController.class);
+  private static final List<String> specialCharacters =
+      ImmutableList.of("!", "@", "#", "$", "%", "^", "&", "*");
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
@@ -118,7 +121,11 @@ public class UsersController extends AuthenticatedController {
       Integer randomInt = new Random().nextInt(26);
       String lowercaseLetter = String.valueOf((char) (randomInt + 'a'));
       String uppercaseLetter = lowercaseLetter.toUpperCase();
-      generatedPassword += lowercaseLetter + uppercaseLetter + String.valueOf(randomInt);
+      generatedPassword +=
+          (specialCharacters.get(new Random().nextInt(specialCharacters.size()))
+              + lowercaseLetter
+              + uppercaseLetter
+              + String.valueOf(randomInt));
       formData.setPassword(generatedPassword); // Password is not used.
     }
 

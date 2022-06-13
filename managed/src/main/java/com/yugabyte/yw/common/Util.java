@@ -9,7 +9,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -77,6 +76,8 @@ public class Util {
   public static final String AVAILABLE_MEMORY = "MemAvailable";
 
   public static final String UNIVERSE_NAME_REGEX = "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$";
+
+  public static final double EPSILON = 0.000001d;
 
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
@@ -557,5 +558,9 @@ public class Util {
       return false;
     }
     return true;
+  }
+
+  public static boolean doubleEquals(double d1, double d2) {
+    return Math.abs(d1 - d2) < Util.EPSILON;
   }
 }

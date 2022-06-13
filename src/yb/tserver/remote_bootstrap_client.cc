@@ -346,13 +346,17 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
         table.schema_version(), partition_schema);
     fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
-    auto create_result = RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
-        .fs_manager = &fs_manager(),
-        .table_info = table_info,
-        .raft_group_id = tablet_id_,
-        .partition = partition,
-        .tablet_data_state = tablet::TABLET_DATA_COPYING,
-        .colocated = colocated }, data_root_dir, wal_root_dir);
+    auto create_result = RaftGroupMetadata::CreateNew(
+        tablet::RaftGroupMetadataData {
+            .fs_manager = &fs_manager(),
+            .table_info = table_info,
+            .raft_group_id = tablet_id_,
+            .partition = partition,
+            .tablet_data_state = tablet::TABLET_DATA_COPYING,
+            .colocated = colocated,
+            .snapshot_schedules = {},
+        },
+        data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
       ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
     }

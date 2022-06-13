@@ -37,7 +37,7 @@ public class EditXClusterConfig extends XClusterConfigTaskBase {
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
       if (editFormData.name != null) {
-        createXClusterConfigRenameTask()
+        createXClusterConfigRenameTask(editFormData.name)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       } else if (editFormData.status != null) {
         createXClusterConfigSetStatusTask(initialStatus, editFormData.status)

@@ -8,15 +8,15 @@ import {
   queryLagMetricsForTable,
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
-import { IReplicationStatus } from './IClusterReplication';
 import { formatDuration } from '../../utils/Formatters';
+import {IReplication, IReplicationStatus} from './IClusterReplication';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
-export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
-  switch (status) {
+export const getReplicationStatus = (replication: IReplication) => {
+  switch (replication.status) {
     case IReplicationStatus.UPDATING:
       return (
         <span className="replication-status-text updating">
@@ -50,6 +50,22 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
         <span className="replication-status-text failed">
           <i className="fa fa-info-circle" />
           Failed
+        </span>
+      );
+    case IReplicationStatus.DELETED:
+      return (
+        <span className="replication-status-text failed">
+          <i className="fa fa-close" />
+          Deleted
+        </span>
+      );
+    case IReplicationStatus.DELETED_UNIVERSE:
+      return (
+        <span className="replication-status-text failed">
+          <i className="fa fa-close" />
+          {replication.sourceUniverseUUID === undefined ?
+            "Source universe is deleted" : replication.targetUniverseUUID === undefined ?
+              "Target universe is deleted" : "One participating universe was tried to be destroyed"}
         </span>
       );
     default:
@@ -154,20 +170,20 @@ export const GetCurrentLag = ({
 
 export const GetCurrentLagForTable = ({
   replicationUUID,
-  tableName,
+  tableUUID,
   enabled,
   nodePrefix,
   sourceUniverseUUID
 }: {
   replicationUUID: string;
-  tableName: string;
+  tableUUID: string;
   enabled?: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string;
 }) => {
   const { data: metricsData, isFetching } = useQuery(
-    ['xcluster-metric', replicationUUID, nodePrefix, tableName, 'metric'],
-    () => queryLagMetricsForTable(tableName, nodePrefix),
+    ['xcluster-metric', replicationUUID, nodePrefix, tableUUID, 'metric'],
+    () => queryLagMetricsForTable(tableUUID, nodePrefix),
     {
       enabled
     }
@@ -246,4 +262,19 @@ export const formatBytes = function (sizeInBytes: any) {
   } else {
     return '-';
   }
+};
+
+export const findUniverseName = function (universeList: Array<any>, universeUUID: string) {
+  return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
+};
+
+export const isChangeDisabled = function (status: IReplicationStatus | undefined) {
+  // Allow the operation for an unknown situation to avoid bugs.
+  if (status === undefined) {
+    return true;
+  }
+  return status === IReplicationStatus.INIT
+    || status === IReplicationStatus.UPDATING
+    || status === IReplicationStatus.DELETED
+    || status === IReplicationStatus.DELETED_UNIVERSE;
 };
