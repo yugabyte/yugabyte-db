@@ -443,6 +443,9 @@ AllocateRelationDesc(Form_pg_class relp)
 	/* make sure relation is marked as having no open file yet */
 	relation->rd_smgr = NULL;
 
+	/* YB properties will be loaded lazily */
+	relation->yb_table_properties = NULL;
+
 	/*
 	 * Copy the relation tuple form
 	 *

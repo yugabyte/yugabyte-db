@@ -495,22 +495,8 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
-                                   const YBCPgOid table_oid,
-                                   bool *colocated) {
-  const PgObjectId table_id(database_oid, table_oid);
-  PgTableDescPtr table_desc;
-  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
-  if (status) {
-    return status;
-  } else {
-    *colocated = table_desc->IsColocated();
-    return YBCStatusOK();
-  }
-}
-
 YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
-                                      YBCPgTableProperties *properties) {
+                                      YbTableProperties properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
