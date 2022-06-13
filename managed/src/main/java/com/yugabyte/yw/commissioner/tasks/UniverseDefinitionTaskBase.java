@@ -556,7 +556,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    Map<String, String> gflags = getPrimaryClusterGFlags(taskType, universe);
+
+    // Read gflags from taskPrams primary cluster. If it is null, read it from the universe.
+    Map<String, String> gflags;
+    Cluster primaryClusterInTaskParams = taskParams().getPrimaryCluster();
+    if (primaryClusterInTaskParams != null) {
+      UserIntent userIntent = primaryClusterInTaskParams.userIntent;
+      gflags =
+          taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+      log.debug(
+          "gflags in taskParams: {}, gflags in universeDetails: {}",
+          gflags,
+          getPrimaryClusterGFlags(taskType, universe));
+    } else {
+      gflags = getPrimaryClusterGFlags(taskType, universe);
+      log.debug("gflags gathered from the UniverseDetails : {}", gflags);
+    }
+
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();

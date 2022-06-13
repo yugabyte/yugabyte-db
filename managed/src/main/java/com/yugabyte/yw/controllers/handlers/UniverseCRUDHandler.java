@@ -749,33 +749,34 @@ public class UniverseCRUDHandler {
           BAD_REQUEST, "Can only have one read-only cluster per universe for now.");
     }
 
-    Cluster cluster = getOnlyReadReplicaOrBadRequest(newReadOnlyClusters);
-    if (cluster.uuid == null) {
+    Cluster readOnlyCluster = getOnlyReadReplicaOrBadRequest(newReadOnlyClusters);
+    if (readOnlyCluster.uuid == null) {
       String errMsg = "UUID of read-only cluster should be non-null.";
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
-    if (cluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+    if (readOnlyCluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
       String errMsg =
           "Read-only cluster type should be "
               + UniverseDefinitionTaskParams.ClusterType.ASYNC
               + " but is "
-              + cluster.clusterType;
+              + readOnlyCluster.clusterType;
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    validateConsistency(primaryCluster, cluster);
+    taskParams.clusters.add(primaryCluster);
+    validateConsistency(primaryCluster, readOnlyCluster);
 
     // Set the provider code.
-    Cluster c = taskParams.clusters.get(0);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-    c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    c.validate();
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
+    readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
+    readOnlyCluster.validate();
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
-    if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       try {
         checkK8sProviderAvailability(provider, customer);
         taskType = TaskType.ReadOnlyKubernetesClusterCreate;
@@ -784,7 +785,8 @@ public class UniverseCRUDHandler {
       }
     }
 
-    PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+    PlacementInfoUtil.updatePlacementInfo(
+        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster.placementInfo);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);
