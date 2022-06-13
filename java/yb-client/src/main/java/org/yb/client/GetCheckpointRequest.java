@@ -48,10 +48,6 @@ public class GetCheckpointRequest extends YRpc<GetCheckpointResponse>{
     return "GetCheckpoint";
   }
 
-  String getTabletId() {
-    return this.tabletId;
-  }
-
   @Override
   Pair<GetCheckpointResponse, Object> deserialize(CallResponse callResponse,
                                                   String uuid) throws Exception {

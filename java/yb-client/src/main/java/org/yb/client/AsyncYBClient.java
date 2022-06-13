@@ -1403,12 +1403,10 @@ public class AsyncYBClient implements AutoCloseable {
       tablet = getFirstTablet(tableId);
     }
     if (request instanceof GetCheckpointRequest) {
-      String tabletId = ((GetCheckpointRequest)request).getTabletId();
-      tablet = getTablet(tableId, tabletId);
+      tablet = getFirstTablet(tableId);
     }
     if (request instanceof SetCheckpointRequest) {
-      String tabletId = ((SetCheckpointRequest)request).getTabletId();
-      tablet = getTablet(tableId, tabletId);
+      tablet = getFirstTablet(tableId);
     }
     // Set the propagated timestamp so that the next time we send a message to
     // the server the message includes the last propagated timestamp.

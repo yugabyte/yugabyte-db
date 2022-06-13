@@ -57,10 +57,6 @@ public class SetCheckpointRequest extends YRpc<SetCheckpointResponse>{
     return "SetCDCCheckpoint";
   }
 
-  String getTabletId() {
-    return this.tabletId;
-  }
-
   @Override
   Pair<SetCheckpointResponse, Object> deserialize(CallResponse callResponse,
                                             String uuid) throws Exception {

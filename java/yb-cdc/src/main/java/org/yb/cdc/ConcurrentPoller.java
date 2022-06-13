@@ -34,7 +34,6 @@ public class ConcurrentPoller {
   private final String format;
   private boolean stopExecution;
   private boolean enableSnapshot;
-  private boolean bootstrap;
 
   static final AbstractMap.SimpleImmutableEntry<String, String> END_PAIR =
       new AbstractMap.SimpleImmutableEntry("", "");
@@ -48,12 +47,12 @@ public class ConcurrentPoller {
   BlockingQueue<AbstractMap.SimpleImmutableEntry<String, String>> queue;
   List<Deferred<GetChangesResponse>> deferredList;
 
-  YBClient syncClient;
+  YBClient synClient;
 
   // We need the schema information in a DDL the very first time we send a getChanges request.
   boolean needSchemaInfo = true;
 
-  public ConcurrentPoller(YBClient syncClient,
+  public ConcurrentPoller(YBClient synClient,
                           AsyncYBClient client,
                           OutputClient outputClient,
                           String streamId,
@@ -61,9 +60,8 @@ public class ConcurrentPoller {
                           int concurrency,
                           String format,
                           boolean stopExecution,
-                          boolean enableSnapshot,
-                          boolean bootstrap) throws IOException {
-    this.syncClient = syncClient;
+                          boolean enableSnapshot) throws IOException {
+    this.synClient = synClient;
     this.asyncYBClient = client;
     this.streamId = streamId;
     this.format = format;
@@ -76,11 +74,10 @@ public class ConcurrentPoller {
     deferredList = new ArrayList<>();
     this.stopExecution = stopExecution;
     this.enableSnapshot = enableSnapshot;
-    this.bootstrap = bootstrap;
 
     tableIdsToTabletIds.keySet().forEach(tabletId -> {
       try {
-        tableIdToTable.put(tabletId, syncClient.openTableByUUID(tabletId));
+        tableIdToTable.put(tabletId, synClient.openTableByUUID(tabletId));
       } catch (Exception e) {
         e.printStackTrace();
       }
@@ -91,14 +88,10 @@ public class ConcurrentPoller {
         .map(v -> new AbstractMap.SimpleImmutableEntry<>(v, e.getKey())))
       .collect(Collectors.toList());
     queue = new LinkedBlockingQueue();
-    try {
-      initOffset();
-    } catch (Exception e) {
-      LOG.error("Exception thrown while initializing offsets", e);
-    }
+    initOffset();
   }
 
-  private void initOffset() throws Exception {
+  private void initOffset() {
     long term = 0;
     long index = 0;
     int writeId = 0;
@@ -114,28 +107,7 @@ public class ConcurrentPoller {
     int finalWriteId = writeId;
     listTabletIdTableIdPair.forEach(entry ->
       checkPointMap.put(entry.getKey(), new Checkpoint(finalTerm, finalIndex,
-          "".getBytes(), finalWriteId, 0)));
-
-    for (AbstractMap.SimpleImmutableEntry<String, String> entry: listTabletIdTableIdPair) {
-      final YBTable table = tableIdToTable.get(entry.getValue());
-
-      GetCheckpointResponse getCheckpointResponse = syncClient.getCheckpoint(table, streamId,
-                                                                            entry.getKey());
-
-      if (bootstrap) {
-        if (getCheckpointResponse.getTerm() == -1 && getCheckpointResponse.getIndex() == -1) {
-          LOG.info(String.format("Bootstrapping tablet %s", entry.getKey()));
-          syncClient.bootstrapTablet(table, streamId, entry.getKey(), 0, 0, true, true);
-        } else {
-          LOG.info(String.format("Skipping bootstrap for tablet %s as it has checkpoint %d.%d",
-                                 entry.getKey(), getCheckpointResponse.getTerm(),
-                                 getCheckpointResponse.getIndex()));
-        }
-      } else {
-        LOG.info("Skipping bootstrap because the --bootstrap flag was not specified");
-        syncClient.bootstrapTablet(table, streamId, entry.getKey(), 0, 0, true, false);
-      }
-    }
+        "".getBytes(), finalWriteId, 0)));
   }
 
   public void poll() throws Exception {

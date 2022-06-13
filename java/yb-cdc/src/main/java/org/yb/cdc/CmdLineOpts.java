@@ -32,7 +32,6 @@ public class CmdLineOpts {
   public String clientCertFile;
   public String clientKeyFile;
   public int maxTablets = AsyncYBClient.DEFAULT_MAX_TABLETS;
-  public boolean bootstrap = false;
 
   // Config file path to be provided from command line.
   public String configFile = "";
@@ -115,11 +114,6 @@ public class CmdLineOpts {
       .concat(lineSeparator)
       .concat("  --max_tablets").concat(lineSeparator)
       .concat("    Maximum number of tablets the client can poll for, default is 10")
-      .concat(lineSeparator)
-      .concat("  --bootstrap").concat(lineSeparator)
-      .concat("    Whether to bootstrap the table. This flag has no effect if " +
-              "--disable_snapshot is not provided i.e. if you are taking a snapshot, " +
-              "bootstrapping will be ignored")
       .concat(lineSeparator);
 
     public static CmdLineOpts createFromArgs(String[] args) throws Exception {
@@ -165,8 +159,6 @@ public class CmdLineOpts {
       // The interval at which the changes should be poplled at.
       options.addOption("polling_interval", true,
         "Interval at which the changes should be polled at");
-
-      options.addOption("bootstrap", false, "Whether to bootstrap the table");
 
       // Do the actual arg parsing.
       CommandLineParser parser = new BasicParser();
@@ -267,10 +259,6 @@ public class CmdLineOpts {
 
       if (commandLine.hasOption("polling_interval")) {
         pollingInterval = Integer.parseInt(commandLine.getOptionValue("polling_interval"));
-      }
-
-      if (commandLine.hasOption("bootstrap")) {
-        bootstrap = true;
       }
 
       // Check if a config file has been provided.
