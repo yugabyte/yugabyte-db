@@ -3,6 +3,9 @@
 -- Create pgaudit extension
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 
+-- Grant all on public schema to public
+GRANT ALL ON SCHEMA public TO public;
+
 -- Make sure events don't get logged twice when session logging
 SET pgaudit.log = 'all';
 SET pgaudit.log_client = ON;
