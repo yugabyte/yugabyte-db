@@ -12,8 +12,9 @@ aliases:
   - /preview/faq/architecture/
   - /preview/faq
 menu:
-  preview:
+  preview_faq:
     identifier: faq-general
+    parent: faq
     weight: 2720
 type: docs
 ---

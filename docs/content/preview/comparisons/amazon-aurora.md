@@ -6,7 +6,7 @@ description: Compare Amazon Aurora with YugabyteDB.
 aliases:
   - /comparisons/amazon-aurora/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1073
 type: docs

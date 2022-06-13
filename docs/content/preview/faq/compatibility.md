@@ -7,8 +7,9 @@ aliases:
   - /faq/cassandra/
   - /preview/faq/cassandra/
 menu:
-  preview:
+  preview_faq:
     identifier: faq-api-compatibility
+    parent: faq
     weight: 2730
 type: docs
 ---

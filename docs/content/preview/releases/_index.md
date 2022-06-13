@@ -8,8 +8,9 @@ aliases:
   - /preview/releases/releases-overview/
   - /preview/releases/whats-new/
 menu:
-  preview:
+  preview_releases:
     identifier: releases
+    parent: release-notes
     weight: 1060
 type: indexpage
 ---

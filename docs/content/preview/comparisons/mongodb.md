@@ -6,7 +6,7 @@ description: Compare MongoDB with YugabyteDB.
 aliases:
   - /comparisons/mongodb/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1090
 type: docs

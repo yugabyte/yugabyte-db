@@ -4,8 +4,9 @@ headerTitle: Release versioning
 linkTitle: Release versioning
 description: Explains the new release versioning convention for preview and stable releases.
 menu:
-  preview:
+  preview_releases:
     identifier: versioning
+    parent: release-notes
     weight: 4000
 type: docs
 ---

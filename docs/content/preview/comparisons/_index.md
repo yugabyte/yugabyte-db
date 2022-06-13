@@ -8,8 +8,9 @@ headcontent: See how YugabyteDB compares with other operational databases in the
 aliases:
   - /comparisons/
 menu:
-  preview:
+  preview_faq:
     identifier: comparisons
+    parent: faq
     weight: 2710
 type: indexpage
 ---

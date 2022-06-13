@@ -102,7 +102,7 @@
 [[main]]
   name = "FAQ"
   weight = 3
-  url = "/faq/"
+  url = "/faq/general/"
 
 [[main]]
   name = "Release Notes"
@@ -270,7 +270,7 @@
 
 [[preview_faq]]
   name = "FAQ"
-  weight = 2
+  weight = 1
   identifier = "faq"
   [preview_faq.params]
     section = true
@@ -374,20 +374,6 @@
   [stable.params]
     section = true
 
-[[stable_releases]]
-  name = "Releases"
-  identifier = "release-notes"
-  [stable_releases.params]
-    section = true
-    hideLink = true
-
-[[stable_faq]]
-  name = "FAQ"
-  identifier = "faq"
-  [stable_faq.params]
-    section = true
-    hideLink = true
-
 # Menus for v2.8
 [["v2.8"]]
   name = "Docs Home"
@@ -485,20 +471,6 @@
 	url = "/v2.8/yugabyte-cloud/cloud-overview/"
   ["v2.8".params]
     section = true
-
-[["v2.8_releases"]]
-  name = "Releases"
-  identifier = "release-notes"
-  ["v2.8_releases".params]
-    section = true
-    hideLink = true
-
-[["v2.8_faq"]]
-  name = "FAQ"
-  identifier = "faq"
-  ["v2.8_faq".params]
-    section = true
-    hideLink = true
 
 # Menus for v2.6
 [["v2.6"]]
@@ -598,20 +570,6 @@
   ["v2.6".params]
     section = true
 
-[["v2.6_releases"]]
-  name = "Releases"
-  identifier = "release-notes"
-  ["v2.6_releases".params]
-    section = true
-    hideLink = true
-
-[["v2.6_faq"]]
-  name = "FAQ"
-  identifier = "faq"
-  ["v2.6_faq".params]
-    section = true
-    hideLink = true
-
 # Menus for v2.4
 [["v2.4"]]
   name = "Docs Home"
@@ -709,17 +667,3 @@
 	url = "/v2.4/yugabyte-cloud/cloud-overview/"
   ["v2.4".params]
     section = true
-
-[["v2.4_releases"]]
-  name = "Releases"
-  identifier = "release-notes"
-  ["v2.4_releases".params]
-    section = true
-    hideLink = true
-
-[["v2.4_faq"]]
-  name = "FAQ"
-  identifier = "faq"
-  ["v2.4_faq".params]
-    section = true
-    hideLink = true

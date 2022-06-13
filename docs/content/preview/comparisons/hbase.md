@@ -6,7 +6,7 @@ description: Compare Apache HBase with YugabyteDB.
 aliases:
   - /comparisons/hbase/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1130
 type: docs
