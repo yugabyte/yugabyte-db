@@ -191,7 +191,9 @@ Employees Details:
 ]
 ```
 
-## Using Cloud Cluster to connect with Seqeulize:
+## Specifying SSL configuration:
+
+This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
 
 - Install `fs` package to read the ssl certificate using:
 ```
