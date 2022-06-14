@@ -48,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
@@ -137,7 +138,8 @@ public class NodeManager extends DevopsBase {
     Transfer_XCluster_Certs,
     Verify_Node_SSH_Access,
     Add_Authorized_Key,
-    Remove_Authorized_Key
+    Remove_Authorized_Key,
+    Reboot
   }
 
   public enum CertRotateAction {
@@ -279,6 +281,7 @@ public class NodeManager extends DevopsBase {
             || type == NodeCommandType.Disk_Update
             || type == NodeCommandType.Update_Mounted_Disks
             || type == NodeCommandType.Transfer_XCluster_Certs
+            || type == NodeCommandType.Reboot
             || type == NodeCommandType.Change_Instance_Type)
         && keyInfo.sshUser != null) {
       subCommand.add("--ssh_user");
@@ -1732,6 +1735,15 @@ public class NodeManager extends DevopsBase {
           }
           String oldPrivateKeyFilePath = taskParams.taskAccessKey.getKeyInfo().privateKey;
           sensitiveData.put("--old_private_key_file", oldPrivateKeyFilePath);
+          break;
+        }
+      case Reboot:
+        {
+          if (!(nodeTaskParam instanceof RebootServer.Params)) {
+            throw new RuntimeException("NodeTaskParams is not RebootServer.Params");
+          }
+          RebootServer.Params taskParam = (RebootServer.Params) nodeTaskParam;
+          commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
     }

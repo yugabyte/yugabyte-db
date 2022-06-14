@@ -185,7 +185,10 @@ public class UserTaskDetails {
     SystemdUpgrade,
 
     // Add certificates and toggle TLS gflags
-    ToggleTls;
+    ToggleTls,
+
+    // Rebooting the node.
+    RebootingNode;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -430,6 +433,10 @@ public class UserTaskDetails {
       case RotateAccessKey:
         title = "Rotate Access Key";
         description = "Rotate the access key for a universe";
+        break;
+      case RebootingNode:
+        title = "Rebooting Node";
+        description = "Rebooting node";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
