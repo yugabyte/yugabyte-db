@@ -307,8 +307,8 @@ add_dependencies(yb_util gen_version_info)
 
 ADD_YB_TEST_LIBRARY(
   yb_test_util
-  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
-  DEPS gflags glog gmock yb_util)
+  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc multi_drive_test_env.cc
+  DEPS gflags glog gmock rocksdb yb_util)
 
 #######################################
 # yb_test_main
