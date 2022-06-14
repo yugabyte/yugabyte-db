@@ -36,12 +36,6 @@ class HybridTime;
 
 class Trace;
 
-enum TxnPriorityRequirement {
-  kLowerPriorityRange,
-  kHigherPriorityRange,
-  kHighestPriority
-};
-
 namespace client {
 
 using Waiter = boost::function<void(const Status&)>;

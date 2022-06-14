@@ -458,6 +458,8 @@ YBCStatus YBCPgExitSeparateDdlTxnMode();
 void YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackSubTransaction(uint32_t id);
+double YBCGetTransactionPriority();
+TxnPriorityRequirement YBCGetTransactionPriorityType();
 
 // System validation -------------------------------------------------------------------------------
 // Validate placement information
