@@ -591,4 +591,10 @@ public class Util {
     }
     return true;
   }
+
+  /** Checks if the given date is past the current time or not. */
+  public static boolean isTimeExpired(Date date) {
+    Date currentTime = new Date();
+    return currentTime.compareTo(date) >= 0 ? true : false;
+  }
 }

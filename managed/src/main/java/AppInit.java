@@ -165,8 +165,7 @@ public class AppInit {
 
       replicationManager.init();
 
-      scheduler.resetRunningStatus();
-      scheduler.start();
+      scheduler.init();
       callHome.start();
       queryAlerts.start();
       healthChecker.initialize();
