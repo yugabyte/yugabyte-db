@@ -77,6 +77,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // id. This is used as the prefix of node names in the universe.
   @ApiModelProperty public String nodePrefix = null;
 
+  // Runtime flags to be set when creating the Universe
+  @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+  @ApiModelProperty
+  public Map<String, String> runtimeFlags = null;
+
   // The UUID of the rootCA to be used to generate node certificates and facilitate TLS
   // communication between database nodes.
   @ApiModelProperty public UUID rootCA = null;
