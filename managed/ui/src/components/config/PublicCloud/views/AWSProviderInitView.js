@@ -30,7 +30,6 @@ import _ from 'lodash';
 import { regionsData } from './providerRegionsData';
 import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
-import { YBTag } from '../../../common/YBTag';
 import clsx from 'clsx';
 import './providerView.scss';
 
@@ -841,7 +840,7 @@ class AWSProviderInitView extends Component {
     return (
       <Row className="config-provider-row">
         <Col lg={3}>
-          <div className="form-item-custom-label">NTP Setup<YBTag>Beta</YBTag></div>
+          <div className="form-item-custom-label">NTP Setup</div>
         </Col>
         <Col lg={7}>
           <div>{<NTPConfig onChange={change}/>}</div>
