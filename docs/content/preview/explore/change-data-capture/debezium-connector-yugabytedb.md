@@ -911,6 +911,17 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
 
+{{< note title="Note" >}}
+
+We use a custom record extractor in order to make the sinks understand the format we are sending the data in i.e. `YBExtractNewRecordState`. For example, if you are using a JDBC Sink Connector, you need to add two more properties to the sink configuration:
+
+| Property | Value |
+| :--- | :--- |
+| `transforms` | `unwrap` |
+| `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
+
+{{< /note >}}
+
 ### Connector configuration properties
 
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
