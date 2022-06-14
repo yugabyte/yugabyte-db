@@ -21,6 +21,10 @@ showAsideToc: true
 
 - Social logins. Sign in to YugabyteDB Managed using your Google, LinkedIn, or GitHub credentials. Admin users can manage the available logins using the **Login Methods** option on the **Users** tab on the **Admin** page.
 
+#### Database
+
+- Stable release updated to version 2.12.5 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
 ### May 18, 2022
 
 #### Enhancements
