@@ -563,4 +563,10 @@ public class Util {
   public static boolean doubleEquals(double d1, double d2) {
     return Math.abs(d1 - d2) < Util.EPSILON;
   }
+
+  /** Checks if the given date is past the current time or not. */
+  public static boolean isTimeExpired(Date date) {
+    Date currentTime = new Date();
+    return currentTime.compareTo(date) >= 0 ? true : false;
+  }
 }
