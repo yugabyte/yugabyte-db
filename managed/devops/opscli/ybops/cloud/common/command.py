@@ -48,6 +48,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(VerifySSHConnection(self))
         self.add_method(AddAuthorizedKey(self))
         self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(RebootInstanceMethod(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):

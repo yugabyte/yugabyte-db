@@ -129,7 +129,9 @@ public class NodeDetails {
     Terminating(RELEASE, DELETE),
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
-    Terminated(DELETE);
+    Terminated(DELETE),
+    // Set when the node is being rebooted
+    Rebooting();
 
     private final NodeActionType[] allowedActions;
 

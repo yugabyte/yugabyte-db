@@ -30,7 +30,8 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
     Restart,
     Certs,
     ToggleTls,
-    ResizeNode
+    ResizeNode,
+    Reboot
   }
 
   public enum UpgradeTaskSubType {
