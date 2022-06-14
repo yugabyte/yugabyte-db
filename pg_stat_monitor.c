@@ -1938,7 +1938,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			nulls[i++] = true;
 
 		/* cmd_type at column number 11 */
-		if (tmp.info.cmd_type < 0)
+		if (tmp.info.cmd_type == CMD_NOTHING)
 			nulls[i++] = true;
 		else
 			values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
