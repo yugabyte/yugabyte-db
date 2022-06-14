@@ -15,8 +15,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
@@ -240,7 +242,12 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
-    LOG.debug("Executing command: " + commandArgs);
+    String logMsg = "Executing command: " + commandArgs;
+    if (context.isTraceLogging()) {
+      log.trace(logMsg);
+    } else {
+      log.debug(logMsg);
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 

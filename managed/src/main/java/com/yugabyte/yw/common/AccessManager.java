@@ -10,8 +10,8 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -19,7 +19,6 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,16 +35,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Singleton
 public class AccessManager extends DevopsBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
-
   @Inject play.Configuration appConfig;
   @Inject Commissioner commissioner;
 
@@ -260,9 +254,9 @@ public class AccessManager extends DevopsBase {
                 showSetUpChrony);
       }
     } catch (NoSuchFileException ioe) {
-      LOG.error(ioe.getMessage(), ioe);
+      log.error(ioe.getMessage(), ioe);
     } catch (IOException ioe) {
-      LOG.error(ioe.getMessage(), ioe);
+      log.error(ioe.getMessage(), ioe);
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
       try {
@@ -270,7 +264,7 @@ public class AccessManager extends DevopsBase {
           Files.delete(tempFile);
         }
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
       }
     }
 

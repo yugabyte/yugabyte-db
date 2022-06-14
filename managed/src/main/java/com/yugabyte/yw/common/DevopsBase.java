@@ -22,14 +22,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
+@Slf4j
 public abstract class DevopsBase {
   public static final String YBCLOUD_SCRIPT = "bin/ybcloud.sh";
   public static final String PY_WRAPPER = "bin/py_wrapper";
-  public static final Logger LOG = LoggerFactory.getLogger(DevopsBase.class);
 
   // Command that we would need to execute eg: instance, network, access.
   protected abstract String getCommandType();
@@ -44,7 +43,7 @@ public abstract class DevopsBase {
     } else {
       String errorMsg =
           "YBCloud command " + getCommandType() + " (" + command + ") failed to execute.";
-      LOG.error((response.message != null) ? response.message : errorMsg);
+      log.error((response.message != null) ? response.message : errorMsg);
       return ApiResponse.errorJSON(errorMsg);
     }
   }
