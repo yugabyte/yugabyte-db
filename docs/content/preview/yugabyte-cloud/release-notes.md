@@ -15,6 +15,12 @@ showAsideToc: true
 
 ## Releases
 
+### June 14, 2022
+
+#### Enhancements
+
+- Social logins. Sign in to YugabyteDB Managed using your Google, LinkedIn, or GitHub credentials. Admin users can manage the available logins using the **Login Methods** option on the **Users** tab on the **Admin** page.
+
 ### May 18, 2022
 
 #### Enhancements
