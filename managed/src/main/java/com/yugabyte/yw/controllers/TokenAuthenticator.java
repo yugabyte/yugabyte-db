@@ -240,6 +240,13 @@ public class TokenAuthenticator extends Action.Simple {
         || endPoint.endsWith("/restore")) {
       return true;
     }
+    // Enable New backup and restore endPoints for backup admins.
+    if (endPoint.contains("/backups")
+        || endPoint.endsWith("create_backup_schedule")
+        || endPoint.contains("/schedules")
+        || endPoint.endsWith("/restore")) {
+      return true;
+    }
     // If the user is backupAdmin, they don't get further access.
     return user.getRole() != Role.BackupAdmin;
     // If the user has reached here, they have complete access.
