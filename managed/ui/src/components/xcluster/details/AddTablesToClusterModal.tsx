@@ -68,14 +68,14 @@ export function AddTablesToClusterModal({ visible, onHide, replication }: Props)
     return <YBLoading />;
   }
 
-  const tablesInSourceUniverse = tables.map((tables: IReplicationTable) => {
+  const tablesInSourceUniverse = tables?.map((tables: IReplicationTable) => {
     return {
       ...tables,
       tableUUID: tables.tableUUID.replaceAll('-', '')
     };
   });
 
-  const tablesNotInReplication = tablesInSourceUniverse.filter(
+  const tablesNotInReplication = tablesInSourceUniverse?.filter(
     (t: IReplicationTable) => !replication.tables.includes(t.tableUUID)
   );
 

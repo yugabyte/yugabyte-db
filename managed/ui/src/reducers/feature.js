@@ -15,7 +15,9 @@ const initialStateFeatureInTest = {
   backupv2: false,
   enableOIDC: false,
   supportBundle: false,
-  enableThirdpartyUpgrade: false
+  enableThirdpartyUpgrade: false,
+  enableYbc: false,
+  topNodeMetrics: false
 };
 
 const initialStateFeatureReleased = {
@@ -33,7 +35,9 @@ const initialStateFeatureReleased = {
   backupv2: true,
   enableOIDC: false,
   supportBundle: true,
-  enableThirdpartyUpgrade: false
+  enableThirdpartyUpgrade: false,
+  enableYbc: false,
+  topNodeMetrics: false
 };
 
 export const FeatureFlag = (

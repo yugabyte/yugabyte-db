@@ -186,6 +186,7 @@ class BootstrapTest : public LogTestBase {
       .raft_group_id = log::kTestTablet,
       .partition = partition.second,
       .tablet_data_state = TABLET_DATA_READY,
+      .snapshot_schedules = {},
     }));
     return (*meta)->Flush();
   }
@@ -220,6 +221,10 @@ class BootstrapTest : public LogTestBase {
       .transaction_coordinator_context = nullptr,
       .txns_enabled = TransactionsEnabled::kTrue,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,

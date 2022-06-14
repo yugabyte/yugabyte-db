@@ -290,7 +290,10 @@ class CDCServiceImpl::Impl {
     }
     CDCStateMetadataInfo info = CDCStateMetadataInfo {
       .producer_tablet_info = producer_tablet,
-      .current_schema = std::make_shared<Schema>()
+      .commit_timestamp = {},
+      .current_schema = std::make_shared<Schema>(),
+      .last_streamed_op_id = OpId(),
+      .mem_tracker = nullptr,
     };
     cdc_state_metadata_.emplace(info);
     return info.current_schema;
@@ -322,6 +325,7 @@ class CDCServiceImpl::Impl {
       .producer_tablet_info = producer_tablet,
       .cdc_state_checkpoint = {op_id, time, time},
       .sent_checkpoint = {op_id, time, time},
+      .mem_tracker = nullptr,
     });
   }
 
@@ -386,7 +390,8 @@ class CDCServiceImpl::Impl {
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
         .producer_tablet_info = producer_tablet,
         .cdc_state_checkpoint = commit_checkpoint,
-        .sent_checkpoint = sent_checkpoint
+        .sent_checkpoint = sent_checkpoint,
+        .mem_tracker = nullptr,
       });
     }
 
@@ -467,11 +472,19 @@ class CDCServiceImpl::Impl {
         // Add every tablet in the stream.
         ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
         tablet_checkpoints_.emplace(TabletCheckpointInfo{
-            .producer_tablet_info = producer_info
+            .producer_tablet_info = producer_info,
+            .cdc_state_checkpoint =
+                TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+            .sent_checkpoint =
+                TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+            .mem_tracker = nullptr,
         });
         cdc_state_metadata_.emplace(CDCStateMetadataInfo{
             .producer_tablet_info = producer_info,
-            .current_schema = std::make_shared<Schema>()
+            .commit_timestamp = {},
+            .current_schema = std::make_shared<Schema>(),
+            .last_streamed_op_id = OpId(),
+            .mem_tracker = nullptr,
         });
         // If this is the tablet that the user requested.
         if (tablet.tablet_id() == info.tablet_id) {
@@ -525,14 +538,16 @@ class CDCServiceImpl::Impl {
 
     SharedLock<rw_spinlock> lock(mutex_);
     auto it = tablet_checkpoints_.find(producer_tablet);
-    // This happen when node is restarted, but Getchange call happen for some stream, not for this
-    // stream, so there is no cache entry for the searched producer_tablet.
-    // create an entry for this.
+    // This happens when node is restarted, but Getchange is called for some other stream, not for
+    // this stream, so there is no cache entry for the searched producer_tablet. In which case we
+    // create an entry for this producer_tablet.
     if (it == tablet_checkpoints_.end()) {
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
           .producer_tablet_info = producer_tablet,
           .cdc_state_checkpoint = commit_checkpoint,
-          .sent_checkpoint = sent_checkpoint});
+          .sent_checkpoint = sent_checkpoint,
+          .mem_tracker = nullptr,
+      });
     }
     it = tablet_checkpoints_.find(producer_tablet);
     return it->cdc_state_checkpoint.last_active_time;
@@ -1652,14 +1667,13 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     ProducerTabletInfo producer_tablet = {"" /* UUID */, stream_id, tablet_id};
 
     // Check stream associated with the tablet is active or not.
-    // don't consider those inactive stream for the min_checkpoint
-    // calculation.
+    // Don't consider those inactive stream for the min_checkpoint calculation.
     CoarseTimePoint latest_active_time = CoarseTimePoint ::min();
     if (record.source_type == CDCSDK) {
       auto status = impl_->CheckStreamActive(producer_tablet);
       if (!status.ok()) {
-        // Give dummy entry in tablet_min_checkpoint_map for the tablet,
-        // if tablet is associated with a single stream.
+        // Give dummy entry in tablet_min_checkpoint_map for the tablet, if tablet is
+        // Associated with a single stream.
         auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
         tablet_info.cdc_op_id = *result;
         tablet_info.cdc_sdk_op_id = *result;

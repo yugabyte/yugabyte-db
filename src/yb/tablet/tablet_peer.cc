@@ -1046,7 +1046,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
   MonoDelta cdc_sdk_intent_retention = MonoDelta::kZero;
   // If cdc_sdk_latest_update_time is not updated to default CoarseTimePoint::min() value,
   // It's mean that, no need to retain the intents. This can happen in below case:-
-  //      a. Only XCluster stream are defined for the tablet.
+  //      a. Only XCluster streams are defined for the tablet.
   //      b. CDCSDK stream for the tablet is expired.
   if (cdc_sdk_latest_active_time == CoarseTimePoint::min()) {
     return cdc_sdk_intent_retention;
@@ -1055,7 +1055,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(
   auto txn_participant = tablet()->transaction_participant();
   if (txn_participant) {
     // Get the current tablet LEADER's intent retention expiration time.
-    // check how much milliseconds time remaining w.r.t current time, update
+    // Check how many milliseconds time remaining w.r.t current time, update
     // all the FOLLOWERs as their cdc_sdk_min_checkpoint_op_id_expiration_.
     MonoDelta max_retain_time =
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));

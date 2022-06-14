@@ -10,18 +10,18 @@
 
 package com.yugabyte.yw.common.password;
 
-import com.yugabyte.yw.forms.PasswordPolicyFormData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import play.data.validation.ValidationError;
 
 class PasswordComplexityValidator implements PasswordValidator {
-  private final Function<PasswordPolicyFormData, Integer> characterNumberExtractor;
+  private final Function<CustomerConfigPasswordPolicyData, Integer> characterNumberExtractor;
   private final Predicate<Character> characterTypePredicate;
   private final String characterTypeName;
 
   PasswordComplexityValidator(
-      Function<PasswordPolicyFormData, Integer> characterNumberExtractor,
+      Function<CustomerConfigPasswordPolicyData, Integer> characterNumberExtractor,
       Predicate<Character> characterTypePredicate,
       String characterTypeName) {
     this.characterNumberExtractor = characterNumberExtractor;
@@ -30,7 +30,8 @@ class PasswordComplexityValidator implements PasswordValidator {
   }
 
   @Override
-  public ValidationError validate(String password, PasswordPolicyFormData passwordPolicy) {
+  public ValidationError validate(
+      String password, CustomerConfigPasswordPolicyData passwordPolicy) {
     int requiredCharacters = characterNumberExtractor.apply(passwordPolicy);
     int foundCharacters = 0;
     for (char passwordChar : password.toCharArray()) {

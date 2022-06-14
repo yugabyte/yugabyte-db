@@ -2,39 +2,40 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.inject.Singleton;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
-import java.util.List;
-import java.util.stream.Collectors;
-import lombok.extern.slf4j.Slf4j;
-import java.io.IOException;
-import java.util.stream.StreamSupport;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.BlobInfo;
-import com.google.cloud.storage.Storage;
-import com.google.cloud.storage.StorageBatch;
-import com.google.cloud.storage.StorageOptions;
-import com.google.cloud.storage.StorageBatchResult;
+import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageBatch;
+import com.google.cloud.storage.StorageBatchResult;
+import com.google.cloud.storage.StorageOptions;
+import com.google.inject.Singleton;
 import java.io.ByteArrayInputStream;
-import java.util.ArrayList;
-import com.google.api.gax.paging.Page;
-import java.io.UnsupportedEncodingException;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.StreamSupport;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
 @Slf4j
 public class GCPUtil {
 
-  private static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
+  public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
+  private static final String GS_PROTOCOL_PREFIX = "gs://";
+  private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
 
   public static String[] getSplitLocationValue(String location) {
-    location = location.substring(5);
+    int prefixLength =
+        location.startsWith(GS_PROTOCOL_PREFIX)
+            ? GS_PROTOCOL_PREFIX.length()
+            : (location.startsWith(HTTPS_PROTOCOL_PREFIX) ? HTTPS_PROTOCOL_PREFIX.length() : 0);
+
+    location = location.substring(prefixLength);
     String[] split = location.split("/", 2);
     return split;
   }
@@ -80,11 +81,10 @@ public class GCPUtil {
         if (splitLocation.length == 1) {
           storage.list(bucketName);
         } else {
-          Page<Blob> blobs =
-              storage.list(
-                  bucketName,
-                  Storage.BlobListOption.prefix(prefix),
-                  Storage.BlobListOption.currentDirectory());
+          storage.list(
+              bucketName,
+              Storage.BlobListOption.prefix(prefix),
+              Storage.BlobListOption.currentDirectory());
         }
       } catch (Exception e) {
         log.error(

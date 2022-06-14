@@ -50,12 +50,12 @@ public class XClusterConfig extends Model {
   public String name;
 
   @ManyToOne
-  @JoinColumn(name = "source_universe_uuid")
+  @JoinColumn(name = "source_universe_uuid", referencedColumnName = "universe_uuid")
   @ApiModelProperty(value = "Source Universe UUID")
   public UUID sourceUniverseUUID;
 
   @ManyToOne
-  @JoinColumn(name = "target_universe_uuid")
+  @JoinColumn(name = "target_universe_uuid", referencedColumnName = "universe_uuid")
   @ApiModelProperty(value = "Target Universe UUID")
   public UUID targetUniverseUUID;
 
@@ -70,6 +70,7 @@ public class XClusterConfig extends Model {
     Running("Running"),
     Updating("Updating"),
     Paused("Paused"),
+    DeletedUniverse("DeletedUniverse"),
     Deleted("Deleted"),
     Failed("Failed");
 
@@ -102,6 +103,21 @@ public class XClusterConfig extends Model {
   @ApiModelProperty(value = "Tables participating in this xCluster config")
   @JsonIgnore
   public Set<XClusterTableConfig> tables;
+
+  @ApiModelProperty(value = "Replication group name in DB")
+  private String replicationGroupName;
+
+  @Override
+  public String toString() {
+    return this.getReplicationGroupName()
+        + "(uuid="
+        + this.uuid
+        + ",targetUuid="
+        + this.targetUniverseUUID
+        + ",status="
+        + this.status
+        + ")";
+  }
 
   public Optional<XClusterTableConfig> maybeGetTableById(String tableId) {
     // There will be at most one tableConfig for a tableId within each xCluster config.
@@ -266,9 +282,23 @@ public class XClusterConfig extends Model {
     update();
   }
 
-  @JsonIgnore
   public String getReplicationGroupName() {
-    return this.sourceUniverseUUID + "_" + this.name;
+    return replicationGroupName;
+  }
+
+  public static String getReplicationGroupName(UUID sourceUniverseUUID, String configName) {
+    return sourceUniverseUUID + "_" + configName;
+  }
+
+  @JsonIgnore
+  public void setReplicationGroupName() {
+    setReplicationGroupName(this.sourceUniverseUUID, this.name);
+  }
+
+  public void setReplicationGroupName(
+      @JsonProperty("sourceUniverseUUID") UUID sourceUniverseUUID,
+      @JsonProperty("name") String configName) {
+    replicationGroupName = getReplicationGroupName(sourceUniverseUUID, configName);
   }
 
   @Transactional
@@ -285,6 +315,7 @@ public class XClusterConfig extends Model {
     xClusterConfig.status = status;
     xClusterConfig.createTime = new Date();
     xClusterConfig.modifyTime = new Date();
+    xClusterConfig.setReplicationGroupName();
     xClusterConfig.save();
     return xClusterConfig;
   }
@@ -393,8 +424,11 @@ public class XClusterConfig extends Model {
 
   private static void checkXClusterConfigInCustomer(
       XClusterConfig xClusterConfig, Customer customer) {
-    if (!customer.getUniverseUUIDs().contains(xClusterConfig.sourceUniverseUUID)
-        || !customer.getUniverseUUIDs().contains(xClusterConfig.targetUniverseUUID)) {
+    Set<UUID> customerUniverseUUIDs = customer.getUniverseUUIDs();
+    if ((xClusterConfig.sourceUniverseUUID != null
+            && !customerUniverseUUIDs.contains(xClusterConfig.sourceUniverseUUID))
+        || (xClusterConfig.targetUniverseUUID != null
+            && !customerUniverseUUIDs.contains(xClusterConfig.targetUniverseUUID))) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(

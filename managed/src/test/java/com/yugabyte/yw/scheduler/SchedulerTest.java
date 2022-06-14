@@ -14,17 +14,15 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.Date;
+import java.util.UUID;
 import org.apache.commons.lang.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -190,6 +188,7 @@ public class SchedulerTest extends FakeDBApplication {
   public static void setUniveseBackupInProgress(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
+          @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.backupInProgress = value;
@@ -202,6 +201,7 @@ public class SchedulerTest extends FakeDBApplication {
   public static void setUniversePaused(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
+          @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.universePaused = value;

@@ -69,11 +69,11 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 
-#include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_wrapper.h"
-
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
+
+#include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(enable_update_local_peer_min_index);
@@ -137,7 +137,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void VerifyCdcStateMatches(
       client::YBClient* client, const CDCStreamId& stream_id, const TabletId& tablet_id,
-      uint64_t term, uint64_t index) {
+      const uint64_t term, const uint64_t index) {
     client::TableHandle table;
     client::YBTableName cdc_state_table(
         YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
@@ -203,7 +203,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           return false;
         },
         MonoDelta::FromSeconds(timeout_secs),
-        "Stream rows in cdc_state have been deleted."));
+        "Failed to delete stream rows from cdc_state table."));
   }
 
   void VerifyTransactionParticipant(const TabletId& tablet_id, const OpId& opid) {
@@ -223,7 +223,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           return false;
         },
         MonoDelta::FromSeconds(60),
-        "Finished."));
+        "Failed the match CDCSDK minimum checkpoint opId with the expected."));
   }
 
   Status DropDB(Cluster* cluster) {
@@ -421,6 +421,15 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     ASSERT_EQ(value, record.row_message().new_tuple(1).datum_int32());
   }
 
+  void EnableCDCServiceInAllTserver(uint32_t num_tservers) {
+    for (uint32_t i = 0; i < num_tservers; ++i) {
+      const auto& tserver = test_cluster()->mini_tablet_server(i)->server();
+      auto cdc_service = dynamic_cast<CDCServiceImpl*>(
+          tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+      cdc_service->SetCDCServiceEnabled();
+    }
+  }
+
   void CheckRecord(
       const CDCSDKProtoRecordPB& record, CDCSDKYsqlTest::ExpectedRecord expected_records,
       uint32_t* count) {
@@ -586,6 +595,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
+
+    EnableCDCServiceInAllTserver(num_tservers);
 
     // Call GetChanges once to set the initial value in the cdc_state table.
     GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
@@ -1336,11 +1347,11 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionFlag)) {
-  TestIntentGarbageCollectionFlag(1, true, 200);
+  TestIntentGarbageCollectionFlag(1, true, 2000);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionWithSmallInterval)) {
-  TestIntentGarbageCollectionFlag(3, true, 200);
+  TestIntentGarbageCollectionFlag(3, true, 2000);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionWithLargerInterval)) {
@@ -1484,6 +1495,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamSingleTser
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
+  EnableCDCServiceInAllTserver(1);
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -1511,6 +1523,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCleanupSingleStreamMultiTserv
 
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
+  EnableCDCServiceInAllTserver(3);
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -1543,6 +1556,7 @@ TEST_F(
   ASSERT_FALSE(resp_1.has_error());
   auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
   ASSERT_FALSE(resp_2.has_error());
+  EnableCDCServiceInAllTserver(1);
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -1575,6 +1589,7 @@ TEST_F(
   ASSERT_FALSE(resp_1.has_error());
   auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
   ASSERT_FALSE(resp_2.has_error());
+  EnableCDCServiceInAllTserver(3);
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -1607,6 +1622,7 @@ TEST_F(
   ASSERT_FALSE(resp_1.has_error());
   auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
   ASSERT_FALSE(resp_2.has_error());
+  EnableCDCServiceInAllTserver(1);
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));
@@ -1641,6 +1657,7 @@ TEST_F(
   ASSERT_FALSE(resp_1.has_error());
   auto resp_2 = ASSERT_RESULT(SetCDCCheckpoint(stream_id_2, tablets));
   ASSERT_FALSE(resp_2.has_error());
+  EnableCDCServiceInAllTserver(3);
 
   // insert some records in transaction.
   ASSERT_OK(WriteRowsHelper(0 /* start */, 100 /* end */, &test_cluster_, true));

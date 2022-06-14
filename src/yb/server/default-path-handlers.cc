@@ -191,9 +191,9 @@ static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebRespons
 
   for (const auto& flag_info : flag_infos) {
     (*output) << "--" << flag_info.name << "=";
-    std::unordered_set<string> tags;
+    std::unordered_set<FlagTag> tags;
     GetFlagTags(flag_info.name, &tags);
-    if (PREDICT_FALSE(ContainsKey(tags, "sensitive_info"))) {
+    if (PREDICT_FALSE(ContainsKey(tags, FlagTag::kSensitive_info))) {
       (*output) << "****" << endl;
     } else {
       (*output) << flag_info.current_value << endl;

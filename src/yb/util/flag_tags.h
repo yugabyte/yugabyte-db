@@ -129,42 +129,50 @@
 #include <boost/preprocessor/cat.hpp>
 
 #include "yb/gutil/macros.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
-struct FlagTags {
-  enum {
-    stable,
-    evolving,
-    experimental,
-    hidden,
-    advanced,
-    unsafe,
-    runtime,
-    sensitive_info
-  };
-};
+YB_DEFINE_ENUM(
+    FlagTag,
+    (kStable)
+    (kEvolving)
+    (kExperimental)
+    (kHidden)
+    (kAdvanced)
+    (kUnsafe)
+    (kRuntime)
+    (kSensitive_info));
+
+#define FLAG_TAG_stable ::yb::FlagTag::kStable
+#define FLAG_TAG_evolving ::yb::FlagTag::kEvolving
+#define FLAG_TAG_experimental ::yb::FlagTag::kExperimental
+#define FLAG_TAG_hidden ::yb::FlagTag::kHidden
+#define FLAG_TAG_advanced ::yb::FlagTag::kAdvanced
+#define FLAG_TAG_unsafe ::yb::FlagTag::kUnsafe
+#define FLAG_TAG_runtime ::yb::FlagTag::kRuntime
+#define FLAG_TAG_sensitive_info ::yb::FlagTag::kSensitive_info
 
 // Tag the flag 'flag_name' with the given tag 'tag'.
 //
 // This verifies that 'flag_name' is a valid gflag, which must be defined
 // or declared above the use of the TAG_FLAG macro.
 //
-// This also validates that 'tag' is a valid flag as defined in the FlagTags
+// This also validates that 'tag' is a valid flag as defined in the FlagTag
 // enum above.
 #define TAG_FLAG(flag_name, tag) \
   COMPILE_ASSERT(sizeof(FLAGS_##flag_name), flag_does_not_exist); \
-  COMPILE_ASSERT(sizeof(::yb::FlagTags::tag), invalid_tag);   \
-  namespace {                                                     \
-    ::yb::flag_tags_internal::FlagTagger t_##flag_name##_##tag( \
-        AS_STRING(flag_name), AS_STRING(tag));                    \
+  COMPILE_ASSERT(sizeof(FLAG_TAG_##tag), invalid_tag); \
+  namespace { \
+  ::yb::flag_tags_internal::FlagTagger t_##flag_name##_##tag( \
+      AS_STRING(flag_name), FLAG_TAG_##tag); \
   }
 
 // Fetch the list of flags associated with the given flag.
 //
 // If the flag is invalid or has no tags, sets 'tags' to be empty.
 void GetFlagTags(const std::string& flag_name,
-                 std::unordered_set<std::string>* tags);
+                 std::unordered_set<FlagTag>* tags);
 
 // ------------------------------------------------------------
 // Internal implementation details
@@ -173,7 +181,7 @@ namespace flag_tags_internal {
 
 class FlagTagger {
  public:
-  FlagTagger(const char* name, const char* tag);
+  FlagTagger(const char* name, const FlagTag& tag);
   ~FlagTagger();
 
  private:

@@ -211,23 +211,35 @@ class PgDocResult {
 // No memory allocations is required in case of using PerformFuture.
 class PgDocResponse {
  public:
+  struct Data {
+    Data(const rpc::CallResponsePtr& response_, uint64_t used_read_time_)
+        : response(response_), used_read_time(used_read_time_) {
+    }
+    rpc::CallResponsePtr response;
+    uint64_t used_read_time;
+  };
+
   class Provider {
    public:
     virtual ~Provider() = default;
-    virtual Result<rpc::CallResponsePtr> Get() = 0;
+    virtual Result<Data> Get() = 0;
   };
 
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  explicit PgDocResponse(PerformFuture future);
+  PgDocResponse(PerformFuture future, uint64_t used_read_time);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<rpc::CallResponsePtr> Get();
+  Result<Data> Get();
 
  private:
-  std::variant<PerformFuture, ProviderPtr> holder_;
+  struct PerformInfo {
+    PerformFuture future;
+    uint64_t used_read_time;
+  };
+  std::variant<PerformInfo, ProviderPtr> holder_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
@@ -240,7 +252,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t*, bool)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
 
   // Constructors & Destructors.
   PgDocOp(
@@ -325,9 +337,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Clone READ or WRITE "template_op_" into new operators.
   virtual PgsqlOpPtr CloneFromTemplate() = 0;
 
-  // Process the result set in server response.
-  Result<std::list<PgDocResult>> ProcessResponseResult(const rpc::CallResponsePtr& response);
-
   void SetReadTime();
 
  private:
@@ -335,17 +344,19 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   Status SendRequestImpl(bool force_non_bufferable);
 
-  Result<std::list<PgDocResult>> ProcessResponse(
-      const Result<rpc::CallResponsePtr>& response);
+  Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
-  virtual Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) = 0;
+  Result<std::list<PgDocResult>> ProcessResponseImpl(const Result<PgDocResponse::Data>& data);
+
+  Result<std::list<PgDocResult>> ProcessCallResponse(const rpc::CallResponse& response);
+
+  virtual Status CompleteProcessResponse() = 0;
 
   Status CompleteRequests();
 
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t* read_time, bool force_non_bufferable);
+      uint64_t read_time, bool force_non_bufferable);
 
   //----------------------------------- Data Members -----------------------------------------------
  protected:
@@ -458,7 +469,6 @@ class PgDocReadOp : public PgDocOp {
   typedef std::unique_ptr<PgDocReadOp> UniPtr;
   typedef std::unique_ptr<const PgDocReadOp> UniPtrConst;
 
-  // Constructors & Destructors.
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
   PgDocReadOp(
       const PgSession::ScopedRefPtr& pg_session, PgTable* table,
@@ -506,9 +516,7 @@ class PgDocReadOp : public PgDocOp {
   // Set partition boundaries to a given partition.
   Status SetScanPartitionBoundary();
 
-  // Process response from DocDB.
-  Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) override;
+  Status CompleteProcessResponse() override;
 
   // Process response read state from DocDB.
   Status ProcessResponseReadStates();
@@ -595,9 +603,7 @@ class PgDocWriteOp : public PgDocOp {
   }
 
  private:
-  // Process response implementation.
-  Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) override;
+  Status CompleteProcessResponse() override;
 
   // Create protobuf requests using template_op (write_op).
   Result<bool> DoCreateRequests() override;

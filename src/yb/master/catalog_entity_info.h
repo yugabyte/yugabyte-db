@@ -480,6 +480,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return whether given partition start keys match partitions_.
   bool HasPartitions(const std::vector<PartitionKey> other) const;
 
+  // Returns true if all non-active tablets (e.g. split parent) have already been deleted / hidden.
+  // This function should not be called for colocated tables since the colocated tablet will not be
+  // deleted / hidden if the table is dropped (since it may still an active tablet of another
+  // table).
   bool HasOutstandingSplits() const;
 
   // Get all tablets of the table.

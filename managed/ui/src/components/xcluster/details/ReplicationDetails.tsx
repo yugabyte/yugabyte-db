@@ -20,7 +20,13 @@ import { YBConfirmModal } from '../../modals';
 import { YBTabsPanel } from '../../panels';
 import { ReplicationContainer } from '../../tables';
 import { IReplication } from '../IClusterReplication';
-import { GetConfiguredThreshold, GetCurrentLag, getReplicationStatus } from '../ReplicationUtils';
+import {
+  findUniverseName,
+  GetConfiguredThreshold,
+  GetCurrentLag,
+  getReplicationStatus,
+  isChangeDisabled
+} from '../ReplicationUtils';
 import { AddTablesToClusterModal } from './AddTablesToClusterModal';
 import { EditReplicationDetails } from './EditReplicationDetails';
 import { LagGraph } from './LagGraph';
@@ -105,17 +111,16 @@ export function ReplicationDetails({ params }: Props) {
     return universesList.filter((universes: any) => universes.universeUUID === uuid)[0];
   };
 
-  const sourceUniverse: any = getUniverseByUUID(replication.sourceUniverseUUID);
   const destinationUniverse = getUniverseByUUID(replication.targetUniverseUUID);
 
   return (
     <>
       <div className="replication-details">
         <h2 className="content-title">
-          <Link to={`/universes/${sourceUniverse.universeUUID}`}>{sourceUniverse.name}</Link>
+          <Link to={`/universes/${replication.sourceUniverseUUID}`}>{findUniverseName(universesList, replication.sourceUniverseUUID)}</Link>
           <span className="subtext">
             <i className="fa fa-chevron-right submenu-icon" />
-            <Link to={`/universes/${sourceUniverse.universeUUID}/replication/`}>Replication</Link>
+            <Link to={`/universes/${replication.sourceUniverseUUID}/replication/`}>Replication</Link>
             <i className="fa fa-chevron-right submenu-icon" />
             {replication.name}
           </span>
@@ -132,10 +137,7 @@ export function ReplicationDetails({ params }: Props) {
                     replication.status === IReplicationStatus.RUNNING ? 'Pause' : 'Enable'
                   } Replication`}
                   btnClass={'btn btn-orange replication-status-button'}
-                  disabled={
-                    replication.status === IReplicationStatus.FAILED ||
-                    replication.status === IReplicationStatus.INIT
-                  }
+                  disabled={ isChangeDisabled(replication?.status) }
                   onClick={() => {
                     toast.success('Please wait...');
                     switchReplicationStatus.mutateAsync(replication);
@@ -146,8 +148,11 @@ export function ReplicationDetails({ params }: Props) {
                     <MenuItem
                       eventKey="1"
                       onClick={(e) => {
-                        dispatch(openDialog('editReplicationConfiguration'));
+                        if (!isChangeDisabled(replication?.status)) {
+                          dispatch(openDialog('editReplicationConfiguration'));
+                        }
                       }}
+                      disabled={ isChangeDisabled(replication?.status) }
                     >
                       Edit replication configurations
                     </MenuItem>
@@ -165,7 +170,7 @@ export function ReplicationDetails({ params }: Props) {
             </Col>
           </Row>
           <Row className="replication-status">
-            <Col lg={4}>Replication Status {getReplicationStatus(replication.status)}</Col>
+            <Col lg={4}>Replication Status {getReplicationStatus(replication)}</Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
                 <Row>
@@ -203,10 +208,10 @@ export function ReplicationDetails({ params }: Props) {
             <Col lg={12} className="noPadding">
               <YBTabsPanel defaultTab={'overview'} id="replication-tab-panel">
                 <Tab eventKey={'overview'} title={'Overview'}>
-                  <ReplicationOverview
+                  {destinationUniverse !== undefined && <ReplicationOverview
                     replication={replication}
                     destinationUniverse={destinationUniverse}
-                  />
+                  />}
                 </Tab>
                 <Tab eventKey={'tables'} title={'Tables'}>
                   <ReplicationDetailsTable replication={replication} />
