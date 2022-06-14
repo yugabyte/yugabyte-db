@@ -68,6 +68,14 @@ public class Scheduler {
     this.commissioner = commissioner;
   }
 
+  public void init() {
+    resetRunningStatus();
+    // Update next expected task for active schedule which got expired due to platform downtime.
+    updateExpiredNextScheduledTaskTime();
+    // start scheduler
+    start();
+  }
+
   public void start() {
     log.info("Starting scheduling service");
     this.actorSystem
@@ -87,6 +95,18 @@ public class Scheduler {
               if (schedule.getRunningState()) {
                 schedule.setRunningState(false);
                 log.debug("Updated scheduler {} running state to false", schedule.scheduleUUID);
+              }
+            });
+  }
+
+  /** Updates expired next expected task time of active schedules in case of platform restarts. */
+  public void updateExpiredNextScheduledTaskTime() {
+    Schedule.getAll()
+        .forEach(
+            (schedule) -> {
+              if (schedule.getStatus().equals(Schedule.State.Active)
+                  && Util.isTimeExpired(schedule.getNextScheduleTaskTime())) {
+                schedule.updateNextScheduleTaskTime(Schedule.nextExpectedTaskTime(null, schedule));
               }
             });
   }
@@ -134,8 +154,7 @@ public class Scheduler {
           }
 
           // Update expected scheduled time if it is expired or null.
-          if (expectedScheduleTaskTime == null
-              || isScheduledTimeExpired(expectedScheduleTaskTime)) {
+          if (expectedScheduleTaskTime == null || Util.isTimeExpired(expectedScheduleTaskTime)) {
             Date nextScheduleTaskTime =
                 Schedule.nextExpectedTaskTime(expectedScheduleTaskTime, schedule);
             expectedScheduleTaskTime =
@@ -143,7 +162,7 @@ public class Scheduler {
             schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
           }
 
-          boolean shouldRunTask = isScheduledTimeExpired(expectedScheduleTaskTime);
+          boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
 
           if (shouldRunTask || backlogStatus) {
             switch (taskType) {
@@ -318,10 +337,5 @@ public class Scheduler {
         "Submitted external script task with task uuid = {} for universe {}.",
         taskUUID,
         universe.universeUUID);
-  }
-
-  private boolean isScheduledTimeExpired(Date scheduledTime) {
-    Date currentTime = new Date();
-    return currentTime.compareTo(scheduledTime) >= 0 ? true : false;
   }
 }
