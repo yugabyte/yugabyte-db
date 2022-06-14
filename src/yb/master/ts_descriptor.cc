@@ -80,6 +80,7 @@ TSDescriptor::TSDescriptor(std::string perm_id)
     : permanent_uuid_(std::move(perm_id)),
       last_heartbeat_(MonoTime::Now()),
       has_tablet_report_(false),
+      has_faulty_drive_(false),
       recent_replica_creations_(0),
       last_replica_creations_decay_(MonoTime::Now()),
       num_live_replicas_(0) {
@@ -171,6 +172,9 @@ void TSDescriptor::UpdateHeartbeat(const TSHeartbeatRequestPB* req) {
     physical_time_ = req->ts_physical_time();
     hybrid_time_ = HybridTime::FromPB(req->ts_hybrid_time());
     heartbeat_rtt_ = MonoDelta::FromMicroseconds(req->rtt_us());
+    if (req->has_faulty_drive()) {
+      has_faulty_drive_ = req->faulty_drive();
+    }
   }
 }
 
@@ -193,6 +197,11 @@ bool TSDescriptor::has_tablet_report() const {
 void TSDescriptor::set_has_tablet_report(bool has_report) {
   std::lock_guard<decltype(lock_)> l(lock_);
   has_tablet_report_ = has_report;
+}
+
+bool TSDescriptor::has_faulty_drive() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return has_faulty_drive_;
 }
 
 bool TSDescriptor::registered_through_heartbeat() const {

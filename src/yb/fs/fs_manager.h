@@ -215,6 +215,10 @@ class FsManager {
     return read_only_;
   }
 
+  bool has_faulty_drive() const {
+    return has_faulty_drive_;
+  }
+
   // ==========================================================================
   //  file-system helpers
   // ==========================================================================
@@ -300,7 +304,12 @@ class FsManager {
 
   std::unique_ptr<InstanceMetadataPB> metadata_;
 
-  bool initted_;
+  // Keep references to counters, counters without reference will be retired.
+  std::vector<scoped_refptr<Counter>> counters_;
+
+  bool initted_ = false;
+
+  bool has_faulty_drive_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(FsManager);
 };

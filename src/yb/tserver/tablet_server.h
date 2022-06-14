@@ -150,6 +150,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   const std::string& permanent_uuid() const override { return fs_manager_->uuid(); }
 
+  bool has_faulty_drive() const { return fs_manager_->has_faulty_drive(); }
+
   // Returns the proxy to call this tablet server locally.
   const std::shared_ptr<TabletServerServiceProxy>& proxy() const { return proxy_; }
 
