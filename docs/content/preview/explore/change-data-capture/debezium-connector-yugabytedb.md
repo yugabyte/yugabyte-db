@@ -949,6 +949,12 @@ The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make su
 
 {{< /note >}}
 
+{{< note title="Note" >}}
+
+If you have a YugabyteDB cluster with SSL enabled, all you need to do is obtain the root certificate and provide the path of the file to the `database.sslrootcert` configuration property.
+
+{{< /note >}}
+
 Advanced connector configuration properties:
 
 | Property | Default | Description |
