@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -84,6 +85,8 @@ public class UniverseCRUDHandler {
   @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 
   @Inject KubernetesManagerFactory kubernetesManagerFactory;
   @Inject PasswordPolicyService passwordPolicyService;
@@ -422,6 +425,17 @@ public class UniverseCRUDHandler {
         universe.universeUUID,
         universe.name,
         customer.getCustomerId());
+
+    if (taskParams.runtimeFlags != null) {
+      // iterate through the flags and set via runtime config
+      for (Map.Entry<String, String> entry : taskParams.runtimeFlags.entrySet()) {
+        if (entry.getValue() != null) {
+          settableRuntimeConfigFactory
+              .forUniverse(universe)
+              .setValue(entry.getKey(), entry.getValue());
+        }
+      }
+    }
 
     TaskType taskType = TaskType.CreateUniverse;
     Cluster primaryCluster = taskParams.getPrimaryCluster();
