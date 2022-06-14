@@ -234,6 +234,9 @@ public class Audit extends Model {
     @EnumValue("Upgrade Systemd")
     UpgradeSystemd,
 
+    @EnumValue("Reboot Universe")
+    RebootUniverse,
+
     @EnumValue("Resize Node")
     ResizeNode,
 
