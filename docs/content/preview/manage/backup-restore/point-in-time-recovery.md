@@ -160,6 +160,18 @@ To restore, use the [`restore-snapshot-schedule`](../../../admin/yb-admin/#resto
 
 For the second parameter, you have two options. You can either restore to an absolute time, providing a specific timestamp, or to a time that is relative to the current (for example, to 10 minutes ago from now).
 
+{{< note title="YSQL index backfill" >}}
+
+YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is the process of asynchronous population of a new index. The process runs in the background and can take significant amount of time, depending on the size of the data. If you restore to a point in time that is not long ago after an index creation, it is likely you will hit a state where the index is in the middle of the backfill process.
+
+**Such indexes are not functional, as YugabyteDB ignores them during read operations. For YSQL databases, you need to drop these indexes and recreated them again to reinitiate the backfill process.**
+
+This requirement will be removed in the future releases. Tracking issue: [12672](https://github.com/yugabyte/yugabyte-db/issues/12672)
+
+Note that this affects only YSQL databases. In case of YCQL, index backfill is restarted automatically after the restore.
+
+{{< /note >}}
+
 ### Restore to an absolute time
 
 To restore to an absolute time you need to provide a timestamp you want to restore to. The following formats are supported:
