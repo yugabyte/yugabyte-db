@@ -19,7 +19,7 @@ showAsideToc: true
 
 #### Enhancements
 
-- Social logins. Sign in to YugabyteDB Managed using your Google, LinkedIn, or GitHub credentials. Admin users can manage the available logins using the **Login Methods** option on the **Users** tab on the **Admin** page.
+- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Users** tab on the **Admin** page.
 
 #### Database
 
