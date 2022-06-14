@@ -68,11 +68,39 @@ $ cd ./node/prisma/
 ```sh
 $ npm install
 ```
-## Specify the Configuration for the YugabyteDB Cluster 
+## Create Database
 
-Add the `DATABASE_URL` in the `.env` file to be able to use the example using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+
+  ```sh
+  $ ./bin/ysqlsh
+  ```
+
+  ```output
+  ysqlsh (11.2)
+  Type "help" for help.
+
+  yugabyte=#
+  ```
+
+- Create the `ysql_prisma` database using:
+
+  ```sql
+  yugabyte=# CREATE DATABASE ysql_prisma;
+  ```
+
+- Connect to the database using:
+
+  ```sql
+  yugabyte=# \c ysql_prisma;
+  ```
+
+
+## Specify the Configuration: 
+
+Modify the `DATABASE_URL` in the `.env` file according to your cluster configuration:
 ```sh
-$ echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"' > .env 
+$ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 ```
 - Using the YugabyteDB Managed Cluster to connect:
 
@@ -82,17 +110,21 @@ $ echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"' >
   ```sh
   $ openssl x509 -in <root_crt_path> -out cert.pem
   ```
-4. Add the `DATABASE_URL` in this format where <b>cert_path</b> should be the relative path of `cert.pem` with respect to `/prisma` folder:
+4. Modify the `DATABASE_URL` in this format where <b>cert_path</b> should be the relative path of `cert.pem` with respect to `/prisma` folder:
 ```sh
-$ echo 'DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"' > .env 
+$ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
   ```
 ## Apply the Migrations 
 
 Create the tables in the YugabyteDB by applying the migration for the data models in the file `prisma/schema.prisma` using the following command and generate the <b>PrismaClient</b>: 
 ```
-$ prisma migrate dev --name first_migration
+$ npx prisma migrate dev --name first_migration
 ```
- 
+<b>Note: </b>If you want to use the Prisma CLI without `npx`, you need to install Prisma globally using: 
+```
+npm i -g prisma
+``` 
+
 ## Run the application
 
 Start the Node.js API server at <http://localhost:8080> :
@@ -151,19 +183,8 @@ $ curl \
 
 ### Using ysqlsh
 
-```sh
-$ ./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2)
-Type "help" for help.
-
-yugabyte=#
-```
-
 ```plpgsql
-yugabyte=# SELECT count(*) FROM users;
+ysql_prisma=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -174,7 +195,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```plpgsql
-yugabyte=# SELECT count(*) FROM products;
+ysql_prisma=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -185,7 +206,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```plpgsql
-yugabyte=# SELECT count(*) FROM orders;
+ysql_prisma=# SELECT count(*) FROM orders;
 ```
 
 ```output

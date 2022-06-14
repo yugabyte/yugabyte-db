@@ -80,7 +80,10 @@ To create a basic Node.js project and install the `prisma` package, do the follo
     ```sh
     $ npm install prisma
     ```
-
+  <b>Note:</b> If you want to use the Prisma CLI without `npx`, you need to install Prisma globally using: 
+  ```
+  npm install -g prisma
+  ``` 
 1. Create an empty example.js file:
 
     ```sh
@@ -93,7 +96,7 @@ Now, we need to initialise our project with prisma.
 
 1. Initialise prisma in project using: 
     ```sh
-    $ prisma init
+    $ npx prisma init
     ```
 
     This will create  a `prisma/schema.prisma` file and `.env`. 
@@ -137,7 +140,7 @@ model Employee {
 
 2. Migrate this data model to the YugabyteDB using:
 ```sh
-$ prisma migrate dev --name first_migration
+$ npx prisma migrate dev --name first_migration
 ```
 
 This will create the migration file `migration.sql` with folder name `<unique-id>_first_migration` under `prisma/migrations` folder and apply those on the database and generate a <b>Prisma Client</b> which can be used a query builder to communicate with database.
@@ -250,7 +253,7 @@ Ran the Prisma example successfully..
 
 You can use this command to start <b>Prisma Studio </b>:
 ```sh
-$ prisma studio
+$ npx prisma studio
 ```
 Now, go to this page [http://localhost:5555](http://localhost:5555), you will able to see the table and data created.
 
