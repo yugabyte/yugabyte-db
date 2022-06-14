@@ -10,7 +10,7 @@ import { YBLoading } from '../common/indicators';
 export const UserManagement = (props) => {
   const { activeTab, defaultTab, routePrefix, currentUserInfo } = props;
   const role = currentUserInfo?.role;
-  const isAdmin = ['Admin', 'SuperAdmin'].includes(role);
+  const isAdmin = ['SuperAdmin'].includes(role);
   const isLoading = !role;
 
   const AuthTab = () => {
