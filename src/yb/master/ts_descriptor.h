@@ -119,6 +119,8 @@ class TSDescriptor {
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
 
+  bool has_faulty_drive() const;
+
   bool registered_through_heartbeat() const;
 
   // Returns TSRegistrationPB for this TSDescriptor.
@@ -368,6 +370,9 @@ class TSDescriptor {
 
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_;
+
+  // Tablet server has at least one faulty drive.
+  bool has_faulty_drive_;
 
   // The number of times this tablet server has recently been selected to create a
   // tablet replica. This value decays back to 0 over time.
