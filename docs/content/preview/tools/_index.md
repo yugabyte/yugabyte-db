@@ -11,6 +11,7 @@ aliases:
 menu:
   preview:
     identifier: tools
+    parent: reference
     weight: 2900
 type: indexpage
 ---

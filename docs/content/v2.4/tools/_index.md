@@ -8,6 +8,7 @@ image: /images/section_icons/troubleshoot/troubleshoot.png
 menu:
   v2.4:
     identifier: tools
+    parent: reference
     weight: 2900
 type: indexpage
 ---

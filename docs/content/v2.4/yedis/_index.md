@@ -8,6 +8,7 @@ image: /images/section_icons/api/yedis.png
 menu:
   v2.4:
     identifier: yedis
+    parent: misc
     weight: 2900
 type: indexpage
 ---

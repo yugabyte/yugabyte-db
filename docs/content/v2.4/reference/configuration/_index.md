@@ -8,6 +8,7 @@ image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.4:
     identifier: configuration
+    parent: reference
     weight: 2600
 type: indexpage
 ---

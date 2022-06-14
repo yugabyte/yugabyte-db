@@ -476,7 +476,7 @@ aside.td-sidebar {
         ul {
           padding-left: 5px;
 
-          > li {
+          > li:not(.submenu) {
             padding: 4px 0;
 
             i {
@@ -550,8 +550,12 @@ aside.td-sidebar {
 
             &.submenu {
               > a {
-                max-width: calc(100% - 20px);
+                max-width: calc(100% - 28px);
                 padding-left: 0;
+              }
+
+              > i {
+                top: 0;
               }
 
               &:not(.open) > ul {
@@ -698,6 +702,21 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li > a.current + i {
   top: inherit !important;
 }
 
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu.open > i,
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a.current + i {
+  top: 15px !important;
+  border-color: var(--theme-color);
+}
+
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu.open > ul > li > a {
+  padding: 4px 0 4px 5px;
+}
+
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu.open > a,
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a.current {
+  color: var(--theme-color);
+}
+
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list li > a.current + i::before {
@@ -705,7 +724,7 @@ aside.td-sidebar nav > ul > li.unlink-list li > a.current + i::before {
   transform: none;
   top: 2px;
   height: 2px;
-  background: #666 !important;
+  background: var(--theme-color) !important;
   left: 0;
 }
 

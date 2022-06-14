@@ -5,6 +5,7 @@ description: Using Sequelize with YugabyteDB
 menu:
   preview:
     identifier: sequelize
+    parent: integrations
     weight: 571
 type: docs
 ---

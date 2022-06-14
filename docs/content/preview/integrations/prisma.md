@@ -5,6 +5,7 @@ description: Prisma
 menu:
   preview:
     identifier: prisma
+    parent: integrations
     weight: 571
 type: docs
 ---

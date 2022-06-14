@@ -8,6 +8,7 @@ aliases:
 menu:
   preview:
     identifier: cdc-debezium
+    parent: integrations
     weight: 571
 type: docs
 ---

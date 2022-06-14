@@ -236,8 +236,29 @@
     section = true
 
 [[preview]]
-  name = "View all products"
+  name = "Integrations"
   weight = 11
+  identifier = "integrations"
+  [preview.params]
+    section = true
+
+[[preview]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  [preview.params]
+    section = true
+
+[[preview]]
+  name = "Misc"
+  weight = 13
+  identifier = "misc"
+  [preview.params]
+    section = true
+
+[[preview]]
+  name = "View all products"
+  weight = 14
   identifier = "view-all-products"
   [preview.params]
     section = true
@@ -350,8 +371,29 @@
     section = true
 
 [[stable]]
-  name = "View all products"
+  name = "Integrations"
   weight = 11
+  identifier = "integrations"
+  [stable.params]
+    section = true
+
+[[stable]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  [stable.params]
+    section = true
+
+[[stable]]
+  name = "Misc"
+  weight = 13
+  identifier = "misc"
+  [stable.params]
+    section = true
+
+[[stable]]
+  name = "View all products"
+  weight = 14
   identifier = "view-all-products"
   [stable.params]
     section = true
@@ -444,6 +486,27 @@
   weight = 10
   identifier = "troubleshoot"
   url = "/v2.8/troubleshoot/"
+  ["v2.8".params]
+    section = true
+
+[["v2.8"]]
+  name = "Integrations"
+  weight = 11
+  identifier = "integrations"
+  ["v2.8".params]
+    section = true
+
+[["v2.8"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2.8".params]
+    section = true
+
+[["v2.8"]]
+  name = "Misc"
+  weight = 13
+  identifier = "misc"
   ["v2.8".params]
     section = true
 
@@ -546,8 +609,29 @@
     section = true
 
 [["v2.6"]]
-  name = "View all products"
+  name = "Integrations"
   weight = 11
+  identifier = "integrations"
+  ["v2.6".params]
+    section = true
+
+[["v2.6"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2.6".params]
+    section = true
+
+[["v2.6"]]
+  name = "Misc"
+  weight = 13
+  identifier = "misc"
+  ["v2.6".params]
+    section = true
+
+[["v2.6"]]
+  name = "View all products"
+  weight = 14
   identifier = "view-all-products"
   ["v2.6".params]
     section = true
@@ -619,33 +703,54 @@
   ["v2.4".params]
     section = true
 
-[["v2.6"]]
+[["v2.4"]]
   name = "Benchmark"
   weight = 8
   identifier = "benchmark"
-  url = "/v2.6/benchmark/"
-  ["v2.6".params]
+  url = "/v2.4/benchmark/"
+  ["v2.4".params]
     section = true
 
-[["v2.6"]]
+[["v2.4"]]
   name = "Secure"
   weight = 9
   identifier = "secure"
-  url = "/v2.6/secure/"
-  ["v2.6".params]
+  url = "/v2.4/secure/"
+  ["v2.4".params]
     section = true
 
-[["v2.6"]]
+[["v2.4"]]
   name = "Troubleshoot"
   weight = 10
   identifier = "troubleshoot"
   url = "/v2.6/troubleshoot/"
-  ["v2.6".params]
+  ["v2.4".params]
+    section = true
+
+[["v2.4"]]
+  name = "Integrations"
+  weight = 11
+  identifier = "integrations"
+  ["v2.4".params]
+    section = true
+
+[["v2.4"]]
+  name = "Reference"
+  weight = 12
+  identifier = "reference"
+  ["v2.4".params]
+    section = true
+
+[["v2.4"]]
+  name = "Misc"
+  weight = 13
+  identifier = "misc"
+  ["v2.4".params]
     section = true
 
 [["v2.4"]]
   name = "View all products"
-  weight = 11
+  weight = 14
   identifier = "view-all-products"
   ["v2.4".params]
     section = true

@@ -7,6 +7,7 @@ aliases:
 menu:
   preview:
     identifier: apache-kafka
+    parent: integrations
     weight: 571
 type: docs
 ---

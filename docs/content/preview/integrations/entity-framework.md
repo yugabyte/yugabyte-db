@@ -5,6 +5,7 @@ description: Entity Framework
 menu:
   preview:
     identifier: entity-framework
+    parent: integrations
     weight: 571
 type: docs
 ---

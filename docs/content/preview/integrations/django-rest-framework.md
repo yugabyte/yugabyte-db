@@ -5,6 +5,7 @@ description: Django REST framework
 menu:
   preview:
     identifier: django-rest-framework
+    parent: integrations
     weight: 571
 type: docs
 ---

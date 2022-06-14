@@ -7,6 +7,7 @@ aliases:
 menu:
   preview:
     identifier: jdbc-driver
+    parent: integrations
     weight: 571
 type: docs
 ---

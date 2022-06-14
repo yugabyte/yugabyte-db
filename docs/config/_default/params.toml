@@ -40,7 +40,7 @@ version_menu = "Releases"
   icon = "fab fa-youtube"
 
 [ui]
-  sidebar_cache_limit = 8000
+  sidebar_cache_limit = 15000
   navbar_logo = true
   sidebar_menu_compact = true
   sidebar_menu_foldable = true

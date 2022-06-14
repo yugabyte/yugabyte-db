@@ -7,6 +7,7 @@ aliases:
 menu:
   preview:
     identifier: apache-spark-1-scala
+    parent: integrations
     weight: 572
 type: docs
 ---

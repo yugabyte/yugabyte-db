@@ -5,6 +5,7 @@ description: Using Liquibase with YugabyteDB
 menu:
   preview:
     identifier: liquibase
+    parent: integrations
     weight: 571
 type: docs
 ---

@@ -8,6 +8,7 @@ headcontent: Learn about YugabyteDB licenses and third party software.
 menu:
   preview:
     identifier: legal
+    parent: misc
     weight: 3000
 type: indexpage
 ---

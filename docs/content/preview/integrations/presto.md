@@ -5,6 +5,7 @@ description: Presto
 menu:
   preview:
     identifier: presto
+    parent: integrations
     weight: 571
 type: docs
 ---

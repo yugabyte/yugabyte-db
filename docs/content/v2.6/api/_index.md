@@ -8,6 +8,7 @@ headcontent: YugabyteDB API reference
 menu:
   v2.6:
     identifier: api
+    parent: reference
     weight: 1100
 type: indexpage
 ---

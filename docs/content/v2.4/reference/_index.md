@@ -8,6 +8,7 @@ headcontent: Reference of YugabyteDB architecture, APIs, CLIs, drivers, connecto
 menu:
   v2.4:
     identifier: reference
+    parent: reference
     weight: 900
 type: indexpage
 ---

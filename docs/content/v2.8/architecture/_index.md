@@ -8,6 +8,7 @@ headcontent: YugabyteDB architecture including the query, transactions, sharding
 menu:
   v2.8:
     identifier: architecture
+    parent: reference
     weight: 1050
 type: indexpage
 ---

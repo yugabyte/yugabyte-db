@@ -11,6 +11,7 @@ aliases:
 menu:
   preview:
     identifier: yedis
+    parent: misc
     weight: 2900
 type: indexpage
 ---

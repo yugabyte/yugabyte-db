@@ -10,6 +10,7 @@ image: /images/section_icons/develop/ecosystem/spring.png
 menu:
   preview:
     identifier: spring-framework
+    parent: integrations
     weight: 571
 type: indexpage
 ---

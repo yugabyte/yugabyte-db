@@ -5,6 +5,7 @@ description: YSQL Loader
 menu:
   preview:
     identifier: ysql-loader
+    parent: integrations
     weight: 571
 type: docs
 ---

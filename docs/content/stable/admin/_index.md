@@ -8,6 +8,7 @@ headcontent: Command line interfaces (CLIs) and tools reference.
 menu:
   stable:
     identifier: admin
+    parent: reference
     weight: 1400
 type: indexpage
 ---
