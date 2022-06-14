@@ -35,17 +35,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.text.StringSubstitutor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class ShellProcessHandler {
-  public static final Logger LOG = LoggerFactory.getLogger(ShellProcessHandler.class);
 
   private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
@@ -144,16 +144,25 @@ public class ShellProcessHandler {
       pb.redirectOutput(tempOutputFile);
       pb.redirectError(tempErrorFile);
       startMs = System.currentTimeMillis();
-      LOG.info("Starting proc (abbrev cmd) - {}", response.description);
+      String logMsg = String.format("Starting proc (abbrev cmd) - %s", response.description);
+      if (context.isTraceLogging()) {
+        log.trace(logMsg);
+      } else {
+        log.info(logMsg);
+      }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
       if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
-      LOG.debug(
-          "Starting proc (full cmd) - {} - logging stdout={}, stderr={}",
-          fullCommand,
-          tempOutputFile.getAbsolutePath(),
-          tempErrorFile.getAbsolutePath());
+      logMsg =
+          String.format(
+              "Starting proc (full cmd) - %s - logging stdout=%s, stderr=%s",
+              fullCommand, tempOutputFile.getAbsolutePath(), tempErrorFile.getAbsolutePath());
+      if (context.isTraceLogging()) {
+        log.trace(logMsg);
+      } else {
+        log.info(logMsg);
+      }
 
       long endTimeSecs = 0;
       if (context.getTimeoutSecs() > 0) {
@@ -171,7 +180,7 @@ public class ShellProcessHandler {
       try (BufferedReader outputStream = getLastNReader(tempOutputFile, Long.MAX_VALUE);
           BufferedReader errorStream = getLastNReader(tempErrorFile, getMaxLogMsgSize())) {
         if (logCmdOutput) {
-          LOG.debug("Proc stdout for '{}' :", response.description);
+          log.debug("Proc stdout for '{}' :", response.description);
         }
         String processOutput = getOutputLines(outputStream, logCmdOutput);
         String processError = getOutputLines(errorStream, logCmdOutput);
@@ -179,7 +188,7 @@ public class ShellProcessHandler {
           response.code = process.exitValue();
         } catch (IllegalThreadStateException itse) {
           response.code = ERROR_CODE_GENERIC_ERROR;
-          LOG.warn(
+          log.warn(
               "Expected process to be shut down, marking this process as failed '{}'",
               response.description,
               itse);
@@ -198,7 +207,7 @@ public class ShellProcessHandler {
       if (e instanceof InterruptedException) {
         response.code = ERROR_CODE_EXECUTION_CANCELLED;
       }
-      LOG.error("Exception running command '{}'", response.description, e);
+      log.error("Exception running command '{}'", response.description, e);
       response.message = e.getMessage();
       // Send a kill signal to ensure process is cleaned up in case of any failure.
       if (process != null && process.isAlive()) {
@@ -207,7 +216,7 @@ public class ShellProcessHandler {
         try {
           process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
         } catch (InterruptedException e1) {
-          LOG.error(
+          log.error(
               "Process could not be destroyed gracefully within the specified time '{}'",
               response.description);
           destroyForcibly(process, response.description);
@@ -219,11 +228,15 @@ public class ShellProcessHandler {
       }
       String status =
           (ERROR_CODE_SUCCESS == response.code) ? "success" : ("failure code=" + response.code);
-      LOG.info(
-          "Completed proc '{}' status={} [ {} ms ]",
-          response.description,
-          status,
-          response.durationMs);
+      String logMsg =
+          String.format(
+              "Completed proc '%s' status=%s [ %d ms ]",
+              response.description, status, response.durationMs);
+      if (context.isTraceLogging()) {
+        log.trace(logMsg);
+      } else {
+        log.info(logMsg);
+      }
       if (runtimeConfigFactory.globalRuntimeConf().getBoolean(COMMAND_OUTPUT_LOGS_DELETE)) {
         if (tempOutputFile != null && tempOutputFile.exists()) {
           tempOutputFile.delete();
@@ -246,13 +259,13 @@ public class ShellProcessHandler {
             .peek(
                 line -> {
                   if (logOutput) {
-                    LOG.debug(fileMarker, line);
+                    log.debug(fileMarker, line);
                   }
                 })
             .collect(Collectors.joining("\n"))
             .trim();
     if (logOutput && cloudLoggingEnabled && lines.length() > 0) {
-      LOG.debug(consoleMarker, lines);
+      log.debug(consoleMarker, lines);
     }
     return lines;
   }
@@ -269,9 +282,9 @@ public class ShellProcessHandler {
     long skip = file.length() - lastNBytes;
     if (skip > 0) {
       try {
-        LOG.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
+        log.warn("Skipped first {} bytes because max_msg_size= {}", reader.skip(skip), lastNBytes);
       } catch (IOException e) {
-        LOG.warn("Unexpected exception when skipping large file", e);
+        log.warn("Unexpected exception when skipping large file", e);
       }
     }
     return reader;
@@ -326,7 +339,7 @@ public class ShellProcessHandler {
         tailStream(outputStream, 10000 /*maxLines*/);
         tailStream(errorStream, 10000 /*maxLines*/);
         if (endTimeSecs > 0 && ((System.currentTimeMillis() / 1000) >= endTimeSecs)) {
-          LOG.warn("Aborting command {} forcibly because it took too long", description);
+          log.warn("Aborting command {} forcibly because it took too long", description);
           destroyForcibly(process, description);
           break;
         }
@@ -350,7 +363,7 @@ public class ShellProcessHandler {
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
       if (line.contains("[app]")) {
-        LOG.info(line);
+        log.info(line);
       }
       count++;
       if (maxLines > 0 && count >= maxLines) {
@@ -363,9 +376,9 @@ public class ShellProcessHandler {
     process.destroyForcibly();
     try {
       process.waitFor(DESTROY_GRACE_TIMEOUT.getSeconds(), TimeUnit.SECONDS);
-      LOG.info("Process was succesfully forcibly terminated '{}'", description);
+      log.info("Process was succesfully forcibly terminated '{}'", description);
     } catch (InterruptedException ie) {
-      LOG.warn("Ignoring problem with forcible process termination '{}'", description, ie);
+      log.warn("Ignoring problem with forcible process termination '{}'", description, ie);
     }
   }
 
@@ -411,7 +424,7 @@ public class ShellProcessHandler {
         return substitutor.replace("${type}: ${message}");
       }
     } catch (Exception e) {
-      LOG.error("Error occurred in processing command output", e);
+      log.error("Error occurred in processing command output", e);
     }
     return null;
   }

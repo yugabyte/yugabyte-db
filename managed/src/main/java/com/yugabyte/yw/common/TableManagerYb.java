@@ -38,11 +38,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManagerYb extends DevopsBase {
 
   public enum CommandSubType {
@@ -196,7 +198,7 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("create");
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
 
       case BULK_IMPORT:
@@ -238,7 +240,7 @@ public class TableManagerYb extends DevopsBase {
         backupTableParams = (BackupTableParams) taskParams;
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
@@ -254,7 +256,7 @@ public class TableManagerYb extends DevopsBase {
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 

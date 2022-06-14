@@ -29,12 +29,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class AccessManager extends DevopsBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AccessManager.class);
 
   @Inject play.Configuration appConfig;
 
@@ -249,9 +248,9 @@ public class AccessManager extends DevopsBase {
                 showSetUpChrony);
       }
     } catch (NoSuchFileException ioe) {
-      LOG.error(ioe.getMessage(), ioe);
+      log.error(ioe.getMessage(), ioe);
     } catch (IOException ioe) {
-      LOG.error(ioe.getMessage(), ioe);
+      log.error(ioe.getMessage(), ioe);
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
       try {
@@ -259,7 +258,7 @@ public class AccessManager extends DevopsBase {
           Files.delete(tempFile);
         }
       } catch (IOException e) {
-        LOG.error(e.getMessage(), e);
+        log.error(e.getMessage(), e);
       }
     }
 

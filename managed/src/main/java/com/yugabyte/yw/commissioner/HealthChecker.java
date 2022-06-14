@@ -865,6 +865,7 @@ public class HealthChecker {
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(logOutput)
+            .traceLogging(true)
             .timeoutSecs(NODE_CHECK_TIMEOUT_SEC)
             .build();
     if (uploadedInfo == null) {
