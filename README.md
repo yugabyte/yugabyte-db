@@ -371,6 +371,8 @@ Autovacuum and Autoanalyze are not logged.
 
 Statements that are executed after a transaction enters an aborted state will not be audit logged. However, the statement that caused the error and any subsequent statements executed in the aborted transaction will be logged as ERRORs by the standard logging facility.
 
+It is not possible to reliably audit superusers with pgAudit. One solution is to restrict access to superuser accounts and use the [set_user](https://github.com/pgaudit/set_user) extension to escalate permissions when required.
+
 ## Authors
 
 The PostgreSQL Audit Extension is based on the [2ndQuadrant](http://www.2ndquadrant.com) [pgaudit project](https://github.com/2ndQuadrant/pgaudit) authored by Simon Riggs, Abhijit Menon-Sen, and Ian Barwick and submitted as an extension to PostgreSQL core. Additional development has been done by David Steele of [Crunchy Data](http://www.crunchydata.com).
