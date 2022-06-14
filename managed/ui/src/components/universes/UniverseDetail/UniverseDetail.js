@@ -48,7 +48,6 @@ import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
-import { YBTag } from '../../common/YBTag';
 
 import './UniverseDetail.scss';
 
@@ -453,9 +452,6 @@ class UniverseDetail extends Component {
                 tabtitle={
                   <>
                     Backups
-                    {(featureFlags.test['backupv2'] || featureFlags.released['backupv2']) && (
-                      <YBTag>Beta</YBTag>
-                    )}
                   </>
                 }
                 key="backups-tab"
@@ -735,7 +731,7 @@ class UniverseDetail extends Component {
                                   onClick={showSupportBundleModal}
                                 >
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                    Support Bundles <YBTag>Beta</YBTag>
+                                    Support Bundles
                                   </YBLabelWithIcon>
                                 </YBMenuItem>
                               }
