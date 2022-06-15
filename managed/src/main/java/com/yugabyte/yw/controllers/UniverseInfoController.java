@@ -161,11 +161,7 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    Optional<String> optUsername = request().getHeaders().get(YSQL_USERNAME_HEADER);
-    Optional<String> optPassword = request().getHeaders().get(YSQL_PASSWORD_HEADER);
-    JsonNode resultNode =
-        universeInfoHandler.getSlowQueries(
-            universe, optUsername.orElse(null), optPassword.map(Util::decodeBase64).orElse(null));
+    JsonNode resultNode = universeInfoHandler.getSlowQueries(universe);
     return Results.ok(resultNode);
   }
 
