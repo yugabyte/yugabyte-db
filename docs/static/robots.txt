@@ -1,8 +1,9 @@
 Sitemap: https://docs.yugabyte.com/sitemap.xml
 User-agent: *
-Disallow: /preview/api/ysql/syntax_resources/
+Disallow: */api/ysql/syntax_resources/
 Allow: /preview/api/ysql/syntax_resources/grammar_diagrams/
-# don't index the non-preview docs
+Disallow: */binary/
+# don't index the non-current docs (just preview and stable)
 Disallow: /v2.4/
 Disallow: /v2.6/
 Disallow: /v2.8/
