@@ -3255,8 +3255,11 @@ pgstat_progress_end_command(void)
 		return;
 
 	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
-	beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
-	beentry->st_progress_command_target = InvalidOid;
+	if (beentry->st_progress_command != PROGRESS_COMMAND_COPY)
+	{
+		beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
+		beentry->st_progress_command_target = InvalidOid;
+	}
 	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
