@@ -5,8 +5,9 @@ description: Troubleshoot issues in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-troubleshoot
+    parent: yugabytedb-managed
     weight: 850
 type: docs
 ---

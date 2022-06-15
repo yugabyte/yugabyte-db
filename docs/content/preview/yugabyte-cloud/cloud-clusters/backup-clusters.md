@@ -5,7 +5,7 @@ description: Back up and restore clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/manage/backup.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: backup-clusters
     parent: cloud-clusters
     weight: 200

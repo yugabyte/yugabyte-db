@@ -4,7 +4,7 @@ headerTitle: Configure the Kubernetes cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Kubernetes cloud provider
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20

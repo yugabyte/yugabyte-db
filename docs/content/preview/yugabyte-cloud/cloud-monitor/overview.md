@@ -5,7 +5,7 @@ description: View time series charts of cluster metrics.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: overview-clusters
     parent: cloud-monitor
     weight: 100

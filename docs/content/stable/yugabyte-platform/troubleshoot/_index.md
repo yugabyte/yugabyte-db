@@ -5,7 +5,7 @@ description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot universe and Yugabyte Platform issues.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
     weight: 648

@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform software - Airgapped
 linkTitle: Install software
 description: Install Yugabyte Platform software in your on-premises, airgapped environment.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-3-airgapped
     weight: 77

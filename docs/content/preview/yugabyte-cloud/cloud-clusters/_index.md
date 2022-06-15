@@ -6,7 +6,7 @@ description: Manage your YugabyteDB Managed clusters.
 image: /images/section_icons/architecture/core_functions/universe.png
 headcontent: Scale clusters, configure backups and maintenance windows, and pause or delete clusters.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-clusters
     weight: 150

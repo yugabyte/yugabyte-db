@@ -5,8 +5,9 @@ description: YugabyteDB Managed frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-faq
+    parent: yugabytedb-managed
     weight: 900
 type: docs
 ---

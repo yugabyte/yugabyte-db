@@ -80,12 +80,34 @@
 [[main]]
   name = "Troubleshoot"
   weight = 10
-  url = "/migrate/"
+  url = "/preview/troubleshoot/"
+  parent = "documentation"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Integrations"
+  weight = 11
+  url = "/preview/integrations/apache-kafka/"
+  parent = "documentation"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Reference"
+  weight = 12
+  url = "/architecture/"
+  parent = "documentation"
+
+[[main]]
+  name = "Misc"
+  weight = 13
+  url = "/yedis/"
   parent = "documentation"
 
 [[main]]
   name = "View all products"
-  weight = 11
+  weight = 14
   identifier = "view-all-products"
   parent = "documentation"
 
@@ -93,21 +115,27 @@
   name = "YugabyteDB Anywhere"
   weight = 1
   parent = "view-all-products"
+  url = "/yugabyte-platform/overview/"
 
 [[main]]
   name = "YugabyteDB Managed"
   weight = 2
   parent = "view-all-products"
+  url = "/yugabyte-cloud/cloud-overview/"
 
 [[main]]
   name = "FAQ"
   weight = 3
-  url = "/faq/general/"
+  url = "/preview/faq/general/"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "Release Notes"
   weight = 4
-  url = "/releases/"
+  url = "/preview/releases/"
+  [main.params]
+    excludeVersion = true
 
 # Bottom menu for left navigation
 [[leftbottom]]
@@ -145,11 +173,11 @@
     newTab = true
 
 [[leftbottom]]
-  name = "Forum"
+  name = "University"
   weight = 3
   parent = "join-our-community"
-  pre = "<i class='fa fa-question-circle'></i>"
-  url = "https://forum.yugabyte.com/"
+  pre = "<i class='fa fa-university'></i>"
+  url = "https://university.yugabyte.com/"
   [leftbottom.params]
     newTab = true
 
@@ -162,6 +190,15 @@
   [leftbottom.params]
     newTab = true
 
+[[leftbottom]]
+  name = "Forum"
+  weight = 5
+  parent = "join-our-community"
+  pre = "<i class='fa fa-comment-alt'></i>"
+  url = "https://forum.yugabyte.com/"
+  [leftbottom.params]
+    newTab = true
+
 # Menus for preview
 [[preview]]
   name = "Docs Home"
@@ -169,7 +206,7 @@
   identifier = "home"
   url = "/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Quick Start"
@@ -177,7 +214,7 @@
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [preview.params]
-    section = true
+    showSection = true
     hideChildren = true
 
 [[preview]]
@@ -186,7 +223,7 @@
   identifier = "explore"
   url = "/preview/explore/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Develop"
@@ -194,7 +231,7 @@
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Migrate"
@@ -202,14 +239,14 @@
   identifier = "migrate"
   url = "/preview/migrate/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Launch and Manage"
   weight = 7
   identifier = "launch-and-manage"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Benchmark"
@@ -217,7 +254,7 @@
   identifier = "benchmark"
   url = "/preview/benchmark/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Secure"
@@ -225,7 +262,7 @@
   identifier = "secure"
   url = "/preview/secure/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Troubleshoot"
@@ -233,68 +270,118 @@
   identifier = "troubleshoot"
   url = "/preview/troubleshoot/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Integrations"
   weight = 11
   identifier = "integrations"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Reference"
   weight = 12
   identifier = "reference"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "Misc"
   weight = 13
   identifier = "misc"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "View all products"
   weight = 14
   identifier = "view-all-products"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "YugabyteDB Anywhere"
   weight = 1
-  identifier = "yugabytedb-anywhere"
   parent = "view-all-products"
 	url = "/preview/yugabyte-platform/overview/"
   [preview.params]
-    section = true
+    showSection = true
 
 [[preview]]
   name = "YugabyteDB Managed"
   weight = 2
-  identifier = "yugabytedb-managed"
   parent = "view-all-products"
 	url = "/preview/yugabyte-cloud/cloud-overview/"
   [preview.params]
-    section = true
+    showSection = true
+
+[[preview_releases]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_releases.params]
+    classes = "back-arrow"
+    showSection = true
 
 [[preview_releases]]
   name = "Releases"
-  weight = 1
+  weight = 2
   identifier = "release-notes"
   [preview_releases.params]
-    section = true
+    showSection = true
     hideLink = true
 
 [[preview_faq]]
-  name = "FAQ"
+  name = "Docs Home"
   weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_faq.params]
+    classes = "back-arrow"
+    showSection = true
+
+[[preview_faq]]
+  name = "FAQ"
+  weight = 2
   identifier = "faq"
   [preview_faq.params]
-    section = true
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-platform]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_yugabyte-platform.params]
+    classes = "back-arrow"
+    showSection = true
+
+[[preview_yugabyte-platform]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  [preview_yugabyte-platform.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-cloud]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_yugabyte-cloud.params]
+    classes = "back-arrow"
+    showSection = true
+
+[[preview_yugabyte-cloud]]
+  name = "YugabyteDB Managed"
+  weight = 2
+  identifier = "yugabytedb-managed"
+  [preview_yugabyte-cloud.params]
+    showSection = true
     hideLink = true
 
 # Menus for stable
@@ -304,7 +391,7 @@
   identifier = "home"
   url = "/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Quick Start"
@@ -312,7 +399,7 @@
   identifier = "quick-start"
   url = "/stable/quick-start-yugabytedb-managed/"
   [stable.params]
-    section = true
+    showSection = true
     hideChildren = true
 
 [[stable]]
@@ -321,7 +408,7 @@
   identifier = "explore"
   url = "/stable/explore/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Develop"
@@ -329,7 +416,7 @@
   identifier = "develop"
   url = "/stable/develop/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Migrate"
@@ -337,14 +424,14 @@
   identifier = "migrate"
   url = "/stable/migrate/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Launch and Manage"
   weight = 7
   identifier = "launch-and-manage"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Benchmark"
@@ -352,7 +439,7 @@
   identifier = "benchmark"
   url = "/stable/benchmark/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Secure"
@@ -360,7 +447,7 @@
   identifier = "secure"
   url = "/stable/secure/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Troubleshoot"
@@ -368,53 +455,68 @@
   identifier = "troubleshoot"
   url = "/stable/troubleshoot/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Integrations"
   weight = 11
-  identifier = "integrations"
+  url = "/preview/integrations/apache-kafka/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Reference"
   weight = 12
   identifier = "reference"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "Misc"
   weight = 13
   identifier = "misc"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "View all products"
   weight = 14
   identifier = "view-all-products"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "YugabyteDB Anywhere"
   weight = 1
-  identifier = "yugabytedb-anywhere"
   parent = "view-all-products"
 	url = "/stable/yugabyte-platform/overview/"
   [stable.params]
-    section = true
+    showSection = true
 
 [[stable]]
   name = "YugabyteDB Managed"
   weight = 2
-  identifier = "yugabytedb-managed"
   parent = "view-all-products"
-	url = "/stable/yugabyte-cloud/cloud-overview/"
+	url = "/preview/yugabyte-cloud/cloud-overview/"
   [stable.params]
-    section = true
+    showSection = true
+
+[[stable_yugabyte-platform]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [stable_yugabyte-platform.params]
+    classes = "back-arrow"
+    showSection = true
+
+[[stable_yugabyte-platform]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  [stable_yugabyte-platform.params]
+    showSection = true
+    hideLink = true
 
 # Menus for v2.8
 [["v2.8"]]
@@ -423,7 +525,7 @@
   identifier = "home"
   url = "/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Quick Start"
@@ -431,7 +533,7 @@
   identifier = "quick-start"
   url = "/v2.8/quick-start-yugabytedb-managed/"
   ["v2.8".params]
-    section = true
+    showSection = true
     hideChildren = true
 
 [["v2.8"]]
@@ -440,7 +542,7 @@
   identifier = "explore"
   url = "/v2.8/explore/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Develop"
@@ -448,7 +550,7 @@
   identifier = "develop"
   url = "/v2.8/develop/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Migrate"
@@ -456,14 +558,14 @@
   identifier = "migrate"
   url = "/v2.8/migrate/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Launch and Manage"
   weight = 7
   identifier = "launch-and-manage"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Benchmark"
@@ -471,7 +573,7 @@
   identifier = "benchmark"
   url = "/v2.8/benchmark/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Secure"
@@ -479,7 +581,7 @@
   identifier = "secure"
   url = "/v2.8/secure/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Troubleshoot"
@@ -487,53 +589,68 @@
   identifier = "troubleshoot"
   url = "/v2.8/troubleshoot/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Integrations"
   weight = 11
-  identifier = "integrations"
+  url = "/preview/integrations/apache-kafka/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Reference"
   weight = 12
   identifier = "reference"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "Misc"
   weight = 13
   identifier = "misc"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "View all products"
   weight = 11
   identifier = "view-all-products"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "YugabyteDB Anywhere"
   weight = 1
-  identifier = "yugabytedb-anywhere"
   parent = "view-all-products"
 	url = "/v2.8/yugabyte-platform/overview/"
   ["v2.8".params]
-    section = true
+    showSection = true
 
 [["v2.8"]]
   name = "YugabyteDB Managed"
   weight = 2
-  identifier = "yugabytedb-managed"
   parent = "view-all-products"
-	url = "/v2.8/yugabyte-cloud/cloud-overview/"
+	url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.8".params]
-    section = true
+    showSection = true
+
+[["v2.8_yugabyte-platform"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  ["v2.8_yugabyte-platform".params]
+    classes = "back-arrow"
+    showSection = true
+
+[["v2.8_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2.8_yugabyte-platform".params]
+    showSection = true
+    hideLink = true
 
 # Menus for v2.6
 [["v2.6"]]
@@ -542,7 +659,7 @@
   identifier = "home"
   url = "/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Quick Start"
@@ -550,7 +667,7 @@
   identifier = "quick-start"
   url = "/v2.6/quick-start-yugabytedb-managed/"
   ["v2.6".params]
-    section = true
+    showSection = true
     hideChildren = true
 
 [["v2.6"]]
@@ -559,7 +676,7 @@
   identifier = "explore"
   url = "/v2.6/explore/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Develop"
@@ -567,7 +684,7 @@
   identifier = "develop"
   url = "/v2.6/develop/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Migrate"
@@ -575,14 +692,14 @@
   identifier = "migrate"
   url = "/v2.6/migrate/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Launch and Manage"
   weight = 7
   identifier = "launch-and-manage"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Benchmark"
@@ -590,7 +707,7 @@
   identifier = "benchmark"
   url = "/v2.6/benchmark/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Secure"
@@ -598,7 +715,7 @@
   identifier = "secure"
   url = "/v2.6/secure/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Troubleshoot"
@@ -606,53 +723,69 @@
   identifier = "troubleshoot"
   url = "/v2.6/troubleshoot/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Integrations"
   weight = 11
   identifier = "integrations"
+  url = "/preview/integrations/apache-kafka/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Reference"
   weight = 12
   identifier = "reference"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "Misc"
   weight = 13
   identifier = "misc"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "View all products"
   weight = 14
   identifier = "view-all-products"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "YugabyteDB Anywhere"
   weight = 1
-  identifier = "yugabytedb-anywhere"
   parent = "view-all-products"
 	url = "/v2.6/yugabyte-platform/overview/"
   ["v2.6".params]
-    section = true
+    showSection = true
 
 [["v2.6"]]
   name = "YugabyteDB Managed"
   weight = 2
-  identifier = "yugabytedb-managed"
   parent = "view-all-products"
-	url = "/v2.6/yugabyte-cloud/cloud-overview/"
+	url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.6".params]
-    section = true
+    showSection = true
+
+[["v2.6_yugabyte-platform"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  ["v2.6_yugabyte-platform".params]
+    classes = "back-arrow"
+    showSection = true
+
+[["v2.6_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2.6_yugabyte-platform".params]
+    showSection = true
+    hideLink = true
 
 # Menus for v2.4
 [["v2.4"]]
@@ -661,7 +794,7 @@
   identifier = "home"
   url = "/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Quick Start"
@@ -669,7 +802,7 @@
   identifier = "quick-start"
   url = "/v2.4/quick-start-yugabytedb-managed/"
   ["v2.4".params]
-    section = true
+    showSection = true
     hideChildren = true
 
 [["v2.4"]]
@@ -678,7 +811,7 @@
   identifier = "explore"
   url = "/v2.4/explore/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Develop"
@@ -686,7 +819,7 @@
   identifier = "develop"
   url = "/v2.4/develop/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Migrate"
@@ -694,14 +827,14 @@
   identifier = "migrate"
   url = "/v2.4/migrate/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Launch and Manage"
   weight = 7
   identifier = "launch-and-manage"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Benchmark"
@@ -709,7 +842,7 @@
   identifier = "benchmark"
   url = "/v2.4/benchmark/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Secure"
@@ -717,7 +850,7 @@
   identifier = "secure"
   url = "/v2.4/secure/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Troubleshoot"
@@ -725,50 +858,58 @@
   identifier = "troubleshoot"
   url = "/v2.6/troubleshoot/"
   ["v2.4".params]
-    section = true
-
-[["v2.4"]]
-  name = "Integrations"
-  weight = 11
-  identifier = "integrations"
-  ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Reference"
   weight = 12
   identifier = "reference"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "Misc"
   weight = 13
   identifier = "misc"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "View all products"
   weight = 14
   identifier = "view-all-products"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "YugabyteDB Anywhere"
   weight = 1
-  identifier = "yugabytedb-anywhere"
   parent = "view-all-products"
 	url = "/v2.4/yugabyte-platform/overview/"
   ["v2.4".params]
-    section = true
+    showSection = true
 
 [["v2.4"]]
   name = "YugabyteDB Managed"
   weight = 2
-  identifier = "yugabytedb-managed"
   parent = "view-all-products"
-	url = "/v2.4/yugabyte-cloud/cloud-overview/"
+	url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.4".params]
-    section = true
+    showSection = true
+
+[["v2.4_yugabyte-platform"]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  ["v2.4_yugabyte-platform".params]
+    classes = "back-arrow"
+    showSection = true
+
+[["v2.4_yugabyte-platform"]]
+  name = "YugabyteDB Anywhere"
+  weight = 2
+  identifier = "yugabytedb-anywhere"
+  ["v2.4_yugabyte-platform".params]
+    showSection = true
+    hideLink = true

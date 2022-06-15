@@ -4,7 +4,7 @@ headerTitle: Deploy a Spring application using minikube
 linkTitle: Deploy on minikube
 description: Deploy a Spring application connected to YugabyteDB Managed on Kubernetes locally using minikube.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: spring-boot
     identifier: spring-boot-mini
     weight: 40

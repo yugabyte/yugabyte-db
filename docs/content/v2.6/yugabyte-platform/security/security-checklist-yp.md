@@ -4,7 +4,7 @@ headerTitle: Security checklist
 linkTitle: Security checklist
 description: Security measures that can be implemented to protect your Yugabyte Platform and YugabyteDB universes.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: security
     identifier: security-checklist-yp
     weight: 10

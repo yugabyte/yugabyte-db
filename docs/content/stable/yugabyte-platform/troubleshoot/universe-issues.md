@@ -4,7 +4,7 @@ headerTitle: Troubleshoot Universe Issues
 linkTitle: Universe issues
 description: Troubleshoot universe issues
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20

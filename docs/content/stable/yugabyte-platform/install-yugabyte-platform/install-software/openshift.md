@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform Software - OpenShift
 linkTitle: Install software
 description: Install Yugabyte Platform software in your OpenShift environment
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-openshift
     weight: 77

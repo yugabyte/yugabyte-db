@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: configure-2-gcp
     parent: overview-yp
     weight: 40

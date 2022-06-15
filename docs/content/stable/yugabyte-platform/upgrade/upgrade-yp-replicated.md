@@ -4,7 +4,7 @@ headerTitle: Upgrade Yugabyte Platform using Replicated
 linkTitle: Upgrade using Replicated
 description: Use Replicated to upgrade Yugabyte Platform
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: upgrade-yp-replicated
     parent: upgrade
     weight: 80

@@ -4,7 +4,7 @@ headerTitle: Enable encryption at rest
 linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28

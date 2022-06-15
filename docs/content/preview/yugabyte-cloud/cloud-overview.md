@@ -8,8 +8,9 @@ aliases:
   - /preview/yugabyte-cloud/
   - /preview/deploy/yugabyte-cloud/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-overview
+    parent: yugabytedb-managed
     weight: 14
 type: docs
 ---

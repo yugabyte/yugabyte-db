@@ -8,7 +8,7 @@ image: /images/section_icons/develop/api-icon.png
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-build-apps
     parent: cloud-quickstart

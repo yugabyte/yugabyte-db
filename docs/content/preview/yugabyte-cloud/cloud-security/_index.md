@@ -6,7 +6,7 @@ description: Security architecture of YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
 headcontent: Review the YugabyteDB Managed security architecture and shared responsibility model.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-security
 weight: 800

@@ -6,7 +6,7 @@ description: Create and manage your cloud VPCs.
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-configure-provider/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-aws
     parent: cloud-vpcs
     weight: 40

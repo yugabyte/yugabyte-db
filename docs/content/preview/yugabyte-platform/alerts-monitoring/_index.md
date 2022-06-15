@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB uni
 image: /images/section_icons/manage/backup.png
 headcontent: Use YugabyteDB Anywhere for alerts and monitoring of YugabyteDB universe data.
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: alerts-monitoring
 weight: 647

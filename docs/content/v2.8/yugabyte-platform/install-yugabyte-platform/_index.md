@@ -6,9 +6,8 @@ description: Install Yugabyte Platform and prepare universe nodes.
 image: /images/section_icons/quick_start/install.png
 headcontent: Install Yugabyte Platform to begin creating and managing deployments.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: yugabytedb-anywhere
-    parent: yugabyte-platform
     identifier: install-yugabyte-platform
 weight: 641
 type: indexpage

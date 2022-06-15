@@ -5,7 +5,7 @@ description: Add extensions to a YugabyteDB Managed cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: add-extensions
     parent: cloud-clusters
     weight: 400

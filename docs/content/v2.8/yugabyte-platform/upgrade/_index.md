@@ -5,10 +5,9 @@ linkTitle: Upgrade Yugabyte Platform
 description: Upgrade Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: upgrade
-    parent: yugabyte-platform
     weight: 649
 type: indexpage
 ---

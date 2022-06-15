@@ -6,9 +6,8 @@ description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: yugabytedb-anywhere
-    parent: yugabyte-platform
     identifier: security
 weight: 645
 type: indexpage

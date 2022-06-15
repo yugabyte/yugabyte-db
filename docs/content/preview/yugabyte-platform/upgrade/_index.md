@@ -6,7 +6,7 @@ description: Upgrade YugabyteDB Anywhere.
 image: /images/section_icons/manage/enterprise.png
 aliases:
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: upgrade
     weight: 649

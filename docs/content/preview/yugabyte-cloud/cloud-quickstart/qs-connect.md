@@ -5,7 +5,7 @@ description: Connect to your cluster using Cloud Shell.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: qs-connect
     parent: cloud-quickstart
     weight: 200

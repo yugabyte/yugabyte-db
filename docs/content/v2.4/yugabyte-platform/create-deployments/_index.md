@@ -5,10 +5,9 @@ linkTitle: Create deployments
 description: Create YugabyteDB universe deployments.
 image: /images/section_icons/index/deploy.png
 menu:
-  v2.4:
-    parent: yugabytedb-anywhere
+  v2.4_yugabyte-platform:
     identifier: create-deployments
-    parent: yugabyte-platform
+    parent: yugabytedb-anywhere
     weight: 643
 type: indexpage
 ---

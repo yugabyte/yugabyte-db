@@ -4,7 +4,7 @@ headerTitle: Prepare the Azure cloud environment
 linkTitle: Prepare the environment
 description: Prepare the Azure environment for YugabyteDB Anywhere.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: prepare-environment-3-azure
     parent: install-yugabyte-platform
     weight: 55

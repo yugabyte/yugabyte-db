@@ -8,7 +8,7 @@ aliases:
   - /preview/deploy/yugabyte-cloud/create-clusters/
   - /preview/yugabyte-cloud/create-clusters/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters
     parent: cloud-basics
     weight: 50

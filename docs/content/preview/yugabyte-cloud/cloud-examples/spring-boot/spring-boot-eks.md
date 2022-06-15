@@ -3,7 +3,7 @@ title: Deploy a Spring application on Amazon EKS
 linkTitle: Deploy on Amazon EKS
 description: Deploy a Spring application connected to YugabyteDB Managed on Amazon Elastic Kubernetes Service (EKS).
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: spring-boot
     identifier: spring-boot-eks
     weight: 20

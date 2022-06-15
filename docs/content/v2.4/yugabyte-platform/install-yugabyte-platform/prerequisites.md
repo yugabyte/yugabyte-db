@@ -4,7 +4,7 @@ headerTitle: Prerequisites
 linkTitle: Prerequisites
 description: Prerequisites for installing Yugabyte Platform.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
     weight: 20

@@ -5,7 +5,7 @@ description: Connect applications to YugabyteDB Managed clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-applications
     parent: cloud-connect
     weight: 30

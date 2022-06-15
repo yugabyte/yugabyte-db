@@ -5,7 +5,7 @@ description: YugabyteDB Managed cluster configuration costs.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-billing-costs
     parent: cloud-admin
     weight: 400

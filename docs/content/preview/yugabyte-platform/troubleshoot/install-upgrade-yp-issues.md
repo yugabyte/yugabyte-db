@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: install-upgrade-yp-issues
     parent: troubleshoot-yp
     weight: 10

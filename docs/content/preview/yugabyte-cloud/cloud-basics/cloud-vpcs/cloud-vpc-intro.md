@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
     weight: 10

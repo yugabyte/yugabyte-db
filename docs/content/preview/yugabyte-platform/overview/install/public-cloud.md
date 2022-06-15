@@ -8,7 +8,7 @@ headcontent: Installing YugabyteDB Anywhere on public cloud
 aliases:
   - /preview/yugabyte-platform/overview/install/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: install-1-public-cloud
     parent: overview-yp
     weight: 20

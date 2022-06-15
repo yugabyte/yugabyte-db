@@ -4,7 +4,7 @@ headerTitle: Create a read replica cluster
 linkTitle: Read replica cluster
 description: Use Yugabyte Platform to create a read replica cluster.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: create-read-replica-cluster
     parent: create-deployments
     weight: 40

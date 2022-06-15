@@ -4,7 +4,7 @@ headerTitle: Configure the Google Cloud Platform (GCP) cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Google Cloud Platform (GCP) cloud provider.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: set-up-cloud-provider-2-gcp
     parent: configure-yugabyte-platform
     weight: 20

@@ -4,7 +4,7 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a simple Java application using the YugabyteDB JDBC Driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Java
     identifier: cloud-java

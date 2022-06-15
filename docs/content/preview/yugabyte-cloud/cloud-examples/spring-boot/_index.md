@@ -6,7 +6,7 @@ description: Deploy a Spring application connected to YugabyteDB Managed on Kube
 headcontent: Deploy a Spring application connected to YugabyteDB Managed on Kubernetes
 image: /images/section_icons/deploy/kubernetes.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: spring-boot
     parent: cloud-develop

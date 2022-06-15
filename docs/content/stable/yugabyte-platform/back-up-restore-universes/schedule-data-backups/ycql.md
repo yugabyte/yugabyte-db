@@ -4,7 +4,7 @@ headerTitle: Schedule universe YCQL data backups
 linkTitle: Schedule data backups
 description: Use Yugabyte Platform to create scheduled backups of universe YCQL data.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: schedule-data-backups-2-ycql
     parent: back-up-restore-universes
     weight: 40

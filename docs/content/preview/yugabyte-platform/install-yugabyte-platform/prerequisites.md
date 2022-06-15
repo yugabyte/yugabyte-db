@@ -4,7 +4,7 @@ headerTitle: Prerequisites
 linkTitle: Prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
     weight: 20

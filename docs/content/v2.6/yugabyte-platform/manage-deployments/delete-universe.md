@@ -4,7 +4,7 @@ headerTitle: Delete a universe
 linkTitle: Delete a universe
 description: Use Yugabyte Platform to delete a universe.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
     weight: 85

@@ -5,7 +5,7 @@ description: Manage your YugabyteDB Managed billing profile and payment methods 
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-billing-profile
     parent: cloud-admin
     weight: 200

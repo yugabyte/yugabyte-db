@@ -4,7 +4,7 @@ headerTitle: Enable high availability
 linkTitle: Enable high availability
 description: Enable YugabyteDB Anywhere's high availabilit
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: platform-high-availability
     parent: manage-deployments
     weight: 40

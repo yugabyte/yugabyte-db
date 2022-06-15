@@ -6,7 +6,7 @@ description: Installing YugabyteDB Anywhere on private cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing YugabyteDB Anywhere on private cloud
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: install-3-private-cloud
     parent: overview-yp
     weight: 20

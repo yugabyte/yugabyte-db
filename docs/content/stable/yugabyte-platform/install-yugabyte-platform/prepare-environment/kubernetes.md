@@ -4,7 +4,7 @@ headerTitle: Prepare the Kubernetes environment
 linkTitle: Prepare the environment
 description: Prepare the Kubernetes environment for Yugabyte Platform.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-4-kubernetes
     weight: 55

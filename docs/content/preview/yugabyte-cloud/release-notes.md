@@ -5,8 +5,9 @@ description: YugabyteDB Managed release notes and known issues.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-release
+    parent: yugabytedb-managed
     weight: 950
 type: docs
 ---

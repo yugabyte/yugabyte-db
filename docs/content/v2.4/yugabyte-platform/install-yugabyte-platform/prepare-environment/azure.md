@@ -5,7 +5,7 @@ linkTitle: Prepare the environment
 description: Prepare the Azure environment for the Yugabyte Platform.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: prepare-environment-3-azure
     parent: install-yugabyte-platform
     weight: 55

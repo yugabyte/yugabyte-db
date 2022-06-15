@@ -8,7 +8,6 @@ menu:
   v2.8:
     parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
-    parent: yugabyte-platform
     weight: 648
 type: indexpage
 ---

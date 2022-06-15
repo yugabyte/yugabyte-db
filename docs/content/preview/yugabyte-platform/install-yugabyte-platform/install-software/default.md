@@ -6,7 +6,7 @@ description: Install the YugabyteDB Anywhere software.
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77

@@ -6,7 +6,7 @@ description: Secure clusters in YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
 headcontent: Configure the security features of your YugabyteDB Managed clusters.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-secure-clusters
 weight: 30

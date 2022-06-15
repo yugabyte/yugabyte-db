@@ -6,7 +6,7 @@ description: Administration and billing.
 image: /images/section_icons/explore/administer.png
 headcontent: Manage users and billing and payment methods.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-admin
     weight: 600

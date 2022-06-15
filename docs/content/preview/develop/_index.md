@@ -9,7 +9,6 @@ menu:
   preview:
     identifier: develop
     weight: 600
-
 type: indexpage
 ---
 <div class="row">

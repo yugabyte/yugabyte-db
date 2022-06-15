@@ -5,7 +5,7 @@ description: Manage maintenance windows for clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/manage/backup.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-maintenance
     parent: cloud-clusters
     weight: 300

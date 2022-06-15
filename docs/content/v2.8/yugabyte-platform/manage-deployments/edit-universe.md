@@ -4,7 +4,7 @@ headerTitle: Edit a universe
 linkTitle: Edit a universe
 description: Use Yugabyte Platform to edit a universe.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: edit-universe
     parent: manage-deployments
     weight: 60

@@ -4,7 +4,7 @@ headerTitle: Configure the Amazon Web Services (AWS) cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Amazon Web Services (AWS) cloud provider.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20

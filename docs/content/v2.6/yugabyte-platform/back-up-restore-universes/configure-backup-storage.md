@@ -3,7 +3,7 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10

@@ -4,7 +4,7 @@ headerTitle: Prepare the private cloud (on-premise) environment
 linkTitle: Prepare the environment
 description: Prepare the private cloud (on-premise) environment for the Yugabyte Platform.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: prepare-environment-5-private-cloud
     parent: install-yugabyte-platform
     weight: 55

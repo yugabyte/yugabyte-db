@@ -4,7 +4,7 @@ headerTitle: Enable Encryption in Transit (TLS)
 linkTitle: Enable encryption in transit (TLS)
 description: Use Yugabyte Platform to enable encryption in transit (TLS) on a YugabyteDB universe and connect to clients.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: security
     identifier: enable-encryption-in-transit
     weight: 29

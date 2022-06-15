@@ -4,7 +4,7 @@ headerTitle: Configure the on-premises cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the on-premises cloud provider.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20

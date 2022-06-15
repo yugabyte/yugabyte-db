@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Peering connections
 description: Manage peering connections to your cloud VPCs.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-add-peering
     parent: cloud-vpcs
     weight: 30

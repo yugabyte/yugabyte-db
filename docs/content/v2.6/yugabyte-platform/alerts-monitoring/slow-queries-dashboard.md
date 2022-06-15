@@ -3,7 +3,7 @@ headerTitle: Slow Queries dashboard
 linkTitle: Slow Queries dashboard
 description: Slow Queries dashboard
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: alerts-monitoring
     identifier: slow-queries-dashboard
     weight: 10

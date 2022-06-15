@@ -5,7 +5,7 @@ description: YugabyteDB Managed cluster authentication and encryption.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-authentication
     parent: cloud-secure-clusters
     weight: 450

@@ -5,7 +5,7 @@ description: Yugabyte Platform
 headcontent: Build your own YugabyteDB-as-a-Service on any cloud or Kubernetes infrastructure.
 image: /images/section_icons/deploy/public-clouds.png
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: yugabyte-platform
     weight: 600

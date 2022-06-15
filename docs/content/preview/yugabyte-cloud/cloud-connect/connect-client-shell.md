@@ -5,7 +5,7 @@ description: Connect to YugabyteDB Managed clusters from your desktop using a cl
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-client-shell
     parent: cloud-connect
     weight: 20

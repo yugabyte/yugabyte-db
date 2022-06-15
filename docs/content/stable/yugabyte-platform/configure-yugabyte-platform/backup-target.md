@@ -4,7 +4,7 @@ headerTitle: Configure the backup target
 linkTitle: Configure the backup target
 description: Configure the backup target.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: backup-target
     parent: configure-yugabyte-platform
     weight: 30

@@ -6,7 +6,7 @@ description: Get started using YugabyteDB Managed in less than five minutes.
 image: /images/section_icons/index/quick_start.png
 headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on YugabyteDB Managed.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-quickstart
     weight: 15

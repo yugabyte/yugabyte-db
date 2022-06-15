@@ -6,7 +6,7 @@ description: Installing Yugabyte Platform on Private Cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Private Cloud
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: install-3-private-cloud
     parent: overview-yp
     weight: 20

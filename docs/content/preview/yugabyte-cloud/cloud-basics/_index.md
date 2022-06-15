@@ -5,7 +5,7 @@ description: Deploy clusters in YugabyteDB Managed.
 headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-basics
     weight: 25

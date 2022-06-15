@@ -4,7 +4,7 @@ linkTitle: Security architecture
 description: Security architecture of YugabyteDB Managed.
 image: /images/section_icons/index/secure.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-security
     identifier: cloud-security-features
 weight: 10

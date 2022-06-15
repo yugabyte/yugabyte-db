@@ -6,7 +6,7 @@ headerTitle: View all universes
 linkTitle: View all universes
 description: Use Yugabyte Platform to view all universes.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: view-all-universes
     parent: manage-deployments
     weight: 20

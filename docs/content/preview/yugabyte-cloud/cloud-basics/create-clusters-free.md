@@ -5,7 +5,7 @@ description: Create free clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-free
     parent: cloud-basics
     weight: 40

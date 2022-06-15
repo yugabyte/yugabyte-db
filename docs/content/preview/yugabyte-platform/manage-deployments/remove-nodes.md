@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to eliminate an unresponsive node.
 aliases:
   - /preview/manage/enterprise-edition/create-universe-multi-region
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 20

@@ -9,7 +9,7 @@ aliases:
   - /preview/yugabyte-cloud/cloud-network/vpc-peers/
   - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-vpcs
     parent: cloud-basics

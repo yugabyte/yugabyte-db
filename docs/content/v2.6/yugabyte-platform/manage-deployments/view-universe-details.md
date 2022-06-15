@@ -6,7 +6,7 @@ headerTitle: View universe details
 linkTitle: View universe details
 description: Use the Yugabyte Platform console to view universe details.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: view-universe-details
     parent: manage-deployments
     weight: 30

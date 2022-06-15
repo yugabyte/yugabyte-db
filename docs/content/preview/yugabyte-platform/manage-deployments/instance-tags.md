@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create and edit instance tags.
 aliases:
   - /preview/manage/enterprise-edition/instance-tags/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: instance-tags
     parent: manage-deployments
     weight: 80

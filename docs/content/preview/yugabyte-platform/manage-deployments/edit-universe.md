@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to edit a universe.
 aliases:
   - /preview/manage/enterprise-edition/edit-universe/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: edit-universe
     parent: manage-deployments
     weight: 60

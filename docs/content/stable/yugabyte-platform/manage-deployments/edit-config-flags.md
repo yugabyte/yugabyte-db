@@ -4,7 +4,7 @@ headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to edit configuration flags.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 50

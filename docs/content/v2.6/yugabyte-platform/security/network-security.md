@@ -4,7 +4,7 @@ headerTitle: Network security
 linkTitle: Network security
 description: Network security
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: security
     identifier: network-security
     weight: 30

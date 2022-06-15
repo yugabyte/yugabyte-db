@@ -3,7 +3,7 @@ headerTitle: Live Queries dashboard
 linkTitle: Live Queries dashboard
 description: Live Queries dashboard
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: alerts-monitoring
     identifier: live-queries-dashboard
     weight: 10

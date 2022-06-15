@@ -6,10 +6,9 @@ description: Configure Yugabyte Platform.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure Yugabyte Platform.
 menu:
-  v2.4:
-    parent: yugabytedb-anywhere
+  v2.4_yugabyte-platform:
     identifier: configure-yugabyte-platform
-    parent: yugabyte-platform
+    parent: yugabytedb-anywhere
     weight: 642
 type: indexpage
 ---

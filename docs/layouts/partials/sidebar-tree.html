@@ -1,14 +1,9 @@
 {{ $currentPage := . }}
 {{ $docVersion := .Scratch.Get "docVersion" }}
-{{ $menuName := .Scratch.Get "docVersion" }}
+{{ $menuName := .Scratch.Get "leftNavName" }}
 
-{{ if .Scratch.Get "leftNavName" }}
-  {{ $menuName = .Scratch.Get "leftNavName" }}
-  {{ $menuName = printf "%s_%s" $docVersion $menuName }}
-
-  {{ if not (isset .Site.Menus $menuName) }}
-    {{ $menuName = $docVersion }}
-  {{ end }}
+{{ if not (isset .Site.Menus $menuName) }}
+  {{ $menuName = $docVersion }}
 {{ end }}
 
 <div class="docs-menu desktop-hide">Docs Menu</div>
@@ -19,14 +14,14 @@
         {{ range $key, $value := .Site.Menus }}
           {{- if eq $menuName $key }}
             {{ range .ByWeight }}
-              {{- if .Params.section }}
+              {{- if .Params.showSection }}
                 {{ $post := printf "%s" .Post }}
                 {{ $viewAll := "" }}
                 {{- if eq .Identifier "view-all-products" }}
                   {{ $viewAll = " view-all-products" }}
                 {{- end }}
 
-                <li class="section{{- if .HasChildren }} submenu parent-menu{{- end }}{{- if .Params.hideLink }} unlink-list{{- end }}{{ $viewAll }}">
+                <li class="section{{- if .HasChildren }} submenu parent-menu{{- end }}{{- if .Params.hideLink }} unlink-list{{- end }}{{ $viewAll }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
                   {{ if not .Params.hideLink }}
                     <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}" data-identifier="{{ .Identifier }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Name }}</a>
                   {{ end }}
@@ -37,7 +32,7 @@
                       <i></i>
                     {{ end }}
 
-                    {{ template "section-tree-nav-section" (dict "currentMenu" . "currentPage" $currentPage "docVersion" $docVersion "parentIdentifier" $parentIdentifier ) }}
+                    {{ template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "docVersion" $docVersion "parentIdentifier" $parentIdentifier ) }}
                   {{- end }}
                 </li>
               {{- end }}
@@ -48,13 +43,13 @@
 
       <ul class="left-bottom-nav">
         {{ range .Site.Menus.leftbottom }}
-          <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}">
+          <li class="bottom-link{{- if .HasChildren }} section submenu parent-menu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
             <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{ .Name }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
             {{ .Post }}
             {{- if .HasChildren }}
               <ul class="internal animated list">
                 {{- range .Children }}
-                  <li class="bottom-link">
+                  <li class="bottom-link{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
                     <a href="{{ if .URL }}{{ .URL }}{{ else }}javascript:void(0){{ end }}" title="{{ .Name }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>{{ .Pre }}{{ .Name }}</a>
                   </li>
                 {{- end }}
@@ -75,7 +70,7 @@
 
 </div>
 
-{{ define "section-tree-nav-section" -}}
+{{ define "left-nav-tree-section" -}}
   {{ $currentMenu := .currentMenu }}
 	{{ $currentPage := .currentPage }}
   {{ $docVersion := .docVersion }}
@@ -85,7 +80,7 @@
     {{- range $index, $item := $currentMenu.Children }}
       {{- if not .Params.hide }}
         {{ if le (len (where (first (add $index 1) $currentMenu.Children) "Name" .Name)) 1 }}
-          <li class="{{- if .HasChildren }}submenu{{- end }}">
+          <li class="{{- if .HasChildren }}submenu{{- end }}{{- if .Params.classes }} {{ .Params.classes }}{{- end }}">
             <a href="{{- if .URL }}{{ .URL }}{{- else }}javascript:void(0){{ end }}" class="link{{if $currentPage.IsMenuCurrent $docVersion . }} active{{end}}" title="{{- if .Title }}{{.Title}}{{else}}{{.Name}}{{- end }}"{{- if .Params.newTab }}target="_blank" rel="noopener"{{- end }}>
               {{ .Name }}
             </a>
@@ -96,7 +91,7 @@
                 <i></i>
               {{ end }}
 
-              {{ template "section-tree-nav-section" (dict "currentMenu" . "currentPage" $currentPage "docVersion" $docVersion "parentIdentifier" $parentIdentifier ) }}
+              {{ template "left-nav-tree-section" (dict "currentMenu" . "currentPage" $currentPage "docVersion" $docVersion "parentIdentifier" $parentIdentifier ) }}
             {{- end }}
           </li>
         {{- end }}

@@ -4,7 +4,7 @@ headerTitle: Deploy a Spring application on GKE
 linkTitle: Deploy on GKE
 description: Deploy a Spring application connected to YugabyteDB Managed on Google Kubernetes Engine (GKE).
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: spring-boot
     identifier: spring-boot-gke
     weight: 30

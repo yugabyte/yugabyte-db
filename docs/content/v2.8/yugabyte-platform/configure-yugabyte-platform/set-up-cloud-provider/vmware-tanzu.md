@@ -4,7 +4,7 @@ headerTitle: Configure the VMware Tanzu provider
 linkTitle: Configure the cloud provider
 description: Configure the VMware Tanzu provider
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20

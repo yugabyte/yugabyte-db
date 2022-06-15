@@ -5,7 +5,7 @@ description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB M
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-application
     parent: cloud-examples
     weight: 100

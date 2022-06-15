@@ -5,7 +5,7 @@ description: Connect to YugabyteDB Managed clusters from any browser using Cloud
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-cloud-shell
     parent: cloud-connect
     weight: 10

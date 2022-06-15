@@ -4,7 +4,7 @@ headerTitle: Asynchronous Replication
 linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633

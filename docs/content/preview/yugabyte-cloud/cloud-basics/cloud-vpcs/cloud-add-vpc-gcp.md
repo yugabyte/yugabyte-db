@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: Create a VPC Network
 description: Create and manage your cloud VPCs.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-gcp
     parent: cloud-vpcs
     weight: 40

@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to delete a universe.
 aliases:
   - /preview/manage/enterprise-edition/delete-universe/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
     weight: 70

@@ -8,7 +8,7 @@ headcontent:
 aliases:
   - /preview/yugabyte-platform/administer-yp
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
     weight: 649

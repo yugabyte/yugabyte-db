@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring YugabyteDB Anywhere on Azure
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: configure-3-azure
     parent: overview-yp
     weight: 40

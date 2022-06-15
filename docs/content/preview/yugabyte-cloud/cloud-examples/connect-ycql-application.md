@@ -6,7 +6,7 @@ description: Build a sample Java application for YugabyteDB Managed with the Yug
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/connect-ycql-application/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-examples
     identifier: connect-ycql-application
     weight: 200

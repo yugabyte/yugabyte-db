@@ -5,7 +5,7 @@ description: Connect a Spring application to YugabyteDB Managed and containerize
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: spring-boot-app
     parent: spring-boot
     weight: 10

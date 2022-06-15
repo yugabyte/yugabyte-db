@@ -8,7 +8,7 @@ headcontent: Overview of YugabyteDB Anywhere and architecture.
 aliases:
   - /preview/yugabyte-platform/
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10

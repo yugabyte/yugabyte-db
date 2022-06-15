@@ -6,7 +6,7 @@ description: Installing Yugabyte Platform on Public Cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Public Cloud
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: install-1-public-cloud
     parent: overview-yp
     weight: 20

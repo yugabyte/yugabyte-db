@@ -5,7 +5,7 @@ description: Create a Free cluster to get started using YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: qs-add
     parent: cloud-quickstart
     weight: 100

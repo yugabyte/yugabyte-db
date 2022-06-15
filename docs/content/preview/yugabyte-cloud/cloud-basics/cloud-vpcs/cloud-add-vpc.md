@@ -4,7 +4,7 @@ headerTitle:
 linkTitle: VPCs
 description: Manage your cloud VPCs.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-add-vpc
     parent: cloud-vpcs
     weight: 20

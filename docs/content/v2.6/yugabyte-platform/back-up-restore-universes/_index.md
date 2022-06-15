@@ -6,9 +6,8 @@ description: Use Yugabyte Platform to back up and restore YugabyteDB universe da
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform to back up and restore YugabyteDB universes and data.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: yugabytedb-anywhere
-    parent: yugabyte-platform
     identifier: back-up-restore-universes
 weight: 645
 type: indexpage

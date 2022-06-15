@@ -4,7 +4,7 @@ headerTitle: Remove a node
 linkTitle: Remove a node
 description: Use Yugabyte Platform to remove an unresponsive node.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 50

@@ -6,7 +6,7 @@ description: Migrate your YugabyteDB universes and YugabyteDB Anywhere from Helm
 aliases:
   - /preview/manage/enterprise-edition/migrate-to-helm3/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: migrate-to-helm3
     parent: manage-deployments
     weight: 90

@@ -6,13 +6,16 @@
   {{ $versionDir = "preview" }}
 {{ end }}
 
+{{ $leftNavName := $versionDir }}
+{{ if $docDir }}
+  {{ $leftNavName = printf "%s_%s" $versionDir $docDir }}
+{{ end }}
+
 {{ $.Scratch.Set "docVersion" $versionDir }}
+{{ $.Scratch.Set "leftNavName" $leftNavName }}
 {{ range .Site.Menus.main.ByWeight.Reverse }}
   {{ if in .URL $docDir }}
     {{ $activeMenu = .URL }}
-    {{ if $docDir }}
-      {{ $.Scratch.Set "leftNavName" $docDir }}
-    {{ end }}
   {{ end }}
 {{ end }}
 
@@ -58,7 +61,7 @@
         {{ if eq .URL "/" }}
           {{ $anchorLink = "/" }}
         {{ else }}
-          {{ if or (in .URL "https://") (in .URL "http://") }}
+          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
             {{ $anchorLink = .URL }}
           {{ else }}
             {{ $anchorLink = printf "/%s%s" $versionDir .URL }}

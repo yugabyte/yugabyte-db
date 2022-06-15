@@ -5,7 +5,7 @@ description: Example applications for YugabyteDB Managed.
 headcontent: Example applications for YugabyteDB Managed.
 image: /images/section_icons/index/develop.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: yugabytedb-managed
     identifier: cloud-examples
     weight: 800

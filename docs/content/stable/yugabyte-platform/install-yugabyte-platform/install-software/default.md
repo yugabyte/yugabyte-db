@@ -4,7 +4,7 @@ headerTitle: Install Yugabyte Platform
 linkTitle: Install software
 description: Install the Yugabyte Platform software.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-1-default
     weight: 77

@@ -3,6 +3,7 @@
 
   li {
     margin: 0 5px;
+    margin-bottom: 10px;
 
     a.nav-link {
       padding: 15px 15px 7px 15px !important;
@@ -21,8 +22,8 @@
         vertical-align: middle;
       }
 
-      .active {
-        border: 1px solid #f75821 !important;
+      &.active {
+        border: 1px solid var(--theme-color) !important;
         background-color: rgba(247, 88, 33, 0.03);
 
         i {

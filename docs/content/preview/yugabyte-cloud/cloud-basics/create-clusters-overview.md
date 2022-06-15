@@ -5,7 +5,7 @@ description: Planning a cluster in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-overview
     parent: cloud-basics
     weight: 10

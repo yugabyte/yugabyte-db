@@ -3,7 +3,7 @@ title: Before you begin
 headerTitle: Before you begin
 description: Obtain your cluster certificate and add your computer to the IP allow list.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Before you begin
     identifier: cloud-add-ip

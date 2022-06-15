@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for HashiCorp
 aliases:
   - /preview/yugabyte-platform/security/create-kms-config
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: security
     identifier: create-kms-config-3-hashicorp-kms
     weight: 27

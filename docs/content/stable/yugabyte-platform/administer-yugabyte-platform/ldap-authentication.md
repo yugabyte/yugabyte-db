@@ -4,7 +4,7 @@ headerTitle: Enable Yugabyte Platform authentication via LDAP
 description: Use LDAP to enable login to Yugabyte Platform.
 linkTitle: Authenticate with LDAP
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: ldap-authentication
     parent: administer-yugabyte-platform
     weight: 20

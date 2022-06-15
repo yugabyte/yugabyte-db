@@ -4,7 +4,7 @@ headerTitle: Create and edit instance tags
 linkTitle: Configure instance tags
 description: Use Yugabyte Platform to create and edit instance tags.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: instance-tags
     parent: manage-deployments
     weight: 80

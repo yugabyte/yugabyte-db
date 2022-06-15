@@ -6,7 +6,7 @@ description: Connect Hasura Cloud to YugabyteDB Managed.
 aliases:
   - /preview/yugabyte-cloud/hasura-cloud/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: hasura-cloud
     parent: cloud-examples
     weight: 400

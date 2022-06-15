@@ -4,7 +4,7 @@ headerTitle: Back up universe YSQL data
 linkTitle: Back up universe data
 description: Use Yugabyte Platform to back up data in YSQL tables.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-1-ysql
     weight: 20

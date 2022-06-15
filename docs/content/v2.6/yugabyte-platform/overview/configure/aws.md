@@ -5,7 +5,7 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on On-Premises
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: configure-1-aws
     parent: overview-yp
     weight: 40
