@@ -882,7 +882,7 @@ Default: `false`
 
 ##### --cdc_intent_retention_ms
 
-The time period after which the intents will be cleaned up if there is no client polling for the change records.
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
 
 Default: `14400000` (4 hours)
 
