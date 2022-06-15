@@ -139,4 +139,22 @@ public class TableSpaceStructures {
     @JsonProperty("query")
     public String query;
   }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public static class UnusedIndexFinderResponse {
+    @JsonProperty("current_database")
+    public String currentDatabase;
+
+    @JsonProperty("table_name")
+    public String tableName;
+
+    @JsonProperty("index_name")
+    public String indexName;
+
+    @JsonProperty("index_command")
+    public String indexCommand;
+
+    @JsonProperty("description")
+    public String description;
+  }
 }
