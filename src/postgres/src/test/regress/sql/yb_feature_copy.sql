@@ -33,6 +33,9 @@ COPY x (a, b, c, d, e) from stdin;
 10005	26	36	46	56
 \.
 
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
 
@@ -195,6 +198,9 @@ COPY t FROM stdin;
 4	4
 \.
 
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+
 -- should fail, non unique index
 COPY t FROM stdin;
 1	1
@@ -202,6 +208,9 @@ COPY t FROM stdin;
 3	2
 4	4
 \.
+
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
 
 SELECT COUNT(*) FROM t;
 
