@@ -32,7 +32,7 @@ export function ReplicationDetailsTable({ replication }: props) {
   };
 
   const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
-    [replication.sourceUniverseUUID, 'tables'],
+    ['xcluster', replication.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
   );
 
