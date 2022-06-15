@@ -27,6 +27,7 @@ import xml.etree.ElementTree as ET
 import json
 import signal
 import glob
+
 from typing import Any, Dict, AnyStr
 
 # Example test failure (from C++)
@@ -82,7 +83,7 @@ SIGNALS = [name for name in dir(signal) if name.startswith('SIG') and 'SIG_' not
 SIGNAL_FORMAT_STRING = 'signal_{}'
 
 # Derived from build-support/common-test-env.sh:did_test_succeed()
-FAIL_TAG_AND_PATTERN = {
+FAIL_TAG_AND_PATTERN: Dict[str, str] = {
     'timeout': 'Timeout reached',
     'memory_leak': 'LeakSanitizer: detected memory leaks',
     'asan_heap_use_after_free': 'AddressSanitizer: heap-use-after-free',
@@ -91,10 +92,10 @@ FAIL_TAG_AND_PATTERN = {
     'tsan': 'ThreadSanitizer',
     'leak_check_failure': 'Leak check.*detected leaks',
     'segmentation_fault': 'Segmentation fault: ',
-    'gtest': '^\[  FAILED  \]',  # noqa
+    'gtest': r'^\[  FAILED  \]',
     SIGNAL_FORMAT_STRING: '|'.join(SIGNALS),
     'check_failed': 'Check failed: ',
-    'java_build': '^\[INFO\] BUILD FAILURE$'  # noqa
+    'java_build': r'^\[INFO\] BUILD FAILURE$',
 }
 
 
