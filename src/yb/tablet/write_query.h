@@ -168,7 +168,8 @@ class WriteQuery {
 
   void CompleteQLWriteBatch(const Status& status);
 
-  void SchemaVersionMismatch(int num_mismatches, int batch_size);
+  template <class Code, class Resp>
+  void SchemaVersionMismatch(Code code, int size, Resp* resp);
 
   bool CqlCheckSchemaVersion();
   bool PgsqlCheckSchemaVersion();
