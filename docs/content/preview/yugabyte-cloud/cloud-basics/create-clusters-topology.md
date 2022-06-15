@@ -1,6 +1,6 @@
 ---
-title: YugabyteDB Managed topologies
-linkTitle: Topology
+title: Choose a topology
+linkTitle: Choose a topology
 description: Overview of topologies available in YugabyteDB Managed.
 headcontent:
 menu:

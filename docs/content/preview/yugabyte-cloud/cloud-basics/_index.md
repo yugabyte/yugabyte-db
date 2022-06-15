@@ -33,7 +33,7 @@ Using YugabyteDB Managed, you can create single- and multi-region clusters that 
     <a class="section-link icon-offset" href="create-clusters-topology/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Cluster topologies</div>
+        <div class="title">Choose a topology</div>
       </div>
       <div class="body">
         Choose the topology best suited to your requirements for latency, availability, and geo-distribution.
