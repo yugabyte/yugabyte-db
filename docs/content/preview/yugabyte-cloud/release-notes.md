@@ -15,6 +15,16 @@ showAsideToc: true
 
 ## Releases
 
+### June 14, 2022
+
+#### Enhancements
+
+- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Users** tab on the **Admin** page.
+
+#### Database
+
+- Stable release updated to version 2.12.5 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
 ### May 18, 2022
 
 #### Enhancements
