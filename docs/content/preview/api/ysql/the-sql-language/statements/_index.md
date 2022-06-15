@@ -23,8 +23,8 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | :-------- | :---------- |
 | [`ALTER DATABASE`](ddl_alter_db) | Change database definition |
 | [`ALTER DOMAIN`](ddl_alter_domain) | Change domain definition |
-| [`ALTER FOREIGN DATA WRAPPER`](alter_foreign_data_wrapper) | Change foreign data wrapper definition |
-| [`ALTER FOREIGN TABLE`](alter_foreign_table) | Change foreign table definition |
+| [`ALTER FOREIGN DATA WRAPPER`](ddl_alter_foreign_data_wrapper) | Change foreign data wrapper definition |
+| [`ALTER FOREIGN TABLE`](ddl_alter_foreign_table) | Change foreign table definition |
 | [`ALTER SEQUENCE`](ddl_alter_sequence) | Change sequence definition |
 | [`ALTER SERVER`](ddl_alter_server) | Change foreign server definition |
 | [`ALTER TABLE`](ddl_alter_table) | Change table definition |
@@ -34,7 +34,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`CREATE DATABASE`](ddl_create_database) | Create a database |
 | [`CREATE DOMAIN`](ddl_create_domain) | Create a user-defined data type with optional constraints |
 | [`CREATE EXTENSION`](ddl_create_extension) | Load an extension |
-| [`CREATE FOREIGN DATA WRAPPER](ddl_create_foreign_data_wrapper) | Create a foreign-data wrapper |
+| [`CREATE FOREIGN DATA WRAPPER`](ddl_create_foreign_data_wrapper) | Create a foreign-data wrapper |
 | [`CREATE FOREIGN TABLE`](ddl_create_foreign_table) | Create a foreign table |
 | [`CREATE FUNCTION`](ddl_create_function) | Create a function |
 | [`CREATE INDEX`](ddl_create_index/) | Create an index |
@@ -70,7 +70,7 @@ The YSQL statements are compatible with the SQL dialect that PostgreSQL supports
 | [`DROP TABLE`](ddl_drop_table) | Delete a table from a database |
 | [`DROP TYPE`](ddl_drop_type) | Delete a user-defined type |
 | [`DROP TRIGGER`](ddl_drop_trigger) | Delete a trigger |
-| [`IMPORT FOREIGN SCHEMA`](ddl_import_foreign_schema) Import a foreign schema |
+| [`IMPORT FOREIGN SCHEMA`](ddl_import_foreign_schema) | Import a foreign schema |
 | [`REFRESH MATERIALIZED VIEW`](ddl_refresh_matview) | Refresh a materialized view |
 | [`TRUNCATE`](ddl_truncate) | Clear all rows from a table |
 
