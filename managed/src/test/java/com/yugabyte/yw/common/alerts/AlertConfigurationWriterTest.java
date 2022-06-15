@@ -15,21 +15,18 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
-import akka.dispatch.Dispatcher;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
@@ -50,14 +47,11 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.Silent.class)
 public class AlertConfigurationWriterTest extends FakeDBApplication {
 
-  @Mock private ExecutionContext executionContext;
-
-  @Mock private ActorSystem actorSystem;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock private SwamperHelper swamperHelper;
 
@@ -81,15 +75,12 @@ public class AlertConfigurationWriterTest extends FakeDBApplication {
 
   @Before
   public void setUp() {
-    when(actorSystem.scheduler()).thenReturn(mock(Scheduler.class));
     when(globalConfig.getInt(AlertConfigurationWriter.CONFIG_SYNC_INTERVAL_PARAM)).thenReturn(1);
     when(configFactory.globalRuntimeConf()).thenReturn(globalConfig);
-    when(actorSystem.dispatcher()).thenReturn(mock(Dispatcher.class));
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
     configurationWriter =
         new AlertConfigurationWriter(
-            executionContext,
-            actorSystem,
+            mockPlatformScheduler,
             metricService,
             alertDefinitionService,
             alertConfigurationService,
