@@ -34,10 +34,10 @@ Use the `DROP TABLE` statement to remove one or more tables (with all of their d
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_table.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_table.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_table.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_table.diagram.md" %}}
   </div>
 </div>
 

@@ -36,10 +36,10 @@ Use the `LOCK` statement to lock a table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/lock_table,lockmode.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/lock_table,lockmode.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/lock_table,lockmode.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/lock_table,lockmode.diagram.md" %}}
   </div>
 </div>
 

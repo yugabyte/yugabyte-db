@@ -36,10 +36,10 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" %}}
   </div>
 </div>
 

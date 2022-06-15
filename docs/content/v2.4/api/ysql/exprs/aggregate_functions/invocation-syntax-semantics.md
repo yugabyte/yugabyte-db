@@ -35,10 +35,10 @@ The following six diagrams, [`select_start`](../../../syntax_resources/grammar_d
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/select_start,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/select_start,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/select_start,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/select_start,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation.diagram.md" %}}
   </div>
 </div>
 These rules govern the invocation of aggregate functions as `SELECT` list items.
@@ -66,10 +66,10 @@ When aggregate functions are invoked using the syntax specified by either the `o
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/group_by_clause,grouping_element.diagram.md" %}}
   </div>
 </div>
 
@@ -92,10 +92,10 @@ The result set may be restricted by the `HAVING` clause:
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/aggregate_functions/having_clause.diagram.md" %}}
   </div>
 </div>
 
@@ -135,7 +135,7 @@ order by class;
 It produces this result:
 
 ```
- class | array_agg(v) | string_agg(v) |    jsonb_agg    |  jsonb_object_agg(v, k)  
+ class | array_agg(v) | string_agg(v) |    jsonb_agg    |  jsonb_object_agg(v, k)
 -------+--------------+---------------+-----------------+--------------------------
      1 | {c,b,a}      | c ~ b ~ a     | ["c", "b", "a"] | {"a": 1, "b": 2, "c": 3}
      2 | {f,e,d}      | f ~ e ~ d     | ["f", "e", "d"] | {"d": 4, "e": 5, "f": 6}
@@ -158,7 +158,7 @@ from t;
 This is the result:
 
 ```
- string_agg(v) without f | string_agg(v) without a 
+ string_agg(v) without f | string_agg(v) without a
 -------------------------+-------------------------
  a ~ b ~ c ~ d ~ e       | f ~ e ~ d ~ c ~ b
 ```
@@ -197,7 +197,7 @@ select k, class, v from t order by class, v nulls last, k;
 This is the result:
 
 ```
- k  | class |   v    
+ k  | class |   v
 ----+-------+--------
   1 |     1 | a
   2 |     1 | b
@@ -231,7 +231,7 @@ order by class;
 This is the result:
 
 ```
- class | k mode | v mode 
+ class | k mode | v mode
 -------+--------+--------
      1 |     11 | e
      2 |     15 | f
@@ -253,7 +253,7 @@ from t;
 This is the result:
 
 ```
- expr-1 mode | expr-2 mode 
+ expr-1 mode | expr-2 mode
 -------------+-------------
  ex          | <null>
 ```
@@ -297,7 +297,7 @@ as a;
 This is the result:
 
 ```
- number of resulting rows 
+ number of resulting rows
 --------------------------
                      1536
 ```
@@ -370,7 +370,7 @@ select k, class, v from t order by k;
 This is the result:
 
 ```
- k  | class |   v    
+ k  | class |   v
 ----+-------+--------
   1 |     1 |    100
   2 |     1 |    101
@@ -411,7 +411,7 @@ order by class;
 This is the result:
 
 ```
- class | count 
+ class | count
 -------+-------
      2 |     5
 ```
@@ -453,7 +453,7 @@ with a as (
   group by class)
 select class, count
 from a
-where count > 4  
+where count > 4
 order by class;
 ```
 

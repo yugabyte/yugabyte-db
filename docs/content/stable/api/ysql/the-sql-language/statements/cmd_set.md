@@ -1,7 +1,7 @@
 ---
 title: SET statement [YSQL]
 headerTitle: SET
-linkTitle: SET 
+linkTitle: SET
 description: Use the SET statement to update a run-time control parameter.
 menu:
   stable:
@@ -34,10 +34,10 @@ Use the `SET` statement to update a run-time control parameter.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set.diagram.md" %}}
   </div>
 </div>
 

@@ -36,10 +36,10 @@ Use the `CREATE DOMAIN` statement to create a user-defined data type with option
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_domain,domain_constraint.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_domain,domain_constraint.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_domain,domain_constraint.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_domain,domain_constraint.diagram.md" %}}
   </div>
 </div>
 
