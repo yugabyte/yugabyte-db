@@ -1,7 +1,7 @@
 ---
-title: Planning a cluster
-linkTitle: Planning a cluster
-description: Planning a cluster in YugabyteDB Managed.
+title: Plan your cluster
+linkTitle: Plan your cluster
+description: Plan a cluster in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
