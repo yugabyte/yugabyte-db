@@ -158,6 +158,24 @@ Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory.
 
+##### --webserver_certificate_file
+
+Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
+
+Default: `""`
+
+##### --webserver_authentication_domain
+
+Domain used for .htpasswd authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+
+Default: `""`
+
+##### --webserver_password_file
+
+Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
+
+Default: `""`
+
 ---
 
 ### YSQL flags
