@@ -56,23 +56,21 @@ public class QueryHelper {
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
 
   public JsonNode liveQueries(Universe universe) {
-    return query(universe, false, null, null);
+    return query(universe, false);
   }
 
-  public JsonNode slowQueries(Universe universe, String username, String password)
-      throws IllegalArgumentException {
-    return query(universe, true, username, password);
+  public JsonNode slowQueries(Universe universe) throws IllegalArgumentException {
+    return query(universe, true);
   }
 
   public JsonNode resetQueries(Universe universe) {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     ysqlQuery.query = "SELECT pg_stat_statements_reset()";
     ysqlQuery.db_name = "postgres";
-    return ysqlQueryExecutor.executeQuery(universe, ysqlQuery);
+    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery);
   }
 
-  public JsonNode query(
-      Universe universe, boolean fetchSlowQueries, String username, String password)
+  public JsonNode query(Universe universe, boolean fetchSlowQueries)
       throws IllegalArgumentException {
     final Config config = runtimeConfigFactory.forUniverse(universe);
     ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
@@ -105,13 +103,13 @@ public class QueryHelper {
 
         if (fetchSlowQueries) {
           callable =
-              new SlowQueryExecutor(
-                  ip,
-                  node.ysqlServerRpcPort,
-                  universe,
-                  slowQuerySqlWithLimit(config),
-                  username,
-                  password);
+              () -> {
+                RunQueryFormData ysqlQuery = new RunQueryFormData();
+                ysqlQuery.query = slowQuerySqlWithLimit(config);
+                ysqlQuery.db_name = "postgres";
+                return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery);
+              };
+
           Future<JsonNode> future = threadPool.submit(callable);
           futures.add(future);
         } else {
@@ -143,7 +141,8 @@ public class QueryHelper {
         if (response.has("error")) {
           String errorMessage = response.get("error").toString();
           // If Login Credentials are incorrect we receive
-          // {"error":"FATAL: password authentication failed for user \"<username in header>\""}
+          // {"error":"FATAL: password authentication failed for user \"<username in
+          // header>\""}
           if (errorMessage.startsWith("\"FATAL: password authentication failed")) {
             throw new IllegalArgumentException("Incorrect Username or Password");
           }
