@@ -2,7 +2,7 @@
 title: SHOW TRANSACTION statement [YSQL]
 headerTitle: SHOW TRANSACTION
 linkTitle: SHOW TRANSACTION
-description: Use the SHOW TRANSACTION statement to show the current transaction isolation level.
+description: Use the SHOW TRANSACTION ISOLATION LEVEL statement to show the current transaction isolation level.
 summary: SHOW TRANSACTION
 menu:
   preview:
@@ -16,7 +16,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `SHOW TRANSACTION` statement to show the current transaction isolation level.
+Use the `SHOW TRANSACTION ISOLATION LEVEL` statement to show the current transaction isolation level.
 
 ## Syntax
 
