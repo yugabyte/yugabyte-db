@@ -34,10 +34,10 @@ Use the `CREATE INDEX` statement to create an index on the specified columns of 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_index,index_elem.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_index,index_elem.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_index,index_elem.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_index,index_elem.diagram.md" %}}
   </div>
 </div>
 
@@ -61,9 +61,9 @@ Specify a list of columns which will be included in the index as non-key columns
 
 ### WHERE clause
 
-A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause. 
+A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
-This will speed up any writes to the table since rows containing the common column values don't need to be indexed. 
+This will speed up any writes to the table since rows containing the common column values don't need to be indexed.
 It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
 
 #### *name*

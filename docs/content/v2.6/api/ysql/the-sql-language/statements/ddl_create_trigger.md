@@ -34,16 +34,16 @@ Use the `CREATE TRIGGER` statement to create a trigger.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_trigger,event.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_trigger,event.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_trigger,event.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_trigger,event.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
 
-- the `WHEN` condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns. 
+- the `WHEN` condition can be used to specify whether the trigger should be fired. For low-level triggers it can reference the old and/or new values of the row's columns.
 - multiple triggers can be defined for the same event. In that case, they will be fired in alphabetical order by name.
 
 ## Examples

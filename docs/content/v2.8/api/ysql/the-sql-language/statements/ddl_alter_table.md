@@ -34,10 +34,10 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint.diagram.md" %}}
   </div>
 </div>
 
@@ -72,7 +72,7 @@ Renaming a table is a non blocking metadata change operation.
 
 #### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
 
-Drop the named column from the table. 
+Drop the named column from the table.
 
 - `RESTRICT` — Remove only the specified
 

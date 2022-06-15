@@ -36,10 +36,10 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.diagram.md" %}}
   </div>
 </div>
 

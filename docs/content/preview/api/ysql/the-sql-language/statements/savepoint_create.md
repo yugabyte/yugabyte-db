@@ -36,10 +36,10 @@ Use the `SAVEPOINT` statement to define a new savepoint within the current trans
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/savepoint_create.diagram.md" %}}
   </div>
 </div>
 
