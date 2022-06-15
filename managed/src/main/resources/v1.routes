@@ -252,6 +252,7 @@ GET     /customers/:cUUID/universes/:uniUUID/:nodeName/download_logs           c
 
 # Universe performance suggestions
 GET     /customers/:cUUID/universes/:uniUUID/query_distribution_suggestions    com.yugabyte.yw.controllers.UniversePerfController.getQueryDistributionSuggestions(cUUID: java.util.UUID, uniUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/range_hash                        com.yugabyte.yw.controllers.UniversePerfController.getRangeHash(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Import a universe
 POST    /customers/:cUUID/universes/import                                     com.yugabyte.yw.controllers.ImportController.importUniverse(cUUID: java.util.UUID)

@@ -26,6 +26,7 @@
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerService_Read);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_PgClientService_Perform);
 DECLARE_uint64(ysql_session_max_batch_size);
+DECLARE_bool(TEST_ysql_ignore_add_fk_reference);
 
 namespace yb {
 namespace pgwrapper {
@@ -109,6 +110,26 @@ Status CheckAddFKCorrectness(PGConn* conn, bool temp_tables) {
   return AddFKConstraint(conn);
 }
 
+class PgFKeyTestNoFKCache : public PgFKeyTest {
+ protected:
+  void SetUp() override {
+    FLAGS_TEST_ysql_ignore_add_fk_reference = true;
+    PgFKeyTest::SetUp();
+  }
+};
+
+Status PrepareTablesForMultipleFKs(PGConn* conn) {
+  for (size_t i = 0; i < 3; ++i) {
+    RETURN_NOT_OK(conn->ExecuteFormat("CREATE TABLE $0_$1(k INT PRIMARY KEY)", kPKTable, i + 1));
+  }
+  return conn->ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, "
+                             "                pk_1 INT REFERENCES $1_1(k),"
+                             "                pk_2 INT REFERENCES $1_2(k),"
+                             "                pk_3 INT REFERENCES $1_3(k))",
+                             kFKTable,
+                             kPKTable);
+}
+
 } // namespace
 
 // Test checks the number of RPC in case adding foreign key constraint to non empty table.
@@ -179,26 +200,18 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(AddFKCorrectnessOnTempTables)) {
 // Test checks the number of RPC in case of multiple FK on same table.
 TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
   auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.Execute("CREATE TABLE p1(k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE p2(k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE p3(k INT PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("CREATE TABLE child(k INT PRIMARY KEY, " \
-                                            "v1 INT REFERENCES p1(k), " \
-                                            "v2 INT REFERENCES p2(k), " \
-                                            "v3 INT REFERENCES p3(k))"));
-  ASSERT_OK(conn.Execute("INSERT INTO p1 VALUES(11), (12), (13)"));
-  ASSERT_OK(conn.Execute("INSERT INTO p2 VALUES(21), (22), (23)"));
-  ASSERT_OK(conn.Execute("INSERT INTO p3 VALUES(31), (32), (33)"));
+  ASSERT_OK(PrepareTablesForMultipleFKs(&conn));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0_1 VALUES(11), (12), (13);"
+                               "INSERT INTO $0_2 VALUES(21), (22), (23);"
+                               "INSERT INTO $0_3 VALUES(31), (32), (33);", kPKTable));
   // Warmup catalog cache to load info related for triggers before estimating RPC count.
-  ASSERT_OK(conn.Execute("INSERT INTO child VALUES(1, 11, 21, 31)"));
-  ASSERT_OK(conn.Execute("TRUNCATE child"));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 11, 21, 31)", kFKTable));
+  ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kFKTable));
   const auto insert_fk_rpc_count = ASSERT_RESULT(perform_rpc_watcher_->Delta([&conn]() {
-    return conn.Execute(
-      "INSERT INTO child VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)");
+    return conn.ExecuteFormat(
+      "INSERT INTO $0 VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)", kFKTable);
   }));
-  // 2 perform RPC are expected as the first one is used for all write operations and
-  // the second one for all read operations (i.e. all FK checks)
-  ASSERT_EQ(insert_fk_rpc_count, 2);
+  ASSERT_EQ(insert_fk_rpc_count, 1);
 }
 
 // Test checks that insertion into table with large number of foreign keys doesn't fail.
@@ -229,6 +242,27 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(InsertWithLargeNumberOfFK)) {
     ASSERT_OK(conn.ExecuteFormat(
       "INSERT INTO $0 SELECT $1 + s, $2 FROM generate_series(1, $3) AS s",
       kFKTable, i * insert_count, insert_fk_columns, insert_count));
+  }
+}
+
+// Test checks rows written by buffered write operations are read successfully while
+// performing FK constraint check.
+TEST_F_EX(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(BufferedWriteOfReferencedRows), PgFKeyTestNoFKCache) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareTablesForMultipleFKs(&conn));
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE PROCEDURE test(start_idx INT, end_idx INT) LANGUAGE plpgsql AS $$$$ "
+      "BEGIN"
+      "  INSERT INTO $0_1 SELECT s FROM generate_series(start_idx, end_idx) AS s;"
+      "  INSERT INTO $0_2 SELECT s FROM generate_series(start_idx, end_idx) AS s;"
+      "  INSERT INTO $0_3 SELECT s FROM generate_series(start_idx, end_idx) AS s;"
+      "  INSERT INTO $1 SELECT s, s, s, s FROM generate_series(start_idx, end_idx) AS s;"
+      "END;$$$$",
+      kPKTable, kFKTable));
+  for (size_t i = 0; i < 10; ++i) {
+    const size_t start_idx = i * 1000 + 1;
+    const size_t end_idx = start_idx + 100;
+    ASSERT_OK(conn.ExecuteFormat("CALL test($0, $1)", start_idx, end_idx));
   }
 }
 

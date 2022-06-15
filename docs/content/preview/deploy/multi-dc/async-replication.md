@@ -29,9 +29,7 @@ You can create source and target universes as follows:
 1. Create tables for the APIs being used by the target universe. These should be the same tables as you created for the source universe.
 1. Proceed to setting up [unidirectional](#set-up-unidirectional-replication) or [bidirectional](#set-up-bidirectional-replication) replication.
 
-{{< note title="Note" >}}
 If you already have existing data in your tables, follow the bootstrap process described in [Bootstrap a target universe](#bootstrap-a-target-universe).
-{{< /note >}}
 
 ## Set up unidirectional replication
 
@@ -44,8 +42,16 @@ After you created the required tables, you can set up asynchronous replication a
   - To find a table ID, execute the following command as an admin user:
 
       ```shell
-      yb-admin list_tables include_table_id
+      ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id
       ```
+      
+      The preceding command lists all the tables, including system tables. To locate a specific table, you can add `grep`, as follows:
+      
+      ```sh
+      ./bin/yb-admin -master_addresses <source master ips comma separated> list_tables include_table_id | grep table_name
+      ```
+      
+      Note that if there are multiple schemas with the same table name, you might need to contact Yugabyte Support for assistance. 
 
 - Run the following `yb-admin` [`setup_universe_replication`](../../../admin/yb-admin/#setup-universe-replication) command from the YugabyteDB home directory in the source universe:
 
@@ -67,9 +73,7 @@ After you created the required tables, you can set up asynchronous replication a
         000030a5000030008000000000004000,000030a5000030008000000000004005,dfef757c415c4b2cacc9315b8acb539a
     ```
 
-The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table.
-
-Also, be sure to specify all master addresses for source and target universes in the command.
+The preceding command contains three table IDs: the first two are YSQL for the base table and index, and the third is the YCQL table. Make sure that all master addresses for source and target universes are specified in the command.
 
 If you need to set up bidirectional replication, see instructions provided in [Set up bidirectional replication](#set-up-bidirectional-replication). Otherwise, proceed to [Load data into the source universe](#load-data-into-the-source-universe).
 
@@ -396,7 +400,7 @@ Proceed as follows:
     Consider the following example:
 
       ```sh
-    ./bin/yb-admin-master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
+    ./bin/yb-admin -master_addresses 127.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 setup_universe_replication \
       00000000-1111-2222-3333-444444444444_xCluster1 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
       000033e1000030008000000000004000,000033e1000030008000000000004003,000033e1000030008000000000004006 \
       fb156717174941008e54fa958e613c10,a2a46f5cbf8446a3a5099b5ceeaac28b,c967967523eb4e03bcc201bb464e0679

@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -137,10 +138,12 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.universeName = defaultUniverse.name;
-    taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
+    taskParams.clusters.add(asyncCluster);
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     PlacementInfoUtil.updateUniverseDefinition(
-        taskParams, defaultCustomer.getCustomerId(), taskParams.clusters.get(0).uuid);
+        taskParams, defaultCustomer.getCustomerId(), asyncCluster.uuid);
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
@@ -148,6 +151,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
       iter++;
     }
     TaskInfo taskInfo = submitTask(taskParams);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     // removed unnecessary preflight check
@@ -192,10 +196,12 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.universeName = onPremUniverse.name;
-    taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
+    taskParams.clusters.add(asyncCluster);
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     PlacementInfoUtil.updateUniverseDefinition(
-        taskParams, defaultCustomer.getCustomerId(), taskParams.clusters.get(0).uuid);
+        taskParams, defaultCustomer.getCustomerId(), asyncCluster.uuid);
 
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
@@ -211,6 +217,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams univUTP =
         Universe.getOrBadRequest(onPremUniverse.universeUUID).getUniverseDetails();
     assertEquals(2, univUTP.clusters.size());
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
   }
 
@@ -232,10 +239,12 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.providerType = Common.CloudType.onprem;
     userIntent.universeName = onPremUniverse.name;
-    taskParams.clusters.add(new Cluster(ClusterType.ASYNC, userIntent));
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    Cluster asyncCluster = new Cluster(ClusterType.ASYNC, userIntent);
+    taskParams.clusters.add(asyncCluster);
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     PlacementInfoUtil.updateUniverseDefinition(
-        taskParams, defaultCustomer.getCustomerId(), taskParams.clusters.get(0).uuid);
+        taskParams, defaultCustomer.getCustomerId(), asyncCluster.uuid);
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {
       node.cloudInfo.private_ip = "10.9.22." + iter;
@@ -244,6 +253,7 @@ public class ReadOnlyClusterCreateTest extends UniverseModifyBaseTest {
     }
     preflightResponse.message = "{\"test\": false}";
     TaskInfo taskInfo = submitTask(taskParams);
+    assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
   }
 }

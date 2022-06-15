@@ -3,6 +3,7 @@
 package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -481,6 +482,25 @@ public class Universe extends Model {
         .stream()
         .filter(server -> primaryNodes.contains(server))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Return the list of live TServers in the primary cluster.
+   *
+   * @return a list of TServer node
+   */
+  public List<NodeDetails> getLiveTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers
+            .stream()
+            .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
+            .collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+    }
+    return filteredServers;
   }
 
   /**

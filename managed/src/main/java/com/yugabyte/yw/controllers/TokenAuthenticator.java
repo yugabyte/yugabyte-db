@@ -38,7 +38,9 @@ public class TokenAuthenticator extends Action.Simple {
           "/alert_configurations/page",
           "/alert_configurations/list",
           "/maintenance_windows/page",
-          "/maintenance_windows/list");
+          "/maintenance_windows/list",
+          "/backups/page",
+          "/schedules/page");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -235,6 +237,13 @@ public class TokenAuthenticator extends Action.Simple {
     // All users other than read only get access to backup endpoints.
     if (endPoint.endsWith("/create_backup")
         || endPoint.endsWith("/multi_table_backup")
+        || endPoint.endsWith("/restore")) {
+      return true;
+    }
+    // Enable New backup and restore endPoints for backup admins.
+    if (endPoint.contains("/backups")
+        || endPoint.endsWith("create_backup_schedule")
+        || endPoint.contains("/schedules")
         || endPoint.endsWith("/restore")) {
       return true;
     }
