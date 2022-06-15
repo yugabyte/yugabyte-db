@@ -2,7 +2,7 @@
 title: EXECUTE statement [YSQL]
 headerTitle: EXECUTE
 linkTitle: EXECUTE
-description: Use the EXECUTE statement to execute a previously prepared statement. 
+description: Use the EXECUTE statement to execute a previously prepared statement.
 menu:
   stable:
     identifier: perf_execute
@@ -34,10 +34,10 @@ Use the `EXECUTE` statement to execute a previously prepared statement. This sep
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.diagram.md" %}}
   </div>
 </div>
 
@@ -62,7 +62,7 @@ yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1,
 - Prepare a simple insert.
 
 ```plpgsql
-yugabyte=# PREPARE ins (bigint, double precision, int, text) AS 
+yugabyte=# PREPARE ins (bigint, double precision, int, text) AS
                INSERT INTO sample(k1, k2, v1, v2) VALUES ($1, $2, $3, $4);
 ```
 

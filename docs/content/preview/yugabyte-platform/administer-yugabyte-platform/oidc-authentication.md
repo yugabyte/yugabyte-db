@@ -48,7 +48,6 @@ You can create an OIDC configuration as follows:
 
 - Click **Save**. 
 
-- Restart YugabyteDB Anywhere.
 
 For information on how to add users, see [Create, modify, and delete users](../../security/authorization-platform/#create-modify-and-delete-users). The email ID that you enter in the **Add User** dialog must be registered with the identity provider, and the role must reflect the user's role on YugabyteDB Anywhere.
 

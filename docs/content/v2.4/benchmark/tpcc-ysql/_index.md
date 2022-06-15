@@ -87,16 +87,16 @@ Other options like username, password, port, etc. can be changed using the confi
 
 <div class="tab-content">
   <div id="10-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="10-wh-tab">
-    {{% includeMarkdown "10-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "10-wh/tpcc-ysql.md" %}}
   </div>
   <div id="100-wh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="100-wh-tab">
-    {{% includeMarkdown "100-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "100-wh/tpcc-ysql.md" %}}
   </div>
   <div id="1000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="1000-wh-tab">
-    {{% includeMarkdown "1000-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "1000-wh/tpcc-ysql.md" %}}
   </div>
   <div id="10000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="10000-wh-tab">
-    {{% includeMarkdown "10000-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "10000-wh/tpcc-ysql.md" %}}
   </div>
 </div>
 

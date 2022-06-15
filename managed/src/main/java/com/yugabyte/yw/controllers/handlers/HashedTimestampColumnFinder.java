@@ -9,34 +9,26 @@
  */
 package com.yugabyte.yw.controllers.handlers;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+import static com.yugabyte.yw.common.TableSpaceStructures.HashedTimestampColumnFinderResponse;
+import static com.yugabyte.yw.common.TableSpaceStructures.QueryUniverseDBListResponse;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-import static com.yugabyte.yw.common.TableSpaceStructures.HashedTimestampColumnFinderResponse;
-import static com.yugabyte.yw.common.TableSpaceStructures.QueryUniverseDBListResponse;
 
 @Slf4j
 public class HashedTimestampColumnFinder {
@@ -62,6 +54,8 @@ public class HashedTimestampColumnFinder {
       "select jsonb_agg(t) from (select datname from pg_database where datname "
           + "not in ('template0', 'template1', 'system_platform', 'postgres')) as t;";
 
+  private static final String DEFAULT_DB_NAME = "yugabyte";
+
   private NodeDetails getRandomLiveTServer(List<NodeDetails> filteredServers) {
     if (filteredServers.isEmpty()) {
       throw new PlatformServiceException(
@@ -76,7 +70,8 @@ public class HashedTimestampColumnFinder {
     NodeDetails randomTServer = getRandomLiveTServer(universe.getLiveTServersInPrimaryCluster());
 
     ShellResponse getDB =
-        nodeUniverseManager.runYsqlCommand(randomTServer, universe, "yugabyte", DBLIST_STATEMENT);
+        nodeUniverseManager.runYsqlCommand(
+            randomTServer, universe, DEFAULT_DB_NAME, DBLIST_STATEMENT);
 
     String getDBList = CommonUtils.extractJsonisedSqlResponse(getDB);
 
@@ -114,19 +109,19 @@ public class HashedTimestampColumnFinder {
         // given 0 rows, so .isEmpty() is insufficient.
         if (responseJSON == null || responseJSON.length() <= 1) {
           continue;
-        } else {
-          log.trace(
-              "Hashed timestamp indexes for node {}, database {}: {} -- json: {}, json length: {}",
-              randomTServer.nodeName,
-              dbname.datname,
-              response.message,
-              responseJSON,
-              responseJSON.length());
-          // Accumulate all entries for database into universe's list of hashed timestamp columns.
-          hashedTimestampResponse.addAll(
-              objectMapper.readValue(
-                  responseJSON, new TypeReference<List<HashedTimestampColumnFinderResponse>>() {}));
         }
+
+        log.trace(
+            "Hashed timestamp indexes for node {}, database {}: {} -- json: {}, json length: {}",
+            randomTServer.nodeName,
+            dbname.datname,
+            response.message,
+            responseJSON,
+            responseJSON.length());
+        // Accumulate all entries for database into universe's list of hashed timestamp columns.
+        hashedTimestampResponse.addAll(
+            objectMapper.readValue(
+                responseJSON, new TypeReference<List<HashedTimestampColumnFinderResponse>>() {}));
       }
 
       for (HashedTimestampColumnFinderResponse res : hashedTimestampResponse) {
@@ -147,11 +142,10 @@ public class HashedTimestampColumnFinder {
         String err = "Error while parsing hashed timestamp columns for databases: " + getDBList;
         log.error(err, ioe);
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, err);
-      } else {
-        String err = "Error while parsing database list for databases: " + getDBList;
-        log.error(err, ioe);
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, err);
       }
+      String err = "Error while parsing database list for databases: " + getDBList;
+      log.error(err, ioe);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, err);
     }
   }
 }

@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `ALTER FOREIGN TABLE` command to alter a foreign table. 
+Use the `ALTER FOREIGN TABLE` command to alter a foreign table.
 
 ## Syntax
 
@@ -34,16 +34,16 @@ Use the `ALTER FOREIGN TABLE` command to alter a foreign table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_foreign_table.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_foreign_table.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_foreign_table.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_foreign_table.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
 
-Alter the foreign table named *table_name*. 
+Alter the foreign table named *table_name*.
 
 ### Add a column
 The `ADD COLUMN` clause can be used to add a new column to the foreign table. There's no effect on the underlying storage: the `ADD COLUMN` action just indicates that the newly added column can be accessed through the foreign table.
