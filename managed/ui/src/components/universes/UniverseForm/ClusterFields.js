@@ -44,6 +44,7 @@ import pluralize from 'pluralize';
 import { AZURE_INSTANCE_TYPE_GROUPS } from '../../../redesign/universe/wizard/fields/InstanceTypeField/InstanceTypeField';
 import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail';
 import { fetchSupportedReleases } from '../../../actions/universe';
+import { sortVersion } from '../../releases';
 
 // Default instance types for each cloud provider
 const DEFAULT_INSTANCE_TYPE_MAP = {
@@ -1435,7 +1436,7 @@ export default class ClusterFields extends Component {
     const providerUUID = value;
     const currentProviderData = this.getCurrentProvider(value) || {};
     if (type?.toUpperCase() === 'CREATE' && clusterType === 'primary') {
-      const releaseArr = (await fetchSupportedReleases(value))?.data;
+      const releaseArr = (await fetchSupportedReleases(value))?.data?.sort(sortVersion);
       this.setState({ supportedReleases: releaseArr, ybSoftwareVersion: releaseArr[0] });
       updateFormField(`${clusterType}.ybSoftwareVersion`, releaseArr[0]);
     }

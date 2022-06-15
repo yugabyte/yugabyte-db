@@ -98,7 +98,11 @@ class UniverseDetail extends Component {
       if (typeof this.props.universeSelectionId !== 'undefined') {
         uuid = this.props.universeUUID;
       }
-      this.props.getUniverseInfo(uuid);
+      this.props.getUniverseInfo(uuid).then((response) => {
+        const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
+        const providerUUID = primaryCluster?.userIntent?.provider;
+        this.props.fetchSupportedReleases(providerUUID);
+      });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
         // Get alerts instead of Health
@@ -209,7 +213,7 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse },
+      universe: { currentUniverse, supportedReleases },
       location: { query, pathname },
       showSoftwareUpgradesModal,
       showVMImageUpgradeModal,
@@ -272,7 +276,12 @@ class UniverseDetail extends Component {
       return <UniverseFormContainer type="Create" />;
     }
 
-    if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
+    if (
+      getPromiseState(currentUniverse).isLoading() ||
+      getPromiseState(currentUniverse).isInit() ||
+      getPromiseState(supportedReleases).isLoading() ||
+      getPromiseState(supportedReleases).isInit()
+    ) {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
@@ -449,11 +458,7 @@ class UniverseDetail extends Component {
             isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
               <Tab.Pane
                 eventKey={'backups'}
-                tabtitle={
-                  <>
-                    Backups
-                  </>
-                }
+                tabtitle={<>Backups</>}
                 key="backups-tab"
                 mountOnEnter={true}
                 unmountOnExit={true}
