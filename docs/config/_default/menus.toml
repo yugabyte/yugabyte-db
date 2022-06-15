@@ -614,6 +614,7 @@
   name = "Reference"
   weight = 12
   identifier = "reference"
+  url = "/v2.8/reference/"
   ["v2.8".params]
     showSection = true
 
@@ -761,6 +762,7 @@
   name = "Reference"
   weight = 12
   identifier = "reference"
+  url = "/v2.6/reference/"
   ["v2.6".params]
     showSection = true
 
@@ -888,6 +890,7 @@
   name = "Reference"
   weight = 12
   identifier = "reference"
+  url = "/v2.4/reference/"
   ["v2.4".params]
     showSection = true
 
