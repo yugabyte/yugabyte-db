@@ -454,8 +454,7 @@
 [[stable]]
   name = "Troubleshoot"
   weight = 10
-  identifier = "troubleshoot"
-  url = "/stable/troubleshoot/"
+  url = "/preview/troubleshoot/"
   [stable.params]
     showSection = true
 
@@ -600,8 +599,7 @@
 [["v2.8"]]
   name = "Troubleshoot"
   weight = 10
-  identifier = "troubleshoot"
-  url = "/v2.8/troubleshoot/"
+  url = "/preview/troubleshoot/"
   ["v2.8".params]
     showSection = true
 
@@ -640,7 +638,7 @@
 
 [["v2.8"]]
   name = "View all products"
-  weight = 11
+  weight = 14
   identifier = "view-all-products"
   ["v2.8".params]
     showSection = true
@@ -747,7 +745,7 @@
   name = "Troubleshoot"
   weight = 10
   identifier = "troubleshoot"
-  url = "/v2.6/troubleshoot/"
+  url = "/preview/troubleshoot/"
   ["v2.6".params]
     showSection = true
 
@@ -882,7 +880,7 @@
   name = "Troubleshoot"
   weight = 10
   identifier = "troubleshoot"
-  url = "/v2.6/troubleshoot/"
+  url = "/preview/troubleshoot/"
   ["v2.4".params]
     showSection = true
 

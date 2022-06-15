@@ -424,7 +424,7 @@ aside.td-sidebar {
           }
 
           &:last-child a {
-            padding-left: 0;
+            padding-left: 0px;
           }
 
           &.unlink-list a {
@@ -475,13 +475,13 @@ aside.td-sidebar {
 
         ul {
           padding-left: 17px;
-          padding-bottom: 7px;
+		  padding-bottom:7px;
 
           > li {
             padding: 4px 0;
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
+			display: flex;
+			align-items: center;
+			flex-wrap: wrap;
 
             i {
               top: 2px;
@@ -520,7 +520,7 @@ aside.td-sidebar {
 
             > ul {
               padding-left: 12px;
-              width: 100%;
+			  width:100%;
 
               > li {
                 &.submenu i {
@@ -535,6 +535,10 @@ aside.td-sidebar {
                 > ul {
                   padding-left: 15px;
                   border-left: 1px solid var(--theme-color);
+				  
+				  > ul{
+					padding-left: 15px;
+				  }
                 }
 
                 &.open > i::before {
@@ -543,17 +547,19 @@ aside.td-sidebar {
                   line-height: 12px;
                   padding-left: 1px;
                 }
-
-                a {
-                  font-size: 14px;
-                }
-
+				a{
+					font-size:14px;
+					
+				}
                 li.open > i::before {
                   content: "-";
                   font-size: 16px;
                   line-height: 12px;
                   padding-left: 1px;
                 }
+				&.open ul{
+					padding-left:15px;
+				}
               }
             }
 
@@ -561,8 +567,8 @@ aside.td-sidebar {
               > a {
                 max-width: calc(100% - 20px);
                 padding-left: 0;
-                padding: 0;
-                line-height: normal;
+				padding: 0px;
+				line-height: normal;
               }
 
               &:not(.open) > ul {
@@ -675,35 +681,31 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li {
   border-bottom: 1px solid rgba(209, 214, 223, 0.3);
   padding: 0;
 }
-
-aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu {
-  display: flex;
-  align-items: center;
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu{
+	display: flex;
+    align-items: center;
+}
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a{
+    padding: 8px 0 8px 5px;
+    line-height: 23.3px;
+	max-width: calc(100% - 23px);
 }
 
-aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a {
-  padding: 8px 0 8px 5px;
-  line-height: 23.3px;
-  max-width: calc(100% - 23px);
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i{
+	top:inherit;
+	background: none;
+	margin-left:0px;
 }
-
-aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i {
-  top: inherit;
-  background: none;
-  margin-left: 0;
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i:before{
+    width: 100%;
+    transform: none;
+    top: 2px;
+    height: 2px;
+    background: #666!important;
+    content: '';
+    left: 0;
+    border: none;
 }
-
-aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i::before {
-  width: 100%;
-  transform: none;
-  top: 2px;
-  height: 2px;
-  background: #666 !important;
-  content: '';
-  left: 0;
-  border: none;
-}
-
 aside.td-sidebar nav > ul > li.unlink-list > ul {
   padding-left: 0;
 }
@@ -735,7 +737,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li > a.current + i {
   background: none;
   margin-left: 0;
   top: inherit !important;
-  border-color: var(--theme-color);
+  border-color:var(--theme-color);
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
@@ -752,38 +754,32 @@ aside.td-sidebar nav > ul > li.unlink-list li > a.current + i::before {
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul {
   padding-left: 12px;
 }
-
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul > li > a,
 aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > a {
-  font-size: 15.5px;
-  padding-top: 0;
-  padding-bottom: 0;
-  padding-left: 5px;
+	font-size:15.5px;
+	padding-top:0px;
+	padding-bottom:0px;
+	padding-left:5px;
 }
-
-aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul > li.submenu > i {
-  border: none;
-}
-
+aside.td-sidebar nav > ul > li.unlink-list > ul > li > ul > li.submenu > i{
+	border: none;
+} 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i {
   border-color: rgb(247, 88, 33);
 }
 
-aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul {
-  border-left: 0;
-  padding-top: 6px;
+aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul{
+	border-left:0px;
+	    padding-top: 6px;
 }
-
-aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul > li {
-  padding: 0;
+aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul > li{
+	    padding: 0px;
 }
-
-aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul > li > a {
-  padding: 4px 0 4px 5px;
+aside.td-sidebar nav > ul > li.submenu.unlink-list > ul > li > ul > li > ul > li > a{
+	    padding: 4px 0 4px 5px;
 }
-
-aside.td-sidebar nav > ul > li.unlink-list > ul > li:last-child {
-  border-bottom: 0;
+aside.td-sidebar nav > ul > li.unlink-list > ul > li:last-child{
+border-bottom:0px;
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
@@ -791,12 +787,10 @@ aside.td-sidebar nav > ul > li.unlink-list li.open > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::before {
   background: var(--theme-color) !important;
 }
-
-aside.td-sidebar nav > ul > li.unlink-list > ul > li > a,
-aside.td-sidebar nav > ul li.submenu.unlink-list > ul > li > a {
-  padding: 8px 0 8px 5px;
-  line-height: 23.3px;
-  max-width: calc(100% - 18px);
+aside.td-sidebar nav > ul > li.unlink-list > ul > li > a, aside.td-sidebar nav > ul li.submenu.unlink-list > ul > li > a {
+    padding: 8px 0 8px 5px;
+    line-height: 23.3px;
+    max-width: calc(100% - 18px);
 }
 
 aside.td-sidebar nav > ul > li.view-all-products::before {
@@ -814,34 +808,29 @@ aside.td-sidebar nav > ul > li.view-all-products {
   padding-top: 4px;
   border-top: 1px solid #aaa !important;
 }
-
 li.section.back-arrow {
-  padding: 4px 0;
+    padding: 4px 0px;
 }
-
-li.section.back-arrow::before {
-  content: '';
-  width: 8px;
-  height: 8px;
-  border: 2px solid #666;
-  position: absolute;
-  transform: rotate(45deg);
-  left: 2px;
-
-  /* border-radius: 5px; */
-  border-right: 0;
-  border-top: 0;
-  top: 20px;
+li.section.back-arrow:before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border: 2px solid #666;
+    position: absolute;
+    transform: rotate(45deg);
+    left: 2px;
+    /* border-radius: 5px; */
+    border-right: 0px;
+    border-top: 0px;
+    top: 20px;
 }
-
-li.section.back-arrow a {
-  padding-left: 18px !important;
+li.section.back-arrow a{
+	padding-left: 18px !important;
 }
-
-li.section.back-arrow:hover::before {
-  border-color: var(--theme-color);
+li.section.back-arrow:hover:before {
+	border-color:var(--theme-color);
 }
-
+    
 aside.td-sidebar nav > ul > li.view-all-products > {
   a {
     padding-left: 5px !important;
@@ -873,7 +862,7 @@ aside.td-sidebar nav > ul > li.view-all-products > {
 
   ul {
     padding-left: 17px;
-    margin-top: 15px;
+	margin-top:15px;
 
     li {
       display: block;
@@ -941,7 +930,7 @@ aside.td-sidebar nav > ul > li.view-all-products > {
         }
 
         &:last-child a {
-          padding-left: 0;
+          padding-left: 0px;
         }
       }
     }
