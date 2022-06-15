@@ -796,7 +796,7 @@ Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
            "Attempted to restart when session does not require restart");
 
     const auto old_read_time = session->read_point()->GetReadTime();
-    session->SetReadPoint(client::Restart::kTrue);
+    session->RestartNonTxnReadPoint(client::Restart::kTrue);
     const auto new_read_time = session->read_point()->GetReadTime();
     VLOG_WITH_PREFIX(3) << "Restarted read: " << old_read_time << " => " << new_read_time;
     LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)
