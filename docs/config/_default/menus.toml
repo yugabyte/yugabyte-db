@@ -102,8 +102,10 @@
 [[main]]
   name = "Misc"
   weight = 13
-  url = "/yedis/"
+  url = "/preview/yedis/"
   parent = "documentation"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "View all products"
@@ -479,6 +481,18 @@
     showSection = true
 
 [[stable]]
+  name = "YEDIS"
+  weight = 1
+  url = "/preview/yedis/"
+  parent = "misc"
+
+[[stable]]
+  name = "Legal"
+  weight = 2
+  url = "/preview/legal/"
+  parent = "misc"
+
+[[stable]]
   name = "View all products"
   weight = 14
   identifier = "view-all-products"
@@ -611,6 +625,18 @@
   identifier = "misc"
   ["v2.8".params]
     showSection = true
+
+[["v2.8"]]
+  name = "YEDIS"
+  weight = 1
+  url = "/preview/yedis/"
+  parent = "misc"
+
+[["v2.8"]]
+  name = "Legal"
+  weight = 2
+  url = "/preview/legal/"
+  parent = "misc"
 
 [["v2.8"]]
   name = "View all products"
