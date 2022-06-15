@@ -333,6 +333,8 @@ Status PgTxnManager::RestartTransaction() {
 /* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
+  read_time_for_follower_reads_ = HybridTime();
+  RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   return Status::OK();
 }
 
