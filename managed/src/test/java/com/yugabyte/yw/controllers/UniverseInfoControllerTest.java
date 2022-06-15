@@ -220,29 +220,16 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     String jsonMsg =
         "{\"ysql\":{\"errorCount\":0,\"queries\":[]},"
             + "\"ycql\":{\"errorCount\":0,\"queries\":[]}}";
-    when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("foo-bar")))
-        .thenReturn(Json.parse(jsonMsg));
-    when(mockQueryHelper.slowQueries(any(), eq("yugabyte"), eq("yugabyte")))
-        .thenThrow(new PlatformServiceException(BAD_REQUEST, "Incorrect Username or Password"));
+    when(mockQueryHelper.slowQueries(any())).thenReturn(Json.parse(jsonMsg));
     Universe u = createUniverse(customer.getCustomerId());
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/slow_queries";
     Map<String, String> fakeRequestHeaders = new HashMap<>();
     fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
-    fakeRequestHeaders.put("ysql-username", "yugabyte");
-    fakeRequestHeaders.put("ysql-password", Util.encodeBase64("foo-bar"));
 
     Result result = doRequestWithCustomHeaders("GET", url, fakeRequestHeaders);
     assertOk(result);
     assertEquals(jsonMsg, contentAsString(result));
-
-    fakeRequestHeaders.clear();
-    fakeRequestHeaders.put("X-AUTH-TOKEN", authToken);
-    fakeRequestHeaders.put("ysql-username", "yugabyte");
-    fakeRequestHeaders.put("ysql-password", Util.encodeBase64("yugabyte"));
-
-    result =
-        assertPlatformException(() -> doRequestWithCustomHeaders("GET", url, fakeRequestHeaders));
   }
 
   @Test
