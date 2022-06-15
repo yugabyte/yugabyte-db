@@ -20,8 +20,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
@@ -32,6 +30,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
@@ -73,7 +72,6 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.Environment;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(JUnitParamsRunner.class)
 public class HealthCheckerTest extends FakeDBApplication {
@@ -87,10 +85,8 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private HealthChecker healthChecker;
 
-  @Mock private ActorSystem mockActorSystem;
   @Mock private play.Configuration mockConfig;
-  @Mock private ExecutionContext mockExecutionContext;
-  @Mock private Scheduler mockScheduler;
+  @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private ExecutorService executorService;
 
   private Customer defaultCustomer;
@@ -120,8 +116,6 @@ public class HealthCheckerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
-
-    when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
 
     ShellResponse dummyShellResponse =
         ShellResponse.create(
@@ -167,9 +161,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker =
         new HealthChecker(
             app.injector().instanceOf(Environment.class),
-            mockActorSystem,
             mockConfig,
-            mockExecutionContext,
+            mockPlatformScheduler,
             report,
             mockEmailHelper,
             metricService,

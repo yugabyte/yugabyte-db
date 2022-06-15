@@ -12,23 +12,20 @@ package com.yugabyte.yw.common.metrics;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 
-import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -38,13 +35,7 @@ public class PlatformMetricsProcessor {
 
   private static final int YB_CLEAN_CONFIGS_INTERVAL_HOUR = 1;
 
-  private final AtomicBoolean running = new AtomicBoolean(false);
-
-  private final AtomicBoolean cleanupRunning = new AtomicBoolean(false);
-
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final MetricService metricService;
 
@@ -54,42 +45,31 @@ public class PlatformMetricsProcessor {
 
   @Inject
   public PlatformMetricsProcessor(
-      ActorSystem actorSystem,
-      ExecutionContext executionContext,
+      PlatformScheduler platformScheduler,
       MetricService metricService,
       UniverseMetricProvider universeMetricProvider,
       SwamperHelper swamperHelper) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.metricService = metricService;
     this.swamperHelper = swamperHelper;
     this.metricsProviderList.add(universeMetricProvider);
   }
 
   public void start() {
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.Zero(),
-            Duration.create(YB_PROCESS_METRICS_INTERVAL_MIN, TimeUnit.MINUTES),
-            this::scheduleRunner,
-            this.executionContext);
-
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.Zero(),
-            Duration.create(YB_CLEAN_CONFIGS_INTERVAL_HOUR, TimeUnit.HOURS),
-            this::scheduleCleanup,
-            this.executionContext);
+    platformScheduler.schedule(
+        "yb-process-metrics",
+        Duration.ZERO,
+        Duration.ofMinutes(YB_PROCESS_METRICS_INTERVAL_MIN),
+        this::scheduleRunner);
+    platformScheduler.schedule(
+        "yb-clean-configs",
+        Duration.ZERO,
+        Duration.ofMinutes(YB_CLEAN_CONFIGS_INTERVAL_HOUR),
+        this::scheduleCleanup);
   }
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of metrics processor is still underway");
-      return;
-    }
     try {
       updateMetrics();
       cleanExpiredMetrics();
@@ -98,22 +78,15 @@ public class PlatformMetricsProcessor {
     } finally {
       metricService.setFailureStatusMetric(
           buildMetricTemplate(PlatformMetrics.METRIC_PROCESSOR_STATUS));
-      running.set(false);
     }
   }
 
   @VisibleForTesting
   void scheduleCleanup() {
-    if (!cleanupRunning.compareAndSet(false, true)) {
-      log.info("Previous run of swamper targets cleanup is still underway");
-      return;
-    }
     try {
       cleanOrphanedSwamperTargets();
     } catch (Exception e) {
       log.error("Error cleaning swamper targets", e);
-    } finally {
-      cleanupRunning.set(false);
     }
   }
 

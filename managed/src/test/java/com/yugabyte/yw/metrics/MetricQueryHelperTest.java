@@ -9,8 +9,10 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.AllOf.allOf;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -21,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.metrics.data.AlertData;
@@ -34,6 +37,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matchers;
 import org.hamcrest.core.IsInstanceOf;
@@ -42,8 +47,8 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -53,6 +58,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock play.Configuration mockAppConfig;
 
+  @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
+
   MetricConfig validMetric;
 
   @Before
@@ -60,10 +67,15 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     JsonNode configJson = Json.parse("{\"metric\": \"my_valid_metric\", \"function\": \"sum\"}");
     validMetric = MetricConfig.create("valid_metric", configJson);
     validMetric.save();
+    ExecutorService executor = Executors.newFixedThreadPool(1);
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+    when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
+        .thenReturn(executor);
 
     MetricUrlProvider metricUrlProvider = new MetricUrlProvider(mockAppConfig);
-    metricQueryHelper = new MetricQueryHelper(mockAppConfig, mockApiHelper, metricUrlProvider);
+    metricQueryHelper =
+        new MetricQueryHelper(
+            mockAppConfig, mockApiHelper, metricUrlProvider, mockPlatformExecutorFactory);
   }
 
   @Test
