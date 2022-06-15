@@ -46,10 +46,10 @@ To collect or update statistics, run the ANALYZE command manually.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/analyze,table_and_columns.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/analyze,table_and_columns.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/analyze,table_and_columns.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/analyze,table_and_columns.diagram.md" %}}
   </div>
 </div>
 

@@ -36,10 +36,10 @@ Use the `ROLLBACK` statement to roll back the current transactions. All changes 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/rollback.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/rollback.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/rollback.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/rollback.diagram.md" %}}
   </div>
 </div>
 

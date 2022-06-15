@@ -34,10 +34,10 @@ Use the `UPDATE` statement to modify the values of specified columns in all rows
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/update,returning_clause,update_item,column_values,column_names.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/update,returning_clause,update_item,column_values,column_names.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/update,returning_clause,update_item,column_values,column_names.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/update,returning_clause,update_item,column_values,column_names.diagram.md" %}}
   </div>
 </div>
 

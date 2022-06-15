@@ -34,10 +34,10 @@ Use the `VALUES` statement to generate a row set specified as an explicitly writ
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/values,expression_list.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/values,expression_list.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/values,expression_list.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/values,expression_list.diagram.md" %}}
   </div>
 </div>
 
@@ -53,7 +53,7 @@ values ('dog'::text);
 This is the result:
 
 ```
- column1 
+ column1
 ---------
  dog
 ```
@@ -68,7 +68,7 @@ values
 This is the result:
 
 ```
- column1 |       column2       | column3 
+ column1 |       column2       | column3
 ---------+---------------------+---------
        1 | 2019-06-25 12:05:30 | dog
        2 | 2020-07-30 13:10:45 | cat
@@ -117,7 +117,7 @@ select chr(v) as c from (
 This is the result:
 
 ```
- c 
+ c
 ---
  a
  b
@@ -137,7 +137,7 @@ select chr(v) as c from (
 This is the result:
 
 ```
- c 
+ c
 ---
  d
  o

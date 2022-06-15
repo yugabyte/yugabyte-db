@@ -63,7 +63,7 @@ Notice that the parentheses that surround the _non-recursive term_ and the _recu
 This is the result:
 
 ```
- n 
+ n
 ---
  1
  2
@@ -95,10 +95,10 @@ The `WITH` clause syntax (see the section [WITH clause—SQL syntax and semantic
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" %}}
   </div>
 </div>
 
@@ -142,7 +142,7 @@ order by n desc;
 This is the result:
 
 ```
- n  
+ n
 ----
  99
  42
@@ -193,7 +193,7 @@ a1(n) as (
 then the statement executes without error to produce this result:
 
 ```
- n  
+ n
 ----
  99
   5
@@ -234,7 +234,7 @@ select n from r order by n;
 Notice that this is simply a _syntax_ example. Using `WITH` clauses within the recursive and non-recursive terms brings no value. The statement executes without error and produces this result:
 
 ```
- n 
+ n
 ---
  1
  2
@@ -306,7 +306,7 @@ select n from r order by n;
 This is the results:
 
 ```
- n 
+ n
 ---
  1
  2
@@ -339,15 +339,15 @@ A compact, and exact, formulation is given by using pseudocode. The _"RECURSIVE_
 > - **while the WORKING_RESULTS table is not empty loop**
 >
 >   - **Purge the TEMP_RESULTS table.**
->   
+>
 >   - **Evaluate the recursive term using the current contents of the WORKING_RESULTS table for the recursive self-reference, inserting the resulting rows into the TEMP_RESULTS table.**
->   
+>
 >   - **Purge the WORKING_RESULTS table and insert the contents of the TEMP_RESULTS table.**
->   
+>
 >   - **Append the contents of the TEMP_RESULTS table into the RECURSIVE_CTE_RESULTS table.**
->   
+>
 >- **end loop**
-> 
+>
 >- **Deliver the present contents of the RECURSIVE_CTE_RESULTS table as the final result.**
 
 ### PL/pgSQL procedure implementation of the pseudocode : example 1
@@ -436,24 +436,24 @@ select c1, c2 from r order by c1, c2;
 This is the result:
 
 ```
- c1 | c2 
+ c1 | c2
 ----+----
   0 |  1
   0 |  2
   0 |  3
-  
+
   1 |  2
   1 |  3
   1 |  4
-  
+
   2 |  3
   2 |  4
   2 |  5
-  
+
   3 |  4
   3 |  5
   3 |  6
-  
+
   4 |  5
   4 |  6
   4 |  7

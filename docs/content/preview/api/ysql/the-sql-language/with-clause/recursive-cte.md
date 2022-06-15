@@ -95,10 +95,10 @@ The `WITH` clause syntax (see the section [WITH clause—SQL syntax and semantic
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause.diagram.md" %}}
   </div>
 </div>
 
