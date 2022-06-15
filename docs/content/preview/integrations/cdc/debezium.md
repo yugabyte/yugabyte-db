@@ -131,7 +131,7 @@ If you have an SSL enabled cluster, you need to provide the path to the root cer
 
 **In case of SSL enabled YugabyteDB cluster, follow these steps:**
 
-* Copy the certificate file to your docker container (assuming that the file exists on the root directory of your machine)
+* Copy the certificate file to your Docker container (assuming that the file exists on the root directory of your machine)
 
 ```sh
 docker cp ~/root.crt connect:/kafka/
