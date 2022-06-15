@@ -125,7 +125,7 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
 
 {{< note title="Note" >}}
 
-In case you have a SSL enabled cluster, you need to provide the root certificate to the `database.sslrootcert` configuration property as well.
+If you have an SSL enabled cluster, you need to provide the path to the root certificate in the `database.sslrootcert` configuration property.
 
 {{< /note >}}
 
