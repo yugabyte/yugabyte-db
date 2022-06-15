@@ -174,10 +174,10 @@ public class UniverseInfoHandler {
     return resultNode;
   }
 
-  public JsonNode getSlowQueries(Universe universe, String username, String password) {
+  public JsonNode getSlowQueries(Universe universe) {
     JsonNode resultNode;
     try {
-      resultNode = queryHelper.slowQueries(universe, username, password);
+      resultNode = queryHelper.slowQueries(universe);
     } catch (IllegalArgumentException e) {
       log.error(e.getMessage(), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
