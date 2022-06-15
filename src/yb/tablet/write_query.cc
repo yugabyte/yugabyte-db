@@ -358,7 +358,8 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
   TransactionOperationContext txn_op_ctx;
 
   auto& metadata = *tablet().metadata();
-  bool colocated = metadata.colocated();
+  // Colocated via DB/tablegroup/syscatalog.
+  bool colocated = metadata.colocated() || tablet().is_sys_catalog();
 
   for (const auto& req : pgsql_write_batch) {
     PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
