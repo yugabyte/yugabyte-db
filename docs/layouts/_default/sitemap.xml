@@ -2,9 +2,10 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   {{ range .Data.Pages }}
   {{ range where .Pages "Section" "preview" }}
+  {{- if or (eq (isset .Params "sitemapexclude") false) (ne .Params.sitemapExclude true) }}
     <url>
 <loc>{{ .Permalink }}</loc>{{ if not .Lastmod.IsZero }}
 <lastmod>{{ safeHTML ( .Lastmod.Format "2006-01-02" ) }}</lastmod>{{ end }}
     </url>
-  {{ end }}{{ end }}
+  {{- end }}{{ end }}{{ end }}
 </urlset>
