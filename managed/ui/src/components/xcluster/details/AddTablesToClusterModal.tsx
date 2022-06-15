@@ -24,7 +24,7 @@ interface Props {
 
 export function AddTablesToClusterModal({ visible, onHide, replication }: Props) {
   const { data: tables, isLoading: isTablesLoading } = useQuery(
-    [replication.sourceUniverseUUID, 'tables'],
+    ['xcluster', replication.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
   );
 
