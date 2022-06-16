@@ -364,8 +364,8 @@ public class CloudProviderHandler {
     return hasKubeConfig;
   }
 
-  public boolean updateCloudProviderConfig(Provider provider, Map<String, String> config) {
-    Map<String, String> newConfig = null;
+  private void updateProviderConfig(Provider provider, Map<String, String> config) {
+    Map<String, String> newConfig = config;
     if ("gcp".equals(provider.code)) {
       // Remove the key to avoid generating a credentials file unnecessarily.
       config.remove(GCPCloudImpl.GCE_HOST_PROJECT_PROPERTY);
@@ -385,15 +385,9 @@ public class CloudProviderHandler {
           newConfig.put(GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY, gcpCredentialsFile);
         }
       }
-    } else if ("aws".equals(provider.code) || "azu".equals(provider.code)) {
-      newConfig = config;
     }
-    if (MapUtils.isNotEmpty(newConfig)) {
-      provider.setConfig(newConfig);
-      provider.save();
-      return true;
-    }
-    return false;
+    provider.setConfig(newConfig);
+    provider.save();
   }
 
   public void createKubernetesInstanceTypes(Customer customer, Provider provider) {
@@ -775,7 +769,8 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.code.toUpperCase()));
     }
-    return updateCloudProviderConfig(provider, providerConfig);
+    updateProviderConfig(provider, providerConfig);
+    return true;
   }
 
   private void validateAndUpdateHostedZone(Provider provider, String hostedZoneId) {
