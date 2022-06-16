@@ -397,7 +397,7 @@ class TransactionParticipant::Impl
       auto it = transactions_.find(id);
 
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
-        OpId op_id = (**it).GetOpId();
+        OpId op_id = (**it).GetApplyOpId();
 
         // If transaction op_id is greater than the CDCSDK checkpoint op_id.
         // don't clean the intent as well as intent after this.
@@ -580,7 +580,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (lock_and_iterator.found()) {
-      lock_and_iterator.transaction().SetOpId(data.op_id);
+      lock_and_iterator.transaction().SetApplyOpId(data.op_id);
       if (!apply_state.active()) {
         RemoveUnlocked(lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else {
@@ -638,10 +638,14 @@ class TransactionParticipant::Impl
         cleanup_cache_.Insert(data.transaction_id);
         return Status::OK();
       }
-    } else if ((**it).ProcessingApply()) {
-      VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
-                          << data.transaction_id;
-      return Status::OK();
+    } else {
+      transactions_.modify(it, [&data](auto& txn) { txn->SetApplyOpId(data.op_id); });
+
+      if ((**it).ProcessingApply()) {
+        VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
+                            << data.transaction_id;
+        return Status::OK();
+      }
     }
 
     if (cleanup_type == CleanupType::kGraceful) {
@@ -1170,8 +1174,7 @@ class TransactionParticipant::Impl
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     TransactionId txn_id = (**it).id();
     OpId checkpoint_op_id = GetLatestCheckPoint();
-    auto itr = transactions_.find(txn_id);
-    OpId op_id = (**itr).GetOpId();
+    OpId op_id = (**it).GetApplyOpId();
 
     if (running_requests_.empty() && op_id < checkpoint_op_id) {
       (**it).ScheduleRemoveIntents(*it);
@@ -1793,7 +1796,7 @@ void TransactionParticipant::SetIntentRetainOpIdAndTime(
   impl_->SetIntentRetainOpIdAndTime(op_id, cdc_sdk_op_id_expiration);
 }
 
-OpId TransactionParticipant::TEST_GetRetainOpId() const {
+OpId TransactionParticipant::GetRetainOpId() const {
   return impl_->GetRetainOpId();
 }
 
