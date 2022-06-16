@@ -250,6 +250,7 @@ class LogTestBase : public YBTest {
     if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
       ASSERT_TRUE(!txn_id.IsNil());
       replicate->mutable_transaction_state()->set_status(txn_status);
+      replicate->mutable_transaction_state()->set_transaction_id(txn_id.data(), txn_id.size());
     } else if (op_type == consensus::OperationType::WRITE_OP) {
       if (writes.empty()) {
         const int opid_index_as_int = static_cast<int>(opid.index());
