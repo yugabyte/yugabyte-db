@@ -93,22 +93,22 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
   - Sudo user requires a password.
   - The SSH user is not a sudo user.
 
-- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances. 
+- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
 
-  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`. 
+  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
 
 - Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
-- Optionally, you may enable **Advanced** and complete the following: 
+- Optionally, you may enable **Advanced** and complete the following:
 
   - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
   - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
   - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
   - The **Node Exporter User** field allows you to override the default Prometheus user. This is useful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
-  
+
 - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
   - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### Configure hardware for YugabyteDB nodes
@@ -579,11 +579,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    After=network.target network-online.target multi-user.target
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/master/bin/yb-master
    PathExists=/home/yugabyte/master/conf/server.conf
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
@@ -604,7 +604,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    LimitCORE=infinity
    LimitNOFILE=1048576
    LimitNPROC=12000
-   
+
    [Install]
    WantedBy=default.target
    ```
@@ -620,11 +620,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    After=network.target network-online.target multi-user.target
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/tserver/bin/yb-tserver
    PathExists=/home/yugabyte/tserver/conf/server.conf
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
@@ -645,7 +645,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    LimitCORE=infinity
    LimitNOFILE=1048576
    LimitNPROC=12000
-   
+
    [Install]
    WantedBy=default.target
    ```
@@ -656,14 +656,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte logs
    Wants=yb-zip_purge_yb_logs.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -676,14 +676,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte logs
    Requires=yb-zip_purge_yb_logs.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-zip_purge_yb_logs.service
    # Run hourly at minute 0 (beginning) of every hour
    OnCalendar=00/1:00
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -696,14 +696,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte clean cores
    Wants=yb-clean_cores.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -716,14 +716,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte clean cores
    Requires=yb-clean_cores.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-clean_cores.service
    # Run every 10 minutes offset by 5 (5, 15, 25...)
    OnCalendar=*:0/10:30
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -736,14 +736,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte collect metrics
    Wants=yb-collect_metrics.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -756,21 +756,21 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte collect metrics
    Requires=yb-collect_metrics.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-collect_metrics.service
    # Run every 1 minute
    OnCalendar=*:0/1:0
-   
+
    [Install]
    WantedBy=timers.target
    ```
 
 ## Remove YugabyteDB components from the server
 
-As described in [Eliminate an unresponsive node](../../../create-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
+As described in [Eliminate an unresponsive node](../../../manage-deployments/remove-nodes/), when a node enters an undesirable state, you can delete such node, with YugabyteDB Anywhere clearing up all the remaining artifacts except the `prometheus` and `yugabyte` user.
 
 You can manually remove Yugabyte components from existing server images. Before attempting this, you have to determine whether or not YugabyteDB Anywhere is operational. If it is, you either need to delete the universe or delete the nodes from the universe.
 
