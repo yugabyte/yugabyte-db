@@ -13,10 +13,10 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
-import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
+import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -175,12 +175,32 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
+  void mergeResizeNodeParamsWithIntent(ResizeNodeParams requestParams, Universe universe) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+    requestParams.rootCA = universeDetails.rootCA;
+    requestParams.clientRootCA = universeDetails.clientRootCA;
+    // Merging existent intent with that of from request.
+    for (UniverseDefinitionTaskParams.Cluster requestCluster : requestParams.clusters) {
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universeDetails.getClusterByUuid(requestCluster.uuid);
+      UserIntent requestIntent = requestCluster.userIntent;
+      requestCluster.userIntent = cluster.userIntent;
+      if (requestIntent.instanceType != null) {
+        requestCluster.userIntent.instanceType = requestIntent.instanceType;
+      }
+      if (requestIntent.deviceInfo != null && requestIntent.deviceInfo.volumeSize != null) {
+        requestCluster.userIntent.deviceInfo.volumeSize = requestIntent.deviceInfo.volumeSize;
+      }
+    }
+  }
+
   public UUID resizeNode(ResizeNodeParams requestParams, Customer customer, Universe universe) {
     // Verify request params
     requestParams.verifyParams(universe);
     // Update request params with additional metadata for upgrade task
-    requestParams.universeUUID = universe.universeUUID;
-    requestParams.expectedUniverseVersion = universe.version;
+    mergeResizeNodeParamsWithIntent(requestParams, universe);
 
     return submitUpgradeTask(
         TaskType.ResizeNode, CustomerTask.TaskType.ResizeNode, requestParams, customer, universe);
