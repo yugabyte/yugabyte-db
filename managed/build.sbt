@@ -379,7 +379,6 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "0.0.1"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:

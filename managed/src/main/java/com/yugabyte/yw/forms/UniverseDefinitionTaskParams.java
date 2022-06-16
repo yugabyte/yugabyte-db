@@ -150,8 +150,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // backward compatability.
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
 
-  @ApiModelProperty public boolean useYbcForBackups = false;
-
   /** Allowed states for an imported universe. */
   public enum ImportedState {
     NONE, // Default, and for non-imported universes.
@@ -371,8 +369,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
 
-    @ApiModelProperty public String ybcPackagePath = null;
-
     @Constraints.Required() @ApiModelProperty public String accessKeyCode;
 
     @ApiModelProperty public DeviceInfo deviceInfo;
@@ -482,7 +478,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
-      newUserIntent.ybcPackagePath = ybcPackagePath;
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
@@ -514,7 +509,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && instanceType.equals(other.instanceType)
           && numNodes == other.numNodes
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (ybcPackagePath == null || ybcPackagePath.equals(other.ybcPackagePath))
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
@@ -535,7 +529,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && instanceType.equals(other.instanceType)
           && numNodes == other.numNodes
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (ybcPackagePath == null || ybcPackagePath.equals(other.ybcPackagePath))
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
