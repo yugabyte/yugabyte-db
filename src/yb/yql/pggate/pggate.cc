@@ -22,6 +22,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include <ev++.h>
+
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
@@ -53,6 +55,7 @@
 #include "yb/util/range.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/status_format.h"
+#include "yb/util/thread.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_ddl.h"
@@ -379,6 +382,53 @@ PgApiContext::~PgApiContext() = default;
 
 //--------------------------------------------------------------------------------------------------
 
+// Helper class to shutdown RPC messenger in async-signal-safe manner.
+// On interrupt request class resumes separate thread is async-signal-safe manner to perform
+// non-async-signal-safe messenger shutdown.
+class PgApiImpl::Interrupter {
+ public:
+  explicit Interrupter(rpc::Messenger* messenger)
+      : messenger_(*messenger) {
+  }
+
+  ~Interrupter() {
+    if (thread_) {
+      Interrupt();
+      CHECK_OK(ThreadJoiner(thread_.get()).Join());
+      thread_.reset();
+    }
+  }
+
+  Status Start() {
+    async_.set(loop_);
+    async_.set<Interrupter, &Interrupter::AsyncHandler>(this);
+    async_.start();
+    return yb::Thread::Create(
+        "pgapi interrupter", "pgapi interrupter", &Interrupter::RunThread, this, &thread_);
+  }
+
+  void Interrupt() {
+    async_.send();
+  }
+
+ private:
+  void AsyncHandler(ev::async& async, int events) { // NOLINT
+    messenger_.Shutdown();
+    loop_.break_loop();
+  }
+
+  void RunThread() {
+    loop_.run();
+  }
+
+  rpc::Messenger& messenger_;
+  ev::dynamic_loop loop_;
+  ev::async async_;
+  scoped_refptr<yb::Thread> thread_;
+};
+
+//--------------------------------------------------------------------------------------------------
+
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
     YBCPgCallbacks callbacks)
@@ -386,6 +436,7 @@ PgApiImpl::PgApiImpl(
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
       messenger_holder_(std::move(context.messenger_holder)),
+      interrupter_(new Interrupter(messenger_holder_.messenger.get())),
       proxy_cache_(std::move(context.proxy_cache)),
       clock_(new server::HybridClock()),
       tserver_shared_object_(InitTServerSharedObject()),
@@ -393,6 +444,7 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
+  CHECK_OK(interrupter_->Start());
   if (pg_callbacks_.YbPgMemUpdateMax) {
     mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
   }
@@ -411,9 +463,13 @@ PgApiImpl::PgApiImpl(
 }
 
 PgApiImpl::~PgApiImpl() {
-  messenger_holder_.messenger->Shutdown();
+  interrupter_.reset();
   pg_txn_manager_.reset();
   pg_client_.Shutdown();
+}
+
+void PgApiImpl::Interrupt() {
+  interrupter_->Interrupt();
 }
 
 const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {

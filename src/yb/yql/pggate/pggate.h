@@ -98,6 +98,8 @@ class PgApiImpl {
     return &pg_callbacks_;
   }
 
+  // Interrupt aborts all pending RPCs immediately to unblock main thread.
+  void Interrupt();
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -577,6 +579,8 @@ class PgApiImpl {
   const MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
+  class Interrupter;
+
   // Control variables.
   PggateOptions pggate_options_;
 
@@ -588,6 +592,7 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
+  std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
