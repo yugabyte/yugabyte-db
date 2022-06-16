@@ -832,6 +832,17 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
             }
           }
         }
+        if (index <= intents_flushed_index && op_id >= first_op_id_of_segment_to_replay) {
+          // We replay Update transactions having an APPLY record even if their intents were only
+          // flushed to intents db.
+          if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
+            bool replay = batch_data.txn_status == TransactionStatus::APPLYING;
+            if (replay) {
+              replayed.push_back(op_id);
+              replayed_to_intents_only.push_back(op_id);
+            }
+          }
+        }
       } else {
         // This operation was never committed. Mark it as "overwritable", meaning it _could_ be
         // overwritten as part of tablet bootstrap, but is not guaranteed to be.
