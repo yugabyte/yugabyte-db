@@ -7,12 +7,14 @@ import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageBatch;
 import com.google.cloud.storage.StorageBatchResult;
 import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Inject;
+import com.google.cloud.storage.Storage.BucketListOption;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
@@ -24,6 +26,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Iterator;
+import java.util.Spliterator;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -174,5 +178,25 @@ public class GCPUtil implements CloudUtil {
     Map<String, String> gcsCredsMap = new HashMap<>();
     gcsCredsMap.put(YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME, gcsData.gcsCredentialsJson);
     return gcsCredsMap;
+  }
+
+  public List<String> listBuckets(CustomerConfigData configData) {
+    List<String> bucketList = new ArrayList<>();
+    try {
+      CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+      if (StringUtils.isBlank(gcsData.gcsCredentialsJson)) {
+        return bucketList;
+      }
+      Storage gcsClient = getStorageService(gcsData);
+      BucketListOption options = BucketListOption.pageSize(100);
+      Page<Bucket> buckets = gcsClient.list(options);
+      Iterator<Bucket> bucketIterator = buckets.iterateAll().iterator();
+      bucketIterator.forEachRemaining(bI -> bucketList.add(bI.getName()));
+    } catch (StorageException e) {
+      log.error("Error retrieving list of buckets");
+    } catch (IOException e) {
+      log.error("Error creating GCS client");
+    }
+    return bucketList;
   }
 }

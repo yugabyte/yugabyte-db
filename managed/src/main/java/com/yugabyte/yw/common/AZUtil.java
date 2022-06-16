@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -171,5 +172,10 @@ public class AZUtil implements CloudUtil {
     azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
     azCredsMap.put(YBC_AZURE_STORAGE_END_POINT_FIELDNAME, azureContainerUrl);
     return azCredsMap;
+  }
+
+  public List<String> listBuckets(CustomerConfigData configData) {
+    // TODO Auto-generated method stub
+    return new ArrayList<>();
   }
 }
