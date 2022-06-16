@@ -1613,8 +1613,13 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
 
     VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
-            << ", checkpoint: " << checkpoint << ", last replicated time: "
-            << last_replicated_time_str;
+            << ", checkpoint: " << checkpoint
+            << ", last replicated time: " << last_replicated_time_str;
+
+    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
+    if (checkpoint == OpId::Max().ToString()) {
+      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+    }
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
     if (checkpoint == OpId::Max().ToString()) {
@@ -1624,8 +1629,12 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     CoarseTimePoint latest_active_time = CoarseTimePoint ::min();
     auto get_stream_metadata = GetStream(stream_id);
     if (!get_stream_metadata.ok()) {
-      // Give dummy entry in tablet_min_checkpoint_map for the tablet, if tablet is
-      // Associated with a single stream.
+      LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
+                   << get_stream_metadata.status();
+      // Read stream_id from cdc_state table not found in the master cache, it mean's stream
+      // is deleted. To update the corresponding tablet PEERs, give an entry in
+      // tablet_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
+      // OpId::Max()(i.e no need to retain the intents.)
       if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
         auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
         tablet_info.cdc_op_id = OpId::Max();
@@ -1657,8 +1666,11 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     if (record.source_type == CDCSDK) {
       auto status = impl_->CheckStreamActive(producer_tablet);
       if (!status.ok()) {
-        // Give dummy entry in tablet_min_checkpoint_map for the tablet, if tablet is
-        // Associated with a single stream.
+        // Inactive stream read from cdc_state table are not considered for the minimum
+        // cdc_sdk_op_id calculation except if tablet is associated with a single stream, This is
+        // required to update the cdc_sdk_op_id_expiration in the tablet_min_checkpoint_map for the
+        // corresponding tablet, so that the tablet PEERS will be updated with
+        // cdc_sdk_min_checkpoint_op_id_expiration_ as EXPIRED.
         if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
           auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
           tablet_info.cdc_op_id = *result;

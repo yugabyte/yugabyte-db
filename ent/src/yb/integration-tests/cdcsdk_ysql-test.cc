@@ -228,7 +228,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           return false;
         },
         MonoDelta::FromSeconds(60),
-        "cdc_sdk_min_checkpoint_op_id doesn't match with expected op_id."));
+        "The cdc_sdk_min_checkpoint_op_id doesn't match with expected op_id."));
   }
 
   Status DropDB(Cluster* cluster) {
