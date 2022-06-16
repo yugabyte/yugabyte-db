@@ -2,7 +2,7 @@
 title: Enable YugabyteDB Anywhere authentication via LDAP
 headerTitle: Enable YugabyteDB Anywhere authentication via LDAP
 description: Use LDAP to enable login to YugabyteDB Anywhere.
-linkTitle: Authenticate with LDAP
+linkTitle: Configure authentication
 menu:
   preview_yugabyte-platform:
     identifier: ldap-authentication
@@ -10,6 +10,22 @@ menu:
     weight: 20
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="../oidc-authentication/" class="nav-link">
+      <i class="fas fa-cubes" aria-hidden="true"></i>
+      OIDC
+    </a>
+  </li>
+  <li>
+    <a href="../ldap-authentication/" class="nav-link active">
+      <i class="fas fa-cubes"></i>
+      LDAP
+    </a>
+  </li>
+
+</ul>
 
 LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
 

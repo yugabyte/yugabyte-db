@@ -108,12 +108,13 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.universeName = defaultUniverse.name;
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     readOnlyCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(readOnlyCluster);
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams,
         defaultCustomer.getCustomerId(),
-        taskParams.clusters.get(0).uuid,
+        readOnlyCluster.uuid,
         UniverseConfigureTaskParams.ClusterOperationType.CREATE);
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {

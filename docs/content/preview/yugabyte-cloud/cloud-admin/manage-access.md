@@ -12,9 +12,9 @@ menu:
 type: docs
 ---
 
-Invite team members to your account so that they can create, manage, and connect to clusters.
+Invite team members to your account so that they can create, manage, and connect to clusters. You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
 
-You must be signed in as an Admin user to invite other users.
+You must be signed in as an Admin user to invite other users, change roles, and manage login methods.
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
@@ -32,11 +32,25 @@ Admin users have full access to all features. There must always be at least one 
 
 Developer users have access to all features, with the exception of administrative tasks, including the following:
 
-- invite users.
-- delete or change the role of other users.
-- create a billing profile.
+- invite users
+- delete or change the role of other users
+- change login methods
+- create a billing profile
+- view account activity
 
 To access a cluster database, you need to ask an Admin for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).
+
+## Manage login methods
+
+Users can log in to YugabyteDB Managed using either an email-based account or a social login. The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default. Only an Admin user can modify the login methods.
+
+To manage the social logins available to users, do the following:
+
+1. On the **Admin** page, select the **Users** tab, then click **Login Methods** to display the **Login Methods** dialog.
+1. Enable the social logins you want to use.
+1. Click **Save Changes**.
+
+If you revoke a social login that is already in use, users using that social login can either [reset their password](#reset-your-password) to configure email-based login, or sign in using a different social login. The social account must be associated with the same email address.
 
 ## Invite users
 

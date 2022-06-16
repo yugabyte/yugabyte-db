@@ -96,8 +96,12 @@ public class NodeDetails {
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
     Stopped(START, REMOVE, QUERY),
-    // Set when node is unreachable but has not been Removed from the universe.
+    // Nodes are never set to Unreachable, this is just one of the possible return values in a
+    // status query.
     Unreachable(),
+    // Nodes are never set to MetricsUnavailable, this is just one of the possible return values in
+    // a status query
+    MetricsUnavailable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
     ToBeRemoved(REMOVE),
     // Set when a node is about to be removed (unjoined) from the cluster.
@@ -180,6 +184,12 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "Tablet server RPC port")
   public int tserverRpcPort = 9100;
+
+  @ApiModelProperty(value = "Yb controller HTTP port")
+  public int ybControllerHttpPort = 14000;
+
+  @ApiModelProperty(value = "Yb controller RPC port")
+  public int ybControllerRpcPort = 18018;
 
   // True if this node is a Redis server, along with port info.
   @ApiModelProperty(value = "True if this node is a REDIS server")
@@ -292,6 +302,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.Unreachable
+        || state == NodeState.MetricsUnavailable
         || state == NodeState.ToBeRemoved
         || state == NodeState.Removing
         || state == NodeState.Removed

@@ -5,6 +5,7 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -100,6 +101,29 @@ public class TableSpaceStructures {
     public List<String> tableSpaceOptions;
   }
 
+  public static class QueryUniverseDBListResponse {
+    @JsonProperty("datname")
+    public String datname;
+  }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public static class HashedTimestampColumnFinderResponse {
+    @JsonProperty("current_database")
+    public String currentDatabase;
+
+    @JsonProperty("table_name")
+    public String tableName;
+
+    @JsonProperty("index_name")
+    public String indexName;
+
+    @JsonProperty("index_command")
+    public String indexCommand;
+
+    @JsonProperty("description")
+    public String description;
+  }
+
   static class TableSpaceOptions {
     @JsonProperty("num_replicas")
     public int numReplicas;
@@ -114,5 +138,23 @@ public class TableSpaceStructures {
 
     @JsonProperty("query")
     public String query;
+  }
+
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public static class UnusedIndexFinderResponse {
+    @JsonProperty("current_database")
+    public String currentDatabase;
+
+    @JsonProperty("table_name")
+    public String tableName;
+
+    @JsonProperty("index_name")
+    public String indexName;
+
+    @JsonProperty("index_command")
+    public String indexCommand;
+
+    @JsonProperty("description")
+    public String description;
   }
 }

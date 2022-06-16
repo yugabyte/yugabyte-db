@@ -3,10 +3,12 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.models.Users.Role;
+import static play.mvc.Http.Status.UNAUTHORIZED;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
@@ -36,7 +38,9 @@ public class TokenAuthenticator extends Action.Simple {
           "/alert_configurations/page",
           "/alert_configurations/list",
           "/maintenance_windows/page",
-          "/maintenance_windows/list");
+          "/maintenance_windows/list",
+          "/backups/page",
+          "/schedules/page");
   public static final String COOKIE_AUTH_TOKEN = "authToken";
   public static final String AUTH_TOKEN_HEADER = "X-AUTH-TOKEN";
   public static final String COOKIE_API_TOKEN = "apiToken";
@@ -179,6 +183,14 @@ public class TokenAuthenticator extends Action.Simple {
     return false;
   }
 
+  // TODO: Consider changing to a method annotation
+  public static void superAdminOrThrow(Http.Context ctx) {
+    if (!superAdminAuthentication(ctx)) {
+      throw new PlatformServiceException(
+          UNAUTHORIZED, "Only Super Admins can perform this operation.");
+    }
+  }
+
   private static String fetchToken(Http.Context ctx, boolean isApiToken) {
     String header, cookie;
     if (isApiToken) {
@@ -225,6 +237,13 @@ public class TokenAuthenticator extends Action.Simple {
     // All users other than read only get access to backup endpoints.
     if (endPoint.endsWith("/create_backup")
         || endPoint.endsWith("/multi_table_backup")
+        || endPoint.endsWith("/restore")) {
+      return true;
+    }
+    // Enable New backup and restore endPoints for backup admins.
+    if (endPoint.contains("/backups")
+        || endPoint.endsWith("create_backup_schedule")
+        || endPoint.contains("/schedules")
         || endPoint.endsWith("/restore")) {
       return true;
     }

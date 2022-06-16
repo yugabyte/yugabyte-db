@@ -254,6 +254,10 @@ public class Schedule extends Model {
 
   public void resetSchedule() {
     this.status = State.Active;
+    // Update old next Expected Task time if it expired due to non-active state.
+    if (Util.isTimeExpired(this.nextScheduleTaskTime)) {
+      updateNextScheduleTaskTime(nextExpectedTaskTime(null, this));
+    }
     save();
   }
 
@@ -479,8 +483,15 @@ public class Schedule extends Model {
 
   private static ScheduleResp toScheduleResp(Schedule schedule) {
     Date nextScheduleTaskTime = schedule.nextScheduleTaskTime;
+    // In case of a schedule with a backlog, the next task can be executed in the next scheduler
+    // run.
     if (schedule.backlogStatus) {
       nextScheduleTaskTime = DateUtils.addMinutes(new Date(), Util.YB_SCHEDULER_INTERVAL);
+    }
+    // No need to show the next expected task time as it won't be able to execute due to non-active
+    // state.
+    if (!schedule.getStatus().equals(State.Active)) {
+      nextScheduleTaskTime = null;
     }
     ScheduleRespBuilder builder =
         ScheduleResp.builder()

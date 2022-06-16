@@ -8,10 +8,12 @@ export interface IReplicationTable {
 
 export enum IReplicationStatus {
   INIT = 'Init',
+  RUNNING = 'Running',
   UPDATING = 'Updating',
-  FAILED = 'Failed',
   PAUSED = 'Paused',
-  RUNNING = 'Running'
+  DELETED_UNIVERSE = "DeletedUniverse",
+  DELETED = "Deleted",
+  FAILED = 'Failed',
 }
 
 export interface IReplication {

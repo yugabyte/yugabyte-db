@@ -1547,15 +1547,17 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 			/*
 			 * If the indexed table's tablegroup mismatches that of an
-			 * index table, append an explicit [NO] TABLEGROUP clause.
+			 * index table, this is a leftover from beta days of tablegroup
+			 * feature. We cannot replicate this via DDL statement anymore.
 			 */
 			if (yb_table_properties.tablegroup_oid != RelationGetTablegroupOid(indrel))
 			{
-				if (OidIsValid(yb_table_properties.tablegroup_oid))
-					appendStringInfo(&buf, " TABLEGROUP %s",
-									 get_tablegroup_name(yb_table_properties.tablegroup_oid));
-				else
-					appendStringInfo(&buf, " NO TABLEGROUP");
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("tablegroup of an index %s does not match its "
+								"indexed table, this is no longer supported",
+								NameStr(idxrelrec->relname)),
+						 errhint("Please drop and re-create the index.")));
 			}
 
 			heap_close(indrel, AccessShareLock);

@@ -186,6 +186,7 @@ class BootstrapTest : public LogTestBase {
       .raft_group_id = log::kTestTablet,
       .partition = partition.second,
       .tablet_data_state = TABLET_DATA_READY,
+      .snapshot_schedules = {},
     }));
     return (*meta)->Flush();
   }
@@ -220,6 +221,10 @@ class BootstrapTest : public LogTestBase {
       .transaction_coordinator_context = nullptr,
       .txns_enabled = TransactionsEnabled::kTrue,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -824,6 +829,17 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
             }
             if (replay) {
               replayed.push_back(op_id);
+            }
+          }
+        }
+        if (index <= intents_flushed_index && op_id >= first_op_id_of_segment_to_replay) {
+          // We replay Update transactions having an APPLY record even if their intents were only
+          // flushed to intents db.
+          if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
+            bool replay = batch_data.txn_status == TransactionStatus::APPLYING;
+            if (replay) {
+              replayed.push_back(op_id);
+              replayed_to_intents_only.push_back(op_id);
             }
           }
         }

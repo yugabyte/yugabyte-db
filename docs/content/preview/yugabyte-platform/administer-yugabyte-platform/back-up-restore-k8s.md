@@ -1,7 +1,7 @@
 ---
 title: Back up and restore YugabyteDB Anywhere on Kubernetes
 headerTitle: Back up and restore YugabyteDB Anywhere on Kubernetes
-description: Use a script file to back up and restore YugabyteDB Anywhere on Kubernetes.
+description: Use a script to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:

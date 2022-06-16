@@ -46,16 +46,16 @@ After [creating a local cluster](../../quick-start/create-local-cluster/), follo
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/test-yedis.md" /%}}
+  {{% includeMarkdown "binary/test-yedis.md" %}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/test-yedis.md" /%}}
+  {{% includeMarkdown "binary/test-yedis.md" %}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/test-yedis.md" /%}}
+  {{% includeMarkdown "docker/test-yedis.md" %}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/test-yedis.md" /%}}
+  {{% includeMarkdown "kubernetes/test-yedis.md" %}}
   </div>
 </div>
 

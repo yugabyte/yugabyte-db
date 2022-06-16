@@ -65,7 +65,7 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker/docker-swarm/">
+    <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
         <div class="icon">
           <i class="fab fa-docker"></i>
@@ -74,7 +74,7 @@ type: indexpage
         <div class="title">Docker</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugabyteDB in Docker Swarm and Docker Compose.
+        Orchestrated deployment of YugabyteDB in Docker Compose.
       </div>
     </a>
   </div>
