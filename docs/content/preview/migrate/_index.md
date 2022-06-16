@@ -1,10 +1,10 @@
 ---
-title: Migrate applications to YugabyteDB
-headerTitle: Migrate applications to YugabyteDB
+title: Migrate to YugabyteDB
+headerTitle: Migrate
 linkTitle: Migrate
-description: Migrate existing PostgreSQL and other RDBMS applications to YugabyteDB.
+description: Migrate your data to YugabyteDB
 image: /images/section_icons/explore/high_performance.png
-headcontent: Migrate your PostgreSQL and other existing applications to YugabyteDB.
+headcontent: Migrate your data to YugabyteDB
 section: YUGABYTEDB CORE
 menu:
   preview:

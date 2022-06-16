@@ -13,45 +13,91 @@ menu:
     weight: 100
 ---
 
-YugabyteDB Voyager is an open-source database migration engine provided by YugabyteDB. The engine manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration and data-migration, using [yb-voyager](https://github.com/yugabyte/yb-voyager).
+YugabyteDB Voyager is a powerful open-source database migration engine provided by Yugabyte.
+It accelerates cloud native adoption by removing barriers while moving applications to the public or private cloud; thereby migrating databases to YugabyteDB securely.
 
-Learn more about the [Migration workflow](../../migrate/yb-voyager/reference/) using YugabyteDB Voyager in the reference section.
+The engine manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
+
+## Migration workflow
+
+A typical migration workflow using yb-voyager consists of the following steps:
+
+- [Set up yb-voyager](../yb-voyager/prerequisites/#install-yb-voyager).
+- Convert the source database schema to PostgreSQL format using the [`yb-voyager export schema`](../yb-voyager/migrate-data/#export-schema) command.
+- Generate a *Schema Analysis Report* using the [`yb-voyager analyze-schema`](../yb-voyager/migrate-data/#analyze-schema) command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
+- [Manually](../yb-voyager/migrate-data/#manually-edit-the-schema) change the exported schema as suggested in the Schema Analysis Report.
+- Dump the source database in the local files on the migrator machine using the [`yb-voyager export data`](../yb-voyager/migrate-data/#export-data) command.
+- Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](../yb-voyager/migrate-data/#import-schema) command.
+- Import the data to the target YugabyteDB database using the [`yb-voyager import data`](../yb-voyager/migrate-data/#import-data) command.
+
+```goat
+                                              .------------------.
+                                              |  Analysis        |
+                                              |                  |
+                                              | .--------------. |
+                                              | |Analyze schema| |
+                                              | .--.-----------. |
+.-------------------.    .---------------.    |    |      ^      |
+|                   |    |               |    |    v      |      |
+| Set up yb_voyager .--->| Export schema .--->| .---------.----. |
+|                   |    |               |    | |Manual changes| |
+.---------.---------.    .---------.-----.    | .--------------. |
+                                              |                  |
+                                              .-------.----------.
+                                                      |
+                                                      v
+                                              .-------------.    .------------------.    .------------------.
+                                              |             |    |  Import          |    |                  |
+                                              | Export data .--->|                  .--->| Verify migration |
+                                              |             |    | .--------------. |    |                  |
+                                              .-----.-------.    | |Import schema | |    .------------------.
+                                                                 | .------.-------. |
+                                                                 |        |         |
+                                                                 |        v         |
+                                                                 | .--------------. |
+                                                                 | | Import data  | |
+                                                                 | .--------------. |
+                                                                 |                  |
+                                                                 .--------.---------.
+```
 
 ## Migration modes
 
-- Live migration : The source database can continue to change during the migration. After the full initial migration, yb-voyager continues replicating source database changes to the target database. The process runs continuously till you decide to switch over to the YugabyteDB database.
+You typically do a migration in one of two modes, as follows:
 
-- Offline migration: The source database should not change during the migration. The offline migration is considered complete when all the requested schema objects and data are migrated to the target database.
+- Live - The source database can continue to change during the migration. After the full initial migration, yb-voyager continues replicating source database changes to the target database. The process runs continuously until you decide to switch over to the YugabyteDB database.
+
+- Offline - The source database should not change during the migration. An offline migration is considered complete when all the requested schema objects and data are migrated to the target database.
 
 {{< note title="Note" >}}
-yb-voyager supports only `offline` migration mode. The `live` migration mode is currently under development. For more details, refer to the [github issue](https://github.com/yugabyte/yb-voyager/issues/50).
+yb-voyager supports only _offline_ migration mode. The _live_ migration mode is currently under development. For more details, refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/50).
 {{< /note >}}
 
 ## Source databases
 
-YugabyteDB currently supports migrating schema and data from your existing RDBMS to a YugabyteDB cluster using  **YugabyteDB Voyager**. Using YugabyteDB Voyager, you can:
+YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, including the following:
 
-- [Migrate from PostgreSQL](../yb-voyager/install-yb-voyager/#postgresql)
-- [Migrate from MySQL](../yb-voyager/install-yb-voyager/#mysql)
-- [Migrate from Oracle](../yb-voyager/install-yb-voyager/#oracle)
+- [PostgreSQL](../yb-voyager/prepare-databases/#postgresql)
+- [MySQL](../yb-voyager/prepare-databases/#mysql)
+- [Oracle](../yb-voyager/prepare-databases/#oracle)
 
 ## Target database
 
-You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/). To get started,
+You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/). To create a cluster:
 
-- Refer to [Quick start](../../quick-start/), and create a local YugabyteDB cluster.
-- Refer to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/) using YugabyteDB Anywhere.
-- Refer to [Deploy clusters in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
+- Create a local YugabyteDB cluster using the [Quick start](../../quick-start/).
+- Deploy a YugabyteDB Anywhere universe; refer to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/).
+- [Deploy a cluster in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migration-phases/">
+    <a class="section-link icon-offset" href="migration-steps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
-        <div class="title">Migration phases</div>
+        <div class="title">Migration steps</div>
       </div>
       <div class="body">
-        General overview of the phases in migration.
+        Overview of the steps for migrating to YugabyteDB using YugabyteDB Voyager.
       </div>
     </a>
   </div>
@@ -62,26 +108,26 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
         <div class="title">Prerequisites</div>
       </div>
       <div class="body">
-        Prepare the environment to install yb-voyager.
+        Prepare the environment and install yb-voyager.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-yb-voyager/">
+    <a class="section-link icon-offset" href="prepare-databases/">
       <div class="head">
        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Install yb-voyager</div>
+        <div class="title">Prepare databases</div>
       </div>
       <div class="body">
-        Steps to install yb-voyager and set up the databases for migration.
+        Set up the databases for migration.
       </div>
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="perform-migration/">
+    <a class="section-link icon-offset" href="migrate-data/">
       <div class="head">
        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Perform migration</div>
+        <div class="title">Migrate your data</div>
       </div>
       <div class="body">
         Convert schema, export data, import data, and verify migration to YugabyteDB.

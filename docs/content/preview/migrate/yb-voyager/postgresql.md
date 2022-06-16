@@ -3,19 +3,19 @@ Create a database user and provide the user with READ access to all the resource
 
 1. Create a new user named `ybvoyager`.
 
-   ```psql
+   ```sql
    CREATE USER ybvoyager PASSWORD 'password';
    ```
 
 1. Switch to the database that you want to migrate.
 
-   ```psql
+   ```sql
    \c <database_name>
    ```
 
 1. Grant the `USAGE` permission to the `ybvoyager` user on all schemas of the database.
 
-   ```psql
+   ```sql
    SELECT 'GRANT USAGE ON SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
    ```
 
@@ -23,7 +23,7 @@ Create a database user and provide the user with READ access to all the resource
 
 1. Grant `SELECT` permission on all the tables and sequences.
 
-   ```psql
+   ```sql
    SELECT 'GRANT SELECT ON ALL TABLES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec
 
    SELECT 'GRANT SELECT ON ALL SEQUENCES IN SCHEMA ' || schema_name || ' TO ybvoyager;' FROM information_schema.schemata; \gexec

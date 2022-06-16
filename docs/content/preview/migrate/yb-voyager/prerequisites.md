@@ -14,11 +14,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The following sections include requirements to install YugabyteDB Voyager.
+The following sections describe the prerequisites for installing YugabyteDB Voyager.
 
-## Supported OS versions
+## Operating system
 
-You can install YugabyteDB Voyager on the following OS:
+You can install YugabyteDB Voyager on the following:
 
 - CentOS 7
 - Ubuntu 18.04, 20.04
@@ -26,7 +26,7 @@ You can install YugabyteDB Voyager on the following OS:
 
 ## Hardware requirements
 
-- The recommended disk space must be at least 1.5 times the estimated size of the source database.
+- Disk space must be at least 1.5 times the estimated size of the source database.
 - 2 cores minimum (recommended)
 
 ## Prepare the host
@@ -45,10 +45,47 @@ mkdir -p ~/export-dirs/sakila
 export EXPORT_DIR=~/export-dirs/sakila
 ```
 
-Refer to [Export directory](../../yb-voyager/reference/#export-directory), to learn more.
+For more information, refer to [Export directory](../../yb-voyager/reference/#export-directory).
+
+## Install yb-voyager
+
+YugabyteDB Voyager consists of the yb-voyager command line executable. yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*. For more information, refer to [Export directory](../../yb-voyager/reference/#export-directory).
+
+To install yb-voyager on a machine which satisfies the [Prerequisites](../../yb-voyager/prerequisites/), do the following:
+
+- Clone the yb-voyager repository.
+
+```sh
+git clone https://github.com/yugabyte/yb-voyager.git
+```
+
+- Change the directory to `yb-voyager/installer_scripts`.
+
+```sh
+cd yb-voyager/installer_scripts
+```
+
+- Install yb-voyager using the following script:
+
+```sh
+install-yb-voyager.sh
+```
+
+It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.
+
+- The script generates a `yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:
+
+```sh
+source ~/.yb-voyager.rc
+```
+
+- Check that yb-voyager is installed using the following command:
+
+```sh
+yb-voyager --help
+```
 
 ## Next steps
 
-- [Install yb-voyager](../../yb-voyager/install-yb-voyager/).
-- [Prepare the source database](../../yb-voyager/install-yb-voyager/#prepare-the-source-database).
-- [Prepare the target database](../../yb-voyager/install-yb-voyager/#prepare-the-target-database).
+- [Prepare the source database](../../yb-voyager/prepare-databases/#prepare-the-source-database).
+- [Prepare the target database](../../yb-voyager/prepare-databases/#prepare-the-target-database).
