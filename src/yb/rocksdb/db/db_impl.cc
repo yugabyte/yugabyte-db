@@ -153,9 +153,11 @@ DEFINE_bool(task_ignore_disk_priority, false,
             "Ignore disk priority when considering compaction and flush priorities.");
 
 DEFINE_int32(automatic_compaction_extra_priority, 50,
-             "Assigns automatic compactions extra priority. This deprioritizes manual "
-             "compactions including those induced by the tserver (e.g. post-split compactions). "
-             "Suggested value between 0 and 50.");
+             "Assigns automatic compactions extra priority when automatic tablet splits are "
+             "enabled. This deprioritizes manual compactions including those induced by the "
+             "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
+
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 DEFINE_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
@@ -434,7 +436,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     // Adding extra priority to automatic compactions can have a large positive impact on
     // performance for situations with many manual major compactions (e.g. insert-heavy workloads
     // with tablet splitting enabled).
-    if (!compaction_->is_manual_compaction()) {
+    if (FLAGS_enable_automatic_tablet_splitting && !compaction_->is_manual_compaction()) {
       result += FLAGS_automatic_compaction_extra_priority;
     }
 
