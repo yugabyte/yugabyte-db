@@ -133,7 +133,7 @@ When the key needs to be rotated we would create a new key and update the alias 
 
 ## AES CTR Mode
 
-Read more about [the AES CTR mode](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)). We support CTR-128, CTR-196 and CTR-256 modes of the encryption. The numbers refer to the key size in bytes, so CTR-128 mode uses a 16 byte key. All modes have a block size of 16-bytes.
+Read more about [the AES CTR mode](https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Counter_(CTR)). We support CTR-128, CTR-196 and CTR-256 modes of the encryption. The numbers refer to the key size in bits, so CTR-128 mode uses a 16 byte key. All modes have a block size of 16-bytes.
 
 Encryption in CTR-128 mode works in the following steps:
 
