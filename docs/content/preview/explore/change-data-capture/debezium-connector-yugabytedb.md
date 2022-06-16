@@ -920,7 +920,16 @@ We use a custom record extractor in order to make the sinks understand the forma
 | `transforms` | `unwrap` |
 | `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
 
+More about `YBExtractNewRecordState` is mentioned in the next section.
 {{< /note >}}
+
+#### `YBExtractNewRecordState` SMT
+
+Unlike the Debezium Connector for PostgreSQL, we only send the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload we send and the default value is set to `null`.
+
+Now, to differentiate between the case where a column was set `null` or was not modified, we change the value type to a struct. In this structure, an unchanged column will be `{'value': null}`, whereas a changed column that was set to `null` will be `{'value': null, 'set': true}`.
+
+We have provided an SMT (Single Message Transformer for Kafka) `YBExtractNewRecordState` that interprets these values and sends the record in the format i.e removes the unmodified columns from the JSON message. In this way, the record which is transformed by 'YBExtractNewRecordState' is compatible with all the sink implementations. We took this approach so that the schema doesn't change with each new record and it can work with "Schema Registry". For example, if we keep changing the record to only include the value of columns then the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus we would require sending 'schema' with all the records. This will not work with "Schema Registry" where once a schema is registered, the record can only contain payload with schema 'version' and Kafka will make sure that it is interpreted correctly.
 
 ### Connector configuration properties
 
