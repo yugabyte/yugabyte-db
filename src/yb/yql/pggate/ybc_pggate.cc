@@ -146,6 +146,10 @@ void YBCDestroyPgGate() {
   VLOG(1) << __PRETTY_FUNCTION__ << " finished";
 }
 
+void YBCInterruptPgGate() {
+  pgapi->Interrupt();
+}
+
 const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
