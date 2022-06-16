@@ -72,7 +72,6 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -109,7 +108,6 @@ public class NodeManager extends DevopsBase {
   static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
   static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
-  static final String YBC_LOG_SUBDIR = "/yb-controller/logs";
 
   @Inject ReleaseManager releaseManager;
 
@@ -650,13 +648,6 @@ public class NodeManager extends DevopsBase {
     return null;
   }
 
-  private String getYbHomeDir(String providerUUID) {
-    if (providerUUID == null) {
-      return CommonUtils.DEFAULT_YB_HOME_DIR;
-    }
-    return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
-  }
-
   private Map<String, String> getCertsAndTlsGFlags(AnsibleConfigureServers.Params taskParam) {
     Map<String, String> gflags = new HashMap<>();
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
@@ -844,29 +835,6 @@ public class NodeManager extends DevopsBase {
     return gflags;
   }
 
-  /** Return the map of ybc flags which will be passed to the db nodes. */
-  private Map<String, String> getYbcFlags(AnsibleConfigureServers.Params taskParam) {
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    String providerUUID = universeDetails.getClusterByUuid(node.placementUuid).userIntent.provider;
-    Map<String, String> ybcFlags = new HashMap<>();
-    ybcFlags.put("v", "1");
-    ybcFlags.put("server_address", node.cloudInfo.private_ip);
-    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
-    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
-    if (node.isMaster) {
-      ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
-    }
-    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      String ybHomeDir = getYbHomeDir(providerUUID);
-      String certsNodeDir = getCertsNodeDir(ybHomeDir);
-      ybcFlags.put("certs_dir_name", certsNodeDir);
-    }
-    return ybcFlags;
-  }
-
   /** Return the map of default gflags which will be passed as extra gflags to the db nodes. */
   private Map<String, String> getAllDefaultGFlags(
       AnsibleConfigureServers.Params taskParam, Boolean useHostname, Config config) {
@@ -955,9 +923,7 @@ public class NodeManager extends DevopsBase {
       subcommand.add(masterAddresses);
     }
 
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String ybServerPackage = null, ybcPackage = null;
-    Map<String, String> ybcFlags = new HashMap<>();
+    String ybServerPackage = null;
     if (taskParam.ybSoftwareVersion != null) {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
@@ -979,17 +945,13 @@ public class NodeManager extends DevopsBase {
       }
     }
 
-    boolean canConfigureYbc = CommonUtils.canConfigureYbc(universe);
-    if (canConfigureYbc) {
-      ybcPackage = userIntent.ybcPackagePath;
-      ybcFlags = getYbcFlags(taskParam);
-    }
-
     if (!taskParam.itestS3PackagePath.isEmpty()
         && userIntent.providerType.equals(Common.CloudType.aws)) {
       subcommand.add("--itest_s3_package_path");
       subcommand.add(taskParam.itestS3PackagePath);
     }
+
+    NodeDetails node = universe.getNode(taskParam.nodeName);
 
     // Pass in communication ports
     subcommand.add("--master_http_port");
@@ -1060,10 +1022,6 @@ public class NodeManager extends DevopsBase {
                   .forUniverse(universe)
                   .getString("yb.releases.num_releases_to_keep_default"));
         }
-        if (canConfigureYbc) {
-          subcommand.add("--ybc_package");
-          subcommand.add(ybcPackage);
-        }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
@@ -1083,10 +1041,6 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
-          if (canConfigureYbc) {
-            subcommand.add("--ybc_package");
-            subcommand.add(ybcPackage);
-          }
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -1163,7 +1117,10 @@ public class NodeManager extends DevopsBase {
           }
 
           String ybHomeDir =
-              getYbHomeDir(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
           String certsNodeDir = getCertsNodeDir(ybHomeDir);
           String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
@@ -1260,8 +1217,12 @@ public class NodeManager extends DevopsBase {
           String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
           String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
           String ybHomeDir =
-              getYbHomeDir(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
           String certsDir = getCertsNodeDir(ybHomeDir);
           String certsForClientDir = getCertsForClientDir(ybHomeDir);
 
@@ -1337,11 +1298,6 @@ public class NodeManager extends DevopsBase {
         break;
     }
 
-    if (canConfigureYbc) {
-      subcommand.add("--ybc_flags");
-      subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-      subcommand.add("--configure_ybc");
-    }
     // extra_gflags is the base set of gflags that is common to all tasks.
     // These can be overriden by  gflags which contain task-specific overrides.
     // User set flags are added to gflags, so if user specifies any of the gflags set here, they

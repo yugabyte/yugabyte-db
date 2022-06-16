@@ -76,7 +76,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteReplication;
@@ -638,7 +637,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
   }
-
   /** Create a task to mark the final software version on a universe. */
   public SubTaskGroup createUpdateSoftwareVersionTask(
       String softwareVersion, boolean isSoftwareUpdateViaVm) {
@@ -781,16 +779,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.universeUUID = taskParams().universeUUID;
     params.active = active;
     task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
-  /** Create a task to ping yb-controller servers on each node */
-  public SubTaskGroup createWaitForYbcServerTask() {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("WaitForYbcServer", executor);
-    WaitForYbcServer task = createTask(WaitForYbcServer.class);
-    task.initialize(taskParams());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
