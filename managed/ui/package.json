@@ -6,7 +6,6 @@
     "lint": "eslint --ext .jsx,.js src/",
     "prettier": "prettier --write src/redesign/**/*",
     "start": "EXTEND_ESLINT=true react-scripts start",
-    "start:prod": "pushstate-server build",
     "cleanup": "rimraf build && rimraf ../src/main/public",
     "fetch-map": "mkdir -p build/static && curl 'http://s3-us-west-2.amazonaws.com/map.yugabyte.com/map/yb_map.tar.gz' | tar -zx -C build/static",
     "build": "npm run cleanup && REACT_APP_GIT_COMMIT=$(git rev-parse HEAD) react-scripts build && npm run fetch-map",
@@ -19,7 +18,7 @@
     "test:debug": "react-scripts --inspect-brk test --runInBand --no-cache --env=jest-environment-jsdom-sixteen"
   },
   "engines": {
-    "node": ">=12.1x.x",
+    "node": ">=16.x.x",
     "npm": ">=6.1x.x"
   },
   "prettier": {
@@ -41,6 +40,7 @@
     "ncp": "2.0.0",
     "prettier": "2.1.0",
     "rimraf": "2.7.1",
+    "sass": "1.52.1",
     "source-map-explorer": "2.5.0"
   },
   "dependencies": {
@@ -74,7 +74,6 @@
     "lodash": "4.17.21",
     "moment": "2.26.0",
     "moment-precise-range-plugin": "1.3.0",
-    "node-sass": "4.14.1",
     "plotly.js": "1.54.1",
     "pluralize": "8.0.0",
     "progressbar.js": "1.1.0",

@@ -144,6 +144,7 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   Result<TabletId> CreateSingleTabletAndSplit(uint32_t num_rows);
 
   Result<tserver::GetSplitKeyResponsePB> GetSplitKey(const std::string& tablet_id);
+  Result<master::SplitTabletResponsePB> SendMasterSplitTabletRpcSync(const std::string& tablet_id);
 
   Result<master::CatalogManagerIf*> catalog_manager() {
     return &CHECK_NOTNULL(VERIFY_RESULT(cluster_->GetLeaderMiniMaster()))->catalog_manager();

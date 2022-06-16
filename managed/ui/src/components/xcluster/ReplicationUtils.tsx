@@ -1,20 +1,22 @@
 import React from 'react';
 import { useQuery } from 'react-query';
+import moment from 'moment';
+
 import { getAlertConfigurations } from '../../actions/universe';
 import {
   getUniverseInfo,
   queryLagMetricsForTable,
   queryLagMetricsForUniverse
 } from '../../actions/xClusterReplication';
-import { IReplicationStatus } from './IClusterReplication';
-import moment from 'moment';
+import { formatDuration } from '../../utils/Formatters';
+import {IReplication, IReplicationStatus} from './IClusterReplication';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
-export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
-  switch (status) {
+export const getReplicationStatus = (replication: IReplication) => {
+  switch (replication.status) {
     case IReplicationStatus.UPDATING:
       return (
         <span className="replication-status-text updating">
@@ -50,6 +52,22 @@ export const getReplicationStatus = (status = IReplicationStatus.INIT) => {
           Failed
         </span>
       );
+    case IReplicationStatus.DELETED:
+      return (
+        <span className="replication-status-text failed">
+          <i className="fa fa-close" />
+          Deleted
+        </span>
+      );
+    case IReplicationStatus.DELETED_UNIVERSE:
+      return (
+        <span className="replication-status-text failed">
+          <i className="fa fa-close" />
+          {replication.sourceUniverseUUID === undefined ?
+            "Source universe is deleted" : replication.targetUniverseUUID === undefined ?
+              "Target universe is deleted" : "One participating universe was tried to be destroyed"}
+        </span>
+      );
     default:
       return (
         <span className="replication-status-text failed">
@@ -82,7 +100,8 @@ export const GetConfiguredThreshold = ({
   if (!metricsData) {
     return <span>0</span>;
   }
-  return <span>{metricsData?.[0]?.thresholds?.SEVERE.threshold}</span>;
+  const maxAcceptableLag = metricsData?.[0]?.thresholds?.SEVERE.threshold;
+  return <span>{formatDuration(maxAcceptableLag)}</span>;
 };
 
 export const GetCurrentLag = ({
@@ -124,7 +143,7 @@ export const GetCurrentLag = ({
   ) {
     return <span>-</span>;
   }
-  let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
+  const maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
   const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
   const committedLagName = metricAliases['async_replication_committed_lag_micros'];
@@ -136,33 +155,35 @@ export const GetCurrentLag = ({
         return a.y.slice(-1);
       })
   );
+  const formattedLag = formatDuration(latestLag);
+
   return (
     <span
       className={`replication-lag-value ${
         maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
       }`}
     >
-      {latestLag ?? '-'}
+      {formattedLag ?? '-'}
     </span>
   );
 };
 
 export const GetCurrentLagForTable = ({
   replicationUUID,
-  tableName,
+  tableUUID,
   enabled,
   nodePrefix,
   sourceUniverseUUID
 }: {
   replicationUUID: string;
-  tableName: string;
+  tableUUID: string;
   enabled?: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string;
 }) => {
   const { data: metricsData, isFetching } = useQuery(
-    ['xcluster-metric', replicationUUID, nodePrefix, tableName, 'metric'],
-    () => queryLagMetricsForTable(tableName, nodePrefix),
+    ['xcluster-metric', replicationUUID, nodePrefix, tableUUID, 'metric'],
+    () => queryLagMetricsForTable(tableUUID, nodePrefix),
     {
       enabled
     }
@@ -188,7 +209,7 @@ export const GetCurrentLagForTable = ({
     return <span>-</span>;
   }
 
-  let maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
+  const maxAcceptableLag = configuredThreshold?.[0]?.thresholds?.SEVERE.threshold || 0;
 
   const metricAliases = metricsData.data.tserver_async_replication_lag_micros.layout.yaxis.alias;
   const committedLagName = metricAliases['async_replication_committed_lag_micros'];
@@ -200,13 +221,15 @@ export const GetCurrentLagForTable = ({
         return a.y.slice(-1);
       })
   );
+  const formattedLag = formatDuration(latestLag);
+
   return (
     <span
       className={`replication-lag-value ${
         maxAcceptableLag < latestLag ? 'above-threshold' : 'below-threshold'
       }`}
     >
-      {latestLag ?? '-'}
+      {formattedLag ?? '-'}
     </span>
   );
 };
@@ -239,4 +262,19 @@ export const formatBytes = function (sizeInBytes: any) {
   } else {
     return '-';
   }
+};
+
+export const findUniverseName = function (universeList: Array<any>, universeUUID: string) {
+  return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
+};
+
+export const isChangeDisabled = function (status: IReplicationStatus | undefined) {
+  // Allow the operation for an unknown situation to avoid bugs.
+  if (status === undefined) {
+    return true;
+  }
+  return status === IReplicationStatus.INIT
+    || status === IReplicationStatus.UPDATING
+    || status === IReplicationStatus.DELETED
+    || status === IReplicationStatus.DELETED_UNIVERSE;
 };

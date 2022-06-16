@@ -244,6 +244,7 @@ class DocDBTableReader::GetHelper {
       .key_entry = KeyBytes(),
       .write_time = DocHybridTime(),
       .expiration = reader_.table_expiration_,
+      .key_value = {},
       .out = &result_,
     });
   }

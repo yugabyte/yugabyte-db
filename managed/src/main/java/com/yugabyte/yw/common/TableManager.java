@@ -30,10 +30,10 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -45,11 +45,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManager extends DevopsBase {
 
   public enum CommandSubType {
@@ -278,7 +280,7 @@ public class TableManager extends DevopsBase {
         // credentials are used.
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
         // TODO: Add support for TLS connections for bulk-loading.
         // Tracked by issue: https://github.com/YugaByte/yugabyte-db/issues/1864
@@ -321,7 +323,7 @@ public class TableManager extends DevopsBase {
         commandArgs.add(universe.getTserverHTTPAddresses());
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
@@ -336,7 +338,7 @@ public class TableManager extends DevopsBase {
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 

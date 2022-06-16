@@ -91,6 +91,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
     this.storageConfigUUID = otherParams.storageConfigUUID;
     this.restoreTimeStamp = otherParams.restoreTimeStamp;
     this.kmsConfigUUID = otherParams.kmsConfigUUID;
+    this.parallelism = otherParams.parallelism;
     this.actionType = actionType;
     this.backupStorageInfoList = new ArrayList<>();
     this.backupStorageInfoList.add(backupStorageInfo);

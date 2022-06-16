@@ -13,8 +13,8 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `IMPORT FOREIGN SCHEMA`  command to create foreign tables that represent tables in a foreign schema on a foreign server. The newly created foreign tables are owned by the user who issued the command. 
-By default, all the tables in the foreign schema are imported. However, the user can specify which tables to import using the `LIMIT TO` and `EXCEPT` clauses. 
+Use the `IMPORT FOREIGN SCHEMA`  command to create foreign tables that represent tables in a foreign schema on a foreign server. The newly created foreign tables are owned by the user who issued the command.
+By default, all the tables in the foreign schema are imported. However, the user can specify which tables to import using the `LIMIT TO` and `EXCEPT` clauses.
 To use this command, the user must have `USAGE` privileges on the foreign server, and `CREATE` privileges on the target schema.
 
 ## Syntax
@@ -36,16 +36,16 @@ To use this command, the user must have `USAGE` privileges on the foreign server
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/import_foreign_schema.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/import_foreign_schema.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/import_foreign_schema.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/import_foreign_schema.diagram.md" %}}
   </div>
 </div>
 
 ## Semantics
 
-Create foreign tables (in *local_schema*) that represent tables in a foreign schema named *remote_schema* located on a foreign server named *server_name*. 
+Create foreign tables (in *local_schema*) that represent tables in a foreign schema named *remote_schema* located on a foreign server named *server_name*.
 
 ### LIMIT TO
 The `LIMIT TO` clause can be optionally used to specify which tables to import. All other tables will be ignored.

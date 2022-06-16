@@ -373,9 +373,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
     if (value.encoded_value()) {
       encoded_value.assign(value.encoded_value()->cdata(), value.encoded_value()->size());
     } else {
-      AppendEncodedValue(
-        value.value_pb(), CheckIsCollate(value.sorting_type() != SortingType::kNotSpecified),
-        &encoded_value);
+      AppendEncodedValue(value.value_pb(), &encoded_value);
       if (value.custom_value_type() != ValueEntryType::kInvalid) {
         encoded_value[prefix_len] = static_cast<char>(value.custom_value_type());
       }
@@ -397,6 +395,11 @@ Status DocWriteBatch::SetPrimitive(
     std::unique_ptr<IntentAwareIterator> intent_iter) {
   LazyIterator iter = {
     .iterator = std::move(intent_iter),
+    .doc_db = nullptr,
+    .doc_path = nullptr,
+    .read_ht = nullptr,
+    .deadline = {},
+    .query_id = {},
   };
   return DoSetPrimitive(doc_path, control_fields, value, &iter, /* write_id= */ {});
 }

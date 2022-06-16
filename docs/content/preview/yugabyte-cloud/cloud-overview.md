@@ -16,7 +16,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a> (as of September 2021; Azure coming soon, for information contact {{<support-cloud>}}).
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a>.
 
 ### Start here
 

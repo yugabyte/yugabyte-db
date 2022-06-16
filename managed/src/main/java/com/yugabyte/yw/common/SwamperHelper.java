@@ -17,9 +17,10 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.PatternFilenameFilter;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.alerts.AlertRuleTemplateSubstitutor;
-import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertConfiguration;
+import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -133,8 +134,9 @@ public class SwamperHelper {
     ArrayNode targetNodes = Json.newArray();
     nodes.forEach(
         (node) -> {
-          if (node.isActive()) {
-            targetNodes.add(node.cloudInfo.private_ip + ":" + t.getPort(node));
+          int port = t.getPort(node);
+          if (node.isActive() && port > 0) {
+            targetNodes.add(node.cloudInfo.private_ip + ":" + port);
           }
         });
 
@@ -173,10 +175,15 @@ public class SwamperHelper {
     if (swamperFile == null) {
       return;
     }
+
     universe
         .getNodes()
         .forEach(
             (node) -> {
+              if (universe.getNodeDeploymentMode(node).equals(CloudType.kubernetes)) {
+                // no node exporter on k8s pods
+                return;
+              }
               nodeTargets.add(
                   getIndividualConfig(
                       universe,
@@ -189,22 +196,37 @@ public class SwamperHelper {
     // Write out the yugabyte specific file.
     ArrayNode ybTargets = Json.newArray();
     swamperFile = getSwamperFile(universeUUID, TARGET_FILE_YUGABYTE_PREFIX);
-    for (TargetType t : TargetType.values()) {
-      if (t != TargetType.NODE_EXPORT && t != TargetType.INVALID_EXPORT) {
-        universe
-            .getNodes()
-            .forEach(
-                (node) -> {
-                  // Since some nodes might not be active (for example removed),
-                  // we do not want to add them to the swamper targets.
-                  if (node.isActive()) {
-                    ybTargets.add(
-                        getIndividualConfig(
-                            universe, t, Collections.singletonList(node), node.nodeName));
-                  }
-                });
-      }
-    }
+    universe
+        .getNodes()
+        .forEach(
+            (node) -> {
+              // Since some nodes might not be active (for example removed),
+              // we do not want to add them to the swamper targets.
+              if (!node.isActive()) return;
+
+              for (TargetType t : TargetType.values()) {
+                if (t == TargetType.NODE_EXPORT || t == TargetType.INVALID_EXPORT) {
+                  continue;
+                }
+
+                if (!node.isMaster && t.equals(TargetType.MASTER_EXPORT)) {
+                  continue;
+                }
+
+                if (!node.isTserver
+                    && (t.equals(TargetType.TSERVER_EXPORT)
+                        || t.equals(TargetType.CQL_EXPORT)
+                        || t.equals(TargetType.REDIS_EXPORT)
+                        || t.equals(TargetType.YSQL_EXPORT))) {
+                  continue;
+                }
+
+                ybTargets.add(
+                    getIndividualConfig(
+                        universe, t, Collections.singletonList(node), node.nodeName));
+              }
+            });
+
     writeJsonFile(swamperFile, ybTargets);
   }
 

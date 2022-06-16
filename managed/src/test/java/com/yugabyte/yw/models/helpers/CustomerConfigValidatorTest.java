@@ -2,47 +2,33 @@
 
 package com.yugabyte.yw.models.helpers;
 
+import static com.yugabyte.yw.common.AWSUtil.AWS_ACCESS_KEY_ID_FIELDNAME;
+import static com.yugabyte.yw.common.AWSUtil.AWS_SECRET_ACCESS_KEY_FIELDNAME;
+import static com.yugabyte.yw.common.AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME;
+import static com.yugabyte.yw.common.GCPUtil.GCS_CREDENTIALS_JSON_FIELDNAME;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
+import static com.yugabyte.yw.models.configs.validators.ConfigDataValidator.fieldFullName;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_GCS;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_S3;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.AWS_ACCESS_KEY_ID_FIELDNAME;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.AWS_SECRET_ACCESS_KEY_FIELDNAME;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.GCS_CREDENTIALS_JSON_FIELDNAME;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_GCS;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_S3;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.NAME_AZURE;
-import static com.yugabyte.yw.models.helpers.CustomerConfigValidator.fieldFullName;
 import static org.junit.Assert.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.AmazonS3Exception;
-import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.azure.storage.blob.BlobContainerClient;
-import com.azure.storage.blob.models.BlobStorageException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.api.gax.paging.Page;
-import com.google.cloud.storage.Blob;
-import com.google.cloud.storage.Storage;
-import com.google.cloud.storage.Storage.BlobListOption;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerConfig.ConfigType;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
+import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
@@ -68,7 +54,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customerConfigValidator =
-        new LocalCustomerConfigValidator(
+        new StubbedCustomerConfigValidator(
             app.injector().instanceOf(BeanValidator.class), allowedBuckets);
   }
 
@@ -83,17 +69,18 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     "NFS, BACKUP_LOCATION,, false",
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com/test/itest, true",
     "S3, AWS_HOST_BASE, s3://backups.yugabyte.com/test/itest, false", // BACKUP_LOCATION undefined
-    "S3, BACKUP_LOCATION, s3.amazonaws.com, true",
+    "S3, BACKUP_LOCATION, s3.amazonaws.com, false",
     "S3, BACKUP_LOCATION, ftp://s3.amazonaws.com, false",
     "S3, BACKUP_LOCATION,, false",
     "GCS, BACKUP_LOCATION, gs://itest-backup, true",
     "GCS, BACKUP_LOCATION, gs://itest-backup/test, true",
-    "GCS, BACKUP_LOCATION, gcp.test.com, true",
+    "GCS, BACKUP_LOCATION, https://storage.googleapis.com/itest-backup/test, true",
+    "GCS, BACKUP_LOCATION, gcp.test.com, false",
     "GCS, BACKUP_LOCATION, ftp://gcp.test.com, false",
     "GCS, BACKUP_LOCATION,, false",
     "AZ, BACKUP_LOCATION, https://www.microsoft.com/azure, true",
-    "AZ, BACKUP_LOCATION, http://www.microsoft.com/azure, true",
-    "AZ, BACKUP_LOCATION, www.microsoft.com/azure, true",
+    "AZ, BACKUP_LOCATION, http://www.microsoft.com/azure, false",
+    "AZ, BACKUP_LOCATION, www.microsoft.com/azure, false",
     "AZ, BACKUP_LOCATION, ftp://www.microsoft.com/azure, false",
     "AZ, BACKUP_LOCATION,, false",
   })
@@ -101,13 +88,34 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   public void testValidateDataContent_Storage_OneParamToCheck(
       String storageType, String fieldName, String fieldValue, boolean expectedResult) {
     ObjectNode data = Json.newObject().put(fieldName, fieldValue);
+    addRequiredCredentials(storageType, data);
     CustomerConfig config = createConfig(ConfigType.STORAGE, storageType, data);
     if (expectedResult) {
+      if (fieldValue.length() > 5) {
+        String strippedValue;
+        if (fieldValue.startsWith("https://storage.googleapis.com/")) {
+          strippedValue = fieldValue.substring(31);
+        } else {
+          strippedValue = fieldValue.substring(5);
+        }
+        allowedBuckets.add(strippedValue.split("/", 2)[0]);
+      }
       customerConfigValidator.validateConfig(config);
     } else {
       assertThat(
           () -> customerConfigValidator.validateConfig(config),
           thrown(PlatformServiceException.class));
+    }
+  }
+
+  private void addRequiredCredentials(String storageType, ObjectNode data) {
+    if (storageType.equals("AZ")) {
+      data.put(AZURE_STORAGE_SAS_TOKEN_FIELDNAME, "XXXXX");
+    } else if (storageType.equals("GCS")) {
+      data.put(GCS_CREDENTIALS_JSON_FIELDNAME, "{}");
+    } else if (storageType.equals("S3")) {
+      data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "XXXXX");
+      data.put(AWS_SECRET_ACCESS_KEY_FIELDNAME, "XXXXX");
     }
   }
 
@@ -124,8 +132,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         + "AWS_HOST_BASE, s3.amazonaws.com, true",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com, true",
-    // location - correct, aws_host_base(for S3 compatible storage) - correct -> allowed
-    "S3, BACKUP_LOCATION, s3://false, AWS_HOST_BASE, http://fake-localhost:9000, true",
+    // location - correct, aws_host_base(for S3 compatible storage) - incorrect -> disallowed
+    "S3, BACKUP_LOCATION, s3://false, AWS_HOST_BASE, http://fake-localhost:9000, false",
     // location - correct, aws_host_base - correct -> allowed
     "S3, BACKUP_LOCATION, s3://backups.yugabyte.com, AWS_HOST_BASE, s3.amazonaws.com:443, true",
     // location - correct, aws_host_base - correct -> allowed
@@ -164,8 +172,10 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     ObjectNode data = Json.newObject();
     data.put(fieldName1, fieldValue1);
     data.put(fieldName2, fieldValue2);
+    addRequiredCredentials(storageType, data);
     CustomerConfig config = createConfig(ConfigType.STORAGE, storageType, data);
     if (expectedResult) {
+      allowedBuckets.add(fieldValue1.substring(5).split("/", 2)[0]);
       customerConfigValidator.validateConfig(config);
     } else {
       assertThat(
@@ -185,7 +195,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   @Test
   public void testValidateDataContent_Storage_S3PreflightCheckValidator(
       String backupLocation, @Nullable String expectedMessage, boolean refuseKeys) {
-    ((LocalCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseKeys);
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseKeys);
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, backupLocation);
     data.put(AWS_ACCESS_KEY_ID_FIELDNAME, "testAccessKey");
@@ -213,7 +223,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     // Valid case with location URL different from backup URL.
     "s3://test2, null",
     // Invalid location URL (wrong format).
-    "ftp://test2, Invalid field value 'ftp://test2'.",
+    "ftp://test2, Invalid field value 'ftp://test2'",
     // Valid bucket.
     "s3://test2, S3 URI path s3://test2 doesn't exist",
   })
@@ -254,11 +264,13 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
 
   @Parameters({
     // BACKUP_LOCATION - incorrect -> disallowed.
-    "https://abc, {}, Invalid gsUriPath format: https://abc, false",
+    "https://abc, {}, GS Uri path https://abc doesn't exist, false",
     // Check empty GCP Credentials Json -> disallowed.
     "gs://test, {}, Invalid GCP Credential Json., true",
     // Valid case.
     "gs://test, {}, null, false",
+    // Valid case.
+    "https://storage.googleapis.com/, {}, null, false"
   })
   @Test
   public void testValidateDataContent_Storage_GCSPreflightCheckValidator(
@@ -266,7 +278,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       String credentialsJson,
       @Nullable String expectedMessage,
       boolean refuseCredentials) {
-    ((LocalCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseCredentials);
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseCredentials);
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, backupLocation);
     data.put(GCS_CREDENTIALS_JSON_FIELDNAME, credentialsJson);
@@ -288,8 +300,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   }
 
   @Parameters({
-    // BACKUP_LOCATION - incorrect -> disallowed.
-    "https://abc, Invalid gsUriPath format: https://abc",
+
     // Valid case.
     "gs://test, null",
     // Valid case.
@@ -332,7 +343,7 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
   @Parameters({
     "https://stoe.ws.net/container, fakeToken, null, false, true",
     "https://stoe.ws.net, fakeToken, Invalid azUriPath format: https://stoe.ws.net, false, true",
-    "http://stoe.ws.net, fakeToken, Invalid azUriPath format: http://stoe.ws.net, false, true",
+    "http://stoe.ws.net, fakeToken, Invalid field value 'http://stoe.ws.net', false, true",
     "https://storagetestazure.windows.net/container, tttt, Invalid SAS token!, true, true",
     "https://stoe.ws.net/container1, tttt, Blob container container1 doesn't exist, false, false",
   })
@@ -343,8 +354,8 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
       @Nullable String expectedMessage,
       boolean refuseCredentials,
       boolean isContainerExist) {
-    ((LocalCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseCredentials);
-    when(((LocalCustomerConfigValidator) customerConfigValidator).blobContainerClient.exists())
+    ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseCredentials);
+    when(((StubbedCustomerConfigValidator) customerConfigValidator).blobContainerClient.exists())
         .thenReturn(isContainerExist);
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
@@ -372,108 +383,5 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
         .setConfigName(name)
         .setType(type)
         .setData(data);
-  }
-
-  // @formatter:off
-  /*
-   * We are extending CustomerConfigValidator with some mocked behaviour.
-   *
-   *  - It allows to avoid direct cloud connections;
-   *  - It allows to mark some buckets/URLs as existing and all others as wrong;
-   *  - It allows to accept or to refuse keys/credentials.
-   *
-   */
-  // @formatter:on
-  private static class LocalCustomerConfigValidator extends CustomerConfigValidator {
-
-    private final AmazonS3Client s3Client = mock(AmazonS3Client.class);
-
-    private final Storage gcpStorage = mock(Storage.class);
-
-    public final BlobContainerClient blobContainerClient = mock(BlobContainerClient.class);
-
-    private final BlobStorageException blobStorageException = mock(BlobStorageException.class);
-
-    private boolean refuseKeys = false;
-
-    public LocalCustomerConfigValidator(BeanValidator beanValidator, List<String> allowedBuckets) {
-      super(beanValidator);
-
-      when(s3Client.doesBucketExistV2(any(String.class)))
-          .thenAnswer(invocation -> allowedBuckets.contains(invocation.getArguments()[0]));
-      when(s3Client.listObjectsV2(any(String.class), any(String.class)))
-          .thenAnswer(
-              invocation -> {
-                boolean allowedBucket = allowedBuckets.contains(invocation.getArguments()[0]);
-                ListObjectsV2Result result = new ListObjectsV2Result();
-                result.setKeyCount(allowedBucket ? 1 : 0);
-                return result;
-              });
-
-      when(gcpStorage.list(any(String.class), any(BlobListOption.class), any(BlobListOption.class)))
-          .thenAnswer(
-              invocation -> {
-                if (allowedBuckets.contains(invocation.getArguments()[0])) {
-                  return new Page<Blob>() {
-                    @Override
-                    public boolean hasNextPage() {
-                      return false;
-                    }
-
-                    @Override
-                    public String getNextPageToken() {
-                      return null;
-                    }
-
-                    @Override
-                    public Page<Blob> getNextPage() {
-                      return null;
-                    }
-
-                    @Override
-                    public Iterable<Blob> iterateAll() {
-                      return null;
-                    }
-
-                    @Override
-                    public Iterable<Blob> getValues() {
-                      return Collections.singleton(mock(Blob.class));
-                    }
-                  };
-                }
-                return mock(Page.class);
-              });
-    }
-
-    @Override
-    protected AmazonS3 create(JsonNode data) {
-      if (refuseKeys) {
-        throw new AmazonS3Exception(
-            "The AWS Access Key Id you provided does not exist in our records.");
-      }
-      return s3Client;
-    }
-
-    @Override
-    protected Storage createGcpStorage(String gcpCredentials)
-        throws UnsupportedEncodingException, IOException {
-      if (refuseKeys) {
-        throw new IOException("Invalid GCP Credential Json.");
-      }
-      return gcpStorage;
-    }
-
-    @Override
-    protected BlobContainerClient createBlobContainerClient(
-        String azUrl, String azSasToken, String container) {
-      if (refuseKeys) {
-        throw blobStorageException;
-      }
-      return blobContainerClient;
-    }
-
-    public void setRefuseKeys(boolean value) {
-      refuseKeys = value;
-    }
   }
 }

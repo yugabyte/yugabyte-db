@@ -33,10 +33,10 @@ The [with_clause](../../../syntax_resources/grammar_diagrams/#with-clause)  and 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause,common_table_expression.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause,common_table_expression.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause,common_table_expression.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/with-clause/with_clause,common_table_expression.diagram.md" %}}
   </div>
 </div>
 
@@ -92,7 +92,7 @@ order by 1, 2;
 This is the result:
 
 ```
- name | k | v  
+ name | k | v
 ------+---+----
  t1   | 1 |  2
  t1   | 2 |  4
@@ -108,16 +108,16 @@ This is the result:
 Now execute the example query. Notice that the `WITH` clause defines an `INSERT` CTE, an `UPDATE` CTE, a `DELETE` CTE, and a `SELECT` CTE. Each of the data-changing CTEs has a `RETURNING` clause; and the `SELECT` CTE accesses the unions returned by each of these.
 
 ```plpgsql
-with 
+with
   i as (
     insert into t1(k, v) values (21, 17), (31, 42) returning k, v),
-    
+
   u as (
     update t2 set v = 99 where k in (4, 5) returning k, v),
-    
+
   d as (
     delete from t3 where k in (8, 9) returning k, v),
-    
+
   s as (
     select 'inserted into t1'::text as action, k, v from i
     union all
@@ -131,7 +131,7 @@ select action, k, v from s order by k;
 This is the result:
 
 ```
-      action      | k  | v  
+      action      | k  | v
 ------------------+----+----
  udated in t2     |  4 | 99
  udated in t2     |  5 | 99
@@ -155,7 +155,7 @@ order by 1, 2;
 This is the result:
 
 ```
- name | k  | v  
+ name | k  | v
 ------+----+----
  t1   |  1 |  2
  t1   |  2 |  4
@@ -198,7 +198,7 @@ select k, v from t1 order by k;
 This is the result:
 
 ```
- k  | v  
+ k  | v
 ----+----
   1 |  2
   2 |  4
@@ -241,7 +241,7 @@ from colliding;
 This is the result:
 
 ```
-      colliding      
+      colliding
 ---------------------
  goodbye—Hello world
 ```

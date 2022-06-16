@@ -36,10 +36,10 @@ Use the `SET ROLE` statement to set the current user of the current session to b
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_role,reset_role.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_role,reset_role.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_role,reset_role.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_role,reset_role.diagram.md" %}}
   </div>
 </div>
 

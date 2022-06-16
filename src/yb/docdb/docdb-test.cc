@@ -2917,8 +2917,7 @@ TEST_P(DocDBTestWrapper, BloomFilterCorrectness) {
       GetSubDoc(encoded_subdoc_key, &sub_doc, &sub_doc_found);
       ASSERT_TRUE(sub_doc_found) << "Entry for key #" << i
                                  << " not found, is_range_key: " << is_range_key;
-      ASSERT_EQ(static_cast<PrimitiveValue>(sub_doc),
-                PrimitiveValue::FromQLValuePB(value, CheckIsCollate::kFalse));
+      ASSERT_EQ(static_cast<PrimitiveValue>(sub_doc), PrimitiveValue::FromQLValuePB(value));
     }
   }
 
@@ -3513,7 +3512,7 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 
 std::string EncodeValue(const QLValuePB& value) {
   std::string result;
-  AppendEncodedValue(value, CheckIsCollate::kFalse, &result);
+  AppendEncodedValue(value, &result);
   return result;
 }
 

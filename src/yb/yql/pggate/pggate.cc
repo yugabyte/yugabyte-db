@@ -169,18 +169,15 @@ class PrecastRequestSender {
     // Shared state among different instances of the 'PgDocResponse' object returned by the 'Send'
     // method. Response field will be initialized when all collected operations will be sent by the
     // call of 'TransmitCollected' method.
-    struct State {
-      rpc::CallResponsePtr response;
-    };
-
+    using State = PgDocResponse::Data;
     using StatePtr = std::shared_ptr<State>;
 
     explicit ResponseProvider(const StatePtr& state)
         : state_(state) {}
 
-    Result<rpc::CallResponsePtr> Get() override {
+    Result<PgDocResponse::Data> Get() override {
       SCHECK(state_->response, IllegalState, "Response is not set");
-      return state_->response;
+      return *state_;
     }
 
    private:
@@ -188,25 +185,23 @@ class PrecastRequestSender {
   };
 
  public:
-  explicit PrecastRequestSender(uint64_t read_time)
-      : read_time_(read_time) {}
-
   Result<PgDocResponse> Send(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t* read_time, bool force_non_bufferable) {
+      uint64_t read_time, bool force_non_bufferable) {
     if (!collecting_mode_) {
-      return PgDocResponse(VERIFY_RESULT(session->RunAsync(
-          ops, ops_count, table, read_time, force_non_bufferable)));
+      auto future = VERIFY_RESULT(session->RunAsync(
+          ops, ops_count, table, &read_time, force_non_bufferable));
+      return PgDocResponse(std::move(future), read_time);
     }
     // For now PrecastRequestSender can work with zero read time only.
     // Zero read time means that current time should be used as read time.
-    RSTATUS_DCHECK(read_time && !*read_time, IllegalState, "Only zero read time is expected");
-    *read_time = read_time_;
+    RSTATUS_DCHECK(!read_time, IllegalState, "Only zero read time is expected");
     for (auto end = ops + ops_count; ops != end; ++ops) {
       ops_.emplace_back(*ops, table);
     }
     if (!provider_state_) {
-      provider_state_ = std::make_shared<ResponseProvider::State>();
+      provider_state_ = std::make_shared<ResponseProvider::State>(
+          rpc::CallResponsePtr(), 0 /* used_read_time */);
     }
     return PgDocResponse(std::make_unique<ResponseProvider>(provider_state_));
   }
@@ -233,22 +228,20 @@ class PrecastRequestSender {
           }
           auto& info = *i++;
           return PgSession::TableOperation{.operation = &info.operation, .table = info.table};
-        }), &read_time_, false /* force_non_bufferable */));
+        }), &provider_state_->used_read_time, false /* force_non_bufferable */));
     provider_state_->response = VERIFY_RESULT(perform_future.Get());
     return Status::OK();
   }
 
   bool collecting_mode_ = true;
-  std::shared_ptr<ResponseProvider::State> provider_state_;
+  ResponseProvider::StatePtr provider_state_;
   boost::container::small_vector<OperationInfo, 16> ops_;
-  uint64_t read_time_;
 };
 
 Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             PgOid database_id,
                             std::vector<TableYbctid>* ybctids,
-                            const std::unordered_set<PgOid>& region_local_tables,
-                            uint64_t read_time) {
+                            const std::unordered_set<PgOid>& region_local_tables) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
     // TODO(dmitry): By design it is only necessary to group ybctids by table, sorting of ybctids
@@ -262,11 +255,11 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
 
   auto arena = std::make_shared<Arena>();
 
-  PrecastRequestSender precast_sender(read_time);
+  PrecastRequestSender precast_sender;
   boost::container::small_vector<std::unique_ptr<PgDocReadOp>, 16> doc_ops;
   auto request_sender = [&precast_sender](
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t* read_time, bool force_non_bufferable) {
+      uint64_t read_time, bool force_non_bufferable) {
     return precast_sender.Send(session, ops, ops_count, table, read_time, force_non_bufferable);
   };
   // Start all the doc_ops to read from docdb in parallel, one doc_op per table ID.
@@ -380,6 +373,10 @@ PgApiImpl::PgApiImpl(
       pg_txn_manager_(
           new PgTxnManager(
               &pg_client_, clock_, tserver_shared_object_.get(), pg_callbacks_)) {
+  if (pg_callbacks_.YbPgMemUpdateMax) {
+    mem_tracker_->AssignUpdateMaxMemFunctor(pg_callbacks_.YbPgMemUpdateMax);
+  }
+
   CHECK_OK(clock_->Init());
 
   // Setup type mapping.
@@ -1668,6 +1665,14 @@ Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
   return pg_session_->RollbackSubTransaction(id);
 }
 
+double PgApiImpl::GetTransactionPriority() const {
+  return pg_txn_manager_->GetTransactionPriority();
+}
+
+TxnPriorityRequirement PgApiImpl::GetTransactionPriorityType() const {
+  return pg_txn_manager_->GetTransactionPriorityType();
+}
+
 void PgApiImpl::ResetCatalogReadTime() {
   pg_session_->ResetCatalogReadPoint();
 }
@@ -1678,8 +1683,7 @@ Result<bool> PgApiImpl::ForeignKeyReferenceExists(
       LightweightTableYbctid(table_id, ybctid), make_lw_function(
           [this, database_id](std::vector<TableYbctid>* ybctids,
                               const std::unordered_set<PgOid>& region_local_tables) {
-            return FetchExistingYbctids(
-                pg_session_, database_id, ybctids, region_local_tables, clock_->Now().ToUint64());
+            return FetchExistingYbctids(pg_session_, database_id, ybctids, region_local_tables);
           }));
 }
 

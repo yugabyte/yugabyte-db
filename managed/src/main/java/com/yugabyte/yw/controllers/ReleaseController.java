@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -115,10 +116,10 @@ public class ReleaseController extends AuthenticatedController {
   public Result listByProvider(UUID customerUUID, UUID providerUUID, Boolean includeMetadata) {
     Customer.getOrBadRequest(customerUUID);
     List<Region> regionList = Region.getByProvider(providerUUID);
-    Region region = regionList.get(0);
-    if (region == null) {
+    if (CollectionUtils.isEmpty(regionList) || regionList.get(0) == null) {
       throw new PlatformServiceException(BAD_REQUEST, "No Regions configured for provider.");
     }
+    Region region = regionList.get(0);
     Map<String, Object> releases = releaseManager.getReleaseMetadata();
     Architecture arch = region.getArchitecture();
     // Old region without architecture. Return all releases.

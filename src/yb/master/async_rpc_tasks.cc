@@ -1329,8 +1329,11 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
 
 namespace {
 
-bool IsDefinitelyPermanentError(const Status& s) {
-  return s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported();
+// These are errors that we are unlikely to recover from by retrying the GetSplitKey or SplitTablet
+// RPC task. Automatic splits that receive these errors may still be retried in the next run, so we
+// should try to not trigger splits that might hit these errors.
+bool ShouldRetrySplitTabletRPC(const Status& s) {
+  return !(s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported() || s.IsIncomplete());
 }
 
 } // namespace
@@ -1353,7 +1356,7 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
-    if (IsDefinitelyPermanentError(s) ||
+    if (!ShouldRetrySplitTabletRPC(s) ||
         (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
       // but followers have not yet completed post-split compaction.
@@ -1421,7 +1424,7 @@ void AsyncSplitTablet::HandleResponse(int attempt) {
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (s.IsAlreadyPresent()) {
       TransitionToCompleteState();
-    } else if (IsDefinitelyPermanentError(s)) {
+    } else if (!ShouldRetrySplitTabletRPC(s)) {
       TransitionToFailedState(state(), s);
     }
   } else {

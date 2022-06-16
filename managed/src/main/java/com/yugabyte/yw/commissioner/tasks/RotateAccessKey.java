@@ -72,21 +72,17 @@ public class RotateAccessKey extends UniverseTaskBase {
                 "VerifyNodeSSHAccess",
                 customSSHUser)
             .setSubTaskGroupType(subtaskGroupType);
-        boolean manuallyProvisioned = isManuallyProvisioned(clusterAccessKey);
-        if (!manuallyProvisioned) {
-          checkSudoUserAllowed(newAccessKey);
-          // verify conenction to sudo user
-          createNodeAccessTasks(
-                  clusterNodes,
-                  clusterAccessKey,
-                  customerUUID,
-                  providerUUID,
-                  universeUUID,
-                  newAccessKey,
-                  "VerifyNodeSSHAccess",
-                  sudoSSHUser)
-              .setSubTaskGroupType(subtaskGroupType);
-        }
+        // verify conenction to sudo user
+        createNodeAccessTasks(
+                clusterNodes,
+                clusterAccessKey,
+                customerUUID,
+                providerUUID,
+                universeUUID,
+                newAccessKey,
+                "VerifyNodeSSHAccess",
+                sudoSSHUser)
+            .setSubTaskGroupType(subtaskGroupType);
         // add key to yugabyte user
         createNodeAccessTasks(
                 clusterNodes,
@@ -98,30 +94,28 @@ public class RotateAccessKey extends UniverseTaskBase {
                 "AddAuthorizedKey",
                 customSSHUser)
             .setSubTaskGroupType(subtaskGroupType);
-        if (!manuallyProvisioned) {
-          // add key to sudo user
-          createNodeAccessTasks(
-                  clusterNodes,
-                  clusterAccessKey,
-                  customerUUID,
-                  providerUUID,
-                  universeUUID,
-                  newAccessKey,
-                  "AddAuthorizedKey",
-                  sudoSSHUser)
-              .setSubTaskGroupType(subtaskGroupType);
-          // remove key from sudo user
-          createNodeAccessTasks(
-                  clusterNodes,
-                  newAccessKey,
-                  customerUUID,
-                  providerUUID,
-                  universeUUID,
-                  clusterAccessKey,
-                  "RemoveAuthorizedKey",
-                  sudoSSHUser)
-              .setSubTaskGroupType(subtaskGroupType);
-        }
+        // add key to sudo user
+        createNodeAccessTasks(
+                clusterNodes,
+                clusterAccessKey,
+                customerUUID,
+                providerUUID,
+                universeUUID,
+                newAccessKey,
+                "AddAuthorizedKey",
+                sudoSSHUser)
+            .setSubTaskGroupType(subtaskGroupType);
+        // remove key from sudo user
+        createNodeAccessTasks(
+                clusterNodes,
+                newAccessKey,
+                customerUUID,
+                providerUUID,
+                universeUUID,
+                clusterAccessKey,
+                "RemoveAuthorizedKey",
+                sudoSSHUser)
+            .setSubTaskGroupType(subtaskGroupType);
         // remove key from yugabte user
         createNodeAccessTasks(
                 clusterNodes,
@@ -192,16 +186,5 @@ public class RotateAccessKey extends UniverseTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
-  }
-
-  private boolean isManuallyProvisioned(AccessKey accessKey) {
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-    return keyInfo.skipProvisioning && keyInfo.sshUser != null;
-  }
-
-  private void checkSudoUserAllowed(AccessKey accessKey) {
-    if (accessKey.getKeyInfo().skipProvisioning) {
-      throw new RuntimeException("Expected new access key to have skip provisioning to be false!");
-    }
   }
 }

@@ -69,7 +69,7 @@
 // Debug mode ("not defined NDEBUG (non-debug-mode)" means "debug mode").
 // In case the check condition is false, we will crash with a CHECK failure.
 
-#define RSTATUS_DCHECK(expr, type, msg) DCHECK(expr) << msg
+#define RSTATUS_DCHECK(expr, type, ...) DCHECK(expr) << ::yb::Format(__VA_ARGS__)
 #define RSTATUS_DCHECK_EQ(var1, var2, type, msg) DCHECK_EQ(var1, var2) << msg
 #define RSTATUS_DCHECK_NE(var1, var2, type, msg) DCHECK_NE(var1, var2) << msg
 #define RSTATUS_DCHECK_GT(var1, var2, type, msg) DCHECK_GT(var1, var2) << msg
@@ -82,7 +82,7 @@
 // Release mode.
 // In case the check condition is false, we will return an error status.
 
-#define RSTATUS_DCHECK(expr, type, msg) SCHECK(expr, type, msg)
+#define RSTATUS_DCHECK(expr, type, ...) SCHECK(expr, type, __VA_ARGS__)
 #define RSTATUS_DCHECK_EQ(var1, var2, type, msg) SCHECK_EQ(var1, var2, type, msg)
 #define RSTATUS_DCHECK_NE(var1, var2, type, msg) SCHECK_NE(var1, var2, type, msg)
 #define RSTATUS_DCHECK_GT(var1, var2, type, msg) SCHECK_GT(var1, var2, type, msg)

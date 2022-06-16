@@ -72,6 +72,7 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/xcluster_split_driver.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -493,6 +494,11 @@ class CatalogManager :
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
+  // Delete CDC streams metadata for a table.
+  virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
+
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
@@ -788,8 +794,11 @@ class CatalogManager :
 
   Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
-  Result<std::unordered_map<std::string, uint32_t>> GetPgTypeOid(const TableInfoPtr& table_info)
-      REQUIRES_SHARED(mutex_);
+  Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
+      const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
+      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();

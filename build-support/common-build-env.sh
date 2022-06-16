@@ -1360,6 +1360,7 @@ save_thirdparty_info_to_build_dir() {
 save_paths_to_build_dir() {
   save_brew_path_to_build_dir
   save_thirdparty_info_to_build_dir
+  save_llvm_toolchain_path_to_build_dir
 }
 
 detect_linuxbrew() {
@@ -1375,7 +1376,10 @@ detect_linuxbrew() {
     return
   fi
 
-  if ! "$is_clean_build" && [[ -n ${BUILD_ROOT:-} && -f $BUILD_ROOT/linuxbrew_path.txt ]]; then
+  if [[ ${is_clean_build} != "true" &&
+        -n ${BUILD_ROOT:-} &&
+        -f $BUILD_ROOT/linuxbrew_path.txt ]]
+  then
     YB_LINUXBREW_DIR=$(<"$BUILD_ROOT/linuxbrew_path.txt")
     export YB_LINUXBREW_DIR
     yb_linuxbrew_dir_origin=" (from file '$BUILD_ROOT/linuxbrew_path.txt')"
@@ -2186,6 +2190,7 @@ activate_virtualenv() {
      ! "$yb_readonly_virtualenv"; then
     log "YB_RECREATE_VIRTUALENV is set, deleting virtualenv at '$virtualenv_dir'"
     rm -rf "$virtualenv_dir"
+    # We don't want to be re-creating the virtual environment over and over again.
     unset YB_RECREATE_VIRTUALENV
   fi
 

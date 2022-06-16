@@ -38,10 +38,10 @@ The optional `LANGUAGE` clause can be written either before or after the code bl
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/do.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/do.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/do.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/do.diagram.md" %}}
   </div>
 </div>
 

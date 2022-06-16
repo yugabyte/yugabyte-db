@@ -595,6 +595,12 @@ Oid YbGetStorageRelid(Relation relation);
 bool IsYbDbAdminUser(Oid member);
 
 /*
+ * Check whether the user ID is of a user who has the yb_db_admin role
+ * (excluding superusers).
+ */
+bool IsYbDbAdminUserNosuper(Oid member);
+
+/*
  * Check unsupported system columns and report error.
  */
 void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte);

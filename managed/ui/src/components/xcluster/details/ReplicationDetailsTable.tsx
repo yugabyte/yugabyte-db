@@ -32,7 +32,7 @@ export function ReplicationDetailsTable({ replication }: props) {
   };
 
   const { data: tablesInSourceUniverse, isLoading: isTablesLoading } = useQuery(
-    [replication.sourceUniverseUUID, 'tables'],
+    ['xcluster', replication.sourceUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(replication.sourceUniverseUUID).then((res) => res.data)
   );
 
@@ -75,8 +75,7 @@ export function ReplicationDetailsTable({ replication }: props) {
     return null;
   }
 
-  const tablesInReplication = tablesInSourceUniverse
-    .map((tables: IReplicationTable) => {
+  const tablesInReplication = tablesInSourceUniverse?.map((tables: IReplicationTable) => {
       return {
         ...tables,
         tableUUID: tables.tableUUID.replaceAll('-', '')
@@ -91,7 +90,7 @@ export function ReplicationDetailsTable({ replication }: props) {
       <div className="replication-divider" />
       <Row>
         <Col lg={6}>
-          {tablesInReplication.length} of {tablesInSourceUniverse.length} tables replicated
+          {tablesInReplication?.length} of {tablesInSourceUniverse?.length} tables replicated
         </Col>
         <Col lg={6}>
           <div style={{ float: 'right' }}>
@@ -145,7 +144,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   <span className="lag-text">
                     <GetCurrentLagForTable
                       replicationUUID={replication.uuid}
-                      tableName={row.tableName}
+                      tableUUID={row.tableUUID}
                       nodePrefix={universeInfo?.data.universeDetails.nodePrefix}
                       enabled={isActiveTab}
                       sourceUniverseUUID={replication.sourceUniverseUUID}
@@ -153,7 +152,7 @@ export function ReplicationDetailsTable({ replication }: props) {
                   </span>
                 )}
               >
-                Current lag (ms)
+                Current lag
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="action"

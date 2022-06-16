@@ -30,7 +30,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
@@ -68,16 +68,16 @@ After [creating a local cluster](../../create-local-cluster/macos/), follow the 
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/explore-ycql.md" /%}}
+  {{% includeMarkdown "binary/explore-ycql.md" %}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/explore-ycql.md" /%}}
-  </div> 
+  {{% includeMarkdown "binary/explore-ycql.md" %}}
+  </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/explore-ycql.md" /%}}
+  {{% includeMarkdown "docker/explore-ycql.md" %}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/explore-ycql.md" /%}}
+  {{% includeMarkdown "kubernetes/explore-ycql.md" %}}
   </div>
 </div>
 

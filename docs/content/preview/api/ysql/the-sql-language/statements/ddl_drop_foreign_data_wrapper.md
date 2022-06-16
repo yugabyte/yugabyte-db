@@ -34,10 +34,10 @@ Use the `DROP FOREIGN DATA WRAPPER` command to remove a foreign-data wrapper. Th
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_data_wrapper.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_data_wrapper.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_data_wrapper.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_data_wrapper.diagram.md" %}}
   </div>
 </div>
 
@@ -46,7 +46,7 @@ Use the `DROP FOREIGN DATA WRAPPER` command to remove a foreign-data wrapper. Th
 Drop a foreign-data wrapper named **fdw_name**. If it doesn’t exist in the database, an error will be thrown unless the `IF EXISTS` clause is used.
 
 ### RESTRICT/CASCADE:
-`RESTRICT` is the default and it will not drop the foreign-data wrapper if any objects depend on it. 
+`RESTRICT` is the default and it will not drop the foreign-data wrapper if any objects depend on it.
 `CASCADE` will drop the foreign-data wrapper and any objects that transitively depend on it.
 
 ## Examples

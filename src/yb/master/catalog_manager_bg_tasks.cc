@@ -205,6 +205,12 @@ void CatalogManagerBgTasks::Run() {
       if (s.ok()) {
         s = catalog_manager_->ClearFailedUniverse();
       }
+      std::vector<scoped_refptr<CDCStreamInfo>> cdcsdk_streams;
+      auto status_delete_metadata = catalog_manager_->FindCDCStreamsMarkedForMetadataDeletion(
+          &cdcsdk_streams, SysCDCStreamEntryPB::DELETING_METADATA);
+      if (status_delete_metadata.ok() && !cdcsdk_streams.empty()) {
+        status_delete_metadata = catalog_manager_->CleanUpCDCStreamsMetadata(cdcsdk_streams);
+      }
 
       // Ensure the master sys catalog tablet follows the cluster's affinity specification.
       if (FLAGS_sys_catalog_respect_affinity_task) {

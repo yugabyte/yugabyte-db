@@ -2,8 +2,8 @@
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
-import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.cloud.aws.AWSCloudModule;
+import com.yugabyte.yw.cloud.CloudModules;
+import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
@@ -88,8 +88,7 @@ public class Module extends AbstractModule {
     }
 
     bind(RuntimeConfigFactory.class).to(SettableRuntimeConfigFactory.class).asEagerSingleton();
-    // TODO: other clouds
-    install(new AWSCloudModule());
+    install(new CloudModules());
 
     // Bind Application Initializer
     bind(AppInit.class).asEagerSingleton();

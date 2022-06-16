@@ -420,7 +420,7 @@ def get_zones(region, dest_vpc_id=None):
 
 
 def get_vpc(client, tag_name, **kwargs):
-    """Method to fetch vpc based on the tag_name.
+    """Method to fetch vpc based on the tag_name and cidr optionally if present.
     Args:
         client (boto client): Boto Client for the region to query.
         tag_name (str): VPC tag name.
@@ -428,7 +428,17 @@ def get_vpc(client, tag_name, **kwargs):
         VPC obj: VPC object or None.
     """
     filters = get_tag_filter(tag_name)
-    return next(iter(client.vpcs.filter(Filters=filters)), None)
+    vpcs = client.vpcs.filter(Filters=filters)
+    if 'cidr' in kwargs:
+        net1 = ip_network(kwargs.get('cidr'))
+        for vpc in vpcs:
+            net2 = ip_network(vpc.cidr_block)
+            if net1.subnet_of(net2) and net2.subnet_of(net1):
+                return vpc
+            raise YBOpsRuntimeError("VPC {} with tag {} already exists with different CIDR {}"
+                                    .format(vpc.id, tag_name, vpc.cidr_block))
+        return None
+    return next(iter(vpcs), None)
 
 
 def fetch_subnets(vpc, tag_name):

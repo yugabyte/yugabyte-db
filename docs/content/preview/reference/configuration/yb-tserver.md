@@ -179,6 +179,24 @@ The monitoring web server home directory..
 
 Default: The `www` directory in the YugabyteDB home directory.
 
+##### --webserver_certificate_file
+
+Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
+
+Default: `""`
+
+##### --webserver_authentication_domain
+
+Domain used for .htpasswd authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+
+Default: `""`
+
+##### --webserver_password_file
+
+Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
+
+Default: `""`
+
 ---
 
 ### Logging flags
@@ -384,7 +402,7 @@ Default: `""`
 
 ##### --force_global_transactions
 
-If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE` (see [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/#step-5-running-transactions)).
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE`.
 
 {{< note title="Global transaction latency" >}}
 
@@ -393,6 +411,18 @@ Avoid setting this flag when possible. All distributed transactions _can_ run wi
 {{< /note >}}
 
 Default: `false`
+
+#### --auto-create-local-transaction-tables
+
+If true, transaction status tables will be created under each YSQL tablespace that has a placement set and contains at least one other table.
+
+Default: `true`
+
+#### --auto-promote-nonlocal-transactions-to-global
+
+If true, local transactions using transaction status tables other than `system.transactions` will be automatically promoted to global transactions using the `system.transactions` transaction status table upon accessing data outside of the local region.
+
+Default: `true`
 
 ---
 

@@ -34,10 +34,10 @@ Use the `DEALLOCATE` statement to deallocate a previously prepared SQL statement
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/deallocate.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/deallocate.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/deallocate.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/deallocate.diagram.md" %}}
   </div>
 </div>
 
@@ -60,7 +60,7 @@ yugabyte=# CREATE TABLE sample(k1 int, k2 int, v1 int, v2 text, PRIMARY KEY (k1,
 ```
 
 ```plpgsql
-yugabyte=# PREPARE ins (bigint, double precision, int, text) AS 
+yugabyte=# PREPARE ins (bigint, double precision, int, text) AS
                INSERT INTO sample(k1, k2, v1, v2) VALUES ($1, $2, $3, $4);
 ```
 
