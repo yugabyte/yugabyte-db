@@ -517,9 +517,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   }
 }
 
-void RunningTransaction::SetOpId(const OpId& id) {
-  opId.index = id.index;
-  opId.term = id.term;
+void RunningTransaction::SetApplyOpId(const OpId& op_id) {
+  apply_record_op_id_ = op_id;
 }
 
 bool RunningTransaction::ProcessingApply() const {
