@@ -247,10 +247,10 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
-1. Add a new `yugabyte:yugabyte` user and group via the default login shell `/bin/bash` prepended with the `-s` flag (sudo is required):
+1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag (sudo is required):
 
     ```bash
-    sudo useradd -s /bin/bash -m yugabyte   # (add group yugabyte and create /home/yugabyte)
+    sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
