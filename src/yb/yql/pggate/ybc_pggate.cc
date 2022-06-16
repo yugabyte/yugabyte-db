@@ -135,6 +135,10 @@ void YBCDestroyPgGate() {
   }
 }
 
+void YBCInterruptPgGate() {
+  pgapi->Interrupt();
+}
+
 const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }

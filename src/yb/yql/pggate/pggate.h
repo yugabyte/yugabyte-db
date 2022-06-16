@@ -97,6 +97,9 @@ class PgApiImpl {
     return async_client_init_.client();
   }
 
+  // Interrupt aborts all pending RPCs immediately to unblock main thread.
+  void Interrupt();
+
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -560,6 +563,8 @@ class PgApiImpl {
   // Control variables.
   PggateOptions pggate_options_;
 
+  class Interrupter;
+
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -568,6 +573,7 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
+  std::unique_ptr<Interrupter> interrupter_;
 
   // YBClient is to communicate with either master or tserver.
   yb::client::AsyncClientInitialiser async_client_init_;
