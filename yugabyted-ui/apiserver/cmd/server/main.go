@@ -1,714 +1,855 @@
 package main
 
 import (
-	"apiserver/cmd/server/handlers"
-	"apiserver/cmd/server/templates"
-	"fmt"
-	"os"
+        "apiserver/cmd/server/handlers"
+        "apiserver/cmd/server/templates"
+        "embed"
+        "io/fs"
+        "net/http"
+        "os"
 
-	"encoding/json"
-	"html/template"
+        "html/template"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+        "github.com/labstack/echo/v4"
+        "github.com/labstack/echo/v4/middleware"
 )
 
-const configPath = "conf/properties.json"
+const serverPortEnv string = "YUGABYTED_UI_PORT"
 
-type Configuration struct {
-	Port string
+const (
+        uiDir     = "ui"
+        extension = "/*.html"
+)
+
+//go:embed ui
+var staticFiles embed.FS
+
+var templatesMap map[string]*template.Template
+
+func getEnv(key, fallback string) string {
+        if value, ok := os.LookupEnv(key); ok {
+                return value
+        }
+        return fallback
 }
 
-var config *Configuration
+func LoadTemplates() error {
 
-func ReadConfig() {
+        if templatesMap == nil {
+                templatesMap = make(map[string]*template.Template)
+        }
 
-	file, err := os.Open(configPath)
-	if err != nil {
-		fmt.Println("Error while opening config file:", err)
-	}
-	defer file.Close()
-	decoder := json.NewDecoder(file)
-	errDecode := decoder.Decode(&config)
-	if errDecode != nil {
-		fmt.Println("error while parsing properties file:", errDecode)
-	}
+        templateFiles, err := fs.ReadDir(staticFiles, uiDir)
+        if err != nil {
+                return err
+        }
+
+        for _, tmpl := range templateFiles {
+                if tmpl.IsDir() {
+                        continue
+                }
+
+                file, err := template.ParseFS(staticFiles, "ui/index.html")
+                if err != nil {
+                        return err
+                }
+
+                templatesMap[tmpl.Name()] = file
+        }
+        return nil
+}
+
+func getStaticFiles() http.FileSystem {
+
+        println("using embed mode")
+        fsys, err := fs.Sub(staticFiles, "ui")
+        if err != nil {
+                panic(err)
+        }
+
+        return http.FS(fsys)
 }
 
 func main() {
 
-	ReadConfig()
-	port := ":" + config.Port
+        serverPort := getEnv(serverPortEnv, "7002")
 
-	e := echo.New()
+        port := ":" + serverPort
 
-	//todo: handle the error!
-	c, _ := handlers.NewContainer()
+        LoadTemplates()
 
-	// Middleware
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+        e := echo.New()
 
-	// BatchInviteAccountUser - Batch add or invite user to account
-	e.POST("/api/public/accounts/:accountId/users/batch", c.BatchInviteAccountUser)
+        //todo: handle the error!
+        c, _ := handlers.NewContainer()
 
-	// CreateAccount - Create an account
-	e.POST("/api/public/accounts", c.CreateAccount)
+        // Middleware
+        e.Use(middleware.Logger())
+        e.Use(middleware.Recover())
 
-	// DeleteAccount - Delete account
-	e.DELETE("/api/public/accounts/:accountId", c.DeleteAccount)
+        // BatchInviteAccountUser - Batch add or invite user to account
+        e.POST("/api/public/accounts/:accountId/users/batch", c.BatchInviteAccountUser)
 
-	// GetAccount - Get account info
-	e.GET("/api/public/accounts/:accountId", c.GetAccount)
+        // CreateAccount - Create an account
+        e.POST("/api/public/accounts", c.CreateAccount)
 
-	// GetAccountByName - Get account by name
-	e.GET("/api/public/accounts", c.GetAccountByName)
+        // DeleteAccount - Delete account
+        e.DELETE("/api/public/accounts/:accountId", c.DeleteAccount)
 
-	// GetAccountQuotas - Get account quotas
-	e.GET("/api/public/accounts/:accountId/quotas", c.GetAccountQuotas)
+        // GetAccount - Get account info
+        e.GET("/api/public/accounts/:accountId", c.GetAccount)
 
-	// GetAccountUser - Get user info
-	e.GET("/api/public/accounts/:accountId/users/:userId", c.GetAccountUser)
+        // GetAccountByName - Get account by name
+        e.GET("/api/public/accounts", c.GetAccountByName)
 
-	// GetAllowedLoginTypes - Get allowed login types for account
-	e.GET("/api/public/accounts/:accountId/allowed_login_types", c.GetAllowedLoginTypes)
+        // GetAccountQuotas - Get account quotas
+        e.GET("/api/public/accounts/:accountId/quotas", c.GetAccountQuotas)
 
-	// InviteAccountUser - Add or Invite user to account
-	e.POST("/api/public/accounts/:accountId/users", c.InviteAccountUser)
+        // GetAccountUser - Get user info
+        e.GET("/api/public/accounts/:accountId/users/:userId", c.GetAccountUser)
 
-	// ListUsers - List users
-	e.GET("/api/public/accounts/:accountId/users", c.ListUsers)
+        // GetAllowedLoginTypes - Get allowed login types for account
+        e.GET("/api/public/accounts/:accountId/allowed_login_types", c.GetAllowedLoginTypes)
 
-	// ModifyAccount - Modify account
-	e.PUT("/api/public/accounts/:accountId", c.ModifyAccount)
+        // InviteAccountUser - Add or Invite user to account
+        e.POST("/api/public/accounts/:accountId/users", c.InviteAccountUser)
 
-	// ModifyAllowedLoginTypes - Modify allowed login types for account
-	e.PUT("/api/public/accounts/:accountId/allowed_login_types", c.ModifyAllowedLoginTypes)
+        // ListUsers - List users
+        e.GET("/api/public/accounts/:accountId/users", c.ListUsers)
 
-	// ModifyUserRole - Modify user role
-	e.PUT("/api/public/accounts/:accountId/users/:userId/roles", c.ModifyUserRole)
+        // ModifyAccount - Modify account
+        e.PUT("/api/public/accounts/:accountId", c.ModifyAccount)
 
-	// RemoveAccountUser - Remove user from account
-	e.DELETE("/api/public/accounts/:accountId/users/:userId", c.RemoveAccountUser)
+        // ModifyAllowedLoginTypes - Modify allowed login types for account
+        e.PUT("/api/public/accounts/:accountId/allowed_login_types", c.ModifyAllowedLoginTypes)
 
-	// ListAlertNotifications - API to fetch the alert notifications for an account
-	e.GET("/api/public/accounts/:accountId/alerts/notifications", c.ListAlertNotifications)
+        // ModifyUserRole - Modify user role
+        e.PUT("/api/public/accounts/:accountId/users/:userId/roles", c.ModifyUserRole)
 
-	// ListAlertRules - API to fetch the alert rules for an account
-	e.GET("/api/public/accounts/:accountId/alert_rules", c.ListAlertRules)
+        // RemoveAccountUser - Remove user from account
+        e.DELETE("/api/public/accounts/:accountId/users/:userId", c.RemoveAccountUser)
 
-	// SendTestEmailAlert - API to send test email alerts to users of an account
-	e.POST("/api/public/accounts/:accountId/alert_rules/:alertRuleId/test_email", c.SendTestEmailAlert)
+        // ListAlertNotifications - API to fetch the alert notifications for an account
+        e.GET("/api/public/accounts/:accountId/alerts/notifications", c.ListAlertNotifications)
 
-	// UpdateAlertRule - API to modify alert rule for an account
-	e.PUT("/api/public/accounts/:accountId/alert_rules/:alertRuleId", c.UpdateAlertRule)
+        // ListAlertRules - API to fetch the alert rules for an account
+        e.GET("/api/public/accounts/:accountId/alert_rules", c.ListAlertRules)
 
-	// GetAuditEventById - Get detailed information about a specific audit log event
-	e.GET("/api/public/accounts/:accountId/audit/events/:auditEventId", c.GetAuditEventById)
+        // SendTestEmailAlert - API to send test email alerts to users of an account
+        e.POST("/api/public/accounts/:accountId/alert_rules/:alertRuleId/test_email",
+                c.SendTestEmailAlert)
 
-	// GetAuditEventCategories - Get audit event categories
-	e.GET("/api/public/accounts/:accountId/audit/categories", c.GetAuditEventCategories)
+        // UpdateAlertRule - API to modify alert rule for an account
+        e.PUT("/api/public/accounts/:accountId/alert_rules/:alertRuleId", c.UpdateAlertRule)
 
-	// ListAuditEvents - Get list of audit events for a given account
-	e.GET("/api/public/accounts/:accountId/audit/events", c.ListAuditEvents)
+        // GetAuditEventById - Get detailed information about a specific audit log event
+        e.GET("/api/public/accounts/:accountId/audit/events/:auditEventId", c.GetAuditEventById)
 
-	// CreateAuthToken - Create a new auth token
-	e.POST("/api/public/auth/tokens", c.CreateAuthToken)
+        // GetAuditEventCategories - Get audit event categories
+        e.GET("/api/public/accounts/:accountId/audit/categories", c.GetAuditEventCategories)
 
-	// DeleteAuthToken - Delete auth token
-	e.DELETE("/api/public/auth/tokens/:tokenId", c.DeleteAuthToken)
+        // ListAuditEvents - Get list of audit events for a given account
+        e.GET("/api/public/accounts/:accountId/audit/events", c.ListAuditEvents)
 
-	// GetAuthToken - Get auth token
-	e.GET("/api/public/auth/tokens/:tokenId", c.GetAuthToken)
+        // CreateAuthToken - Create a new auth token
+        e.POST("/api/public/auth/tokens", c.CreateAuthToken)
 
-	// ListAuthTokens - List auth tokens
-	e.GET("/api/public/auth/tokens", c.ListAuthTokens)
+        // DeleteAuthToken - Delete auth token
+        e.DELETE("/api/public/auth/tokens/:tokenId", c.DeleteAuthToken)
 
-	// ListRoles - List system defined RBAC roles
-	e.GET("/api/public/auth/roles", c.ListRoles)
+        // GetAuthToken - Get auth token
+        e.GET("/api/public/auth/tokens/:tokenId", c.GetAuthToken)
 
-	// Login - Login a user
-	e.POST("/api/public/auth/login", c.Login)
+        // ListAuthTokens - List auth tokens
+        e.GET("/api/public/auth/tokens", c.ListAuthTokens)
 
-	// Logout - Logout a user
-	e.POST("/api/public/auth/logout", c.Logout)
+        // ListRoles - List system defined RBAC roles
+        e.GET("/api/public/auth/roles", c.ListRoles)
 
-	// CreateBackup - Create backups
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/backups", c.CreateBackup)
+        // Login - Login a user
+        e.POST("/api/public/auth/login", c.Login)
 
-	// DeleteBackup - Delete a backup
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/backups/:backupId", c.DeleteBackup)
+        // Logout - Logout a user
+        e.POST("/api/public/auth/logout", c.Logout)
 
-	// DeleteClusterBackups - Submit task to delete all backups of a cluster
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/backups", c.DeleteClusterBackups)
+        // CreateBackup - Create backups
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/backups", c.CreateBackup)
 
-	// DeleteSchedule - Delete a schedule
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/backup_schedules/:scheduleId", c.DeleteSchedule)
+        // DeleteBackup - Delete a backup
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId/backups/:backupId",
+                c.DeleteBackup)
 
-	// EditBackupSchedule - Edit the backup schedule
-	e.PUT("/api/public/accounts/:accountId/projects/:projectId/backup_schedules/:scheduleId", c.EditBackupSchedule)
+        // DeleteClusterBackups - Submit task to delete all backups of a cluster
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/backups",
+                c.DeleteClusterBackups)
 
-	// GetBackup - Get a backup
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/backups/:backupId", c.GetBackup)
+        // DeleteSchedule - Delete a schedule
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId/backup_schedules/:scheduleId",
+                c.DeleteSchedule)
 
-	// GetSchedule - Get a schedule
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/backup_schedules/:scheduleId", c.GetSchedule)
+        // EditBackupSchedule - Edit the backup schedule
+        e.PUT("/api/public/accounts/:accountId/projects/:projectId/backup_schedules/:scheduleId",
+                c.EditBackupSchedule)
 
-	// ListBackups - List backups
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/backups", c.ListBackups)
+        // GetBackup - Get a backup
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/backups/:backupId", c.GetBackup)
 
-	// ListRestores - List restore operations
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/restore", c.ListRestores)
+        // GetSchedule - Get a schedule
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/backup_schedules/:scheduleId",
+                c.GetSchedule)
 
-	// ListSchedules - List schedules
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/backup_schedules", c.ListSchedules)
+        // ListBackups - List backups
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/backups", c.ListBackups)
 
-	// RestoreBackup - Restore a backup to a Cluster
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/restore", c.RestoreBackup)
+        // ListRestores - List restore operations
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/restore", c.ListRestores)
 
-	// ScheduleBackup - Schedule a backup
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/backup_schedules", c.ScheduleBackup)
+        // ListSchedules - List schedules
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/backup_schedules",
+                c.ListSchedules)
 
-	// AttachPaymentMethod - Attaches payment method to the stripe customer
-	e.POST("/api/public/billing/accounts/:accountId/payment_methods/attach", c.AttachPaymentMethod)
+        // RestoreBackup - Restore a backup to a Cluster
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/restore", c.RestoreBackup)
 
-	// CreateBillingProfile - This API adds billing profile
-	e.POST("/api/public/billing/accounts/:accountId/billing_profile", c.CreateBillingProfile)
+        // ScheduleBackup - Schedule a backup
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/backup_schedules",
+                c.ScheduleBackup)
 
-	// CreateSetupIntent - Create set up intent object
-	e.POST("/api/public/billing/accounts/:accountId/set_up_intent/create", c.CreateSetupIntent)
+        // AttachPaymentMethod - Attaches payment method to the stripe customer
+        e.POST("/api/public/billing/accounts/:accountId/payment_methods/attach",
+                c.AttachPaymentMethod)
 
-	// DeletePaymentMethod - This API deletes payment method
-	e.DELETE("/api/public/billing/accounts/:accountId/payment_methods/:paymentMethodId", c.DeletePaymentMethod)
+        // CreateBillingProfile - This API adds billing profile
+        e.POST("/api/public/billing/accounts/:accountId/billing_profile", c.CreateBillingProfile)
 
-	// EstimateClusterCost - This API to calculate the estimated cost of the cluster
-	e.POST("/api/public/billing/accounts/:accountId/estimate", c.EstimateClusterCost)
+        // CreateSetupIntent - Create set up intent object
+        e.POST("/api/public/billing/accounts/:accountId/set_up_intent/create", c.CreateSetupIntent)
 
-	// GetBillingProfile - This API gets billing profile
-	e.GET("/api/public/billing/accounts/:accountId/billing_profile", c.GetBillingProfile)
+        // DeletePaymentMethod - This API deletes payment method
+        e.DELETE("/api/public/billing/accounts/:accountId/payment_methods/:paymentMethodId",
+                c.DeletePaymentMethod)
 
-	// GetDefaultPaymentMethod - Get default payment method
-	e.GET("/api/public/billing/accounts/:accountId/default_payment_method", c.GetDefaultPaymentMethod)
+        // EstimateClusterCost - This API to calculate the estimated cost of the cluster
+        e.POST("/api/public/billing/accounts/:accountId/estimate", c.EstimateClusterCost)
 
-	// GetRateInfo - Get rate info of an account
-	e.GET("/api/public/billing/accounts/:accountId/projects/:projectId/clusters/:clusterId/rate_info", c.GetRateInfo)
+        // GetBillingProfile - This API gets billing profile
+        e.GET("/api/public/billing/accounts/:accountId/billing_profile", c.GetBillingProfile)
 
-	// ListCredits - Get list of credits for an account
-	e.GET("/api/public/billing/accounts/:accountId/credits", c.ListCredits)
+        // GetDefaultPaymentMethod - Get default payment method
+        e.GET("/api/public/billing/accounts/:accountId/default_payment_method",
+                c.GetDefaultPaymentMethod)
 
-	// ListPaymentMethods - Lists billing payment methods
-	e.GET("/api/public/billing/accounts/:accountId/payment_methods", c.ListPaymentMethods)
+        // GetRateInfo - Get rate info of an account
+        e.GET("/api/public/billing/accounts/:accountId/"+
+                "projects/:projectId/clusters/:clusterId/rate_info", c.GetRateInfo)
 
-	// ModifyBillingProfile - This API updates billing profile
-	e.PUT("/api/public/billing/accounts/:accountId/billing_profile", c.ModifyBillingProfile)
+        // ListCredits - Get list of credits for an account
+        e.GET("/api/public/billing/accounts/:accountId/credits", c.ListCredits)
 
-	// SetDefaultPaymentMethod - This API sets default payment method
-	e.POST("/api/public/billing/accounts/:accountId/payment_methods/:paymentMethodId/default_payment_method", c.SetDefaultPaymentMethod)
+        // ListPaymentMethods - Lists billing payment methods
+        e.GET("/api/public/billing/accounts/:accountId/payment_methods", c.ListPaymentMethods)
 
-	// GetBillingInvoiceSummary - Billing invoice summary
-	e.GET("/api/public/billing-invoice/accounts/:accountId/summary", c.GetBillingInvoiceSummary)
+        // ModifyBillingProfile - This API updates billing profile
+        e.PUT("/api/public/billing/accounts/:accountId/billing_profile", c.ModifyBillingProfile)
 
-	// GetBillingInvoiceSummaryByInvoiceId - Billing invoice summary by invoice id
-	e.GET("/api/public/billing-invoice/accounts/:accountId/invoices/:invoiceId/summary", c.GetBillingInvoiceSummaryByInvoiceId)
+        // SetDefaultPaymentMethod - This API sets default payment method
+        e.POST("/api/public/billing/accounts/:accountId/payment_methods/"+
+                ":paymentMethodId/default_payment_method", c.SetDefaultPaymentMethod)
 
-	// GetUsageSummary - Get account's summary usage
-	e.GET("/api/public/billing-invoice/accounts/:accountId/invoices/:invoiceId/usage_summary", c.GetUsageSummary)
+        // GetBillingInvoiceSummary - Billing invoice summary
+        e.GET("/api/public/billing-invoice/accounts/:accountId/summary",
+                c.GetBillingInvoiceSummary)
 
-	// GetUsageSummaryStatistics - Get account's summary usage statistics
-	e.GET("/api/public/billing-invoice/accounts/:accountId/invoices/:invoiceId/usage_summary_statistics", c.GetUsageSummaryStatistics)
+        // GetBillingInvoiceSummaryByInvoiceId - Billing invoice summary by invoice id
+        e.GET("/api/public/billing-invoice/accounts/:accountId/invoices/:invoiceId/summary",
+                c.GetBillingInvoiceSummaryByInvoiceId)
 
-	// ListInvoices - Get list of invoices for an account
-	e.GET("/api/public/billing/accounts/:accountId/invoices", c.ListInvoices)
+        // GetUsageSummary - Get account's summary usage
+        e.GET("/api/public/billing-invoice/accounts/:accountId/invoices/:invoiceId/usage_summary",
+                c.GetUsageSummary)
 
-	// CreateCluster - Create a cluster
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters", c.CreateCluster)
+        // GetUsageSummaryStatistics - Get account's summary usage statistics
+        e.GET("/api/public/billing-invoice/accounts/:accountId/invoices/"+
+                ":invoiceId/usage_summary_statistics", c.GetUsageSummaryStatistics)
 
-	// DeleteCluster - Submit task to delete a cluster
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId", c.DeleteCluster)
+        // ListInvoices - Get list of invoices for an account
+        e.GET("/api/public/billing/accounts/:accountId/invoices", c.ListInvoices)
 
-	// EditCluster - Submit task to edit a cluster
-	e.PUT("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId", c.EditCluster)
+        // CreateCluster - Create a cluster
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters", c.CreateCluster)
 
-	// GetCluster - Get a cluster
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId", c.GetCluster)
+        // DeleteCluster - Submit task to delete a cluster
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId",
+                c.DeleteCluster)
 
-	// ListClusters - List clusters
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters", c.ListClusters)
+        // EditCluster - Submit task to edit a cluster
+        e.PUT("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId",
+                c.EditCluster)
 
-	// NodeOp - Submit task to operate on a node
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/nodes/op", c.NodeOp)
+        // GetCluster - Get a cluster
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId",
+                c.GetCluster)
 
-	// PauseCluster - Submit task to pause a cluster
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/pause", c.PauseCluster)
+        // ListClusters - List clusters
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters", c.ListClusters)
 
-	// ResumeCluster - Submit task to resume a cluster
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/resume", c.ResumeCluster)
+        // NodeOp - Submit task to operate on a node
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/nodes/op",
+                c.NodeOp)
 
-	// GetBulkClusterMetrics - Get bulk cluster metrics
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/cluster_metrics", c.GetBulkClusterMetrics)
+        // PauseCluster - Submit task to pause a cluster
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/pause",
+                c.PauseCluster)
 
-	// GetClusterMetric - Get a metric for a cluster
-	e.GET("/api/metrics", c.GetClusterMetric)
+        // ResumeCluster - Submit task to resume a cluster
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/resume",
+                c.ResumeCluster)
 
-	// GetClusterNodes - Get the nodes for a cluster
-	e.GET("/api/nodes", c.GetClusterNodes)
+        // GetBulkClusterMetrics - Get bulk cluster metrics
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/cluster_metrics",
+                c.GetBulkClusterMetrics)
 
-	// GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/tables", c.GetClusterTables)
+        // GetClusterMetric - Get a metric for a cluster
+        e.GET("/api/metrics", c.GetClusterMetric)
 
-	// GetClusterTablespaces - Get list of DB tables for YSQL
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/tablespaces", c.GetClusterTablespaces)
+        // GetClusterNodes - Get the nodes for a cluster
+        e.GET("/api/nodes", c.GetClusterNodes)
 
-	// GetLiveQueries - Get the live queries in a cluster
-	e.GET("/api/live_queries", c.GetLiveQueries)
+        // GetClusterTables - Get list of DB tables per YB API (YCQL/YSQL)
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/tables",
+                c.GetClusterTables)
 
-	// GetSlowQueries - Get the slow queries in a cluster
-	e.GET("/api/slow_queries", c.GetSlowQueries)
+        // GetClusterTablespaces - Get list of DB tables for YSQL
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/tablespaces", c.GetClusterTablespaces)
 
-	// EditClusterNetworkAllowLists - Modify set of allow lists associated to a cluster
-	e.PUT("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/network/allow_lists", c.EditClusterNetworkAllowLists)
+        // GetLiveQueries - Get the live queries in a cluster
+        e.GET("/api/live_queries", c.GetLiveQueries)
 
-	// ListClusterNetworkAllowLists - Get list of allow list entities associated to a cluster
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/network/allow_lists", c.ListClusterNetworkAllowLists)
+        // GetSlowQueries - Get the slow queries in a cluster
+        e.GET("/api/slow_queries", c.GetSlowQueries)
 
-	// GetCACert - Get certificate for connection to the cluster
-	e.GET("/api/public/certificate", c.GetCACert)
+        // EditClusterNetworkAllowLists - Modify set of allow lists associated to a cluster
+        e.PUT("/api/public/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/network/allow_lists", c.EditClusterNetworkAllowLists)
 
-	// GetClusterTierSpecs - Get base prices and specs of free and paid tier clusters
-	e.GET("/api/public/clusters/tier_spec", c.GetClusterTierSpecs)
+        // ListClusterNetworkAllowLists - Get list of allow list entities associated to a cluster
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/network/allow_lists", c.ListClusterNetworkAllowLists)
 
-	// GetInstanceTypes - Get the list of supported instance types for a given region/zone and provider
-	e.GET("/api/public/:accountId/instance_types/:cloud", c.GetInstanceTypes)
+        // GetCACert - Get certificate for connection to the cluster
+        e.GET("/api/public/certificate", c.GetCACert)
 
-	// GetRegions - Retrieve list of regions available to deploy cluster by cloud
-	e.GET("/api/public/regions/:cloud", c.GetRegions)
+        // GetClusterTierSpecs - Get base prices and specs of free and paid tier clusters
+        e.GET("/api/public/clusters/tier_spec", c.GetClusterTierSpecs)
 
-	// GetPing - A simple ping healthcheck endpoint
-	e.GET("/api/public/ping", c.GetPing)
+        // GetInstanceTypes - Get the list of supported
+        // instance types for a given region/zone and provider
+        e.GET("/api/public/:accountId/instance_types/:cloud", c.GetInstanceTypes)
 
-	// ListAccounts - List accounts
-	e.GET("/api/private/account", c.ListAccounts)
+        // GetRegions - Retrieve list of regions available to deploy cluster by cloud
+        e.GET("/api/public/regions/:cloud", c.GetRegions)
 
-	// DeleteAdminApiToken - Delete admin token
-	e.DELETE("/api/private/auth/admin_token/:adminTokenId", c.DeleteAdminApiToken)
+        // GetPing - A simple ping healthcheck endpoint
+        e.GET("/api/public/ping", c.GetPing)
 
-	// GetAdminApiToken - Create an admin JWT for bearer authentication
-	e.GET("/api/private/auth/admin_token", c.GetAdminApiToken)
+        // ListAccounts - List accounts
+        e.GET("/api/private/account", c.ListAccounts)
 
-	// ListAdminApiTokens - List admin JWTs
-	e.GET("/api/private/auth/admin_token/list", c.ListAdminApiTokens)
+        // DeleteAdminApiToken - Delete admin token
+        e.DELETE("/api/private/auth/admin_token/:adminTokenId", c.DeleteAdminApiToken)
 
-	// GetBackupInfo - Get backup info along with the location
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/backups/:backupId", c.GetBackupInfo)
+        // GetAdminApiToken - Create an admin JWT for bearer authentication
+        e.GET("/api/private/auth/admin_token", c.GetAdminApiToken)
 
-	// RestoreMigrationBackup - Restore a backup from the specified bucket to a Cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/restore_migration", c.RestoreMigrationBackup)
+        // ListAdminApiTokens - List admin JWTs
+        e.GET("/api/private/auth/admin_token/list", c.ListAdminApiTokens)
 
-	// AddCreditToBillingAccount - API to add credits to the given account
-	e.POST("/api/private/billing/accounts/:accountId/credits", c.AddCreditToBillingAccount)
+        // GetBackupInfo - Get backup info along with the location
+        e.GET("/api/private/accounts/:accountId/projects/"+
+                ":projectId/backups/:backupId", c.GetBackupInfo)
 
-	// Aggregate - Run daily billing aggregation
-	e.POST("/api/private/billing/accounts/:accountId/invoice/aggregate", c.Aggregate)
+        // RestoreMigrationBackup - Restore a backup from the specified bucket to a Cluster
+        e.POST("/api/private/accounts/:accountId/projects/"+
+                ":projectId/restore_migration", c.RestoreMigrationBackup)
 
-	// CreateRateCard - Creates rate card for the account
-	e.POST("/api/private/billing/accounts/:accountId/rate_card", c.CreateRateCard)
+        // AddCreditToBillingAccount - API to add credits to the given account
+        e.POST("/api/private/billing/accounts/:accountId/credits", c.AddCreditToBillingAccount)
 
-	// DeleteInvoice - Delete billing invoice
-	e.DELETE("/api/private/billing/accounts/:accountId/invoices/:invoiceId", c.DeleteInvoice)
+        // Aggregate - Run daily billing aggregation
+        e.POST("/api/private/billing/accounts/:accountId/invoice/aggregate", c.Aggregate)
 
-	// GenerateInvoice - Generate an invoice for the account
-	e.POST("/api/private/billing/accounts/:accountId/invoice/generate", c.GenerateInvoice)
+        // CreateRateCard - Creates rate card for the account
+        e.POST("/api/private/billing/accounts/:accountId/rate_card", c.CreateRateCard)
 
-	// SetAutomaticInvoiceGeneration - Enable or disable automatic invoice generation
-	e.POST("/api/private/billing/invoice/set_automatic_invoice_generation", c.SetAutomaticInvoiceGeneration)
+        // DeleteInvoice - Delete billing invoice
+        e.DELETE("/api/private/billing/accounts/:accountId/invoices/:invoiceId", c.DeleteInvoice)
 
-	// UpdateBillingInvoice - Update billing invoice
-	e.PUT("/api/private/billing/accounts/:accountId/invoices/:invoiceId", c.UpdateBillingInvoice)
+        // GenerateInvoice - Generate an invoice for the account
+        e.POST("/api/private/billing/accounts/:accountId/invoice/generate", c.GenerateInvoice)
 
-	// UpdateCreditsForAccount - API to update credits for the given account
-	e.PUT("/api/private/billing/accounts/:accountId/credits/:creditId", c.UpdateCreditsForAccount)
+        // SetAutomaticInvoiceGeneration - Enable or disable automatic invoice generation
+        e.POST("/api/private/billing/invoice/set_automatic_invoice_generation",
+                c.SetAutomaticInvoiceGeneration)
 
-	// UpdateGlobalRateCard - Updates global rate card
-	e.PUT("/api/private/billing/global_rate_card", c.UpdateGlobalRateCard)
+        // UpdateBillingInvoice - Update billing invoice
+        e.PUT("/api/private/billing/accounts/:accountId/invoices/:invoiceId",
+                c.UpdateBillingInvoice)
 
-	// UpdatePaymentMethod - API to update billing method to OTHER/EMPLOYEE
-	e.PUT("/api/private/billing/accounts/:accountId/payment_method", c.UpdatePaymentMethod)
+        // UpdateCreditsForAccount - API to update credits for the given account
+        e.PUT("/api/private/billing/accounts/:accountId/credits/:creditId",
+                c.UpdateCreditsForAccount)
 
-	// CreatePrivateCluster - Create a Private cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters", c.CreatePrivateCluster)
+        // UpdateGlobalRateCard - Updates global rate card
+        e.PUT("/api/private/billing/global_rate_card", c.UpdateGlobalRateCard)
 
-	// DbUpgrade - Submit task to upgrade DB version of a cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/upgrade/db", c.DbUpgrade)
+        // UpdatePaymentMethod - API to update billing method to OTHER/EMPLOYEE
+        e.PUT("/api/private/billing/accounts/:accountId/payment_method", c.UpdatePaymentMethod)
 
-	// EditPrivateCluster - Submit task to edit a private cluster
-	e.PUT("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId", c.EditPrivateCluster)
+        // CreatePrivateCluster - Create a Private cluster
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters",
+                c.CreatePrivateCluster)
 
-	// GetClusterInternalDetails - Get a cluster
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId", c.GetClusterInternalDetails)
+        // DbUpgrade - Submit task to upgrade DB version of a cluster
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/upgrade/db", c.DbUpgrade)
 
-	// GetDbReleases - Get all the available DB releases for upgrade
-	e.GET("/api/private/db_releases", c.GetDbReleases)
+        // EditPrivateCluster - Submit task to edit a private cluster
+        e.PUT("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId",
+                c.EditPrivateCluster)
 
-	// GetPlatformForCluster - Get data of platform which manages the given cluster
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/platform", c.GetPlatformForCluster)
+        // GetClusterInternalDetails - Get a cluster
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId",
+                c.GetClusterInternalDetails)
 
-	// GflagsUpgrade - Submit task to upgrade gflags of a cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/gflags", c.GflagsUpgrade)
+        // GetDbReleases - Get all the available DB releases for upgrade
+        e.GET("/api/private/db_releases", c.GetDbReleases)
 
-	// ListGFlags - List all GFlags on a cluster
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/gflags", c.ListGFlags)
+        // GetPlatformForCluster - Get data of platform which manages the given cluster
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/platform",
+                c.GetPlatformForCluster)
 
-	// LockClusterForSupport - Acquire lock on the cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/lock", c.LockClusterForSupport)
+        // GflagsUpgrade - Submit task to upgrade gflags of a cluster
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/gflags",
+                c.GflagsUpgrade)
 
-	// RebuildScrapeTargets - Rebuild prometheus configmap for scrape targets
-	e.PUT("/api/private/clusters/scrape_targets", c.RebuildScrapeTargets)
+        // ListGFlags - List all GFlags on a cluster
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/gflags",
+                c.ListGFlags)
 
-	// UnlockClusterForSupport - Release lock on the cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/unlock", c.UnlockClusterForSupport)
+        // LockClusterForSupport - Acquire lock on the cluster
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/lock",
+                c.LockClusterForSupport)
 
-	// VmUpgrade - Submit task to upgrade VM image of a cluster
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/upgrade/vm", c.VmUpgrade)
+        // RebuildScrapeTargets - Rebuild prometheus configmap for scrape targets
+        e.PUT("/api/private/clusters/scrape_targets", c.RebuildScrapeTargets)
 
-	// GetInternalClusterNodes - Get internal nodes for a cluster
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/nodes", c.GetInternalClusterNodes)
+        // UnlockClusterForSupport - Release lock on the cluster
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/unlock",
+                c.UnlockClusterForSupport)
 
-	// EditExternalOrInternalClusterNetworkAllowLists - Modify set of allow lists associated to a cluster
-	e.PUT("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/network/allow_lists", c.EditExternalOrInternalClusterNetworkAllowLists)
+        // VmUpgrade - Submit task to upgrade VM image of a cluster
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/upgrade/vm", c.VmUpgrade)
 
-	// ListAllClusterNetworkAllowLists - Get list of allow list entities associated to a cluster
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/network/allow_lists", c.ListAllClusterNetworkAllowLists)
+        // GetInternalClusterNodes - Get internal nodes for a cluster
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/nodes",
+                c.GetInternalClusterNodes)
 
-	// AddCustomImageToSet - API to add a custom image to the specified custom image set
-	e.POST("/api/private/custom_image_sets/:customImageSetId", c.AddCustomImageToSet)
+        // EditExternalOrInternalClusterNetworkAllowLists -
+        // Modify set of allow lists associated to a cluster
+        e.PUT("/api/private/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/network/allow_lists",
+                c.EditExternalOrInternalClusterNetworkAllowLists)
 
-	// CreateCustomImageSetsInBulk - API to create custom image sets in bulk
-	e.POST("/api/private/custom_image_sets", c.CreateCustomImageSetsInBulk)
+        // ListAllClusterNetworkAllowLists - Get list of allow list entities associated to a cluster
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/network/allow_lists", c.ListAllClusterNetworkAllowLists)
 
-	// DeleteCustomImageSet - Delete custom image set
-	e.DELETE("/api/private/custom_image_sets/:customImageSetId", c.DeleteCustomImageSet)
+        // AddCustomImageToSet - API to add a custom image to the specified custom image set
+        e.POST("/api/private/custom_image_sets/:customImageSetId", c.AddCustomImageToSet)
 
-	// GetCustomImageSetDetails - API to get details about custom image set
-	e.GET("/api/private/custom_image_sets/:customImageSetId", c.GetCustomImageSetDetails)
+        // CreateCustomImageSetsInBulk - API to create custom image sets in bulk
+        e.POST("/api/private/custom_image_sets", c.CreateCustomImageSetsInBulk)
 
-	// ListCustomImageSets - API to list custom image sets
-	e.GET("/api/private/custom_image_sets", c.ListCustomImageSets)
+        // DeleteCustomImageSet - Delete custom image set
+        e.DELETE("/api/private/custom_image_sets/:customImageSetId", c.DeleteCustomImageSet)
 
-	// MarkCustomImageSetAsDefault - Mark a custom image set as default
-	e.POST("/api/private/custom_image_sets/:customImageSetId/default", c.MarkCustomImageSetAsDefault)
+        // GetCustomImageSetDetails - API to get details about custom image set
+        e.GET("/api/private/custom_image_sets/:customImageSetId", c.GetCustomImageSetDetails)
 
-	// SendEmail - Send email with given template
-	e.POST("/api/private/email", c.SendEmail)
+        // ListCustomImageSets - API to list custom image sets
+        e.GET("/api/private/custom_image_sets", c.ListCustomImageSets)
 
-	// ArmFaultInjectionForEntity - Arm fault injection
-	e.POST("/api/private/fault_injection/arm", c.ArmFaultInjectionForEntity)
+        // MarkCustomImageSetAsDefault - Mark a custom image set as default
+        e.POST("/api/private/custom_image_sets/:customImageSetId/default",
+                c.MarkCustomImageSetAsDefault)
 
-	// DisarmFaultInjectionForEntity - Disarm fault injection
-	e.DELETE("/api/private/fault_injection/disarm", c.DisarmFaultInjectionForEntity)
+        // SendEmail - Send email with given template
+        e.POST("/api/private/email", c.SendEmail)
 
-	// GetEntityRefs - Get list of entity refs for the specified fault
-	e.GET("/api/private/fault_injection/:fault_name", c.GetEntityRefs)
+        // ArmFaultInjectionForEntity - Arm fault injection
+        e.POST("/api/private/fault_injection/arm", c.ArmFaultInjectionForEntity)
 
-	// GetFaultNames - Get fault injections
-	e.GET("/api/private/fault_injection", c.GetFaultNames)
+        // DisarmFaultInjectionForEntity - Disarm fault injection
+        e.DELETE("/api/private/fault_injection/disarm", c.DisarmFaultInjectionForEntity)
 
-	// GetLoggingLevel - Get Logging Level
-	e.GET("/api/private/logger", c.GetLoggingLevel)
+        // GetEntityRefs - Get list of entity refs for the specified fault
+        e.GET("/api/private/fault_injection/:fault_name", c.GetEntityRefs)
 
-	// SetLoggingLevel - Set Logging Level
-	e.PUT("/api/private/logger", c.SetLoggingLevel)
+        // GetFaultNames - Get fault injections
+        e.GET("/api/private/fault_injection", c.GetFaultNames)
 
-	// UpdateGflagMaintenance - API to set use_custom_gflags flag for a cluster's maintenance schedule
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/schedule/gflags", c.UpdateGflagMaintenance)
+        // GetLoggingLevel - Get Logging Level
+        e.GET("/api/private/logger", c.GetLoggingLevel)
 
-	// GetVersion - Get application version
-	e.GET("/api/private/version", c.GetVersion)
+        // SetLoggingLevel - Set Logging Level
+        e.PUT("/api/private/logger", c.SetLoggingLevel)
 
-	// GetMeteringData - Get metering data
-	e.GET("/api/private/metering/accounts/:accountId", c.GetMeteringData)
+        // UpdateGflagMaintenance - API to set use_custom_gflags flag
+        // for a cluster's maintenance schedule
+        e.POST("/api/private/accounts/:accountId/projects/"+
+                ":projectId/clusters/:clusterId/maintenance/schedule/gflags",
+                c.UpdateGflagMaintenance)
 
-	// AddNetwork - Add new cluster network
-	e.POST("/api/private/network", c.AddNetwork)
+        // GetVersion - Get application version
+        e.GET("/api/private/version", c.GetVersion)
 
-	// CreateInternalNetworkAllowList - Create a private allow list entity
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/network/allow_lists", c.CreateInternalNetworkAllowList)
+        // GetMeteringData - Get metering data
+        e.GET("/api/private/metering/accounts/:accountId", c.GetMeteringData)
 
-	// CreateInternalVpcPeering - Peer two yugabyte VPC
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/network/vpcs/:vpcId/peer", c.CreateInternalVpcPeering)
+        // AddNetwork - Add new cluster network
+        e.POST("/api/private/network", c.AddNetwork)
 
-	// CreateSingleTenantVpcMetadata - Create customer-facing VPC metadata for cluster isolation
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/network/vpcs", c.CreateSingleTenantVpcMetadata)
+        // CreateInternalNetworkAllowList - Create a private allow list entity
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/network/allow_lists",
+                c.CreateInternalNetworkAllowList)
 
-	// DeleteExternalOrInternalNetworkAllowList - Delete an allow list entity
-	e.DELETE("/api/private/accounts/:accountId/projects/:projectId/network/allow_lists/:allowListId", c.DeleteExternalOrInternalNetworkAllowList)
+        // CreateInternalVpcPeering - Peer two yugabyte VPC
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/network/vpcs/:vpcId/peer",
+                c.CreateInternalVpcPeering)
 
-	// DeleteInternalVpcPeering - Delete internal VPC peering between two yugabyte VPC
-	e.DELETE("/api/private/accounts/:accountId/projects/:projectId/network/vpcs/:peeringId", c.DeleteInternalVpcPeering)
+        // CreateSingleTenantVpcMetadata - Create customer-facing VPC metadata for cluster isolation
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/network/vpcs",
+                c.CreateSingleTenantVpcMetadata)
 
-	// GetExternalOrInternalNetworkAllowList - Retrieve an allow list entity
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/network/allow_lists/:allowListId", c.GetExternalOrInternalNetworkAllowList)
+        // DeleteExternalOrInternalNetworkAllowList - Delete an allow list entity
+        e.DELETE("/api/private/accounts/:accountId/projects/:projectId/"+
+                "network/allow_lists/:allowListId",
+                c.DeleteExternalOrInternalNetworkAllowList)
 
-	// GetVpc - Get network info by ID
-	e.GET("/api/private/network/:vpcId", c.GetVpc)
+        // DeleteInternalVpcPeering - Delete internal VPC peering between two yugabyte VPC
+        e.DELETE("/api/private/accounts/:accountId/projects/:projectId/network/vpcs/:peeringId",
+                c.DeleteInternalVpcPeering)
 
-	// ListAllNetworkAllowLists - Get list of allow list entities
-	e.GET("/api/private/accounts/:accountId/projects/:projectId/network/allow_lists", c.ListAllNetworkAllowLists)
+        // GetExternalOrInternalNetworkAllowList - Retrieve an allow list entity
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/"+
+                "network/allow_lists/:allowListId", c.GetExternalOrInternalNetworkAllowList)
 
-	// ListNetworks - List all cluster networks
-	e.GET("/api/private/network", c.ListNetworks)
+        // GetVpc - Get network info by ID
+        e.GET("/api/private/network/:vpcId", c.GetVpc)
 
-	// MarkVpcsForMaintenance - Mark VPCs for Maintenance
-	e.POST("/api/private/network/maintenance", c.MarkVpcsForMaintenance)
+        // ListAllNetworkAllowLists - Get list of allow list entities
+        e.GET("/api/private/accounts/:accountId/projects/:projectId/network/allow_lists",
+                c.ListAllNetworkAllowLists)
 
-	// AddPlatform - Add new platform
-	e.POST("/api/private/platform", c.AddPlatform)
+        // ListNetworks - List all cluster networks
+        e.GET("/api/private/network", c.ListNetworks)
 
-	// AddProjectToPlatform - Add project to platform
-	e.POST("/api/private/platform/:platformId/project", c.AddProjectToPlatform)
+        // MarkVpcsForMaintenance - Mark VPCs for Maintenance
+        e.POST("/api/private/network/maintenance", c.MarkVpcsForMaintenance)
 
-	// GetPlatform - Get platform by ID
-	e.GET("/api/private/platform/:platformId", c.GetPlatform)
+        // AddPlatform - Add new platform
+        e.POST("/api/private/platform", c.AddPlatform)
 
-	// ListPlatforms - List platforms
-	e.GET("/api/private/platform", c.ListPlatforms)
+        // AddProjectToPlatform - Add project to platform
+        e.POST("/api/private/platform/:platformId/project", c.AddProjectToPlatform)
 
-	// MarkPlatformsForMaintenance - Mark Platforms for Maintenance
-	e.POST("/api/private/platform/maintenance", c.MarkPlatformsForMaintenance)
+        // GetPlatform - Get platform by ID
+        e.GET("/api/private/platform/:platformId", c.GetPlatform)
 
-	// RefreshProviderPricing - Refresh pricing in specified existing customer providers
-	e.PUT("/api/private/platform/providers/refresh-pricing", c.RefreshProviderPricing)
+        // ListPlatforms - List platforms
+        e.GET("/api/private/platform", c.ListPlatforms)
 
-	// GetRuntimeConfig - Get runtime configuration
-	e.GET("/api/private/runtime_config", c.GetRuntimeConfig)
+        // MarkPlatformsForMaintenance - Mark Platforms for Maintenance
+        e.POST("/api/private/platform/maintenance", c.MarkPlatformsForMaintenance)
 
-	// UpdateRuntimeConfig - Update configuration keys for given scope.
-	e.PUT("/api/private/runtime_config", c.UpdateRuntimeConfig)
+        // RefreshProviderPricing - Refresh pricing in specified existing customer providers
+        e.PUT("/api/private/platform/providers/refresh-pricing", c.RefreshProviderPricing)
 
-	// CancelScheduledUpgrade - Cancel a scheduled upgrade task
-	e.DELETE("/api/private/scheduled_upgrade/:taskId", c.CancelScheduledUpgrade)
+        // GetRuntimeConfig - Get runtime configuration
+        e.GET("/api/private/runtime_config", c.GetRuntimeConfig)
 
-	// ListScheduledUpgrades - List currently scheduled upgrade tasks
-	e.GET("/api/private/scheduled_upgrade", c.ListScheduledUpgrades)
+        // UpdateRuntimeConfig - Update configuration keys for given scope.
+        e.PUT("/api/private/runtime_config", c.UpdateRuntimeConfig)
 
-	// RemoveClusterFromExecution - Remove a cluster from a scheduled upgrade execution
-	e.DELETE("/api/private/scheduled_upgrade/:taskId/clusters/:clusterId", c.RemoveClusterFromExecution)
+        // CancelScheduledUpgrade - Cancel a scheduled upgrade task
+        e.DELETE("/api/private/scheduled_upgrade/:taskId", c.CancelScheduledUpgrade)
 
-	// ScheduleBulkUpgrade - Schedule an upgrade based on cluster tier and optionally cloud/region
-	e.POST("/api/private/scheduled_upgrade/tracks/:trackId", c.ScheduleBulkUpgrade)
+        // ListScheduledUpgrades - List currently scheduled upgrade tasks
+        e.GET("/api/private/scheduled_upgrade", c.ListScheduledUpgrades)
 
-	// ScheduleClusterUpgrade - Schedule an Upgrade for the specified Cluster
-	e.POST("/api/private/scheduled_upgrade/accounts/:accountId/projects/:projectId/clusters/:clusterId", c.ScheduleClusterUpgrade)
+        // RemoveClusterFromExecution - Remove a cluster from a scheduled upgrade execution
+        e.DELETE("/api/private/scheduled_upgrade/:taskId/clusters/:clusterId",
+                c.RemoveClusterFromExecution)
 
-	// BatchAddTracks - Add release tracks to account
-	e.POST("/api/private/accounts/:accountId/software/tracks", c.BatchAddTracks)
+        // ScheduleBulkUpgrade - Schedule an upgrade based on
+        // cluster tier and optionally cloud/region
+        e.POST("/api/private/scheduled_upgrade/tracks/:trackId", c.ScheduleBulkUpgrade)
 
-	// CreateRelease - Create a software release
-	e.POST("/api/private/software/tracks/:trackId/releases", c.CreateRelease)
+        // ScheduleClusterUpgrade - Schedule an Upgrade for the specified Cluster
+        e.POST("/api/private/scheduled_upgrade/accounts/:accountId/"+
+                "projects/:projectId/clusters/:clusterId", c.ScheduleClusterUpgrade)
 
-	// CreateTrack - Create a DB software release track
-	e.POST("/api/private/software/tracks", c.CreateTrack)
+        // BatchAddTracks - Add release tracks to account
+        e.POST("/api/private/accounts/:accountId/software/tracks", c.BatchAddTracks)
 
-	// DeleteRelease - Delete a software release
-	e.DELETE("/api/private/software/tracks/:trackId/releases/:releaseId", c.DeleteRelease)
+        // CreateRelease - Create a software release
+        e.POST("/api/private/software/tracks/:trackId/releases", c.CreateRelease)
 
-	// DeleteTrack - Delete a DB software release track
-	e.DELETE("/api/private/software/tracks/:trackId", c.DeleteTrack)
+        // CreateTrack - Create a DB software release track
+        e.POST("/api/private/software/tracks", c.CreateTrack)
 
-	// ListReleasesOnTrack - List all DB software releases by track
-	e.GET("/api/private/software/tracks/:trackId/releases", c.ListReleasesOnTrack)
+        // DeleteRelease - Delete a software release
+        e.DELETE("/api/private/software/tracks/:trackId/releases/:releaseId", c.DeleteRelease)
 
-	// ListTracks - List all DB software release tracks
-	e.GET("/api/private/software/tracks", c.ListTracks)
+        // DeleteTrack - Delete a DB software release track
+        e.DELETE("/api/private/software/tracks/:trackId", c.DeleteTrack)
 
-	// RemoveTrack - Remove release track from account
-	e.DELETE("/api/private/accounts/:accountId/software/tracks/:trackId", c.RemoveTrack)
+        // ListReleasesOnTrack - List all DB software releases by track
+        e.GET("/api/private/software/tracks/:trackId/releases", c.ListReleasesOnTrack)
 
-	// UpdateRelease - Update a software release
-	e.PUT("/api/private/software/tracks/:trackId/releases/:releaseId", c.UpdateRelease)
+        // ListTracks - List all DB software release tracks
+        e.GET("/api/private/software/tracks", c.ListTracks)
 
-	// GetAllowedValuesForInternalTags - API to fetch allowed values for internal tags
-	e.GET("/api/private/internal_tags/allowed_values", c.GetAllowedValuesForInternalTags)
+        // RemoveTrack - Remove release track from account
+        e.DELETE("/api/private/accounts/:accountId/software/tracks/:trackId", c.RemoveTrack)
 
-	// GetUserInternalTags - API to get user internal tags for a given user
-	e.GET("/api/private/users/:userId/internal_tags", c.GetUserInternalTags)
+        // UpdateRelease - Update a software release
+        e.PUT("/api/private/software/tracks/:trackId/releases/:releaseId", c.UpdateRelease)
 
-	// ListAllDefaultInternalTags - API to fetch all the default internal tags
-	e.GET("/api/private/internal_tags/default", c.ListAllDefaultInternalTags)
+        // GetAllowedValuesForInternalTags - API to fetch allowed values for internal tags
+        e.GET("/api/private/internal_tags/allowed_values", c.GetAllowedValuesForInternalTags)
 
-	// UpdateDefaultInternalTags - API to batch set/update default internal tags
-	e.POST("/api/private/internal_tags/default", c.UpdateDefaultInternalTags)
+        // GetUserInternalTags - API to get user internal tags for a given user
+        e.GET("/api/private/users/:userId/internal_tags", c.GetUserInternalTags)
 
-	// UpdateUserInternalTags - API to set/update internal tags for a given user
-	e.POST("/api/private/users/:userId/internal_tags", c.UpdateUserInternalTags)
+        // ListAllDefaultInternalTags - API to fetch all the default internal tags
+        e.GET("/api/private/internal_tags/default", c.ListAllDefaultInternalTags)
 
-	// ListTasksAll - List tasks
-	e.GET("/api/private/accounts/:accountId/tasks", c.ListTasksAll)
+        // UpdateDefaultInternalTags - API to batch set/update default internal tags
+        e.POST("/api/private/internal_tags/default", c.UpdateDefaultInternalTags)
 
-	// RunScheduledTask - Run scheduled task
-	e.POST("/api/private/scheduled_tasks/:task", c.RunScheduledTask)
+        // UpdateUserInternalTags - API to set/update internal tags for a given user
+        e.POST("/api/private/users/:userId/internal_tags", c.UpdateUserInternalTags)
 
-	// EventCallback - Post a task-related event callback
-	e.POST("/api/private/taskEvents/:eventId", c.EventCallback)
+        // ListTasksAll - List tasks
+        e.GET("/api/private/accounts/:accountId/tasks", c.ListTasksAll)
 
-	// ActivateInvitedUserWithoutToken - Activate invited user by skipping token validation
-	e.POST("/api/private/users/activate_invited", c.ActivateInvitedUserWithoutToken)
+        // RunScheduledTask - Run scheduled task
+        e.POST("/api/private/scheduled_tasks/:task", c.RunScheduledTask)
 
-	// ActivateSignupUserWithoutToken - Activate signup user by skipping token validation
-	e.POST("/api/private/users/activate", c.ActivateSignupUserWithoutToken)
+        // EventCallback - Post a task-related event callback
+        e.POST("/api/private/taskEvents/:eventId", c.EventCallback)
 
-	// CleanupUser - Delete user and remove the accounts/projects of which they are the sole admin
-	e.DELETE("/api/private/users/:userId/cleanup", c.CleanupUser)
+        // ActivateInvitedUserWithoutToken - Activate invited user by skipping token validation
+        e.POST("/api/private/users/activate_invited", c.ActivateInvitedUserWithoutToken)
 
-	// ListAllUsers - List all users
-	e.GET("/api/private/users", c.ListAllUsers)
+        // ActivateSignupUserWithoutToken - Activate signup user by skipping token validation
+        e.POST("/api/private/users/activate", c.ActivateSignupUserWithoutToken)
 
-	// CreateXclusterReplication - API to create replication
-	e.POST("/api/private/accounts/:accountId/projects/:projectId/xcluster_replication", c.CreateXclusterReplication)
+        // CleanupUser - Delete user and remove the accounts/projects
+        // of which they are the sole admin
+        e.DELETE("/api/private/users/:userId/cleanup", c.CleanupUser)
 
-	// DelayMaintenanceEvent - API to delay maintenance events for a cluster
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/events/:executionId/delay", c.DelayMaintenanceEvent)
+        // ListAllUsers - List all users
+        e.GET("/api/private/users", c.ListAllUsers)
 
-	// GetMaintenanceSchedule - API to get maintenance schedules
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/schedule", c.GetMaintenanceSchedule)
+        // CreateXclusterReplication - API to create replication
+        e.POST("/api/private/accounts/:accountId/projects/:projectId/xcluster_replication",
+                c.CreateXclusterReplication)
 
-	// GetNextMaintenanceWindowInfo - API to get next maintenance window for a cluster
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/:executionId/next_available_window", c.GetNextMaintenanceWindowInfo)
+        // DelayMaintenanceEvent - API to delay maintenance events for a cluster
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/"+
+                ":clusterId/maintenance/events/:executionId/delay", c.DelayMaintenanceEvent)
 
-	// ListScheduledMaintenanceEventsForCluster - API to list all scheduled maintenance events for a cluster
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/events", c.ListScheduledMaintenanceEventsForCluster)
+        // GetMaintenanceSchedule - API to get maintenance schedules
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/"+
+                ":clusterId/maintenance/schedule", c.GetMaintenanceSchedule)
 
-	// TriggerMaintenanceEvent - API to trigger maintenance events for a cluster
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/events/:executionId/trigger", c.TriggerMaintenanceEvent)
+        // GetNextMaintenanceWindowInfo - API to get next maintenance window for a cluster
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/"+
+                ":clusterId/maintenance/:executionId/next_available_window",
+                c.GetNextMaintenanceWindowInfo)
 
-	// UpdateMaintenanceSchedule - API to update maintenance schedules
-	e.PUT("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/maintenance/schedule", c.UpdateMaintenanceSchedule)
+        // ListScheduledMaintenanceEventsForCluster - API to list all scheduled
+        // maintenance events for a cluster
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/"+
+                ":clusterId/maintenance/events", c.ListScheduledMaintenanceEventsForCluster)
 
-	// CreateNetworkAllowList - Create an allow list entity
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/network/allow_lists", c.CreateNetworkAllowList)
+        // TriggerMaintenanceEvent - API to trigger maintenance events for a cluster
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/"+
+                ":clusterId/maintenance/events/:executionId/trigger", c.TriggerMaintenanceEvent)
 
-	// CreateVpc - Create a dedicated VPC for your DB clusters
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/network/vpcs", c.CreateVpc)
+        // UpdateMaintenanceSchedule - API to update maintenance schedules
+        e.PUT("/api/public/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/maintenance/schedule", c.UpdateMaintenanceSchedule)
 
-	// CreateVpcPeering - Create a peering between customer VPC and Yugabyte VPC
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/network/vpc-peerings", c.CreateVpcPeering)
+        // CreateNetworkAllowList - Create an allow list entity
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/network/allow_lists",
+                c.CreateNetworkAllowList)
 
-	// DeleteNetworkAllowList - Delete an allow list entity
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/network/allow_lists/:allowListId", c.DeleteNetworkAllowList)
+        // CreateVpc - Create a dedicated VPC for your DB clusters
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/network/vpcs",
+                c.CreateVpc)
 
-	// DeleteVpc - Delete customer-facing VPC by ID
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/network/vpcs/:vpcId", c.DeleteVpc)
+        // CreateVpcPeering - Create a peering between customer VPC and Yugabyte VPC
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/network/vpc-peerings",
+                c.CreateVpcPeering)
 
-	// DeleteVpcPeering - Delete VPC Peering
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId/network/vpc-peerings/:peeringId", c.DeleteVpcPeering)
+        // DeleteNetworkAllowList - Delete an allow list entity
+        e.DELETE("/api/public/accounts/:accountId/projects/"+
+                ":projectId/network/allow_lists/:allowListId",
+                c.DeleteNetworkAllowList)
 
-	// GetNetworkAllowList - Retrieve an allow list entity
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/network/allow_lists/:allowListId", c.GetNetworkAllowList)
+        // DeleteVpc - Delete customer-facing VPC by ID
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId/network/vpcs/:vpcId",
+                c.DeleteVpc)
 
-	// GetSingleTenantVpc - Get customer-facing VPC by ID
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpcs/:vpcId", c.GetSingleTenantVpc)
+        // DeleteVpcPeering - Delete VPC Peering
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId/"+
+                "network/vpc-peerings/:peeringId", c.DeleteVpcPeering)
 
-	// GetVpcPeering - Get a VPC Peering
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpc-peerings/:peeringId", c.GetVpcPeering)
+        // GetNetworkAllowList - Retrieve an allow list entity
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/"+
+                "network/allow_lists/:allowListId", c.GetNetworkAllowList)
 
-	// ListNetworkAllowLists - Get list of allow list entities
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/network/allow_lists", c.ListNetworkAllowLists)
+        // GetSingleTenantVpc - Get customer-facing VPC by ID
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpcs/:vpcId",
+                c.GetSingleTenantVpc)
 
-	// ListSingleTenantVpcs - Get customer-facing VPCs to choose for cluster isolation
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpcs", c.ListSingleTenantVpcs)
+        // GetVpcPeering - Get a VPC Peering
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/"+
+                "network/vpc-peerings/:peeringId", c.GetVpcPeering)
 
-	// ListVpcPeerings - List peerings between customer VPCs and Yugabyte VPCs
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpc-peerings", c.ListVpcPeerings)
+        // ListNetworkAllowLists - Get list of allow list entities
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/network/allow_lists",
+                c.ListNetworkAllowLists)
 
-	// GetRestrictedCidrs - Get list of unavailable CIDRs
-	e.GET("/api/public/networks/:cloud/restricted", c.GetRestrictedCidrs)
+        // ListSingleTenantVpcs - Get customer-facing VPCs to choose for cluster isolation
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpcs",
+                c.ListSingleTenantVpcs)
 
-	// CreateProject - Create a project
-	e.POST("/api/public/accounts/:accountId/projects", c.CreateProject)
+        // ListVpcPeerings - List peerings between customer VPCs and Yugabyte VPCs
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/network/vpc-peerings",
+                c.ListVpcPeerings)
 
-	// DeleteProject - Delete project
-	e.DELETE("/api/public/accounts/:accountId/projects/:projectId", c.DeleteProject)
+        // GetRestrictedCidrs - Get list of unavailable CIDRs
+        e.GET("/api/public/networks/:cloud/restricted", c.GetRestrictedCidrs)
 
-	// GetProject - Get project info
-	e.GET("/api/public/accounts/:accountId/projects/:projectId", c.GetProject)
+        // CreateProject - Create a project
+        e.POST("/api/public/accounts/:accountId/projects", c.CreateProject)
 
-	// ListProjects - List projects
-	e.GET("/api/public/accounts/:accountId/projects", c.ListProjects)
+        // DeleteProject - Delete project
+        e.DELETE("/api/public/accounts/:accountId/projects/:projectId", c.DeleteProject)
 
-	// CreateReadReplica - Create Read Replica
-	e.POST("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/read_replicas", c.CreateReadReplica)
+        // GetProject - Get project info
+        e.GET("/api/public/accounts/:accountId/projects/:projectId", c.GetProject)
 
-	// GetReadReplica - Get Read Replicas
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/read_replica/:readReplicaId", c.GetReadReplica)
+        // ListProjects - List projects
+        e.GET("/api/public/accounts/:accountId/projects", c.ListProjects)
 
-	// ListReadReplicas - List Read Replicas
-	e.GET("/api/public/accounts/:accountId/projects/:projectId/clusters/:clusterId/read_replicas", c.ListReadReplicas)
+        // CreateReadReplica - Create Read Replica
+        e.POST("/api/public/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/read_replicas", c.CreateReadReplica)
 
-	// GetRelease - Get Software Release by Id
-	e.GET("/api/public/accounts/:accountId/software/tracks/:trackId/releases/:releaseId", c.GetRelease)
+        // GetReadReplica - Get Read Replicas
+        e.GET("/api/public/accounts/:accountId/projects/:projectId"+
+                "/clusters/:clusterId/read_replica/:readReplicaId", c.GetReadReplica)
 
-	// GetTrackById - Get release track by ID
-	e.GET("/api/public/accounts/:accountId/software/tracks/:trackId", c.GetTrackById)
+        // ListReadReplicas - List Read Replicas
+        e.GET("/api/public/accounts/:accountId/projects/:projectId/"+
+                "clusters/:clusterId/read_replicas", c.ListReadReplicas)
 
-	// ListReleases - List DB software releases by track
-	e.GET("/api/public/accounts/:accountId/software/tracks/:trackId/releases", c.ListReleases)
+        // GetRelease - Get Software Release by Id
+        e.GET("/api/public/accounts/:accountId/software/tracks/:trackId/releases/:releaseId",
+                c.GetRelease)
 
-	// ListTracksForAccount - List all release tracks linked to account
-	e.GET("/api/public/accounts/:accountId/software/tracks", c.ListTracksForAccount)
+        // GetTrackById - Get release track by ID
+        e.GET("/api/public/accounts/:accountId/software/tracks/:trackId", c.GetTrackById)
 
-	// ListTasks - List tasks
-	e.GET("/api/public/accounts/:accountId/tasks", c.ListTasks)
+        // ListReleases - List DB software releases by track
+        e.GET("/api/public/accounts/:accountId/software/tracks/:trackId/releases", c.ListReleases)
 
-	// GetAppConfig - Get application configuration
-	e.GET("/api/public/ui/app_config", c.GetAppConfig)
+        // ListTracksForAccount - List all release tracks linked to account
+        e.GET("/api/public/accounts/:accountId/software/tracks", c.ListTracksForAccount)
 
-	// GetSsoRedirectUrl - Retrieve redirect URL for Single Sign On using external authentication.
-	e.GET("/api/public/ui/sso_redirect_url", c.GetSsoRedirectUrl)
+        // ListTasks - List tasks
+        e.GET("/api/public/accounts/:accountId/tasks", c.ListTasks)
 
-	// GetUserTutorials - Get tutorials for a user
-	e.GET("/api/public/ui/accounts/:accountId/users/:userId/tutorials", c.GetUserTutorials)
+        // GetAppConfig - Get application configuration
+        e.GET("/api/public/ui/app_config", c.GetAppConfig)
 
-	// SsoInviteCallback - Callback for SSO invite
-	e.GET("/api/public/ui/callback/sso_invite", c.SsoInviteCallback)
+        // GetSsoRedirectUrl - Retrieve redirect URL for
+        // Single Sign On using external authentication.
+        e.GET("/api/public/ui/sso_redirect_url", c.GetSsoRedirectUrl)
 
-	// SsoLoginCallback - Callback for SSO login
-	e.GET("/api/public/ui/callback/sso_login", c.SsoLoginCallback)
+        // GetUserTutorials - Get tutorials for a user
+        e.GET("/api/public/ui/accounts/:accountId/users/:userId/tutorials", c.GetUserTutorials)
 
-	// SsoSignupCallback - Callback for SSO signup
-	e.GET("/api/public/ui/callback/sso_signup", c.SsoSignupCallback)
+        // SsoInviteCallback - Callback for SSO invite
+        e.GET("/api/public/ui/callback/sso_invite", c.SsoInviteCallback)
 
-	// UpdateUserTutorial - Update tutorial for a user
-	e.PUT("/api/public/ui/accounts/:accountId/users/:userId/tutorials/:tutorialId", c.UpdateUserTutorial)
+        // SsoLoginCallback - Callback for SSO login
+        e.GET("/api/public/ui/callback/sso_login", c.SsoLoginCallback)
 
-	// UpdateUserTutorialEnabled - Update whether tutorial is enabled for a user
-	e.PUT("/api/public/ui/accounts/:accountId/users/:userId/tutorials/:tutorialId/enabled", c.UpdateUserTutorialEnabled)
+        // SsoSignupCallback - Callback for SSO signup
+        e.GET("/api/public/ui/callback/sso_signup", c.SsoSignupCallback)
 
-	// UpdateUserTutorialState - Update tutorial state status for a user
-	e.PUT("/api/public/ui/accounts/:accountId/users/:userId/tutorials/:tutorialId/state/:stateId/:is_completed", c.UpdateUserTutorialState)
+        // UpdateUserTutorial - Update tutorial for a user
+        e.PUT("/api/public/ui/accounts/:accountId/users/:userId/tutorials/:tutorialId",
+                c.UpdateUserTutorial)
 
-	// ChangePassword - Change user password
-	e.PUT("/api/public/users/self/password", c.ChangePassword)
+        // UpdateUserTutorialEnabled - Update whether tutorial is enabled for a user
+        e.PUT("/api/public/ui/accounts/:accountId/users/:userId/tutorials/:tutorialId/enabled",
+                c.UpdateUserTutorialEnabled)
 
-	// CreateUser - Create a user
-	e.POST("/api/public/users", c.CreateUser)
+        // UpdateUserTutorialState - Update tutorial state status for a user
+        e.PUT("/api/public/ui/accounts/:accountId/users/:userId/tutorials/"+
+                ":tutorialId/state/:stateId/:is_completed", c.UpdateUserTutorialState)
 
-	// DeleteUser - Delete user
-	e.DELETE("/api/public/users/self", c.DeleteUser)
+        // ChangePassword - Change user password
+        e.PUT("/api/public/users/self/password", c.ChangePassword)
 
-	// GetUser - Get user info
-	e.GET("/api/public/users/self", c.GetUser)
+        // CreateUser - Create a user
+        e.POST("/api/public/users", c.CreateUser)
 
-	// ListUserAccounts - Get account information for the user
-	e.GET("/api/public/users/self/accounts", c.ListUserAccounts)
+        // DeleteUser - Delete user
+        e.DELETE("/api/public/users/self", c.DeleteUser)
 
-	// ModifyUser - Modify user info
-	e.PUT("/api/public/users/self", c.ModifyUser)
+        // GetUser - Get user info
+        e.GET("/api/public/users/self", c.GetUser)
 
-	render_htmls := templates.NewTemplate()
-	render_htmls.Add("index.html", template.Must(template.ParseGlob("ui/index.html")))
-	e.Static("/", "ui")
-	e.Renderer = render_htmls
-	e.GET("/", handlers.IndexHandler)
+        // ListUserAccounts - Get account information for the user
+        e.GET("/api/public/users/self/accounts", c.ListUserAccounts)
 
-	// Start server
-	e.Logger.Fatal(e.Start(port))
+        // ModifyUser - Modify user info
+        e.PUT("/api/public/users/self", c.ModifyUser)
+
+        render_htmls := templates.NewTemplate()
+
+        // Code for rendering UI Without embedding the files
+        // render_htmls.Add("index.html", template.Must(template.ParseGlob("ui/index.html")))
+        // e.Static("/", "ui")
+        // e.Renderer = render_htmls
+        // e.GET("/", handlers.IndexHandler)
+
+        render_htmls.Add("index.html", templatesMap["index.html"])
+        assetHandler := http.FileServer(getStaticFiles())
+        e.GET("/*", echo.WrapHandler(http.StripPrefix("/", assetHandler)))
+        e.Renderer = render_htmls
+        e.GET("/", handlers.IndexHandler)
+
+        // Start server
+        e.Logger.Fatal(e.Start(port))
 }
