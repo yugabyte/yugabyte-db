@@ -36,10 +36,10 @@ Use the `ALTER DATABASE` statement to redefine the attributes of a database.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_database,alter_database_option.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_database,alter_database_option.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_database,alter_database_option.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_database,alter_database_option.diagram.md" %}}
   </div>
 </div>
 

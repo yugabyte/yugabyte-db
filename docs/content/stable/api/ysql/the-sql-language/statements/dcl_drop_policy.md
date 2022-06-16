@@ -36,10 +36,10 @@ deny all policy will be applied for the table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_policy.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_policy.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_policy.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_policy.diagram.md" %}}
   </div>
 </div>
 

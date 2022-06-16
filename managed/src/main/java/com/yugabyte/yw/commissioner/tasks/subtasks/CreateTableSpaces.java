@@ -123,7 +123,7 @@ public class CreateTableSpaces extends AbstractTaskBase {
         log.info("Creating tablespace '{}'", tsi.name);
         String createTablespaceQuery =
             String.format(
-                "CREATE TABLESPACE %s WITH (replica_placement='\"'\"'%s'\"'\"');",
+                "CREATE TABLESPACE %s WITH (replica_placement='%s');",
                 tsi.name,
                 Json.stringify(
                     Json.toJson(new ReplicaPlacement(tsi.numReplicas, tsi.placementBlocks))));

@@ -842,7 +842,8 @@ determine_test_timeout() {
           $rel_test_binary == "tests-pgwrapper/pg_libpq-test" || \
           $rel_test_binary == "tests-pgwrapper/pg_libpq_err-test" || \
           $rel_test_binary == "tests-pgwrapper/pg_mini-test" || \
-          $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" ]]; then
+          $rel_test_binary == "tests-pgwrapper/pg_wrapper-test" || \
+          $rel_test_binary == "tests-tools/yb-admin-snapshot-schedule-test" ]]; then
       timeout_sec=$INCREASED_TEST_TIMEOUT_SEC
     else
       timeout_sec=$DEFAULT_TEST_TIMEOUT_SEC

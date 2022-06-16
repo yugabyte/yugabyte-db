@@ -24,6 +24,13 @@ public class DeleteXClusterConfigFromDb extends XClusterConfigTaskBase {
   }
 
   @Override
+  public String getName() {
+    return String.format(
+        "%s (xClusterConfig=%s, forceDelete=%s)",
+        super.getName(), taskParams().xClusterConfig, taskParams().forceDelete);
+  }
+
+  @Override
   protected Params taskParams() {
     return (Params) taskParams;
   }
@@ -40,8 +47,10 @@ public class DeleteXClusterConfigFromDb extends XClusterConfigTaskBase {
               + "an xCluster config");
     }
 
-    if (!taskParams().forceDelete
-        && xClusterConfig.status != XClusterConfig.XClusterConfigStatusType.Deleted) {
+    // Force delete when it is requested by the user or target universe is deleted.
+    boolean forceDelete = taskParams().forceDelete || xClusterConfig.targetUniverseUUID == null;
+
+    if (!forceDelete && xClusterConfig.status != XClusterConfig.XClusterConfigStatusType.Deleted) {
       String errMsg =
           String.format(
               "xCluster config (%s) is in %s state, not in Deleted "

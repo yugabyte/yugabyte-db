@@ -1211,7 +1211,13 @@ TEST_F(QLTransactionTest, StatusEvolution) {
         int idx = narrow_cast<int>(states.size());
         ASSERT_OK(WriteRow(session, idx, idx));
       }
-      states.push_back({ txn, txn->GetMetadata(TransactionRpcDeadline()) });
+      states.push_back(TransactionState{
+          .transaction = txn,
+          .metadata_future = txn->GetMetadata(TransactionRpcDeadline()),
+          .commit_future = {},
+          .status_future = {},
+          .metadata = {}
+      });
       ++active_transactions;
       --transactions_to_create;
     }

@@ -484,6 +484,26 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of live TServers in the primary cluster. TODO: junit tests for this
+   * functionality (UniverseTest.java)
+   *
+   * @return a list of TServer nodes
+   */
+  public List<NodeDetails> getLiveTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers
+            .stream()
+            .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
+            .collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+    }
+    return filteredServers;
+  }
+
+  /**
    * Return the list of YQL servers for this universe.
    *
    * @return a list of YQL server nodes

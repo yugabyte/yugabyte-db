@@ -20,14 +20,22 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row);
+
 DECLARE_int32(history_cutoff_propagation_interval_ms);
-DECLARE_int32(max_packed_row_columns);
 DECLARE_int32(timestamp_history_retention_interval_sec);
+
+DECLARE_uint64(ycql_packed_row_size_limit);
+DECLARE_uint64(ysql_packed_row_size_limit);
 
 namespace yb {
 
 void SetUpPackedRowTestFlags() {
-  FLAGS_max_packed_row_columns = 10;
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_packed_row_size_limit = 1_KB;
+  FLAGS_ycql_enable_packed_row = true;
+  FLAGS_ycql_packed_row_size_limit = 1_KB;
   FLAGS_timestamp_history_retention_interval_sec = 0;
   FLAGS_history_cutoff_propagation_interval_ms = 1;
 }

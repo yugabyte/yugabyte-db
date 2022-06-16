@@ -206,6 +206,17 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
   return false;
 }
 
+YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption) {
+  if (pgapi) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = pgapi->GetMemTracker().GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+  }
+  return YBCStatusOK();
+}
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements.
 //--------------------------------------------------------------------------------------------------
@@ -949,6 +960,14 @@ YBCStatus YBCPgRestartTransaction() {
 
 YBCStatus YBCPgResetTransactionReadPoint() {
   return ToYBCStatus(pgapi->ResetTransactionReadPoint());
+}
+
+double YBCGetTransactionPriority() {
+  return pgapi->GetTransactionPriority();
+}
+
+TxnPriorityRequirement YBCGetTransactionPriorityType() {
+  return pgapi->GetTransactionPriorityType();
 }
 
 YBCStatus YBCPgRestartReadPoint() {

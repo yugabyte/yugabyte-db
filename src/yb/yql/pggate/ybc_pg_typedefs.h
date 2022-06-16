@@ -179,6 +179,12 @@ typedef enum PgDatumKind {
   YB_YQL_DATUM_LIMIT_MIN,
 } YBCPgDatumKind;
 
+typedef enum TxnPriorityRequirement {
+  kLowerPriorityRange,
+  kHigherPriorityRange,
+  kHighestPriority
+} TxnPriorityRequirement;
+
 // API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
 YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
@@ -325,6 +331,7 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
+  void (*YbPgMemUpdateMax)();
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {

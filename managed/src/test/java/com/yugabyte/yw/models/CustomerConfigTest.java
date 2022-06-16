@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;

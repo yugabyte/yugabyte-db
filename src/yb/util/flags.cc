@@ -40,6 +40,7 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flag_tags.h"
@@ -232,8 +233,15 @@ void AppendXMLTag(const char* tag, const string& txt, string* r) {
 }
 
 static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
-  unordered_set<string> tags;
+  unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
+  vector<string> tags_str;
+  std::transform(tags.begin(), tags.end(), std::back_inserter(tags_str), [](const FlagTag tag) {
+    // Convert "kEnum_val" to "enum_val"
+    auto name = ToString(tag).erase(0, 1);
+    boost::algorithm::to_lower(name);
+    return name;
+  });
 
   string r("<flag>");
   AppendXMLTag("file", flag.filename, &r);
@@ -242,7 +250,7 @@ static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
   AppendXMLTag("default", flag.default_value, &r);
   AppendXMLTag("current", flag.current_value, &r);
   AppendXMLTag("type", flag.type, &r);
-  AppendXMLTag("tags", JoinStrings(tags, ","), &r);
+  AppendXMLTag("tags", JoinStrings(tags_str, ","), &r);
   r += "</flag>";
   return r;
 }

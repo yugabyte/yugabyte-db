@@ -43,8 +43,6 @@ namespace docdb {
 // while PREPEND_BLOCK prepends the arguments together, so it will prepend [a b c] to the list.
 YB_DEFINE_ENUM(ListExtendOrder, (APPEND)(PREPEND_BLOCK)(PREPEND))
 
-YB_STRONGLY_TYPED_BOOL(CheckIsCollate);
-
 // A necessary use of a forward declaration to avoid circular inclusion.
 class SubDocument;
 
@@ -96,11 +94,9 @@ class PrimitiveValue {
   explicit PrimitiveValue(const Uuid& uuid);
 
   // Construct a primitive value from a QLValuePB.
-  static PrimitiveValue FromQLValuePB(
-      const QLValuePB& value, CheckIsCollate check_is_collate = CheckIsCollate::kTrue);
+  static PrimitiveValue FromQLValuePB(const QLValuePB& value);
 
-  static PrimitiveValue FromQLValuePB(
-      const LWQLValuePB& value, CheckIsCollate check_is_collate = CheckIsCollate::kTrue);
+  static PrimitiveValue FromQLValuePB(const LWQLValuePB& value);
 
   // Set a primitive value in a QLValuePB.
   void ToQLValuePB(const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_val) const;
@@ -283,7 +279,7 @@ class PrimitiveValue {
 
  private:
   template <class PB>
-  static PrimitiveValue DoFromQLValuePB(const PB& value, CheckIsCollate check_is_collate);
+  static PrimitiveValue DoFromQLValuePB(const PB& value);
 
 
   // This is used in both the move constructor and the move assignment operator. Assumes this object
@@ -308,8 +304,9 @@ inline std::ostream& operator<<(std::ostream& out, const SortOrder sort_order) {
 // SortingType::kDescending gets converted to SortOrder::kDescending.
 SortOrder SortOrderFromColumnSchemaSortingType(SortingType sorting_type);
 
-void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, ValueBuffer* out);
-void AppendEncodedValue(const QLValuePB& value, CheckIsCollate check_is_collate, std::string* out);
+void AppendEncodedValue(const QLValuePB& value, ValueBuffer* out);
+void AppendEncodedValue(const QLValuePB& value, std::string* out);
+size_t EncodedValueSize(const QLValuePB& value);
 
 class KeyEntryValue {
  public:

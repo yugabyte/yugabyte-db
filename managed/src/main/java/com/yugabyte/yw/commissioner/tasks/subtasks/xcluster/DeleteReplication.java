@@ -37,12 +37,33 @@ public class DeleteReplication extends XClusterConfigTaskBase {
   }
 
   @Override
+  public String getName() {
+    return String.format(
+        "%s (xClusterConfig=%s, ignoreErrors=%s)",
+        super.getName(), taskParams().xClusterConfig, taskParams().ignoreErrors);
+  }
+
+  @Override
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = refreshXClusterConfig();
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    // Each delete replication task must belong to a parent xCluster config.
+    XClusterConfig xClusterConfig = taskParams().xClusterConfig;
+    if (xClusterConfig == null) {
+      throw new RuntimeException(
+          "taskParams().xClusterConfig is null. Each delete replication subtask must belong "
+              + "to an xCluster config");
+    }
 
+    if (xClusterConfig.targetUniverseUUID == null) {
+      log.info("Skipped {}: the target universe is destroyed", getName());
+      return;
+    }
+
+    // Ignore errors when it is requested by the user or source universe is deleted.
+    boolean ignoreErrors = taskParams().ignoreErrors || xClusterConfig.sourceUniverseUUID == null;
+
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
@@ -52,7 +73,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
       try {
         DeleteUniverseReplicationResponse resp =
             client.deleteUniverseReplication(
-                xClusterConfig.getReplicationGroupName(), taskParams().ignoreErrors);
+                xClusterConfig.getReplicationGroupName(), ignoreErrors);
         // Log the warnings in response.
         String respWarnings = resp.getWarningsString();
         if (respWarnings != null) {
@@ -73,8 +94,9 @@ public class DeleteReplication extends XClusterConfigTaskBase {
         }
         log.warn(
             "XCluster config {} does not exist on the target universe, NOT_FOUND exception "
-                + "occurred in deleteUniverseReplication RPC call is ignored",
-            xClusterConfig.uuid);
+                + "occurred in deleteUniverseReplication RPC call is ignored: {}",
+            xClusterConfig.uuid,
+            e.getMessage());
       }
 
       // Set status of the xCluster config to `Deleted`.

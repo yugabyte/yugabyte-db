@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;

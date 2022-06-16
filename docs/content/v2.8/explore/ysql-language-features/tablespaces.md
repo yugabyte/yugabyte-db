@@ -69,10 +69,10 @@ The differences between single-zone, multi-zone and multi-region configuration b
 
 <div class="tab-content">
   <div id="yugabyted" class="tab-pane fade show active" role="tabpanel" aria-labelledby="yugabyted-tab">
-    {{% includeMarkdown "./tablespaces-yugabyted.md" /%}}
+  {{% includeMarkdown "./tablespaces-yugabyted.md" %}}
   </div>
   <div id="platform" class="tab-pane fade show active" role="tabpanel" aria-labelledby="platform-tab">
-    {{% includeMarkdown "./tablespaces-platform.md" /%}}
+  {{% includeMarkdown "./tablespaces-platform.md" %}}
   </div>
 </div>
 
