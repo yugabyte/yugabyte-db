@@ -37,11 +37,11 @@ For example, if your overall retention target for PITR is three days, you can us
 
 By default, the history retention period is controlled by the [history retention interval flag ](../../../reference/configuration/yb-tserver/#timestamp-history-retention-interval-sec)applied cluster-wide to every YSQL database and YCQL keyspace.
 
-However, when [PITR is enabled](#creating-a-schedule) for a database or a keyspace, YugabyteDB adjusts the history retention for that database or keyspace based on the interval between the snapshots. You are not required to manually set the cluster-wide flag in order to use PITR.
+However, when [PITR is enabled](#create-a-schedule) for a database or a keyspace, YugabyteDB adjusts the history retention for that database or keyspace based on the interval between the snapshots. You are not required to manually set the cluster-wide flag in order to use PITR.
 
 There are no technical limitations on the retention target. However, when you increase the number of stored snapshots, you also increase the amount of space required for the database. The actual overhead depends on the workload, therefore it is recommended to estimate it by running tests based on your applications.
 
-The preceding sample configuration ensures that at any moment there is a continuous change history maintained for the last three days. When you trigger a restore, YugabyteDB selects the closest snapshot to the timestamp you provide, and then use flashback in that snapshot.
+The preceding sample configuration ensures that at any moment there is a continuous change history maintained for the last three days. When you trigger a restore, YugabyteDB selects the closest snapshot to the timestamp you provide, and then uses flashback in that snapshot.
 
 For example, snapshots are taken daily at 11:00 PM, current time is 5:00 PM on April 14th, and you want to restore to 3:00 PM on April 12th. YugabyteDB performs the following:
 
@@ -70,7 +70,7 @@ Assuming the retention target is three days, you can execute the following comma
 ./bin/yb-admin create_snapshot_schedule 1440 4320 <database_name>
 ```
 
-The followig output is a unique ID of the newly-created snapshot schedule:
+The following output is a unique ID of the newly-created snapshot schedule:
 
 ```json
 {

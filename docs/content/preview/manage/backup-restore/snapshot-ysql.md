@@ -55,7 +55,7 @@ Started snapshot creation: 0d4b4935-2c95-4523-95ab-9ead1e95e794
 
 You can then use this ID to check the status of the snapshot, [delete it](#delete-a-snapshot), or use it to [restore the database](#restore-a-snapshot).
 
-The `create_database_snapshot` command exits immediately, but the snapshot may take some time to complete. Before using the snapshot, verify its status with by executing the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command, as follows:
+The `create_database_snapshot` command exits immediately, but the snapshot may take some time to complete. Before using the snapshot, verify its status by executing the [`list_snapshots`](../../../admin/yb-admin/#list-snapshots) command, as follows:
 
 ```sh
 ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> list_snapshots
@@ -114,11 +114,13 @@ To move a snapshot to external storage, gather all the relevant files from all t
     ./postgres/bin/ysql_dump -h <ip> --masters <ip1:7100,ip2:7100,ip3:7100> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
     ```
 
-1. Verify that the catalog version is the same as it was prior to creating the snapshot. If it is not the same, you are not guaranteed to get a consistent restorable snapshot and you should restart the process, as follows:
+1. Verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
 
     ```sh
     ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
     ```
+
+    If the catalog version is not the same, you are not guaranteed to get a consistent restorable snapshot and you should restart the process.
 
 1. Create the snapshot metadata file by executing the [`export_snapshot`](../../../admin/yb-admin/#export-snapshot) command and providing the ID of the snapshot, as follows:
 

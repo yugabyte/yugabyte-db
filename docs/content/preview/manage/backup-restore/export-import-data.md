@@ -33,7 +33,7 @@ showAsideToc: true
 
 YugabyteDB includes `ysql_dump` and `ysql_dumpall` utilities that allow you to export data into a SQL script. These utilities derive from PostgreSQL `pg_dump` and `pg_dumpall`.
 
-In general, it is recommended use other means for backups, such as [distributed backup and recovery](../snapshot-ysql/). However, you can use `ysql_dump` and `ysql_dumpall` if you intend to restore the data on a database other than YugabyteDB, or if having data in SQL format is a requirement for other reasons, such as regulations.
+In general, it is recommended to use other means for backups, such as [distributed backup and recovery](../snapshot-ysql/). However, you can use `ysql_dump` and `ysql_dumpall` if you intend to restore the data on a database other than YugabyteDB, or if having data in SQL format is a requirement for other reasons, such as regulations.
 
 Both utilities are thread-safe and always produce a consistent version of the database even if run concurrently with other applications that read and update the data.
 
@@ -68,8 +68,8 @@ To export all databases, along with the global artifacts such as users, roles, p
 
 The following are two of the script's common command-line options:
 
-* `--roles-only` exports just the roles.
-* --schema-only exports all database objects without the data.
+* *--roles-only* exports just the roles.
+* *--schema-only* exports all database objects without the data.
 
 For more details and a list of all available options, see [ysql_dumpall reference](../../../admin/ysql-dumpall/).
 
