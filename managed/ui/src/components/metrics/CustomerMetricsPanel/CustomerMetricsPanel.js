@@ -6,6 +6,7 @@ import PropTypes from 'prop-types';
 import { PanelGroup } from 'react-bootstrap';
 import { browserHistory } from 'react-router';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
+import _ from 'lodash';
 
 const graphPanelTypes = {
   universe: {
@@ -45,6 +46,24 @@ const graphPanelTypes = {
   }
 };
 
+const API_TYPE_TO_NODE_FLAGS = {
+  YSQL: 'isYsqlServer',
+  YCQL: 'isYqlServer',
+  YEDIS: 'isRedisServer'
+};
+
+/**
+ * Mapping api specific metrics to its nodeDetailsSet flag
+ */
+const API_METRIC_TO_NODE_FLAG = {
+  ysql_ops: API_TYPE_TO_NODE_FLAGS.YSQL,
+  ycql_ops: API_TYPE_TO_NODE_FLAGS.YCQL,
+  yedis_ops: API_TYPE_TO_NODE_FLAGS.YEDIS,
+  sql: API_TYPE_TO_NODE_FLAGS.YSQL,
+  cql: API_TYPE_TO_NODE_FLAGS.YCQL,
+  redis: API_TYPE_TO_NODE_FLAGS.YEDIS
+};
+
 /**
  * Move this logic out of render function because we need `selectedUniverse` prop
  * that gets passed down from the `GraphPanelHeader` component.
@@ -52,25 +71,36 @@ const graphPanelTypes = {
 const PanelBody = ({ origin, selectedUniverse, nodePrefixes, width, tableName }) => {
   const location = browserHistory.getCurrentLocation();
   const currentQuery = location.query;
+
   return (
     <PanelGroup id={origin + ' metrics'}>
-      {graphPanelTypes[origin].data.map(function (type, idx) {
+      {graphPanelTypes[origin].data.reduce((prevPanels, type, idx) => {
         // if we have subtab query param, then we would have that metric tab open by default
         const isOpen = currentQuery.subtab
           ? type === currentQuery.subtab
           : graphPanelTypes[origin].isOpen[idx];
-        return (
-          <GraphPanelContainer
-            key={idx}
-            isOpen={isOpen}
-            type={type}
-            width={width}
-            nodePrefixes={nodePrefixes}
-            tableName={tableName}
-            selectedUniverse={selectedUniverse}
-          />
-        );
-      })}
+
+        if (
+          !_.includes(Object.keys(API_METRIC_TO_NODE_FLAG), type) ||
+          selectedUniverse?.universeDetails?.nodeDetailsSet.some(
+            (node) => node[API_METRIC_TO_NODE_FLAG[type]]
+          )
+        ) {
+          prevPanels.push(
+            <GraphPanelContainer
+              key={idx}
+              isOpen={isOpen}
+              type={type}
+              width={width}
+              nodePrefixes={nodePrefixes}
+              tableName={tableName}
+              selectedUniverse={selectedUniverse}
+            />
+          );
+        }
+
+        return prevPanels;
+      }, [])}
     </PanelGroup>
   );
 };
