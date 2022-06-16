@@ -156,9 +156,11 @@ DEFINE_int32(small_compaction_extra_priority, 1,
 // Should be set to a higher default value if D17389 is reverted (enable auto tablet split by
 // default).
 DEFINE_int32(automatic_compaction_extra_priority, 0,
-             "Assigns automatic compactions extra priority. This deprioritizes manual "
-             "compactions including those induced by the tserver (e.g. post-split compactions). "
-             "Suggested value between 0 and 50.");
+             "Assigns automatic compactions extra priority when automatic tablet splits are "
+             "enabled. This deprioritizes manual compactions including those induced by the "
+             "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
+
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 DEFINE_bool(task_ignore_disk_priority, false,
               "Ignore disk priority when considering compaction and flush priorities.");
@@ -440,7 +442,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     // Adding extra priority to automatic compactions can have a large positive impact on
     // performance for situations with many manual major compactions (e.g. insert-heavy workloads
     // with tablet splitting enabled).
-    if (!compaction_->is_manual_compaction()) {
+    if (FLAGS_enable_automatic_tablet_splitting && !compaction_->is_manual_compaction()) {
       result += FLAGS_automatic_compaction_extra_priority;
     }
 
