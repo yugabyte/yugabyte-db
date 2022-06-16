@@ -23,6 +23,8 @@ public interface CloudUtil extends StorageUtil {
   public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception;
 
+  public <T> T listBuckets(CustomerConfigData configData);
+
   public static <T extends CloudUtil> T getCloudUtil(String configType) {
     switch (configType) {
       case Util.S3:
