@@ -119,8 +119,6 @@ public class HealthChecker {
 
   private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
 
-  private static final long NODE_CHECK_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
-
   private final Environment environment;
 
   private final play.Configuration config;
@@ -800,12 +798,16 @@ public class HealthChecker {
     // Check if it should log the output of the command.
     boolean shouldLogOutput =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.logOutput");
+    int nodeCheckTimeoutSec =
+        runtimeConfigFactory.forUniverse(universe).getInt("yb.health.nodeCheckTimeoutSec");
+
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
       nodeChecks.put(
           nodeInfo.getNodeName(),
           CompletableFuture.supplyAsync(
-              () -> checkNode(universe, nodeInfo, shouldLogOutput), nodeExecutor));
+              () -> checkNode(universe, nodeInfo, shouldLogOutput, nodeCheckTimeoutSec),
+              nodeExecutor));
     }
 
     List<NodeData> result = new ArrayList<>();
@@ -836,7 +838,7 @@ public class HealthChecker {
                 .setNode(nodeInfo.nodeHost)
                 .setNodeName(nodeInfo.nodeName)
                 .setMessage("Node")
-                .setDetails(Collections.singletonList("Error: " + message))
+                .setDetails(Collections.singletonList("Node check failed: " + message))
                 .setTimestamp(new Date())
                 .setHasError(true));
       }
@@ -845,14 +847,15 @@ public class HealthChecker {
     return result;
   }
 
-  private Details checkNode(Universe universe, NodeInfo nodeInfo, boolean logOutput) {
+  private Details checkNode(
+      Universe universe, NodeInfo nodeInfo, boolean logOutput, int timeoutSec) {
     Pair<UUID, String> nodeKey = new Pair<>(universe.universeUUID, nodeInfo.getNodeName());
     NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(logOutput)
             .traceLogging(true)
-            .timeoutSecs(NODE_CHECK_TIMEOUT_SEC)
+            .timeoutSecs(timeoutSec)
             .build();
     if (uploadedInfo == null && !nodeInfo.isK8s()) {
       // Only upload it once for new node, as it only depends on yb home dir.
