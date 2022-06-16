@@ -228,7 +228,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
           return false;
         },
         MonoDelta::FromSeconds(60),
-        "Failed the match CDCSDK minimum checkpoint opId with the expected."));
+        "The cdc_sdk_min_checkpoint_op_id doesn't match with expected op_id."));
   }
 
   Status DropDB(Cluster* cluster) {
@@ -1377,15 +1377,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestTruncateTable)) {
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionFlag)) {
-  TestIntentGarbageCollectionFlag(1, true, 2000);
+  TestIntentGarbageCollectionFlag(1, true, 10000);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionWithSmallInterval)) {
-  TestIntentGarbageCollectionFlag(3, true, 2000);
+  TestIntentGarbageCollectionFlag(3, true, 5000);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestGarbageCollectionWithLargerInterval)) {
-  TestIntentGarbageCollectionFlag(3, true, 5000);
+  TestIntentGarbageCollectionFlag(3, true, 10000);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNoGarbageCollectionBeforeInterval)) {
@@ -1393,7 +1393,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestNoGarbageCollectionBeforeInte
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestExtendingIntentRetentionTime)) {
-  TestIntentGarbageCollectionFlag(3, true, 5000, true);
+  TestIntentGarbageCollectionFlag(3, true, 10000, true);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpoint)) {
@@ -1704,7 +1704,7 @@ TEST_F(
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleStreamOnSameTablet)) {
   FLAGS_update_min_cdc_indices_interval_secs = 1;
-  FLAGS_cdc_intent_retention_ms = 2000;
+  FLAGS_cdc_intent_retention_ms = 10000;
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -1749,6 +1749,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultpleStreamOnSameTablet)) {
   }
 
   // Now call GetChanges for stream_01.
+  SleepFor(MonoDelta::FromMilliseconds(FLAGS_cdc_intent_retention_ms));
   auto result = GetChangesFromCDC(stream_id[0], tablets, &change_resp_01[0].cdc_sdk_checkpoint());
   ASSERT_EQ(!result.ok(), true);
 }
