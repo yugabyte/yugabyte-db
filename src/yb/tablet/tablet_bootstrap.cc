@@ -414,21 +414,11 @@ ReplayDecision ShouldReplayOperation(
     const int64_t intents_flushed_index,
     TransactionStatus txn_status,
     bool write_op_has_transaction) {
-  // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
-  // trying to be resilient to violations of that assumption.
-  if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
-    // Never replay anyting that is flushed to both regular and intents RocksDBs in a transactional
-    // table.
-    VLOG_WITH_FUNC(3) << "index: " << index << " "
-                      << "regular_flushed_index: " << regular_flushed_index
-                      << " intents_flushed_index: " << intents_flushed_index;
-    return {false};
-  }
-
   if (op_type == consensus::UPDATE_TRANSACTION_OP) {
-    if (txn_status == TransactionStatus::APPLYING &&
-        intents_flushed_index < index && index <= regular_flushed_index) {
-      // Intents were applied/flushed to regular RocksDB, but not flushed into the intents RocksDB.
+    if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
+      // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is a
+      // temporary change. The long term change is to track write and apply operations separately
+      // instead of a tracking a single "intents_flushed_index".
       VLOG_WITH_FUNC(3) << "index: " << index << " "
                         << "regular_flushed_index: " << regular_flushed_index
                         << " intents_flushed_index: " << intents_flushed_index;
@@ -439,6 +429,17 @@ ReplayDecision ShouldReplayOperation(
     VLOG_WITH_FUNC(3) << "index: " << index << " > "
                       << "regular_flushed_index: " << regular_flushed_index;
     return {index > regular_flushed_index};
+  }
+
+  // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
+  // trying to be resilient to violations of that assumption.
+  if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
+    // Never replay anyting that is flushed to both regular and intents RocksDBs in a transactional
+    // table.
+    VLOG_WITH_FUNC(3) << "index: " << index << " "
+                      << "regular_flushed_index: " << regular_flushed_index
+                      << " intents_flushed_index: " << intents_flushed_index;
+    return {false};
   }
 
   if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
@@ -1276,8 +1277,18 @@ class TabletBootstrap {
     log::SegmentSequence segments;
     RETURN_NOT_OK(log_->GetSegmentsSnapshot(&segments));
 
+    // If any cdc stream is active for this tablet, we do not want to skip flushed entries.
+    bool should_skip_flushed_entries = FLAGS_skip_flushed_entries;
+    if (should_skip_flushed_entries && tablet_->transaction_participant()) {
+      if (tablet_->transaction_participant()->GetRetainOpId() != OpId::Invalid()) {
+        should_skip_flushed_entries = false;
+        LOG_WITH_PREFIX(WARNING) << "Ignoring skip_flushed_entries even though it is set, because "
+                                 << "we need to scan all segments when any cdc stream is active "
+                                 << "for this tablet.";
+      }
+    }
     // Find the earliest log segment we need to read, so the rest can be ignored.
-    auto iter = FLAGS_skip_flushed_entries ? SkipFlushedEntries(&segments) : segments.begin();
+    auto iter = should_skip_flushed_entries ? SkipFlushedEntries(&segments) : segments.begin();
 
     yb::OpId last_committed_op_id;
     yb::OpId last_read_entry_op_id;
