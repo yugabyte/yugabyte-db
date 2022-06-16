@@ -22,10 +22,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
-    XClusterConfig xClusterConfig = getXClusterConfig();
-    if (xClusterConfig == null) {
-      throw new RuntimeException("xClusterConfig in task params cannot be null");
-    }
+    XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
     Universe sourceUniverse = null;
     Universe targetUniverse = null;
@@ -36,17 +33,16 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
     }
 
+    if (sourceUniverse != null) {
+      // Lock the source universe.
+      lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
+    }
     try {
-      if (sourceUniverse != null) {
-        // Lock the source universe.
-        lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
+      if (targetUniverse != null) {
+        // Lock the target universe.
+        lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
       }
       try {
-        if (targetUniverse != null) {
-          // Lock the target universe.
-          lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
-        }
-
         // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
         // to them if any.
         createDeleteXClusterConfigSubtasks();
@@ -64,6 +60,11 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
         getRunnableTask().runSubTasks();
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
+        Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
+        if (mightDeletedXClusterConfig.isPresent()
+            && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
+          setXClusterConfigStatus(XClusterConfigStatusType.Failed);
+        }
         throw new RuntimeException(e);
       } finally {
         if (targetUniverse != null) {
@@ -73,11 +74,6 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
-      if (mightDeletedXClusterConfig.isPresent()
-          && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
-        setXClusterConfigStatus(XClusterConfigStatusType.Failed);
-      }
       throw new RuntimeException(e);
     } finally {
       if (sourceUniverse != null) {

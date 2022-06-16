@@ -14,7 +14,7 @@ import {  Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 import { YBDropdown } from '@app/components';
-import { ClusterBreadcrumbs } from '@app/features/clusters/ClusterBreadcrumbs';
+// import { ClusterBreadcrumbs } from '@app/features/clusters/ClusterBreadcrumbs';
 import HelpIcon from '@app/assets/help.svg';
 import FileIcon from '@app/assets/file.svg';
 import SlackIcon from '@app/assets/slack.svg';
@@ -66,7 +66,7 @@ export const Header: FC = () => {
               {t('common.addAccount')}
             </Typography>
           </Route>
-          <Route path={`${path}/admin`}>
+          <Route path={`/admin`}>
             <Typography variant="h4" color="inherit">
               {t('common.admin')}
             </Typography>
@@ -77,9 +77,17 @@ export const Header: FC = () => {
               {t('common.analytics')}
             </Typography>
           </Route>
-          <Route path={`${path}/p/:projectId/clusters/:clusterId?`}>
+          <Route path={`/cluster`}>
             {/* <ProjectPicker /> */}
-            <ClusterBreadcrumbs />
+            {/*<ClusterBreadcrumbs />*/}
+            <Typography variant="h4" color="inherit">
+              {t('common.cluster')}
+            </Typography>
+          </Route>
+          <Route path={`/performance`}>
+            <Typography variant="h4" color="inherit">
+              {t('clusterDetail.tabPerformance')}
+            </Typography>
           </Route>
           <Route path={`${path}/dbsecurity`}>
             <Typography variant="h4" color="inherit">
@@ -101,7 +109,7 @@ export const Header: FC = () => {
               {t('welcome.gettingStarted')}
             </Typography>
           </Route>
-          <Route path={`${path}/p/:projectId/alerts`}>
+          <Route path={`/alerts`}>
             <Typography variant="h4" color="inherit">
               {t('common.alerts')}
             </Typography>

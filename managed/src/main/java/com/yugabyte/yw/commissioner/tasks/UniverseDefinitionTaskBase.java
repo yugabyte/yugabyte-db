@@ -739,41 +739,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task list to start the yb-controller on the set of passed in nodes and adds it to the
-   * task queue.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   */
-  public SubTaskGroup createStartYbcTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
-    for (NodeDetails node : nodes) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // The service and the command we want to run.
-      params.process = "yb-controller";
-      params.command = "start";
-      params.placementUuid = node.placementUuid;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      params.useSystemd = userIntent.useSystemd;
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup =
@@ -957,7 +922,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-      params.ybcPackagePath = userIntent.ybcPackagePath;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1521,21 +1485,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Wait for new masters to be responsive.
     createWaitForServersTasks(nodesToBeStarted, ServerType.TSERVER)
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-  }
-
-  /**
-   * Creates subtasks to start yb-controller processes on the nodes.
-   *
-   * @param nodesToBeStarted nodes on which yb-controller processes are to be started.
-   */
-  public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted) {
-    // Create Start yb-controller tasks for non-systemd only
-    if (!taskParams().getPrimaryCluster().userIntent.useSystemd) {
-      createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    // Wait for yb-controller to be responsive on each node.
-    createWaitForYbcServerTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**

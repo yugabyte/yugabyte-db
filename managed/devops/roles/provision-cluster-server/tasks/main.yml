@@ -14,7 +14,6 @@
       - systemd_option is defined
       - pg_max_mem_mb is defined
       - use_chrony is defined
-      - configure_ybc is defined
 
 - block:
   - name: Install and configure chrony with given server list
@@ -133,7 +132,6 @@
         cmd: "loginctl enable-linger {{ user_name }}"
     when: ansible_os_family != 'RedHat' or ansible_distribution_major_version != '7'
   - block:
-    # Give yugabyte user sudo access to start/stop/restart master and tserver
     - name: Add yugabyte sudo user without password
       lineinfile:
         dest: /etc/sudoers.d/yugabyte
@@ -147,11 +145,6 @@
               /bin/systemctl restart yb-tserver,
               /bin/systemctl enable yb-tserver,
               /bin/systemctl disable yb-tserver,
-              /bin/systemctl start yb-controller,
-              /bin/systemctl stop yb-controller,
-              /bin/systemctl restart yb-controller,
-              /bin/systemctl enable yb-controller,
-              /bin/systemctl disable yb-controller,
               /bin/systemctl start yb-zip_purge_yb_logs.timer,
               /bin/systemctl stop yb-zip_purge_yb_logs.timer,
               /bin/systemctl restart yb-zip_purge_yb_logs.timer,
@@ -194,7 +187,7 @@
         line: "#includedir /etc/sudoers.d"
         state: present
         validate: "/usr/sbin/visudo -cf %s"
-      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+    when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
 
   # Adding systemd service files for yb-master and yb-tserver
   - name: Add yb-master.service
@@ -212,16 +205,6 @@
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       mode: 0644
-
- # Adding systemd service files for yb-controller
-  - name: Add yb-controller.service
-    template:
-      src: yb-controller.service
-      dest: "{{ systemd_dir }}/yb-controller.service"
-      owner: "{{ user_name }}"
-      group: "{{ user_name }}"
-      mode: 0644
-    when: configure_ybc
 
   # Adding systemd service and timer files for zip_purge_yb_logs
   - name: Add yb-zip_purge_yb_logs.service

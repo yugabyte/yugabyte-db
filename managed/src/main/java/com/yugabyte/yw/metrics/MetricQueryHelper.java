@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
@@ -54,12 +55,18 @@ public class MetricQueryHelper {
 
   private final MetricUrlProvider metricUrlProvider;
 
+  private final PlatformExecutorFactory platformExecutorFactory;
+
   @Inject
   public MetricQueryHelper(
-      Configuration appConfig, ApiHelper apiHelper, MetricUrlProvider metricUrlProvider) {
+      Configuration appConfig,
+      ApiHelper apiHelper,
+      MetricUrlProvider metricUrlProvider,
+      PlatformExecutorFactory platformExecutorFactory) {
     this.appConfig = appConfig;
     this.apiHelper = apiHelper;
     this.metricUrlProvider = metricUrlProvider;
+    this.platformExecutorFactory = platformExecutorFactory;
   }
 
   /**
@@ -158,42 +165,49 @@ public class MetricQueryHelper {
       return Json.newObject();
     }
 
-    ExecutorService threadPool = Executors.newFixedThreadPool(QUERY_EXECUTOR_THREAD_POOL);
-    Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
-    for (MetricSettings metricSettings : metricsWithSettings) {
-      Map<String, String> queryParams = params;
-      queryParams.put("queryKey", metricSettings.getMetric());
+    ExecutorService threadPool =
+        platformExecutorFactory.createFixedExecutor(
+            getClass().getSimpleName(),
+            QUERY_EXECUTOR_THREAD_POOL,
+            Executors.defaultThreadFactory());
+    try {
+      Set<Future<JsonNode>> futures = new HashSet<Future<JsonNode>>();
+      for (MetricSettings metricSettings : metricsWithSettings) {
+        Map<String, String> queryParams = params;
+        queryParams.put("queryKey", metricSettings.getMetric());
 
-      Map<String, String> specificFilters =
-          filterOverrides.getOrDefault(metricSettings.getMetric(), null);
-      if (specificFilters != null) {
-        additionalFilters.putAll(specificFilters);
+        Map<String, String> specificFilters =
+            filterOverrides.getOrDefault(metricSettings.getMetric(), null);
+        if (specificFilters != null) {
+          additionalFilters.putAll(specificFilters);
+        }
+
+        Callable<JsonNode> callable =
+            new MetricQueryExecutor(
+                metricUrlProvider,
+                apiHelper,
+                queryParams,
+                additionalFilters,
+                metricSettings,
+                isRecharts);
+        Future<JsonNode> future = threadPool.submit(callable);
+        futures.add(future);
       }
 
-      Callable<JsonNode> callable =
-          new MetricQueryExecutor(
-              metricUrlProvider,
-              apiHelper,
-              queryParams,
-              additionalFilters,
-              metricSettings,
-              isRecharts);
-      Future<JsonNode> future = threadPool.submit(callable);
-      futures.add(future);
-    }
-
-    ObjectNode responseJson = Json.newObject();
-    for (Future<JsonNode> future : futures) {
-      JsonNode response = Json.newObject();
-      try {
-        response = future.get();
-        responseJson.set(response.get("queryKey").asText(), response);
-      } catch (InterruptedException | ExecutionException e) {
-        LOG.error("Error fetching metrics data", e);
+      ObjectNode responseJson = Json.newObject();
+      for (Future<JsonNode> future : futures) {
+        JsonNode response = Json.newObject();
+        try {
+          response = future.get();
+          responseJson.set(response.get("queryKey").asText(), response);
+        } catch (InterruptedException | ExecutionException e) {
+          LOG.error("Error fetching metrics data", e);
+        }
       }
+      return responseJson;
+    } finally {
+      threadPool.shutdown();
     }
-    threadPool.shutdown();
-    return responseJson;
   }
 
   /**

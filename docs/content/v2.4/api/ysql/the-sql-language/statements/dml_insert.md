@@ -34,10 +34,10 @@ Use the `INSERT` statement to add one or more rows to the specified table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/insert,returning_clause,column_values,conflict_target,conflict_action.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/insert,returning_clause,column_values,conflict_target,conflict_action.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/insert,returning_clause,column_values,conflict_target,conflict_action.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/insert,returning_clause,column_values,conflict_target,conflict_action.diagram.md" %}}
   </div>
 </div>
 
@@ -45,7 +45,7 @@ See the section [The WITH clause and common table expressions](../../with-clause
 
 ## Semantics
 
-Constraints must be satisfied.  
+Constraints must be satisfied.
 
 ### *insert*
 
@@ -236,7 +236,7 @@ yugabyte=# SELECT id, c1, c2 FROM sample ORDER BY id;
 ```
 
 ```
- id |   c1   |    c2     
+ id |   c1   |    c2
 ----+--------+-----------
   1 | cat    | sparrow
   2 | dog    | blackbird

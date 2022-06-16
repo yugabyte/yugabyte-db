@@ -16,7 +16,6 @@ const initialStateFeatureInTest = {
   enableOIDC: true,
   supportBundle: false,
   enableThirdpartyUpgrade: false,
-  enableYbc: false,
   topNodeMetrics: false
 };
 
@@ -36,7 +35,6 @@ const initialStateFeatureReleased = {
   enableOIDC: true,
   supportBundle: true,
   enableThirdpartyUpgrade: false,
-  enableYbc: false,
   topNodeMetrics: false
 };
 

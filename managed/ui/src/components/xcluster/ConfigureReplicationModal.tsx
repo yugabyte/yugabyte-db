@@ -99,7 +99,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
   );
 
   const { data: tables, isLoading: isTablesLoading } = useQuery(
-    [currentUniverseUUID, 'tables'],
+    ['xcluster',currentUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(currentUniverseUUID).then((res) => res.data)
   );
 

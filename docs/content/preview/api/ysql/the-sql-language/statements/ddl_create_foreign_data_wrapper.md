@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE FOREIGN DATA WRAPPER` statement to create a foreign data wrapper. 
+Use the `CREATE FOREIGN DATA WRAPPER` statement to create a foreign data wrapper.
 Only superusers or users with the yb_fdw role can create foreign data wrappers.
 
 
@@ -36,10 +36,10 @@ Only superusers or users with the yb_fdw role can create foreign data wrappers.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_foreign_data_wrapper.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_foreign_data_wrapper.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_foreign_data_wrapper.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_foreign_data_wrapper.diagram.md" %}}
   </div>
 </div>
 
@@ -48,18 +48,18 @@ Only superusers or users with the yb_fdw role can create foreign data wrappers.
 Create a FDW named *fdw_name*.
 
 ### Handler function
-The *handler_function* will be called to retrieve the execution functions for foreign tables. These functions are required by the planner and executor. 
+The *handler_function* will be called to retrieve the execution functions for foreign tables. These functions are required by the planner and executor.
 The handler function takes no arguments and its return type should be `fdw_handler`.
-If no handler function is provided, foreign tables that use the wrapper can only be declared (and not accessed). 
+If no handler function is provided, foreign tables that use the wrapper can only be declared (and not accessed).
 
 ### Validator function
 
-The *validator_function* is used to validate the options given to the foreign-data wrapper, and the foreign servers, user mappings and foreign tables that use the foreign-data wrapper. 
-The validator function takes two arguments: a text array (type text[]) that contains the options to be validated, and an OID of the system catalog that the object associated with the options is stored in. 
-If no validator function is provided (or `NO VALIDATOR` is specified), the options will not be checked at the time of creation. 
+The *validator_function* is used to validate the options given to the foreign-data wrapper, and the foreign servers, user mappings and foreign tables that use the foreign-data wrapper.
+The validator function takes two arguments: a text array (type text[]) that contains the options to be validated, and an OID of the system catalog that the object associated with the options is stored in.
+If no validator function is provided (or `NO VALIDATOR` is specified), the options will not be checked at the time of creation.
 
 ### Options:
-The `OPTIONS` clause specifies options for the foreign-data wrapper. The permitted option names and values are specific to each foreign data wrapper. The options are validated using the FDW’s validator function. 
+The `OPTIONS` clause specifies options for the foreign-data wrapper. The permitted option names and values are specific to each foreign data wrapper. The options are validated using the FDW’s validator function.
 
 ## Examples
 

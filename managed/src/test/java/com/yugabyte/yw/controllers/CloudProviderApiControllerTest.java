@@ -38,6 +38,7 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -245,16 +246,20 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   private Provider createProviderTest(
       Provider provider, ImmutableList<String> regionCodesFromCloudAPI, UUID actualTaskUUID) {
     JsonNode bodyJson = Json.toJson(provider);
-    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(actualTaskUUID);
-    when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(regionCodesFromCloudAPI);
+    boolean isOnprem = CloudType.onprem.name().equals(provider.code);
+    if (!isOnprem) {
+      when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+          .thenReturn(actualTaskUUID);
+      when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(regionCodesFromCloudAPI);
+    }
     Result result = createProvider(bodyJson);
-    // When regions not supplied in request then we expect a call to cloud API to get region codes
-    verify(mockCloudQueryHelper, times(provider.regions.isEmpty() ? 1 : 0)).getRegionCodes(any());
-    JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
     YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertEquals(ybpTask.taskUUID, actualTaskUUID);
+    if (!isOnprem) {
+      // When regions not supplied in request then we expect a call to cloud API to get region codes
+      verify(mockCloudQueryHelper, times(provider.regions.isEmpty() ? 1 : 0)).getRegionCodes(any());
+      assertEquals(actualTaskUUID, ybpTask.taskUUID);
+    }
     Provider createdProvider = Provider.get(customer.uuid, ybpTask.resourceUUID);
     assertEquals(provider.code, createdProvider.code);
     assertEquals(provider.name, createdProvider.name);
@@ -321,7 +326,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  @Parameters({"aws", "gcp"})
+  @Parameters({"aws", "gcp", "onprem"})
   public void testCreateProviderWithConfig(String code) {
     String providerName = code + "-Provider";
     Provider providerReq = buildProviderReq(code, providerName);
@@ -335,6 +340,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     } else if (code.equals("aws")) {
       reqConfig.put("foo", "bar");
       reqConfig.put("foo2", "bar2");
+    } else {
+      reqConfig.put("home", "/bar");
     }
     providerReq.customerUUID = customer.uuid;
     providerReq.setConfig(reqConfig);

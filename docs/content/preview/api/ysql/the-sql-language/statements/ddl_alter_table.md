@@ -36,10 +36,10 @@ Use the `ALTER TABLE` statement to change the definition of a table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_table,alter_table_action,alter_table_constraint,alter_column_constraint,table_expr.diagram.md" %}}
   </div>
 </div>
 

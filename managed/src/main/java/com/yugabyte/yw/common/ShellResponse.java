@@ -51,7 +51,7 @@ public class ShellResponse {
             formatted = String.format("%s. Command is cancelled.", formatted);
             throw new CancellationException(formatted);
           default:
-            formatted = String.format("%s. Output: %s", formatted, message);
+            formatted = String.format("%s. Code: %d. Output: %s", formatted, code, message);
             throw new RuntimeException(formatted);
         }
       } finally {

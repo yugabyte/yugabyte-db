@@ -34,10 +34,10 @@ Use the `DROP FOREIGN TABLE` command to remove a foreign table. The user who exe
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_table.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_table.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_table.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_foreign_table.diagram.md" %}}
   </div>
 </div>
 
@@ -46,7 +46,7 @@ Use the `DROP FOREIGN TABLE` command to remove a foreign table. The user who exe
 Drop a foreign table named **table_name**. If it doesn’t exist in the database, an error will be thrown unless the `IF EXISTS` clause is used.
 
 ### RESTRICT/CASCADE:
-`RESTRICT` is the default and it will not drop the foreign table if any objects depend on it. 
+`RESTRICT` is the default and it will not drop the foreign table if any objects depend on it.
 `CASCADE` will drop the foreign table and any objects that transitively depend on it.
 
 ## Examples

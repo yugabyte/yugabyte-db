@@ -7,6 +7,7 @@ import { Sidebar } from '@app/features/Sidebar';
 import { ClustersRouting } from '@app/features/clusters/ClustersRouting';
 import { themeVariables } from '@app/theme/variables';
 import { PerformanceRouting } from './clusters/PerformanceRouting';
+import { GettingStarted } from './welcome/GettingStarted';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -85,9 +86,10 @@ export const MainLayout: FC = () => {
           <Announcement />
           */}
           <Switch>
-              {/* <Route path={'/welcome'} component={GettingStarted} /> */}
               <Route path={'/cluster'} component={ClustersRouting} />
               <Route path={'/performance'} component={PerformanceRouting} />
+              <Route path={'/alerts'} component={GettingStarted} />
+              <Route path={'/admin'} component={GettingStarted} />
               <Route exact path={'/'} render={() => {
                   return (
                     <Redirect to="/cluster/tabOverview" />

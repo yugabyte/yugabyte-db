@@ -34,10 +34,10 @@ Use the `CREATE SEQUENCE` statement to create a sequence in the current schema.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_sequence,sequence_name,sequence_options.diagram.md" %}}
   </div>
 </div>
 
@@ -55,7 +55,7 @@ The sequence name must be distinct from any other sequences, tables, indexes, vi
 
 #### INCREMENT BY *increment*
 
-Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number 
+Specify the *increment* value to add to the current sequence value to create a new value. The default value is `1`. A positive number
 
 #### MINVALUE *minvalue* | NO MINVALUE
 

@@ -48,10 +48,10 @@ Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB usin
 
 <div class="tab-content">
   <div id="ysqlsh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysqlsh-tab">
-    {{% includeMarkdown "connect/ysql.md" /%}}
+  {{% includeMarkdown "connect/ysql.md" %}}
   </div>
   <div id="ycqlsh" class="tab-pane fade" role="tabpanel" aria-labelledby="ycqlsh-tab">
-    {{% includeMarkdown "connect/ycql.md" /%}}
+  {{% includeMarkdown "connect/ycql.md" %}}
   </div>
 </div>
 
