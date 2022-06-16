@@ -4,7 +4,10 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -42,6 +45,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -62,6 +66,7 @@ import java.util.concurrent.ExecutorService;
 import javax.mail.MessagingException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -145,6 +150,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
+    when(mockConfigUniverseScope.getInt("yb.health.nodeCheckTimeoutSec")).thenReturn(1);
     when(mockConfigUniverseScope.getInt("yb.health.max_num_parallel_node_checks")).thenReturn(10);
     doAnswer(
             i -> {
@@ -709,6 +715,32 @@ public class HealthCheckerTest extends FakeDBApplication {
             .targetUuid(u.getUniverseUUID())
             .build(),
         0.0);
+  }
+
+  @Test
+  public void testNodeCheckTimeout() {
+    Universe u = setupUniverse("test");
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
+    setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
+
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+        .thenReturn(ShellResponse.create(9, StringUtils.EMPTY));
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
+
+    HealthCheck results = HealthCheck.getLatest(u.getUniverseUUID());
+    assertThat(results, notNullValue());
+    assertThat(results.detailsJson.getData(), hasSize(3));
+    for (NodeData nodeData : results.detailsJson.getData()) {
+
+      assertThat(
+          nodeData.getDetails(),
+          contains(
+              "Node check failed: java.lang.RuntimeException:"
+                  + " Error occurred. Code: 9. Output: "));
+    }
   }
 
   @Test
