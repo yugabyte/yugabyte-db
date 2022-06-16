@@ -53,7 +53,7 @@ type: docs
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 ### Prerequisites
 
@@ -145,7 +145,7 @@ type: docs
 
 ### Configure
 
-Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
+Some of the examples in the [Explore core features](../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
 
 To add six loopback addresses, run the following commands, which require `sudo` access.
 
@@ -183,7 +183,13 @@ lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
   nd6 options=201<PERFORMNUD,DAD>
 ```
 
-## 2. Create a local cluster
+## Create a local cluster
+
+{{< note title="Note" >}}
+
+This macOS Quick Start uses the [`yugabyted`](../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
+
+{{< /note >}}
 
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command.
 
@@ -193,7 +199,7 @@ $ ./bin/yugabyted start
 
 After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
-### 2. Check cluster status
+### Check cluster status
 
 ```sh
 $ ./bin/yugabyted status
@@ -214,9 +220,9 @@ $ ./bin/yugabyted status
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### 3. Check cluster status with Admin UI
+### Check cluster status with Admin UI
 
-The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
+The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
 
 #### Overview and YB-Master status
 
@@ -232,13 +238,13 @@ Clicking `See all nodes` takes you to the Tablet Servers page where you can obse
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 

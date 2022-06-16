@@ -98,6 +98,14 @@ $(document).ready(() => {
     });
   }
 
+  // Hide Empty Right sidebar.
+  const rt = $('.td-sidebar-toc').text();
+  if ($.trim(rt) === '') {
+    $('.td-sidebar-toc').remove();
+    $('main.col-xl-8').removeClass('col-xl-8');
+    $('main').addClass('col-xl-10');
+  }
+
   // Open current page menu
   $(`.left-sidebar-wrap nav > ul.list a[href="${window.location.pathname}"]`).addClass('current').parents('.submenu').addClass('open');
 

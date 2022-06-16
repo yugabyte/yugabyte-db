@@ -52,7 +52,7 @@ type: docs
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 {{< note title="Note" >}}
 
@@ -82,7 +82,7 @@ Pull the YugabyteDB container.
 $ docker pull yugabytedb/yugabyte:{{< yb-version version="stable" format="build">}}
 ```
 
-### 2. Create a local cluster
+## Create a local cluster
 
 To create a 1-node cluster with a replication factor (RF) of 1, run the command below.
 
@@ -111,7 +111,7 @@ $ docker run -d --name yugabyte \
 
 Clients can now connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively.
 
-## 2. Check cluster status
+### Check cluster status
 
 ```sh
 $ docker ps
@@ -122,9 +122,9 @@ CONTAINER ID        IMAGE                 COMMAND                  CREATED      
 5088ca718f70        yugabytedb/yugabyte   "bin/yugabyted start…"   46 seconds ago      Up 44 seconds       0.0.0.0:5433->5433/tcp, 6379/tcp, 7100/tcp, 0.0.0.0:7000->7000/tcp, 0.0.0.0:9000->9000/tcp, 7200/tcp, 9100/tcp, 10100/tcp, 11000/tcp, 0.0.0.0:9042->9042/tcp, 12000/tcp   yugabyte
 ```
 
-### 3. Check cluster status with Admin UI
+### Check cluster status with Admin UI
 
-The [yb-master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
+The [yb-master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://localhost:7000> and the [yb-tserver Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://localhost:9000>. To avoid port conflicts, you should make sure other processes on your machine do not have these ports mapped to `localhost`.
 
 ### Overview and YB-Master status
 
@@ -140,7 +140,7 @@ Clicking on the `See all nodes` takes us to the Tablet Servers page where you ca
 
 ![master-home](/images/admin/master-tservers-list-docker-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 
@@ -209,7 +209,7 @@ This tutorial assumes that:
 
 You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 
-### Uniform load balancing
+#### Uniform load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java`.
 
@@ -313,7 +313,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.UniformLoadBalanceApp
     ```
 
-### Topology-aware load balancing
+#### Topology-aware load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java`.
 
@@ -424,3 +424,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```
+
+### Explore the driver
+
+Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

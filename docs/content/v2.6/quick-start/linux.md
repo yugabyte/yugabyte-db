@@ -52,7 +52,7 @@ type: docs
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 ### Prerequisites
 
@@ -95,7 +95,7 @@ Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to 
     * CentOS: `yum install curl`
     * Ubuntu: `apt install curl`
 
-1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../../deploy/manual-deployment/system-config#ulimits).
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../deploy/manual-deployment/system-config#ulimits).
 
 ### Download YugabyteDB
 
@@ -119,12 +119,11 @@ To configure YugabyteDB, run the following shell script.
 $ ./bin/post_install.sh
 ```
 
-## 2. Create a local cluster
-
+## Create a local cluster
 
 {{< note title="Note" >}}
 
-This Linux Quick Start uses the [`yugabyted`](../../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
+This Linux Quick Start uses the [`yugabyted`](../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
 
 {{< /note >}}
 
@@ -136,7 +135,7 @@ $ ./bin/yugabyted start
 
 After the cluster is created, clients can connect to the YSQL and YCQL APIs at `localhost:5433` and `localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
 
-### 2. Check cluster status
+### Check cluster status
 
 ```sh
 $ ./bin/yugabyted status
@@ -157,9 +156,9 @@ $ ./bin/yugabyted status
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### 3. Check cluster status with Admin UI
+### Check cluster status with Admin UI
 
-The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
+The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
 
 #### Overview and YB-Master status
 
@@ -175,13 +174,13 @@ Clicking `See all nodes` takes you to the Tablet Servers page where you can obse
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 
 This tutorial assumes that:
 
-- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../../../quick-start/).
+- YugabyteDB is up and running. If you are new to YugabyteDB, you can download, install, and have YugabyteDB up and running within five minutes by following the steps in [Quick start](../../quick-start/).
 - Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [OpenJDK](http://jdk.java.net/), [AdoptOpenJDK](https://adoptopenjdk.net/), or [Azul Systems](https://www.azul.com/downloads/zulu-community/).
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 

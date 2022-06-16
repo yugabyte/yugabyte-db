@@ -26,7 +26,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
 {{< /note >}}
 
@@ -59,7 +59,7 @@ The local cluster setup on a single host is intended for development and learnin
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 ### Prerequisites
 
@@ -88,10 +88,15 @@ The local cluster setup on a single host is intended for development and learnin
 1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
 
     ```sh
-    $ launchctl limit maxfiles
+    $ launchctl limit
     ```
 
-    We recommend setting the soft and hard limits to 1048576.
+    We recommend having at least the following soft and hard limits.
+
+    ```output
+    maxproc     2500        2500
+    maxfiles    1048576     1048576
+    ```
 
     Edit `/etc/sysctl.conf`, if it exists, to include the following:
 
@@ -102,38 +107,69 @@ The local cluster setup on a single host is intended for development and learnin
     kern.maxfilesperproc=1048576
     ```
 
-    If this file does not exist, then create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+    If this file does not exist, create the following two files:
+    \
+    Create `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
     ```xml
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
+    <plist version="1.0">
+      <dict>
+        <key>Label</key>
+          <string>limit.maxfiles</string>
+        <key>ProgramArguments</key>
+          <array>
+            <string>launchctl</string>
+            <string>limit</string>
+            <string>maxfiles</string>
+            <string>1048576</string>
+            <string>1048576</string>
+          </array>
+        <key>RunAtLoad</key>
+          <true/>
+        <key>ServiceIPC</key>
+          <false/>
+      </dict>
+    </plist>
     ```
 
-    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
+    \
+    Create `/Library/LaunchDaemons/limit.maxproc.plist` and insert the following:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+      <dict>
+        <key>Label</key>
+          <string>limit.maxproc</string>
+        <key>ProgramArguments</key>
+          <array>
+            <string>launchctl</string>
+            <string>limit</string>
+            <string>maxproc</string>
+            <string>2500</string>
+            <string>2500</string>
+          </array>
+        <key>RunAtLoad</key>
+          <true/>
+        <key>ServiceIPC</key>
+          <false/>
+      </dict>
+    </plist>
+    ```
+
+    \
+    Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
     ```sh
     $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
+    $ sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
     ```
 
-    You might have to `unload` the service before loading it.
+    \
+    You might need to `unload` the service before loading it.
 
 ### Download YugabyteDB
 
@@ -149,47 +185,7 @@ The local cluster setup on a single host is intended for development and learnin
     $ tar xvfz yugabyte-{{< yb-version version="preview" format="build">}}-darwin-x86_64.tar.gz && cd yugabyte-{{< yb-version version="preview">}}/
     ```
 
-### Configure loopback addresses
-
-Some of the examples in the [Explore core features](../../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
-
-To add six loopback addresses, run the following commands, which require `sudo` access.
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
-```
-
-The loopback addresses _do not_ persist after rebooting your Mac.
-
-To verify that the extra loopback addresses exist, run the following command.
-
-```sh
-$ ifconfig lo0
-```
-
-You should see some output like the following:
-
-```output
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
-```
-
-## 2. Create a local cluster
+## Create a local cluster
 
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command.
 
@@ -211,7 +207,7 @@ After the cluster is created, clients can connect to the YSQL and YCQL APIs at `
 
 {{< tip title="Tip" >}}
 
-If you have previously installed YugabyteDB (2.8 or later) and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
+If you have previously installed YugabyteDB (2.8 or later) and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
 
 {{< /tip >}}
 
@@ -238,9 +234,9 @@ $ ./bin/yugabyted status
 
 ### Check cluster status with Admin UI
 
-Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
+Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
 
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) (replace the port number if you've started `yugabyted` with the `--master_webserver_port` flag), and the [YB-TServer Admin UI](../../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
+Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) (replace the port number if you've started `yugabyted` with the `--master_webserver_port` flag), and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
 
 #### Overview and YB-Master status
 
@@ -256,7 +252,7 @@ Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB
 
 ![master-home](/images/admin/master-tservers-list-binary-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 

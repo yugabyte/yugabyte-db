@@ -52,7 +52,7 @@ type: docs
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 ### Prerequisites
 
@@ -111,7 +111,7 @@ type: docs
 
 ### Download YugabyteDB Helm Chart
 
-### Add charts repository
+#### Add charts repository
 
 To add the YugabyteDB charts repository, run the following command.
 
@@ -119,7 +119,7 @@ To add the YugabyteDB charts repository, run the following command.
 $ helm repo add yugabytedb https://charts.yugabyte.com
 ```
 
-### Fetch updates from the repository
+#### Fetch updates from the repository
 
 Make sure that you have the latest updates to the repository by running the following command.
 
@@ -127,7 +127,7 @@ Make sure that you have the latest updates to the repository by running the foll
 $ helm repo update
 ```
 
-### Validate the chart version
+#### Validate the chart version
 
 ```sh
 $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
@@ -135,12 +135,12 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" 
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  2.12.2          2.12.2.0-b58  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.
 
-## 2. Create a local cluster
+## Create a local cluster
 
 Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
@@ -163,9 +163,9 @@ replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-dem
 --version {{<yb-version version="stable" format="short">}}
 ```
 
-### 2. Check cluster status with kubectl
+### Check cluster status with kubectl
 
-Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/) in the Concepts section.
+Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../architecture/concepts/universe/) in the Concepts section.
 
 ```sh
 $ kubectl --namespace yb-demo get pods
@@ -199,7 +199,7 @@ yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,
 yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
-### 3. Check cluster status with Admin UI
+### Check cluster status with Admin UI
 
 To check the cluster status, you need to access the Admin UI on port `7000` exposed by the `yb-master-ui` service. In order to do so, you need to find the port forward the port.
 
@@ -207,9 +207,9 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
-### Overview and YB-Master status
+#### Overview and YB-Master status
 
 The `yb-master-0` home page shows that you have a cluster with **Replication Factor** of 1 and **Num Nodes (TServers)** as `1`. The **Num User Tables** is `0` because there are no user tables created yet. The YugabyteDB version is also displayed for your reference.
 
@@ -217,13 +217,13 @@ The `yb-master-0` home page shows that you have a cluster with **Replication Fac
 
 The **Masters** section highlights the YB-Master service along its corresponding cloud, region and zone placement information.
 
-### YB-TServer status
+#### YB-TServer status
 
 Click **See all nodes** to go to the **Tablet Servers** page where you can observe the one YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. As new tables get added, new tablets will get automatically created and distributed evenly across all the available YB-TServers.
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 
@@ -292,7 +292,7 @@ This tutorial assumes that:
 
 You’ll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 
-### Uniform load balancing
+#### Uniform load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/UniformLoadBalanceApp.java`.
 
@@ -396,7 +396,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.UniformLoadBalanceApp
     ```
 
-### Topology-aware load balancing
+#### Topology-aware load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java`.
 
@@ -507,3 +507,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```
+
+### Explore the driver
+
+Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

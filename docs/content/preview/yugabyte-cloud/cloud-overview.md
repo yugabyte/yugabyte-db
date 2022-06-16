@@ -11,7 +11,7 @@ menu:
   preview_yugabyte-cloud:
     identifier: cloud-overview
     parent: yugabytedb-managed
-    weight: 14
+    weight: 1
 type: docs
 ---
 

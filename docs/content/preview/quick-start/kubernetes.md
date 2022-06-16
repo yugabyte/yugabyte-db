@@ -25,7 +25,7 @@ type: docs
 
 {{< note title="Note" >}}
 
-The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../../deploy/).
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
 {{< /note >}}
 
@@ -136,23 +136,24 @@ $ helm repo update
 #### Validate the chart version
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="preview" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-yugabytedb/yugabyte  2.13.0          2.13.0.1-b2  YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.
 
-## 2. Create a local cluster
+## Create a local cluster
 
 Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
 ```sh
 $ kubectl create namespace yb-demo
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
@@ -162,6 +163,7 @@ Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-serv
 
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="preview" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
@@ -169,7 +171,7 @@ replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-dem
 
 ### Check cluster status with kubectl
 
-Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/) in the Concepts section.
+Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../architecture/concepts/universe/) in the Concepts section.
 
 ```sh
 $ kubectl --namespace yb-demo get pods
@@ -203,11 +205,9 @@ yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,
 yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
-
-
 ### Check cluster status with Admin UI
 
-Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
+Under the hood, the cluster you have just created consists of two processes: [YB-Master](../../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on), and [YB-TServer](../../architecture/concepts/yb-tserver/) which is responsible for the actual end user requests for data updates and queries.
 
 Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations.
 
@@ -217,7 +217,7 @@ To get access to the Admin UI, you first need to set up port forwarding for port
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 #### Overview and YB-Master status
 
@@ -233,7 +233,7 @@ Click **See all nodes** to go to the **Tablet Servers** page, which lists the YB
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 
@@ -298,7 +298,7 @@ This tutorial assumes that:
     $ mvn install
     ```
 
-### 3. Create the sample Java application
+### Create the sample Java application
 
 You'll create two java applications, `UniformLoadBalance` and `TopologyAwareLoadBalance`. In each, you can create connections in two ways: using the `DriverManager.getConnection()` API, or using `YBClusterAwareDataSource` and `HikariPool`. This example shows both approaches.
 

@@ -1,23 +1,22 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick start
 headerTitle: Quick start
 linkTitle: Quick start
-description: Get started using YugabyteDB in less than five minutes on macOS.
+description: Get started using YugabyteDB in less than five minutes on Linux.
 aliases:
-  - /quick-start/
-layout: single
+  - /quick-start/linux/
 type: docs
 ---
 
 <div class="custom-tabs tabs-style-2">
   <ul class="tabs-name">
     <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <a href="../../quick-start-yugabytedb-managed/" class="nav-link">
         Use a cloud cluster
       </a>
     </li>
     <li class="active">
-      <a href="../" class="nav-link">
+      <a href="../../" class="nav-link">
         Use a local cluster
       </a>
     </li>
@@ -26,26 +25,26 @@ type: docs
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
+    <li>
+      <a href="../" class="nav-link">
         <i class="fab fa-apple" aria-hidden="true"></i>
         macOS
       </a>
     </li>
-    <li>
-      <a href="../quick-start/linux/" class="nav-link">
+    <li class="active">
+      <a href="../linux/" class="nav-link">
         <i class="fab fa-linux" aria-hidden="true"></i>
         Linux
       </a>
     </li>
     <li>
-      <a href="../quick-start/docker/" class="nav-link">
+      <a href="../docker/" class="nav-link">
         <i class="fab fa-docker" aria-hidden="true"></i>
         Docker
       </a>
     </li>
     <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
+      <a href="../kubernetes/" class="nav-link">
         <i class="fas fa-cubes" aria-hidden="true"></i>
         Kubernetes
       </a>
@@ -57,137 +56,74 @@ type: docs
 
 ### Prerequisites
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+1. One of the following operating systems
 
-2. Verify that you have Python 2 or 3 installed.
+    - <i class="icon-centos"></i> CentOS 7
+
+    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+
+1. Verify that you have Python 2 or 3 installed.
 
     ```sh
-    python --version
+    $ python --version
     ```
 
     ```
     Python 3.7.3
     ```
 
-3. `wget` or `curl` is available.
+    {{< note title="Note" >}}
 
-    The instructions use the `wget` command to download files. If you prefer to use `curl` (included in macOS), you can replace `wget` with `curl -O`.
+By default, CentOS 8 doesn't have an unversioned system-wide `python` command to avoid locking users to a specific version of Python.
+One way to fix this is to set `python3` the alternative for `python` by running: `sudo alternatives --set python /usr/bin/python3`.
 
-    To install `wget` on your Mac, you can run the following command if you use Homebrew:
+Starting from Ubuntu 20.04, `python` isn't available anymore. An easy fix is to install `sudo apt install python-is-python3`.
 
-    ```sh
-    brew install wget
-    ```
+    {{< /note >}}
 
-4. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure that this command shows a big enough value.
+1. `wget` or `curl` is available.
 
-    ```sh
-    launchctl limit maxfiles
-    ```
+    The instructions use the `wget` command to download files. If you prefer to use `curl`, you can replace `wget` with `curl -O`.
 
-    We recommend setting the soft and hard limits to 1048576.
+    To install `wget`:
 
-    Edit `/etc/sysctl.conf`, if it exists, to include the following:
+    - CentOS: `yum install wget`
+    - Ubuntu: `apt install wget`
 
-    ```sh
-    kern.maxfiles=1048576
-    kern.maxproc=2500
-    kern.maxprocperuid=2500
-    kern.maxfilesperproc=1048576
-    ```
+    To install `curl`:
 
-    If this file does not exist, then create the file `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
+    - CentOS: `yum install curl`
+    - Ubuntu: `apt install curl`
 
-    ```xml
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-        <dict>
-          <key>Label</key>
-            <string>limit.maxfiles</string>
-          <key>ProgramArguments</key>
-            <array>
-              <string>launchctl</string>
-              <string>limit</string>
-              <string>maxfiles</string>
-              <string>1048576</string>
-              <string>1048576</string>
-            </array>
-          <key>RunAtLoad</key>
-            <true/>
-          <key>ServiceIPC</key>
-            <false/>
-        </dict>
-      </plist>
-    ```
-
-    Ensure that the `plist` file is owned by `root:wheel` and has permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run this command:
-
-    ```sh
-    sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
-    ```
-
-    You might have to `unload` the service before loading it.
+1. Each tablet maps to its own file, so if you experiment with a few hundred tables and a few tablets per table, you can soon end up creating a large number of files in the current shell. Make sure to [configure ulimit values](../../deploy/manual-deployment/system-config#ulimits).
 
 ### Download YugabyteDB
 
-Download the YugabyteDB `tar.gz` file using the following `wget` command.
+1. Download the YugabyteDB package using the following `wget` command.
+
+    ```sh
+    wget https://downloads.yugabyte.com/releases/2.4.8.0/yugabyte-2.4.8.0-b16-linux-x86_64.tar.gz
+    ```
+
+1. Extract the package and then change directories to the YugabyteDB home.
+
+    ```sh
+    tar xvfz yugabyte-2.4.8.0-b16-linux-x86_64.tar.gz && cd yugabyte-2.4.8.0/
+    ```
+
+### Configure YugabyteDB
+
+To configure YugabyteDB, run the following shell script.
 
 ```sh
-wget https://downloads.yugabyte.com/releases/2.4.8.0/yugabyte-2.4.8.0-b16-darwin-x86_64.tar.gz
-```
-
-To unpack the archive file and change to the YugabyteDB home directory, run the following command.
-
-```sh
-tar xvfz yugabyte-2.4.8.0-b16-darwin-x86_64.tar.gz && cd yugabyte-2.4.8.0/
-```
-
-### Configure
-
-Some of the examples in the [Explore core features](../../explore/) section require extra loopback addresses that allow you to simulate the use of multiple hosts or nodes.
-
-To add six loopback addresses, run the following commands, which require `sudo` access.
-
-```sh
-sudo ifconfig lo0 alias 127.0.0.2
-sudo ifconfig lo0 alias 127.0.0.3
-sudo ifconfig lo0 alias 127.0.0.4
-sudo ifconfig lo0 alias 127.0.0.5
-sudo ifconfig lo0 alias 127.0.0.6
-sudo ifconfig lo0 alias 127.0.0.7
-```
-
-**Note**: The loopback addresses do not persist upon rebooting of your Mac.
-
-To verify that the extra loopback addresses exist, run the following command.
-
-```sh
-ifconfig lo0
-```
-
-You should see some output like the following:
-
-```
-lo0: flags=8049<UP,LOOPBACK,RUNNING,MULTICAST> mtu 16384
-  options=1203<RXCSUM,TXCSUM,TXSTATUS,SW_TIMESTAMP>
-  inet 127.0.0.1 netmask 0xff000000
-  inet6 ::1 prefixlen 128
-  inet6 fe80::1%lo0 prefixlen 64 scopeid 0x1
-  inet 127.0.0.2 netmask 0xff000000
-  inet 127.0.0.3 netmask 0xff000000
-  inet 127.0.0.4 netmask 0xff000000
-  inet 127.0.0.5 netmask 0xff000000
-  inet 127.0.0.6 netmask 0xff000000
-  inet 127.0.0.7 netmask 0xff000000
-  nd6 options=201<PERFORMNUD,DAD>
+./bin/post_install.sh
 ```
 
 ## Create a local cluster
 
 {{< note title="Note" >}}
 
-This macOS Quick Start is based on the new [`yugabyted`](../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
+This Linux Quick Start is based on the new [`yugabyted`](../../reference/configuration/yugabyted/) server. You can refer to the older [`yb-ctl`](../../admin/yb-ctl/) based instructions in the [v2.1 docs](/v2.1/quick-start/install/linux/).
 
 Note that yugabyted currently supports creating a single-node cluster only. Ability to create multi-node clusters is under [active development](https://github.com/yugabyte/yugabyte-db/issues/2057).
 

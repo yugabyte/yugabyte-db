@@ -7,8 +7,9 @@ image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     identifier: qs-explore-1-ysql
-    parent: cloud-quickstart
-    weight: 400
+    parent: yugabytedb-managed
+    params:
+      hide: true
 type: docs
 ---
 

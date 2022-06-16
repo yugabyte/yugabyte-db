@@ -52,7 +52,7 @@ type: docs
   </ul>
 </div>
 
-## 1. Install YugabyteDB
+## Install YugabyteDB
 
 ### Prerequisites
 
@@ -130,23 +130,24 @@ $ helm repo update
 #### Validate the chart version
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" format="short">}}
 ```
 
 ```output
 NAME                 CHART VERSION   APP VERSION    DESCRIPTION
-yugabytedb/yugabyte  2.8.4           2.8.4.0-b30     YugabyteDB is the high-performance distributed ...
+yugabytedb/yugabyte  {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}     YugabyteDB is the high-performance distributed ...
 ```
 
 Now you are ready to create a local YugabyteDB cluster.
 
-## 2. Create a local cluster
+## Create a local cluster
 
 Create a YugabyteDB cluster in Minikube using the commands below. Note that for Helm, you have to first create a namespace.
 
 ```sh
 $ kubectl create namespace yb-demo
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1 --namespace yb-demo
@@ -156,14 +157,15 @@ Note that in Minikube, the LoadBalancers for `yb-master-ui` and `yb-tserver-serv
 
 ```sh
 $ helm install yb-demo yugabytedb/yugabyte \
+--version {{<yb-version version="v2.8" format="short">}} \
 --set resource.master.requests.cpu=0.5,resource.master.requests.memory=0.5Gi,\
 resource.tserver.requests.cpu=0.5,resource.tserver.requests.memory=0.5Gi,\
 replicas.master=1,replicas.tserver=1,enableLoadBalancer=False --namespace yb-demo
 ```
 
-### 2. Check cluster status with kubectl
+### Check cluster status with kubectl
 
-Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../../architecture/concepts/universe/) in the Concepts section.
+Run the following command to see that you now have two services with one pod each — 1 yb-master pod (`yb-master-0`) and 1 yb-tserver pod (`yb-tserver-0`) running. For details on the roles of these pods in a YugabyteDB cluster (aka Universe), see [Universe](../../architecture/concepts/universe/) in the Concepts section.
 
 ```sh
 $ kubectl --namespace yb-demo get pods
@@ -197,7 +199,7 @@ yb-tserver-service   LoadBalancer   10.106.5.69    <pending>     6379:31320/TCP,
 yb-tservers          ClusterIP      None           <none>        7100/TCP,9000/TCP,6379/TCP,9042/TCP,5433/TCP   119s
 ```
 
-### 3. Check cluster status with Admin UI
+### Check cluster status with Admin UI
 
 To check the cluster status, you need to access the Admin UI on port `7000` exposed by the `yb-master-ui` service. In order to do so, you need to find the port forward the port.
 
@@ -205,7 +207,7 @@ To check the cluster status, you need to access the Admin UI on port `7000` expo
 $ kubectl --namespace yb-demo port-forward svc/yb-master-ui 7000:7000
 ```
 
-Now, you can view the [yb-master-0 Admin UI](../../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
+Now, you can view the [yb-master-0 Admin UI](../../reference/configuration/yb-master/#admin-ui) at <http://localhost:7000>.
 
 #### Overview and YB-Master status
 
@@ -221,7 +223,7 @@ Click **See all nodes** to go to the **Tablet Servers** page where you can obser
 
 ![tserver-list](/images/admin/master-tservers-list-kubernetes-rf1.png)
 
-## 3. Build a Java application
+## Build a Java application
 
 ### Prerequisites
 
@@ -394,7 +396,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.UniformLoadBalanceApp
     ```
 
-#### Topology-aware load balancing
+### Topology-aware load balancing
 
 1. Create a file called `./src/main/java/com/yugabyte/TopologyAwareLoadBalanceApp.java`.
 
@@ -505,3 +507,7 @@ When using `DriverManager.getConnection()`, you need to include the `load-balanc
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```
+
+## Explore the driver
+
+Learn more about the [Yugabyte JDBC driver](/preview/integrations/jdbc-driver) and explore the [demo apps](https://github.com/yugabyte/pgjdbc/tree/master/examples) to understand the driver's features in depth.

@@ -38,6 +38,7 @@ aside.td-sidebar {
   .left-sidebar-wrap {
     height: calc(100vh - 129px);
     position: sticky;
+    margin-top: 129px;
     top: 129px;
     transition: width 0.5s linear;
 
@@ -580,7 +581,6 @@ aside.td-sidebar {
               > a {
                 max-width: calc(100% - 20px);
                 padding-left: 0;
-                padding: 0;
                 line-height: normal;
               }
 
@@ -610,11 +610,13 @@ aside.td-sidebar {
 
             + i {
               transition: none !important;
-              border-color: var(--theme-color);
+
+              /* border-color: var(--theme-color); */
 
               &::before {
                 transition: none !important;
-                background: var(--theme-color) !important;
+
+                /* background: var(--theme-color) !important; */
               }
             }
           }
@@ -759,7 +761,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li > a.current + i {
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li > a.current + i::before,
-aside.td-sidebar nav > ul > li.unlink-list li > a.current + i::before {
+aside.td-sidebar nav > ul > li.unlink-list > li > a.current + i::before {
   width: 100%;
   transform: none;
   top: 2px;
@@ -806,7 +808,7 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li:last-child {
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > i::before,
-aside.td-sidebar nav > ul > li.unlink-list li.open > a.current + i::before,
+aside.td-sidebar nav > ul > li.unlink-list > li.open > a.current + i::before,
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.open > a.current + i::before {
   background: var(--theme-color) !important;
 }
@@ -1105,7 +1107,8 @@ aside.td-sidebar nav > ul > li.view-all-products > {
 
           + i {
             transition: none !important;
-            border-color: var(--theme-color);
+
+            /* border-color: var(--theme-color); */
 
             &::before {
               transition: none !important;
