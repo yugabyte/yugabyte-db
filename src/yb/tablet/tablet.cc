@@ -259,6 +259,7 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_int64(cdc_intent_retention_ms);
 
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
                  "Sleep before applying intents to docdb after transaction commit");
@@ -776,6 +777,11 @@ Status Tablet::OpenKeyValueTablet() {
 
   ql_storage_.reset(new docdb::QLRocksDBStorage(doc_db()));
   if (transaction_participant_) {
+    // We need to set the "cdc_sdk_min_checkpoint_op_id" so that intents don't get
+    // garbage collected after transactions are loaded.
+    transaction_participant_->SetIntentRetainOpIdAndTime(
+        metadata_->cdc_sdk_min_checkpoint_op_id(),
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     transaction_participant_->SetDB(doc_db(), &key_bounds_, &pending_non_abortable_op_counter_);
   }
 
