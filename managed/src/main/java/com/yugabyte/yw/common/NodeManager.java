@@ -61,6 +61,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -72,7 +73,6 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -105,11 +105,7 @@ public class NodeManager extends DevopsBase {
       ImmutableList.of(ServerType.MASTER.name(), ServerType.TSERVER.name());
   static final String VERIFY_SERVER_ENDPOINT_GFLAG = "verify_server_endpoint";
   static final String SKIP_CERT_VALIDATION = "yb.tls.skip_cert_validation";
-  static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
-  static final String YSQL_CGROUP_PATH = "/sys/fs/cgroup/memory/ysql";
-  static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
-  static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
-  static final String YBC_LOG_SUBDIR = "/yb-controller/logs";
+  public static final String POSTGRES_MAX_MEM_MB = "yb.dbmem.postgres.max_mem_mb";
 
   @Inject ReleaseManager releaseManager;
 
@@ -435,7 +431,7 @@ public class NodeManager extends DevopsBase {
 
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
-      subcommandStrings.add(getCertsNodeDir(ybHomeDir));
+      subcommandStrings.add(CertificateHelper.getCertsNodeDir(ybHomeDir));
 
       CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
       if (rootCert == null) {
@@ -538,7 +534,7 @@ public class NodeManager extends DevopsBase {
     }
     if (isClientRootCARequired) {
       subcommandStrings.add("--certs_client_dir");
-      subcommandStrings.add(getCertsForClientDir(ybHomeDir));
+      subcommandStrings.add(CertificateHelper.getCertsForClientDir(ybHomeDir));
 
       CertificateInfo clientRootCert = CertificateInfo.get(taskParam.clientRootCA);
       if (clientRootCert == null) {
@@ -628,315 +624,6 @@ public class NodeManager extends DevopsBase {
     return subcommandStrings;
   }
 
-  private static String getCertsNodeDir(String ybHomeDir) {
-    return ybHomeDir + CERTS_NODE_SUBDIR;
-  }
-
-  private static String getCertsForClientDir(String ybHomeDir) {
-    return ybHomeDir + CERT_CLIENT_NODE_SUBDIR;
-  }
-
-  private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
-    if (taskParam.deviceInfo.mountPoints != null) {
-      return taskParam.deviceInfo.mountPoints;
-    } else if (taskParam.deviceInfo.numVolumes != null
-        && !taskParam.getProvider().code.equals("onprem")) {
-      List<String> mountPoints = new ArrayList<>();
-      for (int i = 0; i < taskParam.deviceInfo.numVolumes; i++) {
-        mountPoints.add("/mnt/d" + Integer.toString(i));
-      }
-      return String.join(",", mountPoints);
-    }
-    return null;
-  }
-
-  private String getYbHomeDir(String providerUUID) {
-    if (providerUUID == null) {
-      return CommonUtils.DEFAULT_YB_HOME_DIR;
-    }
-    return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
-  }
-
-  private Map<String, String> getCertsAndTlsGFlags(AnsibleConfigureServers.Params taskParam) {
-    Map<String, String> gflags = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
-    String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
-    String allowInsecureString = String.valueOf(taskParam.allowInsecure);
-    String ybHomeDir = taskParam.getProvider().getYbHome();
-    String certsDir = getCertsNodeDir(ybHomeDir);
-    String certsForClientDir = getCertsForClientDir(ybHomeDir);
-
-    gflags.put("use_node_to_node_encryption", nodeToNodeString);
-    gflags.put("use_client_to_server_encryption", clientToNodeString);
-    gflags.put("allow_insecure_connections", allowInsecureString);
-    if (taskParam.enableClientToNodeEncrypt || taskParam.enableNodeToNodeEncrypt) {
-      gflags.put("cert_node_filename", node.cloudInfo.private_ip);
-    }
-    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      gflags.put("certs_dir", certsDir);
-    }
-    if (EncryptionInTransitUtil.isClientRootCARequired(taskParam)) {
-      gflags.put("certs_for_client_dir", certsForClientDir);
-    }
-    return gflags;
-  }
-
-  private Map<String, String> getYSQLGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
-    Map<String, String> gflags = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String pgsqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
-      pgsqlProxyBindAddress = "0.0.0.0";
-    }
-
-    if (taskParam.enableYSQL) {
-      gflags.put("enable_ysql", "true");
-      gflags.put(
-          "pgsql_proxy_bind_address",
-          String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-      gflags.put(
-          "pgsql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.ysqlServerHttpPort));
-      if (taskParam.enableYSQLAuth) {
-        gflags.put("ysql_enable_auth", "true");
-        gflags.put("ysql_hba_conf_csv", "local all yugabyte trust");
-      } else {
-        gflags.put("ysql_enable_auth", "false");
-      }
-    } else {
-      gflags.put("enable_ysql", "false");
-    }
-    return gflags;
-  }
-
-  private Map<String, String> getYCQLGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Boolean useSecondaryIp) {
-    Map<String, String> gflags = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String cqlProxyBindAddress = node.cloudInfo.private_ip;
-    if (useHostname || useSecondaryIp) {
-      cqlProxyBindAddress = "0.0.0.0";
-    }
-
-    if (taskParam.enableYCQL) {
-      gflags.put("start_cql_proxy", "true");
-      gflags.put(
-          "cql_proxy_bind_address",
-          String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-      gflags.put(
-          "cql_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.yqlServerHttpPort));
-      if (taskParam.enableYCQLAuth) {
-        gflags.put("use_cassandra_authentication", "true");
-      } else {
-        gflags.put("use_cassandra_authentication", "false");
-      }
-    } else {
-      gflags.put("start_cql_proxy", "false");
-    }
-    return gflags;
-  }
-
-  private Map<String, String> getMasterDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam,
-      Boolean useHostname,
-      Boolean useSecondaryIp,
-      Boolean isDualNet) {
-    Map<String, String> gflags = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
-    String private_ip = node.cloudInfo.private_ip;
-
-    if (useHostname) {
-      gflags.put(
-          "server_broadcast_addresses",
-          String.format("%s:%s", private_ip, Integer.toString(node.masterRpcPort)));
-    } else {
-      gflags.put("server_broadcast_addresses", "");
-    }
-
-    if (!taskParam.isMasterInShellMode) {
-      gflags.put("master_addresses", masterAddresses);
-    } else {
-      gflags.put("master_addresses", "");
-    }
-
-    gflags.put(
-        "rpc_bind_addresses",
-        String.format("%s:%s", private_ip, Integer.toString(node.masterRpcPort)));
-
-    if (useSecondaryIp) {
-      String bindAddressPrimary =
-          String.format("%s:%s", node.cloudInfo.private_ip, node.masterRpcPort);
-      String bindAddressSecondary =
-          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
-      String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
-      gflags.put("rpc_bind_addresses", bindAddresses);
-    } else if (isDualNet) {
-      gflags.put("use_private_ip", "cloud");
-    }
-
-    gflags.put("webserver_port", Integer.toString(node.masterHttpPort));
-    gflags.put("webserver_interface", private_ip);
-
-    return gflags;
-  }
-
-  private Map<String, String> getTServerDefaultGflags(
-      AnsibleConfigureServers.Params taskParam,
-      Boolean useHostname,
-      Boolean useSecondaryIp,
-      Boolean isDualNet) {
-    Map<String, String> gflags = new HashMap<>();
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
-    String private_ip = node.cloudInfo.private_ip;
-    UserIntent userIntent = getUserIntentFromParams(taskParam);
-
-    if (useHostname) {
-      gflags.put(
-          "server_broadcast_addresses",
-          String.format("%s:%s", private_ip, Integer.toString(node.tserverRpcPort)));
-    } else {
-      gflags.put("server_broadcast_addresses", "");
-    }
-    gflags.put(
-        "rpc_bind_addresses",
-        String.format("%s:%s", private_ip, Integer.toString(node.tserverRpcPort)));
-    gflags.put("tserver_master_addrs", masterAddresses);
-
-    if (useSecondaryIp) {
-      String bindAddressPrimary =
-          String.format("%s:%s", node.cloudInfo.private_ip, node.tserverRpcPort);
-      String bindAddressSecondary =
-          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
-      String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
-      gflags.put("rpc_bind_addresses", bindAddresses);
-    } else if (isDualNet) {
-      // We want the broadcast address to be secondary so that
-      // it gets populated correctly for the client discovery tables.
-      gflags.put("server_broadcast_addresses", node.cloudInfo.secondary_private_ip);
-      gflags.put("use_private_ip", "cloud");
-    }
-
-    gflags.put("webserver_port", Integer.toString(node.tserverHttpPort));
-    gflags.put("webserver_interface", private_ip);
-    gflags.put(
-        "redis_proxy_bind_address",
-        String.format("%s:%s", private_ip, Integer.toString(node.redisServerRpcPort)));
-    if (userIntent.enableYEDIS) {
-      gflags.put(
-          "redis_proxy_webserver_port",
-          Integer.toString(taskParam.communicationPorts.redisServerHttpPort));
-    } else {
-      gflags.put("start_redis_proxy", "false");
-    }
-    if (runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB) > 0) {
-      gflags.put("postmaster_cgroup", YSQL_CGROUP_PATH);
-    }
-    return gflags;
-  }
-
-  /** Return the map of ybc flags which will be passed to the db nodes. */
-  private Map<String, String> getYbcFlags(AnsibleConfigureServers.Params taskParam) {
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    String providerUUID = universeDetails.getClusterByUuid(node.placementUuid).userIntent.provider;
-    Map<String, String> ybcFlags = new HashMap<>();
-    ybcFlags.put("v", "1");
-    ybcFlags.put("server_address", node.cloudInfo.private_ip);
-    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
-    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
-    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
-    if (node.isMaster) {
-      ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
-    }
-    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
-      String ybHomeDir = getYbHomeDir(providerUUID);
-      String certsNodeDir = getCertsNodeDir(ybHomeDir);
-      ybcFlags.put("certs_dir_name", certsNodeDir);
-    }
-    return ybcFlags;
-  }
-
-  /** Return the map of default gflags which will be passed as extra gflags to the db nodes. */
-  private Map<String, String> getAllDefaultGFlags(
-      AnsibleConfigureServers.Params taskParam, Boolean useHostname, Config config) {
-    Map<String, String> extra_gflags = new HashMap<>();
-    extra_gflags.put("placement_cloud", taskParam.getProvider().code);
-    extra_gflags.put("placement_region", taskParam.getRegion().code);
-    extra_gflags.put("placement_zone", taskParam.getAZ().code);
-    extra_gflags.put("max_log_size", "256");
-    extra_gflags.put("undefok", "enable_ysql");
-    extra_gflags.put("metric_node_name", taskParam.nodeName);
-    extra_gflags.put("placement_uuid", String.valueOf(taskParam.placementUuid));
-
-    String mountPoints = getMountPoints(taskParam);
-    if (mountPoints != null && mountPoints.length() > 0) {
-      extra_gflags.put("fs_data_dirs", mountPoints);
-    } else {
-      throw new RuntimeException("mountpoints and numVolumes are missing from taskParam");
-    }
-
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    boolean useSecondaryIp = false;
-    boolean legacyNet =
-        universe.getConfig().getOrDefault(Universe.DUAL_NET_LEGACY, "true").equals("true");
-    boolean isDualNet =
-        config.getBoolean("yb.cloud.enabled")
-            && node.cloudInfo.secondary_private_ip != null
-            && !node.cloudInfo.secondary_private_ip.equals("null");
-    if (isDualNet && !legacyNet) {
-      useSecondaryIp = true;
-    }
-
-    String processType = taskParam.getProperty("processType");
-    if (processType == null) {
-      extra_gflags.put("master_addresses", "");
-    } else if (processType.equals(ServerType.TSERVER.name())) {
-      extra_gflags.putAll(
-          getTServerDefaultGflags(taskParam, useHostname, useSecondaryIp, isDualNet));
-    } else {
-      extra_gflags.putAll(
-          getMasterDefaultGFlags(taskParam, useHostname, useSecondaryIp, isDualNet));
-    }
-
-    UserIntent userIntent = getUserIntentFromParams(taskParam);
-    if (taskParam.isMaster) {
-      extra_gflags.put("cluster_uuid", String.valueOf(taskParam.universeUUID));
-      extra_gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
-    }
-
-    if (taskParam.getCurrentClusterType() == UniverseDefinitionTaskParams.ClusterType.PRIMARY
-        && taskParam.setTxnTableWaitCountFlag) {
-      extra_gflags.put(
-          "txn_table_wait_min_ts_count",
-          Integer.toString(universe.getUniverseDetails().getPrimaryCluster().userIntent.numNodes));
-    }
-
-    if (taskParam.callhomeLevel != null) {
-      extra_gflags.put(
-          "callhome_collection_level", taskParam.callhomeLevel.toString().toLowerCase());
-      if (taskParam.callhomeLevel.toString().equals("NONE")) {
-        extra_gflags.put("callhome_enabled", "false");
-      }
-    }
-
-    extra_gflags.putAll(getYSQLGFlags(taskParam, useHostname, useSecondaryIp));
-    extra_gflags.putAll(getYCQLGFlags(taskParam, useHostname, useSecondaryIp));
-    extra_gflags.putAll(getCertsAndTlsGFlags(taskParam));
-    return extra_gflags;
-  }
-
   private List<String> getConfigureSubCommand(AnsibleConfigureServers.Params taskParam) {
     Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
     Config config = runtimeConfigFactory.forUniverse(universe);
@@ -955,9 +642,7 @@ public class NodeManager extends DevopsBase {
       subcommand.add(masterAddresses);
     }
 
-    NodeDetails node = universe.getNode(taskParam.nodeName);
-    String ybServerPackage = null, ybcPackage = null;
-    Map<String, String> ybcFlags = new HashMap<>();
+    String ybServerPackage = null;
     if (taskParam.ybSoftwareVersion != null) {
       ReleaseManager.ReleaseMetadata releaseMetadata =
           releaseManager.getReleaseByVersion(taskParam.ybSoftwareVersion);
@@ -979,17 +664,13 @@ public class NodeManager extends DevopsBase {
       }
     }
 
-    boolean canConfigureYbc = CommonUtils.canConfigureYbc(universe);
-    if (canConfigureYbc) {
-      ybcPackage = userIntent.ybcPackagePath;
-      ybcFlags = getYbcFlags(taskParam);
-    }
-
     if (!taskParam.itestS3PackagePath.isEmpty()
         && userIntent.providerType.equals(Common.CloudType.aws)) {
       subcommand.add("--itest_s3_package_path");
       subcommand.add(taskParam.itestS3PackagePath);
     }
+
+    NodeDetails node = universe.getNode(taskParam.nodeName);
 
     // Pass in communication ports
     subcommand.add("--master_http_port");
@@ -1060,10 +741,6 @@ public class NodeManager extends DevopsBase {
                   .forUniverse(universe)
                   .getString("yb.releases.num_releases_to_keep_default"));
         }
-        if (canConfigureYbc) {
-          subcommand.add("--ybc_package");
-          subcommand.add(ybcPackage);
-        }
         if ((taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt)) {
           subcommand.addAll(
               getCertificatePaths(
@@ -1083,10 +760,6 @@ public class NodeManager extends DevopsBase {
           }
           subcommand.add("--package");
           subcommand.add(ybServerPackage);
-          if (canConfigureYbc) {
-            subcommand.add("--ybc_package");
-            subcommand.add(ybcPackage);
-          }
           String processType = taskParam.getProperty("processType");
           if (processType == null || !VALID_CONFIGURE_PROCESS_TYPES.contains(processType)) {
             throw new RuntimeException("Invalid processType: " + processType);
@@ -1163,9 +836,12 @@ public class NodeManager extends DevopsBase {
           }
 
           String ybHomeDir =
-              getYbHomeDir(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-          String certsNodeDir = getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = getCertsForClientDir(ybHomeDir);
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = CertificateHelper.getCertsForClientDir(ybHomeDir);
 
           subcommand.add("--cert_rotate_action");
           subcommand.add(taskParam.certRotateAction.toString());
@@ -1260,10 +936,14 @@ public class NodeManager extends DevopsBase {
           String nodeToNodeString = String.valueOf(taskParam.enableNodeToNodeEncrypt);
           String clientToNodeString = String.valueOf(taskParam.enableClientToNodeEncrypt);
           String allowInsecureString = String.valueOf(taskParam.allowInsecure);
+
           String ybHomeDir =
-              getYbHomeDir(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
-          String certsDir = getCertsNodeDir(ybHomeDir);
-          String certsForClientDir = getCertsForClientDir(ybHomeDir);
+              Provider.getOrBadRequest(
+                      UUID.fromString(
+                          universe.getUniverseDetails().getPrimaryCluster().userIntent.provider))
+                  .getYbHome();
+          String certsDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
+          String certsForClientDir = CertificateHelper.getCertsForClientDir(ybHomeDir);
 
           if (UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name().equals(subType)) {
             if (taskParam.enableNodeToNodeEncrypt || taskParam.enableClientToNodeEncrypt) {
@@ -1337,18 +1017,20 @@ public class NodeManager extends DevopsBase {
         break;
     }
 
-    if (canConfigureYbc) {
-      subcommand.add("--ybc_flags");
-      subcommand.add(Json.stringify(Json.toJson(ybcFlags)));
-      subcommand.add("--configure_ybc");
-    }
     // extra_gflags is the base set of gflags that is common to all tasks.
     // These can be overriden by  gflags which contain task-specific overrides.
     // User set flags are added to gflags, so if user specifies any of the gflags set here, they
     // will take precedence over our base set.
     subcommand.add("--extra_gflags");
     subcommand.add(
-        Json.stringify(Json.toJson(getAllDefaultGFlags(taskParam, useHostname, config))));
+        Json.stringify(
+            Json.toJson(
+                GFlagsUtil.getAllDefaultGFlags(
+                    taskParam,
+                    universe,
+                    getUserIntentFromParams(taskParam),
+                    useHostname,
+                    config))));
     return subcommand;
   }
 

@@ -64,6 +64,11 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_bool(ysql_enable_reindex, false,
+            "Enable REINDEX INDEX statement.");
+TAG_FLAG(ysql_enable_reindex, advanced);
+TAG_FLAG(ysql_enable_reindex, hidden);
+
 namespace yb {
 namespace pggate {
 
@@ -490,22 +495,8 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
-                                   const YBCPgOid table_oid,
-                                   bool *colocated) {
-  const PgObjectId table_id(database_oid, table_oid);
-  PgTableDescPtr table_desc;
-  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
-  if (status) {
-    return status;
-  } else {
-    *colocated = table_desc->IsColocated();
-    return YBCStatusOK();
-  }
-}
-
 YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
-                                      YBCPgTableProperties *properties) {
+                                      YbTableProperties properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
@@ -1107,6 +1098,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,

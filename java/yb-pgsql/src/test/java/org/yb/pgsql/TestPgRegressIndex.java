@@ -12,6 +12,8 @@
 //
 package org.yb.pgsql;
 
+import java.util.Map;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -26,6 +28,13 @@ public class TestPgRegressIndex extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("TEST_ysql_suppress_ybctid_corruption_details", "true");
+    return flagMap;
   }
 
   @Test

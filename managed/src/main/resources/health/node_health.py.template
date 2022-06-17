@@ -53,7 +53,7 @@ POSTMASTER = "yb-postmaster"
 POSTGRES = "postgres"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-]b(\\d+|PRE_RELEASE).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
@@ -1293,8 +1293,29 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
         return False
 
     for i in range(1, 6):
-        c = int(parsed_current_release_build.group(i))
-        t = int(parsed_threshold_release_build.group(i))
+        if i < 5:
+            # release numbers
+            c = int(parsed_current_release_build.group(i))
+            t = int(parsed_threshold_release_build.group(i))
+        else:
+            # build name
+            current_build = parsed_current_release_build.group(i)
+            threshold_build = parsed_threshold_release_build.group(i)
+            # In case build name starts with 'b' - it can be regular digit build
+            if current_build[0] == 'b':
+                current_build = current_build[1:]
+            if threshold_build[0] == 'b':
+                threshold_build = threshold_build[1:]
+            # Threat PRE_RELEASE and dev builds as later than regular builds
+            if not current_build.isdigit():
+                # Both non-digit builds OR current build is non-digit
+                return True
+            if not threshold_build.isdigit():
+                # Current is digit builds, while threshold build is non-digit
+                return False
+            # Regular builds
+            c = int(current_build)
+            t = int(threshold_build)
         if c < t:
             # If any component is behind, the whole release build is older.
             return False
@@ -1343,20 +1364,14 @@ class CheckCoordinator:
             precheck.result = getattr(precheck.instance, precheck.func_name)()
             additional_info.update(precheck.result)
 
-        checks_remaining = 0
         while True:
-            if checks_remaining > 0:
-                time.sleep(self.retry_interval_secs)
-            checks_remaining = 0
             for check in self.checks:
                 check.instance.additional_info = additional_info
                 check.entry = check.result if check.result else None
 
                 # Run checks until they succeed, up to max tries. Wait for sleep_interval secs
                 # before retrying to let transient errors correct themselves.
-                if check.entry is None or (check.entry.has_error and check.tries < MAX_TRIES):
-                    checks_remaining += 1
-
+                if check.entry is None or check.entry.has_error:
                     if check.tries > 0:
                         logging.info("Retry # {} for check {}"
                                      .format(str(check.tries), check.func_name))
@@ -1366,14 +1381,21 @@ class CheckCoordinator:
                     else:
                         check.result =\
                             getattr(check.instance, check.func_name)(check.yb_process,)
-                    if not check.result.has_error:
-                        checks_remaining -= 1
-                    else:
+                    if check.result.has_error:
                         logging.info("Check {} failed with details {}"
                                      .format(check.func_name, check.result.details))
                     check.tries += 1
 
-            if checks_remaining == 0:
+            checks_remaining = 0
+            for check in self.checks:
+                if check.result.has_error and check.tries < MAX_TRIES:
+                    checks_remaining += 1
+
+            if checks_remaining > 0:
+                logging.info("{} check(s) failed, waiting for {} seconds before retry"
+                            .format(str(checks_remaining), str(self.retry_interval_secs)))
+                time.sleep(self.retry_interval_secs)
+            else:
                 break
 
         entries = []

@@ -358,7 +358,8 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
   TransactionOperationContext txn_op_ctx;
 
   auto& metadata = *tablet().metadata();
-  bool colocated = metadata.colocated();
+  // Colocated via DB/tablegroup/syscatalog.
+  bool colocated = metadata.colocated() || tablet().is_sys_catalog();
 
   for (const auto& req : pgsql_write_batch) {
     PgsqlResponsePB* resp = response_->add_pgsql_response_batch();
@@ -621,24 +622,25 @@ void WriteQuery::RedisExecuteDone(const Status& status) {
 }
 
 bool WriteQuery::CqlCheckSchemaVersion() {
+  constexpr auto error_code = QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH;
   auto& metadata = *tablet().metadata();
-  const auto& ql_write_batch = client_request_->ql_write_batch();
+  const auto& req_batch = client_request_->ql_write_batch();
+  auto& resp_batch = *response_->mutable_ql_response_batch();
 
   auto table_info = metadata.primary_table_info();
   int index = 0;
   int num_mismatches = 0;
-  for (const auto& req : ql_write_batch) {
+  for (const auto& req : req_batch) {
     if (!CheckSchemaVersion(
             table_info.get(), req.schema_version(), req.is_compatible_with_previous_version(),
-            QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, index,
-            response_->mutable_ql_response_batch())) {
+            error_code, index, &resp_batch)) {
       ++num_mismatches;
     }
     ++index;
   }
 
   if (num_mismatches != 0) {
-    SchemaVersionMismatch(num_mismatches, ql_write_batch.size());
+    SchemaVersionMismatch(error_code, req_batch.size(), &resp_batch);
     return false;
   }
 
@@ -662,9 +664,17 @@ void WriteQuery::CqlExecuteDone(const Status& status) {
   }
 }
 
-void WriteQuery::SchemaVersionMismatch(int num_mismatches, int batch_size) {
-  LOG_IF(DFATAL, num_mismatches != batch_size)
-      << "Wrong number or mismatches: " << num_mismatches << " vs " << batch_size;
+template <class Code, class Resp>
+void WriteQuery::SchemaVersionMismatch(Code code, int size, Resp* resp) {
+  for (int i = 0; i != size; ++i) {
+    auto* entry = resp->size() > i ? resp->Mutable(i) : resp->Add();
+    if (entry->status() == code) {
+      continue;
+    }
+    entry->Clear();
+    entry->set_status(code);
+    entry->set_error_message("Other request entry schema version mismatch");
+  }
   auto self = std::move(self_);
   submit_token_.Reset();
   Cancel(Status::OK());
@@ -826,12 +836,14 @@ void WriteQuery::UpdateQLIndexesFlushed(
 }
 
 bool WriteQuery::PgsqlCheckSchemaVersion() {
+  constexpr auto error_code = PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH;
   auto& metadata = *tablet().metadata();
-  const auto& pgsql_write_batch = client_request_->pgsql_write_batch();
+  const auto& req_batch = client_request_->pgsql_write_batch();
+  auto& resp_batch = *response_->mutable_pgsql_response_batch();
 
   int index = 0;
   int num_mismatches = 0;
-  for (const auto& req : pgsql_write_batch) {
+  for (const auto& req : req_batch) {
     auto table_info = metadata.GetTableInfo(req.table_id());
     if (!table_info.ok()) {
       StartSynchronization(std::move(self_), table_info.status());
@@ -839,15 +851,14 @@ bool WriteQuery::PgsqlCheckSchemaVersion() {
     }
     if (!CheckSchemaVersion(
             table_info->get(), req.schema_version(), /* compatible_with_previous_version= */ false,
-            PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH, index,
-            response_->mutable_pgsql_response_batch())) {
+            error_code, index, &resp_batch)) {
       ++num_mismatches;
     }
     ++index;
   }
 
   if (num_mismatches != 0) {
-    SchemaVersionMismatch(num_mismatches, pgsql_write_batch.size());
+    SchemaVersionMismatch(error_code, req_batch.size(), &resp_batch);
     return false;
   }
 

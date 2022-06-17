@@ -321,22 +321,6 @@ YbIsDatabaseColocated(Oid dbid)
 }
 
 bool
-YbIsUserTableColocated(Oid dbid, Oid relid)
-{
-	if (!MyDatabaseColocated && !YbTablegroupCatalogExists)
-		return false;
-
-	bool colocated = false;
-	bool not_found = false;
-
-	HandleYBStatusIgnoreNotFound(YbPgIsUserTableColocated(dbid,
-														  relid,
-														  &colocated),
-								 &not_found);
-	return colocated;
-}
-
-bool
 YBRelHasSecondaryIndices(Relation relation)
 {
 	if (!relation->rd_rel->relhasindex)
@@ -1402,6 +1386,20 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_RefreshMatViewStmt:
 			break;
 
+		case T_ReindexStmt:
+			/*
+			 * Does not need catalog version increment since only data changes,
+			 * not metadata--unless the data itself is metadata (system index).
+			 * It could be nice to force a cache refresh when fixing a system
+			 * index corruption, but just because a system index is REINDEXed
+			 * doesn't mean it had a corruption.  If there's a system index
+			 * corruption, manual intervention is already needed, so might as
+			 * well let the user deal with refreshing clients.
+			 */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
+
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
@@ -1611,28 +1609,40 @@ bool YBIsSupportedLibcLocale(const char *localebuf) {
 }
 
 void
-YbGetTableDescAndProps(Oid table_oid,
-					   bool allow_missing,
-					   YBCPgTableDesc *desc,
-					   YBCPgTableProperties *props)
+YbLoadTablePropertiesIfNeeded(Relation rel, bool allow_missing)
 {
+	if (rel->yb_table_properties)
+	{
+		/* Already loaded, nothing to do */
+		return;
+	}
+
+	Oid dbid          = YBCGetDatabaseOid(rel);
+	Oid storage_relid = YbGetStorageRelid(rel);
+
 	if (allow_missing)
 	{
 		bool exists_in_yb = false;
-		HandleYBStatus(YBCPgTableExists(MyDatabaseId, table_oid, &exists_in_yb));
+		HandleYBStatus(YBCPgTableExists(dbid, storage_relid, &exists_in_yb));
 		if (!exists_in_yb)
 		{
-			*desc = NULL;
 			return;
 		}
 	}
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, table_oid, desc));
-	HandleYBStatus(YBCPgGetSomeTableProperties(*desc, props));
+	YBCPgTableDesc desc = NULL;
 
-	Relation rel = relation_open(table_oid, AccessShareLock);
-	props->tablegroup_oid = RelationGetTablegroupOid(rel);
-	relation_close(rel, AccessShareLock);
+	/* Relcache entry data must live in CacheMemoryContext */
+	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+
+	rel->yb_table_properties = palloc0(sizeof(YbTablePropertiesData));
+
+	HandleYBStatus(YBCPgGetTableDesc(dbid, storage_relid, &desc));
+	HandleYBStatus(YBCPgGetSomeTableProperties(desc, rel->yb_table_properties));
+
+	rel->yb_table_properties->tablegroup_oid = RelationGetTablegroupOid(rel);
+
+	MemoryContextSwitchTo(oldcxt);
 }
 
 Datum
@@ -1742,10 +1752,10 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 	Datum		values[ncols];
 	bool		nulls[ncols];
-	YBCPgTableDesc yb_tabledesc = NULL;
-	YBCPgTableProperties yb_table_properties;
 
-	YbGetTableDescAndProps(relid, true, &yb_tabledesc, &yb_table_properties);
+	Relation	rel = relation_open(relid, AccessShareLock);
+
+	YbLoadTablePropertiesIfNeeded(rel, true /* allow_missing */);
 
 	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -1763,28 +1773,28 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	}
 	BlessTupleDesc(tupdesc);
 
-	if (yb_tabledesc)
+	if (rel->yb_table_properties)
 	{
-		values[0] = Int64GetDatum(yb_table_properties.num_tablets);
-		values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
-		values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+		values[0] = Int64GetDatum(rel->yb_table_properties->num_tablets);
+		values[1] = Int64GetDatum(rel->yb_table_properties->num_hash_key_columns);
+		values[2] = BoolGetDatum(rel->yb_table_properties->is_colocated);
 		if (ncols >= 5)
 		{
 			values[3] =
-				OidIsValid(yb_table_properties.colocation_id)
-					? ObjectIdGetDatum(yb_table_properties.tablegroup_oid)
+				OidIsValid(rel->yb_table_properties->colocation_id)
+					? ObjectIdGetDatum(rel->yb_table_properties->tablegroup_oid)
 					: (Datum) 0;
 			values[4] =
-				OidIsValid(yb_table_properties.colocation_id)
-					? ObjectIdGetDatum(yb_table_properties.colocation_id)
+				OidIsValid(rel->yb_table_properties->colocation_id)
+					? ObjectIdGetDatum(rel->yb_table_properties->colocation_id)
 					: (Datum) 0;
 		}
 
 		memset(nulls, 0, sizeof(nulls));
 		if (ncols >= 5)
 		{
-			nulls[3] = !OidIsValid(yb_table_properties.tablegroup_oid);
-			nulls[4] = !OidIsValid(yb_table_properties.colocation_id);
+			nulls[3] = !OidIsValid(rel->yb_table_properties->tablegroup_oid);
+			nulls[4] = !OidIsValid(rel->yb_table_properties->colocation_id);
 		}
 	}
 	else
@@ -1792,6 +1802,8 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		/* Table does not exist in YB, set nulls for all columns. */
 		memset(nulls, 1, sizeof(nulls));
 	}
+
+	relation_close(rel, AccessShareLock);
 
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
 }

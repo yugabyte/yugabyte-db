@@ -306,7 +306,7 @@ static TableInfo *getRootTableInfo(TableInfo *tbinfo);
 static bool catalogTableExists(Archive *fout, char *tablename);
 
 static void getYbTablePropertiesAndReloptions(Archive *fout,
-						YBCPgTableProperties *properties,
+						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
 static bool isDatabaseColocated(Archive *fout);
 
@@ -16178,11 +16178,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		}
 
 		/* Get the table properties from YB, if relevant. */
-		YBCPgTableProperties *yb_properties = NULL;
+		YbTableProperties yb_properties = NULL;
 		if (dopt->include_yb_metadata &&
 			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
 		{
-			yb_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
+			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 		}
 		PQExpBuffer yb_reloptions = createPQExpBuffer();
 		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
@@ -17044,13 +17044,13 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			appendPQExpBufferChar(q, ')');
 
 			/* Get the table and index properties from YB, if relevant. */
-			YBCPgTableProperties *yb_table_properties = NULL;
-			YBCPgTableProperties *yb_index_properties = NULL;
+			YbTableProperties yb_table_properties = NULL;
+			YbTableProperties yb_index_properties = NULL;
 			if (dopt->include_yb_metadata &&
 				(coninfo->contype == 'u'))
 			{
-				yb_table_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
-				yb_index_properties = (YBCPgTableProperties *) pg_malloc(sizeof(YBCPgTableProperties));
+				yb_table_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+				yb_index_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
 			}
 			PQExpBuffer yb_table_reloptions = createPQExpBuffer();
 			PQExpBuffer yb_index_reloptions = createPQExpBuffer();
@@ -18964,7 +18964,7 @@ appendReloptionsArrayAH(PQExpBuffer buffer, const char *reloptions,
  * 					reloptions, will be '{}' if properties are not allocated.
  */
 static void
-getYbTablePropertiesAndReloptions(Archive *fout, YBCPgTableProperties *properties,
+getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 								  PQExpBuffer reloptions_buf,
 								  Oid reloid, const char* relname)
 {

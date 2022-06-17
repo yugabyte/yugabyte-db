@@ -185,12 +185,6 @@ public class NodeDetails {
   @ApiModelProperty(value = "Tablet server RPC port")
   public int tserverRpcPort = 9100;
 
-  @ApiModelProperty(value = "Yb controller HTTP port")
-  public int ybControllerHttpPort = 14000;
-
-  @ApiModelProperty(value = "Yb controller RPC port")
-  public int ybControllerRpcPort = 18018;
-
   // True if this node is a Redis server, along with port info.
   @ApiModelProperty(value = "True if this node is a REDIS server")
   public boolean isRedisServer = true;

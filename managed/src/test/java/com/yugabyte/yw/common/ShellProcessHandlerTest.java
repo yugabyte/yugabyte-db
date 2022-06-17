@@ -11,7 +11,6 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
@@ -30,7 +29,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ShellProcessHandlerTest extends TestCase {
@@ -42,9 +40,7 @@ public class ShellProcessHandlerTest extends TestCase {
 
   @Mock Config mockConfig;
 
-  @Mock ActorSystem actorSystem;
-
-  @Mock ExecutionContext executionContext;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   static String TMP_STORAGE_PATH = "/tmp/yugaware_tests/spht_certs";
   static final String COMMAND_OUTPUT_LOGS_DELETE = "yb.logs.cmdOutputDelete";
@@ -57,7 +53,7 @@ public class ShellProcessHandlerTest extends TestCase {
     when(mockConfig.getBoolean(COMMAND_OUTPUT_LOGS_DELETE)).thenReturn(true);
     when(appConfig.getBytes(YB_LOGS_MAX_MSG_SIZE)).thenReturn(2000L);
     ShellLogsManager shellLogsManager =
-        new ShellLogsManager(mockRuntimeConfigFactory, actorSystem, executionContext);
+        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory);
     shellProcessHandler = new ShellProcessHandler(appConfig, shellLogsManager);
   }
 
