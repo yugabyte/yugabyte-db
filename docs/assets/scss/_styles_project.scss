@@ -393,7 +393,9 @@ body:not(.td-home) .td-main main {
   margin-top: 2rem;
 }
 
-.td-content p a {
+.td-content p a,
+.td-content li a,
+.td-content td a {
   color: #f75821;
 
   i {
@@ -403,7 +405,9 @@ body:not(.td-home) .td-main main {
   }
 }
 
-.td-content p a:hover {
+.td-content p a:hover,
+.td-content li a:hover,
+.td-content td a:hover {
   text-decoration: underline;
 }
 
