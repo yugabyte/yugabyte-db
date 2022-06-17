@@ -4241,13 +4241,11 @@ ATRewriteCatalogs(List **wqueue,
 	AlteredTableInfo* info       = (AlteredTableInfo *) linitial(*wqueue);
 	Oid               main_relid = info->relid;
 	YBCPgStatement rollbackHandle = NULL;
-	List *handles = NIL;
-	YBCPgStatement handle = YBCPrepareAlterTable(info->subcmds,
-												AT_NUM_PASSES,
-												main_relid,
-												&rollbackHandle,
-												false /* isPartitionOfAlteredTable */);
-	handles = lappend(handles, handle);
+	List *handles = YBCPrepareAlterTable(info->subcmds,
+										 AT_NUM_PASSES,
+										 main_relid,
+										 &rollbackHandle,
+										 false /* isPartitionOfAlteredTable */);
 	if (rollbackHandle)
 		*rollbackHandles = lappend(*rollbackHandles, rollbackHandle);
 
@@ -4267,12 +4265,17 @@ ATRewriteCatalogs(List **wqueue,
 		if (childrelid == main_relid)
 			continue;
 		YBCPgStatement childRollbackHandle = NULL;
-		YBCPgStatement child_handle = YBCPrepareAlterTable(info->subcmds,
-														   AT_NUM_PASSES,
-														   childrelid,
-														   &childRollbackHandle,
-														   true /*isPartitionOfAlteredTable */);
-		handles = lappend(handles, child_handle);
+		List *child_handles = YBCPrepareAlterTable(info->subcmds,
+												   AT_NUM_PASSES,
+												   childrelid,
+												   &childRollbackHandle,
+												   true /*isPartitionOfAlteredTable */);
+		ListCell *listcell = NULL;
+		foreach(listcell, child_handles)
+		{
+			YBCPgStatement child = (YBCPgStatement) lfirst(listcell);
+			handles = lappend(handles, child);
+		}
 		if (childRollbackHandle)
 			*rollbackHandles = lappend(*rollbackHandles, childRollbackHandle);
 	}

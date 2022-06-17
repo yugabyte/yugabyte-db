@@ -255,6 +255,8 @@ class PgAlterTable : public PgDdl {
 
   Status RenameTable(const char *db_name, const char *newname);
 
+  Status IncrementSchemaVersion();
+
   Status Exec();
 
   virtual ~PgAlterTable();
