@@ -247,7 +247,7 @@ ERROR:  new row for relation "atacc1" violates check constraint "checkb3"
 DETAIL:  Failing row contains (5, 5, 5).
 alter table atacc1 drop constraint checkb;
 alter table atacc1 drop constraint if exists checkb2;
-NOTICE:  constraint "checkb2" of relation "atacc1" does not exist, skipping
+ERROR:  constraint "checkb2" for table "atacc1" does not exist
 alter table atacc1 drop constraint if exists checkb3;
 delete from atacc1 where b = 5;
 -- test rename
