@@ -929,7 +929,6 @@ Status Log::EnsureInitialNewSegmentAllocated() {
 
 Status Log::Sync() {
   TRACE_EVENT0("log", "Sync");
-  SCOPED_LATENCY_METRIC(metrics_, sync_latency);
 
   if (!sync_disabled_) {
     if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_log_inject_latency))) {
@@ -961,6 +960,7 @@ Status Log::Sync() {
       periodic_sync_needed_.store(false);
       periodic_sync_unsynced_bytes_ = 0;
       LOG_SLOW_EXECUTION(WARNING, 50, "Fsync log took a long time") {
+        SCOPED_LATENCY_METRIC(metrics_, sync_latency);
         RETURN_NOT_OK(active_segment_->Sync());
       }
     }
