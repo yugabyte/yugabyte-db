@@ -224,6 +224,9 @@ void CatalogManagerBgTasks::Run() {
         // Start the tablespace background task.
         catalog_manager_->StartTablespaceBgTaskIfStopped();
       }
+
+      // Restart xCluster parent tablet deletion bg task.
+      catalog_manager_->StartXClusterParentTabletDeletionTaskIfStopped();
     } else {
       // Reset Metrics when leader_status is not ok.
       catalog_manager_->ResetMetrics();
