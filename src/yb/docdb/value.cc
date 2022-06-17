@@ -87,38 +87,23 @@ Result<UserTimeMicros> DecodeUserTimestamp(Slice* slice) {
   }
 }
 
-/*Status Value::DecodeTTL(const rocksdb::Slice& rocksdb_value, MonoDelta* ttl) {
-  rocksdb::Slice value_copy = rocksdb_value;
-  uint64_t merge_flags;
-  RETURN_NOT_OK(DecodeMergeFlags(&value_copy, &merge_flags));
-  return DecodeTTL(&value_copy, ttl);
-}
-
-Result<UserTimeMicros> DecodeUserTimestamp(const Slice& rocksdb_value) {
-  MonoDelta ttl;
-  auto slice_copy = rocksdb_value;
-  RETURN_NOT_OK(DecodeTTL(&slice_copy, &ttl));
-  return DecodeUserTimestamp(&slice_copy, user_timestamp);
-}*/
-
 } // namespace
 
 Result<ValueControlFields> ValueControlFields::Decode(Slice* slice) {
   Slice original = *slice;
-  ValueControlFields result = {
-    .merge_flags = VERIFY_RESULT_PREPEND(
-        DecodeMergeFlags(slice),
-        Format("Failed to decode merge flags in $0", original.ToDebugHexString())),
-    .intent_doc_ht = VERIFY_RESULT_PREPEND(
-        DecodeIntentDocHT(slice),
-        Format("Failed to decode intent ht in $0", original.ToDebugHexString())),
-    .ttl = VERIFY_RESULT_PREPEND(
-        DecodeTTL(slice),
-        Format("Failed to decode TTL in $0", original.ToDebugHexString())),
-    .user_timestamp = VERIFY_RESULT_PREPEND(
-        DecodeUserTimestamp(slice),
-        Format("Failed to decode user timestamp in $0", original.ToDebugHexString())),
-  };
+  ValueControlFields result;
+  result.merge_flags = VERIFY_RESULT_PREPEND(
+      DecodeMergeFlags(slice),
+      Format("Failed to decode merge flags in $0", original.ToDebugHexString()));
+  result.intent_doc_ht = VERIFY_RESULT_PREPEND(
+      DecodeIntentDocHT(slice),
+      Format("Failed to decode intent ht in $0", original.ToDebugHexString()));
+  result.ttl = VERIFY_RESULT_PREPEND(
+      DecodeTTL(slice),
+      Format("Failed to decode TTL in $0", original.ToDebugHexString()));
+  result.user_timestamp = VERIFY_RESULT_PREPEND(
+      DecodeUserTimestamp(slice),
+      Format("Failed to decode user timestamp in $0", original.ToDebugHexString()));
   return result;
 }
 
@@ -168,11 +153,11 @@ std::string ValueControlFields::ToString() const {
 }
 
 Status Value::Decode(const Slice& rocksdb_value, const ValueControlFields& control_fields) {
-  Slice slice = rocksdb_value;
   control_fields_ = control_fields;
   RETURN_NOT_OK_PREPEND(
-      primitive_value_.DecodeFromValue(slice),
-      Format("Failed to decode value in $0", rocksdb_value.ToDebugHexString()));
+      primitive_value_.DecodeFromValue(rocksdb_value),
+      Format("Failed to decode value after control fields $0 in $1",
+             control_fields, rocksdb_value.ToDebugHexString()));
   return Status::OK();
 }
 
