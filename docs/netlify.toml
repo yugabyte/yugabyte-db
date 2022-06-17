@@ -58,6 +58,21 @@
 # Redirect old cloud docs to root of current
 
 [[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/"
+  to = "/preview/quick-start-yugabytedb-managed/"
+  force = true
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/qs-add/"
+  to = "/preview/quick-start-yugabytedb-managed/"
+  force = true
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/qs-connect/"
+  to = "/preview/quick-start-yugabytedb-managed/"
+  force = true
+
+[[redirects]]
   from = "/:version/yugabyte-cloud/*"
   to = "/preview/yugabyte-cloud/"
   force = true
@@ -231,21 +246,6 @@
 [[redirects]]
   from = "/:version/quick-start/create-local-cluster/*"
   to = "/preview/quick-start/#create-a-local-cluster"
-  force = true
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/"
-  to = "/preview/quick-start-yugabytedb-managed/"
-  force = true
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/qs-add/"
-  to = "/preview/quick-start-yugabytedb-managed/"
-  force = true
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/qs-connect/"
-  to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 # Hugo resource caching plugin configuration
