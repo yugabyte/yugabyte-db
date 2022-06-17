@@ -1,10 +1,10 @@
-# [Apache AGE (incubating)](https://age.apache.org/#)
+# [Apache AGE](https://age.apache.org/#)
 
-[![license badge](https://img.shields.io/github/license/apache/incubator-age)](https://github.com/apache/incubator-age/blob/master/LICENSE)
-[![release badge](https://img.shields.io/github/v/release/apache/incubator-age?sort=semver)](https://github.com/apache/incubator-age/releases)
-[![issue badge](https://img.shields.io/github/issues/apache/incubator-age)](https://github.com/apache/incubator-age/issues)
-[![forks badge](https://img.shields.io/github/forks/apache/incubator-age)](https://github.com/apache/incubator-age/network/members)
-[![stars badge](https://img.shields.io/github/stars/apache/incubator-age)](https://github.com/apache/incubator-age/stargazers)
+[![license badge](https://img.shields.io/github/license/apache/age)](https://github.com/apache/age/blob/master/LICENSE)
+[![release badge](https://img.shields.io/github/v/release/apache/age?sort=semver)](https://github.com/apache/age/releases)
+[![issue badge](https://img.shields.io/github/issues/apache/age)](https://github.com/apache/age/issues)
+[![forks badge](https://img.shields.io/github/forks/apache/age)](https://github.com/apache/age/network/members)
+[![stars badge](https://img.shields.io/github/stars/apache/age)](https://github.com/apache/age/stargazers)
 
 <img src="https://age.apache.org/docs/master/_static/logo.png" width="30%" height="30%">
 
@@ -27,7 +27,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Latest happenings
 
-- Latest Apache AGE release, [Apache AGE 1.0.0 (incubating)](https://github.com/apache/incubator-age/releases/tag/v1.0.0).
+- Latest Apache AGE release, [Apache AGE 1.0.0 (https://github.com/apache/age/releases/tag/v1.0.0-rc1).
 - The latest Apache AGE documentation is now available at [here](https://age.apache.org/docs/master/index.html).
 - The roadmap has been updated, please check out the [Apache AGE website](http://age.apache.org/).
 - Send all your comments and inquiries to the user mailing list, users@age.apache.org.
@@ -40,7 +40,7 @@ Intelligent -- AGE allows you to perform graph queries that are the basis for ma
 
 ## Graph visualization tool for AGE
 
-Apache AGE Viewer is a subproject of the Apache AGE incubating project:  https://github.com/apache/incubator-age-viewer
+Apache AGE Viewer is a subproject of the Apache AGE project:  https://github.com/apache/age-viewer
 
 - This is a visualization tool.
 After AGE Extension Installation
@@ -58,5 +58,5 @@ You can learn about how to install Apache AGE, its features and built-in functio
 
 ## Contribution
 
-You can improve ongoing efforts or initiate new ones by sending pull requests to [this repository](https://github.com/apache/incubator-age).
+You can improve ongoing efforts or initiate new ones by sending pull requests to [this repository](https://github.com/apache/age).
 Also, you can learn from the code review process, how to merge pull requests, and from code style compliance to documentation, by visiting the [Apache AGE official site - Developer Guidelines](https://age.apache.org/#codereview).
