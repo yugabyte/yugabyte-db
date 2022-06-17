@@ -18,6 +18,8 @@ paths:
   only:
     - ./src
     - ./java
+    - ./yugabyted-ui
+    
   exclude:
     - ./src/postgres/src/bin/pg_test_fsync
     - ./src/postgres/src/bin/pg_test_timing
