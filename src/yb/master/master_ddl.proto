@@ -387,6 +387,9 @@ message AlterTableRequestPB {
 
   // If set, updates the pgschema_name in SchemaPB.
   optional string pgschema_name = 10;
+
+  // Used for YSQL to notify DocDB of DDL changes that affect only PG metadata
+  optional bool increment_schema_version = 11 [default = false];
 }
 
 message AlterTableResponsePB {
