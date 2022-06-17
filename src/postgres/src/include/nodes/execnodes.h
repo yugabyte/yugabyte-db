@@ -593,12 +593,12 @@ typedef struct EState
 	YBCPgExecParameters yb_exec_params;
 
 	/*
-	 *  The read hybrid time used for this query. This value is initialized
+	 *  The in txn limit used for this query. This value is initialized
 	 *  to 0, and later updated by the first read operation initiated for this
 	 *  query. All later read operations are then ensured that they will never
 	 *  read any data written past this time.
 	 */
-	uint64_t yb_es_read_ht;
+	uint64_t yb_es_in_txn_limit_ht;
 } EState;
 
 /*

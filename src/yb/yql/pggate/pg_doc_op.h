@@ -212,11 +212,11 @@ class PgDocResult {
 class PgDocResponse {
  public:
   struct Data {
-    Data(const rpc::CallResponsePtr& response_, uint64_t used_read_time_)
-        : response(response_), used_read_time(used_read_time_) {
+    Data(const rpc::CallResponsePtr& response_, uint64_t in_txn_limit_)
+        : response(response_), in_txn_limit(in_txn_limit_) {
     }
     rpc::CallResponsePtr response;
-    uint64_t used_read_time;
+    uint64_t in_txn_limit;
   };
 
   class Provider {
@@ -228,7 +228,7 @@ class PgDocResponse {
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  PgDocResponse(PerformFuture future, uint64_t used_read_time);
+  PgDocResponse(PerformFuture future, uint64_t in_txn_limit);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
@@ -237,7 +237,7 @@ class PgDocResponse {
  private:
   struct PerformInfo {
     PerformFuture future;
-    uint64_t used_read_time;
+    uint64_t in_txn_limit;
   };
   std::variant<PerformInfo, ProviderPtr> holder_;
 };
@@ -307,7 +307,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgTable& table() const { return table_; }
 
  protected:
-  uint64_t& GetReadTime();
+  uint64_t& GetInTxnLimit();
 
   // Populate Protobuf requests using the collected information for this DocDB operator.
   virtual Result<bool> DoCreateRequests() = 0;
@@ -337,8 +337,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Clone READ or WRITE "template_op_" into new operators.
   virtual PgsqlOpPtr CloneFromTemplate() = 0;
 
-  void SetReadTime();
-
  private:
   Status SendRequest(bool force_non_bufferable);
 
@@ -356,16 +354,24 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t read_time, bool force_non_bufferable);
+      uint64_t in_txn_limit, bool force_non_bufferable);
 
   //----------------------------------- Data Members -----------------------------------------------
  protected:
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
-  // Operation time. This time is set at the start and must stay the same for the lifetime of the
-  // operation to ensure that it is operating on one snapshot.
-  uint64_t read_time_ = 0;
+  // This time is set at the start (i.e., before sending the first batch of PgsqlOp ops) and must
+  // stay the same for the lifetime of the PgDocOp.
+  //
+  // Each query must only see data written by earlier queries in the same transaction, not data
+  // written by itself. Setting it at the start ensures that future operations of the PgDocOp only
+  // see data written by previous queries.
+  //
+  // NOTE: Each query might result in many PgDocOps. So using 1 in_txn_limit_ per PgDocOp is not
+  // enough. The same should be used across all PgDocOps in the query. This is ensured by the use
+  // of statement_in_txn_limit in yb_exec_params of EState.
+  uint64_t in_txn_limit_ = 0;
 
   // Target table.
   PgTable& table_;
@@ -533,8 +539,8 @@ class PgDocReadOp : public PgDocOp {
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
 
-  // Set the read_time for our read request based on our exec control parameter.
-  void SetReadTime();
+  // Set the read_time for our backfill's read request based on our exec control parameter.
+  void SetReadTimeForBackfill();
 
   // Clone the template into actual requests to be sent to server.
   PgsqlOpPtr CloneFromTemplate() override {

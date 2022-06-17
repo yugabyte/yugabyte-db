@@ -295,7 +295,8 @@ typedef struct PgExecParameters {
   int rowmark = -1;
   int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   char *bfinstr = NULL;
-  uint64_t* statement_read_time = NULL;
+  uint64_t backfill_read_time = 0;
+  uint64_t* statement_in_txn_limit = NULL;
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
@@ -306,7 +307,8 @@ typedef struct PgExecParameters {
   int rowmark;
   int wait_policy; // Cast to LockWaitPolicy for C use
   char *bfinstr;
-  uint64_t* statement_read_time;
+  uint64_t backfill_read_time;
+  uint64_t* statement_in_txn_limit;
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
