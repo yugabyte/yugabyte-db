@@ -2806,7 +2806,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 			{
 				if (bfinfo->bfinstr)
 					exec_params->bfinstr = pstrdup(bfinfo->bfinstr);
-				*exec_params->statement_read_time = bfinfo->read_time;
+				exec_params->backfill_read_time = bfinfo->read_time;
 				exec_params->partition_key = pstrdup(bfinfo->row_bounds->partition_key);
 				exec_params->out_param = bfresult;
 				exec_params->is_index_backfill = true;

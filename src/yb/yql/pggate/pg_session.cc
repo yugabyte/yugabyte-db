@@ -201,7 +201,7 @@ class PgSession::RunHelper {
 
   Status Apply(const PgTableDesc& table,
                        const PgsqlOpPtr& op,
-                       uint64_t* read_time,
+                       uint64_t* in_txn_limit,
                        bool force_non_bufferable) {
     auto& buffer = pg_session_.buffer_;
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -222,11 +222,11 @@ class PgSession::RunHelper {
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
       // Buffered operations can't be combined within single RPC with non bufferable operation
-      // in case non bufferable operation has preset read_time.
+      // in case non bufferable operation has preset in_txn_limit.
       // Buffered operations must be flushed independently in this case.
       // Also operations for catalog session can be combined with buffered operations
       // as catalog session is used for read-only operations.
-      if ((IsTransactional() && read_time && *read_time) || IsCatalog()) {
+      if ((IsTransactional() && in_txn_limit && *in_txn_limit) || IsCatalog()) {
         RETURN_NOT_OK(buffer.Flush());
       } else {
         operations_ = VERIFY_RESULT(buffer.FlushTake(table, *op, IsTransactional()));
@@ -252,7 +252,7 @@ class PgSession::RunHelper {
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
     return pg_session_.pg_txn_manager_->CalculateIsolation(
-        read_only, txn_priority_requirement, read_time);
+        read_only, txn_priority_requirement, in_txn_limit);
   }
 
   Result<PerformFuture> Flush() {
@@ -744,7 +744,7 @@ Status PgSession::ValidatePlacement(const string& placement_info) {
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-  const OperationGenerator& generator, uint64_t* read_time, bool force_non_bufferable) {
+  const OperationGenerator& generator, uint64_t* in_txn_limit, bool force_non_bufferable) {
   auto table_op = generator();
   SCHECK(table_op.operation, IllegalState, "Operation list must not be empty");
   const auto* table = table_op.table;
@@ -763,7 +763,7 @@ Result<PerformFuture> PgSession::RunAsync(
               IllegalState,
               "Operations on different sessions can't be mixed");
     has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
-    RETURN_NOT_OK(runner.Apply(*table, *op, read_time, force_non_bufferable));
+    RETURN_NOT_OK(runner.Apply(*table, *op, in_txn_limit, force_non_bufferable));
   }
   return runner.Flush();
 }
