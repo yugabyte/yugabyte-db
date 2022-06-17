@@ -2398,7 +2398,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&temp_file_limit,
-		-1, -1, INT_MAX,
+		1024 * 1024, -1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
