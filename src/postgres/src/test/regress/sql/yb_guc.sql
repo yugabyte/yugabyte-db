@@ -104,6 +104,14 @@ SET foo = false;  -- no such setting
 SET plpgsql.extra_foo_warnings = false;  -- no such setting
 SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
 
+-- test temp_file_limit default
+SHOW temp_file_limit;
+-- test temp_File_limit update
+SET temp_file_limit="100MB";
+SHOW temp_file_limit;
+SET temp_file_limit=-1;
+SHOW temp_file_limit;
+
 -- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
 SET SESSION AUTHORIZATION yb_db_admin;
 SHOW session_replication_role;
