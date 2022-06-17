@@ -317,6 +317,8 @@ Status PgTxnManager::RestartTransaction() {
 
 /* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
+  RSTATUS_DCHECK(!ddl_mode_, IllegalState,
+                 "READ COMMITTED semantics don't apply to DDL transactions");
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
   read_time_for_follower_reads_ = HybridTime();
   RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
@@ -429,8 +431,13 @@ uint64_t PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options)
     options->set_defer_read_point(true);
     need_defer_read_point_ = false;
   }
-  options->set_read_time_manipulation(read_time_manipulation_);
-  read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  if (!ddl_mode_) {
+    // The state in read_time_manipulation_ is only for kPlain transactions. And if YSQL switches to
+    // kDdl mode for sometime, we should keep read_time_manipulation_ as is so that once YSQL
+    // switches back to kDdl mode, the read_time_manipulation_ is not lost.
+    options->set_read_time_manipulation(read_time_manipulation_);
+    read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+  }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
   }
