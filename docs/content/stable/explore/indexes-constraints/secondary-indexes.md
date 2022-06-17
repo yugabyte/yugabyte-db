@@ -8,7 +8,7 @@ menu:
     identifier: secondary-indexes
     parent: explore-indexes-constraints
     weight: 220
-
+type: docs
 ---
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.

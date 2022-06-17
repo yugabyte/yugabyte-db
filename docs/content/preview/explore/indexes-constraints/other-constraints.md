@@ -11,7 +11,7 @@ menu:
 aliases:
    - /preview/explore/ysql-language-features/constraints/
    - /preview/explore/indexes-constraints/constraints/
-
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

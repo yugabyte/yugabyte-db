@@ -8,7 +8,7 @@ menu:
     identifier: other-constraints
     parent: explore-indexes-constraints
     weight: 270
-
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
