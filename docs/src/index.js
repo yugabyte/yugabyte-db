@@ -142,9 +142,7 @@ $(document).ready(() => {
   // Right sidebar click move content to inpage link.
   $(document).on('click', '.td-toc #TableOfContents a,.td-content h2 a,.td-content h3 a,.td-content h4 a', (event) => {
     const link_href = $(event.currentTarget).attr('href');
-    $('html, body').animate({
-      scrollTop: ($(link_href).offset().top) - 80,
-    }, 1000);
+    $('html, body').scrollTop(($(link_href).offset().top) - 80);
   });
 
   // Hash link move page to his inpage link.
