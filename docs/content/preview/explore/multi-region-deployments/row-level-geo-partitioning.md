@@ -528,9 +528,9 @@ created_at    | 2020-11-07 22:09:04.8537
 
 ## Step 7. Fault tolerance during a region outage
 
-So far we have setup replication with 3 copies of the data, which helps us tolerate the loss of a single node or zone. However, a regional outage will cause unavailability, since all the nodes are in one region. Placing each replica in a different region helps solve this issue.
+So far we've set up replication with 3 copies of the data, which helps us tolerate the loss of a single node or zone. However, a regional outage will cause unavailability, since all the nodes are in one region. Placing each replica in a different region helps solve this issue.
 
-Lets modify our `us_west_2_tablespace` from before and place one copy each in us-west2, us-west1 and us-east1. We will use `leader_preference` to continue placing all leaders in us-west-2, so that they remain close to the client and we get the best performance. (You can find more information in [Leader preference](../../ysql-language-features/going-beyond-sql/tablespaces/#leader-preference))
+Let's modify the `us_west_2_tablespace` from earlier, and place one copy each in us-west2, us-west1, and us-east1. We'll use `leader_preference` to continue placing all leaders in us-west-2, so that they remain close to the client and we get the best performance. (You can find more information in [Leader preference](../../ysql-language-features/going-beyond-sql/tablespaces/#leader-preference))
 
 ```sql
 CREATE TABLESPACE us_west_2_tablespace WITH (
