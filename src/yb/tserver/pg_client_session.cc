@@ -656,6 +656,11 @@ PgClientSession::SetupSession(const PgPerformRequestPB& req, CoarseTimePoint dea
     Transaction(kind) = VERIFY_RESULT(RestartTransaction(session, transaction));
     transaction = Transaction(kind).get();
   } else {
+    RSTATUS_DCHECK(
+        kind == PgClientSessionKind::kPlain ||
+        options.read_time_manipulation() == ReadTimeManipulation::NONE,
+        IllegalState,
+        "Read time manipulation can't be specified for kDdl/ kCatalog transactions");
     ProcessReadTimeManipulation(options.read_time_manipulation());
     if (options.has_read_time() &&
         (options.read_time().has_read_ht() || options.use_catalog_session())) {
