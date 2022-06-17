@@ -304,7 +304,7 @@ $ curl http://localhost:8080/orders
 
 You can use this command to start <b>Prisma Studio </b>:
 ```sh
-$ prisma studio
+$ npx prisma studio
 ```
 Now, go to this page [http://localhost:5555](http://localhost:5555) and you can see the tables and data created as-
 
