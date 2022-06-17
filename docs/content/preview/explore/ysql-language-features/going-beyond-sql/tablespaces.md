@@ -227,6 +227,7 @@ CREATE TABLESPACE us_east1_region_tablespace
     {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1,"leader_preference":2},
     {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1}]}');
 ```
+
 Setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they we will fallback to the next preferred zone us-east2 which only has a 12ms latency.
 You can specify non-zero contiguous integer values for each zone. When multiple zones have the same preference, the leaders will be evenly spread across them. Zones without any values are least preferred.
 
