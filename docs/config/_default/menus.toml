@@ -38,8 +38,10 @@
 [[main]]
   name = "Quick Start"
   weight = 3
-  url = "/quick-start-yugabytedb-managed/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   parent = "documentation"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "Explore"
