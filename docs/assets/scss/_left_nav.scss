@@ -339,7 +339,7 @@ aside.td-sidebar {
     > ul {
       padding-left: 0;
 
-      >li:not(:last-child),
+      >li:not(.bottom-link),
       >li.unlink-list {
         border-bottom: 1px solid rgba(209, 214, 223, 0.3);
       }
@@ -448,7 +448,7 @@ aside.td-sidebar {
         color: var(--theme-color);
       }
 
-      > li:not(:last-child) >,
+      > li:not(.bottom-link) >,
       > li.unlink-list >,
       > li.unlink-list li > {
         i {
