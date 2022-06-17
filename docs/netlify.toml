@@ -179,8 +179,53 @@
   force = true
 
 [[redirects]]
+  from = "/quick-start/install/"
+  to = "/preview/quick-start/#install-yugabytedb"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/install/linux/"
+  to = "/preview/quick-start/linux/#install-yugabytedb"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/install/docker/"
+  to = "/preview/quick-start/docker/#install-yugabytedb"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/install/kubernetes/"
+  to = "/preview/quick-start/kubernetes/#install-yugabytedb"
+  force = true
+
+[[redirects]]
   from = "/:version/quick-start/install/*"
   to = "/preview/quick-start/#install-yugabytedb"
+  force = true
+
+[[redirects]]
+  from = "/quick-start/create-local-cluster/"
+  to = "/preview/quick-start/#create-a-local-cluster"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/create-local-cluster/linux/"
+  to = "/preview/quick-start/linux/#create-a-local-cluster"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/create-local-cluster/docker/"
+  to = "/preview/quick-start/docker/#create-a-local-cluster"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/create-local-cluster/kubernetes/"
+  to = "/preview/quick-start/kubernetes/#create-a-local-cluster"
+  force = true
+
+[[redirects]]
+  from = "/:version/quick-start/create-local-cluster/*"
+  to = "/preview/quick-start/#create-a-local-cluster"
   force = true
 
 [[redirects]]
