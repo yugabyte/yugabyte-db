@@ -11,7 +11,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -31,7 +31,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -48,9 +48,9 @@ SELECT * from pg_stat_monitor_settings;
 SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time from pg_stat_monitor;
                                                            query                                                           | calls | total_plan_time | min_plan_time | max_plan_time | mean_plan_time | stddev_plan_time 
 ---------------------------------------------------------------------------------------------------------------------------+-------+-----------------+---------------+---------------+----------------+------------------
- SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time from pg_stat_monitor |     1 |          0.9429 |        0.9429 |        0.9429 |         0.9429 |                0
+ SELECT * from pg_stat_monitor_settings                                                                                    |     2 |          0.2432 |        0.1214 |        0.1219 |         0.1216 |           0.0002
  SELECT pg_stat_monitor_reset()                                                                                            |     1 |               0 |             0 |             0 |              0 |                0
- SELECT * from pg_stat_monitor_settings                                                                                    |     2 |           0.182 |        0.0895 |        0.0926 |          0.091 |           0.0015
+ SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time from pg_stat_monitor |     1 |          1.4538 |        1.4538 |        1.4538 |         1.4538 |                0
 (3 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -65,7 +65,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -85,7 +85,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -102,9 +102,15 @@ SELECT * from pg_stat_monitor_settings;
 SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time from pg_stat_monitor;
                                                            query                                                           | calls | total_plan_time | min_plan_time | max_plan_time | mean_plan_time | stddev_plan_time 
 ---------------------------------------------------------------------------------------------------------------------------+-------+-----------------+---------------+---------------+----------------+------------------
+<<<<<<< HEAD
  SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time from pg_stat_monitor |     1 |               0 |             0 |             0 |              0 |                0
  SELECT pg_stat_monitor_reset()                                                                                            |     1 |               0 |             0 |             0 |              0 |                0
  SELECT * from pg_stat_monitor_settings                                                                                    |     2 |               0 |             0 |             0 |              0 |                0
+=======
+ SELECT * from pg_stat_monitor_settings                                                                                    |     2 |               0 |             0 |             0 |              0 |                0
+ SELECT pg_stat_monitor_reset()                                                                                            |     1 |               0 |             0 |             0 |              0 |                0
+ SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_time from pg_stat_monitor |     1 |               0 |             0 |             0 |              0 |                0
+>>>>>>> origin/REL_1_STABLE
 (3 rows)
 
 select substr(query, 0,100) as query, calls, total_plan_time, min_plan_time,max_plan_time,mean_plan_time,stddev_plan_time from pg_stat_monitor order by query;
@@ -113,12 +119,12 @@ select substr(query, 0,100) as query, calls, total_plan_time, min_plan_time,max_
  SELECT * from pg_stat_monitor_settings                                                              |     2 |               0 |             0 |             0 |              0 |                0
  SELECT pg_stat_monitor_reset()                                                                      |     1 |               0 |             0 |             0 |              0 |                0
  SELECT query, calls, total_plan_time, min_plan_time, max_plan_time, mean_plan_time, stddev_plan_tim |     1 |               0 |             0 |             0 |              0 |                0
- select (max_plan_time = $1) from pg_stat_monitor where calls = $2                                   |     1 |               0 |             0 |             0 |              0 |                0
- select (mean_plan_time = $1) from pg_stat_monitor where calls = $2                                  |     1 |               0 |             0 |             0 |              0 |                0
- select (min_plan_time = $1) from pg_stat_monitor where calls = $2                                   |     1 |               0 |             0 |             0 |              0 |                0
- select (stddev_plan_time = $1) from pg_stat_monitor where calls = $2                                |     1 |               0 |             0 |             0 |              0 |                0
- select (total_plan_time = $1) from pg_stat_monitor where calls = $2                                 |     1 |               0 |             0 |             0 |              0 |                0
- select substr(query, $1,$2) as query, calls, total_plan_time, min_plan_time,max_plan_time,mean_plan |     1 |               0 |             0 |             0 |              0 |                0
+ select (max_plan_time = 0) from pg_stat_monitor where calls = 2                                     |     1 |               0 |             0 |             0 |              0 |                0
+ select (mean_plan_time = 0) from pg_stat_monitor where calls = 2                                    |     1 |               0 |             0 |             0 |              0 |                0
+ select (min_plan_time = 0) from pg_stat_monitor where calls = 2                                     |     1 |               0 |             0 |             0 |              0 |                0
+ select (stddev_plan_time = 0) from pg_stat_monitor where calls = 2                                  |     1 |               0 |             0 |             0 |              0 |                0
+ select (total_plan_time = 0) from pg_stat_monitor where calls = 2                                   |     1 |               0 |             0 |             0 |              0 |                0
+ select substr(query, 0,100) as query, calls, total_plan_time, min_plan_time,max_plan_time,mean_plan |     1 |               0 |             0 |             0 |              0 |                0
 (9 rows)
 
 SELECT pg_stat_monitor_reset();

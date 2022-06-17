@@ -2,6 +2,20 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 1.0.1
+
+### Bugs Fixed
+
+[PG-382](https://jira.percona.com/browse/PG-382): Histogram default settings changed to prevent the PostgreSQL server to crash
+
+[PG-417](https://jira.percona.com/browse/PG-417): Addressed security vulnerabilities to prevent an attacker from precreating functions
+
+[DISTPG-427](https://jira.percona.com/browse/DISTPG-427): Fixed the issue with the extensions not working when pg_stat_monitor is enabled by replacing the `return` with `goto exit` for the `pgsm_emit_log_hook` function
+
+## 1.0.0
+
+Bump version from 1.0.0-rc.2 to 1.0.0.
+
 ## 1.0.0-rc.2
 
 ### Improvements
@@ -42,6 +56,33 @@ Below is the complete list of release notes for every version of ``pg_stat_monit
 
 [PG-369](https://jira.percona.com/browse/PG-358): Fixed issue with incorrect `wal_bytes` values for PostgreSQL 11 and 12 that caused Query Analytics failure in PMM by ignoring the `WalUsage` variable value for these versions.
 
+## 1.0.0-rc.1
+
+### Improvements
+
+[PG-165](https://jira.percona.com/browse/PG-165): Recycle expired buckets
+
+[PG-167](https://jira.percona.com/browse/PG-167): Make SQL error codes readable by updating their data types
+
+[PG-193](https://jira.percona.com/browse/PG-193): Create a comment based tags to identify different parameters
+
+[PG-199](https://jira.percona.com/browse/PG-199): Documentation: Add the integration with PMM section in User Guide
+
+[PG-210](https://jira.percona.com/browse/PG-210): Documentation: Update column names per POstgreSQL version to match the upstream ones
+
+### Bugs Fixed
+
+[PG-177](https://jira.percona.com/browse/PG-177): Fixed the error in histogram ranges
+
+[PG-214](https://jira.percona.com/browse/PG-214): Fixed the issue with the display of the error message as part of the query column in `pg_stat_monitor` view
+
+[PG-246](https://jira.percona.com/browse/PG-246): Fixed the issue with significant CPU and memory resource usage when `pg_stat_monitor.pgsm_enable_query_plan` parameter is enabled
+
+[PG-262](https://jira.percona.com/browse/PG-262): Fixed the way the comments are extracted in pg_stat_monitor view
+
+[PG-271](https://jira.percona.com/browse/PG-271): Fixed the issue with enabling the ``pg_stat_monitor.pgsm_overflow_target`` configuration parameter.  
+
+[PG-272](https://jira.percona.com/browse/PG-272): Fixed the server crash when calling the `pg_stat_monitor_reset()` function by using the correct `PGSM_MAX_BUCKETS` GUC as the limit to the loop
 
 ## REL0_9_0_STABLE
 
@@ -132,6 +173,7 @@ Column datname (string) was added (replacement for dbid).
 
 
 ## REL0_7_0_STABLE
+
 ### Improvements
 
 [PG-153](https://jira.percona.com/browse/PG-153): Capture and record the application_name executing the query.

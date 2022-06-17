@@ -11,7 +11,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -32,12 +32,12 @@ SELECT 1 AS num /* First comment */, 'John' as Name /* Second comment*/;
 (1 row)
 
 SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
-                                 query                                  |                 comments                 
-------------------------------------------------------------------------+------------------------------------------
- SELECT $1 AS num /* First comment */, $2 as Name /* Second comment*/   | /* First comment */, /* Second comment*/
- SELECT * from pg_stat_monitor_settings                                 | 
- SELECT pg_stat_monitor_reset()                                         | 
- SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C" | 
+                                  query                                  |                 comments                 
+-------------------------------------------------------------------------+------------------------------------------
+ SELECT * from pg_stat_monitor_settings                                  | 
+ SELECT 1 AS num /* First comment */, 'John' as Name /* Second comment*/ | /* First comment */, /* Second comment*/
+ SELECT pg_stat_monitor_reset()                                          | 
+ SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C"  | 
 (4 rows)
 
 SELECT pg_stat_monitor_reset();
@@ -52,7 +52,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -73,12 +73,12 @@ SELECT 1 AS num /* First comment */, 'John' as Name /* Second comment*/;
 (1 row)
 
 SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C";
-                                 query                                  |                 comments                 
-------------------------------------------------------------------------+------------------------------------------
- SELECT $1 AS num /* First comment */, $2 as Name /* Second comment*/   | /* First comment */, /* Second comment*/
- SELECT * from pg_stat_monitor_settings                                 | 
- SELECT pg_stat_monitor_reset()                                         | 
- SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C" | 
+                                  query                                  |                 comments                 
+-------------------------------------------------------------------------+------------------------------------------
+ SELECT * from pg_stat_monitor_settings                                  | 
+ SELECT 1 AS num /* First comment */, 'John' as Name /* Second comment*/ | /* First comment */, /* Second comment*/
+ SELECT pg_stat_monitor_reset()                                          | 
+ SELECT query, comments FROM pg_stat_monitor ORDER BY query COLLATE "C"  | 
 (4 rows)
 
 Drop extension pg_stat_monitor;

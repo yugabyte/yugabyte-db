@@ -1,4 +1,4 @@
-name: code-coverage-test
+name: coverage_test
 on:
   pull_request:
     types:
