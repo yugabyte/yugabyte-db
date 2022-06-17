@@ -105,11 +105,15 @@
   <ul class="header-submenu">
     {{ range $childNav }}
       {{ $anchorLink := "" }}
-      {{ if eq .URL "/" }}
-        {{ $anchorLink = "/" }}
-      {{ else }}
-        {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
-      {{ end }}
+        {{ if eq .URL "/" }}
+          {{ $anchorLink = "/" }}
+        {{ else }}
+          {{ if or (in .URL "https://") (in .URL "http://") (.Params.excludeVersion) }}
+            {{ $anchorLink = .URL }}
+          {{ else }}
+            {{ $anchorLink = printf "/%s%s" $versionDir .URL }}
+          {{ end }}
+        {{ end }}
 
       {{ if ne $anchorLink "" }}
         <li{{ if .HasChildren }} class="parent-menu"{{- end }}>
