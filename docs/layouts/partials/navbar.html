@@ -1,7 +1,13 @@
 {{ $anchorLink := "" }}
 {{ $activeMenu := "/" }}
-{{ $versionDir := index (split $.Page.File.Dir "/") 0 }}
-{{ $docDir := index (split $.Page.File.Dir "/") 1 }}
+{{ $docDir := "" }}
+{{ $versionDir := "" }}
+
+{{ if .File.Dir }}
+  {{ $versionDir = index (split .File.Dir "/") 0 }}
+  {{ $docDir = index (split .File.Dir "/") 1 }}
+{{ end }}
+
 {{ if eq $versionDir "" }}
   {{ $versionDir = "preview" }}
 {{ end }}

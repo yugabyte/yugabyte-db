@@ -141,16 +141,8 @@
 
 # Bottom menu for left navigation
 [[leftbottom]]
-  name = "Contact Support"
-  weight = 1
-  pre = "<i class='fa fa-headset'></i>"
-  url = "https://support.yugabyte.com/hc/en-us"
-  [leftbottom.params]
-    newTab = true
-
-[[leftbottom]]
   name = "Join our community"
-  weight = 2
+  weight = 1
   identifier = "join-our-community"
   pre = "<i class='fa fa-hands-helping'></i>"
   post = "<i></i>"
@@ -198,6 +190,14 @@
   parent = "join-our-community"
   pre = "<i class='fa fa-comment-alt'></i>"
   url = "https://forum.yugabyte.com/"
+  [leftbottom.params]
+    newTab = true
+
+[[leftbottom]]
+  name = "Contact Support"
+  weight = 2
+  pre = "<i class='fa fa-headset'></i>"
+  url = "https://support.yugabyte.com/hc/en-us"
   [leftbottom.params]
     newTab = true
 

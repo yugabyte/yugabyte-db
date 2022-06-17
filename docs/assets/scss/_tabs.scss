@@ -43,7 +43,7 @@
 }
 
 .custom-tabs.tabs-style-2 {
-  border-bottom: 3px solid $YB_ORANGE;
+  border-bottom: 3px solid var(--theme-color);
   margin-bottom: 30px;
 
   &::-webkit-scrollbar {
@@ -104,7 +104,7 @@
       a,
       a i {
         color: #fff;
-        background: $YB_ORANGE;
+        background: var(--theme-color);
       }
 
       a::before,
@@ -134,7 +134,7 @@
 
 @media (max-width: 767px) {
   .custom-tabs.tabs-style-1 {
-    width: calc(100% + 30px);
+    width: calc(100%);
     overflow: auto;
 
     &::-webkit-scrollbar {
@@ -151,7 +151,7 @@
   }
 
   .custom-tabs.tabs-style-2 {
-    width: calc(100% + 30px);
+    width: calc(100%);
     overflow: auto;
     margin-bottom: 10px;
 

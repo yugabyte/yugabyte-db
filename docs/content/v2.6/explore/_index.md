@@ -3,12 +3,7 @@ title: Explore features
 headerTitle: Explore features
 linkTitle: Explore features
 description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
-headcontent:
 image: /images/section_icons/index/explore.png
-menu:
-  v2.6:
-    identifier: explore
-    weight: 540
 type: indexpage
 ---
 

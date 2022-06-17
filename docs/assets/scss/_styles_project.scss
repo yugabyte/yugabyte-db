@@ -381,6 +381,32 @@ body:not(.td-home) .td-main main {
   }
 }
 
+.td-content h2:not(:first-child) {
+  margin-top: 3rem;
+}
+
+.td-content h3,
+.td-content h4,
+.td-content h5,
+.td-content h6 {
+  margin-bottom: 1rem;
+  margin-top: 2rem;
+}
+
+.td-content p a {
+  color: #f75821;
+
+  i {
+    color: #323a69;
+    margin-left: 5px;
+    font-size: 12px;
+  }
+}
+
+.td-content p a:hover {
+  text-decoration: underline;
+}
+
 /******* For Color Theme Switcher **********/
 
 :root {

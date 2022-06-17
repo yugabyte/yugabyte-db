@@ -152,16 +152,14 @@ $(document).ready(() => {
     $(`.td-toc #TableOfContents a[href="${window.location.hash}"]`).click();
   }
 
-  // Expand / collapse button in left navigation.
+  // Expand / collapse left navigation on click.
   $('.side-nav-collapse-toggle-2').on('click', () => {
     $('aside.td-sidebar').toggleClass('close-bar');
     if ($('aside.td-sidebar').hasClass('close-bar')) {
       const rbw = $('aside.td-sidebar').width();
       const main_w = $('.td-main main').width();
       $('.td-main main').css('min-width', main_w + rbw);
-      $('.collapse-nav-tip').html('Expand<span>[</span>');
     } else {
-      $('.collapse-nav-tip').html('Collapse<span>[</span>');
       $('.td-main main').removeAttr('style');
     }
   });
