@@ -17,10 +17,10 @@ yb-voyager is a command line executable for migrating databases from PostgreSQL,
 ## Syntax
 
 ```sh
-yb_voyager [ <migration-phase>... ] [ <arguments> ... ]
+yb_voyager [ <migration-step>... ] [ <arguments> ... ]
 ```
 
-- *migration-phase*: See [Migration phase](#migration-phase)
+- *migration-step*: See [Migration steps](#migration-steps)
 - *arguments*: See [Arguments](#arguments)
 
 ### Command line help
@@ -31,10 +31,16 @@ To display the available online help, run:
 yb_voyager --help
 ```
 
-### Migration phase
+To display the available online help for any migration step, run:
 
-The following command line options specify the migration phases.
+```sh
+yb_voyager [ <migration-step>... ] --help
+```
 
+### Migration steps
+
+The following command line options specify the migration steps.
+<!--
 - [export schema](/preview/migrate/yb-voyager/perform-migration/#export-schema)
 
 - [analyze-schema](/preview/migrate/yb-voyager/perform-migration/#analyze-schema)
@@ -45,7 +51,151 @@ The following command line options specify the migration phases.
 
 - [import data](/preview/migrate/yb-voyager/perform-migration/#import-data)
 
-- [import data file](/preview/migrate/yb-voyager/perform-migration/#import-data-file)
+- [import data file](/preview/migrate/yb-voyager/perform-migration/#import-data-file) -->
+
+#### export schema
+
+[Export the schema](/preview/migrate/yb-voyager/migrate-data/#export-schema) from the source database.
+
+##### Syntax
+
+```sh
+yb_voyager export schema [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+##### Example
+
+```sh
+yb-voyager export schema --export-dir ${EXPORT_DIR} \
+        --source-db-type ${SOURCE_DB_TYPE} \
+        --source-db-host ${SOURCE_DB_HOST} \
+        --source-db-user ${SOURCE_DB_USER} \
+        --source-db-password ${SOURCE_DB_PASSWORD} \
+        --source-db-name ${SOURCE_DB_NAME} \
+        --source-db-schema ${SOURCE_DB_SCHEMA}
+```
+
+#### analyze-schema
+
+Analyse the PostgreSQL schema dumped in the export schema step.
+
+##### Syntax
+
+```sh
+yb_voyager analyze-schema [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+##### Example
+
+```sh
+yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
+        --source-db-type ${SOURCE_DB_TYPE} \
+        --source-db-host ${SOURCE_DB_HOST} \
+        --source-db-user ${SOURCE_DB_USER} \
+        --source-db-password ${SOURCE_DB_PASSWORD} \
+        --source-db-name ${SOURCE_DB_NAME} \
+        --source-db-schema ${SOURCE_DB_SCHEMA} \
+        --output-format txt
+```
+
+#### export data
+
+Dump the source database to the machine where yb-voyager is installed.
+
+##### Syntax
+
+```sh
+yb_voyager export data [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+##### Example
+
+```sh
+yb-voyager export data --export-dir ${EXPORT_DIR} \
+        --source-db-type ${SOURCE_DB_TYPE} \
+        --source-db-host ${SOURCE_DB_HOST} \
+        --source-db-user ${SOURCE_DB_USER} \
+        --source-db-password ${SOURCE_DB_PASSWORD} \
+        --source-db-name ${SOURCE_DB_NAME} \
+        --source-db-schema ${SOURCE_DB_SCHEMA}
+```
+
+#### import schema
+
+Import schema to the target YugabyteDB.
+
+##### Syntax
+
+```sh
+yb_voyager import schema [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+##### Example
+
+```sh
+yb-voyager import schema --export-dir ${EXPORT_DIR} \
+        --target-db-host ${TARGET_DB_HOST} \
+        --target-db-user ${TARGET_DB_USER} \
+        --target-db-password ${TARGET_DB_PASSWORD:-''} \
+        --target-db-name ${TARGET_DB_NAME}
+```
+
+#### import data
+
+Import the data objects to the target YugabyteDB.
+
+##### Syntax
+
+```sh
+yb_voyager import data [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+##### Example
+
+```sh
+yb-voyager import data --export-dir ${EXPORT_DIR} \
+        --target-db-host ${TARGET_DB_HOST} \
+        --target-db-user ${TARGET_DB_USER} \
+        --target-db-password ${TARGET_DB_PASSWORD:-''} \
+        --target-db-name ${TARGET_DB_NAME}
+```
+
+#### import data file
+
+Load all your data files in csv format directly to the target YugabyteDB.
+
+##### Syntax
+
+```sh
+yb_voyager import data file [ <arguments> ... ]
+```
+
+- *arguments*: See [Arguments](#arguments)
+
+##### Example
+
+```sh
+yb-voyager import data file --export-dir ${EXPORT_DIR} \
+        --target-db-host ${TARGET_DB_HOST} \
+        --target-db-port ${TARGET_DB_PORT} \
+        --target-db-user ${TARGET_DB_USER} \
+        --target-db-password ${TARGET_DB_PASSWORD:-''} \
+        --target-db-name ${TARGET_DB_NAME} \
+        –-data-dir “/path/to/files/dir/” \
+        --file-table-map “filename1:table1,filename2:table2” \
+        --delimiter “|” \
+        –-has-header \
+```
 
 ### Arguments
 
@@ -99,12 +249,14 @@ Specifies the name of the target database.
 
 #### –-data-dir
 
-The path to the directory containing the data files to import.
+Path to the directory containing the data files to import.
 
 #### --file-table-map
 
-Comma-separated mapping between the file in [data-dir](#–-data-dir) to the corresponding table in the database.
-Default : The file name in `table1_data.sql` format where `table1` name will be used as the table name.
+Comma-separated mapping between the file in [data-dir](#data-dir) to the corresponding table in the database.
+
+Default : The command imports files (from the --data-dir directory) that match the `PREFIX_data.csv` pattern. The PREFIX part is considered as table name into which the file is imported.
+
 Example : `filename1:tablename1,filename2:tablename2[,...]`
 
 #### --delimiter
@@ -114,6 +266,7 @@ Default: “\t” (tab); can be changed to comma(,), pipe(|) or any other charac
 #### –-has-header
 
 This argument is to be specified only for csv file type.
+
 Default: false; change to true if the csv file contains column names as a header.
 
 ## SSL Connectivity
@@ -133,3 +286,25 @@ The following table summarizes the arguments and options you can pass to yb-voya
 | | `--target-ssl-cert` <br /> `--target-ssl-key` | These two arguments specify names of the files containing SSL certificate and key, respectively. The `<cert, key>` pair forms the identity of the client. |
 | | `--target-ssl-root-cert` | Specifies the path to a file containing SSL certificate authority (CA) certificate(s). If the file exists, the server's certificate will be verified to be signed by one of these authorities. |
 | | `--target-ssl-crl` | Specifies the path to a file containing the SSL certificate revocation list (CRL). Certificates listed in this file, if it exists, will be rejected while attempting to authenticate the server's certificate. |
+
+## Unsupported features
+
+Currently, yb-voyager doesn't support the following features:
+
+| Feature | Description/Alternatives  | GitHub Issue |
+| :-------| :---------- | :----------- |
+| BLOB and CLOB | yb-voyager currently ignores all columns of type BLOB/CLOB. <br>  Use another mechanism to load the attributes till this feature is supported.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
+| Tablespaces |  Currently YugabyteDB Voyager can't migrate tables associated with certain TABLESPACES automatically. <br> As a workaround, manually create the required tablespace in YugabyteDB and then start the migration.<br> Alternatively if that tablespace is not relevant in the YugabyteDB distributed cluster, you can remove the tablespace association of the table from the create table definition. | [47](https://github.com/yugabyte/yb-voyager/issues/47) |
+| ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
+
+## Data modeling
+
+Before performing migration from your source database to YugabyteDB, review your sharding strategies.
+
+YugabyteDB supports two ways to shard data: HASH and RANGE. HASH is the default, as it is typically better suited for most OLTP applications. For more information, refer to [Hash and range sharding](../../../architecture/docdb-sharding/sharding/). When exporting a PostgreSQL database, be aware that if you want RANGE sharding, you must call it out in the schema creation.
+
+For most workloads, it is recommended to use HASH partitioning because it efficiently partitions the data, and spreads it evenly across all nodes.
+
+RANGE sharding can be advantageous for particular use cases, such as time series. When querying data for specific time ranges, using RANGE sharding to split the data into the specific time ranges will help improve the speed and efficiency of the query.
+
+Additionally, you can use a combination of HASH and RANGE sharding for your [primary key](../../../explore/indexes-constraints/primary-key-ysql/) by choosing a HASH value as the [partition key](../../../develop/learn/data-modeling-ycql/#partition-key-columns-required), and a RANGE value as the [clustering key](../../../develop/learn/data-modeling-ycql/#clustering-key-columns-optional).

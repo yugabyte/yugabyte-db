@@ -12,7 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-This page describes how to prepare the source and target databases.
+This page describes how to:
+
+- Prepare your source database by creating a new database user, and provide it with READ access to all the resources which need to be migrated.
+
+- Prepare your target YugabyteDB cluster by creating a database, and a user in your cluster.
 
 ## Prepare the source database
 
@@ -77,7 +81,7 @@ If you want yb-voyager to connect to the source database over SSL, refer to [SSL
 
 ### Create a user
 
-1. Create a user with `yb_superuser` role.
+1. Create a user with [`yb_superuser`](../../../yugabyte-cloud/cloud-secure-clusters/cloud-users/#admin-and-yb-superuser) role.
 
    - For YugabyteDB Managed or YugabyteDB Anywhere versions (2.13.1 and above) or (2.12.4 and above), create a user with `yb_superuser` role using the following command:
 

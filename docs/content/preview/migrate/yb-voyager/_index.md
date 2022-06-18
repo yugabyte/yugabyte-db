@@ -18,15 +18,13 @@ It accelerates cloud native adoption by removing barriers while moving applicati
 
 The engine manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
 
-## Migration workflow
-
 A typical migration workflow using yb-voyager consists of the following steps:
 
 - [Set up yb-voyager](../yb-voyager/prerequisites/#install-yb-voyager).
 - Convert the source database schema to PostgreSQL format using the [`yb-voyager export schema`](../yb-voyager/migrate-data/#export-schema) command.
 - Generate a *Schema Analysis Report* using the [`yb-voyager analyze-schema`](../yb-voyager/migrate-data/#analyze-schema) command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
 - [Manually](../yb-voyager/migrate-data/#manually-edit-the-schema) change the exported schema as suggested in the Schema Analysis Report.
-- Dump the source database in the local files on the migrator machine using the [`yb-voyager export data`](../yb-voyager/migrate-data/#export-data) command.
+- Dump the source database in the local files on the machine where yb-voyager is installed, using the [`yb-voyager export data`](../yb-voyager/migrate-data/#export-data) command.
 - Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](../yb-voyager/migrate-data/#import-schema) command.
 - Import the data to the target YugabyteDB database using the [`yb-voyager import data`](../yb-voyager/migrate-data/#import-data) command.
 
@@ -61,6 +59,39 @@ A typical migration workflow using yb-voyager consists of the following steps:
                                                                  .--------.---------.
 ```
 
+## Highlights
+
+- The engine supports widely used databases for migration and does not require changes to the [source databases](#source-databases) in most cases.
+- All YugabyteDB products (v2.12 and above) are supported as a [target database](#target-database).
+- Currently YugabyteDB Voyager supports migrating up to 1TB of data.
+- A unified [CLI](../yb-voyager/yb-voyager-cli/) experience for all different source databases.
+- YugabyteDB Voyager is auto-tunable based on workloads, by analyzing the target cluster capacity.
+- [Live](#migration-modes) migration - Coming soon
+
+## Source databases
+
+YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, including the following:
+
+- PostgreSQL 9.x - 11.x
+- MySQL 8.x
+- Oracle 12c - 19c
+
+Additionally, the following table describes the migration support provided by YugabyteDB from these Cloud databases: Amazon Aurora, Google Cloud SQL, and Amazon RDS.
+
+| Fully managed Cloud databases | PostgreSQL | MySQL | Oracle |
+| :---------------------------- | :--------- | :---- | :----- |
+| Amazon Aurora | ✓ | ✓ | |
+| Google Cloud SQL | ✓ | ✓ | |
+| Amazon RDS | ✓ | ✓ | ✓ |
+
+## Target database
+
+You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/)(v2.12 and above). To create a cluster:
+
+- Create a local YugabyteDB cluster using the [Quick start](../../quick-start/).
+- Deploy a YugabyteDB Anywhere universe; refer to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/).
+- [Deploy a cluster in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
+
 ## Migration modes
 
 You typically do a migration in one of two modes, as follows:
@@ -72,22 +103,6 @@ You typically do a migration in one of two modes, as follows:
 {{< note title="Note" >}}
 yb-voyager supports only _offline_ migration mode. The _live_ migration mode is currently under development. For more details, refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/50).
 {{< /note >}}
-
-## Source databases
-
-YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, including the following:
-
-- [PostgreSQL](../yb-voyager/prepare-databases/#postgresql)
-- [MySQL](../yb-voyager/prepare-databases/#mysql)
-- [Oracle](../yb-voyager/prepare-databases/#oracle)
-
-## Target database
-
-You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/). To create a cluster:
-
-- Create a local YugabyteDB cluster using the [Quick start](../../quick-start/).
-- Deploy a YugabyteDB Anywhere universe; refer to [Create YugabyteDB universe deployments](../../yugabyte-platform/create-deployments/).
-- [Deploy a cluster in YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/).
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -102,10 +117,10 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
     </a>
   </div>
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prerequisites/">
+    <a class="section-link icon-offset" href="install-yb-voyager/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
-        <div class="title">Prerequisites</div>
+        <div class="title">Install</div>
       </div>
       <div class="body">
         Prepare the environment and install yb-voyager.
@@ -145,7 +160,7 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
       </div>
     </a>
   </div>
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="reference/">
       <div class="head">
        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
@@ -155,5 +170,5 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
         Learn about the migration workflow, sharding strategies, and limitations.
       </div>
     </a>
-  </div>
+  </div> -->
 </div>
