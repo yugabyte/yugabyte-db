@@ -230,20 +230,15 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              YBCPgColumnInfo *column_info);
 
 // Does not set tablegroup_oid.
-// Callers should probably use YbGetTableDescAndProps instead.
+// Callers should probably use YbLoadTablePropertiesIfNeeded instead.
 YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
-                                      YBCPgTableProperties *properties);
+                                      YbTableProperties properties);
 
 YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
 
 YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
-
-// Whether the table is colocated (including tablegroups, excluding system tables).
-YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
-                                   const YBCPgOid table_oid,
-                                   bool *colocated);
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
                            const YBCPgOid table_oid,

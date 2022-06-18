@@ -14,6 +14,8 @@ import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.math.BigInteger;
+import java.security.SecureRandom;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -326,7 +328,12 @@ public class Users extends Model {
   public String createAuthToken() {
     Date tokenExpiryDate = new DateTime().minusDays(1).toDate();
     if (authTokenIssueDate == null || authTokenIssueDate.before(tokenExpiryDate)) {
-      authToken = UUID.randomUUID().toString();
+      SecureRandom randomGenerator = new SecureRandom();
+      // Keeping the length as 128 bits.
+      byte[] randomBytes = new byte[16];
+      randomGenerator.nextBytes(randomBytes);
+      // Converting to hexadecimal encoding
+      authToken = new BigInteger(1, randomBytes).toString(16);
       authTokenIssueDate = new Date();
       save();
     }
