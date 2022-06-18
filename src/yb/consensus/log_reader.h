@@ -48,6 +48,7 @@
 
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/numbered_deque.h"
 
 namespace yb {
 
@@ -91,9 +92,9 @@ class LogReader {
   // logs. May return -1 if no replicates have been logged.
   int64_t GetMinReplicateIndex() const;
 
-  // Return a readable segment with the given sequence number, or nullptr if it
+  // Return a readable segment with the given sequence number, or NotFound error if it
   // cannot be found (e.g. if it has already been GCed).
-  scoped_refptr<ReadableLogSegment> GetSegmentBySequenceNumber(int64_t seq) const;
+  Result<scoped_refptr<ReadableLogSegment>> GetSegmentBySequenceNumber(int64_t seq) const;
 
   // Copies a snapshot of the current sequence of segments into 'segments'.
   // 'segments' will be cleared first.
@@ -163,7 +164,7 @@ class LogReader {
   Status AppendEmptySegment(const scoped_refptr<ReadableLogSegment>& segment);
 
   // Removes segments with sequence numbers less than or equal to 'seg_seqno' from this reader.
-  Status TrimSegmentsUpToAndIncluding(uint64_t seg_seqno);
+  Status TrimSegmentsUpToAndIncluding(int64_t seg_seqno);
 
   // Replaces the last segment in the reader with 'segment'.
   // Used to replace a segment that was still in the process of being written
@@ -184,7 +185,7 @@ class LogReader {
   // the current segment. Requires that the reader has at least one segment
   // and that the last segment has no footer, meaning it is currently being
   // written to.
-  void UpdateLastSegmentOffset(int64_t readable_to_offset);
+  Status UpdateLastSegmentOffset(int64_t readable_to_offset);
 
   // Read the LogEntryBatch pointed to by the provided index entry.
   // 'tmp_buf' is used as scratch space to avoid extra allocation.
@@ -231,8 +232,10 @@ class LogReader {
   State state_;
 
   // Used for test only.
-  mutable std::unique_ptr<SegmentSequence> segments_violate_max_time_policy_;
-  mutable std::unique_ptr<SegmentSequence> segments_violate_min_space_policy_;
+  mutable std::unique_ptr<std::vector<ReadableLogSegmentPtr>>
+      TEST_segments_violate_max_time_policy_;
+  mutable std::unique_ptr<std::vector<ReadableLogSegmentPtr>>
+      TEST_segments_violate_min_space_policy_;
 
   DISALLOW_COPY_AND_ASSIGN(LogReader);
 };

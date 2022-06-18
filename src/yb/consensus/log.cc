@@ -610,10 +610,11 @@ Status Log::Init() {
     VLOG_WITH_PREFIX(1) << "Using existing " << reader_->num_segments()
                         << " segments from path: " << wal_dir_;
 
-    vector<scoped_refptr<ReadableLogSegment> > segments;
+    SegmentSequence segments;
     RETURN_NOT_OK(reader_->GetSegmentsSnapshot(&segments));
-    active_segment_sequence_number_ = segments.back()->header().sequence_number();
-    LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << segments.back()->path();
+    const ReadableLogSegmentPtr& active_segment = VERIFY_RESULT(segments.back());
+    active_segment_sequence_number_ = active_segment->header().sequence_number();
+    LOG_WITH_PREFIX(INFO) << "Opened existing logs. Last segment is " << active_segment->path();
 
     // In case where TServer process reboots, we need to reload the wal file size into the metric,
     // otherwise we do nothing
@@ -967,7 +968,7 @@ Status Log::Sync() {
   }
 
   // Update the reader on how far it can read the active segment.
-  reader_->UpdateLastSegmentOffset(active_segment_->written_offset());
+  RETURN_NOT_OK(reader_->UpdateLastSegmentOffset(active_segment_->written_offset()));
 
   {
     std::lock_guard<std::mutex> write_lock(last_synced_entry_op_id_mutex_);
@@ -999,7 +1000,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
         << " would not leave enough remaining segments to satisfy minimum "
         << "retention requirement. Only considering "
         << max_to_delete << "/" << reader_->num_segments();
-    segments_to_gc->resize(max_to_delete);
+    segments_to_gc->truncate(max_to_delete);
   } else if (segments_to_gc_size < max_to_delete) {
     auto extra_segments = max_to_delete - segments_to_gc_size;
     VLOG_WITH_PREFIX(2) << "Too many log segments, need to GC " << extra_segments << " more.";
@@ -1008,9 +1009,8 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   // Don't GC segments that are newer than the configured time-based retention.
   int64_t now = GetCurrentTimeMicros() + FLAGS_time_based_wal_gc_clock_delta_usec;
 
-  for (size_t i = 0; i < segments_to_gc->size(); i++) {
-    const scoped_refptr<ReadableLogSegment>& segment = (*segments_to_gc)[i];
-
+  for (auto iter = segments_to_gc->begin(); iter != segments_to_gc->end(); ++iter) {
+    const auto& segment = *iter;
     // Segments here will always have a footer, since we don't return the in-progress segment up
     // above. However, segments written by older YB builds may not have the timestamp info (TODO:
     // make sure we indeed care about these old builds). In that case, we're allowed to GC them.
@@ -1023,7 +1023,7 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
           << "cannot GC it yet due to configured time-based retention policy.";
       // Truncate the list of segments to GC here -- if this one is too new, then all later ones are
       // also too new.
-      segments_to_gc->resize(i);
+      segments_to_gc->truncate(iter);
       break;
     }
   }
@@ -1151,15 +1151,16 @@ Status Log::GC(int64_t min_op_idx, int32_t* num_gced) {
 
       RETURN_NOT_OK(GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete));
 
-      if (segments_to_delete.size() == 0) {
+      if (segments_to_delete.empty()) {
         VLOG_WITH_PREFIX(1) << "No segments to delete.";
         *num_gced = 0;
         return Status::OK();
       }
       // Trim the prefix of segments from the reader so that they are no longer referenced by the
       // log.
-      RETURN_NOT_OK(reader_->TrimSegmentsUpToAndIncluding(
-          segments_to_delete[segments_to_delete.size() - 1]->header().sequence_number()));
+      const ReadableLogSegmentPtr& last_to_delete = VERIFY_RESULT(segments_to_delete.back());
+      RETURN_NOT_OK(
+          reader_->TrimSegmentsUpToAndIncluding(last_to_delete->header().sequence_number()));
     }
 
     // Now that they are no longer referenced by the Log, delete the files.
@@ -1200,7 +1201,7 @@ Status Log::GetGCableDataSize(int64_t min_op_idx, int64_t* total_size) const {
     }
     Status s = GetSegmentsToGCUnlocked(min_op_idx, &segments_to_delete);
 
-    if (!s.ok() || segments_to_delete.size() == 0) {
+    if (!s.ok() || segments_to_delete.empty()) {
       return Status::OK();
     }
   }
@@ -1286,10 +1287,10 @@ size_t Log::num_segments() const {
   return reader_ ? reader_->num_segments() : 0;
 }
 
-scoped_refptr<ReadableLogSegment> Log::GetSegmentBySequenceNumber(int64_t seq) const {
+Result<scoped_refptr<ReadableLogSegment>> Log::GetSegmentBySequenceNumber(const int64_t seq) const {
   SharedLock<rw_spinlock> read_lock(state_lock_.get_lock());
   if (!reader_) {
-    return nullptr;
+    return STATUS(NotFound, "LogReader is not initialized");
   }
 
   return reader_->GetSegmentBySequenceNumber(seq);
@@ -1455,9 +1456,9 @@ Status Log::CopyTo(const std::string& dest_wal_dir, const OpId up_to_op_id) {
     // created even after by concurrent operations).
     // In both cases segments in snapshot prior to the last one contain all operations that
     // were present in log before calling Log::CopyTo and not yet GCed.
-    segments.pop_back();
-    // At this point all segments in `segments` are closed and immutable.
+    RETURN_NOT_OK(segments.pop_back());
 
+    // At this point all segments in `segments` are closed and immutable.
     // Looking for first non-empty segment.
     auto it =
         std::find_if(segments.begin(), segments.end(), [](const ReadableLogSegmentPtr& segment) {
@@ -1555,8 +1556,8 @@ Status Log::SwitchToAllocatedSegment() {
   // Set the new segment's schema.
   {
     SharedLock<decltype(schema_lock_)> l(schema_lock_);
-    SchemaToPB(*schema_, header.mutable_unused_schema());
-    header.set_unused_schema_version(schema_version_);
+    SchemaToPB(*schema_, header.mutable_schema());
+    header.set_schema_version(schema_version_);
   }
 
   RETURN_NOT_OK(new_segment->WriteHeaderAndOpen(header));

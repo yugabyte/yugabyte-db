@@ -84,11 +84,11 @@ message LogSegmentHeaderPB {
   required bytes unused_tablet_id = 5;
 
   // The tablet-specific sequence number of this WAL segment.
-  required uint64 sequence_number = 6;
+  required int64 sequence_number = 6;
 
   // Schema used when appending entries to this log, and its version.
-  required SchemaPB unused_schema = 7;
-  optional uint32 unused_schema_version = 8;
+  required SchemaPB schema = 7;
+  optional uint32 schema_version = 8;
 }
 
 // A footer for a log segment.
