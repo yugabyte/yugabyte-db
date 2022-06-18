@@ -27,8 +27,6 @@
 #include "yb/util/env.h"
 #include "yb/util/status.h"
 
-#include "yb/rocksdb/env.h"
-
 #include "yb/util/monotime.h"
 
 namespace yb {
@@ -38,7 +36,7 @@ class MultiDriveTestEnvBase {
   void AddFailedPath(const std::string& path);
 
  protected:
-  bool IsFailed(const std::string& filename) const;
+  Status FailureStatus(const std::string& filename) const;
 
   std::set<std::string> failed_set_;
   mutable std::shared_mutex data_mutex_;
@@ -63,27 +61,6 @@ class MultiDriveTestEnv : public EnvWrapper, public MultiDriveTestEnvBase {
                    const std::string& f,
                    std::unique_ptr<RWFile>* r) override;
 };
-
-namespace rocksdb {
-
-class MultiDriveTestEnv : public ::rocksdb::EnvWrapper, public MultiDriveTestEnvBase {
- public:
-  MultiDriveTestEnv() : EnvWrapper(Env::Default()) {}
-
-  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
-                           const ::rocksdb::EnvOptions& options) override;
-  Status NewRandomAccessFile(const std::string& f,
-                             std::unique_ptr<RandomAccessFile>* r,
-                             const ::rocksdb::EnvOptions& options) override;
-  Status NewWritableFile(const std::string& f, std::unique_ptr<::rocksdb::WritableFile>* r,
-                         const ::rocksdb::EnvOptions& options) override;
-  Status ReuseWritableFile(const std::string& f,
-                           const std::string& old_fname,
-                           std::unique_ptr<::rocksdb::WritableFile>* r,
-                           const ::rocksdb::EnvOptions& options) override;
-};
-
-} // namespace rocksdb
 
 } // namespace yb
 
