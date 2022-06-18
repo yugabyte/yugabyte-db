@@ -93,8 +93,13 @@ void Operation::CompleteWithStatus(const Status& status) const {
 }
 
 void Operation::set_consensus_round(const consensus::ConsensusRoundPtr& consensus_round) {
-  consensus_round_ = consensus_round;
-  set_op_id(consensus_round_->id());
+  {
+    std::lock_guard<simple_spinlock> l(mutex_);
+    // We are not using set_op_id here so we can acquire the mutex only once.
+    consensus_round_ = consensus_round;
+    consensus_round_atomic_.store(consensus_round.get(), std::memory_order_release);
+    op_id_.store(consensus_round_->id(), std::memory_order_release);
+  }
   UpdateRequestFromConsensusRound();
 }
 

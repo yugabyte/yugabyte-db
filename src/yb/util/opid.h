@@ -28,7 +28,9 @@ struct OpId {
   int64_t term;
   int64_t index;
 
+  // Creates an "empty" OpId.
   OpId() noexcept : term(0), index(0) {}
+
   OpId(int64_t term_, int64_t index_) noexcept : term(term_), index(index_) {}
 
   static OpId Invalid() {
