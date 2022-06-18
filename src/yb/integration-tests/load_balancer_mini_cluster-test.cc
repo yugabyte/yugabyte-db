@@ -155,6 +155,52 @@ Status GetTabletsDriveStats(DriveStats* stats,
   return Status::OK();
 }
 
+class RocksDbMultiDriveTestEnv : public rocksdb::EnvWrapper, public MultiDriveTestEnvBase {
+ public:
+  RocksDbMultiDriveTestEnv() : EnvWrapper(Env::Default()) {}
+
+  Status NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
+                           const rocksdb::EnvOptions& options) override;
+  Status NewRandomAccessFile(const std::string& f,
+                             std::unique_ptr<RandomAccessFile>* r,
+                             const rocksdb::EnvOptions& options) override;
+  Status NewWritableFile(const std::string& f, std::unique_ptr<rocksdb::WritableFile>* r,
+                         const rocksdb::EnvOptions& options) override;
+  Status ReuseWritableFile(const std::string& f,
+                           const std::string& old_fname,
+                           std::unique_ptr<rocksdb::WritableFile>* r,
+                           const rocksdb::EnvOptions& options) override;
+};
+
+Status RocksDbMultiDriveTestEnv::NewSequentialFile(const std::string& f,
+                                                   std::unique_ptr<SequentialFile>* r,
+                                                   const rocksdb::EnvOptions& options) {
+  RETURN_NOT_OK(FailureStatus(f));
+  return target()->NewSequentialFile(f, r, options);
+}
+
+Status RocksDbMultiDriveTestEnv::NewRandomAccessFile(const std::string& f,
+                                                     std::unique_ptr<RandomAccessFile>* r,
+                                                     const rocksdb::EnvOptions& options) {
+  RETURN_NOT_OK(FailureStatus(f));
+  return target()->NewRandomAccessFile(f, r, options);
+}
+
+Status RocksDbMultiDriveTestEnv::NewWritableFile(const std::string& f,
+                                                 std::unique_ptr<rocksdb::WritableFile>* r,
+                                                 const rocksdb::EnvOptions& options) {
+  RETURN_NOT_OK(FailureStatus(f));
+  return target()->NewWritableFile(f, r, options);
+}
+
+Status RocksDbMultiDriveTestEnv::ReuseWritableFile(const std::string& f,
+                                                   const std::string& old_fname,
+                                                   std::unique_ptr<rocksdb::WritableFile>* r,
+                                                   const rocksdb::EnvOptions& options) {
+  RETURN_NOT_OK(FailureStatus(f));
+  return target()->ReuseWritableFile(f, old_fname, r, options);
+}
+
 } // namespace
 
 
@@ -465,14 +511,14 @@ class LoadBalancerFailedDrive : public LoadBalancerMiniClusterTestBase {
  protected:
   void SetUp() override {
     ts_env_.reset(new MultiDriveTestEnv());
-    ts_rocksdb_env_.reset(new rocksdb::MultiDriveTestEnv());
+    ts_rocksdb_env_.reset(new RocksDbMultiDriveTestEnv());
     YBTableTestBase::SetUp();
   }
 
   void BeforeStartCluster() override {
     auto ts1_drive0 = mini_cluster()->GetTabletServerDrive(0, 0);
     dynamic_cast<MultiDriveTestEnv*>(ts_env_.get())->AddFailedPath(ts1_drive0);
-    dynamic_cast<rocksdb::MultiDriveTestEnv*>(ts_rocksdb_env_.get())->AddFailedPath(ts1_drive0);
+    dynamic_cast<RocksDbMultiDriveTestEnv*>(ts_rocksdb_env_.get())->AddFailedPath(ts1_drive0);
   }
 
   int num_drives() override {
