@@ -24,99 +24,65 @@ void MultiDriveTestEnvBase::AddFailedPath(const std::string& path) {
   failed_set_.emplace(path);
 }
 
-bool MultiDriveTestEnvBase::IsFailed(const std::string& filename) const {
+Status MultiDriveTestEnvBase::FailureStatus(const std::string& filename) const {
   std::shared_lock lock(data_mutex_);
   if (failed_set_.empty()) {
-    return false;
+    return Status::OK();
   }
   auto it = failed_set_.lower_bound(filename);
   if ((it == failed_set_.end() || *it != filename) && it != failed_set_.begin()) {
     --it;
   }
-  return boost::starts_with(filename, *it);
-}
-
-#define RETURN_ERROR_ON_FAULTY_DRIVE(f) if (IsFailed(f)) { \
-  return STATUS(IOError, "Test Error"); \
+  if (boost::starts_with(filename, *it)) {
+    return STATUS_FORMAT(IOError, "TEST Error, drive failed: $0", *it);
+  }
+  return Status::OK();
 }
 
 Status MultiDriveTestEnv::NewSequentialFile(const std::string& f,
                                             std::unique_ptr<SequentialFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
+  RETURN_NOT_OK(FailureStatus(f));
   return target()->NewSequentialFile(f, r);
 }
 
 Status MultiDriveTestEnv::NewRandomAccessFile(const std::string& f,
                                               std::unique_ptr<RandomAccessFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
+  RETURN_NOT_OK(FailureStatus(f));
   return target()->NewRandomAccessFile(f, r);
 }
 
 Status MultiDriveTestEnv::NewWritableFile(const std::string& f,
                                           std::unique_ptr<WritableFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
+  RETURN_NOT_OK(FailureStatus(f));
   return target()->NewWritableFile(f, r);
 }
 
 Status MultiDriveTestEnv::NewWritableFile(const WritableFileOptions& o,
                                           const std::string& f,
                                           std::unique_ptr<WritableFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
+  RETURN_NOT_OK(FailureStatus(f));
   return target()->NewWritableFile(o, f, r);
 }
 
 Status MultiDriveTestEnv::NewTempWritableFile(const WritableFileOptions& o,
-                                              const std::string& t,
+                                              const std::string& templ,
                                               std::string* f,
                                               std::unique_ptr<WritableFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(t);
-  return target()->NewTempWritableFile(o, t, f, r);
+  RETURN_NOT_OK(FailureStatus(templ));
+  return target()->NewTempWritableFile(o, templ, f, r);
 }
 
 Status MultiDriveTestEnv::NewRWFile(const std::string& f, std::unique_ptr<RWFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
+  RETURN_NOT_OK(FailureStatus(f));
   return target()->NewRWFile(f, r);
 }
 
 Status MultiDriveTestEnv::NewRWFile(const RWFileOptions& o,
                                     const std::string& f,
                                     std::unique_ptr<RWFile>* r) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
+  RETURN_NOT_OK(FailureStatus(f));
   return target()->NewRWFile(o, f, r);
 }
-
-namespace rocksdb {
-
-Status MultiDriveTestEnv::NewSequentialFile(const std::string& f,
-                                            std::unique_ptr<SequentialFile>* r,
-                                            const ::rocksdb::EnvOptions& options) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
-  return target()->NewSequentialFile(f, r, options);
-}
-
-Status MultiDriveTestEnv::NewRandomAccessFile(const std::string& f,
-                                              std::unique_ptr<RandomAccessFile>* r,
-                                              const ::rocksdb::EnvOptions& options) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
-  return target()->NewRandomAccessFile(f, r, options);
-}
-
-Status MultiDriveTestEnv::NewWritableFile(const std::string& f,
-                                          std::unique_ptr<::rocksdb::WritableFile>* r,
-                                          const ::rocksdb::EnvOptions& options) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
-  return target()->NewWritableFile(f, r, options);
-}
-
-Status MultiDriveTestEnv::ReuseWritableFile(const std::string& f,
-                                            const std::string& old_fname,
-                                            std::unique_ptr<::rocksdb::WritableFile>* r,
-                                            const ::rocksdb::EnvOptions& options) {
-  RETURN_ERROR_ON_FAULTY_DRIVE(f);
-  return target()->ReuseWritableFile(f, old_fname, r, options);
-}
-
-} // namespace rocksdb
 
 #undef RETURN_ERROR_ON_FAULTY_DRIVE
 
