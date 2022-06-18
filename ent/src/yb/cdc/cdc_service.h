@@ -75,7 +75,7 @@ struct TabletCheckpoint {
   CoarseTimePoint last_active_time;
 
   bool ExpiredAt(std::chrono::milliseconds duration, std::chrono::time_point<CoarseMonoClock> now) {
-    return (now - last_update_time) > duration;
+    return (now - last_update_time) >= duration;
   }
 };
 
