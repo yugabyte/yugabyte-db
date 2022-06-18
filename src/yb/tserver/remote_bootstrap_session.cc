@@ -532,17 +532,20 @@ static Status AddImmutableFileToMap(Collection* const cache,
 Status RemoteBootstrapSession::OpenLogSegment(
     uint64_t segment_seqno, RemoteBootstrapErrorPB::Code* error_code) {
   auto active_seqno = tablet_peer_->log()->active_segment_sequence_number();
-  auto log_segment = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
+  auto log_segment_result = tablet_peer_->log()->GetSegmentBySequenceNumber(segment_seqno);
   // Usually active log segment is extended, while sent of the wire. So we cannot send next segment,
   // Otherwise entries at end of previously active log segment could be missing.
   if (opened_log_segment_active_) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS_FORMAT(NotFound, "Already sent active log segment, don't send $0", segment_seqno);
   }
-  if (!log_segment) {
+  scoped_refptr<ReadableLogSegment> log_segment;
+  if (!log_segment_result.ok()) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
-    return STATUS_FORMAT(NotFound, "Log segment $0 not found", segment_seqno);
+    return STATUS_FORMAT(
+        NotFound, "Log segment $0 not found: $1", segment_seqno, log_segment_result.status());
   }
+  log_segment = *log_segment_result;
   opened_log_segment_file_size_ = log_segment->readable_up_to() + log_segment->get_header_size();
   opened_log_segment_seqno_ = segment_seqno;
   opened_log_segment_file_ = log_segment->readable_file_checkpoint();

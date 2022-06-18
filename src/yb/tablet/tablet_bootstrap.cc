@@ -1132,7 +1132,7 @@ class TabletBootstrap {
   //
   // This functionality was originally introduced in
   // https://github.com/yugabyte/yugabyte-db/commit/41ef3f75e3c68686595c7613f53b649823b84fed
-  SegmentSequence::iterator SkipFlushedEntries(SegmentSequence* segments_ptr) {
+  SegmentSequence::const_iterator SkipFlushedEntries(SegmentSequence* segments_ptr) {
     static const char* kBootstrapOptimizerLogPrefix =
         "Bootstrap optimizer (skip_flushed_entries): ";
 
