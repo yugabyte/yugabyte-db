@@ -1,10 +1,10 @@
-![PostgreSQL-11](https://github.com/percona/pg_stat_monitor/workflows/postgresql-11-build/badge.svg?branch=REL_1_STABLE) ![PostgreSQL-11-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-11-package/badge.svg) ![PostgreSQL-12](https://github.com/percona/pg_stat_monitor/workflows/postgresql-12-build/badge.svg?branch=REL_1_STABLE) ![PostgreSQL-12-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-12-package/badge.svg)
-
-![PostgreSQL-13](https://github.com/percona/pg_stat_monitor/workflows/postgresql-13-build/badge.svg?branch=REL_1_STABLE) ![PostgreSQL-13-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-13-package/badge.svg) ![PostgreSQL-14](https://github.com/percona/pg_stat_monitor/workflows/postgresql-14-build/badge.svg?branch=REL_1_STABLE) 
-
-[![postgresql-11-build](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-11-build.yml/badge.svg?branch=REL_1_STABLE)](https://github.com/percona/pg_stat_monitor/actions/workflows/postgresql-11-build.yml)
+![PostgreSQL-11](https://github.com/percona/pg_stat_monitor/workflows/postgresql-11-build/badge.svg) ![PostgreSQL-11-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-11-package/badge.svg)
+![PostgreSQL-12](https://github.com/percona/pg_stat_monitor/workflows/postgresql-12-build/badge.svg) ![PostgreSQL-12-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-12-package/badge.svg)
+![PostgreSQL-13](https://github.com/percona/pg_stat_monitor/workflows/postgresql-13-build/badge.svg) ![PostgreSQL-13-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-13-package/badge.svg)
+![PostgreSQL-14](https://github.com/percona/pg_stat_monitor/workflows/postgresql-14-build/badge.svg) ![PostgreSQL-14-Package](https://github.com/percona/pg_stat_monitor/workflows/postgresql-14-package/badge.svg)
 
 [![Coverage Status](https://coveralls.io/repos/github/percona/pg_stat_monitor/badge.svg?branch=main)](https://coveralls.io/github/percona/pg_stat_monitor?branch=main)
+
 # pg_stat_monitor: Query Performance Monitoring Tool for PostgreSQL
 
 ## Table of Contents
