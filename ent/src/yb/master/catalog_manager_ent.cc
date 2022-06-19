@@ -17,7 +17,6 @@
 #include <google/protobuf/util/message_differencer.h>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/entity_ids_types.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
 #include "yb/master/cdc_consumer_registry_service.h"
@@ -150,10 +149,6 @@ TAG_FLAG(TEST_crash_during_sys_catalog_restoration, runtime);
 
 DEFINE_bool(enable_replicate_transaction_status_table, false,
             "Whether to enable xCluster replication of the transaction status table.");
-
-DEFINE_int32(xcluster_parent_tablet_deletion_task_retry_secs, 30,
-             "Frequency at which the bg task will verify parent tablets retained for xCluster "
-             "replication and determine if they can be cleaned up.");
 
 namespace yb {
 
@@ -326,8 +321,7 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
     // Add the CDC stream to the CDC stream map.
     catalog_manager_->cdc_stream_map_[stream->id()] = stream;
     if (table) {
-      catalog_manager_->
-          xcluster_producer_tables_to_stream_map_[metadata.table_id(0)].insert(stream->id());
+      catalog_manager_->cdc_stream_tables_count_map_[table->id()]++;
     }
 
     l.Commit();
@@ -433,7 +427,7 @@ Status CatalogManager::RunLoaders(int64_t term) {
 
   // Clear CDC stream map.
   cdc_stream_map_.clear();
-  xcluster_producer_tables_to_stream_map_.clear();
+  cdc_stream_tables_count_map_.clear();
 
   // Clear universe replication map.
   universe_replication_map_.clear();
@@ -450,8 +444,6 @@ Status CatalogManager::RunLoaders(int64_t term) {
   RETURN_NOT_OK_PREPEND(
       sys_catalog_->Visit(cdc_stream_loader.get()),
       "Failed while visiting CDC streams in sys catalog");
-  // Load retained_by_xcluster_ only after loading all CDC streams to reduce loops.
-  LoadXClusterRetainedParentTabletsSet();
 
   LOG_WITH_FUNC(INFO) << "Loading universe replication info into memory.";
   auto universe_replication_loader = std::make_unique<UniverseReplicationLoader>(this);
@@ -460,24 +452,6 @@ Status CatalogManager::RunLoaders(int64_t term) {
       "Failed while visiting universe replication info in sys catalog");
 
   return Status::OK();
-}
-
-void CatalogManager::LoadXClusterRetainedParentTabletsSet() {
-  for (const auto& hidden_tablet : hidden_tablets_) {
-    // Only keep track of hidden tablets that have been split and that are part of a CDC stream.
-    if (hidden_tablet->old_pb().split_tablet_ids_size() > 0 &&
-        IsTableCdcProducer(*hidden_tablet->table())) {
-      auto tablet_lock = hidden_tablet->LockForRead();
-      HiddenReplicationParentTabletInfo info {
-        .table_id_ = hidden_tablet->table()->id(),
-        .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
-                           ? tablet_lock->pb.split_parent_tablet_id()
-                           : "",
-        .split_tablets_ = {tablet_lock->pb.split_tablet_ids(0), tablet_lock->pb.split_tablet_ids(1)}
-      };
-      retained_by_xcluster_.emplace(hidden_tablet->id(), info);
-    }
-  }
 }
 
 Status CatalogManager::CreateSnapshot(const CreateSnapshotRequestPB* req,
@@ -2188,8 +2162,11 @@ void CatalogManager::CleanupHiddenTablets(
     }
     if (cleanup) {
       SharedLock read_lock(mutex_);
-      // Also need to check if this tablet is being kept for xcluster replication.
-      cleanup = !retained_by_xcluster_.contains(tablet->id());
+      if (IsTableCdcProducer(*tablet->table())) {
+        // We also need to check if this tablet is being kept for xcluster replication.
+        auto l = tablet->table()->LockForRead();
+        cleanup = hide_hybrid_time.AddSeconds(l->pb.wal_retention_secs()) < master_->clock()->Now();
+      }
     }
     if (cleanup) {
       tablets_to_delete.push_back(tablet);
@@ -2937,7 +2914,7 @@ Status CatalogManager::CreateCDCStream(const CreateCDCStreamRequestPB* req,
       // Add the stream to the in-memory map.
       cdc_stream_map_[stream->id()] = stream;
       if (!create_namespace) {
-        xcluster_producer_tables_to_stream_map_[req->table_id()].insert(stream->id());
+        cdc_stream_tables_count_map_[req->table_id()]++;
       }
       resp->set_stream_id(stream->id());
     }
@@ -3355,7 +3332,7 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
         return STATUS(IllegalState, "Could not remove CDC stream from map", stream->id());
       }
       for (auto& id : stream->table_id()) {
-        xcluster_producer_tables_to_stream_map_[id].erase(stream->id());
+        cdc_stream_tables_count_map_[id]--;
       }
     }
   }
@@ -4580,13 +4557,6 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
     for (const auto& stream : streams) {
       for (const auto& child_tablet_id :
            {split_tablet_ids.children.first, split_tablet_ids.children.second}) {
-        // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
-        // NULL. When we process the parent's SPLIT_OP in GetChanges, we will update the opid to
-        // the SPLIT_OP so that the children pollers continue from the next records. When we process
-        // the first GetChanges for the children, then their timestamp value will be set. We use
-        // this information to know that the children has been polled for. Once both children have
-        // been polled for, then we can delete the parent tablet via the bg task
-        // DoProcessXClusterParentTabletDeletion.
         const auto insert_op = cdc_table.NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
         auto* insert_req = insert_op->mutable_request();
         auto* const condition = insert_req->mutable_if_expr()->mutable_condition();
@@ -4594,6 +4564,8 @@ Status CatalogManager::UpdateXClusterProducerOnTabletSplit(
         QLAddStringHashValue(insert_req, child_tablet_id);
         QLAddStringRangeValue(insert_req, stream->id());
         cdc_table.AddStringColumnValue(insert_req, master::kCdcCheckpoint, OpId().ToString());
+        cdc_table.AddTimestampColumnValue(
+            insert_req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
         session->Apply(insert_op);
       }
     }
@@ -5523,18 +5495,17 @@ Status CatalogManager::UpdateConsumerOnProducerSplit(
 }
 
 bool CatalogManager::IsTableCdcProducer(const TableInfo& table_info) const {
-  auto it = xcluster_producer_tables_to_stream_map_.find(table_info.id());
-  if (it == xcluster_producer_tables_to_stream_map_.end()) {
+  auto it = cdc_stream_tables_count_map_.find(table_info.id());
+  if (it == cdc_stream_tables_count_map_.end()) {
     return false;
-  } else if (!it->second.empty()) {
-    // Also check that at least one of these streams is active (ie not being deleted).
-    for (const auto& stream : it->second) {
-      auto stream_it = cdc_stream_map_.find(stream);
-      if (stream_it != cdc_stream_map_.end()) {
-        auto s = stream_it->second->LockForRead();
-        if (!s->started_deleting()) {
-          return true;
-        }
+  } else if (it->second > 0) {
+    auto tid = table_info.id();
+    for (const auto& entry : cdc_stream_map_) {
+      auto s = entry.second->LockForRead();
+      // for xCluster the first entry will be the table_id
+      const auto& table_id = s->table_id();
+      if (!table_id.empty() && table_id.Get(0) == tid && !s->started_deleting()) {
+        return true;
       }
     }
   }
@@ -5547,16 +5518,6 @@ bool CatalogManager::IsTableCdcConsumer(const TableInfo& table_info) const {
     return false;
   }
   return !it->second.empty();
-}
-
-std::unordered_set<CDCStreamId> CatalogManager::GetCdcStreamsForProducerTable(
-    const TableId& table_id) const {
-  SharedLock lock(mutex_);
-  auto it = xcluster_producer_tables_to_stream_map_.find(table_id);
-  if (it == xcluster_producer_tables_to_stream_map_.end()) {
-    return {};
-  }
-  return it->second;
 }
 
 CatalogManager::XClusterConsumerTableStreamInfoMap
@@ -5579,26 +5540,6 @@ bool CatalogManager::IsCdcEnabled(
     const TableInfo& table_info) const {
   SharedLock lock(mutex_);
   return IsTableCdcProducer(table_info) || IsTableCdcConsumer(table_info);
-}
-
-bool CatalogManager::IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const {
-  SharedLock lock(mutex_);
-  auto it = xcluster_producer_tables_to_stream_map_.find(table_info.id());
-  if (it == xcluster_producer_tables_to_stream_map_.end()) {
-    return false;
-  } else if (!it->second.empty()) {
-    // Also check that at least one of these streams is being bootstrapped.
-    for (const auto& stream : it->second) {
-      auto stream_it = cdc_stream_map_.find(stream);
-      if (stream_it != cdc_stream_map_.end()) {
-        auto s = stream_it->second->LockForRead();
-        if (s->pb.state() == SysCDCStreamEntryPB::INITIATED) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
 }
 
 void CatalogManager::Started() {
@@ -5660,173 +5601,6 @@ Status CatalogManager::ClearFailedUniverse() {
   req.set_ignore_errors(true);
 
   RETURN_NOT_OK(DeleteUniverseReplication(&req, &resp, /* RpcContext */ nullptr));
-
-  return Status::OK();
-}
-
-void CatalogManager::StartXClusterParentTabletDeletionTaskIfStopped() {
-  if (GetAtomicFlag(&FLAGS_xcluster_parent_tablet_deletion_task_retry_secs) <= 0) {
-    // Task is disabled.
-    return;
-  }
-  const bool is_already_running = xcluster_parent_tablet_deletion_task_running_.exchange(true);
-  if (!is_already_running) {
-    ScheduleXClusterParentTabletDeletionTask();
-  }
-}
-
-void CatalogManager::ScheduleXClusterParentTabletDeletionTask() {
-  int wait_time = GetAtomicFlag(&FLAGS_xcluster_parent_tablet_deletion_task_retry_secs);
-  if (wait_time <= 0) {
-    // Task has been disabled.
-    xcluster_parent_tablet_deletion_task_running_ = false;
-    return;
-  }
-
-  // Submit to run async in diff thread pool, since this involves accessing cdc_state.
-  xcluster_parent_tablet_deletion_task_.Schedule([this](const Status& status) {
-    Status s = background_tasks_thread_pool_->SubmitFunc(
-      std::bind(&CatalogManager::ProcessXClusterParentTabletDeletionPeriodically, this));
-    if (!s.IsOk()) {
-      // Failed to submit task to the thread pool. Mark that the task is now no longer running.
-      LOG(WARNING) << "Failed to schedule: ProcessXClusterParentTabletDeletion";
-      xcluster_parent_tablet_deletion_task_running_ = false;
-    }
-  }, wait_time * 1s);
-}
-
-void CatalogManager::ProcessXClusterParentTabletDeletionPeriodically() {
-  if (!CheckIsLeaderAndReady().IsOk()) {
-    xcluster_parent_tablet_deletion_task_running_ = false;
-    return;
-  }
-  WARN_NOT_OK(DoProcessXClusterParentTabletDeletion(),
-              "Failed to run ProcessXClusterParentTabletDeletion task.");
-
-  // Schedule the next iteration of the task.
-  ScheduleXClusterParentTabletDeletionTask();
-}
-
-Status CatalogManager::DoProcessXClusterParentTabletDeletion() {
-  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> hidden_tablets;
-  {
-    SharedLock lock(mutex_);
-    hidden_tablets = retained_by_xcluster_;
-  }
-
-  if (!hidden_tablets.empty()) {
-    std::unordered_set<TabletId> tablets_to_delete;
-
-    // Check cdc_state table to see if the children tablets being polled.
-    client::TableHandle cdc_state_table;
-    const client::YBTableName cdc_state_table_name(
-        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
-    auto ybclient = master_->cdc_state_client_initializer().client();
-    if (!ybclient) {
-      return STATUS(IllegalState, "Client not initialized or shutting down");
-    }
-    RETURN_NOT_OK(cdc_state_table.Open(cdc_state_table_name, ybclient));
-    std::shared_ptr<client::YBSession> session = ybclient->NewSession();
-
-    for (auto& [tablet_id, hidden_tablet] : hidden_tablets) {
-      // If our parent tablet is still around, need to process that one first.
-      const auto parent_tablet_id = hidden_tablet.parent_tablet_id_;
-      if (!parent_tablet_id.empty() && hidden_tablets.contains(parent_tablet_id)) {
-        continue;
-      }
-
-      // For each hidden tablet, check if for each stream we have an entry in the mapping for them.
-      const auto streams = GetCdcStreamsForProducerTable(hidden_tablet.table_id_);
-
-      vector<CDCStreamId> streams_to_delete;
-      for (const auto& stream : streams) {
-        // Check parent entry, if it doesn't exist, then it was already deleted.
-        auto read_op = cdc_state_table.NewReadOp();
-        auto* read_req = read_op->mutable_request();
-        QLAddStringHashValue(read_req, tablet_id);
-        auto cond = read_req->mutable_where_expr()->mutable_condition();
-        cond->set_op(QLOperator::QL_OP_AND);
-        QLAddStringCondition(
-            cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-        cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
-
-        // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-        RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-        auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-        if (row_block->row_count() < 1) {
-          // Tablet entry has already been deleted for this stream.
-          continue;
-        }
-        if (row_block->row(0).column(0).IsNull()) {
-          // Still haven't processed this tablet since timestamp is null, no need to check children.
-          break;
-        }
-
-        // Check children that children entries have been added to cdc_state as well.
-        bool found_all_children = true;
-        for (auto& child_tablet : hidden_tablet.split_tablets_) {
-          read_op = cdc_state_table.NewReadOp();
-          read_req = read_op->mutable_request();
-          QLAddStringHashValue(read_req, child_tablet);
-          cond = read_req->mutable_where_expr()->mutable_condition();
-          cond->set_op(QLOperator::QL_OP_AND);
-          QLAddStringCondition(
-              cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream);
-          cdc_state_table.AddColumns({master::kCdcLastReplicationTime}, read_req);
-          // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-          RETURN_NOT_OK(session->TEST_ReadSync(read_op));
-          row_block = ql::RowsResult(read_op.get()).GetRowBlock();
-          if (row_block->row_count() != 1) {
-            // This tablet stream still hasn't been found yet.
-            found_all_children = false;
-            break;
-          }
-          const auto& last_replicated_time = row_block->row(0).column(0);
-          // Check timestamp to ensure that there has been a poll for this tablet.
-          if (last_replicated_time.IsNull()) {
-            // No poll yet, so do not delete the parent tablet for now.
-            found_all_children = false;
-          }
-        }
-        if (found_all_children) {
-          streams_to_delete.push_back(stream);
-        }
-      }
-
-      // Also delete the parent tablet from cdc_state for all completed streams.
-      for (const auto& stream : streams_to_delete) {
-        const auto delete_op = cdc_state_table.NewDeleteOp();
-        auto* delete_req = delete_op->mutable_request();
-
-        QLAddStringHashValue(delete_req, tablet_id);
-        QLAddStringRangeValue(delete_req, stream);
-        session->Apply(delete_op);
-        LOG(INFO) << "Deleting tablet " << tablet_id << " from stream " << stream
-                  << ". Reason: Consumer finished processing parent tablet after split.";
-      }
-      // Flush all the delete operations.
-      // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-      Status s = session->TEST_Flush();
-      if (!s.ok()) {
-        LOG(ERROR) << "Unable to flush operations to delete cdc streams: " << s;
-        return s.CloneAndPrepend("Error deleting cdc stream rows from cdc_state table");
-      }
-
-      // If we deleted all streams, then we can also delete the tablet itself.
-      if (streams_to_delete.size() == streams.size()) {
-        tablets_to_delete.insert(tablet_id);
-      }
-    }
-
-    // Delete tablets from retained_by_xcluster_, CleanupHiddenTablets will do the
-    // actual tablet deletion.
-    {
-      LockGuard lock(mutex_);
-      for (const auto& tablet_to_delete : tablets_to_delete) {
-        retained_by_xcluster_.erase(tablet_to_delete);
-      }
-    }
-  }
 
   return Status::OK();
 }
