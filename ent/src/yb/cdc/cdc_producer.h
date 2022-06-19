@@ -74,7 +74,7 @@ Status GetChangesForCDCSDK(const std::string& stream_id,
                                    int64_t* last_readable_opid_index = nullptr,
                                    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
-using UpdateOnSplitOpFunc = std::function<Status(std::shared_ptr<yb::consensus::ReplicateMsg>)>;
+typedef std::function<Status(std::shared_ptr<yb::consensus::ReplicateMsg>)> UpdateOnSplitOpFunc;
 
 Status GetChangesForXCluster(const std::string& stream_id,
                                      const std::string& tablet_id,

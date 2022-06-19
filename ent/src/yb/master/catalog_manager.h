@@ -218,8 +218,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
 
   bool IsCdcEnabled(const TableInfo& table_info) const override;
 
-  bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override;
-
   tablet::SnapshotCoordinator& snapshot_coordinator() override {
     return snapshot_coordinator_;
   }
@@ -233,10 +231,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   void PrepareRestore() override;
 
   void EnableTabletSplitting(const std::string& feature) override;
-
-  void StartXClusterParentTabletDeletionTaskIfStopped();
-
-  void ScheduleXClusterParentTabletDeletionTask();
 
  private:
   friend class SnapshotLoader;
@@ -476,9 +470,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
                                                const std::unordered_map<TableId, std::string>&
                                                  table_bootstrap_ids);
 
-  // Get the set of CDC streams for a given table, or an empty set if this is not a producer.
-  std::unordered_set<CDCStreamId> GetCdcStreamsForProducerTable(const TableId& table_id) const;
-
   // Gets the set of CDC stream info for an xCluster consumer table.
   XClusterConsumerTableStreamInfoMap GetXClusterStreamInfoForConsumerTable(const TableId& table_id)
       const;
@@ -507,12 +498,6 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
     const google::protobuf::RepeatedPtrField<HostPortPB>& master_addresses,
     const google::protobuf::RepeatedPtrField<std::string>& table_ids);
 
-  void ProcessXClusterParentTabletDeletionPeriodically();
-
-  Status DoProcessXClusterParentTabletDeletion();
-
-  void LoadXClusterRetainedParentTabletsSet() REQUIRES(mutex_);
-
   // Snapshot map: snapshot-id -> SnapshotInfo.
   typedef std::unordered_map<SnapshotId, scoped_refptr<SnapshotInfo>> SnapshotInfoMap;
   SnapshotInfoMap non_txn_snapshot_ids_map_;
@@ -528,9 +513,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
 
-  // Map of tables -> set of cdc streams they are producers for.
-  std::unordered_map<TableId, std::unordered_set<CDCStreamId>>
-      xcluster_producer_tables_to_stream_map_ GUARDED_BY(mutex_);
+  // Map of tables -> number of cdc streams they are producers for.
+  std::unordered_map<TableId, int> cdc_stream_tables_count_map_ GUARDED_BY(mutex_);
 
   // Map of all consumer tables that are part of xcluster replication, to a map of the stream infos.
   std::unordered_map<TableId, XClusterConsumerTableStreamInfoMap>

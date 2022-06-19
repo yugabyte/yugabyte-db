@@ -323,8 +323,6 @@ std::string ToString(CoarseMonoClock::TimePoint value);
 CoarseTimePoint ToCoarse(MonoTime monotime);
 std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 
-bool IsInitialized(CoarseTimePoint time_point);
-
 } // namespace yb
 
 #endif // YB_UTIL_MONOTIME_H
