@@ -401,8 +401,4 @@ std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point) {
   return std::chrono::steady_clock::time_point(time_point.time_since_epoch());
 }
 
-bool IsInitialized(CoarseTimePoint time_point) {
-  return MonoDelta(time_point.time_since_epoch()).Initialized();
-}
-
 } // namespace yb

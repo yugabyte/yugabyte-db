@@ -578,15 +578,6 @@ class CDCServiceImpl::Impl {
     }
   }
 
-  void ForceCdcStateUpdate(const ProducerTabletInfo& producer_tablet) {
-    std::lock_guard<rw_spinlock> l(mutex_);
-    auto it = tablet_checkpoints_.find(producer_tablet);
-    if (it != tablet_checkpoints_.end()) {
-      // Setting the timestamp to min will result in ExpiredAt saying it is expired.
-      it->cdc_state_checkpoint.last_update_time = CoarseTimePoint::min();
-    }
-  }
-
   boost::optional<client::AsyncClientInitialiser> async_client_init_;
 
   // this will be used for the std::call_once call while caching the client
@@ -1264,8 +1255,8 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
   if (record.source_type == XCLUSTER) {
     s = cdc::GetChangesForXCluster(
         stream_id, req->tablet_id(), op_id, record, tablet_peer, session,
-        std::bind(&CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, producer_tablet,
-        std::placeholders::_1, session), mem_tracker,
+        std::bind(&CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, stream_id,
+        req->tablet_id(), std::placeholders::_1, session), mem_tracker,
         &msgs_holder, resp, &last_readable_index, get_changes_deadline);
   } else {
     std::string commit_timestamp;
@@ -2793,6 +2784,7 @@ Status CDCServiceImpl::UpdateCheckpoint(
     uint64_t last_record_hybrid_time,
     const bool force_update) {
   bool update_cdc_state = impl_->UpdateCheckpoint(producer_tablet, sent_op_id, commit_op_id);
+
   if (update_cdc_state || force_update) {
     auto cdc_state = VERIFY_RESULT(GetCdcStateTable());
     const auto op = cdc_state->NewUpdateOp();
@@ -3057,7 +3049,8 @@ void CDCServiceImpl::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* req
 }
 
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
-    const ProducerTabletInfo& producer_tablet,
+    const std::string& stream_id,
+    const std::string& tablet_id,
     std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
     const client::YBSessionPtr& session) {
   const auto split_req = split_op_msg->split_request();
@@ -3074,7 +3067,7 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
     auto cond = req->mutable_where_expr()->mutable_condition();
     cond->set_op(QLOperator::QL_OP_AND);
     QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx,
-        QL_OP_EQUAL, producer_tablet.stream_id);
+        QL_OP_EQUAL, stream_id);
     req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
     req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
     cdc_state_table->AddColumns({master::kCdcCheckpoint}, req);
@@ -3085,25 +3078,21 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
     auto row_block = ql::RowsResult(op.get()).GetRowBlock();
     SCHECK(row_block->row_count() == 1, NotFound,
            Format("Error finding entry in cdc_state table for tablet: $0, stream $1.",
-                  child_tablet, producer_tablet.stream_id));
+                  child_tablet, stream_id));
   }
 
-  // Force an update of parent tablet checkpoint/timestamp to ensure that there it gets updated at
-  // least once (otherwise, we may have a situation where consecutive splits occur within the
-  // cdc_state table update window, and we wouldn't update the tablet's row with non-null values).
-  impl_->ForceCdcStateUpdate(producer_tablet);
-
-  // If we found both entries then lets update their checkpoints to this split_op's op id, to
-  // ensure that we continue replicating from where we left off.
+  // If we found both entries then lets update their checkpoints to this split_op's op id.
   for (const auto& child_tablet : children_tablets) {
     const auto op = cdc_state_table->NewUpdateOp();
     auto* const req = op->mutable_request();
     QLAddStringHashValue(req, child_tablet);
-    QLAddStringRangeValue(req, producer_tablet.stream_id);
-    // No need to update the timestamp here as we haven't started replicating the child yet.
+    QLAddStringRangeValue(req, stream_id);
+
     cdc_state_table->AddStringColumnValue(
         req, master::kCdcCheckpoint, consensus::OpIdToString(split_op_msg->id()));
-    // Only perform updates from tservers for cdc_state, so check if row exists or not.
+    cdc_state_table->AddTimestampColumnValue(
+        req, master::kCdcLastReplicationTime, GetCurrentTimeMicros());
+    // Only perform upserts on tservers for cdc_state.
     auto* condition = req->mutable_if_expr()->mutable_condition();
     condition->set_op(QL_OP_EXISTS);
     // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173

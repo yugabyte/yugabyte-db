@@ -48,9 +48,6 @@ DECLARE_bool(enable_tablet_split_of_xcluster_replicated_tables);
 DECLARE_uint64(snapshot_coordinator_poll_interval_ms);
 DECLARE_bool(TEST_validate_all_tablet_candidates);
 DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
-DECLARE_int32(xcluster_parent_tablet_deletion_task_retry_secs);
-DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
-DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -79,18 +76,6 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
         TabletSplitBase::cluster_->GetMasterAddresses(), TabletSplitBase::table_->id(),
         bootstrap_id));
     return Status::OK();
-  }
-
-  Result<string> BootstrapProducer() {
-    SwitchToProducer();
-    const int kStreamUuidLength = 32;
-    string output = VERIFY_RESULT(tools::RunAdminToolCommand(
-        TabletSplitBase::cluster_->GetMasterAddresses(),
-        "bootstrap_cdc_producer",
-        TabletSplitBase::table_->id()));
-    // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
-    string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
-    return bootstrap_id;
   }
 
   Status CheckForNumRowsOnConsumer(size_t expected_num_rows) {
@@ -182,9 +167,6 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
  public:
   void SetUp() override {
     FLAGS_cdc_state_table_num_tablets = 1;
-    // Set before creating tests so that the first run doesn't wait 30s.
-    // Lowering to 5s here to speed up tests.
-    FLAGS_xcluster_parent_tablet_deletion_task_retry_secs = 5;
     TabletSplitITest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
@@ -232,7 +214,6 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
 };
 
 TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   constexpr auto kNumRows = kDefaultNumRows;
   // Create a cdc stream for this tablet.
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(&client_->proxy_cache(),
@@ -270,21 +251,16 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   ASSERT_OK(cdc_proxy->GetChanges(change_req, &change_resp, &rpc));
   ASSERT_FALSE(change_resp.has_error()) << change_resp.ShortDebugString();
 
-  // Now let the table get deleted by the background task.
-  // To do so, we need to issue a GetChanges to both children tablets.
-  for (const auto& child_tablet_id : ListActiveTabletIdsForTable(cluster_.get(), table_->id())) {
-    cdc::GetChangesRequestPB child_change_req;
-    cdc::GetChangesResponsePB child_change_resp;
+  // Now let the table get deleted by the background task. Need to lower the wal_retention_secs.
+  master::AlterTableRequestPB alter_table_req;
+  master::AlterTableResponsePB alter_table_resp;
+  alter_table_req.mutable_table()->set_table_id(table_->id());
+  alter_table_req.set_wal_retention_secs(1);
 
-    child_change_req.set_tablet_id(child_tablet_id);
-    child_change_req.set_stream_id(stream_id);
-    child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
-    child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
-
-    rpc::RpcController rpc;
-    ASSERT_OK(cdc_proxy->GetChanges(child_change_req, &child_change_resp, &rpc));
-    ASSERT_FALSE(child_change_resp.has_error());
-  }
+  master::MasterDdlProxy master_proxy(
+      &client_->proxy_cache(), ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
+  rpc.Reset();
+  ASSERT_OK(master_proxy.AlterTable(alter_table_req, &alter_table_resp, &rpc));
 
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_snapshot_coordinator_poll_interval_ms));
 
@@ -347,7 +323,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
   }
 
   Status SplitAllTablets(
-      int cur_num_tablets, bool parent_tablet_protected_from_deletion = false) {
+      int cur_num_tablets, bool parent_tablet_protected_from_deletion = true) {
     // Splits all tablets for cluster_.
     auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
     auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
@@ -561,11 +537,9 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
 
   // Write some more rows, and then perform another split on both children.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
-  ASSERT_OK(SplitAllTablets(
-      /* cur_num_tablets */ 2, /* parent_tablet_protected_from_deletion */ true));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
   ASSERT_RESULT(WriteRows(kDefaultNumRows, 2 * kDefaultNumRows + 1));
-  ASSERT_OK(SplitAllTablets(
-      /* cur_num_tablets */ 4, /* parent_tablet_protected_from_deletion */ true));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 4));
 
   // Now re-enable replication.
   ASSERT_OK(tools::RunAdminToolCommand(
@@ -579,9 +553,6 @@ TEST_F(XClusterTabletSplitITest, MultipleSplitsDuringPausedReplication) {
   ASSERT_RESULT(WriteRows(kDefaultNumRows, 3 * kDefaultNumRows + 1));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(4 * kDefaultNumRows));
-
-  // Check that parent tablets get deleted once children begin being polled for.
-  ASSERT_OK(WaitForTabletSplitCompletion(8));
 }
 
 TEST_F(XClusterTabletSplitITest, MultipleSplitsInSequence) {
@@ -639,11 +610,13 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
   SwitchToConsumer();
   ASSERT_OK(FlushTestTable());
-  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
+  ASSERT_OK(SplitAllTablets(
+      /* cur_num_tablets */ 1, /* parent_tablet_protected_from_deletion */ false));
   SwitchToProducer();
   ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
   SwitchToConsumer();
-  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
+  ASSERT_OK(SplitAllTablets(
+      /* cur_num_tablets */ 2, /* parent_tablet_protected_from_deletion */ false));
   SwitchToProducer();
 
   // Stop writes.
@@ -666,9 +639,7 @@ TEST_F(XClusterTabletSplitITest, ConsumerClusterFailureWhenProcessingSplitOp) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op) = true;
 
   // Perform a split.
-  // Since the SPLIT_OP is not being processed yet, the parent tablet should still be present.
-  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1,
-                            /* parent_tablet_protected_from_deletion */ true));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
   // Write some additional rows.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
 
@@ -680,9 +651,6 @@ TEST_F(XClusterTabletSplitITest, ConsumerClusterFailureWhenProcessingSplitOp) {
   // Allow for the split op to be processed properly, and check that everything is replicated.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_consumer_fail_after_process_split_op) = false;
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
-
-  // Verify that parent tablet got deleted once children were polled for.
-  ASSERT_OK(WaitForTabletSplitCompletion(2));
 
   ASSERT_RESULT(WriteRows(kDefaultNumRows, 2 * kDefaultNumRows + 1));
   ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
@@ -726,6 +694,9 @@ class XClusterExternalTabletSplitITest :
     // Enable automatic tablet splitting so that the tablet split manager will still process
     // in progress splits during a failover.
     mini_cluster_opt_.extra_master_flags.push_back("--enable_automatic_tablet_splitting=true");
+    // TODO: remove this once parent tablet deletion is better handled.
+    mini_cluster_opt_.extra_master_flags.push_back(
+        "--TEST_reject_delete_not_serving_tablet_rpc=true");
   }
 
   void DoBeforeTearDown() override {
@@ -908,6 +879,15 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
   }
 
  protected:
+  Result<string> BootstrapProducer() {
+    const int kStreamUuidLength = 32;
+    string output = VERIFY_RESULT(tools::RunAdminToolCommand(
+        cluster_->GetMasterAddresses(), "bootstrap_cdc_producer", table_->id()));
+    // Get the bootstrap id (output format is "table id: 123, CDC bootstrap id: 123\n").
+    string bootstrap_id = output.substr(output.find_last_of(' ') + 1, kStreamUuidLength);
+    return bootstrap_id;
+  }
+
   void SwitchToProducer() override {
     if (!producer_cluster_) {
       return;
@@ -930,9 +910,7 @@ class XClusterBootstrapTabletSplitITest : public XClusterTabletSplitITest {
   boost::optional<client::TransactionManager> producer_transaction_manager_;
 };
 
-// TODO(jhe) Re-enable this test. Currently disabled as we disable all splits when a table is being
-// bootstrapped for xCluster.
-TEST_F(XClusterBootstrapTabletSplitITest, YB_DISABLE_TEST(BootstrapWithSplits)) {
+TEST_F(XClusterBootstrapTabletSplitITest, BootstrapWithSplits) {
   // Start by writing some rows to the producer.
   ASSERT_RESULT(WriteRowsAndFlush(kDefaultNumRows));
 
@@ -945,12 +923,9 @@ TEST_F(XClusterBootstrapTabletSplitITest, YB_DISABLE_TEST(BootstrapWithSplits)) 
   ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
 
   // Now before setting up replication, lets perform some splits and write some more rows.
-  // Since there's no replication ongoing, the parent tablets won't be deleted yet.
-  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1,
-                            /* parent_tablet_protected_from_deletion */ true));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 1));
   ASSERT_RESULT(WriteRows(kDefaultNumRows, kDefaultNumRows + 1));
-  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2,
-                            /* parent_tablet_protected_from_deletion */ true));
+  ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 2));
 
   // Now setup replication.
   ASSERT_OK(SetupReplication(bootstrap_id));
@@ -958,12 +933,8 @@ TEST_F(XClusterBootstrapTabletSplitITest, YB_DISABLE_TEST(BootstrapWithSplits)) 
   // Replication should work fine.
   ASSERT_OK(CheckForNumRowsOnConsumer(2 * kDefaultNumRows));
 
-  // Verify that parent tablet got deleted once children were polled for.
-  ASSERT_OK(WaitForTabletSplitCompletion(4));
-
   // Perform an additional write + split afterwards.
   ASSERT_RESULT(WriteRows(kDefaultNumRows, 2 * kDefaultNumRows + 1));
-  // This split will also ensure that all the parent tablets end up getting deleted.
   ASSERT_OK(SplitAllTablets(/* cur_num_tablets */ 4));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
@@ -977,7 +948,7 @@ class NotSupportedTabletSplitITest : public CdcTabletSplitITest {
   }
 
  protected:
-  Result<docdb::DocKeyHash> SplitTabletAndCheckForNotSupported(bool restart_server = false) {
+  Result<docdb::DocKeyHash> SplitTabletAndCheckForNotSupported(bool restart_server) {
     auto split_hash_code = VERIFY_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
     auto s = SplitTabletAndValidate(split_hash_code, kDefaultNumRows);
     EXPECT_NOT_OK(s);
@@ -1009,25 +980,7 @@ TEST_F(NotSupportedTabletSplitITest, SplittingWithCdcStream) {
             << " with stream id " << stream_id;
 
   // Try splitting this tablet.
-  ASSERT_RESULT(SplitTabletAndCheckForNotSupported());
-}
-
-TEST_F(NotSupportedTabletSplitITest, SplittingWithBootstrappedStream) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_replicated_tables) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) = false;
-  // Default cluster_ will be our producer.
-  // Create a consumer universe and table, then setup universe replication.
-  client::TableHandle consumer_cluster_table;
-  consumer_cluster_ = ASSERT_RESULT(CreateNewUniverseAndTable("consumer", &consumer_cluster_table));
-
-  const string bootstrap_id = ASSERT_RESULT(BootstrapProducer());
-
-  // Try splitting this tablet.
-  const auto split_hash_code = ASSERT_RESULT(SplitTabletAndCheckForNotSupported());
-
-  // Now complete the setup and ensure the split does work.
-  ASSERT_OK(SetupReplication(bootstrap_id));
-  ASSERT_OK(SplitTabletAndValidate(split_hash_code, kDefaultNumRows));
+  ASSERT_RESULT(SplitTabletAndCheckForNotSupported(false /* restart_server */));
 }
 
 TEST_F(NotSupportedTabletSplitITest, SplittingWithXClusterReplicationOnProducer) {
