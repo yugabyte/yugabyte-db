@@ -161,7 +161,7 @@ If you have an SSL enabled YugabyteDB cluster, do the following:
     }'
     ```
 
-For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/).
+For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 {{< warning title="Warning" >}}
 
