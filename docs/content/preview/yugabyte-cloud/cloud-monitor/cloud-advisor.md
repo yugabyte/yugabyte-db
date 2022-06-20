@@ -1,7 +1,7 @@
 ---
 title: YSQL Performance Advisor
 linkTitle: YSQL Performance Advisor
-description: Scan your cluster to dsicover performance optimizations.
+description: Scan your cluster to discover performance optimizations.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -106,15 +106,15 @@ Queries should be distributed equally across all nodes in the cluster. Query loa
 
 If you see query load skew, contact {{<support-cloud>}}.
 
-### CPU skew
+### CPU skew and CPU usage
 
-Advisor monitors CPU use to determine whether any nodes become hot spots. Advisor flags nodes where CPU use on a node is 50% greater than the other nodes in the cluster in the past hour, or CPU use for a node exceeds 80% for 10 minutes.
+Advisor monitors CPU use to determine whether any nodes become hot spots. Advisor flags nodes where CPU use on a node is 50% greater than the other nodes in the cluster in the past hour (skew), or CPU use for a node exceeds 80% for 10 minutes (usage).
 
 **Why**
 
-CPU skew can be caused by a number of issues:
+CPU skew and high usage can be caused by a number of issues:
 
-- A node is receiving a higher number of connections.
+- A node has a higher number of connections.
 - A node is receiving a higher number of queries.
 - Set of rows or specific rows are accessed frequently by queries executing across different nodes in the cluster.
 
