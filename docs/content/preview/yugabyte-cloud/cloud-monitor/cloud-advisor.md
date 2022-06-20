@@ -100,9 +100,7 @@ Advisor scans queries to determine whether some nodes are handling more queries 
 
 **Why**
 
-Queries should be distributed equally across all nodes in the cluster. Unequal distribution of queries can result in hot nodes, causing higher resource use on those nodes. Excessive workload on a specific node can potentially cause stability issues.
-
-Uneven distribution of queries can be due to the executed queries not distributed evenly across various connections across the nodes.
+Queries should be distributed equally across all nodes in the cluster. Query load skew can be due to queries not being equally distributed among connections; if particular connections are executing a greater number of queries, this can result in a hot node. Excessive workload on a specific node can potentially cause stability issues.
 
 **Fix the problem**
 
