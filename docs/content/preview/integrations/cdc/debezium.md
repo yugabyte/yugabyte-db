@@ -129,37 +129,37 @@ If you have an SSL enabled cluster, you need to provide the path to the root cer
 
 {{< /note >}}
 
-**In case of SSL enabled YugabyteDB cluster, follow these steps:**
+If you have an SSL enabled YugabyteDB cluster, do the following:
 
-* Copy the certificate file to your Docker container (assuming that the file exists on the root directory of your machine)
+1. Copy the certificate file to your Docker container (assuming that the file exists on the root directory of your machine):
 
-```sh
-docker cp ~/root.crt connect:/kafka/
-```
+    ```sh
+    docker cp ~/root.crt connect:/kafka/
+    ```
 
-* Deploy the connector configuration
+1. Deploy the connector configuration:
 
-```sh
-curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" \
-  localhost:8083/connectors/ \
-  -d '{
-  "name": "ybconnector",
-  "config": {
-    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
-    "database.hostname":"'$IP'",
-    "database.port":"5433",
-    "database.master.addresses": "'$IP':7100",
-    "database.user": "yugabyte",
-    "database.password": "yugabyte",
-    "database.dbname" : "yugabyte",
-    "database.server.name": "dbserver1",
-    "table.include.list":"public.test",
-    "database.streamid":"d540f5e4890c4d3b812933cbfd703ed3",
-    "snapshot.mode":"never",
-    "database.sslrootcert":"/kafka/root.crt"
-  }
-}'
-```
+    ```sh
+    curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" \
+      localhost:8083/connectors/ \
+      -d '{
+      "name": "ybconnector",
+      "config": {
+        "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
+        "database.hostname":"'$IP'",
+        "database.port":"5433",
+        "database.master.addresses": "'$IP':7100",
+        "database.user": "yugabyte",
+        "database.password": "yugabyte",
+        "database.dbname" : "yugabyte",
+        "database.server.name": "dbserver1",
+        "table.include.list":"public.test",
+        "database.streamid":"d540f5e4890c4d3b812933cbfd703ed3",
+        "snapshot.mode":"never",
+        "database.sslrootcert":"/kafka/root.crt"
+      }
+    }'
+    ```
 
 For a list of all the configuration options we provide with the Debezium YugabyteDB connector, see the [configuration options](../../../explore/change-data-capture/debezium-connector-yugabytedb/).
 
