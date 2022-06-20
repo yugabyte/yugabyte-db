@@ -525,7 +525,7 @@ public class TestAllDatatypes extends CDCBaseClass {
       assertRecordsOnly(expectedRecordsDateRange, daterangeSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsUDT = new ExpectedRecordYSQL[] {
-        new ExpectedRecordYSQL<>(1, "", Op.INSERT),
+        new ExpectedRecordYSQL<>(1, "FIXED", Op.INSERT),
       };
       assertRecordsOnly(expectedRecordsUDT, udtSub);
     } catch (Exception e) {

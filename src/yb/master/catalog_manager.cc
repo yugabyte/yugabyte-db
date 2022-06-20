@@ -635,12 +635,6 @@ class IndexInfoBuilder {
   IndexInfoPB& index_info_;
 };
 
-#define VERIFY_NAMESPACE_FOUND(expr, resp) RESULT_CHECKER_HELPER( \
-    expr, \
-    if (!__result.ok()) { \
-        return SetupError((resp)->mutable_error(), __result.status()); \
-    });
-
 MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
   switch (state) {
     case SysNamespaceEntryPB::PREPARING: FALLTHROUGH_INTENDED;
@@ -4803,6 +4797,7 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
 
 Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
     const TableInfoPtr& table_info) {
+  table_info->LockForRead();
   RSTATUS_DCHECK_EQ(
       table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
       Format("Expected YSQL table, got: $0", table_info->GetTableType()));
@@ -4818,6 +4813,7 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
     const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids) {
+  namespace_info->LockForRead();
   RSTATUS_DCHECK_EQ(
       namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
       Format("Expected YSQL database, got: $0", namespace_info->database_type()));
