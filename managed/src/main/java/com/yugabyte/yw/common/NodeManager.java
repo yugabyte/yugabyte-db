@@ -1395,6 +1395,9 @@ public class NodeManager extends DevopsBase {
               }
             }
           }
+          if (type == NodeCommandType.Create) {
+            commandArgs.add("--as_json");
+          }
           break;
         }
       case Provision:
@@ -1479,6 +1482,14 @@ public class NodeManager extends DevopsBase {
           commandArgs.add(
               Integer.toString(
                   runtimeConfigFactory.forUniverse(universe).getInt(POSTGRES_MAX_MEM_MB)));
+
+          if (cloudType.equals(Common.CloudType.azu)) {
+            NodeDetails node = universe.getNode(taskParam.nodeName);
+            if (node != null && node.cloudInfo.lun_indexes.length > 0) {
+              commandArgs.add("--lun_indexes");
+              commandArgs.add(StringUtils.join(node.cloudInfo.lun_indexes, ","));
+            }
+          }
           break;
         }
       case Configure:
