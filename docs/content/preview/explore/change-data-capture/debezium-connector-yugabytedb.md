@@ -911,6 +911,27 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Reads the transaction log.
 * Streams change event records to Kafka topics.
 
+{{< note title="Note" >}}
+We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which we are sending the data. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
+
+| Property | Value |
+| :------- | :---- |
+| `transforms` | `unwrap` |
+| `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
+
+See the following section for more details on `YBExtractNewRecordState`.
+{{< /note >}}
+
+#### `YBExtractNewRecordState` SMT
+
+Unlike the Debezium Connector for PostgreSQL, we only send the `after` image of the "set of columns" that are modified. PostgreSQL sends the complete `after` image of the row which has changed. So by default if the column was not changed, it is not a part of the payload we send and the default value is set to `null`.
+
+To differentiate between the case where a column is set to `null` and the case in which it's not modified, we change the value type to a struct. In this structure, an unchanged column is `{'value': null}`, whereas the column changed to a null value is `{'value': null, 'set': true}`.
+
+A schema registry requires that, once a schema is registered, records must contain only payloads with that schema version. If you're using a schema registry, the YugabyteDB Debezium connector's approach can be problematic, as the schema may change with every message. For example, if we keep changing the record to only include the value of modified columns, the schema of each record will be different (the total number unique schemas will be a result of making all possible combinations of columns) and thus would require sending a schema with every record.
+
+To avoid this problem when you're using a schema registry, use the `YBExtractNewRecordState` SMT (Single Message Transformer for Kafka), which interprets these values and sends the record in the correct format (by removing the unmodified columns from the JSON message). Records transformed by `YBExtractNewRecordState` are compatible with all sink implementations. This approach ensures that the schema doesn't change with each new record and it can work with a schema registry.
+
 ### Connector configuration properties
 
 The Debezium YugabyteDB connector has many configuration properties that you can use to achieve the right connector behavior for your application. Many properties have default values.
@@ -946,6 +967,16 @@ The following properties are *required* unless a default value is available:
 {{< note title="Note" >}}
 
 The APIs used to fetch the changes are set up to work with TLSv1.2 only. Make sure you're using the proper environment properties for Kafka Connect!
+
+{{< /note >}}
+
+{{< note title="Note" >}}
+
+If you have a YugabyteDB cluster with SSL enabled, need to obtain the root certificate and provide the path of the file in the `database.sslrootcert` configuration property. You can follow these links to get the certificates for your universe:
+
+* [Local deployments](../../../secure/tls-encryption/)
+* [YB Anywhere](../../../yugabyte-platform/security/enable-encryption-in-transit/#connect-to-a-ysql-endpoint-with-tls)
+* [YB Managed](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate)
 
 {{< /note >}}
 
