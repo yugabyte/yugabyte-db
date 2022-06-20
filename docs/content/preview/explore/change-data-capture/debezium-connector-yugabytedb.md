@@ -912,15 +912,14 @@ You can send this configuration with a `POST` command to a running Kafka Connect
 * Streams change event records to Kafka topics.
 
 {{< note title="Note" >}}
-
-We use a custom record extractor in order to make the sinks understand the format we are sending the data in i.e. `YBExtractNewRecordState`. For example, if you are using a JDBC Sink Connector, you need to add two more properties to the sink configuration:
+We use a custom record extractor (`YBExtractNewRecordState`) so that the sinks understand the format in which we are sending the data. For example, if you are using a JDBC sink connector, you need to add two more properties to the sink configuration:
 
 | Property | Value |
-| :--- | :--- |
+| :------- | :---- |
 | `transforms` | `unwrap` |
 | `transforms.unwrap.type` | `io.debezium.connector.yugabytedb.transforms.YBExtractNewRecordState` |
 
-More about `YBExtractNewRecordState` is mentioned in the next section.
+See the following section for more details on `YBExtractNewRecordState`.
 {{< /note >}}
 
 #### `YBExtractNewRecordState` SMT
