@@ -29,3 +29,5 @@ test: multixact-no-deadlock
 test: read-only-anomaly
 test: nowait-2
 test: nowait-3
+test: aborted-keyrevoke
+test: delete-abort-savept-2

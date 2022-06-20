@@ -365,7 +365,7 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
   ASSERT_EQ(segment_seqno, first_seg_seqno)
       << "Expected equal sequence numbers: " << segment_seqno
       << " and " << first_seg_seqno;
-  const scoped_refptr<ReadableLogSegment>& segment = local_segments[0];
+  const scoped_refptr<ReadableLogSegment>& segment = ASSERT_RESULT(local_segments.front());
   faststring scratch;
   int64_t size = ASSERT_RESULT(segment->readable_file_checkpoint()->Size());
   scratch.resize(size);

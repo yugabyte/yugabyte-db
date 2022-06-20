@@ -1660,9 +1660,9 @@ Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {
   return pg_session_->SetActiveSubTransaction(id);
 }
 
-Status PgApiImpl::RollbackSubTransaction(SubTransactionId id) {
+Status PgApiImpl::RollbackToSubTransaction(SubTransactionId id) {
   pg_session_->DropBufferedOperations();
-  return pg_session_->RollbackSubTransaction(id);
+  return pg_session_->RollbackToSubTransaction(id);
 }
 
 double PgApiImpl::GetTransactionPriority() const {
