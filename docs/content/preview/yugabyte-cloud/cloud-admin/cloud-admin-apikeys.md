@@ -14,7 +14,11 @@ showAsideToc: true
 
 YugabyteDB Managed provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key. Admin users can generate API keys for your account.
 
-API keys are not stored in YugabyteDB Managed. Safeguard your API keys by storing them in a secure location with strong encryption. Revoke keys that are lost or compromised. Don't embed keys in code - applications that contain keys can be decompiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
+API keys are not stored in YugabyteDB Managed. Safeguard them by doing the following:
+
+- Store API keys in a secure location with strong encryption, such as a password manager.
+- Revoke keys that are lost or compromised.
+- Don't embed keys in code. Applications that contain keys can be decompiled to extract keys, or de-obfuscated from on-device storage. API keys can also be compromised if committed to a code repository.
 
 You must be signed in as an Admin user to create and revoke API keys.
 
@@ -22,7 +26,7 @@ Keys created by users who are deleted are automatically revoked.
 
 The **API Keys** tab of the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
 
-![API Keys](/images/yb-cloud/cloud-api-keys.png)
+![API Keys](/images/yb-cloud/cloud-admin-apikeys.png)
 
 To view API key details, select an API key in the list to display the **API Key Details** sheet.
 
