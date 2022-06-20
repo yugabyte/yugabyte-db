@@ -27,7 +27,7 @@
 
 PG_MODULE_MAGIC;
 
-#define BUILD_VERSION                   "Dev"
+#define BUILD_VERSION                   "1.1.0-dev"
 #define PG_STAT_STATEMENTS_COLS         53  /* maximum of above */
 #define PGSM_TEXT_FILE                  "/tmp/pg_stat_monitor_query"
 
@@ -181,7 +181,7 @@ static void pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 static void AppendJumble(JumbleState *jstate,
 			 const unsigned char *item, Size size);
 static void JumbleQuery(JumbleState *jstate, Query *query);
-static void JumbleRangeTable(JumbleState *jstate, List *rtable);
+static void JumbleRangeTable(JumbleState *jstate, List *rtable, CmdType cmd_type);
 static void JumbleExpr(JumbleState *jstate, Node *node);
 static void RecordConstLocation(JumbleState *jstate, int location);
 /*
@@ -728,7 +728,7 @@ pgss_ExecutorCheckPerms(List *rt, bool abort)
 
 	num_relations = 0;
 
-	foreach(lr, rt)
+    foreach(lr, rt)
     {
         RangeTblEntry *rte = lfirst(lr);
         if (rte->rtekind != RTE_RELATION)
@@ -1664,11 +1664,15 @@ pg_stat_monitor_reset(PG_FUNCTION_ARGS)
 	*(uint64 *)pgss_qbuf = 0;
 
 #ifdef BENCHMARK
-	for (int i = STATS_START; i < STATS_END; ++i) {
-		pg_hook_stats[i].min_time = 0;
-		pg_hook_stats[i].max_time = 0;
-		pg_hook_stats[i].total_time = 0;
-		pg_hook_stats[i].ncalls = 0;
+	{
+		int i;
+		for (i = STATS_START; i < STATS_END; ++i)
+		{
+			pg_hook_stats[i].min_time = 0;
+			pg_hook_stats[i].max_time = 0;
+			pg_hook_stats[i].total_time = 0;
+			pg_hook_stats[i].ncalls = 0;
+		}
 	}
 #endif
 	LWLockRelease(pgss->lock);
@@ -1934,7 +1938,7 @@ pg_stat_monitor_internal(FunctionCallInfo fcinfo,
 			nulls[i++] = true;
 
 		/* cmd_type at column number 11 */
-		if (tmp.info.cmd_type < 0)
+		if (tmp.info.cmd_type == CMD_NOTHING)
 			nulls[i++] = true;
 		else
 			values[i++] = Int64GetDatumFast(tmp.info.cmd_type);
@@ -2229,9 +2233,19 @@ JumbleQuery(JumbleState *jstate, Query *query)
 	APP_JUMB(query->commandType);
 	/* resultRelation is usually predictable from commandType */
 	JumbleExpr(jstate, (Node *) query->cteList);
-	JumbleRangeTable(jstate, query->rtable);
-	JumbleExpr(jstate, (Node *) query->jointree);
-	JumbleExpr(jstate, (Node *) query->targetList);
+
+	JumbleRangeTable(jstate, query->rtable, query->commandType);
+
+    /*
+     * Skip jointree and targetlist in case of insert statment
+     * to avoid queryid duplication problem.
+     */
+	if (query->commandType != CMD_INSERT)
+	{
+		JumbleExpr(jstate, (Node *) query->jointree);
+		JumbleExpr(jstate, (Node *) query->targetList);
+	}
+
 	JumbleExpr(jstate, (Node *) query->onConflict);
 	JumbleExpr(jstate, (Node *) query->returningList);
 	JumbleExpr(jstate, (Node *) query->groupClause);
@@ -2250,13 +2264,16 @@ JumbleQuery(JumbleState *jstate, Query *query)
  * Jumble a range table
  */
 static void
-JumbleRangeTable(JumbleState *jstate, List *rtable)
+JumbleRangeTable(JumbleState *jstate, List *rtable, CmdType cmd_type)
 {
 	ListCell   *lc = NULL;
 
 	foreach(lc, rtable)
 	{
 		RangeTblEntry *rte = lfirst_node(RangeTblEntry, lc);
+
+		if (rte->rtekind != RTE_RELATION && cmd_type == CMD_INSERT)
+			continue;
 
 		APP_JUMB(rte->rtekind);
 		switch (rte->rtekind)

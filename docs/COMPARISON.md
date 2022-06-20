@@ -4,6 +4,9 @@ The `pg_stat_monitor` extension is developed on the basis of `pg_stat_statements
 
 Thus, `pg_stat_monitor` inherits the columns available in `pg_stat_statements` plus provides additional ones.
 
+Note that [`pg_stat_monitor` and `pg_stat_statements` process statistics data differently](index.md#how-pg_stat_monitor-works). Because of these differences, memory blocks and WAL (Write Ahead Logs) related statistics data are displayed inconsistently when both extensions are used together. 
+
+
 To see all available columns, run the following command from the `psql` terminal:
 
 ```sql

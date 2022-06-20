@@ -11,7 +11,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -44,11 +44,11 @@ select substr(query, 0,50) as query, calls, query_plan from pg_stat_monitor orde
                        query                       | calls |                query_plan                 
 ---------------------------------------------------+-------+-------------------------------------------
  CREATE TABLE TBL_0(key text primary key, txt_0 te |     1 | 
- INSERT INTO TBL_0(key, txt_0, value_0) VALUES($1, |     1 | 
+ INSERT INTO TBL_0(key, txt_0, value_0) VALUES('00 |     1 | 
  SELECT * from pg_stat_monitor_settings            |     1 | Function Scan on pg_stat_monitor_settings
  SELECT key, txt_0, value_0 FROM TBL_0             |     2 | Seq Scan on tbl_0
  SELECT pg_stat_monitor_reset()                    |     1 | Result
- UPDATE TBL_0 SET value_0 = $1                     |     1 | 
+ UPDATE TBL_0 SET value_0 = 1681692777             |     1 | 
 (6 rows)
 
 Drop TABLE TBL_0;
@@ -64,7 +64,7 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_max                 | 100    | 100           | Sets the maximum size of shared memory in (MB) used for statement's metadata tracked by pg_stat_monitor. |       1 |       1000 |                | yes
  pg_stat_monitor.pgsm_query_max_len       | 2048   | 2048          | Sets the maximum length of query.                                                                        |    1024 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_track_utility       | yes    | yes           | Selects whether utility commands are tracked.                                                            |         |            | yes, no        | no
- pg_stat_monitor.pgsm_normalized_query    | yes    | yes           | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
+ pg_stat_monitor.pgsm_normalized_query    | no     | no            | Selects whether save query in normalized format.                                                         |         |            | yes, no        | no
  pg_stat_monitor.pgsm_max_buckets         | 10     | 10            | Sets the maximum number of buckets.                                                                      |       1 |         10 |                | yes
  pg_stat_monitor.pgsm_bucket_time         | 60     | 60            | Sets the time in seconds per bucket.                                                                     |       1 | 2147483647 |                | yes
  pg_stat_monitor.pgsm_histogram_min       | 0      | 0             | Sets the time in millisecond.                                                                            |       0 | 2147483647 |                | yes
@@ -97,12 +97,12 @@ select substr(query, 0,50) as query, calls, query_plan from pg_stat_monitor orde
                        query                       | calls | query_plan 
 ---------------------------------------------------+-------+------------
  CREATE TABLE TBL_0(key text primary key, txt_0 te |     1 | 
- INSERT INTO TBL_0(key, txt_0, value_0) VALUES($1, |     1 | 
+ INSERT INTO TBL_0(key, txt_0, value_0) VALUES('00 |     1 | 
  SELECT * from pg_stat_monitor_settings            |     1 | 
  SELECT key, txt_0, value_0 FROM TBL_0             |     2 | 
  SELECT pg_stat_monitor_reset()                    |     1 | 
- UPDATE TBL_0 SET value_0 = $1                     |     1 | 
- select substr(query, $1,$2) as query, calls, quer |     1 | 
+ UPDATE TBL_0 SET value_0 = 1681692777             |     1 | 
+ select substr(query, 0,50) as query, calls, query |     1 | 
 (7 rows)
 
 Drop extension pg_stat_monitor;

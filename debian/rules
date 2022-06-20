@@ -11,6 +11,9 @@ export USE_PGXS=1
 %:
 	dh $@
 
+override_dh_builddeb:
+	dh_builddeb -- -Zgzip
+
 override_dh_auto_build:
 	+pg_buildext clean . build-%v
 	+pg_buildext build . build-%v
