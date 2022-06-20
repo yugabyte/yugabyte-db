@@ -1,7 +1,7 @@
 ---
-title: API Keys
+title: API keys
 headerTitle:
-linkTitle: API Keys
+linkTitle: Manage API keys
 description: Manage your cloud API keys.
 menu:
   preview:
@@ -55,3 +55,5 @@ The key is only displayed here one time, and is not available in YugabyteDB Mana
 ## Revoke an API key
 
 To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking  **Revoke API Key** in the **API Key Details** sheet.
+
+Keys created by users who are deleted are automatically revoked.
