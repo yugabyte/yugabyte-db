@@ -2394,6 +2394,14 @@
           "description" : "The node's instance type",
           "type" : "string"
         },
+        "lun_indexes" : {
+          "description" : "Mounted disks LUN indexes",
+          "items" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "type" : "array"
+        },
         "mount_roots" : {
           "description" : "Mount roots",
           "type" : "string"
