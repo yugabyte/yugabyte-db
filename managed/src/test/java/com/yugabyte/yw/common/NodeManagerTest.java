@@ -1117,6 +1117,9 @@ public class NodeManagerTest extends FakeDBApplication {
         }
       }
     }
+    if (type == NodeManager.NodeCommandType.Create) {
+      expectedCommand.add("--as_json");
+    }
     expectedCommand.add(params.nodeName);
     return expectedCommand;
   }
@@ -1577,7 +1580,7 @@ public class NodeManagerTest extends FakeDBApplication {
       addValidDeviceInfo(t, params);
 
       // Set up expected command
-      int accessKeyIndexOffset = 5;
+      int accessKeyIndexOffset = 6;
       if (t.cloudType.equals(Common.CloudType.aws)) {
         accessKeyIndexOffset += 2;
         if (params.deviceInfo.storageType.equals(PublicCloudConstants.StorageType.IO1)) {

@@ -14,6 +14,7 @@
       - systemd_option is defined
       - pg_max_mem_mb is defined
       - use_chrony is defined
+      - lun_indexes is defined
 
 - block:
   - name: Install and configure chrony with given server list

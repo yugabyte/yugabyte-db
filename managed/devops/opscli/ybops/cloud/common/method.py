@@ -377,6 +377,7 @@ class CreateInstancesMethod(AbstractInstancesMethod):
                                  action="store_true",
                                  default=True,
                                  help="Delete the root volume on VM termination")
+        self.parser.add_argument("-j", "--as_json", action="store_true")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -460,6 +461,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Whether to set up chrony for NTP synchronization.")
         self.parser.add_argument("--ntp_server", required=False, action="append",
                                  help="NTP server to connect to.")
+        self.parser.add_argument("--lun_indexes", default="",
+                                 help="comma-separated LUN indexes for mounted on instance disks")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -516,6 +519,8 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
+        self.extra_vars["lun_indexes"] = args.lun_indexes
+
         if wait_for_ssh(self.extra_vars["ssh_host"],
                         self.extra_vars["ssh_port"],
                         self.extra_vars["ssh_user"],
