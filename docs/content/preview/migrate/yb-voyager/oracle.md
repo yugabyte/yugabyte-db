@@ -60,6 +60,6 @@ Create a role and a database user, and provide the user with READ access to all 
    export SOURCE_DB_PORT=1521
    export SOURCE_DB_USER=ybvoyager
    export SOURCE_DB_PASSWORD=password
-   export SOURCE_DB_NAME=pdb1
-   export SOURCE_DB_SCHEMA=sakila
+   export SOURCE_DB_NAME=source_db_name
+   export SOURCE_DB_SCHEMA=source_schema_name
    ```

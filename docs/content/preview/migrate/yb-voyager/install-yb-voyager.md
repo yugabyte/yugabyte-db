@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: install-yb-voyager
     parent: yb-voyager
-    weight: 102
+    weight: 101
 isTocNested: true
 showAsideToc: true
 ---
@@ -45,8 +45,8 @@ Before starting migration, you should create the export directory on a file syst
 yb-voyager uses the directory to store source data, schema files, and the migration state. The file system in which the directory resides must have enough free space to hold the entire source database. Create an export directory in the local file system on the machine where YugabyteDB Voyager will be installed, and place its path in an environment variable.
 
 ```sh
-mkdir -p ~/export-dirs/sakila
-export EXPORT_DIR=~/export-dirs/sakila
+mkdir $HOME/export-dir
+export EXPORT_DIR=$HOME/export-dir
 ```
 
 The export directory has the following sub-directories and files:
@@ -81,12 +81,12 @@ cd yb-voyager/installer_scripts
 - Install yb-voyager using the following script:
 
 ```sh
-install-yb-voyager.sh
+install-yb-voyager
 ```
 
 It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.
 
-- The script generates a `yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:
+- The script generates a `.yb-voyager.rc` file in the home directory. Source the file to ensure that the environment variables are set using the following command:
 
 ```sh
 source ~/.yb-voyager.rc
@@ -102,4 +102,4 @@ To learn more about yb-voyager, refer to [YugabyteDB Voyager CLI](../../yb-voyag
 
 ## Next step
 
-- [Prepare databases](../../yb-voyager/prepare-databases/)
+- [Migration steps](../../yb-voyager/migrate-steps/)

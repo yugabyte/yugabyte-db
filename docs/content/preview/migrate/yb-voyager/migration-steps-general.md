@@ -1,4 +1,4 @@
----
+<!-- ---
 title: Migration steps
 linkTitle: Migration steps
 description: Overview of the process for migrating data to YugabyteDB.
@@ -56,4 +56,4 @@ Check that the list of tables, indexes, constraints, and triggers match between 
 
 * Refer to [Prepare databases](../../yb-voyager/prepare-databases/), and get started with preparing your databases for migration.
 
-* Refer to [Migrate your data](../../yb-voyager/migrate-data/), for more information on the steps required to perform and verify a successful migration.
+* Refer to [Migrate your data](../../yb-voyager/migrate-data/), for more information on the steps required to perform and verify a successful migration. -->
