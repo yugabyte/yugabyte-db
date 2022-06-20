@@ -66,6 +66,9 @@ public class CloudSpecificInfo {
   @ApiModelProperty(value = "Mount roots")
   public String mount_roots;
 
+  @ApiModelProperty(value = "Mounted disks LUN indexes")
+  public Integer[] lun_indexes = new Integer[0];
+
   public CloudSpecificInfo() {}
 
   @Override

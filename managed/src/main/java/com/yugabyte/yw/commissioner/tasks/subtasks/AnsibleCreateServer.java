@@ -10,18 +10,24 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
-
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
 
 @Slf4j
 public class AnsibleCreateServer extends NodeTaskBase {
@@ -74,10 +80,39 @@ public class AnsibleCreateServer extends NodeTaskBase {
       log.info("Skipping creation of already existing instance {}", taskParams().nodeName);
     } else {
       //   Execute the ansible command.
-      getNodeManager()
-          .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
-          .processErrors();
+      ShellResponse response =
+          getNodeManager()
+              .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
+              .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
+      if (p.code.equals(CloudType.azu.name())) {
+        // Parse into a json object.
+        JsonNode jsonNodeTmp = Json.parse(response.message);
+        if (jsonNodeTmp.isArray()) {
+          jsonNodeTmp = jsonNodeTmp.get(0);
+        }
+        final JsonNode jsonNode = jsonNodeTmp;
+        String nodeName = taskParams().nodeName;
+
+        // Update the node details and persist into the DB.
+        UniverseUpdater updater =
+            new UniverseUpdater() {
+              @Override
+              public void run(Universe universe) {
+                // Get the details of the node to be updated.
+                NodeDetails node = universe.getNode(nodeName);
+                JsonNode lunIndexesJson = jsonNode.get("lun_indexes");
+                if (lunIndexesJson != null && lunIndexesJson.isArray()) {
+                  node.cloudInfo.lun_indexes = new Integer[lunIndexesJson.size()];
+                  for (int i = 0; i < lunIndexesJson.size(); i++) {
+                    node.cloudInfo.lun_indexes[i] = lunIndexesJson.get(i).asInt();
+                  }
+                }
+              }
+            };
+        // Save the updated universe object.
+        saveUniverseDetails(updater);
+      }
     }
   }
 }
