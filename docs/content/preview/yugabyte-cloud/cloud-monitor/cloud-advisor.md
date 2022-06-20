@@ -27,7 +27,7 @@ Performance Advisor provides recommendations for the following issues.
 
 ### Index suggestions
 
-Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor flags an index as unused if it hasn't supported a query in 7 or more days after it was created or the server was restarted.
+Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/11/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index where `idx_scan` is 0 is considered unused.
 
 **Why**
 
@@ -96,7 +96,7 @@ Connections should be distributed equally across all the nodes in the cluster. U
 
 ### Query load skew
 
-Advisor scans queries to determine whether some nodes are handling more queries than others. Advisor flags nodes that processed 50% more queries than the other nodes in the past hour.
+Advisor scans queries to determine whether some nodes are handling more queries than others. Advisor flags nodes that processed 50% more queries than the other nodes in the past hour, or since the advisor was last run.
 
 **Why**
 
