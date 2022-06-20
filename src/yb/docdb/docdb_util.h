@@ -29,9 +29,10 @@ namespace yb {
 namespace docdb {
 
 void SetValueFromQLBinaryWrapper(
-  QLValuePB ql_value,
-  const int pg_data_type,
-  DatumMessagePB* cdc_datum_message = NULL);
+    QLValuePB ql_value,
+    const int pg_data_type,
+    const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    DatumMessagePB* cdc_datum_message = NULL);
 
 struct ExternalIntent {
   DocPath doc_path;

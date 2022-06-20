@@ -215,20 +215,30 @@ Result<YBTableName> CDCSDKTestBase::CreateTable(
     const uint32_t num_tablets,
     const bool add_primary_key,
     bool colocated,
-    const int table_oid) {
+    const int table_oid,
+    const bool enum_value,
+    const std::string& enum_suffix) {
   auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
+
+  if (enum_value) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "CREATE TYPE coupon_discount_type$0 AS ENUM ('FIXED$1','PERCENTAGE$2');", enum_suffix,
+        enum_suffix, enum_suffix));
+  }
+
   std::string table_oid_string = "";
   if (table_oid > 0) {
     // Need to turn on session flag to allow for CREATE WITH table_oid.
-        RETURN_NOT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
+    RETURN_NOT_OK(conn.Execute("set yb_enable_create_with_table_oid=true"));
     table_oid_string = Format("table_oid = $0,", table_oid);
   }
   RETURN_NOT_OK(conn.ExecuteFormat(
-      "CREATE TABLE $0($1 int $2, $3 int) WITH ($4colocated = $5) "
-      "SPLIT INTO $6 TABLETS",
-      table_name, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "", kValueColumnName,
+      "CREATE TABLE $0($1 int $2, $3 $4) WITH ($5colocated = $6) "
+      "SPLIT INTO $7 TABLETS",
+      table_name + enum_suffix, kKeyColumnName, (add_primary_key) ? "PRIMARY KEY" : "",
+      kValueColumnName, enum_value ? ("coupon_discount_type" + enum_suffix) : "int",
       table_oid_string, colocated, num_tablets));
-  return GetTable(cluster, namespace_name, table_name);
+  return GetTable(cluster, namespace_name, table_name + enum_suffix);
 }
 
 Result<std::string> CDCSDKTestBase::GetNamespaceId(const std::string& namespace_name) {

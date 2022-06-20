@@ -1337,6 +1337,57 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInf
   return type_oid_map;
 }
 
+Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
+    const uint32_t database_oid) {
+  TRACE_EVENT0("master", "ReadPgEnum");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgEnumTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = *table_info->schema;
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames(
+      {"oid", "enumlabel"}, &projection, schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto enumlabel_col_id = VERIFY_RESULT(projection.ColumnIdByName("enumlabel")).rep();
+
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    const std::vector<docdb::PrimitiveValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
+        nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  std::unordered_map<uint32_t, string> enumlabel_map;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    const auto& oid_col = row.GetValue(oid_col_id);
+    const auto& enumlabel_col = row.GetValue(enumlabel_col_id);
+
+    if (!oid_col || !enumlabel_col) {
+      std::string corrupted_col = !oid_col ? "oid" : "enumlabel";
+      return STATUS_FORMAT(
+          Corruption, "Could not read $0 column from pg_enum for database id $1:", corrupted_col,
+          database_oid);
+    }
+    uint32_t oid = oid_col->uint32_value();
+    string enumlabel = enumlabel_col->string_value();
+
+    enumlabel_map[oid] = enumlabel;
+    VLOG(1) << "Database oid: " << database_oid << " enum oid: " << oid
+            << " enumlabel: " << enumlabel;
+  }
+  return enumlabel_map;
+}
+
 Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo(
     const uint32_t database_oid, vector<uint32_t>* type_oids) {
   TRACE_EVENT0("master", "ReadPgTypeInfo");

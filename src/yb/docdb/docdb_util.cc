@@ -41,8 +41,13 @@ namespace yb {
 namespace docdb {
 
 void SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value, const int pg_data_type, DatumMessagePB* cdc_datum_message) {
-  WARN_NOT_OK(yb::docdb::SetValueFromQLBinary(ql_value, pg_data_type, cdc_datum_message), "Failed");
+    QLValuePB ql_value, const int pg_data_type,
+    const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    DatumMessagePB* cdc_datum_message) {
+  WARN_NOT_OK(
+      yb::docdb::SetValueFromQLBinary(
+          ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message),
+      "Failed");
 }
 
 rocksdb::DB* DocDBRocksDBUtil::rocksdb() {

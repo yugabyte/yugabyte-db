@@ -139,6 +139,11 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) override;
   Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) override;
 
+  // Get metadata required to decode UDTs in CDCSDK.
+  Status GetUDTypeMetadata(
+      const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
+      rpc::RpcContext* rpc);
+
   // Setup Universe Replication to consume data from another YB universe.
   CHECKED_STATUS SetupUniverseReplication(const SetupUniverseReplicationRequestPB* req,
                                           SetupUniverseReplicationResponsePB* resp,

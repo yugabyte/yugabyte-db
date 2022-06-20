@@ -3387,6 +3387,29 @@ Status CatalogManager::UpdateCDCStream(const UpdateCDCStreamRequestPB *req,
   return Status::OK();
 }
 
+Status CatalogManager::GetUDTypeMetadata(
+    const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto namespace_info = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+  if (req->pg_enum_info()) {
+    uint32_t database_oid;
+    {
+      namespace_info->LockForRead();
+      RSTATUS_DCHECK_EQ(
+          namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
+          Format("Expected YSQL database, got: $0", namespace_info->database_type()));
+      database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+    }
+    const auto enum_oid_label_map = VERIFY_RESULT(sys_catalog_->ReadPgEnum(database_oid));
+    for (const auto& entry : enum_oid_label_map) {
+      PgEnumInfoPB* pg_enum_info_pb = resp->add_enums();
+      pg_enum_info_pb->set_oid(entry.first);
+      pg_enum_info_pb->set_label(entry.second);
+    }
+  }
+  return Status::OK();
+}
+
 /*
  * UniverseReplication is setup in 4 stages within the Catalog Manager
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.

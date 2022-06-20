@@ -34,6 +34,9 @@ class MemTracker;
 
 namespace cdc {
 
+using EnumOidLabelMap = std::unordered_map<std::uint32_t, std::string>;
+using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
+
 struct StreamMetadata {
   NamespaceId ns_id;
   std::vector<TableId> table_ids;
@@ -59,19 +62,21 @@ struct StreamMetadata {
   }
 };
 
-CHECKED_STATUS GetChangesForCDCSDK(const std::string& stream_id,
-                                   const std::string& tablet_id,
-                                   const CDCSDKCheckpointPB& op_id,
-                                   const StreamMetadata& record,
-                                   const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                                   const std::shared_ptr<MemTracker>& mem_tracker,
-                                   consensus::ReplicateMsgsHolder* msgs_holder,
-                                   GetChangesResponsePB* resp,
-                                   std::string* commit_timestamp,
-                                   std::shared_ptr<Schema>* cached_schema,
-                                   OpId* last_streamed_op_id,
-                                   int64_t* last_readable_opid_index = nullptr,
-                                   const CoarseTimePoint deadline = CoarseTimePoint::max());
+Status GetChangesForCDCSDK(
+    const CDCStreamId& stream_id,
+    const TableId& tablet_id,
+    const CDCSDKCheckpointPB& op_id,
+    const StreamMetadata& record,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const std::shared_ptr<MemTracker>& mem_tracker,
+    const EnumOidLabelMap& enum_oid_label_map,
+    consensus::ReplicateMsgsHolder* msgs_holder,
+    GetChangesResponsePB* resp,
+    std::string* commit_timestamp,
+    std::shared_ptr<Schema>* cached_schema,
+    OpId* last_streamed_op_id,
+    int64_t* last_readable_opid_index = nullptr,
+    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
 CHECKED_STATUS GetChangesForXCluster(const std::string& stream_id,
                                      const std::string& tablet_id,
