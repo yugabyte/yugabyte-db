@@ -280,6 +280,21 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status WriteEnumsRows(
+      uint32_t start, uint32_t end, Cluster* cluster, const string& enum_suffix = "") {
+    auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
+    LOG(INFO) << "Writing " << end - start << " row(s) within transaction";
+
+    RETURN_NOT_OK(conn.Execute("BEGIN"));
+    for (uint32_t i = start; i < end; ++i) {
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0($1, $2) VALUES ($3, '$4')", kTableName + enum_suffix, kKeyColumnName,
+          kValueColumnName, i, std::string(i % 2 ? "FIXED" : "PERCENTAGE") + enum_suffix));
+    }
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+    return Status::OK();
+  }
+
   Status UpdateRows(uint32_t key, uint32_t value, Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(kNamespaceName));
     LOG(INFO) << "Updating row for key " << key << " with value " << value;
@@ -2250,6 +2265,170 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyRemoteB
       ASSERT_EQ(last_seen_num_intents, num_intents);
     }
   }
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnum)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key_value = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key_value, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(
+          expected_key_value % 2 ? "FIXED" : "PERCENTAGE",
+          record.row_message().new_tuple(1).datum_string());
+      expected_key_value++;
+    }
+  }
+
+  ASSERT_EQ(insert_count, expected_key_value);
+}
+
+// Tests that the enum cache is correctly re-populated on a cache miss.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumOnRestart)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 20;
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count / 2, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Restart one of the node.
+  SleepFor(MonoDelta::FromSeconds(1));
+  test_cluster()->mini_tablet_server(0)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
+
+  // Insert some more records in transaction.
+  ASSERT_OK(WriteEnumsRows(insert_count / 2, insert_count, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size, insert_count);
+
+  int expected_key_value = 0;
+  for (uint32_t i = 0; i < record_size; ++i) {
+    if (change_resp.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key_value, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(
+          expected_key_value % 2 ? "FIXED" : "PERCENTAGE",
+          record.row_message().new_tuple(1).datum_string());
+      expected_key_value++;
+    }
+  }
+
+  ASSERT_EQ(insert_count, expected_key_value);
+}
+
+// Tests that the enum cache is correctly re-populated on stream creation.
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestEnumMultipleStreams)) {
+  FLAGS_enable_update_local_peer_min_index = false;
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 1;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(
+      CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  int insert_count = 10;
+
+  auto table1 = ASSERT_RESULT(CreateTable(
+      &test_cluster_, kNamespaceName, kTableName, num_tablets, true, false, 0, true, "1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets1.size(), num_tablets);
+
+  CDCStreamId stream_id1 = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto resp1 = ASSERT_RESULT(SetCDCCheckpoint(stream_id1, tablets1));
+  ASSERT_FALSE(resp1.has_error());
+
+  // Insert some records in transaction.
+  ASSERT_OK(WriteEnumsRows(0, insert_count, &test_cluster_, "1"));
+  ASSERT_OK(test_client()->FlushTables(
+      {table1.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Call get changes.
+  GetChangesResponsePB change_resp1 = ASSERT_RESULT(GetChangesFromCDC(stream_id1, tablets1));
+  uint32_t record_size1 = change_resp1.cdc_sdk_proto_records_size();
+  ASSERT_GT(record_size1, insert_count);
+
+  int expected_key_value = 0;
+  for (uint32_t i = 0; i < record_size1; ++i) {
+    if (change_resp1.cdc_sdk_proto_records(i).row_message().op() == RowMessage::INSERT) {
+      const CDCSDKProtoRecordPB record = change_resp1.cdc_sdk_proto_records(i);
+      ASSERT_EQ(expected_key_value, record.row_message().new_tuple(0).datum_int32());
+      ASSERT_EQ(
+          expected_key_value % 2 ? "FIXED1" : "PERCENTAGE1",
+          record.row_message().new_tuple(1).datum_string());
+      expected_key_value++;
+    }
+  }
+
+  ASSERT_EQ(insert_count, expected_key_value);
 }
 
 }  // namespace enterprise

@@ -170,6 +170,8 @@ using yb::master::GrantRevokeRoleRequestPB;
 using yb::master::GrantRevokeRoleResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
+using yb::master::GetUDTypeMetadataRequestPB;
+using yb::master::GetUDTypeMetadataResponsePB;
 using yb::master::GrantRevokePermissionResponsePB;
 using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::MasterDdlProxy;
@@ -2078,6 +2080,28 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(const NamespaceId& ns_
                         table_info.relation_type());
   }
   return result;
+}
+
+Result<std::unordered_map<uint32_t, string>> YBClient::GetPgEnumOidLabelMap(
+    const NamespaceName& ns_name) {
+  GetUDTypeMetadataRequestPB req;
+  GetUDTypeMetadataResponsePB resp;
+
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.mutable_namespace_()->set_name(ns_name);
+  req.set_pg_enum_info(true);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetUDTypeMetadata);
+
+  VLOG(1) << "For namespace " << ns_name << " found " << resp.enums_size() << " enums";
+
+  std::unordered_map<uint32_t, string> enum_map;
+  for (int i = 0; i < resp.enums_size(); i++) {
+    const master::PgEnumInfoPB& enum_info = resp.enums(i);
+    VLOG(1) << "Enum oid " << enum_info.oid() << " enum label: " << enum_info.label();
+    enum_map.insert({enum_info.oid(), enum_info.label()});
+  }
+  return enum_map;
 }
 
 Result<bool> YBClient::TableExists(const YBTableName& table_name) {
