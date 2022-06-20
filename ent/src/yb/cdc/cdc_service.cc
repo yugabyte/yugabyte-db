@@ -815,6 +815,30 @@ Result<NamespaceId> CDCServiceImpl::GetNamespaceId(const std::string& ns_name) {
   return namespace_info_resp.namespace_().id();
 }
 
+Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(const NamespaceName& ns_name) {
+  {
+    yb::SharedLock<decltype(mutex_)> l(mutex_);
+    if (enumlabel_cache_.find(ns_name) != enumlabel_cache_.end()) {
+      return enumlabel_cache_.at(ns_name);
+    }
+  }
+  return UpdateCacheAndGetEnumMap(ns_name);
+}
+
+Result<EnumOidLabelMap> CDCServiceImpl::UpdateCacheAndGetEnumMap(const NamespaceName& ns_name) {
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  if (enumlabel_cache_.find(ns_name) == enumlabel_cache_.end()) {
+    RETURN_NOT_OK(UpdateEnumMapInCacheUnlocked(ns_name));
+  }
+  return enumlabel_cache_.at(ns_name);
+}
+
+Status CDCServiceImpl::UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) {
+  EnumOidLabelMap enum_oid_label_map = VERIFY_RESULT(client()->GetPgEnumOidLabelMap(ns_name));
+  enumlabel_cache_[ns_name] = enum_oid_label_map;
+  return Status::OK();
+}
+
 Status CDCServiceImpl::CreateCDCStreamForNamespace(
     const CreateCDCStreamRequestPB* req,
     CreateCDCStreamResponsePB* resp,
@@ -892,6 +916,11 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
     }
     stream_ids.push_back(std::move(stream_id));
     table_ids.push_back(table_iter.table_id());
+  }
+
+  {
+    std::lock_guard<decltype(mutex_)> l(mutex_);
+    RETURN_NOT_OK(UpdateEnumMapInCacheUnlocked(req->namespace_name()));
   }
 
   // Add stream to cache.
@@ -1262,9 +1291,18 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     std::string commit_timestamp;
     OpId last_streamed_op_id;
     auto cached_schema = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
+    auto namespace_name = tablet_peer->tablet()->metadata()->namespace_name();
+
+    auto enum_map_result = GetEnumMapFromCache(namespace_name);
+
+    if (!enum_map_result.ok()) {
+      RPC_STATUS_RETURN_ERROR(
+          enum_map_result.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    }
+
     s = cdc::GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
-        &msgs_holder, resp, &commit_timestamp, &cached_schema,
+        *enum_map_result, &msgs_holder, resp, &commit_timestamp, &cached_schema,
         &last_streamed_op_id, &last_readable_index, get_changes_deadline);
 
     impl_->UpdateCDCStateMetadata(

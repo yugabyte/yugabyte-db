@@ -337,6 +337,15 @@ class CDCServiceImpl : public CDCServiceIf {
       std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
       const client::YBSessionPtr& session);
 
+  // Get enum map from the cache.
+  Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);
+
+  // Update enum map in cache if required and get it.
+  Result<EnumOidLabelMap> UpdateCacheAndGetEnumMap(const NamespaceName& ns_name);
+
+  // Update enum map in cache.
+  Status UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) REQUIRES(mutex_);
+
   rpc::Rpcs rpcs_;
 
   tserver::TSTabletManager* tablet_manager_;
@@ -357,6 +366,9 @@ class CDCServiceImpl : public CDCServiceIf {
 
   std::unordered_map<std::string, std::shared_ptr<StreamMetadata>> stream_metadata_
       GUARDED_BY(mutex_);
+
+  // Map of namespace name to (map of enum oid to enumlabel).
+  EnumLabelCache enumlabel_cache_ GUARDED_BY(mutex_);
 
   // Map of HostPort -> CDCServiceProxy. This is used to redirect requests to tablet leader's
   // CDC service proxy.
