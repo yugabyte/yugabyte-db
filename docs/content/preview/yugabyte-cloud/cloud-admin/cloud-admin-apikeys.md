@@ -22,8 +22,6 @@ API keys are not stored in YugabyteDB Managed. Safeguard them by doing the follo
 
 You must be signed in as an Admin user to create and revoke API keys.
 
-Keys created by users who are deleted are automatically revoked.
-
 The **API Keys** tab of the **Admin** page displays a list of API keys created for your account that includes the key name, key status, the user that created the key, and the date it was created, last used, and expires.
 
 ![API Keys](/images/yb-cloud/cloud-admin-apikeys.png)
@@ -56,4 +54,14 @@ The key is only displayed here one time, and is not available in YugabyteDB Mana
 
 To revoke an API key, click **Revoke** for the API key in the list you want to revoke. You can also revoke an API key by clicking  **Revoke API Key** in the **API Key Details** sheet.
 
-Keys created by users who are deleted are automatically revoked.
+{{< note title="Keys and user permissions" >}}
+
+Currently, API keys are linked to the user that created them:
+
+- Keys created by users who are deleted are automatically revoked.
+
+- If the role of a user who created a key is changed to a Developer, the key will only have Developer access to API functions (that is, no APIs that require Admin-level access).
+
+Future releases will not have this restriction.
+
+{{< /note >}}
