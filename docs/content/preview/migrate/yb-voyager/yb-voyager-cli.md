@@ -244,7 +244,7 @@ Specifies the count to increase the number of connections.
 
 ### --batch-size
 
-Specifies the number of records that the Export directory can contain.
+Specifies the number of records that the [export directory](../../yb-voyager/install-yb-voyager/#create-an-export-directory) can contain.
 
 Default : 100,000
 
@@ -254,9 +254,9 @@ Path to the directory containing the data files to import.
 
 ### --file-table-map
 
-Comma-separated mapping between the file in [data-dir](#data-dir) to the corresponding table in the database.
+Comma-separated mapping between the files in [data-dir](#data-dir) to the corresponding table in the database.
 
-Default : The command imports files (from the --data-dir directory) that match the `PREFIX_data.csv` pattern. The PREFIX part is considered as table name into which the file is imported.
+Default: If this flag isn't used, the `import data file` command imports files from the --data-dir directory matching the `PREFIX_data.csv` pattern, where PREFIX is the name of the table into which the file data is imported.
 
 Example : `filename1:tablename1,filename2:tablename2[,...]`
 

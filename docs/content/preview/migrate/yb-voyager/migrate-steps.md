@@ -374,7 +374,7 @@ yb-voyager import data file --export-dir ${EXPORT_DIR} \
 ``` -->
 
 ```sh
-yb-voyager import data file--export-dir ${EXPORT_DIR} \
+yb-voyager import data file --export-dir ${EXPORT_DIR} \
         --target-db-host ${TARGET_DB_HOST} \
         --target-db-user ${TARGET_DB_USER} \
         --target-db-password ${TARGET_DB_PASSWORD} \
