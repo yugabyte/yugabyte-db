@@ -6,7 +6,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -26,10 +25,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.Configuration;
 import play.libs.Json;
 
 @Singleton
@@ -47,11 +48,19 @@ public class MetricQueryHelper {
   private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
-  @Inject play.Configuration appConfig;
+  private final play.Configuration appConfig;
 
-  @Inject ApiHelper apiHelper;
+  private final ApiHelper apiHelper;
 
-  @Inject YBMetricQueryComponent ybMetricQueryComponent;
+  private final MetricUrlProvider metricUrlProvider;
+
+  @Inject
+  public MetricQueryHelper(
+      Configuration appConfig, ApiHelper apiHelper, MetricUrlProvider metricUrlProvider) {
+    this.appConfig = appConfig;
+    this.apiHelper = apiHelper;
+    this.metricUrlProvider = metricUrlProvider;
+  }
 
   /**
    * Query prometheus for a given metricType and query params
@@ -144,8 +153,7 @@ public class MetricQueryHelper {
     }
 
     String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    boolean useNativeMetrics = appConfig.getBoolean("yb.metrics.useNative", false);
-    if ((null == metricsUrl || metricsUrl.isEmpty()) && !useNativeMetrics) {
+    if ((null == metricsUrl || metricsUrl.isEmpty())) {
       LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
       return Json.newObject();
     }
@@ -164,11 +172,10 @@ public class MetricQueryHelper {
 
       Callable<JsonNode> callable =
           new MetricQueryExecutor(
-              appConfig,
+              metricUrlProvider,
               apiHelper,
               queryParams,
               additionalFilters,
-              ybMetricQueryComponent,
               metricSettings,
               isRecharts);
       Future<JsonNode> future = threadPool.submit(callable);

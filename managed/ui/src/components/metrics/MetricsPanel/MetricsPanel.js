@@ -179,9 +179,14 @@ export default class MetricsPanel extends Component {
     const { prometheusQueryEnabled } = this.props;
     const tooltip = (
       <Tooltip id="tooltip" className="prometheus-link-tooltip">
-        Query in Prometheus
+        Metric graph in Prometheus
       </Tooltip>
     );
+    const getMetricsUrl = (internalUrl) => {
+      var url = new URL(internalUrl);
+      url.hostname = window.location.hostname;
+      return url.href;
+    }
     return (
       <div id={this.props.metricKey} className="metrics-panel">
         {prometheusQueryEnabled && this.props.metric.directURLs.length > 0 ? (
@@ -190,11 +195,11 @@ export default class MetricsPanel extends Component {
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={this.props.metric.directURLs[0]}
+              href={getMetricsUrl(this.props.metric.directURLs[0])}
             >
               <img
                 className="prometheus-link-icon"
-                alt="Prometheus"
+                alt="Metric graph in Prometheus"
                 src={prometheusIcon}
                 width="25"
               />

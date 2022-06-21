@@ -42,7 +42,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
@@ -50,7 +49,7 @@ import play.libs.Json;
 @RunWith(MockitoJUnitRunner.class)
 public class MetricQueryHelperTest extends FakeDBApplication {
 
-  @InjectMocks MetricQueryHelper metricQueryHelper;
+  MetricQueryHelper metricQueryHelper;
 
   @Mock play.Configuration mockAppConfig;
 
@@ -62,6 +61,9 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     validMetric = MetricConfig.create("valid_metric", configJson);
     validMetric.save();
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+
+    MetricUrlProvider metricUrlProvider = new MetricUrlProvider(mockAppConfig);
+    metricQueryHelper = new MetricQueryHelper(mockAppConfig, mockApiHelper, metricUrlProvider);
   }
 
   @Test
