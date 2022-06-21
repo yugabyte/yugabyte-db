@@ -81,7 +81,7 @@ cd yb-voyager/installer_scripts
 - Install yb-voyager using the following script:
 
 ```sh
-install-yb-voyager
+./install-yb-voyager
 ```
 
 It is safe to execute the script multiple times. If the script fails, check the `/tmp/install-yb-voyager.log` file.

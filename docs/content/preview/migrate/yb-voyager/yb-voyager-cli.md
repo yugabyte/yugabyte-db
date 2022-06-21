@@ -20,7 +20,7 @@ yb-voyager is a command line executable for migrating databases from PostgreSQL,
 yb_voyager [ <migration-step>... ] [ <arguments> ... ]
 ```
 
-- *migration-step*: See [Migration steps](#migration-steps)
+- *migration-step*: See [Commands](#commands)
 - *arguments*: See [Arguments](#arguments)
 
 ### Command line help
@@ -37,27 +37,15 @@ To display the available online help for any migration step, run:
 yb_voyager [ <migration-step>... ] --help
 ```
 
-### Migration steps
+## Commands
 
 The following command line options specify the migration steps.
-<!--
-- [export schema](/preview/migrate/yb-voyager/perform-migration/#export-schema)
 
-- [analyze-schema](/preview/migrate/yb-voyager/perform-migration/#analyze-schema)
-
-- [export data](/preview/migrate/yb-voyager/perform-migration/#export-data)
-
-- [import schema](/preview/migrate/yb-voyager/perform-migration/#import-schema)
-
-- [import data](/preview/migrate/yb-voyager/perform-migration/#import-data)
-
-- [import data file](/preview/migrate/yb-voyager/perform-migration/#import-data-file) -->
-
-#### export schema
+### export schema
 
 [Export the schema](/preview/migrate/yb-voyager/migrate-data/#export-schema) from the source database.
 
-##### Syntax
+#### Syntax
 
 ```sh
 yb_voyager export schema [ <arguments> ... ]
@@ -65,7 +53,7 @@ yb_voyager export schema [ <arguments> ... ]
 
 - *arguments*: See [Arguments](#arguments)
 
-##### Example
+#### Example
 
 ```sh
 yb-voyager export schema --export-dir ${EXPORT_DIR} \
@@ -77,11 +65,11 @@ yb-voyager export schema --export-dir ${EXPORT_DIR} \
         --source-db-schema ${SOURCE_DB_SCHEMA}
 ```
 
-#### analyze-schema
+### analyze-schema
 
 Analyse the PostgreSQL schema dumped in the export schema step.
 
-##### Syntax
+#### Syntax
 
 ```sh
 yb_voyager analyze-schema [ <arguments> ... ]
@@ -89,7 +77,7 @@ yb_voyager analyze-schema [ <arguments> ... ]
 
 - *arguments*: See [Arguments](#arguments)
 
-##### Example
+#### Example
 
 ```sh
 yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
@@ -102,11 +90,11 @@ yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
         --output-format txt
 ```
 
-#### export data
+### export data
 
 Dump the source database to the machine where yb-voyager is installed.
 
-##### Syntax
+#### Syntax
 
 ```sh
 yb_voyager export data [ <arguments> ... ]
@@ -114,7 +102,7 @@ yb_voyager export data [ <arguments> ... ]
 
 - *arguments*: See [Arguments](#arguments)
 
-##### Example
+#### Example
 
 ```sh
 yb-voyager export data --export-dir ${EXPORT_DIR} \
@@ -126,11 +114,11 @@ yb-voyager export data --export-dir ${EXPORT_DIR} \
         --source-db-schema ${SOURCE_DB_SCHEMA}
 ```
 
-#### import schema
+### import schema
 
 Import schema to the target YugabyteDB.
 
-##### Syntax
+#### Syntax
 
 ```sh
 yb_voyager import schema [ <arguments> ... ]
@@ -138,7 +126,7 @@ yb_voyager import schema [ <arguments> ... ]
 
 - *arguments*: See [Arguments](#arguments)
 
-##### Example
+#### Example
 
 ```sh
 yb-voyager import schema --export-dir ${EXPORT_DIR} \
@@ -148,11 +136,11 @@ yb-voyager import schema --export-dir ${EXPORT_DIR} \
         --target-db-name ${TARGET_DB_NAME}
 ```
 
-#### import data
+### import data
 
 Import the data objects to the target YugabyteDB.
 
-##### Syntax
+#### Syntax
 
 ```sh
 yb_voyager import data [ <arguments> ... ]
@@ -160,7 +148,7 @@ yb_voyager import data [ <arguments> ... ]
 
 - *arguments*: See [Arguments](#arguments)
 
-##### Example
+#### Example
 
 ```sh
 yb-voyager import data --export-dir ${EXPORT_DIR} \
@@ -170,11 +158,11 @@ yb-voyager import data --export-dir ${EXPORT_DIR} \
         --target-db-name ${TARGET_DB_NAME}
 ```
 
-#### import data file
+### import data file
 
 Load all your data files in csv format directly to the target YugabyteDB.
 
-##### Syntax
+#### Syntax
 
 ```sh
 yb_voyager import data file [ <arguments> ... ]
@@ -182,7 +170,7 @@ yb_voyager import data file [ <arguments> ... ]
 
 - *arguments*: See [Arguments](#arguments)
 
-##### Example
+#### Example
 
 ```sh
 yb-voyager import data file --export-dir ${EXPORT_DIR} \
@@ -197,61 +185,61 @@ yb-voyager import data file --export-dir ${EXPORT_DIR} \
         –-has-header \
 ```
 
-### Arguments
+## Arguments
 
-#### --export-dir
+### --export-dir
 
 Specifies the path to the directory containing the data files to export.
 
-#### --source-db-type
+### --source-db-type
 
 Specifies the source database type (postrgresql, mysql or oracle).
 
-#### --source-db-host
+### --source-db-host
 
 Specifies the host name of the machine on which the source database server is running.
 
-#### --source-db-user
+### --source-db-user
 
 Specifies the username of the source database.
 
-#### --source-db-password
+### --source-db-password
 
 Specifies the password of the source database.
 
-#### --source-db-name
+### --source-db-name
 
 Specifies the name of the source database.
 
-#### --source-db-schema
+### --source-db-schema
 
 Specifies the schema of the source database. Only applicable for Oracle.
 
-#### --output-format
+### --output-format
 
 Specifies the format in which the report file is generated. It can be in `html`, `txt`, `json` or `xml`.
 
-#### --target-db-host
+### --target-db-host
 
 Specifies the domain name or IP address of the machine on which target database server is running.
 
-#### --target-db-user
+### --target-db-user
 
 Specifies the username of the target database.
 
-#### --target-db-password
+### --target-db-password
 
 Specifies the password of the target database.
 
-#### --target-db-name
+### --target-db-name
 
 Specifies the name of the target database.
 
-#### –-data-dir
+### –-data-dir
 
 Path to the directory containing the data files to import.
 
-#### --file-table-map
+### --file-table-map
 
 Comma-separated mapping between the file in [data-dir](#data-dir) to the corresponding table in the database.
 
@@ -259,11 +247,11 @@ Default : The command imports files (from the --data-dir directory) that match t
 
 Example : `filename1:tablename1,filename2:tablename2[,...]`
 
-#### --delimiter
+### --delimiter
 
 Default: “\t” (tab); can be changed to comma(,), pipe(|) or any other character.
 
-#### –-has-header
+### –-has-header
 
 This argument is to be specified only for csv file type.
 
