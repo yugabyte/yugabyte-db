@@ -84,6 +84,4 @@ Status MultiDriveTestEnv::NewRWFile(const RWFileOptions& o,
   return target()->NewRWFile(o, f, r);
 }
 
-#undef RETURN_ERROR_ON_FAULTY_DRIVE
-
 } // namespace yb
