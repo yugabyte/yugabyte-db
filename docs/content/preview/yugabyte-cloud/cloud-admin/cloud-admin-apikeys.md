@@ -36,15 +36,15 @@ To create an API key:
 
 1. Enter a name and description for the key.
 
-1. Set the key expiration, or select **Never expire** to create a key without an expiration.
+1. Set the key expiration or select **Never expire** to create a key without an expiration.
 
 1. Click **Generate Key**.
 
-1. Click the Copy icon to copy the key, and store the key in a secure location.
+1. Click the Copy icon to copy the key and store the key in a secure location.
 
     {{< warning title="Important" >}}
 
-The key is only displayed here one time, and is not available in YugabyteDB Managed after you click **Done**. Store keys in a secure location. If you lose a key, revoke it and create a new one.
+The key is only displayed one time; it is not available in YugabyteDB Managed after you click **Done**. Store keys in a secure location. If you lose a key, revoke it and create a new one.
 
     {{< /warning >}}
 
