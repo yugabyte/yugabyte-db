@@ -17,5 +17,6 @@ revision:
 paths:
   only:
     - ./managed
+    - ./yugabyted-ui
   exclude:
     - ./managed/src/test
