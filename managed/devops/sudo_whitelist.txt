@@ -57,4 +57,5 @@ yugabyte ALL = (root) NOPASSWD: /bin/chown -R yugabyte?yugabyte /opt/yugabyte, \
 /bin/sh -c * test -e /usr/local/*, \
 /usr/bin/cp * /usr/local/*, \
 /usr/bin/test -w *, \
-/usr/bin/df *
+/usr/bin/df *, \
+/bin/sh -c * umask 0022 *
