@@ -329,12 +329,14 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
     }
+    boolean cloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-      c.validate();
+      c.validate(!cloudEnabled);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
@@ -494,7 +496,7 @@ public class UniverseCRUDHandler {
     universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
     // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
     // non legacy cluster for proper operations.
-    if (runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+    if (cloudEnabled) {
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
       AvailabilityZone zone = provider.regions.get(0).zones.get(0);
@@ -787,7 +789,8 @@ public class UniverseCRUDHandler {
     Provider provider =
         Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
     readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    readOnlyCluster.validate();
+    readOnlyCluster.validate(
+        !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled"));
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
     if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
