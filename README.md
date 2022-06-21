@@ -24,6 +24,7 @@
     - [Setup](#setup)
     - [Building from source](#building-from-source)
     - [Uninstall `pg_stat_monitor`](#uninstall-pg_stat_monitor)
+    - [How we work](#how-we-work)
     - [How to contribute](#how-to-contribute)
     - [Report a bug](#report-a-bug)
     - [Support, discussions and forums](#support-discussions-and-forums)
@@ -282,6 +283,18 @@ To uninstall `pg_stat_monitor`, do the following:
     ```sh
     sudo systemctl restart postgresql-13
     ```
+
+### How we work
+
+We follow the [OneFlow git branching scheme](https://www.endoflineblog.com/oneflow-a-git-branching-model-and-workflow) to maintain the ongoing development and stable releases. 
+
+The concept of the OneFlow model is, that we do have a single long-lived [branch](https://github.com/percona/pg_stat_monitor/tree/main) which simplifies the versioning scheme and day-to-day operations that we have to perform. 
+
+What branches do exist?
+
+* Feature branch ```$ git checkout -b feature/my-feature main```
+* Release branch ```$ git checkout -b release/1.1.0 8330ecd```
+* Hotfix branch ```$ git checkout -b hotfix/1.0.2 1.0.1```
 
 ### How to contribute
 
