@@ -732,7 +732,7 @@ class NodeChecker():
 
     def check_for_error_logs(self, process):
         logging.info("Checking for error logs on node {}".format(self.node))
-        e = self._new_entry("Fatal log files")
+        e = self._new_entry("Fatal log files", process)
         logs = []
         process_name = get_process_name(process)
         search_dir = os.path.join(self.yb_home_dir, "{}/logs/").format(process_name)
