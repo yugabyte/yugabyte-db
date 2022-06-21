@@ -86,38 +86,71 @@ touch conf/application.properties
 ### Configuration
 
 The main configuration file is `conf/application.properties`. There are multiple sections configured:
-* `debezium.source`: is for source connector configuration. Each instance of Debezium Server runs exactly one connector.
+* `cdcsdk.source`: is for source connector configuration. Each instance of Debezium Server runs exactly one connector.
 * `cdcsdk.sink` is for the sink system configuration.
 * `debezium.format` is for the output serialization format configuration.
 * `debezium.transforms` is for the configuration of message transformations.
 
-**Example:**
+#### Apache Kafka
 
 ```properties
 cdcsdk.sink.type=kafka
 cdcsdk.sink.kafka.producer.bootstrap.servers=127.0.0.1:9092
 cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
 cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-debezium.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
-debezium.source.database.hostname=127.0.0.1
-debezium.source.database.port=5433
-debezium.source.database.user=yugabyte
-debezium.source.database.password=yugabyte
-debezium.source.database.dbname=yugabyte
-debezium.source.database.server.name=dbserver1
-debezium.source.database.streamid=de362081fa864e94b35fcac6005e7cd9
-debezium.source.table.include.list=public.test
-debezium.source.database.master.addresses=127.0.0.1:7100
-debezium.source.snapshot.mode=never
+cdcsdk.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
+cdcsdk.source.database.hostname=127.0.0.1
+cdcsdk.source.database.port=5433
+cdcsdk.source.database.user=yugabyte
+cdcsdk.source.database.password=yugabyte
+cdcsdk.source.database.dbname=yugabyte
+cdcsdk.source.database.server.name=dbserver1
+cdcsdk.source.database.streamid=de362081fa864e94b35fcac6005e7cd9
+cdcsdk.source.table.include.list=public.test
+cdcsdk.source.database.master.addresses=127.0.0.1:7100
+cdcsdk.source.snapshot.mode=never
 ```
 
-The `debezium.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `debezium.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
+##### Confluent Cloud
 
-<!-- TODO Vaibhav: add more configuration examples -->
+If you are using a Confluent Cloud deployment of Kafka, you will need to add the following configuration:
+
+```properties
+cdcsdk.sink.type=kafka
+cdcsdk.sink.kafka.producer.bootstrap.servers=<BOOTSTRAP-SERVERS>
+cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+cdcsdk.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
+cdcsdk.sink.kafka.security.protocol=SASL_SSL
+cdcsdk.sink.kafka.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule   required username='USERNAME'   password='PASSWORD';
+cdcsdk.sink.kafka.sasl.mechanism=PLAIN
+
+cdcsdk.sink.kafka.producer.security.protocol=SASL_SSL
+cdcsdk.sink.kafka.producer.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule   required username='USERNAME'   password='PASSWORD';
+cdcsdk.sink.kafka.producer.sasl.mechanism=PLAIN
+cdcsdk.sink.kafka.producer.ssl.endpoint.identification.algorithm=https
+
+cdcsdk.sink.kafka.client.dns.lookup=use_all_dns_ips
+cdcsdk.sink.kafka.session.timeout.ms=45000
+cdcsdk.sink.kafka.acks=all
+
+cdcsdk.source.database.hostname=127.0.0.1
+cdcsdk.source.database.port=5433
+cdcsdk.source.database.user=yugabyte
+cdcsdk.source.database.password=yugabyte
+cdcsdk.source.database.dbname=yugabyte
+cdcsdk.source.database.server.name=dbserver1
+cdcsdk.source.database.streamid=9d0079d5f5e74ea59989f37eb6358ea5
+cdcsdk.source.table.include.list=public.test
+cdcsdk.source.database.master.addresses=127.0.0.1:7100
+cdcsdk.source.snapshot.mode=never
+```
+
+The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 #### Configuring using environment variables
 
-Configuration using environment variables maybe useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, `debezium.source.database.port` has to be changed to `DEBEZIUM_SOURCE_DATABASE_PORT`.
+Configuration using environment variables maybe useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, `cdcsdk.source.database.port` has to be changed to `DEBEZIUM_SOURCE_DATABASE_PORT`.
 
 #### Server configuration
 
