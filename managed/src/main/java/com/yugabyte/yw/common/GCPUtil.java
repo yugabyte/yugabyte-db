@@ -10,8 +10,12 @@ import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageBatch;
 import com.google.cloud.storage.StorageBatchResult;
+import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -19,13 +23,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 
 @Singleton
 @Slf4j
-public class GCPUtil {
+public class GCPUtil implements CloudUtil {
 
   public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
-  private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
   private static final String GS_PROTOCOL_PREFIX = "gs://";
   private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
 
@@ -40,23 +44,25 @@ public class GCPUtil {
     return split;
   }
 
-  public static Storage getStorageService(String gcpCredentials)
+  public static Storage getStorageService(CustomerConfigStorageGCSData gcsData)
       throws IOException, UnsupportedEncodingException {
+    String gcsCredentials = gcsData.gcsCredentialsJson;
     Credentials credentials =
-        GoogleCredentials.fromStream(new ByteArrayInputStream(gcpCredentials.getBytes("UTF-8")));
+        GoogleCredentials.fromStream(new ByteArrayInputStream(gcsCredentials.getBytes("UTF-8")));
     Storage storage = StorageOptions.newBuilder().setCredentials(credentials).build().getService();
     return storage;
   }
 
-  public static void deleteKeyIfExists(JsonNode data, String backupLocation) throws Exception {
-    String[] splitLocation = getSplitLocationValue(backupLocation);
+  @Override
+  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
+      throws Exception {
+    String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String bucketName = splitLocation[0];
     String objectPrefix = splitLocation[1];
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
-      String gcpCredentials = data.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
-      Storage storage = getStorageService(gcpCredentials);
+      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
       Boolean deleted = storage.delete(bucketName, keyLocation);
       if (!deleted) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
@@ -64,20 +70,22 @@ public class GCPUtil {
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
       }
-    } catch (Exception e) {
-      log.error("Error while deleting key object from bucket " + bucketName, e);
+    } catch (StorageException e) {
+      log.error("Error while deleting key object from bucket " + bucketName, e.getReason());
       throw e;
     }
   }
 
-  public static Boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
+  public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
+    if (CollectionUtils.isEmpty(locations)) {
+      return true;
+    }
     for (String configLocation : locations) {
       try {
         String[] splitLocation = getSplitLocationValue(configLocation);
         String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
         String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
-        String gcpCredentials = configData.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
-        Storage storage = getStorageService(gcpCredentials);
+        Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
         if (splitLocation.length == 1) {
           storage.list(bucketName);
         } else {
@@ -98,14 +106,14 @@ public class GCPUtil {
     return true;
   }
 
-  public static void deleteStorage(JsonNode data, List<String> backupLocations) throws Exception {
+  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
+      throws Exception {
     for (String backupLocation : backupLocations) {
       try {
         String[] splitLocation = getSplitLocationValue(backupLocation);
         String bucketName = splitLocation[0];
         String objectPrefix = splitLocation[1];
-        String gcpCredentials = data.get(GCS_CREDENTIALS_JSON_FIELDNAME).asText();
-        Storage storage = getStorageService(gcpCredentials);
+        Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
 
         List<StorageBatchResult<Boolean>> results = new ArrayList<>();
         StorageBatch storageBatch = storage.batch();
@@ -132,8 +140,8 @@ public class GCPUtil {
             }
           }
         }
-      } catch (Exception e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e);
+      } catch (StorageException e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e.getReason());
         throw e;
       }
     }

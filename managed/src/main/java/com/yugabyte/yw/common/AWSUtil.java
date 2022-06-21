@@ -2,39 +2,52 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.InstanceProfileCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
-public class AWSUtil {
+public class AWSUtil implements CloudUtil {
 
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
-  private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
-  private static final String AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
-  private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
+  public static final String AWS_DEFAULT_REGION = "us-east-1";
+  public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
 
   // This method is a way to check if given S3 config can extract objects.
-  public static Boolean canCredentialListObjects(JsonNode configData, List<String> locations) {
+  public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
+    if (CollectionUtils.isEmpty(locations)) {
+      return true;
+    }
     for (String location : locations) {
       try {
-        AmazonS3 s3Client = createS3Client(configData);
+        AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] bucketSplit = getSplitLocationValue(location);
         String bucketName = bucketSplit.length > 0 ? bucketSplit[0] : "";
         String prefix = bucketSplit.length > 1 ? bucketSplit[1] : "";
@@ -60,15 +73,16 @@ public class AWSUtil {
     return true;
   }
 
-  public static void deleteKeyIfExists(JsonNode configData, String backupLocation)
+  @Override
+  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
       throws Exception {
-    String[] splitLocation = getSplitLocationValue(backupLocation);
+    String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
     String bucketName = splitLocation[0];
     String objectPrefix = splitLocation[1];
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
-      AmazonS3 s3Client = createS3Client(configData);
+      AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
       ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, keyLocation);
       if (listObjectsResult.getKeyCount() == 0) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
@@ -78,8 +92,8 @@ public class AWSUtil {
         retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
       }
 
-    } catch (Exception e) {
-      log.error("Error while deleting key object from bucket " + bucketName, e);
+    } catch (AmazonS3Exception e) {
+      log.error("Error while deleting key object from bucket " + bucketName, e.getErrorMessage());
       throw e;
     }
   }
@@ -90,42 +104,43 @@ public class AWSUtil {
     return split;
   }
 
-  public static AmazonS3 createS3Client(JsonNode data) {
+  public static AmazonS3 createS3Client(CustomerConfigStorageS3Data s3Data)
+      throws AmazonS3Exception {
+    AmazonS3ClientBuilder s3ClientBuilder = AmazonS3Client.builder();
+    if (s3Data.isIAMInstanceProfile) {
+      s3ClientBuilder.withCredentials(new InstanceProfileCredentialsProvider(false));
+    } else {
+      String key = s3Data.awsAccessKeyId;
+      String secret = s3Data.awsSecretAccessKey;
+      boolean isPathStyleAccess = s3Data.isPathStyleAccess;
+      String endpoint = s3Data.awsHostBase;
+      AWSCredentials credentials = new BasicAWSCredentials(key, secret);
+      AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
 
-    String key = data.get(AWS_ACCESS_KEY_ID_FIELDNAME).asText();
-    String secret = data.get(AWS_SECRET_ACCESS_KEY_FIELDNAME).asText();
-    Boolean isPathStyleAccess =
-        data.has(AWS_PATH_STYLE_ACCESS) ? data.get(AWS_PATH_STYLE_ACCESS).asBoolean(false) : false;
-    String endpoint =
-        (data.get(AWS_HOST_BASE_FIELDNAME) != null
-                && !StringUtils.isBlank(data.get(AWS_HOST_BASE_FIELDNAME).textValue()))
-            ? data.get(AWS_HOST_BASE_FIELDNAME).textValue()
-            : null;
-    AWSCredentials credentials = new BasicAWSCredentials(key, secret);
-    if (!isPathStyleAccess || endpoint == null) {
-      AmazonS3Client client = new AmazonS3Client(credentials);
-      if (endpoint != null) {
-        client.setEndpoint(endpoint);
+      s3ClientBuilder.withCredentials(creds).withForceGlobalBucketAccessEnabled(true);
+
+      if (isPathStyleAccess) {
+        s3ClientBuilder.withPathStyleAccessEnabled(true);
       }
-      return client;
+      EndpointConfiguration endpointConfiguration = null;
+      if (StringUtils.isNotBlank(endpoint)) {
+        // Need to set default region because region-chaining may
+        // fail if correct environment variables not found.
+        endpointConfiguration = new EndpointConfiguration(endpoint, AWS_DEFAULT_REGION);
+      } else {
+        endpointConfiguration = new EndpointConfiguration(AWS_DEFAULT_ENDPOINT, AWS_DEFAULT_REGION);
+      }
+      s3ClientBuilder.withEndpointConfiguration(endpointConfiguration);
     }
-    AWSCredentialsProvider creds = new AWSStaticCredentialsProvider(credentials);
-    EndpointConfiguration endpointConfiguration = new EndpointConfiguration(endpoint, null);
-    AmazonS3 client =
-        AmazonS3Client.builder()
-            .withCredentials(creds)
-            .withForceGlobalBucketAccessEnabled(true)
-            .withPathStyleAccessEnabled(true)
-            .withEndpointConfiguration(endpointConfiguration)
-            .build();
-    return client;
+    return s3ClientBuilder.build();
   }
 
-  public static void deleteStorage(JsonNode configData, List<String> backupLocations)
+  @Override
+  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
       throws Exception {
     for (String backupLocation : backupLocations) {
       try {
-        AmazonS3 s3Client = createS3Client(configData);
+        AmazonS3 s3Client = createS3Client((CustomerConfigStorageS3Data) configData);
         String[] splitLocation = getSplitLocationValue(backupLocation);
         String bucketName = splitLocation[0];
         String objectPrefix = splitLocation[1];
@@ -143,16 +158,16 @@ public class AWSUtil {
               "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
           retrieveAndDeleteObjects(listObjectsResult, bucketName, s3Client);
         } while (nextContinuationToken != null);
-      } catch (Exception e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e);
+      } catch (AmazonS3Exception e) {
+        log.error(" Error in deleting objects at location " + backupLocation, e.getErrorMessage());
         throw e;
       }
     }
   }
 
-  public static void retrieveAndDeleteObjects(
+  public void retrieveAndDeleteObjects(
       ListObjectsV2Result listObjectsResult, String bucketName, AmazonS3 s3Client)
-      throws Exception {
+      throws AmazonS3Exception {
     List<S3ObjectSummary> objectSummary = listObjectsResult.getObjectSummaries();
     List<DeleteObjectsRequest.KeyVersion> objectKeys =
         objectSummary
