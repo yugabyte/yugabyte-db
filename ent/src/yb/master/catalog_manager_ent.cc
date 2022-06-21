@@ -2776,12 +2776,13 @@ void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>*
 
 Status CatalogManager::BackfillMetadataForCDC(
     scoped_refptr<TableInfo> table, rpc::RpcContext* rpc) {
-  const TableId& table_id = table->id();
+  TableId table_id;
   AlterTableRequestPB alter_table_req_pg_type;
   bool backfill_required = false;
   {
     SharedLock lock(mutex_);
     auto l = table->LockForRead();
+    table_id = table->id();
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!table->has_pg_type_oid()) {
         LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid";
@@ -2840,8 +2841,9 @@ Status CatalogManager::BackfillMetadataForCDC(
     AlterTableResponsePB alter_table_resp_pg_type;
     return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc);
   } else {
-    LOG_WITH_FUNC(INFO) << "found pgschema_name (" << table->pgschema_name()
-                        << ") and pg_type_oid, no backfilling required for table id: " << table_id;
+    LOG_WITH_FUNC(INFO)
+        << "found pgschema_name and pg_type_oid, no backfilling required for table id: "
+        << table_id;
     return Status::OK();
   }
 }
