@@ -50,8 +50,7 @@ public class SchedulerTest extends FakeDBApplication {
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
 
     scheduler =
-        new com.yugabyte.yw.scheduler.Scheduler(
-            mockActorSystem, mockExecutionContext, mockCommissioner);
+        new Scheduler(mockActorSystem, mockExecutionContext, mockCommissioner, mockTaskManager);
   }
 
   @Test
@@ -130,6 +129,32 @@ public class SchedulerTest extends FakeDBApplication {
 
     // 4 times for deleting expired backups and 1 time for creating backup, total 5 calls.
     verify(mockCommissioner, times(5)).submit(any(), any());
+  }
+
+  @Test
+  public void testSkipAlreadyRunningDeleteBackupTask() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup backup =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockTaskManager.isDeleteBackupTaskAlreadyPresent(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(true);
+    scheduler.scheduleRunner();
+    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(null, CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+
+    when(mockTaskManager.isDeleteBackupTaskAlreadyPresent(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(false);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    scheduler.scheduleRunner();
+    CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
+    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(CustomerTask.TaskType.Delete, task.getType());
+    verify(mockCommissioner, times(1)).submit(any(), any());
   }
 
   public static void setUniversePaused(boolean value, Universe universe) {

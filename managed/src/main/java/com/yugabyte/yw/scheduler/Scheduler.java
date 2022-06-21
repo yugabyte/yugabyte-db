@@ -29,6 +29,7 @@ import com.yugabyte.yw.commissioner.tasks.CreateBackup;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -70,11 +71,18 @@ public class Scheduler {
 
   private final Commissioner commissioner;
 
+  private final TaskInfoManager taskInfoManager;
+
   @Inject
-  Scheduler(ActorSystem actorSystem, ExecutionContext executionContext, Commissioner commissioner) {
+  Scheduler(
+      ActorSystem actorSystem,
+      ExecutionContext executionContext,
+      Commissioner commissioner,
+      TaskInfoManager taskInfoManager) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.commissioner = commissioner;
+    this.taskInfoManager = taskInfoManager;
   }
 
   public void start() {
@@ -284,6 +292,11 @@ public class Scheduler {
   private void runDeleteBackupTask(Customer customer, Backup backup) {
     if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
       log.warn("Cannot delete backup {} since it is in a progress state");
+      return;
+    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
+      log.warn(
+          "Cannot delete backup {} since a delete backup task is already present",
+          backup.backupUUID);
       return;
     }
     DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
