@@ -25,10 +25,11 @@ Yugabyte CDCSDK Server is an open source project that provides a streaming platf
 
 ### On this page
 
-* [Installation](#installation)
+* [Basic architecture](#basic-architecture)
+* [Quick start](#quick-start)
 * [Configuration](#configuration)
-* [HTTP Client](#http-client)
-* [Health checks](#health-checks)
+* [Record structure](#record-structure)
+* [Operations](#operations)
 
 ### Basic Architecture
 
