@@ -42,10 +42,10 @@ export const formatDuration = (milliseconds: number) => {
     }
   ];
 
-  if(!isDefinedNotNull(milliseconds)) return '-';
+  if (!isDefinedNotNull(milliseconds)) return '';
 
   if (milliseconds && !isFinite(milliseconds)) {
-    return 0;
+    return milliseconds.toString();
   }
 
   if (milliseconds === 0) {
@@ -65,4 +65,17 @@ export const formatDuration = (milliseconds: number) => {
       durationUnit.value > 0 ? `${durationUnit.value}${durationUnit.unit}` : ''
     )
     .join(' ')}`;
+};
+
+/**
+ * Wraps {@link formatDuration} with special formatting for lag metrics
+ */
+export const formatLagMetric = (milliseconds: number) => {
+  if (!isDefinedNotNull(milliseconds)) return '-';
+
+  if (milliseconds && !isFinite(milliseconds)) {
+    return 'Unreachable';
+  }
+
+  return formatDuration(milliseconds);
 };
