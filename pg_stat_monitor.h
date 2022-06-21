@@ -310,7 +310,7 @@ typedef struct pgssSharedState
 	Size				extent;				/* current extent of query file */
 	int64				n_writers;			/* number of active writers to query file */
 	pg_atomic_uint64	current_wbucket;
-	pg_atomic_uint64	prev_bucket_usec;
+	pg_atomic_uint64	prev_bucket_sec;
 	uint64				bucket_entry[MAX_BUCKETS];
 	char				bucket_start_time[MAX_BUCKETS][60];   	/* start time of the bucket */
 	LWLock				*errors_lock;		/* protects errors hashtable search/modification */
@@ -336,7 +336,7 @@ do { \
 		x->cur_median_usage = ASSUMED_MEDIAN_INIT; \
 		x->n_writers = 0; \
 		pg_atomic_init_u64(&x->current_wbucket, 0); \
-		pg_atomic_init_u64(&x->prev_bucket_usec, 0); \
+		pg_atomic_init_u64(&x->prev_bucket_sec, 0); \
 		memset(&x->bucket_entry, 0, MAX_BUCKETS * sizeof(uint64)); \
 } while(0)
 
