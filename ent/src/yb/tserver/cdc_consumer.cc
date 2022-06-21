@@ -18,6 +18,8 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
+
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_defaults.h"
@@ -122,6 +124,7 @@ Result<std::unique_ptr<CDCConsumer>> CDCConsumer::Create(
     cdc_consumer_thread_pool_builder.set_max_threads(FLAGS_cdc_consumer_handler_thread_pool_size);
   }
   RETURN_NOT_OK(cdc_consumer_thread_pool_builder.Build(&cdc_consumer->thread_pool_));
+
   return cdc_consumer;
 }
 
@@ -230,6 +233,22 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
     return;
   }
 
+  if (consumer_registry->enable_replicate_transaction_status_table() &&
+      !global_transaction_status_table_) {
+    auto global_transaction_status_table_name = client::YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+    auto global_transaction_status_table_res =
+        local_client_->client->OpenTable(global_transaction_status_table_name);
+    if (!global_transaction_status_table_res.ok()) {
+      // We could not open the transaction status table, so return without setting any in-memory
+      // state.
+      LOG(WARNING) << global_transaction_status_table_res.status();
+      cond_.notify_all();
+      return;
+    }
+    global_transaction_status_table_ = std::move(*global_transaction_status_table_res);
+  }
+
   cluster_config_version_.store(cluster_config_version, std::memory_order_release);
   producer_consumer_tablet_map_from_master_.clear();
   decltype(uuid_master_addrs_) old_uuid_master_addrs;
@@ -245,6 +264,9 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
 
   streams_with_local_tserver_optimization_.clear();
   stream_to_schema_version_.clear();
+
+    // Ensure that we're replicating the
+
   for (const auto& producer_map : DCHECK_NOTNULL(consumer_registry)->producer_map()) {
     const auto& producer_entry_pb = producer_map.second;
     if (producer_entry_pb.disable_stream()) {
@@ -286,6 +308,8 @@ void CDCConsumer::UpdateInMemoryState(const cdc::ConsumerRegistryPB* consumer_re
       }
     }
   }
+  enable_replicate_transaction_status_table_ =
+      consumer_registry->enable_replicate_transaction_status_table();
   cond_.notify_all();
 }
 
@@ -379,7 +403,9 @@ void CDCConsumer::TriggerPollForNewTablets() {
             local_client_,
             remote_clients_[uuid],
             this,
-            use_local_tserver);
+            use_local_tserver,
+            global_transaction_status_table_,
+            enable_replicate_transaction_status_table_);
         LOG_WITH_PREFIX(INFO) << Format("Start polling for producer tablet $0",
             entry.first.tablet_id);
         producer_pollers_map_[entry.first] = cdc_poller;

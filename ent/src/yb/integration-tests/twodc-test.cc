@@ -1365,6 +1365,23 @@ TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTableWithWrites) 
   ASSERT_EQ(commit_ht_producer, commit_ht_consumer);
 }
 
+TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionsWithoutApply) {
+  // This is a test that should only pass when we use the new intents format along with the txn
+  // status table. We do this by disabling replication of APPLY records and ensuring that we can
+  // still read records from the committed transaction.
+  FLAGS_enable_replicate_transaction_status_table = true;
+  auto tables = ASSERT_RESULT(SetUpWithParams({1}, {1}, 3, 1));
+
+  auto producer_table = tables[0];
+  auto consumer_table = tables[1];
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
+  auto txn = ASSERT_RESULT(CreateSessionWithTransaction(producer_client(), producer_txn_mgr()));
+  WriteIntents(1, 5, producer_client(), txn.first, tables[0]->name(), false);
+  ASSERT_OK(txn.second->CommitFuture().get());
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+}
+
 TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);

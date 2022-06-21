@@ -65,7 +65,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       const std::shared_ptr<CDCClient>& local_client,
       rpc::Rpcs* rpcs,
       std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
-      bool use_local_tserver) :
+      bool use_local_tserver,
+      client::YBTablePtr global_transaction_status_table,
+      bool enable_replicate_transaction_status_table) :
       cdc_consumer_(cdc_consumer),
       consumer_tablet_info_(consumer_tablet_info),
       producer_tablet_info_(producer_tablet_info),
@@ -74,7 +76,9 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
       write_handle_(rpcs->InvalidHandle()),
       apply_changes_clbk_(std::move(apply_changes_clbk)),
       use_local_tserver_(use_local_tserver),
-      all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")) {}
+      all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
+      global_transaction_status_table_(global_transaction_status_table),
+      enable_replicate_transaction_status_table_(enable_replicate_transaction_status_table) {}
 
   ~TwoDCOutputClient() {
     std::lock_guard<decltype(lock_)> l(lock_);
@@ -158,9 +162,13 @@ class TwoDCOutputClient : public cdc::CDCOutputClient {
   // Store the result of the lookup for all the tablets.
   yb::Result<std::vector<scoped_refptr<yb::client::internal::RemoteTablet>>> all_tablets_result_;
 
+  client::YBTablePtr global_transaction_status_table_;
+
   yb::MonoDelta timeout_ms_;
 
   std::unique_ptr<TwoDCWriteInterface> write_strategy_ GUARDED_BY(lock_);
+
+  bool enable_replicate_transaction_status_table_;
 };
 
 #define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) do { \
@@ -324,7 +332,22 @@ Status TwoDCOutputClient::ProcessRecord(const std::vector<std::string>& tablet_i
                                         const cdc::CDCRecordPB& record) {
   std::lock_guard<decltype(lock_)> l(lock_);
   for (const auto& tablet_id : tablet_ids) {
-    auto status = write_strategy_->ProcessRecord(tablet_id, record);
+    std::string status_tablet_id;
+    if (enable_replicate_transaction_status_table_ && record.has_transaction_state()) {
+      // This is an intent record and we want to use the txn status table, so get the status tablet
+      // for this txn id.
+      auto deadline = CoarseMonoClock::Now() +
+                      MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
+      status_tablet_id = VERIFY_RESULT(local_client_->client->LookupTabletByKeyFuture(
+          global_transaction_status_table_,
+          record.transaction_state().transaction_id(),
+          deadline).get())->tablet_id();
+    }
+    auto status = write_strategy_->ProcessRecord(ProcessRecordInfo {
+      .tablet_id = tablet_id,
+      .enable_replicate_transaction_status_table = enable_replicate_transaction_status_table_,
+      .status_tablet_id = status_tablet_id
+    }, record);
     if (!status.ok()) {
       error_status_ = status;
       return status;
@@ -542,10 +565,13 @@ std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     const std::shared_ptr<CDCClient>& local_client,
     rpc::Rpcs* rpcs,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
-    bool use_local_tserver) {
+    bool use_local_tserver,
+    client::YBTablePtr global_transaction_status_table,
+    bool enable_replicate_transaction_status_table) {
   return std::make_unique<TwoDCOutputClient>(
       cdc_consumer, consumer_tablet_info, producer_tablet_info, local_client, rpcs,
-      std::move(apply_changes_clbk), use_local_tserver);
+      std::move(apply_changes_clbk), use_local_tserver, global_transaction_status_table,
+      enable_replicate_transaction_status_table);
 }
 
 } // namespace enterprise

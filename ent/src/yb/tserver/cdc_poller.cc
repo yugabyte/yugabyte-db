@@ -12,6 +12,7 @@
 //
 
 #include "yb/tserver/cdc_poller.h"
+#include "yb/client/client_fwd.h"
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/twodc_output_client.h"
 
@@ -57,7 +58,9 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
                      const std::shared_ptr<CDCClient>& local_client,
                      const std::shared_ptr<CDCClient>& producer_client,
                      CDCConsumer* cdc_consumer,
-                     bool use_local_tserver) :
+                     bool use_local_tserver,
+                     client::YBTablePtr global_transaction_status_table,
+                     bool enable_replicate_transaction_status_table) :
     producer_tablet_info_(producer_tablet_info),
     consumer_tablet_info_(consumer_tablet_info),
     should_continue_polling_(std::move(should_continue_polling)),
@@ -72,7 +75,9 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
         local_client,
         rpcs,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1),
-        use_local_tserver)),
+        use_local_tserver,
+        global_transaction_status_table,
+        enable_replicate_transaction_status_table)),
     producer_client_(producer_client),
     thread_pool_(thread_pool),
     rpcs_(rpcs),
