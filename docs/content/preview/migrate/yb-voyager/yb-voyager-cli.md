@@ -56,13 +56,14 @@ yb_voyager export schema [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager export schema --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
-        --source-db-schema ${SOURCE_DB_SCHEMA}
+yb-voyager export schema --export-dir /path/to/yb/export/dir \
+        --source-db-type sourceDB \
+        --source-db-host localhost \
+        --source-db-user username \
+        --source-db-password password \
+        --source-db-name dbname \
+        --source-db-schema schemaName #Include schema name only for Oracle migrations.
+
 ```
 
 ### analyze-schema
@@ -80,13 +81,13 @@ yb_voyager analyze-schema [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager analyze-schema --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
-        --source-db-schema ${SOURCE_DB_SCHEMA} \
+yb-voyager analyze-schema --export-dir /path/to/yb/export/dir \
+        --source-db-type sourceDB \
+        --source-db-host localhost \
+        --source-db-user username \
+        --source-db-password password \
+        --source-db-name dbname \
+        --source-db-schema schemaName \ #Include schema name only for Oracle migrations.
         --output-format txt
 ```
 
@@ -105,13 +106,13 @@ yb_voyager export data [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager export data --export-dir ${EXPORT_DIR} \
-        --source-db-type ${SOURCE_DB_TYPE} \
-        --source-db-host ${SOURCE_DB_HOST} \
-        --source-db-user ${SOURCE_DB_USER} \
-        --source-db-password ${SOURCE_DB_PASSWORD} \
-        --source-db-name ${SOURCE_DB_NAME} \
-        --source-db-schema ${SOURCE_DB_SCHEMA}
+yb-voyager export data --export-dir /path/to/yb/export/dir \
+        --source-db-type sourceDB \
+        --source-db-host hostname \
+        --source-db-user username \
+        --source-db-password password \
+        --source-db-name dbname \
+        --source-db-schema schemaName #Include schema name only for Oracle migrations.
 ```
 
 ### import schema
@@ -129,11 +130,11 @@ yb_voyager import schema [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager import schema --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD:-''} \
-        --target-db-name ${TARGET_DB_NAME}
+yb-voyager import schema --export-dir /path/to/yb/export/dir \
+        --target-db-host hostname \
+        --target-db-user username \
+        --target-db-password password \
+        --target-db-name dbname
 ```
 
 ### import data
@@ -151,11 +152,13 @@ yb_voyager import data [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager import data --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD:-''} \
-        --target-db-name ${TARGET_DB_NAME}
+yb-voyager import data --export-dir /path/to/yb/export/dir \
+        --target-db-host hostname \
+        --target-db-user username \
+        --target-db-password password \
+        --target-db-name dbname \
+        --parallel-jobs connectionCount \
+        --batch-size size
 ```
 
 ### import data file
@@ -173,12 +176,12 @@ yb_voyager import data file [ <arguments> ... ]
 #### Example
 
 ```sh
-yb-voyager import data file --export-dir ${EXPORT_DIR} \
-        --target-db-host ${TARGET_DB_HOST} \
-        --target-db-port ${TARGET_DB_PORT} \
-        --target-db-user ${TARGET_DB_USER} \
-        --target-db-password ${TARGET_DB_PASSWORD:-''} \
-        --target-db-name ${TARGET_DB_NAME} \
+yb-voyager import data file --export-dir /path/to/yb/export/dir \
+        --target-db-host hostname \
+        --target-db-port port \
+        --target-db-user username \
+        --target-db-password password \
+        --target-db-name dbname \
         –-data-dir “/path/to/files/dir/” \
         --file-table-map “filename1:table1,filename2:table2” \
         --delimiter “|” \
@@ -197,7 +200,7 @@ Specifies the source database type (postrgresql, mysql or oracle).
 
 ### --source-db-host
 
-Specifies the host name of the machine on which the source database server is running.
+Specifies the domain name or IP address of the machine on which the source database server is running.
 
 ### --source-db-user
 
@@ -234,6 +237,16 @@ Specifies the password of the target database.
 ### --target-db-name
 
 Specifies the name of the target database.
+
+### --parallel-jobs
+
+Specifies the count to increase the number of connections.
+
+### --batch-size
+
+Specifies the number of records that the Export directory can contain.
+
+Default : 100,000
 
 ### –-data-dir
 

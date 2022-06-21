@@ -49,7 +49,9 @@ You can migrate data to any one of the three YugabyteDB [products](https://www.y
 
 A typical migration workflow using yb-voyager consists of the following steps:
 
-- [Setup yb-voyager](../yb-voyager/install-yb-voyager/#install-yb-voyager).
+- [Install yb-voyager](../yb-voyager/install-yb-voyager/#install-yb-voyager).
+- Prepare the [source](../yb-voyager/migrate-steps/#prepare-the-source-database) database.
+- Prepare the [target](../yb-voyager/migrate-steps/#prepare-the-target-database) database.
 - Convert the source database schema to PostgreSQL format using the [`yb-voyager export schema`](../yb-voyager/migrate-steps/#export-schema) command.
 - Generate a *Schema Analysis Report* using the [`yb-voyager analyze-schema`](../yb-voyager/migrate-steps/#analyze-schema) command. The report suggests changes to the PostgreSQL schema to make it appropriate for YugabyteDB.
 - [Manually](../yb-voyager/migrate-steps/#manually-edit-the-schema) change the exported schema as suggested in the Schema Analysis Report.
@@ -57,36 +59,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
 - Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](../yb-voyager/migrate-steps/#import-schema) command.
 - Import the data to the target YugabyteDB database using the [`yb-voyager import data`](../yb-voyager/migrate-steps/#import-data) command.
 
-```goat
-                                              .------------------.
-                                              |  Analysis        |
-                                              |                  |
-                                              | .--------------. |
-                                              | |Analyze schema| |
-                                              | .--.-----------. |
-.-------------------.    .---------------.    |    |      ^      |
-|                   |    |               |    |    v      |      |
-| Setup yb_voyager  .--->| Export schema .--->| .---------.----. |
-|                   |    |               |    | |Manual changes| |
-.---------.---------.    .---------.-----.    | .--------------. |
-                                              |                  |
-                                              .-------.----------.
-                                                      |
-                                                      v
-                                              .-------------.    .------------------.    .------------------.
-                                              |             |    |  Import          |    |                  |
-                                              | Export data .--->|                  .--->| Verify migration |
-                                              |             |    | .--------------. |    |                  |
-                                              .-----.-------.    | |Import schema | |    .------------------.
-                                                                 | .------.-------. |
-                                                                 |        |         |
-                                                                 |        v         |
-                                                                 | .--------------. |
-                                                                 | | Import data  | |
-                                                                 | .--------------. |
-                                                                 |                  |
-                                                                 .--------.---------.
-```
+![Migration workflow](/images/migrate/migration-workflow.png)
 
 <div class="row">
   <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
