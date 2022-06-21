@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -62,10 +63,16 @@ public class Scheduler {
 
   @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
+  private final TaskInfoManager taskInfoManager;
+
   @Inject
-  Scheduler(PlatformScheduler platformScheduler, Commissioner commissioner) {
+  Scheduler(
+      PlatformScheduler platformScheduler,
+      Commissioner commissioner,
+      TaskInfoManager taskInfoManager) {
     this.platformScheduler = platformScheduler;
     this.commissioner = commissioner;
+    this.taskInfoManager = taskInfoManager;
   }
 
   public void init() {
@@ -267,6 +274,11 @@ public class Scheduler {
   private void runDeleteBackupTask(Customer customer, Backup backup) {
     if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
       log.warn("Cannot delete backup {} since it is in a progress state", backup.backupUUID);
+      return;
+    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
+      log.warn(
+          "Cannot delete backup {} since a delete backup task is already present",
+          backup.backupUUID);
       return;
     }
     DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
