@@ -47,6 +47,9 @@ message TransactionStatePB {
 
   // Set of subtransaction IDs which are aborted.
   optional AbortedSubTransactionSetPB aborted = 7;
+
+  // For xcluster writes, the propagated commit ht from the source.
+  optional fixed64 external_commit_ht = 8;
 }
 
 message TruncatePB {
