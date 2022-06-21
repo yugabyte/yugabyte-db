@@ -61,9 +61,9 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   Oid tablespaceId,
 						   Oid matviewPgTableId);
 
-extern void YBCDropTable(Oid relationId);
+extern void YBCDropTable(Relation rel);
 
-extern void YBCTruncateTable(Relation rel);
+extern void YbTruncate(Relation rel);
 
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
@@ -78,7 +78,7 @@ extern void YBCCreateIndex(const char *indexName,
 						   Oid colocationId,
 						   Oid tablespaceId);
 
-extern void YBCDropIndex(Oid relationId);
+extern void YBCDropIndex(Relation index);
 
 extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
 										   int subcmds_size,

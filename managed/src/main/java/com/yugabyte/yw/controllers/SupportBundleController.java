@@ -72,14 +72,19 @@ public class SupportBundleController extends AuthenticatedController {
               universe.universeUUID));
     }
 
-    // Temporarily cannot create for onprem or k8s properly. Will result in empty directories
+    // Temporarily cannot create for k8s properly. Will result in empty directories
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
     Boolean k8s_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(K8S_ENABLED);
     Boolean onprem_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(ONPREM_ENABLED);
-    if ((cloudType == CloudType.onprem && !onprem_enabled)
-        || (cloudType == CloudType.kubernetes && !k8s_enabled)) {
+    if (cloudType == CloudType.onprem && !onprem_enabled) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot currently create support bundle for onprem or k8s clusters");
+          BAD_REQUEST,
+          "Creating support bundle for on-prem universes is not enabled. "
+              + "Please set onprem_enabled=true to create support bundle");
+    }
+    if (cloudType == CloudType.kubernetes && !k8s_enabled) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cannot currently create support bundle for k8s clusters");
     }
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);

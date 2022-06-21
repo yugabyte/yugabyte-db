@@ -419,6 +419,9 @@ Status Heartbeater::Thread::TryHeartbeat() {
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
   req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
+  if (server_->has_faulty_drive()) {
+    req.set_faulty_drive(true);
+  }
 
   // Include the hybrid time of this tablet server in the heartbeat.
   auto* hybrid_clock = dynamic_cast<server::HybridClock*>(server_->Clock());

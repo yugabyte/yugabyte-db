@@ -309,6 +309,12 @@ void PerTableLoadState::UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc
     }
   }
 
+  // Mark as blacklisted if ts has faulty drive.
+  if (!is_blacklisted && ts_meta.descriptor->has_faulty_drive()) {
+    blacklisted_servers_.insert(ts_uuid);
+    is_blacklisted = true;
+  }
+
   // Mark as blacklisted leader if it matches.
   bool is_leader_blacklisted = false;
   for (const auto& hp : leader_blacklist_.hosts()) {

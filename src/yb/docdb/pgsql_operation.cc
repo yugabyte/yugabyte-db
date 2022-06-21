@@ -80,6 +80,10 @@ DEFINE_uint64(
     ysql_packed_row_size_limit, 0,
     "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
 
+DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
+                 "Whether to show less details on ybctid corruption error status message.  Useful "
+                 "during tests that require consistent output.");
+
 namespace yb {
 namespace docdb {
 
@@ -1046,11 +1050,15 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
-        return STATUS_FORMAT(
-            Corruption,
-            "ybctid $0 not found in indexed table. index table id is $1",
-            doc_key,
-            request_.index_request().table_id());
+        if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
+          return STATUS(Corruption, "ybctid not found in indexed table");
+        } else {
+          return STATUS_FORMAT(
+              Corruption,
+              "ybctid $0 not found in indexed table. index table id is $1",
+              doc_key,
+              request_.index_request().table_id());
+        }
       }
       row.Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, &row));

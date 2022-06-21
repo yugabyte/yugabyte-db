@@ -561,6 +561,29 @@ public enum AlertTemplate {
           .thresholdConditionReadOnly(true)
           .build()),
 
+  DB_DRIVE_FAILURE(
+      "DB drive failure",
+      "TServer detected drive failure",
+      "count by (node_prefix) (drive_fault{node_prefix=\"__nodePrefix__\","
+          + " export_type=\"tserver_export\"}) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB detected {{ $value | printf \\\"%.0f\\\" }} drive failure(s)"
+          + " for universe '{{ $labels.source_name }}':\n\\n"
+          + "{{ range query \\\"drive_fault{node_prefix='{{ $labels.node_prefix }}',"
+          + " export_type='tserver_export'}\\\" }}\n"
+          + "  {{ .Labels.exported_instance }}:{{ .Labels.drive_path }}\\n"
+          + "{{ end }}",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("drive(s)")
+          .thresholdConditionReadOnly(true)
+          .thresholdReadOnly(true)
+          .build()),
+
   DB_WRITE_READ_TEST_ERROR(
       "DB write/read test error",
       "Failed to perform test write/read YSQL operation",

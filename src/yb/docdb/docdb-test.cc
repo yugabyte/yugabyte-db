@@ -486,6 +486,11 @@ class DocDBTestQl : public DocDBTest {
       const ReadHybridTime& read_time = ReadHybridTime::Max()) override {
     GetSubDocQl(doc_db(), subdoc_key, result, found_result, txn_op_context, read_time);
   }
+ protected:
+  template<typename T>
+  void TestTableTombstone(T id);
+  template<typename T>
+  void TestTableTombstoneCompaction(T id);
 };
 
 class DocDBTestRedis : public DocDBTest {
@@ -672,29 +677,60 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   )#", doc_from_rocksdb.ToString());
 }
 
-TEST_F(DocDBTestQl, ColocatedTableTombstoneTest) {
-  constexpr ColocationId colocation_id(0x4001);
+namespace {
+
+void SetId(DocKey* doc_key, ColocationId id) {
+  doc_key->set_colocation_id(id);
+}
+
+void SetId(DocKey* doc_key, const Uuid& id) {
+  doc_key->set_cotable_id(id);
+}
+
+std::string IdToString(ColocationId id) {
+  return Format("ColocationId=$0", std::to_string(id));
+}
+
+std::string IdToString(const Uuid& id) {
+  return Format("CoTableId=$0", id.ToString());
+}
+
+} // namespace
+
+// Test that table-level tombstone properly hides records.
+template<typename T>
+void DocDBTestQl::TestTableTombstone(T id) {
   DocKey doc_key_1(KeyEntryValues("mydockey", kIntKey1));
-  doc_key_1.set_colocation_id(colocation_id);
+  SetId(&doc_key_1, id);
   DocKey doc_key_2(KeyEntryValues("mydockey", kIntKey2));
-  doc_key_2.set_colocation_id(colocation_id);
+  SetId(&doc_key_2, id);
   ASSERT_OK(SetPrimitive(
       doc_key_1.Encode(), QLValue::Primitive(1), 1000_usec_ht));
   ASSERT_OK(SetPrimitive(
       doc_key_2.Encode(), QLValue::Primitive(2), 1000_usec_ht));
 
   DocKey doc_key_table;
-  doc_key_table.set_colocation_id(colocation_id);
+  SetId(&doc_key_table, id);
   ASSERT_OK(DeleteSubDoc(
       doc_key_table.Encode(), 2000_usec_ht));
 
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-      SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 2000 }]) -> DEL
-      SubDocKey(DocKey(ColocationId=16385, [], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> 1
-      SubDocKey(DocKey(ColocationId=16385, [], ["mydockey", 789123]), [HT{ physical: 1000 }]) -> 2
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+      SubDocKey(DocKey($0, [], []), [HT{ physical: 2000 }]) -> DEL
+      SubDocKey(DocKey($0, [], ["mydockey", 123456]), [HT{ physical: 1000 }]) -> 1
+      SubDocKey(DocKey($0, [], ["mydockey", 789123]), [HT{ physical: 1000 }]) -> 2
+      )#",
+      IdToString(id)));
   VerifyDocument(doc_key_1, 4000_usec_ht, "");
   VerifyDocument(doc_key_1, 1500_usec_ht, "1");
+}
+
+TEST_F(DocDBTestQl, ColocatedTableTombstone) {
+  TestTableTombstone<ColocationId>(0x4001);
+}
+
+TEST_F(DocDBTestQl, YsqlSystemTableTombstone) {
+  TestTableTombstone<const Uuid&>(
+      ASSERT_RESULT(Uuid::FromString("11111111-2222-3333-4444-555555555555")));
 }
 
 TEST_P(DocDBTestWrapper, HistoryCompactionFirstRowHandlingRegression) {
@@ -2157,9 +2193,9 @@ SubDocKey(DocKey([], ["k1"]), ["s3"; HT{ physical: 2000 }]) -> "v3"; ttl: 0.000s
       )#");
 }
 
-// Test table tombstones for colocated tables.
-TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
-  constexpr ColocationId colocation_id(0x4001);
+// Test that table-level tombstone is properly compacted.
+template<typename T>
+void DocDBTestQl::TestTableTombstoneCompaction(T id) {
   HybridTime t = 1000_usec_ht;
 
   // Simulate SQL:
@@ -2168,7 +2204,7 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     DocKey doc_key;
     std::string range_key_str = Format("r$0", i);
 
-    doc_key.set_colocation_id(colocation_id);
+    SetId(&doc_key, id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(KeyEntryValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2178,16 +2214,17 @@ TEST_P(DocDBTestWrapper, TableTombstoneCompaction) {
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Simulate SQL (set table tombstone):
   //   TRUNCATE TABLE t;
   {
-    DocKey doc_key(colocation_id);
+    DocKey doc_key(id);
     ASSERT_OK(SetPrimitive(
         DocPath(doc_key.Encode()),
         ValueRef(ValueEntryType::kTombstone),
@@ -2195,12 +2232,13 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Simulate SQL:
   //  INSERT INTO t VALUES ("r1"), ("r2");
@@ -2208,7 +2246,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     DocKey doc_key;
     std::string range_key_str = Format("r$0", i);
 
-    doc_key.set_colocation_id(colocation_id);
+    SetId(&doc_key, id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(KeyEntryValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2218,14 +2256,15 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Simulate SQL:
   //  DELETE FROM t WHERE c = "r2";
@@ -2233,7 +2272,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     DocKey doc_key;
     std::string range_key_str = Format("r$0", 2);
 
-    doc_key.set_colocation_id(colocation_id);
+    SetId(&doc_key, id);
     doc_key.ResizeRangeComponents(1);
     doc_key.SetRangeComponent(KeyEntryValue(range_key_str), 0 /* idx */);
     ASSERT_OK(SetPrimitive(
@@ -2243,21 +2282,32 @@ SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physic
     t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], []), [HT{ physical: 4000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
-SubDocKey(DocKey(ColocationId=16385, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], []), [HT{ physical: 4000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [HT{ physical: 7000 }]) -> DEL
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 6000 }]) -> null
+SubDocKey(DocKey($0, [], ["r2"]), [SystemColumnId(0); HT{ physical: 2000 }]) -> null
+SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> null
+      )#",
+      IdToString(id)));
 
   // Major compact.
   FullyCompactHistoryBefore(10000_usec_ht);
-  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
-SubDocKey(DocKey(ColocationId=16385, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
-      )#");
+  ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
+SubDocKey(DocKey($0, [], ["r1"]), [SystemColumnId(0); HT{ physical: 5000 }]) -> null
+      )#",
+      IdToString(id)));
+}
+
+TEST_F(DocDBTestQl, ColocatedTableTombstoneCompaction) {
+  TestTableTombstoneCompaction<ColocationId>(0x5678);
+}
+
+TEST_F(DocDBTestQl, YsqlSystemTableTombstoneCompaction) {
+  TestTableTombstoneCompaction<const Uuid&>(
+      ASSERT_RESULT(Uuid::FromString("66666666-7777-8888-9999-000000000000")));
 }
 
 TEST_P(DocDBTestWrapper, MinorCompactionNoDeletions) {

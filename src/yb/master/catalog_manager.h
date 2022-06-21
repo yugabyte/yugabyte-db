@@ -101,6 +101,12 @@ template<class T>
 class AtomicGauge;
 
 #define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+
+#define VERIFY_NAMESPACE_FOUND(expr, resp) \
+  RESULT_CHECKER_HELPER( \
+      expr, \
+      if (!__result.ok()) { return SetupError((resp)->mutable_error(), __result.status()); });
+
 namespace pgwrapper {
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
@@ -798,7 +804,8 @@ class CatalogManager :
       const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
 
   Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
-      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids);
+      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids)
+      REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();

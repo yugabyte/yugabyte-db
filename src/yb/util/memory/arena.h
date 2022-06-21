@@ -50,6 +50,7 @@
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
+#include "yb/util/debug/lock_debug.h"
 #include "yb/util/memory/arena_fwd.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/slice.h"
@@ -63,13 +64,8 @@ struct ThreadSafeArenaTraits {
 
   template<class T>
   struct MakeAtomic {
-    typedef std::atomic<T> type;
+    using type = std::atomic<T>;
   };
-
-  template<class T>
-  static T AcquireLoad(std::atomic<T>* input) {
-    return input->load(std::memory_order_acquire);
-  }
 
   template<class T>
   static void StoreRelease(const T& t, std::atomic<T>* out) {
@@ -83,19 +79,13 @@ struct ThreadSafeArenaTraits {
 };
 
 struct ArenaTraits {
-  typedef uint8_t* pointer;
-  // For non-threadsafe, we don't need any real locking.
-  typedef boost::signals2::dummy_mutex mutex_type;
+  using pointer = uint8_t*;
+  using mutex_type = SingleThreadedMutex;
 
   template<class T>
   struct MakeAtomic {
-    typedef T type;
+    using type = SingleThreadedAtomic<T>;
   };
-
-  template<class T>
-  static T AcquireLoad(T* input) {
-    return *input;
-  }
 
   template<class T>
   static void StoreRelease(const T& t, T* out) {
@@ -247,20 +237,20 @@ class ArenaBase {
   // Load the current component, with "Acquire" semantics (see atomicops.h)
   // if the arena is meant to be thread-safe.
   inline Component* AcquireLoadCurrent() {
-    return Traits::AcquireLoad(&current_);
+    return current_.load(std::memory_order_acquire);
   }
 
   // Store the current component, with "Release" semantics (see atomicops.h)
   // if the arena is meant to be thread-safe.
   inline void ReleaseStoreCurrent(Component* c) {
-    return Traits::StoreRelease(c, &current_);
+    return current_.store(c, std::memory_order_release);
   }
 
   BufferAllocator* const buffer_allocator_;
 
   // The current component to allocate from.
   // Use AcquireLoadCurrent and ReleaseStoreCurrent to load/store.
-  typename Traits::template MakeAtomic<Component*>::type current_ = {nullptr};
+  typename Traits::template MakeAtomic<Component*>::type current_{nullptr};
   const size_t max_buffer_size_;
   size_t arena_footprint_ = 0;
 

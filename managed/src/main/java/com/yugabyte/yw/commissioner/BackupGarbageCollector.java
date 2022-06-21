@@ -1,8 +1,6 @@
 package com.yugabyte.yw.commissioner;
 
-import akka.actor.ActorSystem;
 import com.amazonaws.SDKGlobalConfiguration;
-import com.cronutils.utils.VisibleForTesting;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
@@ -10,13 +8,13 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.AWSUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -24,23 +22,17 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
 
 @Singleton
 @Slf4j
 public class BackupGarbageCollector {
 
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final TableManagerYb tableManagerYb;
 
@@ -52,8 +44,6 @@ public class BackupGarbageCollector {
 
   private static final String YB_BACKUP_GARBAGE_COLLECTOR_INTERVAL = "yb.backupGC.gc_run_interval";
 
-  private AtomicBoolean running = new AtomicBoolean(false);
-
   private static final String AZ = Util.AZ;
   private static final String GCS = Util.GCS;
   private static final String S3 = Util.S3;
@@ -61,30 +51,22 @@ public class BackupGarbageCollector {
 
   @Inject
   public BackupGarbageCollector(
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       CustomerConfigService customerConfigService,
       RuntimeConfigFactory runtimeConfigFactory,
       TableManagerYb tableManagerYb,
       BackupUtil backupUtil) {
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.customerConfigService = customerConfigService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.tableManagerYb = tableManagerYb;
     this.backupUtil = backupUtil;
   }
 
-  @VisibleForTesting
-  public void setRunningState(Boolean state) {
-    running.compareAndSet(!state, state);
-  }
-
   public void start() {
     Duration gcInterval = this.gcRunInterval();
-    this.actorSystem
-        .scheduler()
-        .schedule(Duration.ZERO, gcInterval, this::scheduleRunner, this.executionContext);
+    platformScheduler.schedule(
+        getClass().getSimpleName(), Duration.ZERO, gcInterval, this::scheduleRunner);
   }
 
   private Duration gcRunInterval() {
@@ -94,11 +76,6 @@ public class BackupGarbageCollector {
   }
 
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous Backup Garbage Collector still running");
-      return;
-    }
-
     log.info("Running Backup Garbage Collector");
     try {
       List<Customer> customersList = Customer.getAll();
@@ -137,8 +114,6 @@ public class BackupGarbageCollector {
           });
     } catch (Exception e) {
       log.error("Error running backup garbage collector", e);
-    } finally {
-      running.set(false);
     }
   }
 

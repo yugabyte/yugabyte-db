@@ -180,6 +180,9 @@ message TSHeartbeatRequestPB {
   reserved 13;
 
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
+
+  // Tablet server has at least one faulty drive.
+  optional bool faulty_drive = 15;
 }
 
 message TSHeartbeatResponsePB {

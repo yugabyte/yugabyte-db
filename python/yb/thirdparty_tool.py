@@ -108,6 +108,8 @@ SHA_FOR_LOCAL_CHECKOUT_KEY = 'sha_for_local_checkout'
 # Skip these problematic tags.
 BROKEN_TAGS = set(['v20210907234210-47a70bc7dc-centos7-x86_64-linuxbrew-gcc5'])
 
+SHA_HASH = re.compile(r'^[0-9a-f]{40}$')
+
 
 def get_archive_name_from_tag(tag: str) -> str:
     return f'yugabyte-db-thirdparty-{tag}.tar.gz'
@@ -157,9 +159,9 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
     url: str
     branch_name: Optional[str]
 
-    def __init__(self, github_release: GitRelease) -> None:
+    def __init__(self, github_release: GitRelease, target_commitish: Optional[str] = None) -> None:
         self.github_release = github_release
-        self.sha = self.github_release.target_commitish
+        self.sha = target_commitish or self.github_release.target_commitish
 
         tag = self.github_release.tag_name
         tag_match = TAG_RE.match(tag)
@@ -436,6 +438,10 @@ class MetadataUpdater:
         for release in releases:
             sha: str = release.target_commitish
             assert(isinstance(sha, str))
+
+            if SHA_HASH.match(sha) is None:
+                sha = repo.get_commit(sha).sha
+
             tag_name = release.tag_name
             if len(tag_name.split('-')) <= 2:
                 logging.debug(f"Skipping release tag: {tag_name} (old format, too few components)")
@@ -445,7 +451,7 @@ class MetadataUpdater:
                 logging.info(f'Skipping tag {tag_name}, does not match the filter')
                 continue
 
-            yb_dep_release = GitHubThirdPartyRelease(release)
+            yb_dep_release = GitHubThirdPartyRelease(release, target_commitish=sha)
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
                 logging.debug(
                     f"Skipping release tag: {tag_name} (does not match version {yb_version}")
@@ -627,16 +633,6 @@ def get_third_party_release(
         architecture = local_sys_conf().architecture
 
     needed_compiler_type = compiler_type
-    if compiler_type == 'gcc11' and os_type == 'almalinux8' and architecture == 'x86_64':
-        # A temporary workaround for https://github.com/yugabyte/yugabyte-db/issues/12429
-        # Strictly speaking, we don't have to build third-party dependencies with the same compiler
-        # as we build YugabyteDB code with, unless we want to use advanced features like LTO where
-        # the "bitcode" format files of object files being linked need to match, and they may differ
-        # across different compiler versions. Another potential issue is libstdc++ versioning.
-        # We don't want to end up linking two different versions of libstdc++.
-        #
-        # TODO: use a third-party archive built with GCC 10 (and ideally with GCC 11 itself).
-        needed_compiler_type = 'gcc9'
 
     candidates: List[Any] = [
         archive for archive in available_archives

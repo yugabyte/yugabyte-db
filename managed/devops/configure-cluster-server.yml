@@ -18,6 +18,3 @@
     - role: install_package
       symlink_folders: "{{ yb_process_type | default(['master', 'tserver']) }}"
       when: package is defined
-
-    - role: configure-ybc-server
-      when: configure_ybc

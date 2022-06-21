@@ -24,22 +24,18 @@ npm run build
 tar cfz build.tgz build/*
 cd ..
 
-mkdir -p bin
-mv $UIDIR/build.tgz $BUILDDIR
-
-cd $BUILDDIR/
+mv $UIDIR/build.tgz $APISERVERDIR
+cd $APISERVERDIR
 mkdir -p ui
 tar -xf build.tgz -C ui --strip-components 1
 rm -rf build.tgz build
-cd ..
-
-cd $APISERVERDIR
 go build -o yugabyted-ui
 cd ../../..
 
+mkdir -p $BUILDDIR
 mv $APISERVERDIR/yugabyted-ui $BUILDDIR/
 
-if [[ -f "$BUILDDIR/yugabyted-ui" && -d "$BUILDDIR/ui" ]] 
+if [ -f "$BUILDDIR/yugabyted-ui" ]
 then
     echo "Yugabyted UI Binary generated successfully in the bin/ directory."
 else

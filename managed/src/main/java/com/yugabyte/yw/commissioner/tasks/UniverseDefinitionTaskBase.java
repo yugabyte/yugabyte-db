@@ -18,7 +18,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -380,6 +379,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       int iter = 0;
       boolean isYSQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
       boolean isYCQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL;
+      boolean isYEDIS = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYEDIS;
       for (NodeDetails node : nodesInCluster) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           if (node.nodeName != null) {
@@ -398,6 +398,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         node.isYsqlServer = isYSQL;
         node.isYqlServer = isYCQL;
+        node.isRedisServer = isYEDIS;
       }
     }
 
@@ -739,41 +740,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  /**
-   * Creates a task list to start the yb-controller on the set of passed in nodes and adds it to the
-   * task queue.
-   *
-   * @param nodes : a collection of nodes that need to be created
-   */
-  public SubTaskGroup createStartYbcTasks(Collection<NodeDetails> nodes) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
-    for (NodeDetails node : nodes) {
-      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
-      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
-      // Add the node name.
-      params.nodeName = node.nodeName;
-      // Add the universe uuid.
-      params.universeUUID = taskParams().universeUUID;
-      // Add the az uuid.
-      params.azUuid = node.azUuid;
-      // The service and the command we want to run.
-      params.process = "yb-controller";
-      params.command = "start";
-      params.placementUuid = node.placementUuid;
-      // Set the InstanceType
-      params.instanceType = node.cloudInfo.instance_type;
-      params.useSystemd = userIntent.useSystemd;
-      // Create the Ansible task to get the server info.
-      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
-      task.initialize(params);
-      // Add it to the task list.
-      subTaskGroup.addSubTask(task);
-    }
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup =
@@ -957,7 +923,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-      params.ybcPackagePath = userIntent.ybcPackagePath;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1524,21 +1489,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Creates subtasks to start yb-controller processes on the nodes.
-   *
-   * @param nodesToBeStarted nodes on which yb-controller processes are to be started.
-   */
-  public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted) {
-    // Create Start yb-controller tasks for non-systemd only
-    if (!taskParams().getPrimaryCluster().userIntent.useSystemd) {
-      createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    // Wait for yb-controller to be responsive on each node.
-    createWaitForYbcServerTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-  }
-
-  /**
    * Updates a master node with master addresses. It can happen before the master process is started
    * or later.
    *
@@ -1649,9 +1599,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
+    return getAnsibleConfigureServerParams(
+        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        node,
+        processType,
+        type,
+        taskSubType);
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent =
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;

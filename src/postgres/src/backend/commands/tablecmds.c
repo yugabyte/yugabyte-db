@@ -1833,7 +1833,7 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		if (IsYBRelation(rel))
 		{
 			// Call YugaByte API to truncate tables.
-			YBCTruncateTable(rel);
+			YbTruncate(rel);
 		}
 		else if (rel->rd_createSubid == mySubid ||
 				 rel->rd_newRelfilenodeSubid == mySubid)
@@ -7753,9 +7753,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	MemoryContext oldcxt, per_tup_cxt;
 	ObjectAddress result = InvalidObjectAddress, address;
 
-	YBCPgTableDesc       yb_table_desc;
-	YBCPgTableProperties yb_table_props;
-
 	old_relid = RelationGetRelid(*mutable_rel);
 
 	constr = RelationGetDescr(*mutable_rel)->constr;
@@ -7775,8 +7772,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		elog(ERROR, "adding primary key to a table with rules "
 		            "is not yet implemented");
 
-	YbGetTableDescAndProps(old_relid, false, &yb_table_desc, &yb_table_props);
-
 	/*
 	 * TODO: This works as a sanity check for now, but after we support inheritance
 	 *       we'd need to check for the presence of actual children.
@@ -7788,11 +7783,14 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		elog(ERROR, "adding primary key to a table having children tables "
 		            "is not yet implemented");
 
+	YbLoadTablePropertiesIfNeeded(*mutable_rel, false /* allow_missing */);
+
 	/*
 	 * At this point we're already sure that the table has no explicit PK -
 	 * meaning it's PK has to be (ybctid HASH), or (ybctid ASC) for colocated table.
 	 */
-	Assert(yb_table_props.is_colocated || yb_table_props.num_hash_key_columns == 1);
+	Assert((*mutable_rel)->yb_table_properties->is_colocated ||
+		   (*mutable_rel)->yb_table_properties->num_hash_key_columns == 1);
 
 	/* We should have at least one index parameter. */
 	Assert(stmt->indexParams->length > 0);
@@ -7833,6 +7831,12 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * -------
 	 * Create a replacement table with a correct PK.
 	 */
+
+	/*
+	 * Previous calls to CommandCounterIncrement have discarded
+	 * yb_table_properties, so we fetch it again.
+	 */
+	YbLoadTablePropertiesIfNeeded(*mutable_rel, false /* allow_missing */);
 
 	create_stmt = makeNode(CreateStmt);
 	create_stmt->relation      = makeRangeVar(pstrdup(namespace_name),
@@ -7893,7 +7897,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 			 * Default ordering for the first PK element is hash in
 			 * non-colocated case.
 			 */
-			is_range_pk = yb_table_props.is_colocated;
+			is_range_pk = (*mutable_rel)->yb_table_properties->is_colocated;
 			break;
 		case SORTBY_USING:
 			elog(ERROR, "USING is not allowed in primary key");
@@ -7907,11 +7911,11 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * It might come in handy if once we start supporting DROP PK as well.
 	 * In case we define a range primary key though, we discard this.
 	 */
-	if (!yb_table_props.is_colocated && !is_range_pk)
+	if (!(*mutable_rel)->yb_table_properties->is_colocated && !is_range_pk)
 	{
 		create_stmt->split_options = makeNode(OptSplit);
 		create_stmt->split_options->split_type   = NUM_TABLETS;
-		create_stmt->split_options->num_tablets  = yb_table_props.num_tablets;
+		create_stmt->split_options->num_tablets  = (*mutable_rel)->yb_table_properties->num_tablets;
 		create_stmt->split_options->split_points = NULL;
 	}
 

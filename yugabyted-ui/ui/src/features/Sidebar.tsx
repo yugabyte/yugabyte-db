@@ -228,7 +228,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         <NavLinkWithDisable
           disabled={isDisabled}
           to={`/cluster/tabOverview`}
-          isActive={(_, location) => /\/a\/.+\/p\/.+\/clusters/.test(location.pathname)}
+          isActive={(_, location) => /^\/cluster/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
           data-testid="SidebarLinkClusters"
@@ -241,7 +241,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         <NavLinkWithDisable
           disabled={isDisabled}
           to={`/performance/metrics`}
-          isActive={(_, location) => /\/a\/.+\/p\/.+\/clusters/.test(location.pathname)}
+          isActive={(_, location) => /^\/performance/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
           data-testid="SidebarLinkClusters"
@@ -254,8 +254,8 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         {isAlertsEnabled && (
           <NavLinkWithDisable
             disabled={isDisabled}
-            to={`${url}/p/${projectId}/alerts`}
-            isActive={(_, location) => /\/a\/.+\/p\/.+\/alerts/.test(location.pathname)}
+            to={`/alerts`}
+            isActive={(_, location) => /^\/alerts/.test(location.pathname)}
             className={classes.link}
             activeClassName={classes.linkActive}
             data-testid="alertsPageNav"
@@ -300,7 +300,8 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </div>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`${url}/admin`}
+          to={`/admin`}
+          isActive={(_, location) => /^\/admin/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
           data-testid="SidebarLinkAdmin"

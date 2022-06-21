@@ -815,6 +815,30 @@ Result<NamespaceId> CDCServiceImpl::GetNamespaceId(const std::string& ns_name) {
   return namespace_info_resp.namespace_().id();
 }
 
+Result<EnumOidLabelMap> CDCServiceImpl::GetEnumMapFromCache(const NamespaceName& ns_name) {
+  {
+    yb::SharedLock<decltype(mutex_)> l(mutex_);
+    if (enumlabel_cache_.find(ns_name) != enumlabel_cache_.end()) {
+      return enumlabel_cache_.at(ns_name);
+    }
+  }
+  return UpdateCacheAndGetEnumMap(ns_name);
+}
+
+Result<EnumOidLabelMap> CDCServiceImpl::UpdateCacheAndGetEnumMap(const NamespaceName& ns_name) {
+  std::lock_guard<decltype(mutex_)> l(mutex_);
+  if (enumlabel_cache_.find(ns_name) == enumlabel_cache_.end()) {
+    RETURN_NOT_OK(UpdateEnumMapInCacheUnlocked(ns_name));
+  }
+  return enumlabel_cache_.at(ns_name);
+}
+
+Status CDCServiceImpl::UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) {
+  EnumOidLabelMap enum_oid_label_map = VERIFY_RESULT(client()->GetPgEnumOidLabelMap(ns_name));
+  enumlabel_cache_[ns_name] = enum_oid_label_map;
+  return Status::OK();
+}
+
 Status CDCServiceImpl::CreateCDCStreamForNamespace(
     const CreateCDCStreamRequestPB* req,
     CreateCDCStreamResponsePB* resp,
@@ -892,6 +916,11 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
     }
     stream_ids.push_back(std::move(stream_id));
     table_ids.push_back(table_iter.table_id());
+  }
+
+  {
+    std::lock_guard<decltype(mutex_)> l(mutex_);
+    RETURN_NOT_OK(UpdateEnumMapInCacheUnlocked(req->namespace_name()));
   }
 
   // Add stream to cache.
@@ -1008,11 +1037,6 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   auto session = client()->NewSession();
   session->SetDeadline(deadline);
 
-  if (record->source_type == CDCSDK) {
-    RETURN_NOT_OK_SET_CODE(
-        impl_->CheckStreamActive(producer_tablet), CDCError(CDCErrorPB::INTERNAL_ERROR));
-    impl_->UpdateActiveTime(producer_tablet);
-  }
   RETURN_NOT_OK_SET_CODE(
       UpdateCheckpoint(
           producer_tablet, checkpoint, checkpoint, session, GetCurrentTimeMicros(), true),
@@ -1267,9 +1291,18 @@ void CDCServiceImpl::GetChanges(const GetChangesRequestPB* req,
     std::string commit_timestamp;
     OpId last_streamed_op_id;
     auto cached_schema = impl_->GetOrAddSchema(producer_tablet, req->need_schema_info());
+    auto namespace_name = tablet_peer->tablet()->metadata()->namespace_name();
+
+    auto enum_map_result = GetEnumMapFromCache(namespace_name);
+
+    if (!enum_map_result.ok()) {
+      RPC_STATUS_RETURN_ERROR(
+          enum_map_result.status(), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+    }
+
     s = cdc::GetChangesForCDCSDK(
         req->stream_id(), req->tablet_id(), cdc_sdk_op_id, record, tablet_peer, mem_tracker,
-        &msgs_holder, resp, &commit_timestamp, &cached_schema,
+        *enum_map_result, &msgs_holder, resp, &commit_timestamp, &cached_schema,
         &last_streamed_op_id, &last_readable_index, get_changes_deadline);
 
     impl_->UpdateCDCStateMetadata(
@@ -1633,13 +1666,27 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     }
 
     VLOG(1) << "stream_id: " << stream_id << ", tablet_id: " << tablet_id
-            << ", checkpoint: " << checkpoint << ", last replicated time: "
-            << last_replicated_time_str;
+            << ", checkpoint: " << checkpoint
+            << ", last replicated time: " << last_replicated_time_str;
+
+    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
+    if (checkpoint == OpId::Max().ToString()) {
+      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
+    }
 
     auto get_stream_metadata = GetStream(stream_id);
     if (!get_stream_metadata.ok()) {
       LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
                    << get_stream_metadata.status();
+      // Read stream_id from cdc_state table not found in the master cache, it mean's stream
+      // is deleted. To update the corresponding tablet PEERs, give an entry in
+      // tablet_min_checkpoint_map which will update  cdc_sdk_min_checkpoint_op_id to
+      // OpId::Max()(i.e no need to retain the intents.)
+      if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
+        auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+        tablet_info.cdc_op_id = OpId::Max();
+        tablet_info.cdc_sdk_op_id = OpId::Max();
+      }
       continue;
     }
     StreamMetadata& record = **get_stream_metadata;
@@ -1649,11 +1696,6 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       LOG(WARNING) << "Read invalid op id " << row.column(1).string_value()
                    << " for tablet " << tablet_id << ": " << result.status();
       continue;
-    }
-
-    // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
-    if (checkpoint == OpId::Max().ToString()) {
-      tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
     }
 
     // Find the minimum checkpoint op_id per tablet. This minimum op_id
@@ -1672,11 +1714,16 @@ Result<TabletOpIdMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     if (record.source_type == CDCSDK) {
       auto status = impl_->CheckStreamActive(producer_tablet);
       if (!status.ok()) {
-        // Give dummy entry in tablet_min_checkpoint_map for the tablet, if tablet is
-        // Associated with a single stream.
-        auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
-        tablet_info.cdc_op_id = *result;
-        tablet_info.cdc_sdk_op_id = *result;
+        // Inactive stream read from cdc_state table are not considered for the minimum
+        // cdc_sdk_op_id calculation except if tablet is associated with a single stream, This is
+        // required to update the cdc_sdk_op_id_expiration in the tablet_min_checkpoint_map for the
+        // corresponding tablet, so that the tablet PEERS will be updated with
+        // cdc_sdk_min_checkpoint_op_id_expiration_ as EXPIRED.
+        if (tablet_min_checkpoint_map.find(tablet_id) == tablet_min_checkpoint_map.end()) {
+          auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+          tablet_info.cdc_op_id = *result;
+          tablet_info.cdc_sdk_op_id = *result;
+        }
         continue;
       }
       latest_active_time = impl_->GetLatestActiveTime(producer_tablet, *result);
