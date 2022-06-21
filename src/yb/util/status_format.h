@@ -20,6 +20,7 @@
 
 #include "yb/util/format.h"
 #include "yb/util/status.h"
+#include "yb/util/std_util.h"
 
 #define STATUS_SUBSTITUTE(status_type, ...) \
     (Status(Status::BOOST_PP_CAT(k, status_type), \
@@ -52,9 +53,20 @@
     } \
   } while (0)
 
-#define SCHECK_EQ(var1, var2, status_type, msg) SCHECK_OP(var1, ==, var2, status_type, msg)
+#define SCHECK_OP_FUNC(var1, op_func, var2, status_type, msg) \
+  do { \
+    auto v1_tmp = (var1); \
+    auto v2_tmp = (var2); \
+    if (PREDICT_FALSE(!(op_func(v1_tmp, v2_tmp)))) { \
+      return STATUS_FORMAT(status_type, "$0: $1 vs $2", (msg), v1_tmp, v2_tmp); \
+    } \
+  } while (0)
+
+#define SCHECK_EQ(var1, var2, status_type, msg) \
+  SCHECK_OP_FUNC(var1, yb::std_util::cmp_equal, var2, status_type, msg)
 #define SCHECK_NE(var1, var2, status_type, msg) SCHECK_OP(var1, !=, var2, status_type, msg)
-#define SCHECK_GT(var1, var2, status_type, msg) SCHECK_OP(var1, >, var2, status_type, msg)
+#define SCHECK_GT(var1, var2, status_type, msg) \
+  SCHECK_OP_FUNC(var1, yb::std_util::cmp_greater, var2, status_type, msg)
 #define SCHECK_GE(var1, var2, status_type, msg) SCHECK_OP(var1, >=, var2, status_type, msg)
 #define SCHECK_LT(var1, var2, status_type, msg) SCHECK_OP(var1, <, var2, status_type, msg)
 #define SCHECK_LE(var1, var2, status_type, msg) SCHECK_OP(var1, <=, var2, status_type, msg)

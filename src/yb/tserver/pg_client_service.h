@@ -49,7 +49,7 @@ namespace tserver {
     (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
-    (RollbackSubTransaction) \
+    (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
     (TruncateTable) \

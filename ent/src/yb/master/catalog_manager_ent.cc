@@ -2776,12 +2776,13 @@ void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>*
 
 Status CatalogManager::BackfillMetadataForCDC(
     scoped_refptr<TableInfo> table, rpc::RpcContext* rpc) {
-  const TableId& table_id = table->id();
+  TableId table_id;
   AlterTableRequestPB alter_table_req_pg_type;
   bool backfill_required = false;
   {
     SharedLock lock(mutex_);
     auto l = table->LockForRead();
+    table_id = table->id();
     if (table->GetTableType() == PGSQL_TABLE_TYPE) {
       if (!table->has_pg_type_oid()) {
         LOG_WITH_FUNC(INFO) << "backfilling pg_type_oid";
@@ -2840,8 +2841,9 @@ Status CatalogManager::BackfillMetadataForCDC(
     AlterTableResponsePB alter_table_resp_pg_type;
     return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc);
   } else {
-    LOG_WITH_FUNC(INFO) << "found pgschema_name (" << table->pgschema_name()
-                        << ") and pg_type_oid, no backfilling required for table id: " << table_id;
+    LOG_WITH_FUNC(INFO)
+        << "found pgschema_name and pg_type_oid, no backfilling required for table id: "
+        << table_id;
     return Status::OK();
   }
 }
@@ -3604,6 +3606,29 @@ Status CatalogManager::IsBootstrapRequired(const IsBootstrapRequiredRequestPB* r
     new_result->set_bootstrap_required(bootstrap_required);
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::GetUDTypeMetadata(
+    const GetUDTypeMetadataRequestPB* req, GetUDTypeMetadataResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  auto namespace_info = VERIFY_NAMESPACE_FOUND(FindNamespace(req->namespace_()), resp);
+  if (req->pg_enum_info()) {
+    uint32_t database_oid;
+    {
+      namespace_info->LockForRead();
+      RSTATUS_DCHECK_EQ(
+          namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
+          Format("Expected YSQL database, got: $0", namespace_info->database_type()));
+      database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+    }
+    const auto enum_oid_label_map = VERIFY_RESULT(sys_catalog_->ReadPgEnum(database_oid));
+    for (const auto& [oid, label] : enum_oid_label_map) {
+      PgEnumInfoPB* pg_enum_info_pb = resp->add_enums();
+      pg_enum_info_pb->set_oid(oid);
+      pg_enum_info_pb->set_label(label);
+    }
+  }
   return Status::OK();
 }
 

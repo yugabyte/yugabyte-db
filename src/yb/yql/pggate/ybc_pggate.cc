@@ -151,6 +151,10 @@ void YBCDestroyPgGate() {
   VLOG(1) << __PRETTY_FUNCTION__ << " finished";
 }
 
+void YBCInterruptPgGate() {
+  pgapi->Interrupt();
+}
+
 const YBCPgCallbacks *YBCGetPgCallbacks() {
   return pgapi->pg_callbacks();
 }
@@ -1009,8 +1013,8 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
 }
 
-YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
-  return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+YBCStatus YBCPgRollbackToSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->RollbackToSubTransaction(id));
 }
 
 //------------------------------------------------------------------------------------------------

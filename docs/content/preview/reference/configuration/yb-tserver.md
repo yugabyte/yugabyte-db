@@ -910,6 +910,18 @@ Enable streaming of TRUNCATE record for a table on which CDC is active.
 
 Default: `false`
 
+##### --cdc_intent_retention_ms
+
+The time period, in milliseconds, after which the intents will be cleaned up if there is no client polling for the change records.
+
+Default: `14400000` (4 hours)
+
+##### --enable_update_local_peer_min_index
+
+Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
+
+Default: `false`
+
 ---
 
 ### File expiration based on TTL flags

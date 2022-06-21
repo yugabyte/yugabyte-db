@@ -2575,7 +2575,10 @@ TEST_F(
   RunManyConcurrentReadersTest();
 }
 
-TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(TestSerializableStrongReadLockNotAborted)) {
+// TODO(savepoint): This test would start failing until issue #9587 is fixed. It worked earlier but
+// is expected to fail, as pointed out in https://phabricator.dev.yugabyte.com/D17177
+// Change macro to YB_DISABLE_TEST_IN_TSAN if re-enabling.
+TEST_F(PgMiniTest, YB_DISABLE_TEST(TestSerializableStrongReadLockNotAborted)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (a int PRIMARY KEY, b int) SPLIT INTO 1 TABLETS"));
   for (int i = 0; i < 100; ++i) {
@@ -2704,6 +2707,51 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(NonRespondingMaster),
       pg_host_port(), cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(),
       *tmp_dir, {"--backup_location", tmp_dir / "backup", "--no_upload", "--keyspace", "ysql.test",
        "create"}));
+}
+
+
+// The test checks that YSQL doesn't wait for sent RPC response in case of process termination.
+TEST_F(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(NoWaitForRPCOnTermination)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+  constexpr auto kRows = RegularBuildVsDebugVsSanitizers(1000000, 100000, 30000);
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT s FROM generate_series(1, $0) AS s", kRows));
+  constexpr auto kLongTimeQuery = "SELECT COUNT(*) FROM t";
+  std::atomic<MonoTime> termination_start;
+  MonoTime termination_end;
+  {
+    CountDownLatch latch(2);
+    TestThreadHolder thread_holder;
+    thread_holder.AddThreadFunctor([this, &latch, &termination_start, kLongTimeQuery] {
+      auto thread_conn = ASSERT_RESULT(Connect());
+      latch.CountDown();
+      latch.Wait();
+      const auto deadline = MonoTime::Now() + MonoDelta::FromSeconds(30);
+      while (MonoTime::Now() < deadline) {
+        const auto local_termination_start = MonoTime::Now();
+        auto res = ASSERT_RESULT(thread_conn.FetchFormat(
+          "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE query like '$0'",
+          kLongTimeQuery));
+        auto lines = PQntuples(res.get());
+        if (lines) {
+          termination_start.store(local_termination_start, std::memory_order_release);
+          break;
+        }
+      }
+    });
+    latch.CountDown();
+    latch.Wait();
+    const auto res = conn.Fetch(kLongTimeQuery);
+    ASSERT_NOK(res);
+    ASSERT_STR_CONTAINS(res.status().ToString(),
+                        "terminating connection due to administrator command");
+    termination_end = MonoTime::Now();
+  }
+  const auto termination_duration =
+      (termination_end - termination_start.load(std::memory_order_acquire)).ToMilliseconds();
+  ASSERT_GT(termination_duration, 0);
+  ASSERT_LT(termination_duration, 2000);
 }
 
 } // namespace pgwrapper

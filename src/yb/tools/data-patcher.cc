@@ -606,7 +606,7 @@ Status ChangeTimeInWalDir(
   header.set_minor_version(log::kLogMinorVersion);
   header.set_sequence_number(1);
   header.set_unused_tablet_id("TABLET ID");
-  header.mutable_unused_schema();
+  header.mutable_schema();
 
   RETURN_NOT_OK(new_segment.WriteHeaderAndOpen(header));
 

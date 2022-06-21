@@ -71,7 +71,7 @@ TEST_F(RestartTest, WalFooterProperlyInitialized) {
   ASSERT_OK(tablet_peer->log()->GetLogReader()->GetSegmentsSnapshot(&segments));
 
   ASSERT_EQ(2, segments.size());
-  auto segment = segments[0];
+  log::ReadableLogSegmentPtr segment = ASSERT_RESULT(segments.front());
   ASSERT_TRUE(segment->HasFooter());
   ASSERT_TRUE(segment->footer().has_close_timestamp_micros());
   ASSERT_TRUE(segment->footer().close_timestamp_micros() > timestamp_before_write &&

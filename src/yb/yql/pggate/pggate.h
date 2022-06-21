@@ -120,6 +120,8 @@ class PgApiImpl {
     return &pg_callbacks_;
   }
 
+  // Interrupt aborts all pending RPCs immediately to unblock main thread.
+  void Interrupt();
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -528,7 +530,7 @@ class PgApiImpl {
   Status ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
-  Status RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
@@ -595,6 +597,8 @@ class PgApiImpl {
   const MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
+  class Interrupter;
+
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -603,6 +607,7 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
+  std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
