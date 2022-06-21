@@ -73,9 +73,6 @@ cdcsdk-server
 export CDCSDK_VERSION=<x.y.z>
 wget https://github.com/yugabyte/cdcsdk-server/releases/download/v${CDCSDK_VERSION}/cdcsdk-server-dist-${CDCSDK_VERSION}.tar.gz
 
-# Or if you are using GitHub CLI
-gh release download v{CDCSDK_VERSION} -A tar.gz --repo yugabyte/cdcsdk-server
-
 tar xvf cdcsdk-server-dist-${CDCSDK_VERSION}.tar.gz
 cd cdcsdk-server
 
@@ -90,17 +87,17 @@ touch conf/application.properties
 
 The main configuration file is `conf/application.properties`. There are multiple sections configured:
 * `debezium.source`: is for source connector configuration. Each instance of Debezium Server runs exactly one connector.
-* `debezium.sink` is for the sink system configuration.
+* `cdcsdk.sink` is for the sink system configuration.
 * `debezium.format` is for the output serialization format configuration.
 * `debezium.transforms` is for the configuration of message transformations.
 
 **Example:**
 
 ```properties
-debezium.sink.type=kafka
-debezium.sink.kafka.producer.bootstrap.servers=127.0.0.1:9092
-debezium.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-debezium.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+cdcsdk.sink.type=kafka
+cdcsdk.sink.kafka.producer.bootstrap.servers=127.0.0.1:9092
+cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
 debezium.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
 debezium.source.database.hostname=127.0.0.1
 debezium.source.database.port=5433
@@ -142,9 +139,9 @@ The HTTP Client will stream changes to any HTTP Server for additional processing
 
 | Property | Default | Description |
 | :---- | :---- | :---- |
-| `debezium.sink.type` | | Must be set to `http` |
-| `debezium.sink.http.url` | | The HTTP Server URL to stream events to. This can also be set by defining the K_SINK environment variable, which is used by the Knative source framework. |
-| `debezium.sink.http.timeout.ms` | 60000 | The number of milli-seconds to wait for a response from the server before timing out. |
+| `cdcsdk.sink.type` | | Must be set to `http` |
+| `cdcsdk.sink.http.url` | | The HTTP Server URL to stream events to. This can also be set by defining the K_SINK environment variable, which is used by the Knative source framework. |
+| `cdcsdk.sink.http.timeout.ms` | 60000 | The number of milli-seconds to wait for a response from the server before timing out. |
 
 #### Amazon S3
 
@@ -159,6 +156,12 @@ The Amazon S3 Sink streams changes to an AWS S3 bucket. Only Inserts are support
 | `cdcsdk.sink.s3.pattern` | | Pattern to generate paths (sub-directory and filename) for data files. |
 | `cdcsdk.sink.s3.flushBytesMB` | 200 | Trigger Data File Rollover on file size. |
 | `cdcsdk.sink.s3.flushRecords` | 10000 | Trigger Data File Rolloever on number of records |
+
+{{< note title="Note" >}}
+
+Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations should be setup.
+
+{{< /note >}}
 
 #### Mapping records to S3 objects
 
@@ -254,9 +257,6 @@ With `FLATTEN`, the simple format below is emitted:
 ### Operations
 
 #### Topology
-
-<!-- TODO: Insert image here -->
-
 
 * A universe can have multiple namespaces.
 * Each namespace can have multiple CDCSDK streams
