@@ -327,3 +327,9 @@ INSERT INTO test1 VALUES (1, 2, 3);
 CREATE TEMP TABLE test2 as table test1;
 UPDATE test1 SET z = 2 FROM test2 WHERE test1.x = test2.x;
 SELECT * FROM test1;
+
+CREATE TEMP TABLE tempt (k int PRIMARY KEY, v1 int, v2 int);
+CREATE UNIQUE INDEX ON tempt (v1);
+INSERT INTO tempt VALUES (1, 2, 3), (4, 5, 6);
+INSERT INTO tempt VALUES (2, 2, 3);
+SELECT * FROM tempt ORDER BY k;
