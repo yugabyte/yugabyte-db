@@ -156,6 +156,7 @@ message UpdateTransactionRequestPB {
   optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
+  optional bool is_external = 4;
 }
 
 message UpdateTransactionResponsePB {
