@@ -295,11 +295,13 @@ class TransactionParticipant::Impl
 
   boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
-      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
+      boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+      bool external_transaction) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
     auto lock_and_iterator = LockAndFind(
-        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+        id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
+        external_transaction);
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -1313,14 +1315,15 @@ class TransactionParticipant::Impl
   };
 
   LockAndFindResult LockAndFind(
-      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
+      const TransactionId& id, const std::string& reason, TransactionLoadFlags flags,
+      bool external_transaction = false) {
     loader_.WaitLoaded(id);
     bool recently_removed;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
-        if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
+        if (!external_transaction && (**it).start_ht() <= ignore_all_transactions_started_before_) {
           YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 1)
               << "Ignore transaction for '" << reason << "' because of limit: "
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
@@ -1729,8 +1732,9 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
 boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
-    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches) {
-  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches);
+    boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
+    bool external_transaction) {
+  return impl_->PrepareBatchData(id, batch_idx, encoded_replicated_batches, external_transaction);
 }
 
 void TransactionParticipant::BatchReplicated(

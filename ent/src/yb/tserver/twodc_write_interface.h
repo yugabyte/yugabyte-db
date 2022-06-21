@@ -30,12 +30,20 @@ class WriteRequestPB;
 
 namespace enterprise {
 
+struct ProcessRecordInfo {
+  TabletId tablet_id;
+
+  // Only used for intent records.
+  bool enable_replicate_transaction_status_table;
+  TabletId status_tablet_id;
+};
+
 class TwoDCWriteInterface {
  public:
   virtual ~TwoDCWriteInterface() {}
   virtual std::unique_ptr<WriteRequestPB> GetNextWriteRequest() = 0;
   virtual Status ProcessRecord(
-      const std::string& tablet_id, const cdc::CDCRecordPB& record) = 0;
+      const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
   virtual std::vector<client::ExternalTransactionMetadata>& GetTransactionMetadatas() = 0;
 };
 

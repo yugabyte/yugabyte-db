@@ -12,7 +12,7 @@
 
 #include "yb/cdc/cdc_output_client_interface.h"
 #include "yb/cdc/cdc_util.h"
-
+#include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 
 #ifndef ENT_SRC_YB_TSERVER_TWODC_OUTPUT_CLIENT_H
@@ -35,7 +35,9 @@ std::unique_ptr<cdc::CDCOutputClient> CreateTwoDCOutputClient(
     const std::shared_ptr<CDCClient>& local_client,
     rpc::Rpcs* rpcs,
     std::function<void(const cdc::OutputClientResponse& response)> apply_changes_clbk,
-    bool use_local_tserver);
+    bool use_local_tserver,
+    client::YBTablePtr global_transaction_status_table,
+    bool enable_replicate_transaction_status_table);
 
 } // namespace enterprise
 } // namespace tserver
