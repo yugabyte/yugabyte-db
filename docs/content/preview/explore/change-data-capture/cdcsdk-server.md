@@ -18,7 +18,10 @@ isTocNested: true
 showAsideToc: true
 ---
 
-CDCSDK server is Yugabyte's implementation of the Debezium Server specifically crafted to work with cloud deployments. It's a ready to use application for streaming changes from databases to messaging infrastructures.
+Yugabyte CDCSDK Server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/blob/main/debezium.io). CDCSDK Server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
+* Kafka
+* HTTP REST Endpoint
+* AWS S3
 
 ### On this page
 
@@ -41,7 +44,16 @@ A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/
 
 A Debezium Engine is hosted within the CDCSDK server. The implementation is based on the [Debezium Server](https://debezium.io/documentation/reference/1.9/operations/debezium-server.html). It uses the Quarkus framework and extensions to provide a server shell, metrics and alerts. By default, a server runs one Engine implementation within a thread. A server can also run in multi-threaded mode wherein multiple engines are assigned to a thread each. The server splits tablets into groups in a deterministic manner. Each group of tablets is assigned to an Engine.
 
-### Installation
+### Quick Start
+
+#### Create a CDCSDK stream in YugabyteDB
+Use [yb-admin](../../admin/yb-admin/#createchangedatastream) to create a CDC stream. A successful operation returns an output with the stream ID, make note of it to be used in further steps. For example:
+
+```output
+CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
+```
+
+#### Download and run CDCSDK Server
 
 CDCSDK Server distribution archives are available in [Github Releases](https://github.com/yugabyte/cdcsdk-server/releases) of the project. Each of the releases has a tar.gz labelled as CDCSDK Server.
 
@@ -49,15 +61,9 @@ The archive has the following layout:
 
 ```output
 cdcsdk-server
-  |--CHANGELOG.md
   |-- conf
-  |-- CONTRIBUTE.md
-  |-- COPYRIGHT.txt
-  |-- debezium-server-1.9.2.Final-runner.jar
+  |-- debezium-server-<CDCSDK-VERSION>.Final-runner.jar
   |-- lib
-  |-- LICENSE-3rd-PARTIES.txt
-  |-- LICENSE.txt
-  |-- README.md
   |-- run.sh
 ```
 
@@ -108,7 +114,7 @@ debezium.source.database.master.addresses=127.0.0.1:7100
 debezium.source.snapshot.mode=never
 ```
 
-The `debezium.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `debezium.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb.md#connector-configuration-properties).
+The `debezium.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `debezium.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
 <!-- TODO Vaibhav: add more configuration examples -->
 
