@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
@@ -374,6 +375,17 @@ public class TaskInfo extends Model {
         .eq("task_type", TaskType.DeleteBackup)
         .ne("task_state", State.Failure)
         .ne("task_state", State.Aborted)
+        .eq("details->>'customerUUID'", customerUUID.toString())
+        .eq("details->>'backupUUID'", backupUUID.toString())
+        .findList();
+  }
+
+  public static List<TaskInfo> findIncompleteDeleteBackupTasks(UUID customerUUID, UUID backupUUID) {
+    return TaskInfo.find
+        .query()
+        .where()
+        .in("task_type", TaskType.DeleteBackup)
+        .in("task_state", INCOMPLETE_STATES)
         .eq("details->>'customerUUID'", customerUUID.toString())
         .eq("details->>'backupUUID'", backupUUID.toString())
         .findList();

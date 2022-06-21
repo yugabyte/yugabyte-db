@@ -28,6 +28,7 @@ import com.yugabyte.yw.commissioner.tasks.BackupUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunExternalScript;
+import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
@@ -69,11 +70,18 @@ public class Scheduler {
 
   private final Commissioner commissioner;
 
+  private final TaskInfoManager taskInfoManager;
+
   @Inject
-  Scheduler(ActorSystem actorSystem, ExecutionContext executionContext, Commissioner commissioner) {
+  Scheduler(
+      ActorSystem actorSystem,
+      ExecutionContext executionContext,
+      Commissioner commissioner,
+      TaskInfoManager taskInfoManager) {
     this.actorSystem = actorSystem;
     this.executionContext = executionContext;
     this.commissioner = commissioner;
+    this.taskInfoManager = taskInfoManager;
   }
 
   public void start() {
@@ -256,6 +264,11 @@ public class Scheduler {
   private void runDeleteBackupTask(Customer customer, Backup backup) {
     if (backup.state != Backup.BackupState.Completed) {
       log.warn("Cannot delete backup {} since it is not in completed state.", backup.backupUUID);
+      return;
+    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
+      log.warn(
+          "Cannot delete backup {} since a delete backup task is already present",
+          backup.backupUUID);
       return;
     }
     DeleteBackup.Params taskParams = new DeleteBackup.Params();
