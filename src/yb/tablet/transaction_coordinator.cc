@@ -90,6 +90,8 @@ DEFINE_test_flag(int64, inject_random_delay_on_txn_status_response_ms, 0,
                  "after a COMMITTED response.");
 
 DECLARE_bool(enable_deadlock_detection);
+DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
+                 "Should we disable the GC of transactions already applied on all tablets.");
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -817,6 +819,9 @@ class TransactionState {
   void StartApply() {
     VLOG_WITH_PREFIX(4) << __func__ << ", commit time: " << commit_time_ << ", involved tablets: "
                         << AsString(involved_tablets_);
+    if (PREDICT_FALSE(FLAGS_TEST_disable_cleanup_applied_transactions)) {
+      return;
+    }
     resend_applying_time_ = MonoTime::Now() +
         std::chrono::microseconds(FLAGS_transaction_resend_applying_interval_usec);
     tablets_with_not_applied_intents_ = involved_tablets_.size();
@@ -1254,7 +1259,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         1us * FLAGS_transaction_check_interval_usec * kTimeMultiplier);
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
     if (!id.ok()) {
@@ -1267,9 +1272,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
       postponed_leader_actions_.leader_term = term;
+      if (is_external) {
+        managed_transactions_.emplace(
+              this, *id, context_.clock().Now(), log_prefix_);
+      }
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
-        if (state.status() == TransactionStatus::CREATED ||
+        if (is_external ||
+            state.status() == TransactionStatus::CREATED ||
             state.status() == TransactionStatus::PROMOTED) {
           it = managed_transactions_.emplace(
               this, *id, context_.clock().Now(), log_prefix_).first;
@@ -1637,8 +1647,8 @@ size_t TransactionCoordinator::test_count_transactions() const {
 }
 
 void TransactionCoordinator::Handle(
-    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
-  impl_->Handle(std::move(request), term);
+    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external) {
+  impl_->Handle(std::move(request), term, is_external);
 }
 
 void TransactionCoordinator::Start() {
