@@ -23,31 +23,27 @@ To monitor clusters in real time, use the performance metrics on the cluster [Ov
 
 ## Recommendations
 
-Performance Advisor provides recommendations for the following issues.
+Performance Advisor provides recommendations for a number of issues.
 
 ### Index suggestions
 
-Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/11/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index where `idx_scan` is 0 is considered unused.
-
-**Why**
+Performance Advisor suggests dropping unused indexes to improve write performance and increase storage space. Performance Advisor uses the [pg_stat_all_indexes view](https://www.postgresql.org/docs/11/monitoring-stats.html#PG-STAT-ALL-INDEXES-VIEW) to determine unused indexes. Any index with an `idx_scan` of 0 is considered unused.
 
 Indexes take up storage space on the same disk volume as the main table. They also increase the size of backups and can add to backup and restore time.
 
 Indexes can slow down some operations. For example:
 
-- When doing an INSERT or DELETE on a table, indexes need to be updated to remain consistent with the data in the main table. An index can also prevent a basic insert or delete from being executed as a single row transaction.
+- When doing an `INSERT` or `DELETE` on a table, indexes need to be updated to remain consistent with the data in the main table. An index can also prevent a basic insert or delete operation from being executed as a single row transaction.
 
-- When doing an UPDATE on a table, if the modified column is part of the index, then the index must be updated as well.
+- When doing an `UPDATE` on a table, if the modified column is part of the index, then the index must be updated as well.
 
 **Fix the problem**
 
-Connect to the database and use DROP INDEX to delete the unused indexes.
+Connect to the database and use `DROP INDEX` to delete the unused indexes.
 
 ### Schema suggestions
 
 Advisor scans for indexes that can benefit from using range sharding instead of the default hash sharding.
-
-**Why**
 
 Range sharding is more efficient for queries that look up a range of rows based on column values that are less than, greater than, or that lie between some user specified values. For example, with timestamp columns, most queries use the timestamp column to filter data from a range of timestamps.
 
@@ -85,8 +81,6 @@ Connect to the database and use DROP INDEX to delete the indexes, and then recre
 
 Advisor scans node connections to determine whether some nodes are loaded with more connections than others. Advisor flags any node handling 50% more connections than the other nodes in the past hour.
 
-**Why**
-
 Connections should be distributed equally across all the nodes in the cluster. Unequal distribution of connections can result in hot nodes, causing higher resource use on those nodes. Excessive workload on a specific node can potentially cause stability issues.
 
 **Fix the problem**
@@ -98,8 +92,6 @@ Connections should be distributed equally across all the nodes in the cluster. U
 
 Advisor scans queries to determine whether some nodes are handling more queries than others. Advisor flags nodes that processed 50% more queries than the other nodes in the past hour, or since the advisor was last run.
 
-**Why**
-
 Queries should be distributed equally across all nodes in the cluster. Query load skew can be due to queries not being equally distributed among connections; if particular connections are executing a greater number of queries, this can result in a hot node. Excessive workload on a specific node can potentially cause stability issues.
 
 **Fix the problem**
@@ -109,8 +101,6 @@ If you see query load skew, contact {{<support-cloud>}}.
 ### CPU skew and CPU usage
 
 Advisor monitors CPU use to determine whether any nodes become hot spots. Advisor flags nodes where CPU use on a node is 50% greater than the other nodes in the cluster in the past hour (skew), or CPU use for a node exceeds 80% for 10 minutes (usage).
-
-**Why**
 
 CPU skew and high usage can be caused by a number of issues:
 
