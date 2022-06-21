@@ -73,4 +73,7 @@ message ProducerEntryPB {
 message ConsumerRegistryPB {
   // Map from producer universe uuid to metadata for that producer.
   map<string, ProducerEntryPB> producer_map = 1;
+  // Enable the replication of the txn status table for ordered and atomic multi shard transaction
+  // support.
+  bool enable_replicate_transaction_status_table = 2;
 }
