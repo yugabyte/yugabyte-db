@@ -23,7 +23,7 @@ Yugabyte CDCSDK Server is an open source project that provides a streaming platf
 * HTTP REST Endpoint
 * AWS S3
 
-### On this page
+## On this page
 
 * [Basic architecture](#basic-architecture)
 * [Quick start](#quick-start)
@@ -31,9 +31,9 @@ Yugabyte CDCSDK Server is an open source project that provides a streaming platf
 * [Record structure](#record-structure)
 * [Operations](#operations)
 
-### Basic Architecture
+## Basic Architecture
 
-#### Engine is the Unit of work
+### Engine is the Unit of work
 
 A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/engine.html) implementation is the unit of work. It implements a pipeline consisting of a source, sink and simple transforms. The only supported source is YugabyteDB. The source is assigned a set of tablets that is polled at a configurable interval. An engine’s workflow is as follows:
 * Connect to CDCSDK stream
@@ -41,20 +41,20 @@ A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/
 * Get and record a list of tablets.
 * Poll tablets in sequence every polling interval
 
-#### CDCSDK Server
+### CDCSDK Server
 
 A Debezium Engine is hosted within the CDCSDK server. The implementation is based on the [Debezium Server](https://debezium.io/documentation/reference/1.9/operations/debezium-server.html). It uses the Quarkus framework and extensions to provide a server shell, metrics and alerts. By default, a server runs one Engine implementation within a thread. A server can also run in multi-threaded mode wherein multiple engines are assigned to a thread each. The server splits tablets into groups in a deterministic manner. Each group of tablets is assigned to an Engine.
 
-### Quick Start
+## Quick Start
 
-#### Create a CDCSDK stream in YugabyteDB
+### Create a CDCSDK stream in YugabyteDB
 Use [yb-admin](../../admin/yb-admin/#createchangedatastream) to create a CDC stream. A successful operation returns an output with the stream ID, make note of it to be used in further steps. For example:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 ```
 
-#### Download and run CDCSDK Server
+### Download and run CDCSDK Server
 
 CDCSDK Server distribution archives are available in [Github Releases](https://github.com/yugabyte/cdcsdk-server/releases) of the project. Each of the releases has a tar.gz labelled as CDCSDK Server.
 
@@ -68,7 +68,7 @@ cdcsdk-server
   |-- run.sh
 ```
 
-#### Unpack and run instructions
+### Unpack and run instructions
 
 ```sh
 export CDCSDK_VERSION=<x.y.z>
@@ -84,15 +84,15 @@ touch conf/application.properties
 ./run.sh
 ```
 
-### Configuration
+## Configuration
 
 The main configuration file is `conf/application.properties`. There are multiple sections configured:
 * `cdcsdk.source`: is for source connector configuration. Each instance of Debezium Server runs exactly one connector.
 * `cdcsdk.sink` is for the sink system configuration.
-* `debezium.format` is for the output serialization format configuration.
-* `debezium.transforms` is for the configuration of message transformations.
+* `cdcsdk.format` is for the output serialization format configuration.
+* `cdcsdk.transforms` is for the configuration of message transformations.
 
-#### Apache Kafka
+### Apache Kafka
 
 ```properties
 cdcsdk.sink.type=kafka
@@ -112,7 +112,7 @@ cdcsdk.source.database.master.addresses=127.0.0.1:7100
 cdcsdk.source.snapshot.mode=never
 ```
 
-##### Confluent Cloud
+#### Confluent Cloud
 
 If you are using a Confluent Cloud deployment of Kafka, you will need to add the following configuration:
 
@@ -149,11 +149,11 @@ cdcsdk.source.snapshot.mode=never
 
 The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
-#### Configuring using environment variables
+### Configuring using environment variables
 
-Configuration using environment variables maybe useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, `cdcsdk.source.database.port` has to be changed to `DEBEZIUM_SOURCE_DATABASE_PORT`.
+Configuration using environment variables maybe useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, `cdcsdk.source.database.port` has to be changed to `CDCSDK_SOURCE_DATABASE_PORT`.
 
-#### Server configuration
+### Server configuration
 
 | Property | Default | Description |
 | :--- | :--- | :--- |
@@ -167,7 +167,7 @@ Configuration using environment variables maybe useful when running in container
 | `quarkus.log.console.json` | true | Determine whether to enable the JSON console formatting extension, which disables "normal" console formatting. | 
 
 
-#### HTTP Client
+### HTTP Client
 
 The HTTP Client will stream changes to any HTTP Server for additional processing with the original design goal to make Debezium act as a native event source.
 
@@ -177,7 +177,7 @@ The HTTP Client will stream changes to any HTTP Server for additional processing
 | `cdcsdk.sink.http.url` | | The HTTP Server URL to stream events to. This can also be set by defining the K_SINK environment variable, which is used by the Knative source framework. |
 | `cdcsdk.sink.http.timeout.ms` | 60000 | The number of milli-seconds to wait for a response from the server before timing out. |
 
-#### Amazon S3
+### Amazon S3
 
 The Amazon S3 Sink streams changes to an AWS S3 bucket. Only Inserts are supported. The available configuration options are:
 
@@ -197,7 +197,7 @@ Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.ta
 
 {{< /note >}}
 
-#### Mapping records to S3 objects
+### Mapping records to S3 objects
 
 The Amazon S3 Sink only supports [create events](../change-data-capture/debezium-connector-yugabytedb.md#create-events) in the CDC Stream. It writes `payload.after` fields to a file in S3.
 
@@ -219,7 +219,7 @@ For example, the following pattern can be used to create hourly partitions with 
 {YEAR}-{MONTH}-{DAY}-{HOUR}/data-{UUID}.jsonl
 ```
 
-##### IAM Policy
+#### IAM Policy
 
 The AWS user account accessing the S3 bucket must have the following permissions:
 
@@ -271,7 +271,7 @@ Note: This is the IAM policy for the user account and not a bucket policy.
 }
 ```
 
-### Record structure
+## Record structure
 
 By default, the YugabyteDB connector generates a [complex record](../change-data-capture/debezium-connector-yugabytedb.md#data-change-events) in JSON with key and value information including payload. A sophisticated sink can use the information to generate appropriate commands in the receiving system.
 
@@ -288,23 +288,23 @@ With `FLATTEN`, the simple format below is emitted:
 }
 ```
 
-### Operations
+## Operations
 
-#### Topology
+### Topology
 
 * A universe can have multiple namespaces.
 * Each namespace can have multiple CDCSDK streams
 * Each CDCSDK stream can have multiple servers associated with it. Default is 1. The group of multiple servers associated with a stream is called a ServerSet.
 
-#### Networking
+### Networking
 
 A CDCSDK Server requires access to open ports in Yugabytedb. Therefore it has to run in the same VPC (or peered VPC) as the Yugabytedb. The server also requires access to sinks in the case of Kafka or HTTP REST Endpoint and the appropriate credentials for writing to AWS S3.
 
-#### Health checks
+### Health checks
 
 CDCSDK Server exposes a simple health check REST API. Currently the health check only ensures that the server is up and running.
 
-##### Running the health checks
+#### Running the health checks
 
 The following REST endpoints are exposed:
 
