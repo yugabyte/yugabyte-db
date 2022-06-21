@@ -54,6 +54,7 @@ POSTGRES = "postgres"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
 RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
+BUILD_NUMBER_PATTERN = "b(\\d+).*"
 
 K8S_CERTS_PATH = "/opt/certs/yugabyte/"
 K8S_CERT_FILE_PATH = os.path.join(K8S_CERTS_PATH, "ca.crt")
@@ -1285,6 +1286,11 @@ def parse_release_build(release_build):
 
     return match
 
+def parse_build_number(build_number):
+    if not build_number:
+        return None
+
+    return re.match(BUILD_NUMBER_PATTERN, build_number)
 
 def is_equal_or_newer_release_build(current_release_build, threshold_release_build):
     parsed_current_release_build = parse_release_build(current_release_build)
@@ -1301,21 +1307,18 @@ def is_equal_or_newer_release_build(current_release_build, threshold_release_bui
             # build name
             current_build = parsed_current_release_build.group(i)
             threshold_build = parsed_threshold_release_build.group(i)
-            # In case build name starts with 'b' - it can be regular digit build
-            if current_build[0] == 'b':
-                current_build = current_build[1:]
-            if threshold_build[0] == 'b':
-                threshold_build = threshold_build[1:]
+            parsed_current_build_number = parse_build_number(current_build)
+            parsed_threshold_build_number = parse_build_number(threshold_build)
             # Threat PRE_RELEASE and dev builds as later than regular builds
-            if not current_build.isdigit():
+            if not parsed_current_build_number:
                 # Both non-digit builds OR current build is non-digit
                 return True
-            if not threshold_build.isdigit():
+            if not parsed_threshold_build_number:
                 # Current is digit builds, while threshold build is non-digit
                 return False
             # Regular builds
-            c = int(current_build)
-            t = int(threshold_build)
+            c = int(parsed_current_build_number.group(1))
+            t = int(parsed_threshold_build_number.group(1))
         if c < t:
             # If any component is behind, the whole release build is older.
             return False
