@@ -4,7 +4,7 @@ headerTitle: Quick start
 linkTitle: Quick start
 description: Get started using YugabyteDB Managed in less than five minutes.
 image: /images/section_icons/index/quick_start.png
-headcontent: Test YugabyteDB's APIs and core features by creating a free cluster on YugabyteDB Managed.
+headcontent: Test YugabyteDB's APIs and core features by creating a Sandbox cluster on YugabyteDB Managed.
 type: page
 section: YUGABYTEDB MANAGED
 menu:
@@ -13,7 +13,7 @@ menu:
     weight: 15
 ---
 
-The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
+The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free Sandbox cluster. Although not suitable for production workloads, the Sandbox cluster includes enough resources to learn and develop applications with YugabyteDB.
 
 This quick start is also available in the [YugabyteDB Managed Getting Started](https://www.youtube.com/playlist?list=PL8Z3vt4qJTkJqisBVRDi6GAy8rhVo1xjc) playlist on the Yugabyte YouTube channel.
 
@@ -24,10 +24,10 @@ This quick start is also available in the [YugabyteDB Managed Getting Started](h
     <a class="section-link icon-offset" href="qs-add/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Create a free cluster</div>
+        <div class="title">Create a Sandbox cluster</div>
       </div>
       <div class="body">
-        Create a free cluster on YugabyteDB Managed.
+        Create a free Sandbox cluster on YugabyteDB Managed.
       </div>
     </a>
   </div>
