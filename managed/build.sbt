@@ -233,12 +233,8 @@ lazy val ybPublicSnapshotResolverDescription =
     "Public snapshot resolver for yb-client jar"
 
 lazy val ybPublicSnapshotResolver = {
-  if (mavenLocal) {
-    Seq()
-  } else {
-    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
-    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
-  }
+  val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+  Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
 }
 
 // Custom remote maven repository to retrieve library dependencies from.
@@ -379,6 +375,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "0.0.1"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:

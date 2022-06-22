@@ -334,6 +334,7 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].ybcPackagePath = userIntent.ybcPackagePath;
     data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
@@ -395,6 +396,7 @@ function mapStateToProps(state, ownProps) {
     primary: {
       universeName: '',
       ybSoftwareVersion: '',
+      ybcPackagePath: '',
       numNodes: 3,
       isMultiAZ: true,
       instanceType: 'c5.4xlarge',
@@ -419,6 +421,7 @@ function mapStateToProps(state, ownProps) {
     },
     async: {
       universeName: '',
+      ybcPackagePath: '',
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
@@ -512,6 +515,7 @@ function mapStateToProps(state, ownProps) {
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
       'primary.useSystemd',
+      'primary.ybcPackagePath',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -521,6 +525,7 @@ function mapStateToProps(state, ownProps) {
       'async.instanceType',
       'async.deviceInfo',
       'async.ybSoftwareVersion',
+      'async.ybcPackagePath',
       'async.accessKeyCode',
       'async.diskIops',
       'async.throughput',

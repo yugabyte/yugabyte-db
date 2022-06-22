@@ -219,6 +219,8 @@ public enum TaskType {
 
   WaitForServer("subtasks.WaitForServer"),
 
+  WaitForYbcServer("subtasks.WaitForYbcServer"),
+
   WaitForTServerHeartBeats("subtasks.WaitForTServerHeartBeats"),
 
   DeleteClusterFromUniverse("subtasks.DeleteClusterFromUniverse"),
