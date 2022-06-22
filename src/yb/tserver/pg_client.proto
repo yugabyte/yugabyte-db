@@ -51,8 +51,8 @@ service PgClientService {
     option (yb.rpc.lightweight_method).sides = PROXY;
   };
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
-  rpc RollbackSubTransaction(PgRollbackSubTransactionRequestPB)
-      returns (PgRollbackSubTransactionResponsePB);
+  rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
+      returns (PgRollbackToSubTransactionResponsePB);
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
@@ -375,12 +375,12 @@ message PgReserveOidsResponsePB {
   uint32 end_oid = 3;
 }
 
-message PgRollbackSubTransactionRequestPB {
+message PgRollbackToSubTransactionRequestPB {
   uint64 session_id = 1;
   uint32 sub_transaction_id = 2;
 }
 
-message PgRollbackSubTransactionResponsePB {
+message PgRollbackToSubTransactionResponsePB {
   AppStatusPB status = 1;
 }
 

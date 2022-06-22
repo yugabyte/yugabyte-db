@@ -74,8 +74,15 @@ DEFINE_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-DEFINE_int32(max_packed_row_columns, -1,
-             "Max number of columns in packed row. -1 to disable row packing.");
+DEFINE_bool(ysql_enable_packed_row, false, "Whether packed row is enabled for YSQL.");
+
+DEFINE_uint64(
+    ysql_packed_row_size_limit, 0,
+    "Packed row size limit for YSQL in bytes. 0 to make this equal to SSTable block size.");
+
+DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
+                 "Whether to show less details on ybctid corruption error status message.  Useful "
+                 "during tests that require consistent output.");
 
 namespace yb {
 namespace docdb {
@@ -443,12 +450,15 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  bool pack_row = request_.column_values().size() <= FLAGS_max_packed_row_columns;
+  bool pack_row = FLAGS_ysql_enable_packed_row;
   const SchemaPacking& schema_packing = VERIFY_RESULT(
       doc_read_context_.schema_packing_storage.GetPacking(request_.schema_version()));
-  RowPacker row_packer(request_.schema_version(), schema_packing);
+  RowPacker row_packer(request_.schema_version(), schema_packing, FLAGS_ysql_packed_row_size_limit);
+  IntraTxnWriteId packed_row_write_id;
 
-  if (!pack_row) {
+  if (pack_row) {
+    packed_row_write_id = data.doc_write_batch->ReserveWriteId();
+  } else {
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
         ValueControlFields(), ValueRef(ValueEntryType::kNullLow), data.read_time, data.deadline,
@@ -470,9 +480,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     QLExprResult expr_result;
     RETURN_NOT_OK(EvalExpr(column_value.expr(), table_row, expr_result.Writer()));
 
-    if (pack_row) {
-      RETURN_NOT_OK(row_packer.AddValue(column_id, expr_result.Value()));
-    } else {
+    if (!pack_row || !VERIFY_RESULT(row_packer.AddValue(column_id, expr_result.Value()))) {
       // Inserting into specified column.
       DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(data.doc_write_batch->InsertSubDocument(
@@ -486,7 +494,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice()),
         ValueControlFields(), ValueRef(encoded_value),
-        data.read_time, data.deadline, request_.stmt_id()));
+        data.read_time, data.deadline, request_.stmt_id(),
+        packed_row_write_id));
   }
 
   RETURN_NOT_OK(PopulateResultSet(table_row));
@@ -1041,11 +1050,15 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
-        return STATUS_FORMAT(
-            Corruption,
-            "ybctid $0 not found in indexed table. index table id is $1",
-            doc_key,
-            request_.index_request().table_id());
+        if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
+          return STATUS(Corruption, "ybctid not found in indexed table");
+        } else {
+          return STATUS_FORMAT(
+              Corruption,
+              "ybctid $0 not found in indexed table. index table id is $1",
+              doc_key,
+              request_.index_request().table_id());
+        }
       }
       row.Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, &row));

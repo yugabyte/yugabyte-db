@@ -121,6 +121,65 @@ EXPLAIN SELECT j FROM test_scan;
  Seq Scan on test_scan  (cost=10000000000.00..10000000100.00 rows=1000 width=4)
 (1 row)
 
+-- Show transaction priority. As it is not possible to have a deterministic
+-- yb_transaction_priority, we set yb_transaction_priority_lower_bound and
+-- yb_transaction_priority_upper_bound to be the same, which forces
+-- yb_transaction_priority to be equal to those two.
+set yb_transaction_priority_lower_bound = 0.4;
+set yb_transaction_priority_upper_bound = 0.4;
+BEGIN TRANSACTION;
+INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
+show yb_transaction_priority;
+          yb_transaction_priority
+-------------------------------------------
+ 0.400000000 (Normal priority transaction)
+(1 row)
+
+COMMIT;
+-- Trying to set yb_transaction_priority will be an error
+set yb_transaction_priority = 0.3; -- ERROR
+ERROR:  parameter "yb_transaction_priority" cannot be changed
+-- High priority transaction
+set yb_transaction_priority_lower_bound = 0.4;
+set yb_transaction_priority_upper_bound = 0.4;
+BEGIN TRANSACTION;
+SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+ i | j
+---+---
+ 1 | 1
+(1 row)
+
+show yb_transaction_priority;
+         yb_transaction_priority
+-----------------------------------------
+ 0.400000000 (High priority transaction)
+(1 row)
+
+COMMIT;
+-- Highest priority transaction
+set yb_transaction_priority_upper_bound = 1;
+set yb_transaction_priority_lower_bound = 1;
+BEGIN TRANSACTION;
+SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
+ i | j
+---+---
+ 1 | 1
+(1 row)
+
+show yb_transaction_priority;
+   yb_transaction_priority
+------------------------------
+ Highest priority transaction
+(1 row)
+
+COMMIT;
+-- Showing yb_transaction_priority outside a transaction block
+show yb_transaction_priority;
+          yb_transaction_priority
+-------------------------------------------
+ 0.000000000 (Normal priority transaction)
+(1 row)
+
 -- SET LOCAL is restricted by a function SET option
 create or replace function myfunc(int) returns text as $$
 begin
@@ -148,24 +207,46 @@ SHOW plpgsql.extra_foo_warnings;  -- but the parameter is set
  false
 (1 row)
 
+-- test temp_file_limit default
+SHOW temp_file_limit;
+ temp_file_limit
+-----------------
+ 1GB
+(1 row)
+
+-- test temp_File_limit update
+SET temp_file_limit="100MB";
+SHOW temp_file_limit;
+ temp_file_limit
+-----------------
+ 100MB
+(1 row)
+
+SET temp_file_limit=-1;
+SHOW temp_file_limit;
+ temp_file_limit
+-----------------
+ -1
+(1 row)
+
 -- test `yb_db_admin` role can set and reset yb_db_admin-allowed PGC_SUSET variables
 SET SESSION AUTHORIZATION yb_db_admin;
 SHOW session_replication_role;
- session_replication_role 
+ session_replication_role
 --------------------------
  origin
 (1 row)
 
 SET session_replication_role TO replica;
 SHOW session_replication_role;
- session_replication_role 
+ session_replication_role
 --------------------------
  replica
 (1 row)
 
 RESET session_replication_role;
 SHOW session_replication_role;
- session_replication_role 
+ session_replication_role
 --------------------------
  origin
 (1 row)

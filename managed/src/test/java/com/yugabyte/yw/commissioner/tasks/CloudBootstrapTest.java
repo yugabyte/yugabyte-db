@@ -192,8 +192,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(false),
                 eq(taskParams.setUpChrony),
                 eq(taskParams.ntpServers),
-                eq(false),
-                eq(taskParams.showSetUpChrony));
+                eq(taskParams.showSetUpChrony),
+                eq(false));
       } else {
         String expectedAccessKeyCode = taskParams.keyPairName;
 

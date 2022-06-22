@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import _ from 'lodash';
+
 import { NodeDetailsTable } from '../../universes';
 import {
   isNonEmptyArray,
@@ -17,7 +19,6 @@ import {
 } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading } from '../../common/indicators';
-import _ from 'lodash';
 
 export default class NodeDetails extends Component {
   componentDidMount() {
@@ -97,9 +98,9 @@ export default class NodeDetails extends Component {
           universePerNodeStatus.data[nodeDetail.nodeName]['node_status']
         );
 
-        masterAlive = universePerNodeStatus.data[nodeDetail.nodeName]['master_alive']
-        tserverAlive = universePerNodeStatus.data[nodeDetail.nodeName]['tserver_alive']
-        
+        masterAlive = universePerNodeStatus.data[nodeDetail.nodeName]['master_alive'];
+        tserverAlive = universePerNodeStatus.data[nodeDetail.nodeName]['tserver_alive'];
+
         isLoading = false;
       }
 

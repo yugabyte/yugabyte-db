@@ -110,6 +110,7 @@ message DeleteNotServingTabletResponsePB {
 
 message DisableTabletSplittingRequestPB {
   optional uint64 disable_duration_ms = 1;
+  optional string feature_name = 2;
 }
 
 message DisableTabletSplittingResponsePB {

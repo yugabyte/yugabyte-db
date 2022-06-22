@@ -5,7 +5,6 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
@@ -13,11 +12,13 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
@@ -155,7 +156,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
+    // Escaping double quotes at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+    // Escaping single quotes after.
+    escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
     bashCommand.add("\"" + escapedYsqlCommand + "\"");
     command.add(String.join(" ", bashCommand));
     ShellProcessContext context =
@@ -238,7 +242,12 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
-    LOG.debug("Executing command: " + commandArgs);
+    String logMsg = "Executing command: " + commandArgs;
+    if (context.isTraceLogging()) {
+      log.trace(logMsg);
+    } else {
+      log.debug(logMsg);
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 

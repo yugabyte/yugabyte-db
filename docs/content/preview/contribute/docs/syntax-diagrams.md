@@ -10,26 +10,28 @@ menu:
   preview:
     identifier: docs-syntax-diagrams
     parent: docs-edit
-    weight: 2915
+    weight: 3000
 isTocNested: true
 showAsideToc: true
 ---
 
 In this kind of work, the nature of your documentation change means that you'll need to modify existing [_syntax diagrams_](#syntax-diagram) or add new ones.
 
-> **Note:** The following covers diagram maintenance and creation for the YSQL documentation. The YCQL documentation still uses an old method for this. You must take advice from colleagues if you need to work on YCQL diagrams.
+{{< note >}}
+The following covers diagram maintenance and creation for the YSQL documentation. The YCQL documentation still uses an old method for this. You must take advice from colleagues if you need to work on YCQL diagrams.
+{{< /note >}}
 
-Once you understand this area, modifying existing [_syntax diagrams_](#syntax-diagram) or adding new ones will seem to be very straightforward. However, you must embrace a fairly large mental model. This, in turn, depends on several terms of art. All this is covered in the dedicated section [Creating and maintaining syntax diagrams for YSQL Docs](#3-mental-model-and-glossary-creating-and-maintaining-syntax-diagrams-for-ysql-docs).
+After you understand this area, modifying existing [_syntax diagrams_](#syntax-diagram) or adding new ones will seem to be very straightforward. However, you must embrace a fairly large mental model. This, in turn, depends on several terms of art. All this is covered in the dedicated section [Creating and maintaining syntax diagrams for YSQL Docs](#mental-model-and-glossary-creating-and-maintaining-syntax-diagrams-for-ysql-docs).
 
 Here is a terse step-by-step summary:
 
-### Get set up
+## Get set up
 
-1. Download the latest RRDiagram JAR file (`rrdiagram.jar`).  See the section the [_diagram generator_](#diagram-generator).
+1. Download the latest RRDiagram JAR file (`rrdiagram.jar`). See the section the [_diagram generator_](#diagram-generator).
 
-1. [_Run the generator_](#run-the-generator). This will regenerate every diagram file that is jointly specified by the [_diagram definition file_](#diagram-definition-file) and the set of all [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). Of course, not all of these newly generated `md` files will differ from their previous versions; `git status` will show you only the ones that actually changed.
+1. [_Run the generator_](#run-the-generator). This regenerates every diagram file that is jointly specified by the [_diagram definition file_](#diagram-definition-file) and the set of all [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). Of course, not all of these newly generated `md` files will differ from their previous versions; `git status` will show you only the ones that actually changed.
 
-### Modify or add content pages or syntax rules
+## Modify or add content pages or syntax rules
 
 The nature of your documentation change will determine which selection of the following tasks you will need to do and which of these you will do during each local edit-and-review cycle.
 
@@ -84,7 +86,7 @@ Follow this general flow on each local editing cycle.
 
 > **Note:** There is no tool for link checking within your local git. Broken links are detected when a Yugabyte staff member periodically runs a link checker on the published doc on the Internet. The scope of this check includes _all_ of the Yugabyte properties (for example, the [Blogs site](https://blog.yugabyte.com)). Broken links that this check finds are reported and fixed manually.
 
-## 3. Mental model and glossary: creating and maintaining syntax diagrams for YSQL Docs
+## Mental model and glossary: creating and maintaining syntax diagrams for YSQL Docs
 
 This section describes the mental model for the creation and maintenance of [_syntax diagrams_](#syntax-diagram). The description relies on a number of terms of art. These definitions must be in place in order to explain, efficiently and unambiguously, the mental model of how it all works. Each glossary term is italicized, and set up as a link to the term's definition in this essay, whenever it is used to advertise its status as a defined term of art.
 
@@ -100,7 +102,7 @@ The ordering of the glossary terms is insignificant. There's a fair amount of te
 >
 > Users with more specific requirements will start at `.../stable/` or, maybe, something like `.../v2.1/`. This account assumes that users will work on content only in the `/preview/` subtree.
 
-### syntax rule
+### Syntax rule
 
 - **The formal definition of the grammar of a SQL statement, or a component of a SQL statement**.
 
@@ -128,7 +130,7 @@ Notice the following:
 
 - The single space before the `;` terminator is significant.
 
-### diagram definition file
+### Diagram definition file
 
 ```output
 <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/ysql_grammar.ebnf
@@ -136,13 +138,13 @@ Notice the following:
 
 Located directly on the [_syntax resources directory_](#syntax-resources-directory), this file, uniquely under the whole of the [_ysql directory_](#ysql-directory) is not a `.md` file. And uniquely under the [_syntax resources directory_](#syntax-resources-directory), it is typed up humanly. It holds the definition, written in EBNF notation, of every [_syntax rule_](#syntax-rule) that is processed by the [_diagram generator_](#diagram-generator).
 
-The [_diagram generator_](#diagram-generator) doesn't care about the order of the rules in the file. But the order is reproduced in the [_grammar diagrams file_](#grammar-diagrams-file-here). This, in turn, reflects decisions made by authors about what makes a convenient reading order. Try to spot what informs the present ordering and insert new rules in a way that respects this. In the limit, insert a new rule at the end as the last new properly-defined rule and before this comment:
+The [_diagram generator_](#diagram-generator) doesn't care about the order of the rules in the file. But the order is reproduced in the [_grammar diagrams file_](#grammar-diagrams-file). This, in turn, reflects decisions made by authors about what makes a convenient reading order. Try to spot what informs the present ordering and insert new rules in a way that respects this. In the limit, insert a new rule at the end as the last new properly-defined rule and before this comment:
 
 ```ebnf
 (* Supporting rules *)
 ```
 
-### syntax diagram
+### Syntax diagram
 
 - **The result, in the published documentation, of a [_syntax rule_](#syntax-rule) that is contained in the [_diagram definition file_](#diagram-definition-file)**.
 
@@ -150,7 +152,7 @@ The [_syntax diagram_](#syntax-diagram) and the [_syntax rule_](#syntax-rule) be
 
 The [Syntax section](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/#syntax) of the account of the [`PREPARE`](https://docs.yugabyte.com/preview/api/ysql/the-sql-language/statements/perf_prepare/) statement provides a short, but sufficient, example. The [_syntax diagram_](#syntax-diagram) appears as a (member of a) tabbed pair which gives the reader the choice to see a [_syntax rule_](#syntax-rule) as either the "Grammar" form (in the syntax used in the PostgreSQL documentation and the documentation for several other databases) or the "Diagram" form (a so-called "railroad diagram" that again is used commonly in the documentation for several other databases).
 
-### docs directory
+### Docs directory
 
 - **The directory within your local git of the entire documentation source (the [_humanly typed documentation source_](#humanly-typed-documentation-source), the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) and the [_diagram definition file_](#diagram-definition-file)) together with the [_supporting doc infrastructure_](#supporting-doc-infrastructure)**:
 
@@ -160,7 +162,7 @@ cd <your path>/yugabyte-db/docs
 
 You install the [_diagram generator_](#diagram-generator) here. And you stand here when you [_run the generator_](#run-the-generator). You also typically stand here when you start "hugo"; and when you prepare for, and then do, a `git push` to your personal GitHub fork.
 
-### content directory
+### Content directory
 
 - **Everything under the [_docs directory_](#docs-directory) that is not [_supporting doc infrastructure_](#supporting-doc-infrastructure)**.
 
@@ -182,7 +184,7 @@ modified:   content/preview/api/ysql/the-sql-language/statements/cmd_do.md
 
 Both the `/preview/` and the `/stable/` subtrees are direct children of the [_content directory_](#content-directory).
 
-### ysql directory
+### YSQL directory
 
 - **The directory tree that holds all the [_humanly typed documentation source_](#humanly-typed-documentation-source), the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair), and the [_diagram definition file_](#diagram-definition-file) that jointly describe the YugabyteDB YSQL subsystem in the /preview/ tree**.
 
@@ -190,23 +192,23 @@ Both the `/preview/` and the `/stable/` subtrees are direct children of the [_co
 cd <your path>/yugabyte-db/docs/content/preview/api/ysql
 ```
 
-### supporting doc infrastructure
+### Supporting doc infrastructure
 
 - **Everything on and under the [_docs directory_](#docs-directory) that is not on or under the [_content directory_](#content-directory)**.
 
 This material is not relevant for the present account.
 
-### humanly typed documentation source
+### Humanly typed documentation source
 
 - _(with a few exceptions)_ **The set of ".md" files located under the [ysql directory](#ysql-directory)**.
 
 _Singleton exception:_ The [_diagram definition file_](#diagram-definition-file), on the [_syntax resources directory_](#syntax-resources-directory), is a plain text file that is typed up manually.
 
-Exception class: The [_grammar diagrams file_](#grammar-diagrams-file-here) and the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). These are all located in the syntax resources directory tree. They are all `.md` files. And none is humanly typed. Do not manually edit any of these.
+Exception class: The [_grammar diagrams file_](#grammar-diagrams-file) and the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). These are all located in the syntax resources directory tree. They are all `.md` files. And none is humanly typed. Do not manually edit any of these.
 
 With just a few on the [_ysql directory_](#ysql-directory) itself, the [_humanly typed documentation source_](#humanly-typed-documentation-source) files are located in directory trees that start at the _ysql directory._ The top-of-section `_index.md` for the YSQL subsystem is among the few [_humanly typed documentation source_](#humanly-typed-documentation-source) files that are located directly on the [_ysql directory_](#ysql-directory).
 
-### syntax resources directory
+### Syntax resources directory
 
 ```sh
 cd <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources
@@ -214,31 +216,31 @@ cd <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources
 
 With the one exception of the [_diagram definition file_](#diagram-definition-file), every file within the [_syntax resources directory_](#syntax-resources-directory) tree is generated.
 
-### generated documentation source
+### Generated documentation source
 
 - **The set of files that the [_diagram generator_](#diagram-generator) produces**.
 
-All are located within the [_syntax resources directory_](#syntax-resources-directory) tree. The set minimally includes the [_grammar diagrams file_](#grammar-diagrams-file-here). It also includes all of the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) from this. These will be included within ordinary content `.md` files by URL reference from the [_diagram inclusion HTML_](#diagram-inclusion-HTML) located in the ordinary content `.md` file that wants the [_syntax diagram_](#syntax-diagram).
+All are located within the [_syntax resources directory_](#syntax-resources-directory) tree. The set minimally includes the [_grammar diagrams file_](#grammar-diagrams-file). It also includes all of the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) from this. These will be included within ordinary content `.md` files by URL reference from the [_diagram inclusion HTML_](#diagram-inclusion-HTML) located in the ordinary content `.md` file that wants the [_syntax diagram_](#syntax-diagram).
 
 Notice that there is no garbage collection scheme for unreferenced [_generated documentation source_](#generated-documentation-source) files. Content authors must do this task manually.
 
-### grammar diagrams file ([here](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#abort))
+### Grammar diagrams file
 
 ```output
 <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/grammar_diagrams.md
 ```
 
-This contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
+The grammar [diagrams file](https://docs.yugabyte.com/preview/api/ysql/syntax_resources/grammar_diagrams/#abort) contains every [_syntax diagram_](#syntax-diagram) that is generated from all of the [_syntax rules_](#syntax-rule) that are found in the [_diagram definition file_](#diagram-definition-file).
 
-### generated grammar-diagram pair
+### Generated grammar-diagram pair
 
 - **The Markdown source that produce the result, in the human-readable documentation, that the user sees as a [_syntax diagram_](#syntax-diagram)**.
 
 Use this term when you want to focus in the fact that a [_syntax diagram_](#syntax-diagram) is presented for the user as a tabbed "Grammar" and "Diagram" pair.
 
-Always found in the [_grammar diagrams file_](#grammar-diagrams-file-here) (but, uniquely, not here as a tabbed pair). Optionally found as a [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair).
+Always found in the [_grammar diagrams file_](#grammar-diagrams-file) (but, uniquely, not here as a tabbed pair). Optionally found as a [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair).
 
-### free-standing generated grammar-diagram pair
+### Free-standing generated grammar-diagram pair
 
 - **Such a pair requests the [_diagram generator_](#diagram-generator) to populate them automatically with respectively the "grammar" and the "diagram" presentations of the set of [_syntax rules_](#syntax-rule) that each asks for**.
 
@@ -268,15 +270,15 @@ The [_free-standing generated grammar-diagram pair_](#free-standing-generated-gr
 <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md
 ```
 
-Suppose that a [_syntax rule_](#syntax-rule) includes a reference to another [_syntax rule_](#syntax-rule). If the referenced [_syntax rule_](#syntax-rule) is included (by virtue of the name of the _diagram-grammar file pair_) in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the [_syntax rule_](#syntax-rule) in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the [_syntax rule_](#syntax-rule) in that same [_syntax diagram set_](#syntax-diagram-set). Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file-here). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated [_syntax diagram_](#syntax-diagram).
+Suppose that a [_syntax rule_](#syntax-rule) includes a reference to another [_syntax rule_](#syntax-rule). If the referenced [_syntax rule_](#syntax-rule) is included (by virtue of the name of the _diagram-grammar file pair_) in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the [_syntax rule_](#syntax-rule) in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the [_syntax rule_](#syntax-rule) in that same [_syntax diagram set_](#syntax-diagram-set). Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated [_syntax diagram_](#syntax-diagram).
 
-If you don't follow this rule, then (as long as you specify the right path to the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), you _will_ get the diagram in the `wants-to-include.md`, just as you want it. But the links to diagrams in the [_grammar diagrams file_](#grammar-diagrams-file-here) for rules that are not defined in the same included diagram will be broken. You should therefore always check manually that these links work when you first confirm that you see the generated [_syntax diagram_](#syntax-diagram) that you want at the location that you want it. And you should check again just before creating a Pull Request.
+If you don't follow this rule, then (as long as you specify the right path to the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), you _will_ get the diagram in the `wants-to-include.md`, just as you want it. But the links to diagrams in the [_grammar diagrams file_](#grammar-diagrams-file) for rules that are not defined in the same included diagram will be broken. You should therefore always check manually that these links work when you first confirm that you see the generated [_syntax diagram_](#syntax-diagram) that you want at the location that you want it. And you should check again just before creating a Pull Request.
 
-### syntax diagram set
+### Syntax diagram set
 
 - **The set of [_syntax diagrams_](#syntax-diagram) specified by spelling `<rule-name>[ , ... ]` in the first part of the filenames of the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair)**.
 
-### diagram inclusion HTML
+### Diagram inclusion HTML
 
 - **The HTML snippet that you include, and edit, in a [_humanly typed documentation source_](#humanly-typed-documentation-source) file in which you want to include a [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair)**.
 
@@ -306,10 +308,10 @@ You must include this boilerplate text in `wants-to-include.md` at the location 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" /*/%}}
+  {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" */%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" /*/%}}
+  {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" */%}}
   </div>
 </div>
 ```
@@ -328,9 +330,9 @@ and this:
 
 properly. The rest is entirely boilerplate. You musn't touch it. The construct `../../../` must climb up the proper number of levels (three in this example) to reach the parent [_ysql directory_](#ysql-directory) from `wants-to-include.md`.
 
-### diagram generator
+### Diagram generator
 
-- **The program that reads the [_diagram definition file_](#diagram-definition-file) and that repopulates the [_grammar diagrams file_](#grammar-diagrams-file-here) and the set of existing [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) for every rule that the [_diagram definition file_](#diagram-definition-file) defines**.
+- **The program that reads the [_diagram definition file_](#diagram-definition-file) and that repopulates the [_grammar diagrams file_](#grammar-diagrams-file) and the set of existing [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) for every rule that the [_diagram definition file_](#diagram-definition-file) defines**.
 
 It's implemented by `rrdiagram.jar` on the [_docs directory_](#docs-directory).
 
@@ -345,7 +347,7 @@ wget $(curl -s https://api.github.com/repos/Yugabyte/RRDiagram/releases/preview 
 
 Use `ls rrdiagram.jar` to check that it is now present. (It isn't shown by "git status" 'cos it's explicitly excluded.)
 
-### run the generator
+### Run the generator
 
 - **first "cd..." then "java..."**
 

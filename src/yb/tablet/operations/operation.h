@@ -70,9 +70,13 @@ YB_DEFINE_ENUM(
     ((kHistoryCutoff, consensus::HISTORY_CUTOFF_OP))
     ((kSplit, consensus::SPLIT_OP)));
 
+YB_STRONGLY_TYPED_BOOL(WasPending);
+
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
 // and replicate operations in a consensus configuration.
+//
+// Most methods in this class perform internal synchronization.
 class Operation {
  public:
   enum TraceType {
@@ -96,7 +100,7 @@ class Operation {
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
   // Also it should notify callback if necessary.
-  Status Replicated(int64_t leader_term);
+  Status Replicated(int64_t leader_term, WasPending was_pending);
 
   // Abort operation. Release resources and notify callbacks.
   void Aborted(const Status& status, bool was_pending);
@@ -129,11 +133,11 @@ class Operation {
   // Returns the ConsensusRound being used, if this transaction is being executed through the
   // consensus system or NULL if it's not.
   consensus::ConsensusRound* consensus_round() {
-    return consensus_round_.get();
+    return consensus_round_atomic_.load(std::memory_order_acquire);
   }
 
   const consensus::ConsensusRound* consensus_round() const {
-    return consensus_round_.get();
+    return consensus_round_atomic_.load(std::memory_order_acquire);
   }
 
   Tablet* tablet() const {
@@ -146,6 +150,8 @@ class Operation {
     tablet_ = tablet;
   }
 
+  // Completion callback must be set while the operation is only known to the thread creating it.
+  // TODO: construct the operation and set the completion callback using a single factory method.
   template <class F>
   void set_completion_callback(const F& completion_clbk) {
     completion_clbk_ = completion_clbk;
@@ -157,15 +163,15 @@ class Operation {
   }
 
   // Sets the hybrid_time for the transaction
-  void set_hybrid_time(const HybridTime& hybrid_time);
+  void set_hybrid_time(const HybridTime& hybrid_time) EXCLUDES(mutex_);
 
-  HybridTime hybrid_time() const {
+  HybridTime hybrid_time() const EXCLUDES(mutex_) {
     std::lock_guard<simple_spinlock> l(mutex_);
     DCHECK(hybrid_time_.is_valid());
     return hybrid_time_;
   }
 
-  HybridTime hybrid_time_even_if_unset() const {
+  HybridTime hybrid_time_even_if_unset() const EXCLUDES(mutex_) {
     std::lock_guard<simple_spinlock> l(mutex_);
     return hybrid_time_;
   }
@@ -179,20 +185,18 @@ class Operation {
   // For instance it could be different from hybrid_time() for CDC.
   virtual HybridTime WriteHybridTime() const;
 
-  void set_op_id(const OpId& op_id) {
+  // The setter acquires the mutex for historical reasons, even though the corresponding getter does
+  // not.
+  void set_op_id(const OpId& op_id) EXCLUDES(mutex_) {
     std::lock_guard<simple_spinlock> l(mutex_);
-    op_id_ = op_id;
+    op_id_.store(op_id, std::memory_order_release);
   }
 
-  const OpId& op_id() const {
-    return op_id_;
+  const OpId op_id() const EXCLUDES(mutex_) {
+    return op_id_.load(std::memory_order_acquire);
   }
 
-  bool has_completion_callback() const {
-    return completion_clbk_ != nullptr;
-  }
-
-  void CompleteWithStatus(const Status& status) const;
+  void CompleteWithStatus(const Status& status) const EXCLUDES(mutex_);
 
   // Whether we should use MVCC Manager to track this operation.
   virtual bool use_mvcc() const {
@@ -206,11 +210,12 @@ class Operation {
   void AddedToFollower();
 
   void Aborted(bool was_pending);
-  void Replicated();
+  void Replicated(WasPending was_pending);
 
   virtual ~Operation();
 
  private:
+
   // Actual implementation of Replicated.
   // complete_status could be used to change completion status, i.e. callback will be invoked
   // with this status.
@@ -236,13 +241,15 @@ class Operation {
 
   mutable simple_spinlock mutex_;
 
-  // This transaction's hybrid_time. Protected by mutex_.
+  // This transaction's hybrid_time.
   HybridTime hybrid_time_ GUARDED_BY(mutex_);
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
-  OpId op_id_ GUARDED_BY(mutex_);
+  std::atomic<OpId> op_id_;
 
-  scoped_refptr<consensus::ConsensusRound> consensus_round_;
+  scoped_refptr<consensus::ConsensusRound> consensus_round_ GUARDED_BY(mutex_);
+  // This atomic is used to access the consensus round without locking once it has been set.
+  std::atomic<consensus::ConsensusRound*> consensus_round_atomic_{nullptr};
 
   ScopedOperation preparing_token_;
 };

@@ -170,6 +170,8 @@ You can specify a region as follows:
 
 Typically, it takes a few minutes for the cloud provider to be configured. When the configuration completes, you will be ready to create a YugabyteDB universe on Azure.
 
+If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
+
 ### How to use a shared image gallery
 
 You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you to provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).

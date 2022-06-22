@@ -3,7 +3,7 @@
 ---
 cpu_usage_user:
   metric: "node_cpu_usage"
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   operator: "* 100"
   filters:
@@ -18,7 +18,7 @@ cpu_usage_user:
 
 cpu_usage_system:
   metric: "node_cpu_usage"
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   operator: "* 100"
   filters:
@@ -52,7 +52,7 @@ disk_usage:
 
 cpu_usage:
   metric: "node_cpu_usage_avg"
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   operator: "* 100"
   filters:
@@ -68,7 +68,7 @@ cpu_usage:
 
 disk_iops:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   filters:
     saved_name: "node_disk_reads_irate|node_disk_writes_irate"
@@ -100,7 +100,7 @@ tserver_rpcs_per_sec_by_universe:
 
 memory_usage:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   operator: "/ 1073741824"
   filters:
@@ -121,7 +121,7 @@ memory_usage:
 
 container_cpu_usage:
   metric: "container_cpu_usage"
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   filters:
     pod_name: "yb-tserver-(.*)"
@@ -138,7 +138,7 @@ container_cpu_usage:
 
 container_memory_usage:
   metric: "container_memory_working_set_bytes"
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   operator: "/ 1073741824"
   filters:
@@ -188,7 +188,7 @@ container_volume_max_usage:
 
 network_bytes:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   filters:
     saved_name: "node_network_receive_bytes_irate|node_network_transmit_bytes_irate"
@@ -205,7 +205,7 @@ network_bytes:
 
 network_packets:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   filters:
     saved_name: "node_network_receive_packets_irate|node_network_transmit_packets_irate"
@@ -222,7 +222,7 @@ network_packets:
 
 network_errors:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   filters:
     saved_name: "node_network_receive_errs_irate|node_network_transmit_errs_irate"
@@ -260,7 +260,7 @@ disk_bytes_per_second_per_node:
     saved_name: "node_disk_read_bytes_irate|node_disk_write_bytes_irate"
   group_by: "saved_name"
   range : true
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   panel_group: "Node Metrics"
   layout:
     title: "Disk Bytes / Sec / Node"
@@ -1104,8 +1104,7 @@ tserver_threads_running:
 
 tserver_threads_started:
   metric: "threads_started"
-  function: "increase|avg"
-  range: true
+  function: "avg"
   filters:
     export_type: "tserver_export"
   group_by: "saved_name"
@@ -2023,7 +2022,7 @@ response_sizes:
 
 tserver_rpc_queue_size_master:
   metric: "rpcs_in_queue_yb_master_MasterService"
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   panel_group: "Master"
   layout:
@@ -2038,7 +2037,7 @@ tserver_rpc_queue_size_master:
 # for the saved_name filter.
 tserver_rpc_queue_size_tserver:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   filters:
     saved_name: "rpcs_in_queue_.*"
@@ -2061,7 +2060,7 @@ tserver_rpc_queue_size_tserver:
 
 tserver_rpc_queue_size_cql:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   filters:
     saved_name: "rpcs_in_queue_yb_cqlserver_CQLServerService"
@@ -2078,7 +2077,7 @@ tserver_rpc_queue_size_cql:
 
 tserver_rpc_queue_size_redis:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range: true
   filters:
     saved_name: "rpcs_in_queue_yb_redisserver_RedisServerService"
@@ -2267,7 +2266,7 @@ master_cpu_util_secs:
 
 tserver_cpu_util_secs:
   metric: ""
-  function: "max_over_time|max"
+  function: "avg_over_time|avg"
   range : true
   operator: "/ 1000"
   filters:

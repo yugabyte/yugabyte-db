@@ -324,7 +324,8 @@ class GraphPanelHeader extends Component {
       showModal,
       closeModal,
       visibleModal,
-      enableNodeComparisonModal
+      enableNodeComparisonModal,
+      enableTopNodes
     } = this.props;
     const {
       filterType,
@@ -416,7 +417,7 @@ class GraphPanelHeader extends Component {
                     nodeItemChanged={this.nodeItemChanged}
                     selectedUniverse={this.state.currentSelectedUniverse}
                     selectedNode={this.state.currentSelectedNode}
-                    topNodesSelection={true}
+                    topNodesSelection={enableTopNodes}
                   />
                   {liveQueriesLink && !universePaused && (
                     <Link to={liveQueriesLink} style={{ marginLeft: '15px' }}>

@@ -36,12 +36,6 @@ class HybridTime;
 
 class Trace;
 
-enum TxnPriorityRequirement {
-  kLowerPriorityRange,
-  kHigherPriorityRange,
-  kHighestPriority
-};
-
 namespace client {
 
 using Waiter = boost::function<void(const Status&)>;
@@ -161,7 +155,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  Status RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
   bool HasSubTransactionState();
 
@@ -178,9 +172,13 @@ class YBSubTransaction {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
-  Status RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
 
   const SubTransactionMetadata& get();
+
+  std::string ToString() const;
+
+  bool operator==(const YBSubTransaction& other) const;
 
  private:
   SubTransactionMetadata sub_txn_;

@@ -29,16 +29,17 @@ Status FetchState::SetPrefix(const Slice& prefix) {
 }
 
 Result<bool> FetchState::IsDeletedRowEntry() {
-  bool is_tombstoned = false;
-  is_tombstoned = VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
-
   // Because Postgres doesn't have a concept of frozen types, kGroupEnd will only demarcate the
   // end of hashed and range components. It is reasonable to assume then that if the last byte
   // is kGroupEnd then it does not have any subkeys.
   bool no_subkey =
       key()[key().size() - 1] == docdb::KeyEntryTypeAsChar::kGroupEnd;
 
-  return no_subkey && is_tombstoned;
+  return no_subkey && VERIFY_RESULT(IsDeletedEntry());
+}
+
+Result<bool> FetchState::IsDeletedEntry() {
+  return VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
 }
 
 bool FetchState::IsDeletedSinceInsertion() {
@@ -69,8 +70,7 @@ Status FetchState::Update() {
 
 Status FetchState::NextNonDeletedEntry() {
   while (!finished()) {
-    if (VERIFY_RESULT(IsDeletedRowEntry()) ||
-        IsDeletedSinceInsertion()) {
+    if (VERIFY_RESULT(IsDeletedEntry()) || IsDeletedSinceInsertion()) {
       RETURN_NOT_OK(NextEntry());
       continue;
     }
@@ -161,8 +161,8 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
 
 void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch) {
   auto& pair = write_batch->AddRaw();
-  pair.first.assign(key.cdata(), key.size());
-  pair.second.assign(value.cdata(), value.size());
+  pair.key.assign(key.cdata(), key.size());
+  pair.value.assign(value.cdata(), value.size());
 }
 
 void WriteToRocksDB(

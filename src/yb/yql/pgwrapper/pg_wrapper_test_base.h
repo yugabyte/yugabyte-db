@@ -33,6 +33,8 @@ class PgWrapperTestBase : public MiniClusterTestWithClient<ExternalMiniCluster> 
 
   virtual void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {}
 
+  Result<TabletId> GetSingleTabletId(const TableName& table_name);
+
   // Tablet server to use to perform PostgreSQL operations.
   ExternalTabletServer* pg_ts = nullptr;
 };

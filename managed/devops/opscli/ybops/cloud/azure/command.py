@@ -13,10 +13,12 @@ from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvision
     AzureQueryRegionsMethod, AzureQueryZonesMethod, AzureDestroyInstancesMethod, \
     AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureNetworkCleanupMethod, \
     AzureQueryUltraMethod, AzureCreateDnsEntryMethod, AzureEditDnsEntryMethod, \
-    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod, AzureDeleteRootVolumesMethod
+    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod, AzureDeleteRootVolumesMethod, \
+    AzurePauseInstancesMethod, AzureResumeInstancesMethod
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
-    AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts
+    AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
+    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -43,6 +45,12 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(CronCheckMethod(self))
         self.add_method(AzureDeleteRootVolumesMethod(self))
         self.add_method(TransferXClusterCerts(self))
+        self.add_method(VerifySSHConnection(self))
+        self.add_method(AddAuthorizedKey(self))
+        self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(AzurePauseInstancesMethod(self))
+        self.add_method(AzureResumeInstancesMethod(self))
+        self.add_method(RebootInstancesMethod(self))
 
 
 class AzureAccessCommand(AccessCommand):

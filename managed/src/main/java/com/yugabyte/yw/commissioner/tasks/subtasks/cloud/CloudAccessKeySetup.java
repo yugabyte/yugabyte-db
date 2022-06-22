@@ -63,8 +63,8 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           false,
           taskParams().setUpChrony,
           taskParams().ntpServers,
-          taskParams().overrideKeyValidate,
-          taskParams().showSetUpChrony);
+          taskParams().showSetUpChrony,
+          taskParams().overrideKeyValidate);
     } else {
       // For add region, we should verify if the overrideKeyValidate is set, so that we don't
       // try to add the key unnecessarily. It is false by default, so unless someone explicitly

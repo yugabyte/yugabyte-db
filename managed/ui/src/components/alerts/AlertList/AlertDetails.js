@@ -1,9 +1,12 @@
 import React, { Component } from 'react';
-import { Row, Col, ButtonGroup, DropdownButton, MenuItem } from 'react-bootstrap';
+import { Row, Col, ButtonGroup, DropdownButton, MenuItem }
+ from 'react-bootstrap';
 import './AlertDetails.scss';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
 import { getSeverityLabel } from './AlertUtils';
 import moment from 'moment';
+
+import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
 
 const findValueforlabel = (labels, labelToFind) => {
   const label = labels.find((l) => l.name === labelToFind);
@@ -23,6 +26,31 @@ const getSourceName = (alertDetails) => {
     </a>
   );
 };
+
+
+const getAlertExpressionLink = (alertDetails) => {
+  if (!alertDetails.alertExpressionUrl) {
+    // Just in case we get alert without Prometheus URL.
+    // Shouldn't happen though.
+    return "";
+  }
+  var url = new URL(alertDetails.alertExpressionUrl);
+  url.hostname = window.location.hostname;
+  return (
+    <a
+      target="_blank"
+      rel="noopener noreferrer"
+      href={url.href}>
+      <img
+        className="prometheus-link-icon"
+        alt="Alert expression graph in Prometheus"
+        src={prometheusIcon}
+        width="25"
+      />
+    </a>
+  );
+};
+
 export default class AlertDetails extends Component {
   shouldComponentUpdate(nextProps) {
     const { visible, alertDetails } = this.props;
@@ -62,11 +90,14 @@ export default class AlertDetails extends Component {
                 </Col>
               </Row>
               <Row>
-                <Col className="alert-label no-left-padding" xs={12} md={12} lg={12}>
+                <Col className="alert-label no-left-padding" xs={10} md={10} lg={10}>
                   <h6 className="alert-label-header">Name</h6>
                   <div title={alertDetails.name} className="alert-label-value">
                     {alertDetails.name}
                   </div>
+                </Col>
+                <Col lg={2} md={2} xs={2}>
+                {getAlertExpressionLink(alertDetails)}
                 </Col>
               </Row>
               <Row>

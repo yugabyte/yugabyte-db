@@ -204,7 +204,8 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
     resp->add_deprecated_wal_segment_seqnos(segment->header().sequence_number());
   }
   if (!log_segments.empty()) {
-    resp->set_first_wal_segment_seqno(log_segments.front()->header().sequence_number());
+    const log::ReadableLogSegmentPtr& first_segment = CHECK_RESULT(log_segments.front());
+    resp->set_first_wal_segment_seqno(first_segment->header().sequence_number());
   }
 
   context.RespondSuccess();

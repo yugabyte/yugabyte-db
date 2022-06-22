@@ -64,6 +64,11 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_bool(ysql_enable_reindex, false,
+            "Enable REINDEX INDEX statement.");
+TAG_FLAG(ysql_enable_reindex, advanced);
+TAG_FLAG(ysql_enable_reindex, hidden);
+
 namespace yb {
 namespace pggate {
 
@@ -137,13 +142,17 @@ void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallback
 void YBCDestroyPgGate() {
   if (pgapi_shutdown_done.exchange(true)) {
     LOG(DFATAL) << __PRETTY_FUNCTION__ << " should only be called once";
-  } else {
-    pggate::PgApiImpl* local_pgapi = pgapi;
-    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
-    delete local_pgapi;
-    ClearGlobalPgMemctxMap();
-    VLOG(1) << __PRETTY_FUNCTION__ << " finished";
+    return;
   }
+  {
+    std::unique_ptr<pggate::PgApiImpl> local_pgapi(pgapi);
+    pgapi = nullptr; // YBCPgIsYugaByteEnabled() must return false from now on.
+  }
+  VLOG(1) << __PRETTY_FUNCTION__ << " finished";
+}
+
+void YBCInterruptPgGate() {
+  pgapi->Interrupt();
 }
 
 const YBCPgCallbacks *YBCGetPgCallbacks() {
@@ -204,6 +213,17 @@ bool YBCPgAllowForPrimaryKey(const YBCPgTypeEntity *type_entity) {
     return type_entity->allow_for_primary_key;
   }
   return false;
+}
+
+YBCStatus YBCGetPgggateHeapConsumption(int64_t *consumption) {
+  if (pgapi) {
+#ifdef TCMALLOC_ENABLED
+    *consumption = pgapi->GetMemTracker().GetTCMallocActualHeapSizeBytes();
+#else
+    *consumption = 0;
+#endif
+  }
+  return YBCStatusOK();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -479,22 +499,8 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YbPgIsUserTableColocated(const YBCPgOid database_oid,
-                                   const YBCPgOid table_oid,
-                                   bool *colocated) {
-  const PgObjectId table_id(database_oid, table_oid);
-  PgTableDescPtr table_desc;
-  YBCStatus status = ExtractValueFromResult(pgapi->LoadTable(table_id), &table_desc);
-  if (status) {
-    return status;
-  } else {
-    *colocated = table_desc->IsColocated();
-    return YBCStatusOK();
-  }
-}
-
 YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
-                                      YBCPgTableProperties *properties) {
+                                      YbTableProperties properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
@@ -620,9 +626,18 @@ YBCStatus YBCPgDmlAddRowLowerBound(YBCPgStatement handle,
                                                     is_inclusive));
 }
 
-YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
-    YBCPgExpr attr_value_end) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle,
+                                        int attr_num,
+                                        YBCPgExpr attr_value,
+                                        bool start_inclusive,
+                                        YBCPgExpr attr_value_end,
+                                        bool end_inclusive) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle,
+                                                     attr_num,
+                                                     attr_value,
+                                                     start_inclusive,
+                                                     attr_value_end,
+                                                     end_inclusive));
 }
 
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
@@ -951,6 +966,14 @@ YBCStatus YBCPgResetTransactionReadPoint() {
   return ToYBCStatus(pgapi->ResetTransactionReadPoint());
 }
 
+double YBCGetTransactionPriority() {
+  return pgapi->GetTransactionPriority();
+}
+
+TxnPriorityRequirement YBCGetTransactionPriorityType() {
+  return pgapi->GetTransactionPriorityType();
+}
+
 YBCStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
@@ -999,8 +1022,8 @@ YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {
   return ToYBCStatus(pgapi->SetActiveSubTransaction(id));
 }
 
-YBCStatus YBCPgRollbackSubTransaction(uint32_t id) {
-  return ToYBCStatus(pgapi->RollbackSubTransaction(id));
+YBCStatus YBCPgRollbackToSubTransaction(uint32_t id) {
+  return ToYBCStatus(pgapi->RollbackToSubTransaction(id));
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1088,6 +1111,7 @@ const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .log_ysql_catalog_versions               = &FLAGS_log_ysql_catalog_versions,
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,

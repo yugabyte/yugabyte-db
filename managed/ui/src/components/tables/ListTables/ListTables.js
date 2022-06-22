@@ -96,7 +96,8 @@ class ListTableGrid extends Component {
       customer: { currentCustomer }
     } = this.props;
     const currentUniverse = this.props.universe.currentUniverse.data;
-    const universePaused = this.props.universe.currentUniverse?.data?.universeDetails?.universePaused;
+    const universePaused = this.props.universe.currentUniverse?.data?.universeDetails
+      ?.universePaused;
     const getTableIcon = function (tableType) {
       if (tableType === 'YQL_TABLE_TYPE') {
         return 'YCQL';
@@ -110,7 +111,10 @@ class ListTableGrid extends Component {
     const getTableName = function (tableName, data) {
       if (data.status === 'success') {
         return (
-          <Link to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}>
+          <Link
+            title={tableName}
+            to={`/universes/${currentUniverse.universeUUID}/tables/${data.tableID}`}
+          >
             {tableName}
           </Link>
         );
@@ -238,7 +242,11 @@ class ListTableGrid extends Component {
     }
     const sortedListItems = _.sortBy(listItems, 'tableName');
     const tableListDisplay = (
-      <BootstrapTable data={sortedListItems} pagination className="backup-list-table middle-aligned-table">
+      <BootstrapTable
+        data={sortedListItems}
+        pagination
+        className="backup-list-table middle-aligned-table"
+      >
         <TableHeaderColumn dataField="tableID" isKey={true} hidden={true} />
         <TableHeaderColumn
           dataField={'tableName'}

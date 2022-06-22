@@ -2,37 +2,30 @@
 
 package com.yugabyte.yw.common;
 
-import com.google.inject.Singleton;
-import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.common.Util;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
-import com.amazonaws.services.s3.model.DeleteObjectsResult;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
-import com.amazonaws.services.s3.model.MultiObjectDeleteException;
-import com.amazonaws.services.s3.model.MultiObjectDeleteException.DeleteError;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.JsonNode;
-import org.apache.commons.lang3.StringUtils;
+import com.google.inject.Singleton;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
 public class AWSUtil {
 
-  private static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
-  private static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
   private static final String AWS_HOST_BASE_FIELDNAME = "AWS_HOST_BASE";
   private static final String AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
   private static final String KEY_LOCATION_SUFFIX = Util.KEY_LOCATION_SUFFIX;
@@ -168,6 +161,6 @@ public class AWSUtil {
             .collect(Collectors.toList());
     DeleteObjectsRequest deleteRequest =
         new DeleteObjectsRequest(bucketName).withKeys(objectKeys).withQuiet(false);
-    DeleteObjectsResult response = s3Client.deleteObjects(deleteRequest);
+    s3Client.deleteObjects(deleteRequest);
   }
 }

@@ -40,6 +40,7 @@
 
 #include "yb/gutil/strings/util.h"
 
+#include "yb/util/multi_drive_test_env.h"
 #include "yb/util/status.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
@@ -308,52 +309,10 @@ TEST_F(FsManagerTestBase, MultiDriveWithoutMeta) {
   ASSERT_OK(fs_manager()->ListTabletIds());
 }
 
-class FailedEmuEnv : public EnvWrapper {
- public:
-  FailedEmuEnv() : EnvWrapper(Env::Default()) { }
-
-  Status NewRandomAccessFile(const std::string& f,
-                             std::unique_ptr<RandomAccessFile>* r) override {
-    if (IsFailed(f)) {
-      return STATUS(IOError, "Test Error");
-    }
-    return target()->NewRandomAccessFile(f, r);
-  }
-
-  Status NewTempWritableFile(const WritableFileOptions& o, const std::string& t,
-                             std::string* f, std::unique_ptr<WritableFile>* r) override {
-    if (IsFailed(t)) {
-      return STATUS(IOError, "Test Error");
-    }
-    return target()->NewTempWritableFile(o, t, f, r);
-  }
-
-  void AddFailedPath(const std::string& path) {
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    failed_set_.emplace(path);
-  }
-
- private:
-  bool IsFailed(const std::string& filename) const {
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    if (failed_set_.empty()) {
-      return false;
-    }
-    auto it = failed_set_.lower_bound(filename);
-    if ((it == failed_set_.end() || *it != filename) && it != failed_set_.begin()) {
-      --it;
-    }
-    return boost::starts_with(filename, *it);
-  }
-
-  std::set<std::string> failed_set_ GUARDED_BY(data_mutex_);
-  mutable std::mutex data_mutex_;
-};
-
 class FsManagerTestDriveFault : public YBTest {
  public:
   void SetUp() override {
-    FailedEmuEnv* new_env = new FailedEmuEnv();
+    MultiDriveTestEnv* new_env = new MultiDriveTestEnv();
     env_.reset(new_env);
     new_env->AddFailedPath(GetTestPath(kFailedDrive));
     YBTest::SetUp();

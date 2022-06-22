@@ -67,6 +67,7 @@ TRUE_CHOICES = ["true", "True", "t", "T", "yes", "Yes", "y", "Y", "1"]
 FALSE_CHOICES = ["false", "False", "f", "F", "no", "No", "n", "N", "0"]
 BOOL_CHOICES = TRUE_CHOICES + FALSE_CHOICES
 FAULT_TOLERANCE_CHOICES = ["zone", "region", "cloud"]
+START_FAULT_TOLERANCE_CHOICES = ["none", "zone", "region", "cloud"]
 SLACK_LINK = "https://www.yugabyte.com/slack"
 COMMUNITY_REWARDS_LINK = "https://www.yugabyte.com/community-rewards/"
 HELP_LINK = "https://docs.yugabyte.com/latest/faq/"
@@ -74,6 +75,7 @@ YUGABYTED_LINK = "https://docs.yugabyte.com/preview/reference/configuration/yuga
 YUGABYTED_START = "https://docs.yugabyte.com/preview/reference/configuration/yugabyted/#start"
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
+DEFAULT_START_FAULT_TOLERANCE = "none"
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
@@ -547,8 +549,6 @@ class ControlScript(object):
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
         if fault_tolerance == "cloud":
             Output.log_error_and_exit("Cloud based fault tolerance is not supported yet.")
-        elif fault_tolerance == "region":
-            Output.log_error_and_exit("Region based Fault tolerance is not supported yet.")
 
         join_ip = self.configs.saved_data.get("join")
         advertise_ip = self.advertise_ip()
@@ -788,6 +788,7 @@ class ControlScript(object):
         advertise_ip = bind_ip if bind_ip != IP_ANY else IP_LOCALHOST
         master_rpc_port = self.configs.saved_data.get("master_rpc_port")
         join_ip = self.configs.saved_data.get("join")
+        fault_tolerance = self.configs.saved_data.get("fault_tolerance")
         master_addresses  = "{}:{}".format(advertise_ip, master_rpc_port)
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
@@ -811,6 +812,8 @@ class ControlScript(object):
             common_gflags.append("--cluster_uuid={}".format(
                 self.configs.saved_data.get("universe_uuid")))
 
+        if fault_tolerance == "region":
+            common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
 
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
@@ -1854,7 +1857,17 @@ class ControlScript(object):
                     self.configs.saved_data["cloud_zone"] = cloud_location[2]
                 else:
                     has_errors = True
-                    
+
+            if args.fault_tolerance is not None:
+                if args.fault_tolerance.lower() in START_FAULT_TOLERANCE_CHOICES:
+                    self.configs.saved_data["fault_tolerance"] = args.fault_tolerance.lower()
+                else:
+                    has_errors = True
+                    Output.print_out(
+                        "Incorrect fault_tolerance value specified. " +
+                        "Please specify one of the following - zone, region or cloud ".format(
+                            args.fault_tolerance.lower()))
+
             if args.listen is not None:
                 if args.advertise_address is not None and args.listen != args.advertise_address:
                     Output.print_out(Output.make_red("ERROR") +
@@ -2083,8 +2096,10 @@ class ControlScript(object):
                 "--initial_scripts_dir", help=argparse.SUPPRESS)
             cur_parser.add_argument(
                 "--cloud_location", metavar="",
-                help="Cloud location of the node in form of cloudprovider.region.zone"
-            )
+                help="Cloud location of the node in form of cloudprovider.region.zone")
+            cur_parser.add_argument(
+                "--fault_tolerance", metavar="",
+                help="Determines the type of deployment of the cluster. Default is None.")
 
             # Hidden commands for development/advanced users
             cur_parser.add_argument(
@@ -2118,7 +2133,7 @@ class ControlScript(object):
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
-        YBAdminProxy.populate_binary_path()
+        YBAdminProxy.init(self.configs.saved_data.get("master_flags"))
 
         try:
             args.func()
@@ -2216,6 +2231,7 @@ class Configs(object):
             "cloud_provider": DEFAULT_CLOUD_PROVIDER,
             "cloud_region": DEFAULT_CLOUD_REGION,
             "cloud_zone": DEFAULT_CLOUD_ZONE,
+            "fault_tolerance": DEFAULT_START_FAULT_TOLERANCE,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -2597,29 +2613,44 @@ class Diagnostics(object):
 
 # Proxy for parsing output from yb-admin commands.
 class YBAdminProxy(object):
-    path = None
+    cmd_args = []
 
     @staticmethod
-    def populate_binary_path():
-        YBAdminProxy.path = find_binary_location("yb-admin")
+    def init(master_flags):
+        YBAdminProxy.cmd_args.append(find_binary_location("yb-admin"))
+
+        # If the user is attempting to use TLS, let's point yb-admin to
+        # the same certs dir as the master
+        if not master_flags:
+            return
+        flags_list = master_flags.split(",")
+        if 'use_node_to_node_encryption=true' not in flags_list:
+            return
+        certs_dir_name = [y for y in
+            [re.match('certs_dir=(.*)', x) for x in flags_list]
+            if y is not None]
+        if not certs_dir_name[0]:
+            raise RuntimeError("use_node_to_node_encryption=true must "
+                               "be accompanied by a certs_dir setting")
+        YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + [ "--init_master_addrs", master_addrs,
               "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
     def remove_master(master_addrs, old_master, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
               "change_master_config", "REMOVE_SERVER", old_master, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
 
     @staticmethod
     def set_rf(master_addrs, rf, timeout=10):
-        cmd = [ YBAdminProxy.path, "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
                 "modify_placement_info", "cloud1.datacenter1.rack1", str(rf) ]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
@@ -2627,7 +2658,7 @@ class YBAdminProxy(object):
     @staticmethod
     # Returns [ (uuid, ip:port, role) ] for each master
     def get_masters(master_addrs, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return []
@@ -2637,7 +2668,8 @@ class YBAdminProxy(object):
     # Returns list[tserver uuid] reported by yb-master.
     @staticmethod
     def get_tservers(master_addrs, timeout=10):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_tablet_servers"]
+        cmd = YBAdminProxy.cmd_args + \
+                ["--init_master_addrs", master_addrs, "list_all_tablet_servers"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return None
@@ -2667,7 +2699,7 @@ class YBAdminProxy(object):
     # Returns the cluster config for this universe
     @staticmethod
     def get_cluster_config(master_addrs):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "get_universe_config"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "get_universe_config"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
@@ -2679,7 +2711,7 @@ class YBAdminProxy(object):
     # Returns node_uuid by finding the UUID corresponding to current master's IP
     @staticmethod
     def get_node_uuid(master_addrs, cur_master_addr):
-        cmd = [YBAdminProxy.path, "--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
@@ -2696,7 +2728,7 @@ class YBAdminProxy(object):
         if not replication_factor:
             replication_factor = "3"
 
-        cmd = [YBAdminProxy.path, "-master_addresses", master_addrs, "modify_placement_info",
+        cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "modify_placement_info",
                 placement_locations, replication_factor]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (ret_code == 0)

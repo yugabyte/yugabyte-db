@@ -50,6 +50,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster.cc
   mini_cluster_base.cc
   mini_cluster_utils.cc
+  packed_row_test_base.cc
   redis_table_test_base.cc
   test_workload.cc
   ts_itest-base.cc
@@ -189,10 +190,11 @@ function(ADD_YB_CQL_TEST TEST_NAME)
   YB_TEST_TARGET_LINK_LIBRARIES(${TEST_NAME} yb-cql)
 endfunction()
 
-ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(cql-index-test)
-ADD_YB_CQL_TEST(cql-test)
+ADD_YB_CQL_TEST(cql-packed-row-test)
 ADD_YB_CQL_TEST(cql-tablet-split-test)
+ADD_YB_CQL_TEST(cql-test)
+ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})

@@ -10,6 +10,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -62,7 +63,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
   private String exampleTableID1;
   private String exampleTableID2;
   private String exampleTableID3;
-  private HashSet<String> exampleTables;
+  private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
   private YBClient mockClient;
 
@@ -167,6 +168,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(xClusterConfigInfoList, null);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -197,6 +199,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     HighAvailabilityConfig.create("test-cluster-key");
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -242,6 +245,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(xClusterConfigInfoList, null);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -274,9 +278,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
 
-    Iterator<XClusterConfig> it = configList.iterator();
-    while (it.hasNext()) {
-      XClusterConfig xClusterConfig = it.next();
+    for (XClusterConfig xClusterConfig : configList) {
       xClusterConfig.delete();
     }
   }
@@ -295,6 +297,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(xClusterConfigInfoList, null);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -325,6 +328,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(xClusterConfigInfoList, null);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -355,6 +359,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(xClusterConfigInfoList, null);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -383,6 +388,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(Collections.emptyList(), null);
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);
@@ -407,6 +413,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     setupMockClusterConfig(xClusterConfigInfoList, masterErrorBuilder.build());
 
     TaskInfo taskInfo = submitTask(targetUniverse);
+    assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
     List<XClusterConfig> configList = XClusterConfig.getByTargetUniverseUUID(targetUniverseUUID);

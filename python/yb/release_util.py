@@ -262,7 +262,7 @@ class ReleaseUtil(object):
             change_permissions('a+X')
             logging.info("Creating a package '%s' from directory %s",
                          release_file, tmp_distribution_dir)
-            run_program(['gtar', 'cvzf', release_file, yugabyte_folder_prefix],
+            run_program(['tar', 'cvzf', release_file, yugabyte_folder_prefix],
                         cwd=tmp_parent_dir)
             return release_file
         finally:

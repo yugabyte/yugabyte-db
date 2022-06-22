@@ -55,6 +55,7 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
@@ -499,7 +500,6 @@ public class NodeManagerTest extends FakeDBApplication {
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
-    when(mockConfigHelper.getGravitonInstancePrefixList()).thenReturn(ImmutableList.of("m6g."));
     createTempFile("node_manager_test_ca.crt", "test-cert");
   }
 
@@ -671,7 +671,7 @@ public class NodeManagerTest extends FakeDBApplication {
                 .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
                 .getInt(NodeManager.POSTGRES_MAX_MEM_MB)
             > 0) {
-      gflags.put("postmaster_cgroup", NodeManager.YSQL_CGROUP_PATH);
+      gflags.put("postmaster_cgroup", GFlagsUtil.YSQL_CGROUP_PATH);
     }
     return gflags;
   }

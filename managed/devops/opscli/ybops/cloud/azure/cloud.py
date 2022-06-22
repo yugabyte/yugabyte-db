@@ -194,3 +194,31 @@ class AzureCloud(AbstractCloud):
         if not instance:
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
+
+    def start_instance(self, args, ssh_ports):
+        host_info = self.get_host_info(args)
+        if host_info is None:
+            raise YBOpsRuntimeError("Host {} does not exist".format(args.search_pattern))
+
+        vm_status = self.get_admin().get_vm_status(args.search_pattern)
+        if (vm_status != 'VM deallocated'):
+            raise YBOpsRuntimeError("Host {} is not stopped, VM status is {}".format(
+                args.search_pattern, vm_status))
+
+        self.get_admin().start_instance(host_info['name'])
+        # Refreshing private IP address.
+        host_info = self.get_host_info(args)
+        if not host_info:
+            logging.error("Error restarting VM {} - unable to get host info.".format(
+                args.search_pattern))
+            return
+
+        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        return host_info
+
+    def stop_instance(self, args):
+        host_info = self.get_host_info(args)
+        if host_info is None:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+
+        return self.get_admin().deallocate_instance(host_info['name'])

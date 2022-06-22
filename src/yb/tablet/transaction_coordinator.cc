@@ -222,20 +222,28 @@ class TransactionState {
         << Format("ProcessReplicated: $0, replicating: $1", data, replicating_);
 
     if (replicating_ != nullptr) {
-      auto replicating_op_id = replicating_->consensus_round()->id();
-      if (!replicating_op_id.empty()) {
-        if (replicating_op_id != data.op_id) {
-          LOG_WITH_PREFIX(DFATAL)
-              << "Replicated unexpected operation, replicating: " << AsString(replicating_)
-              << ", replicated: " << AsString(data);
-        }
-      } else if (data.leader_term != OpId::kUnknownTerm) {
+      auto* consensus_round = replicating_->consensus_round();
+      if (!consensus_round) {
         LOG_WITH_PREFIX(DFATAL)
-            << "Leader replicated operation without op id, replicating: " << AsString(replicating_)
+            << "Replicated an operation while the previous operation that was being replicated "
+            << "did not even have a consensus round. Replicating: " << AsString(replicating_)
             << ", replicated: " << AsString(data);
       } else {
-        LOG_WITH_PREFIX(INFO) << "Cancel replicating without id: " << AsString(replicating_)
-                              << ", because " << AsString(data) << " was replicated";
+        auto replicating_op_id = consensus_round->id();
+        if (!replicating_op_id.empty()) {
+          if (replicating_op_id != data.op_id) {
+            LOG_WITH_PREFIX(DFATAL)
+                << "Replicated unexpected operation, replicating: " << AsString(replicating_)
+                << ", replicated: " << AsString(data);
+          }
+        } else if (data.leader_term != OpId::kUnknownTerm) {
+          LOG_WITH_PREFIX(DFATAL)
+              << "Leader replicated operation without op id, replicating: "
+              << AsString(replicating_) << ", replicated: " << AsString(data);
+        } else {
+          LOG_WITH_PREFIX(INFO) << "Cancel replicating without id: " << AsString(replicating_)
+                                << ", because " << AsString(data) << " was replicated";
+        }
       }
       replicating_ = nullptr;
     }
@@ -781,6 +789,10 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+
+    // TODO(savepoints) -- consider swapping instead of copying here.
+    aborted_ = data.state.aborted();
+
     return Status::OK();
   }
 
@@ -978,8 +990,9 @@ class TransactionCoordinator::Impl : public TransactionStateContext {
         response->add_status_hybrid_time(txn_status_with_ht.status_time.ToUint64());
 
         auto mutable_aborted_set_pb = response->add_aborted_subtxn_set();
-        if (txn_status_with_ht.status == TransactionStatus::COMMITTED &&
-            it != managed_transactions_.end()) {
+        if (it != managed_transactions_.end() &&
+            (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
+             txn_status_with_ht.status == TransactionStatus::PENDING)) {
           *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
         }
       }

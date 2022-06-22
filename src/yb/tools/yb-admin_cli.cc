@@ -847,14 +847,15 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "disable_tablet_splitting", " <disable_duration_ms>",
+      "disable_tablet_splitting", " <disable_duration_ms> <feature_name>",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 1) {
           return ClusterAdminCli::kInvalidArguments;
         }
         const int64_t disable_duration_ms = VERIFY_RESULT(CheckedStoll(args[0]));
-        RETURN_NOT_OK_PREPEND(client->DisableTabletSplitting(disable_duration_ms),
-                              "Unable to disable tablet splitting");
+        const std::string feature_name = args[1];
+        RETURN_NOT_OK_PREPEND(client->DisableTabletSplitting(disable_duration_ms, feature_name),
+                              Format("Unable to disable tablet splitting for $0", feature_name));
         return Status::OK();
       });
 

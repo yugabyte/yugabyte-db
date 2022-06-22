@@ -168,7 +168,7 @@ class PgCatalogRestorePatch : public RestorePatch {
   PgCatalogRestorePatch(
       FetchState* existing_state, FetchState* restoring_state,
       docdb::DocWriteBatch* doc_batch, const PgCatalogTableData& table,
-      const yb::tablet::TableInfo& pg_yb_catalog_meta)
+      tablet::TableInfo* pg_yb_catalog_meta)
       : RestorePatch(existing_state, restoring_state, doc_batch),
         table_(table), pg_yb_catalog_meta_(pg_yb_catalog_meta) {}
 
@@ -180,7 +180,7 @@ class PgCatalogRestorePatch : public RestorePatch {
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override;
 
   const PgCatalogTableData& table_;
-  const yb::tablet::TableInfo& pg_yb_catalog_meta_;
+  tablet::TableInfo* pg_yb_catalog_meta_;
 };
 
 }  // namespace master

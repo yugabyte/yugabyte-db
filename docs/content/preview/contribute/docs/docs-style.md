@@ -40,6 +40,10 @@ Yugabyte's documentation voice should be informal and authoritative. Speak (or r
 
 **Use imperative headings.** They're more of a call to action than gerunds. "Provision your cluster" makes it clear this is something _you the reader_ are going to do, rather than "Provisioning your cluster". Gerunds and other constructions will sometimes be clearer, so don't feel obligated to use an imperative where it really doesn't work.
 
+### Links
+
+Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown's endnote-style links are also fine to use. Hugo has its own curly-brace link syntax, but it's less friendly and doesn't seem to have any advantages in normal use.
+
 ### Code blocks
 
 **Code language is required.** Every code block needs a language tag. Use `output` for all output, and append a language if you want to have source highlighting but still omit the Copy button (for example, `output.json`). The Hugo docs list [all language names](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages) you can use for fenced code blocks.

@@ -2729,6 +2729,10 @@ die(SIGNAL_ARGS)
 		ProcDiePending = true;
 	}
 
+	if (IsYugaByteEnabled()) {
+		YBCInterruptPgGate();
+	}
+
 	/* If we're still here, waken anything waiting on the process latch */
 	SetLatch(MyLatch);
 

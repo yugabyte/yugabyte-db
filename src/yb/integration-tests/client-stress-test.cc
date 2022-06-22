@@ -453,10 +453,6 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
         // Turn off exponential backoff and lagging follower threshold in order to hit soft memory
         // limit and check throttling.
         "--enable_consensus_exponential_backoff=false",
-        // The global log cache limit should only have to be set on the restarting tserver for
-        // the PauseFollower test, but it does not seem to pass without the limit set on all
-        // tservers. See GitHub issue #10689.
-        "--global_log_cache_size_limit_percentage=100",
         "--consensus_lagging_follower_threshold=-1"
     };
 
@@ -464,7 +460,7 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
     return opts;
   }
 
-  const size_t kHardLimitBytes = 500_MB;
+  static constexpr size_t kHardLimitBytes = 100_MB * RegularBuildVsSanitizers(5, 1);
   const size_t kConsensusMaxBatchSizeBytes = 32_MB;
 };
 
@@ -482,6 +478,8 @@ class ClientStressTest_FollowerOom : public ClientStressTest {
 // In this test we simulate slow inbound RPC requests parsing using
 // TEST_yb_inbound_big_calls_parse_delay_ms flag.
 TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
+  constexpr int kNumRows = 20000 * RegularBuildVsSanitizers(5, 1);
+
   TestWorkload workload(cluster_.get());
   workload.set_write_timeout_millis(30000);
   workload.set_num_tablets(1);
@@ -502,13 +500,23 @@ TEST_F_EX(ClientStressTest, PauseFollower, ClientStressTest_FollowerOom) {
 
   LOG(INFO) << "Killing ts-1";
   ts->Shutdown();
-  std::this_thread::sleep_for(30s);
+
+  // Write enough data to guarantee large UpdateConsensus requests before restarting ts-1.
+  while (workload.rows_inserted() < kNumRows) {
+    LOG(INFO) << "Rows inserted: " << workload.rows_inserted();
+    std::this_thread::sleep_for(1s);
+  }
+
   LOG(INFO) << "Restarting ts-1";
-  ts->mutable_flags()->push_back("--TEST_yb_inbound_big_calls_parse_delay_ms=30000");
+  ts->mutable_flags()->push_back(
+      Format("--TEST_yb_inbound_big_calls_parse_delay_ms=$0", 50000 * kTimeMultiplier));
   ts->mutable_flags()->push_back("--binary_call_parser_reject_on_mem_tracker_hard_limit=true");
+  // Throttle requests with network size larger than 1 MB. Note that the amount of memory that is
+  // counted against the memtracker is much larger after the param has been parsed, so it does not
+  // take too many requests to hit the soft memory limit.
   ts->mutable_flags()->push_back(Format("--rpc_throttle_threshold_bytes=$0", 1_MB));
   // Read buffer should be large enough to accept the large RPCs.
-  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-10");
+  ts->mutable_flags()->push_back("--read_buffer_memory_limit=-50");
   ASSERT_OK(ts->Restart());
 
   ThrottleLogCounter log_counter(ts);

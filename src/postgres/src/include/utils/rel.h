@@ -27,6 +27,8 @@
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
 
+/* YB includes. */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * LockRelId and LockInfo really belong to lmgr.h, but it's more convenient
@@ -188,6 +190,8 @@ typedef struct RelationData
 
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info; /* statistics collection area */
+
+	YbTableProperties yb_table_properties; /* NULL if not loaded */
 } RelationData;
 
 

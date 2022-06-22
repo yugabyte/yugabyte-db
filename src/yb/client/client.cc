@@ -170,6 +170,8 @@ using yb::master::GrantRevokeRoleRequestPB;
 using yb::master::GrantRevokeRoleResponsePB;
 using yb::master::GetUDTypeInfoRequestPB;
 using yb::master::GetUDTypeInfoResponsePB;
+using yb::master::GetUDTypeMetadataRequestPB;
+using yb::master::GetUDTypeMetadataResponsePB;
 using yb::master::GrantRevokePermissionResponsePB;
 using yb::master::GrantRevokePermissionRequestPB;
 using yb::master::MasterDdlProxy;
@@ -205,12 +207,22 @@ using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;  // NOLINT.
 
+namespace {
+
+#ifndef NDEBUG  // debug build has 1h timeout limitation: "Too big timeout specified"
+constexpr int kDefaultBackfillIndexClientRpcTimeoutMs = 60 * 60 * 1000;  // 1 hour
+#else  // release
+constexpr int kDefaultBackfillIndexClientRpcTimeoutMs = 24 * 60 * 60 * 1000;  // 1 day
+#endif
+
+}
+
 DEFINE_bool(client_suppress_created_logs, false,
             "Suppress 'Created table ...' messages");
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
-DEFINE_int32(backfill_index_client_rpc_timeout_ms, 60 * 60 * 1000, // 60 min.
+DEFINE_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
@@ -703,6 +715,13 @@ Status YBClient::GetTableSchema(const YBTableName& table_name,
   *partition_schema = std::move(info->partition_schema);
   return Status::OK();
 }
+
+Status YBClient::GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
+                                StatusCallback callback) {
+  auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetTableSchema(this, table_name, deadline, info, callback);
+}
+
 
 Status YBClient::GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
                                     StatusCallback callback) {
@@ -2061,6 +2080,28 @@ Result<std::vector<YBTableName>> YBClient::ListUserTables(const NamespaceId& ns_
                         table_info.relation_type());
   }
   return result;
+}
+
+Result<std::unordered_map<uint32_t, string>> YBClient::GetPgEnumOidLabelMap(
+    const NamespaceName& ns_name) {
+  GetUDTypeMetadataRequestPB req;
+  GetUDTypeMetadataResponsePB resp;
+
+  req.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  req.mutable_namespace_()->set_name(ns_name);
+  req.set_pg_enum_info(true);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, GetUDTypeMetadata);
+
+  VLOG(1) << "For namespace " << ns_name << " found " << resp.enums_size() << " enums";
+
+  std::unordered_map<uint32_t, string> enum_map;
+  for (int i = 0; i < resp.enums_size(); i++) {
+    const master::PgEnumInfoPB& enum_info = resp.enums(i);
+    VLOG(1) << "Enum oid " << enum_info.oid() << " enum label: " << enum_info.label();
+    enum_map.insert({enum_info.oid(), enum_info.label()});
+  }
+  return enum_map;
 }
 
 Result<bool> YBClient::TableExists(const YBTableName& table_name) {

@@ -120,7 +120,7 @@ struct StatusRequest {
 
 class RequestScope;
 
-struct CommitMetadata {
+struct TransactionLocalState {
   HybridTime commit_ht;
   AbortedSubTransactionSet aborted_subtxn_set;
 };
@@ -135,7 +135,7 @@ class TransactionStatusManager {
 
   // If this tablet is aware that this transaction has committed, returns the CommitMetadata for the
   // transaction. Otherwise, returns boost::none.
-  virtual boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) = 0;
+  virtual boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) = 0;
 
   // Fetches status of specified transaction at specified time from transaction coordinator.
   // Callback would be invoked in any case.
@@ -236,6 +236,11 @@ struct SubTransactionMetadata {
 
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(subtransaction_id, aborted);
+  }
+
+  bool operator==(const SubTransactionMetadata& other) const {
+    return subtransaction_id == other.subtransaction_id &&
+      aborted == other.aborted;
   }
 
   // Returns true if this is the default state, i.e. default subtransaction_id. This indicates

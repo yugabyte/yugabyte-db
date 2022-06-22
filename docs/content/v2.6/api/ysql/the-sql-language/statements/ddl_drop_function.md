@@ -34,10 +34,10 @@ Use the `DROP FUNCTION` statement to remove a function from a database.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_function,argtype_decl.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_function,argtype_decl.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_function,argtype_decl.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_function,argtype_decl.diagram.md" %}}
   </div>
 </div>
 

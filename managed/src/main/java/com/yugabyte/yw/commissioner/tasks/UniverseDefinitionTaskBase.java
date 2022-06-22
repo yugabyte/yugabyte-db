@@ -13,11 +13,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -34,11 +34,11 @@ import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -379,6 +379,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       int iter = 0;
       boolean isYSQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
       boolean isYCQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL;
+      boolean isYEDIS = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYEDIS;
       for (NodeDetails node : nodesInCluster) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           if (node.nodeName != null) {
@@ -397,6 +398,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         node.isYsqlServer = isYSQL;
         node.isYqlServer = isYCQL;
+        node.isRedisServer = isYEDIS;
       }
     }
 
@@ -555,7 +557,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    Map<String, String> gflags = getPrimaryClusterGFlags(taskType, universe);
+
+    // Read gflags from taskPrams primary cluster. If it is null, read it from the universe.
+    Map<String, String> gflags;
+    Cluster primaryClusterInTaskParams = taskParams().getPrimaryCluster();
+    if (primaryClusterInTaskParams != null) {
+      UserIntent userIntent = primaryClusterInTaskParams.userIntent;
+      gflags =
+          taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+      log.debug(
+          "gflags in taskParams: {}, gflags in universeDetails: {}",
+          gflags,
+          getPrimaryClusterGFlags(taskType, universe));
+    } else {
+      gflags = getPrimaryClusterGFlags(taskType, universe);
+      log.debug("gflags gathered from the UniverseDetails : {}", gflags);
+    }
+
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -1506,6 +1524,28 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates a task to delete a read only cluster info from the universe and adds the task to the
+   * task queue.
+   *
+   * @param clusterUUID uuid of the read-only cluster to be removed.
+   */
+  public SubTaskGroup createDeleteClusterFromUniverseTask(UUID clusterUUID) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
+    DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    params.clusterUUID = clusterUUID;
+    // Create the task to delete cluster ifo.
+    DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Installs software for the specified type of processes on a set of nodes.
    *
    * @param nodes a collection of nodes to be processed.
@@ -1559,9 +1599,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
+    return getAnsibleConfigureServerParams(
+        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        node,
+        processType,
+        type,
+        taskSubType);
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent =
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;

@@ -561,11 +561,36 @@ public enum AlertTemplate {
           .thresholdConditionReadOnly(true)
           .build()),
 
+  DB_DRIVE_FAILURE(
+      "DB drive failure",
+      "TServer detected drive failure",
+      "count by (node_prefix) (drive_fault{node_prefix=\"__nodePrefix__\","
+          + " export_type=\"tserver_export\"}) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB detected {{ $value | printf \\\"%.0f\\\" }} drive failure(s)"
+          + " for universe '{{ $labels.source_name }}':\n\\n"
+          + "{{ range query \\\"drive_fault{node_prefix='{{ $labels.node_prefix }}',"
+          + " export_type='tserver_export'}\\\" }}\n"
+          + "  {{ .Labels.exported_instance }}:{{ .Labels.drive_path }}\\n"
+          + "{{ end }}",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("drive(s)")
+          .thresholdConditionReadOnly(true)
+          .thresholdReadOnly(true)
+          .build()),
+
   DB_WRITE_READ_TEST_ERROR(
       "DB write/read test error",
       "Failed to perform test write/read YSQL operation",
       "count by (node_prefix) "
-          + "(yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"}"
+          + "((yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"} and on (node_prefix) "
+          + "(max_over_time(ybp_universe_update_in_progress"
+          + "{node_prefix=\"__nodePrefix__\"}[5m]) == 0))"
           + " {{ query_condition }} {{ query_threshold }})",
       "Test YSQL write/read operation failed on "
           + "{{ $value | printf \\\"%.0f\\\" }} nodes(s) for universe '{{ $labels.source_name }}'.",
@@ -856,36 +881,36 @@ public enum AlertTemplate {
 
   LEADERLESS_TABLETS(
       "Leaderless tablets",
-      "Leader is missing for some tablet(s) for more than 5 minutes",
-      "max by (node_prefix) (count by (node_prefix, exported_instance)"
-          + " (max_over_time(yb_node_leaderless_tablet{node_prefix=\"__nodePrefix__\"}[5m]))"
-          + " {{ query_condition }} {{ query_threshold }})",
-      "Tablet leader is missing for more than 5 minutes for "
+      "Leader is missing for some tablet(s) for longer than configured threshold",
+      "max by (node_prefix)"
+          + " (min_over_time(yb_node_leaderless_tablet_count{node_prefix=\"__nodePrefix__\"}"
+          + "[{{ query_threshold }}s]) > 0)",
+      "Tablet leader is missing for more than {{ $labels.threshold }} seconds for "
           + "{{ $value | printf \\\"%.0f\\\" }} tablet(s) in universe '{{ $labels.source_name }}'.",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
-          .defaultThreshold(SEVERE, 0)
-          .defaultThresholdCondition(Condition.GREATER_THAN)
-          .defaultThresholdUnit(STATUS)
+          .defaultThreshold(SEVERE, "yb.alert.underreplicated_tablets_secs_severe")
+          .defaultThresholdUnit(SECOND)
+          .thresholdMinValue(1.0)
           .build()),
 
   UNDER_REPLICATED_TABLETS(
       "Under-replicated tablets",
-      "Some tablet(s) remain under-replicated for more than 5 minutes",
-      "max by (node_prefix) (count by (node_prefix, exported_instance)"
-          + " (max_over_time(yb_node_underreplicated_tablet{node_prefix=\"__nodePrefix__\"}[5m]))"
-          + " {{ query_condition }} {{ query_threshold }})",
-      "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated "
-          + "for more than 5 minutes in universe '{{ $labels.source_name }}'.",
+      "Some tablet(s) remain under-replicated for longer than configured threshold",
+      "max by (node_prefix)"
+          + " (min_over_time(yb_node_underreplicated_tablet_count{node_prefix=\"__nodePrefix__\"}"
+          + "[{{ query_threshold }}s]) > 0)",
+      "{{ $value | printf \\\"%.0f\\\" }} tablet(s) remain under-replicated for "
+          + "more than {{ $labels.threshold }} seconds in universe '{{ $labels.source_name }}'.",
       0,
       EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
-          .defaultThreshold(SEVERE, 0)
-          .defaultThresholdCondition(Condition.GREATER_THAN)
-          .defaultThresholdUnit(STATUS)
+          .defaultThreshold(SEVERE, "yb.alert.leaderless_tablets_secs_severe")
+          .defaultThresholdUnit(SECOND)
+          .thresholdMinValue(1.0)
           .build());
 
   // @formatter:on

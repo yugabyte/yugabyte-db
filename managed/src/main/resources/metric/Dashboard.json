@@ -407,7 +407,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "cpu_usage",
-      "expr" : "max(max_over_time(container_cpu_usage{pod_name=~\"yb-tserver-(.*)\", container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\"}[300s]))",
+      "expr" : "avg(avg_over_time(container_cpu_usage{pod_name=~\"yb-tserver-(.*)\", container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\"}[300s]))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -499,7 +499,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "memory_usage",
-      "expr" : "max(max_over_time(container_memory_working_set_bytes{pod_name=~\"yb-tserver-(.*)\", container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\"}[300s])) / 1073741824",
+      "expr" : "avg(avg_over_time(container_memory_working_set_bytes{pod_name=~\"yb-tserver-(.*)\", container_name=\"yb-tserver\", node_prefix=~\"$dbcluster\"}[300s])) / 1073741824",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -1718,7 +1718,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Master RPC",
-      "expr" : "max(max_over_time(rpcs_in_queue_yb_master_MasterService{node_prefix=~\"$dbcluster\"}[300s]))",
+      "expr" : "avg(avg_over_time(rpcs_in_queue_yb_master_MasterService{node_prefix=~\"$dbcluster\"}[300s]))",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -1823,12 +1823,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "system",
-      "expr" : "max(max_over_time(node_cpu_usage_avg{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "user",
-      "expr" : "max(max_over_time(node_cpu_usage_avg{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
+      "expr" : "avg(avg_over_time(node_cpu_usage_avg{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) by (mode) * 100",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -1920,7 +1920,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "max(max_over_time(node_cpu_usage{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
+      "expr" : "avg(avg_over_time(node_cpu_usage{mode=\"system\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -2012,7 +2012,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : null,
-      "expr" : "max(max_over_time(node_cpu_usage{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
+      "expr" : "avg(avg_over_time(node_cpu_usage{mode=\"user\", node_prefix=~\"$dbcluster\"}[300s])) * 100",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -2104,12 +2104,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Read",
-      "expr" : "max(max_over_time({saved_name=\"node_disk_read_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_disk_read_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Write",
-      "expr" : "max(max_over_time({saved_name=\"node_disk_write_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_disk_write_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -2201,12 +2201,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "Reads",
-      "expr" : "max(max_over_time({saved_name=\"node_disk_reads_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_disk_reads_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "Writes",
-      "expr" : "max(max_over_time({saved_name=\"node_disk_writes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_disk_writes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -2395,17 +2395,17 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "free",
-      "expr" : "max(max_over_time({saved_name=\"node_memory_MemFree_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
+      "expr" : "avg(avg_over_time({saved_name=\"node_memory_MemFree_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "cached",
-      "expr" : "max(max_over_time({saved_name=\"node_memory_Cached_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
+      "expr" : "avg(avg_over_time({saved_name=\"node_memory_Cached_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
       "refId" : "B"
     }, {
       "hide" : false,
       "legendFormat" : "buffered",
-      "expr" : "max(max_over_time({saved_name=\"node_memory_Buffers_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
+      "expr" : "avg(avg_over_time({saved_name=\"node_memory_Buffers_bytes\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1073741824",
       "refId" : "C"
     } ],
     "gridPos" : {
@@ -2497,12 +2497,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TX",
-      "expr" : "max(max_over_time({saved_name=\"node_network_transmit_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_network_transmit_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "RX",
-      "expr" : "max(max_over_time({saved_name=\"node_network_receive_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_network_receive_bytes_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -2594,12 +2594,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "RX",
-      "expr" : "max(max_over_time({saved_name=\"node_network_receive_errs_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_network_receive_errs_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "TX",
-      "expr" : "max(max_over_time({saved_name=\"node_network_transmit_errs_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_network_transmit_errs_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -2691,12 +2691,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "TX",
-      "expr" : "max(max_over_time({saved_name=\"node_network_transmit_packets_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_network_transmit_packets_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "RX",
-      "expr" : "max(max_over_time({saved_name=\"node_network_receive_packets_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"node_network_receive_packets_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -5761,12 +5761,12 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "cpu_stime",
-      "expr" : "max(max_over_time({export_type=\"tserver_export\", saved_name=\"cpu_stime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
+      "expr" : "avg(avg_over_time({export_type=\"tserver_export\", saved_name=\"cpu_stime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "A"
     }, {
       "hide" : false,
       "legendFormat" : "cpu_utime",
-      "expr" : "max(max_over_time({export_type=\"tserver_export\", saved_name=\"cpu_utime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
+      "expr" : "avg(avg_over_time({export_type=\"tserver_export\", saved_name=\"cpu_utime_irate\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name) / 1000",
       "refId" : "B"
     } ],
     "gridPos" : {
@@ -6741,7 +6741,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YCQL RPC",
-      "expr" : "max(max_over_time({saved_name=\"rpcs_in_queue_yb_cqlserver_CQLServerService\", export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"rpcs_in_queue_yb_cqlserver_CQLServerService\", export_type=\"cql_export\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -6833,7 +6833,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "rpcs_in_queue_.*",
-      "expr" : "max(max_over_time({saved_name=~\"rpcs_in_queue_.*\", export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=~\"rpcs_in_queue_.*\", export_type=\"tserver_export\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     } ],
     "gridPos" : {
@@ -10987,7 +10987,7 @@
     "targets" : [ {
       "hide" : false,
       "legendFormat" : "YEDIS RPC",
-      "expr" : "max(max_over_time({saved_name=\"rpcs_in_queue_yb_redisserver_RedisServerService\", export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
+      "expr" : "avg(avg_over_time({saved_name=\"rpcs_in_queue_yb_redisserver_RedisServerService\", export_type=\"redis_export\", node_prefix=~\"$dbcluster\"}[300s])) by (saved_name)",
       "refId" : "A"
     } ],
     "gridPos" : {

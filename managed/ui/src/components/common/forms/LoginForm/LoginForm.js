@@ -18,6 +18,9 @@ import { trimString } from '../../../../utils/ObjectUtils';
 class LoginForm extends Component {
   constructor(props) {
     super(props);
+    this.state = {
+      showLoginFrom: false
+    };
     clearCredentials();
   }
 
@@ -68,6 +71,8 @@ class LoginForm extends Component {
       password: ''
     };
 
+    const showLoginFrom = !isSSOEnabled() || this.state.showLoginFrom;
+
     return (
       <div className="container full-height dark-background flex-vertical-middle">
         <div className="col-sm-5 dark-form login-form">
@@ -78,6 +83,9 @@ class LoginForm extends Component {
 
           {isSSOEnabled() && (
             <>
+              <div className="divider-c">
+                <div className="divider-ic divider"></div>
+              </div>
               <div>
                 <YBButton
                   btnClass="btn btn-orange login-btns sso-btn"
@@ -85,72 +93,86 @@ class LoginForm extends Component {
                   onClick={this.runSSO}
                 />
               </div>
-              <div className="divider-c">
-                <div className="divider-ic">
-                  <div className="divider mr-2" />
-                  OR
-                  <div className="divider ml-2" />
+              {!this.state.showLoginFrom && (
+                <div>
+                  <div
+                    className="align-center link-text"
+                    onClick={() => {
+                      this.setState({ showLoginFrom: true });
+                    }}
+                  >
+                    Super Admin Login
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
 
-          <Formik
-            validationSchema={validationSchema}
-            initialValues={initialValues}
-            onSubmit={(values, { setSubmitting }) => {
-              this.submitLogin(values);
-              setSubmitting(false);
-            }}
-          >
-            {({ handleSubmit, isSubmitting }) => (
-              <Form onSubmit={handleSubmit}>
-                <div
-                  className={`alert alert-danger form-error-alert ${authToken.error ? '' : 'hide'}`}
-                >
-                  {<strong>{JSON.stringify(authToken.error)}</strong>}
-                </div>
-                <div className="clearfix login-fields">
-                  <Field name="email">
-                    {(props) => (
-                      <YBLabel {...props} name="email">
-                        <input
-                          className="form-control login-input-box"
-                          placeholder="Email or Username"
-                          type="text"
-                          {...props.field}
-                        />
-                      </YBLabel>
-                    )}
-                  </Field>
-                  <Field name="password">
-                    {(props) => (
-                      <YBLabel {...props} name="password">
-                        <input
-                          className="form-control login-input-box"
-                          placeholder="Password"
-                          type="password"
-                          {...props.field}
-                        />
-                      </YBLabel>
-                    )}
-                  </Field>
-                </div>
-                <div className="clearfix">
-                  <YBButton
-                    btnType="submit"
-                    disabled={isSubmitting || getPromiseState(authToken).isLoading()}
-                    btnClass={clsx(
-                      'btn',
-                      'login-btns',
-                      isSSOEnabled() ? 'btn-default' : 'btn-orange'
-                    )}
-                    btnText="Login"
-                  />
-                </div>
-              </Form>
-            )}
-          </Formik>
+          {showLoginFrom && (
+            <Formik
+              validationSchema={validationSchema}
+              initialValues={initialValues}
+              onSubmit={(values, { setSubmitting }) => {
+                this.submitLogin(values);
+                setSubmitting(false);
+              }}
+            >
+              {({ handleSubmit, isSubmitting }) => (
+                <Form onSubmit={handleSubmit} className={clsx(isSSOEnabled() && 'fade-in')}>
+                  {isSSOEnabled() && (
+                    <div className="align-center form-title">
+                      Enter super admin credentials to login
+                    </div>
+                  )}
+                  <div
+                    className={`alert alert-danger form-error-alert ${
+                      authToken.error ? '' : 'hide'
+                    }`}
+                  >
+                    {<strong>{JSON.stringify(authToken.error)}</strong>}
+                  </div>
+                  <div className="clearfix login-fields">
+                    <Field name="email">
+                      {(props) => (
+                        <YBLabel {...props} name="email">
+                          <input
+                            className="form-control login-input-box"
+                            placeholder="Email or Username"
+                            type="text"
+                            {...props.field}
+                          />
+                        </YBLabel>
+                      )}
+                    </Field>
+                    <Field name="password">
+                      {(props) => (
+                        <YBLabel {...props} name="password">
+                          <input
+                            className="form-control login-input-box"
+                            placeholder="Password"
+                            type="password"
+                            {...props.field}
+                          />
+                        </YBLabel>
+                      )}
+                    </Field>
+                  </div>
+                  <div className="clearfix">
+                    <YBButton
+                      btnType="submit"
+                      disabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                      btnClass={clsx(
+                        'btn',
+                        'login-btns',
+                        isSSOEnabled() ? 'btn-default' : 'btn-orange'
+                      )}
+                      btnText="Login"
+                    />
+                  </div>
+                </Form>
+              )}
+            </Formik>
+          )}
         </div>
       </div>
     );

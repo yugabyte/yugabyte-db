@@ -42,8 +42,13 @@ namespace yb {
 namespace docdb {
 
 void SetValueFromQLBinaryWrapper(
-    QLValuePB ql_value, const int pg_data_type, DatumMessagePB* cdc_datum_message) {
-  WARN_NOT_OK(yb::docdb::SetValueFromQLBinary(ql_value, pg_data_type, cdc_datum_message), "Failed");
+    QLValuePB ql_value, const int pg_data_type,
+    const std::unordered_map<uint32_t, string>& enum_oid_label_map,
+    DatumMessagePB* cdc_datum_message) {
+  WARN_NOT_OK(
+      yb::docdb::SetValueFromQLBinary(
+          ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message),
+      "Failed");
 }
 
 DocDBRocksDBUtil::DocDBRocksDBUtil() : doc_read_context_(Schema(), 1) {}
@@ -135,14 +140,15 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
   if (decode_dockey) {
     for (const auto& entry : dwb.key_value_pairs()) {
       // Skip key validation for external intents.
-      if (!entry.first.empty() && entry.first[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
+      if (!entry.key.empty() && entry.key[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
         continue;
       }
       SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
-      RETURN_NOT_OK_PREPEND(subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.first),
-          Substitute("when decoding key: $0", FormatBytesAsStr(entry.first)));
+      RETURN_NOT_OK_PREPEND(
+          subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(entry.key),
+          Substitute("when decoding key: $0", FormatBytesAsStr(entry.key)));
     }
   }
 
@@ -169,13 +175,13 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
         // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
         const KeyBytes encoded_ht =
             KeyEntryValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
-        rocksdb_key = entry.first + encoded_ht.ToStringBuffer();
+        rocksdb_key = entry.key + encoded_ht.ToStringBuffer();
       } else {
         // Useful when printing out a write batch that does not yet know the HybridTime it will be
         // committed with.
-        rocksdb_key = entry.first;
+        rocksdb_key = entry.key;
       }
-      rocksdb_write_batch->Put(rocksdb_key, entry.second);
+      rocksdb_write_batch->Put(rocksdb_key, entry.value);
       if (increment_write_id) {
         ++write_id;
       }
@@ -332,8 +338,8 @@ Status DocDBRocksDBUtil::AddExternalIntents(
       kv_pair.set_value(value_.ToStringBuffer());
       ExternalTxnApplyState external_txn_apply_state;
       AddExternalPairToWriteBatch(
-          kv_pair, hybrid_time_, /* write_id= */ 0, &external_txn_apply_state,
-          /* regular_write_batch= */ nullptr, batch);
+          kv_pair, hybrid_time_, &external_txn_apply_state,
+          /* regular_write_batch= */ nullptr, batch, nullptr);
     }
 
     boost::optional<std::pair<Slice, Slice>> Next() override {

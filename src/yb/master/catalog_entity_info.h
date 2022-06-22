@@ -403,6 +403,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   const Status GetSchema(Schema* schema) const;
 
+  bool has_pgschema_name() const;
+
+  const std::string& pgschema_name() const;
+
+  // True if all the column schemas have pg_type_oid set.
+  bool has_pg_type_oid() const;
+
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   bool colocated() const;
 
@@ -473,6 +480,12 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // Return whether given partition start keys match partitions_.
   bool HasPartitions(const std::vector<PartitionKey> other) const;
 
+  // Returns true if all non-active tablets (e.g. split parent) have already been deleted / hidden.
+  // This function should not be called for colocated tables since the colocated tablet will not be
+  // deleted / hidden if the table is dropped (since it may still an active tablet of another
+  // table).
+  bool HasOutstandingSplits() const;
+
   // Get all tablets of the table.
   // If include_inactive is true then it also returns inactive tablets along with the active ones.
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
@@ -489,6 +502,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if all tablets of the table are deleted or hidden.
   bool AreAllTabletsHidden() const;
+
+  // Verify that all tablets in partitions_ are running. Newly created tablets (e.g. because of a
+  // tablet split) might not be running.
+  Status CheckAllActiveTabletsRunning() const;
 
   // Clears partitons_ and tablets_.
   // If deactivate_only is set to true then clear only the partitions_.
@@ -533,7 +550,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   void WaitTasksCompletion();
 
   // Allow for showing outstanding tasks in the master UI.
-  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks();
+  std::unordered_set<std::shared_ptr<server::MonitoredTask>> GetTasks() const;
 
   // Returns whether this is a type of table that will use tablespaces
   // for placement.
@@ -576,7 +593,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Sorted index of tablet start partition-keys to TabletInfo.
   // The TabletInfo objects are owned by the CatalogManager.
-  // At any point in time it contains only the active tablets.
+  // At any point in time it contains only the active tablets (defined in the comment on tablets_).
   std::map<PartitionKey, TabletInfo*> partitions_ GUARDED_BY(lock_);
   // At any point in time it contains both active and inactive tablets.
   // Currently there are two cases for a tablet to be categorized as inactive:

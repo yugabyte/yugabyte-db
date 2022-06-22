@@ -595,6 +595,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
 
+  // Gauge to monitor applied split operations.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
+
+  // Gauge to monitor post-split compactions that have been started.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
+
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>
       snapshot_schedule_allowed_history_cutoff_

@@ -15,6 +15,8 @@
 
 #include "yb/common/ql_type.h"
 
+#include "yb/client/client.h"
+
 #include "yb/util/result.h"
 #include "yb/util/status_log.h"
 #include "yb/util/varint.h"
@@ -33,6 +35,7 @@ using std::make_shared;
 using std::string;
 using strings::Substitute;
 using std::dynamic_pointer_cast;
+using namespace std::literals;
 
 class QLTestAnalyzer: public QLTestBase {
  public:
@@ -416,6 +419,13 @@ TEST_F(QLTestAnalyzer, TestIndexSelection) {
   EXPECT_OK(processor->Run("CREATE INDEX i7 ON t ((h2, h1), c1) INCLUDE (c2);"));
 
   client::YBTableName table_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, "t");
+  // Wait for read permissions on all indexes.
+  for (int i = 1; i <= 7; ++i) {
+    client::YBTableName index_name(YQL_DATABASE_CQL, kDefaultKeyspaceName, Format("i$0", i));
+    EXPECT_OK(client_->WaitUntilIndexPermissionsAtLeast(table_name,
+                                                        index_name,
+                                                        INDEX_PERM_READ_WRITE_AND_DELETE));
+  }
   processor->RemoveCachedTableDesc(table_name);
 
   // Should select from the indexed table.

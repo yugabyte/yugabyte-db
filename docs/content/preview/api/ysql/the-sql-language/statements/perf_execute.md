@@ -36,10 +36,10 @@ Use the `EXECUTE` statement to execute a previously prepared statement. This sep
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/execute_statement.diagram.md" %}}
   </div>
 </div>
 

@@ -99,6 +99,10 @@ class UnsignedIntSet {
     return JoinStrings(parts, ", ");
   }
 
+  bool operator==(const UnsignedIntSet<T>& other) const {
+    return interval_set_ == other.interval_set_;
+  }
+
  private:
   using ElementType = uint32_t;
   using ElementRange = boost::icl::discrete_interval<ElementType>;

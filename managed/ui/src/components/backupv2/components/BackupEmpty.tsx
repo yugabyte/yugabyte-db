@@ -49,13 +49,25 @@ export const ScheduledBackupEmpty = ({
 
 export const UniverseLevelBackupEmpty = ({
   onActionButtonClick,
+  onAdvancedRestoreButtonClick,
   disabled = false
 }: {
   onActionButtonClick: Function;
+  onAdvancedRestoreButtonClick: Function;
   disabled?: boolean;
 }) => {
   return (
     <BackupEmpty>
+      <a
+        href="#!"
+        onClick={(e) => {
+          e.preventDefault();
+          onAdvancedRestoreButtonClick();
+        }}
+        className="advanced-restore"
+      >
+        Advanced Restore
+      </a>
       {UPLOAD_ICON}
       <BackupDisabledTooltip disabled={disabled}>
         <YBButton
@@ -84,7 +96,10 @@ export const AccountLevelBackupEmpty = () => {
 };
 
 const BACKUP_DISABLED_POPOVER = (
-  <Popover id="popover-backup-disabled" title="This universe does not have any tables to backup or backup is disabled" />
+  <Popover
+    id="popover-backup-disabled"
+    title="This universe does not have any tables to backup or backup is disabled"
+  />
 );
 
 const BackupDisabledTooltip = ({

@@ -60,7 +60,10 @@ class GetContext;
 class InternalIterator;
 class IndexReader;
 
-using std::unique_ptr;
+// Index reader special unique pointer to control the instance's way of deletion. Can be removed
+// when https://github.com/yugabyte/yugabyte-db/issues/4720 is resolved.
+using IndexReaderDeleter = std::function<void(IndexReader*)>;
+using IndexReaderCleanablePtr = std::unique_ptr<IndexReader, IndexReaderDeleter>;
 
 enum class DataIndexLoadMode {
   // Preload on Open, store in block cache or in table reader depending on
@@ -125,16 +128,16 @@ class BlockBasedTable : public TableReader {
       const EnvOptions& env_options,
       const BlockBasedTableOptions& table_options,
       const InternalKeyComparatorPtr& internal_key_comparator,
-      unique_ptr<RandomAccessFileReader>&& base_file,
+      std::unique_ptr<RandomAccessFileReader>&& base_file,
       uint64_t base_file_size,
-      unique_ptr<TableReader>* table_reader,
+      std::unique_ptr<TableReader>* table_reader,
       DataIndexLoadMode data_index_load_mode = DataIndexLoadMode::LAZY,
       PrefetchFilter prefetch_filter = PrefetchFilter::YES,
       bool skip_filters = false);
 
   bool IsSplitSst() const override { return true; }
 
-  void SetDataFileReader(unique_ptr<RandomAccessFileReader>&& data_file) override;
+  void SetDataFileReader(std::unique_ptr<RandomAccessFileReader>&& data_file) override;
 
   bool PrefixMayMatch(const Slice& internal_key);
 
@@ -179,7 +182,20 @@ class BlockBasedTable : public TableReader {
   // convert SST file to a human readable form
   Status DumpTable(WritableFile* out_file) override;
 
-  // input_iter: if it is not null, update this one and return it as Iterator
+  // Get the iterator from the index reader.
+  // If input_iter is not set, return new Iterator
+  // If input_iter is set, update it and return:
+  //  - newly created data index iterator in case it was created (if we use multi-level data index,
+  //    input_iter is an iterator of the top level index, but not the whole index iterator).
+  //  - nullptr if input_iter is a data index iterator and no new iterators were created.
+  //
+  // Note: ErrorIterator with error will be returned if GetIndexReader returned an error.
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options,
+                                     BlockIter* input_iter = nullptr);
+
+  // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
+  // a correspoding block. Updates and returns input_iter if the one is specified, or returns
+  // a new iterator.
   InternalIterator* NewDataBlockIterator(
       const ReadOptions& ro, const Slice& index_value, BlockType block_type,
       BlockIter* input_iter = nullptr);
@@ -188,10 +204,18 @@ class BlockBasedTable : public TableReader {
 
   yb::Result<std::string> GetMiddleKey() override;
 
+  // Helper function that force reading block from a file and takes care about block cleanup.
+  yb::Result<std::unique_ptr<Block>> RetrieveBlockFromFile(const ReadOptions& ro,
+      const Slice& index_value, BlockType block_type);
+
   ~BlockBasedTable();
 
   bool TEST_filter_block_preloaded() const;
   bool TEST_index_reader_loaded() const;
+
+  // Helper function to correctly release index reader. Can be replaced with direct call to
+  // GetIndexReader() when https://github.com/yugabyte/yugabyte-db/issues/4720 is resolved.
+  yb::Result<IndexReaderCleanablePtr> TEST_GetIndexReader();
 
  private:
   template <class TValue>
@@ -230,17 +254,6 @@ class BlockBasedTable : public TableReader {
   // - If read_options.read_tier == kBlockCacheTier: Status::Incomplete error will be returned.
   // - If read_options.read_tier != kBlockCacheTier: new index reader will be created and cached.
   yb::Result<CachableEntry<IndexReader>> GetIndexReader(const ReadOptions& read_options);
-
-  // Get the iterator from the index reader.
-  // If input_iter is not set, return new Iterator
-  // If input_iter is set, update it and return:
-  //  - newly created data index iterator in case it was created (if we use multi-level data index,
-  //    input_iter is an iterator of the top level index, but not the whole index iterator).
-  //  - nullptr if input_iter is a data index iterator and no new iterators were created.
-  //
-  // Note: ErrorIterator with error will be returned if GetIndexReader returned an error.
-  InternalIterator* NewIndexIterator(const ReadOptions& read_options,
-                                     BlockIter* input_iter = nullptr);
 
   // Read block cache from block caches (if set): block_cache and
   // block_cache_compressed.
@@ -306,8 +319,13 @@ class BlockBasedTable : public TableReader {
   // instance. Used for both data and metadata files.
   static void SetupCacheKeyPrefix(Rep* rep, FileReaderWithCachePrefix* reader_with_cache_prefix);
 
-  FileReaderWithCachePrefix* GetBlockReader(BlockType block_type);
-  KeyValueEncodingFormat GetKeyValueEncodingFormat(BlockType block_type);
+  FileReaderWithCachePrefix* GetBlockReader(BlockType block_type) const;
+  KeyValueEncodingFormat GetKeyValueEncodingFormat(BlockType block_type) const;
+
+  // Retrieves block from file system or cache.
+  // NOTE! A caller is responsible for a block cleanup.
+  yb::Result<CachableEntry<Block>> RetrieveBlock(const ReadOptions& ro, const Slice& index_value,
+      BlockType block_type, bool use_cache = true);
 
   explicit BlockBasedTable(Rep* rep) : rep_(rep) {}
 

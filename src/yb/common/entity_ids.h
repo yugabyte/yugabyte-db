@@ -35,7 +35,10 @@ static const uint32_t kPgYbTablegroupTableOid = 8036;  // Hardcoded in pg_yb_tab
 static const uint32_t kPgSequencesTableOid = 2224;  // Hardcoded for pg_sequence. (in pg_sequence.h)
 static const uint32_t kPgYbMigrationTableOid = 8027;  // Hardcoded for pg_yb_migration.
                                                       // (in pg_yb_migration.h)
-
+static const uint32_t kPgAttributeTableOid = 1249;    // Hardcoded for pg_attribute.
+                                                      // (in pg_attribute.h)
+static const uint32_t kPgEnumTableOid = 3501;         // Hardcoded for pg_enum (in pg_enum.h).
+static const uint32_t kPgTypeTableOid = 1247;         // Hardcoded for pg_type (in pg_type.h)
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;
