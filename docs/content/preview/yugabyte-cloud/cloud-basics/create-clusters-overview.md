@@ -23,7 +23,7 @@ The following best practices are recommended for production clusters.
 | :--- | :--- |
 | [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3. |
-| [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 10 x number of nodes x vCPUs per node simultaneous connections. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 simultaneous connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
+| [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>Clusters support 10 simultaneous connections per vCPU. For example, a 3-node cluster with 4 vCPUs per node can support 10 x 3 x 4 = 120 connections.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
 | [Backups](#backups) | Use the default backup schedule (daily, with 8 day retention). |
 | [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
@@ -98,7 +98,7 @@ For application development and testing, you can set fault tolerance to **None**
 
 The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs with 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
-YugabyteDB Managed clusters can support a number of simultaneous connections according to the following calculation: 10 x number of nodes x number of vCPUs per node. So a cluster with 3 nodes and 4 vCPUs per node can support 10 x 3 x 4 = 120 simultaneous connections.
+YugabyteDB Managed clusters support 10 simultaneous connections per vCPU. So a cluster with 3 nodes and 4 vCPUs per node can support 10 x 3 x 4 = 120 simultaneous connections.
 
 YugabyteDB Managed supports both vertical and horizontal scaling. Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
