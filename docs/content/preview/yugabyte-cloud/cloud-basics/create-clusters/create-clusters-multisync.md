@@ -1,0 +1,118 @@
+---
+title: Replicate across regions
+linkTitle: Replicate across regions
+description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
+headcontent:
+menu:
+  preview:
+    identifier: create-clusters-multisync
+    parent: create-clusters
+    weight: 60
+isTocNested: true
+showAsideToc: true
+---
+
+Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
+
+{{< note title="Preview release" >}}
+
+Replicated across region deployment is a preview release. Send your feedback to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+
+{{< /note >}}
+
+## Features
+
+Multi-region replicated clusters include the following features:
+
+- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
+- No limit on cluster size - choose any cluster size based on your use case.
+- Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
+- VPC networking required.
+- Automated and on-demand backups.
+- Create as many as you need.
+- Provisioned with a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{<support-cloud>}}.
+- Available in all [regions](../../../release-notes#cloud-provider-regions).
+- Enterprise support.
+
+## Prerequisites
+
+- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC in AWS](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc) or [Create a VPC in GCP](../../cloud-vpcs/cloud-add-vpc-gcp/#create-a-vpc).
+- Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
+
+## Create a multi-region replicated cluster
+
+To create a multi-region replicated cluster, on the **Clusters** page, click **Add Cluster**, and choose **Dedicated** to start the **Create Cluster** wizard.
+
+The **Create Cluster** wizard has the following pages:
+
+1. [General Settings](#general-settings)
+1. [Cluster Setup](#cluster-setup)
+1. [DB Credentials](#database-credentials)
+
+### General Settings
+
+![Add Cluster Wizard - General Settings](/images/yb-cloud/cloud-addcluster-free2.png)
+
+Set the following options:
+
+- **Cluster Name**: Enter a name for the cluster.
+- **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{<support-cloud>}}.
+- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+
+### Cluster Setup
+
+Select **Multi-Region Deployment**.
+
+Set the following options:
+
+- **Select data distribution mode**
+
+  ![Add Cluster Wizard - Multi-region data distribution](/images/yb-cloud/cloud-addcluster-multisync-data.png)
+
+  - **Data distribution** - Choose **Replicate across regions**.
+
+- **Select regions and node size**
+
+  ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
+
+  - **Regions** - For each of the 3 regions, choose the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
+
+  - **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
+
+Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
+
+Multi-Region clusters support both horizontal and vertical scaling; you can change the cluster configuration after the cluster is created using the **Edit Configuration** settings. Refer to [Configure clusters](../../../cloud-clusters/configure-clusters#infrastructure).
+
+### Database Credentials
+
+The database admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
+
+You can use the default credentials generated by YugabyteDB Managed, or add your own.
+
+For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
+
+After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
+
+![Add Cluster Wizard - Database credentials](/images/yb-cloud/cloud-addcluster-admin.png)
+
+Download the credentials, and click **Create Cluster**.
+
+{{< warning title="Important" >}}
+
+Save your database credentials. If you lose them, you won't be able to use the database.
+
+{{< /warning >}}
+
+After you complete the wizard, the **Clusters** page appears, showing the provisioning of your new cluster in progress.
+
+When the cluster is ready, the cluster [Overview](../../../cloud-monitor/overview/) tab is displayed.
+
+You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed with the database admin credentials you specified.
+
+## Next steps
+
+- [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
+- [Connect to your cluster](../../../cloud-connect/)
+- [Add database users](../../../cloud-secure-clusters/add-users/)
+- [Build an application](../../../cloud-quickstart/cloud-build-apps/)
+- [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)

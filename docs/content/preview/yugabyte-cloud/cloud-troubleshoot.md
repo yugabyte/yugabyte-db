@@ -71,6 +71,14 @@ The database admin credentials are separate from your YugabyteDB Managed credent
 
 If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
+Verify the case of the user name. Similarly to SQL and CQL, YSQL and YCQL are case-insensitive. When adding roles, names are automatically converted to lowercase. For example, the following command:
+
+```sql
+CREATE ROLE Alice LOGIN PASSWORD 'Password';
+```
+
+creates the user "alice". If you subsequently try to log in as "Alice", the login will fail. To use a case-sensitive name for a role, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+
 If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
 
 ### VPC networking
@@ -118,4 +126,4 @@ YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) 
 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
 
-50GB of disk space per vCPU is included in the base price for standard clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{<support-cloud>}}.
+50GB of disk space per vCPU is included in the base price for Dedicated clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{<support-cloud>}}.
