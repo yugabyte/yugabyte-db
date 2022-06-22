@@ -179,32 +179,30 @@ Employees Details:
   }
 ]
 ```
-## Specifying SSL configuration:
-
+## Specifying SSL configuration
 This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
-
-- Install `fs` package to read the ssl certificate using:
-```
-npm install fs
-```
-- Add the following line to use the `fs` module:
-```
-const fs = require('fs');
-```
-- Use the following configuration in `models/index.js` file in the following way while creating sequelize object:
-```
-const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
-    dialect: 'postgres',
-    port: 5433,
-    host: "<host_name>",
-    dialectOptions: {
-        ssl: {
-            rejectUnauthorised: true,
-            ca: fs.readFileSync('<path_to_root_crt>').toString(),
+1. Install the `fs` package to read the SSL certificate:
+    ```sh
+    npm install fs
+    ```
+1. Add the following line to use the `fs` module:
+    ```js
+    const fs = require('fs');
+    ```
+1. Use the following configuration in the `models/index.js` file when you create the sequelize object:
+    ```js
+    const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
+        dialect: 'postgres',
+        port: 5433,
+        host: "<host_name>",
+        dialectOptions: {
+            ssl: {
+                rejectUnauthorized: true,
+                ca: fs.readFileSync('<path_to_root_crt>').toString(),
+            }
         }
-    }
-  });
-```
+      });
+    ```
 
 ## Next steps
 

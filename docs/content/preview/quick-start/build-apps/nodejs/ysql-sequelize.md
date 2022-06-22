@@ -37,7 +37,7 @@ showAsideToc: true
 ## Prerequisites
 
 1. This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/). 
-1. Also, you have installed latest stable version of [node](https://nodejs.org/en/).
+1. Also, you have installed the v16 or above of [Node.js](https://nodejs.org/en/).
 
 ## Clone the orm-examples repository
 
@@ -62,19 +62,19 @@ $ cd ./node/sequelize/
 ```sh
 npm install
 ```
-## Specifying SSL configuration:
 
+## Specifying SSL configuration
 This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
 
-- Use the configuration in the following way in `models/index.js` file while creating sequelize object:
-```
+Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
+```js
 sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
     dialect: 'postgres',
     port: 5433,
     host: "<host_name>",
     dialectOptions: {
         ssl: {
-            rejectUnauthorised: true,
+            rejectUnauthorized: true,
             ca: fs.readFileSync('<path_to_root_crt>').toString(),
         }
     }
