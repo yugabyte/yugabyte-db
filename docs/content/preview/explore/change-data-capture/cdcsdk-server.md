@@ -315,7 +315,7 @@ All of the health REST endpoints return a simple JSON object with two fields:
 * `status` — The overall result of all the health check procedures.
 * `checks` — An array of individual checks.
 
-The general status of the health check is computed as a logical AND of all the declared health check procedures. The checks array is currently empty as we have not specified any health check procedure yet.
+The general status of the health check is computed as a logical AND of all the declared health check procedures. In the following example, the checks array is empty as no health check procedure have been specified yet.
 
 **Example:**
 
