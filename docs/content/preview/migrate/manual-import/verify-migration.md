@@ -1,13 +1,15 @@
 ---
 title: Verify a migration from PostgreSQL
 headerTitle: Verify a migration
-linkTitle: Verify Migration
+linkTitle: Verify migration
 description: Steps for verifying that a migration from PostgreSQL to YugabyteDB was successful.
 menu:
   preview:
     identifier: migrate-postgresql-verify
-    parent: migrate-from-postgresql
-    weight: 780
+    parent: manual-import
+    weight: 206
+aliases:
+  - /preview/migrate/migrate-from-postgresql/verify-migration/
 isTocNested: true
 showAsideToc: true
 ---
