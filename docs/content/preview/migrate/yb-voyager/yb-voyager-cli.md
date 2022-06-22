@@ -182,9 +182,9 @@ yb-voyager import data file --export-dir /path/to/yb/export/dir \
         --target-db-user username \
         --target-db-password password \
         --target-db-name dbname \
-        –-data-dir “/path/to/files/dir/” \
-        --file-table-map “filename1:table1,filename2:table2” \
-        --delimiter “|” \
+        –-data-dir "/path/to/files/dir/" \
+        --file-table-map "filename1:table1,filename2:table2" \
+        --delimiter "|" \
         –-has-header \
 ```
 
