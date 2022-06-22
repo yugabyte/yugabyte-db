@@ -59,7 +59,8 @@ This tutorial assumes that:
       password: yugabyte
     ```
 
-Then download the YugabyteDB JDBC driver [JAR file](https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar) and place it in the `camunda-bpm-run-7.17.0/configuration/userlib` directory.
+    \
+    Then, download the YugabyteDB JDBC driver [JAR file](https://repo1.maven.org/maven2/com/yugabyte/jdbc-yugabytedb/42.3.5-yb-1/jdbc-yugabytedb-42.3.5-yb-1.jar) and place it in the `camunda-bpm-run-7.17.0/configuration/userlib` directory.
 
     \
     (Read more about the YugabyteDB JDBC driver on its [documentation page](https://docs.yugabyte.com/preview/integrations/jdbc-driver/).)
