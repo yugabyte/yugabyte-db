@@ -132,23 +132,26 @@ cdcsdk.source.snapshot.mode=never
 
 ### Apache Kafka
 
-```properties
-cdcsdk.sink.type=kafka
-cdcsdk.sink.kafka.producer.bootstrap.servers=127.0.0.1:9092
-cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-```
+The Kafka sink adapter supports pass-through configuration. This means that all Kafka producer configuration properties are passed to the producer with the prefix removed. At least bootstrap.servers, key.serializer and value.serializer properties must be provided. The topic is set by CDCSDK Server.
 
-#### Confluent Cloud
-
-If you are using a Confluent Cloud deployment of Kafka, you need to add the following configuration:
+Example Configuration:
 
 ```properties
 cdcsdk.sink.type=kafka
 cdcsdk.sink.kafka.producer.bootstrap.servers=<BOOTSTRAP-SERVERS>
 cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
 cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-cdcsdk.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
+```
+
+#### Confluent Cloud
+
+Confluent Cloud deployment of Kafka, also requires SSL configuration. Example configuration:
+
+```properties
+cdcsdk.sink.type=kafka
+cdcsdk.sink.kafka.producer.bootstrap.servers=<BOOTSTRAP-SERVERS>
+cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
 cdcsdk.sink.kafka.security.protocol=SASL_SSL
 cdcsdk.sink.kafka.sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule   required username='USERNAME'   password='PASSWORD';
 cdcsdk.sink.kafka.sasl.mechanism=PLAIN
@@ -161,17 +164,6 @@ cdcsdk.sink.kafka.producer.ssl.endpoint.identification.algorithm=https
 cdcsdk.sink.kafka.client.dns.lookup=use_all_dns_ips
 cdcsdk.sink.kafka.session.timeout.ms=45000
 cdcsdk.sink.kafka.acks=all
-
-cdcsdk.source.database.hostname=127.0.0.1
-cdcsdk.source.database.port=5433
-cdcsdk.source.database.user=yugabyte
-cdcsdk.source.database.password=yugabyte
-cdcsdk.source.database.dbname=yugabyte
-cdcsdk.source.database.server.name=dbserver1
-cdcsdk.source.database.streamid=9d0079d5f5e74ea59989f37eb6358ea5
-cdcsdk.source.table.include.list=public.test
-cdcsdk.source.database.master.addresses=127.0.0.1:7100
-cdcsdk.source.snapshot.mode=never
 ```
 
 ### HTTP Client
@@ -322,7 +314,7 @@ All of the health REST endpoints return a simple JSON object with two fields:
 * `status` — The overall result of all the health check procedures.
 * `checks` — An array of individual checks.
 
-The general status of the health check is computed as a logical AND of all the declared health check procedures. In the following example, the checks array is empty as no health check procedure have been specified yet.
+The general status of the health check is computed as a logical AND of all the declared health check procedures.
 
 
 ```output
