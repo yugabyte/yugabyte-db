@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2022  Orafce Global Development Group
 
+Version 3.22.0 - 22 Jun 2022
+* deuglification - move all objects from public and pg_catalog to oracle schema
+
 Version 3.14.0 - 22. Dec 2020
 * conversion function unistr
 * bugfix - allows binary upgrade
