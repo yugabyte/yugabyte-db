@@ -87,18 +87,36 @@ touch conf/application.properties
 ## Configuration
 
 The main configuration file is `conf/application.properties`, which includes the following sections:
-* `cdcsdk.source` is for configuring the source connector. Each instance of Debezium Server runs exactly one connector.
+* `cdcsdk.source` is for configuring the source connector. 
 * `cdcsdk.sink` is for the sink system configuration.
-* `cdcsdk.format` is for the output serialization format configuration.
 * `cdcsdk.transforms` is for the configuration of message transformations.
 
-### Apache Kafka
+
+### Configure using environment variables
+
+Using environment variables for configuration can be useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, change `cdcsdk.source.database.port` to `CDCSDK_SOURCE_DATABASE_PORT`.
+
+### Server configuration
+
+| Property | Default | Description |
+| :--- | :--- | :--- |
+| `cdcsdk.server.transforms` | | Transformations to apply. | <!-- TODO: add the complete list of transforms available -->
+
+**Additional configuration:**
+| Property | Default | Description |
+| :--- | :--- | :--- |
+| `quarkus.http.port` | 8080 | The port on which CDCSDK Server exposes Microprofile Health endpoint and other exposed status information. |
+| `quarkus.log.level` | INFO | The default log level for every log category. |
+| `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. | 
+
+
+### Source configuration
+
+The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
+
+Sample Configuration when YugabyteDB is started on a local machine:
 
 ```properties
-cdcsdk.sink.type=kafka
-cdcsdk.sink.kafka.producer.bootstrap.servers=127.0.0.1:9092
-cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
 cdcsdk.source.connector.class=io.debezium.connector.yugabytedb.YugabyteDBConnector
 cdcsdk.source.database.hostname=127.0.0.1
 cdcsdk.source.database.port=5433
@@ -110,6 +128,15 @@ cdcsdk.source.database.streamid=de362081fa864e94b35fcac6005e7cd9
 cdcsdk.source.table.include.list=public.test
 cdcsdk.source.database.master.addresses=127.0.0.1:7100
 cdcsdk.source.snapshot.mode=never
+```
+
+### Apache Kafka
+
+```properties
+cdcsdk.sink.type=kafka
+cdcsdk.sink.kafka.producer.bootstrap.servers=127.0.0.1:9092
+cdcsdk.sink.kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+cdcsdk.sink.kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
 ```
 
 #### Confluent Cloud
@@ -146,26 +173,6 @@ cdcsdk.source.table.include.list=public.test
 cdcsdk.source.database.master.addresses=127.0.0.1:7100
 cdcsdk.source.snapshot.mode=never
 ```
-
-The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
-
-### Configure using environment variables
-
-Using environment variables for configuration can be useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, change `cdcsdk.source.database.port` to `CDCSDK_SOURCE_DATABASE_PORT`.
-
-### Server configuration
-
-| Property | Default | Description |
-| :--- | :--- | :--- |
-| `cdcsdk.server.transforms` | | Transformations to apply. | <!-- TODO: add the complete list of transforms available -->
-
-**Additional configuration:**
-| Property | Default | Description |
-| :--- | :--- | :--- |
-| `quarkus.http.port` | 8080 | The port on which CDCSDK Server exposes Microprofile Health endpoint and other exposed status information. |
-| `quarkus.log.level` | INFO | The default log level for every log category. |
-| `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. | 
-
 
 ### HTTP Client
 
