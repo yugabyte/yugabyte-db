@@ -293,7 +293,7 @@ With `FLATTEN`, the following simple format is emitted:
 ### Topology
 
 * A universe can have multiple namespaces.
-* Each namespace can have multiple CDCSDK streams
+* Each namespace can have multiple CDCSDK streams.
 * Each CDCSDK stream can have multiple servers associated with it. Default is 1. The group of multiple servers associated with a stream is called a ServerSet.
 
 ### Networking
