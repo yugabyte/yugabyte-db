@@ -47,7 +47,7 @@ The following sections break down the quick start example to demonstrate how to 
 
 ### Step 1: Import the driver package
 
-Import the YugabyteDB PGX driver package by adding the following import statement in your Go code.
+Import the YugabyteDB PGX driver package by adding the following import statement in your Go code:
 
 ```go
 import (
