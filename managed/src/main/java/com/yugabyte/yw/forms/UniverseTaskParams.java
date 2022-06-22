@@ -37,6 +37,12 @@ public class UniverseTaskParams extends AbstractTaskParams {
     @ApiModelProperty(value = "Tablet server RPC port")
     public int tserverRpcPort;
 
+    @ApiModelProperty(value = "Yb controller HTTP port")
+    public int ybControllerHttpPort;
+
+    @ApiModelProperty(value = "Yb controller RPC port")
+    public int ybControllerrRpcPort;
+
     @ApiModelProperty(value = "Redis HTTP port")
     public int redisServerHttpPort;
 
@@ -72,6 +78,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
       portsObj.masterRpcPort = node.masterRpcPort;
       portsObj.tserverHttpPort = node.tserverHttpPort;
       portsObj.tserverRpcPort = node.tserverRpcPort;
+      portsObj.ybControllerHttpPort = node.ybControllerHttpPort;
+      portsObj.ybControllerrRpcPort = node.ybControllerRpcPort;
       portsObj.redisServerHttpPort = node.redisServerHttpPort;
       portsObj.redisServerRpcPort = node.redisServerRpcPort;
       portsObj.yqlServerHttpPort = node.yqlServerHttpPort;
@@ -88,6 +96,8 @@ public class UniverseTaskParams extends AbstractTaskParams {
       node.masterRpcPort = ports.masterRpcPort;
       node.tserverHttpPort = ports.tserverHttpPort;
       node.tserverRpcPort = ports.tserverRpcPort;
+      node.ybControllerHttpPort = ports.ybControllerHttpPort;
+      node.ybControllerRpcPort = ports.ybControllerrRpcPort;
       node.redisServerHttpPort = ports.redisServerHttpPort;
       node.redisServerRpcPort = ports.redisServerRpcPort;
       node.yqlServerHttpPort = ports.yqlServerHttpPort;
