@@ -39,7 +39,7 @@ For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed 
 
 Refer to [Cloud provider regions](../release-notes/#cloud-provider-regions) for a list currently supported regions.
 
-YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{%support-cloud%}}.
+YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{%support-cloud%}}.
 
 ## Clusters
 
