@@ -363,7 +363,11 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
-	ybcIndexCostEstimate(path, indexSelectivity, indexStartupCost, indexTotalCost);
+	ybcIndexCostEstimate(root,
+						 path,
+						 indexSelectivity,
+						 indexStartupCost,
+						 indexTotalCost);
 }
 
 bytea *
