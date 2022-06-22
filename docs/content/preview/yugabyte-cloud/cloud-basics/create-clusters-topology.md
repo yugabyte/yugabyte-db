@@ -117,7 +117,7 @@ With this deployment mode, the cluster automatically keeps specific rows and all
 - Row-level geo-partitioning is helpful for specific use cases where the dataset and access to the data is logically partitioned. Examples include users in different countries accessing their accounts, and localized products (or product inventory) in a product catalog.
 - When users travel, access to their data will incur cross-region latency because their data is pinned to a different region.
 
-To deploy a geo-partioned cluster, contact {{<support-cloud>}}.
+To deploy a geo-partioned cluster, contact {{%support-cloud%}}.
 
 ## Cross-cluster
 
@@ -129,7 +129,7 @@ Here's how it works:
 
 2. You then set up cross cluster asynchronous replication from one cluster to another. This can be either bi-directional in active-active configurations, or uni-directional in active-passive configurations.
 
-To deploy a cross-cluster replication cluster, contact {{<support-cloud>}}.
+To deploy a cross-cluster replication cluster, contact {{%support-cloud%}}.
 
 ### Active-passive
 
@@ -205,7 +205,7 @@ For applications that have writes happening from a single zone or region but wan
 - The primary cluster and the read replicas are correlated clusters, not two independent clusters. In other words, adding read replicas doesn't improve resilience.
 - Read replicas can't take writes, so write latency from remote regions can be high even if there is a read replica near the client.
 
-To deploy a read replica cluster, contact {{<support-cloud>}}.
+To deploy a read replica cluster, contact {{%support-cloud%}}.
 
 ## Learn more
 
@@ -217,5 +217,5 @@ To deploy a read replica cluster, contact {{<support-cloud>}}.
 ## Next steps
 
 - [Plan your cluster](../create-clusters-overview/)
-- [Create a single region cluster](../create-clusters/)
+- [Create a single region cluster](../create-clusters/create-single-region/)
 - [Create a synchronous multi-region cluster](../create-clusters/create-clusters-multisync/)

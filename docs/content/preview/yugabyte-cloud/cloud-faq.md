@@ -39,7 +39,7 @@ For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed 
 
 Refer to [Cloud provider regions](../release-notes/#cloud-provider-regions) for a list currently supported regions.
 
-YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{<support-cloud>}}.
+YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{%support-cloud%}}.
 
 ## Clusters
 
@@ -59,6 +59,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
 | [VPC Peering](../cloud-basics/cloud-vpcs/) | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
+| Connections | Up to 10 simultaneous connections | 10 * number of nodes * vCPUs per node |
 | [Scaling](../cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
@@ -72,11 +73,11 @@ If you want to continue testing YugabyteDB with more resource-intensive scenario
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
 - Upgrade to a fault tolerant [single- or multi-region cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
-To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{<support-cloud>}} for trial credits.
+To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{%support-cloud%}} for trial credits.
 
 ### Can I migrate my Sandbox cluster to a Dedicated cluster?
 
-Currently self-service migration is not supported. Contact {{<support-cloud>}} for help with migration.
+Currently self-service migration is not supported. Contact {{%support-cloud%}} for help with migration.
 
 ### What is the upgrade policy for clusters?
 
@@ -154,7 +155,7 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to node
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 
-For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{<support-cloud>}}.
+For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{%support-cloud%}}.
 
 Sandbox clusters are limited to a single node in a single region.
 
@@ -245,4 +246,4 @@ Currently, YugabyteDB Managed does not support backups of Sandbox clusters.
 
 ### Can I download backups?
 
-Currently, YugabyteDB Managed does not support self-service backup downloads. Contact {{<support-cloud>}} for assistance.
+Currently, YugabyteDB Managed does not support self-service backup downloads. Contact {{%support-cloud%}} for assistance.
