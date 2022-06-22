@@ -412,6 +412,14 @@ extern int yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/*
+ * YSQL guc variable that is used to enable the use of Postgres's selectivity
+ * functions and YSQL table statistics.
+ * e.g. 'SET yb_enable_optimizer_statistics = true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_enable_optimizer_statistics;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

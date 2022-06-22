@@ -565,7 +565,9 @@ void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
   auto metric_entity = METRIC_ENTITY_drive.Instantiate(metric_registry_,
                                                        kPrefixMetricId + path,
                                                        attrs);
-  METRIC_drive_fault.Instantiate(metric_entity)->Increment();
+  auto counter = METRIC_drive_fault.Instantiate(metric_entity);
+  counter->Increment();
+  counters_.emplace_back(std::move(counter));
 }
 
 Status FsManager::CreateDirIfMissing(const string& path, bool* created) {
