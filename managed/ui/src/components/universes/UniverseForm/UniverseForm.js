@@ -184,6 +184,7 @@ class UniverseForm extends Component {
         regionList: formValues[clusterType].regionList.map((a) => a.value),
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
+        ybcPackagePath: formValues[clusterType].ybcPackagePath,
         replicationFactor: formValues[clusterType].replicationFactor,
         useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
@@ -446,6 +447,7 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
+        ybcPackagePath: formValues[clusterType].ybcPackagePath,
         useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,

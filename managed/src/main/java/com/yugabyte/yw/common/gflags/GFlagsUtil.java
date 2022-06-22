@@ -15,7 +15,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -40,6 +43,7 @@ public class GFlagsUtil {
   public static final String USE_CASSANDRA_AUTHENTICATION = "use_cassandra_authentication";
   public static final String USE_NODE_TO_NODE_ENCRYPTION = "use_node_to_node_encryption";
   public static final String USE_CLIENT_TO_SERVER_ENCRYPTION = "use_client_to_server_encryption";
+  public static final String YBC_LOG_SUBDIR = "/yb-controller/logs";
   public static final String START_REDIS_PROXY = "start_redis_proxy";
 
   private static final Map<String, StringIntentAccessor> GFLAG_TO_INTENT_ACCESSOR =
@@ -144,6 +148,36 @@ public class GFlagsUtil {
     extra_gflags.putAll(getYCQLGFlags(taskParam, universe, useHostname, useSecondaryIp));
     extra_gflags.putAll(getCertsAndTlsGFlags(taskParam, universe));
     return extra_gflags;
+  }
+
+  /** Return the map of ybc flags which will be passed to the db nodes. */
+  public static Map<String, String> getYbcFlags(AnsibleConfigureServers.Params taskParam) {
+    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
+    NodeDetails node = universe.getNode(taskParam.nodeName);
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    String providerUUID = universeDetails.getClusterByUuid(node.placementUuid).userIntent.provider;
+    Map<String, String> ybcFlags = new HashMap<>();
+    ybcFlags.put("v", "1");
+    ybcFlags.put("server_address", node.cloudInfo.private_ip);
+    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
+    ybcFlags.put("yb_tserver_address", node.cloudInfo.private_ip);
+    ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
+    if (node.isMaster) {
+      ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
+    }
+    if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
+      String ybHomeDir = getYbHomeDir(providerUUID);
+      String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
+      ybcFlags.put("certs_dir_name", certsNodeDir);
+    }
+    return ybcFlags;
+  }
+
+  private static String getYbHomeDir(String providerUUID) {
+    if (providerUUID == null) {
+      return CommonUtils.DEFAULT_YB_HOME_DIR;
+    }
+    return Provider.getOrBadRequest(UUID.fromString(providerUUID)).getYbHome();
   }
 
   private static Map<String, String> getTServerDefaultGflags(
