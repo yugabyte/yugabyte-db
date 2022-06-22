@@ -666,13 +666,13 @@ bitand, nanvl, sinh, cosh, tanh, oracle.substr and oracle.mod.
 * oracle.rtrim(string text [, characters text])  - Oracle compatible rtrim
 * oracle.btrim(string text [, characters text])  - Oracle compatible btrim
 * oracle.length(string char)  - Oracle compatible length
-* pg_catalog.listagg(str text [, separator text]) - aggregate values to list
-* pg_catalog.wm_concat(str text) - aggregate values to comma separatated list
-* pg_catalog.median(float4) - calculate a median
-* pg_catalog.median(float8) - calculate a median
-* pg_catalog.to_number(text) -  converts a string to a number
-* pg_catalog.to_number(numeric) -  converts a string to a number
-* pg_catalog.to_number(numeric,numeric) -  converts a string to a number
+* oracle.listagg(str text [, separator text]) - aggregate values to list
+* oracle.wm_concat(str text) - aggregate values to comma separatated list
+* oracle.median(float4) - calculate a median
+* oracle.median(float8) - calculate a median
+* oracle.to_number(text) -  converts a string to a number
+* oracle.to_number(numeric) -  converts a string to a number
+* oracle.to_number(numeric,numeric) -  converts a string to a number
 * public.to_multi_byte(text) - Convert all single-byte characters to their corresponding multibyte characters
 * public.to_single_byte(text) - Convert all multi-byte characters to their corresponding single-byte characters
 * oracle.greatest(anyelement, anyelement[]) - Oracle compatibility greatest, return NULL on NULL input
