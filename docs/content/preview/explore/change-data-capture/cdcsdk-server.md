@@ -231,7 +231,7 @@ The AWS user account accessing the S3 bucket must have the following permissions
 * ListMultipartUploadParts
 * ListBucketMultipartUploads
 
-Copy the following JSON to create the IAM policy for the user account. Change to a real bucket name. For more information, see Create and attach a policy to an IAM user.
+Copy the following JSON to create the IAM policy for the user account. Change to a real bucket name. For more information, see [Create and attach a policy to an IAM user](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-create-and-attach-iam-policy.html).
 
 Note: This is the IAM policy for the user account and not a bucket policy.
 
