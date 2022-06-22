@@ -18,12 +18,13 @@ import re
 import string
 import sys
 import time
+import datetime
 
 from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    get_public_key_content, \
+    get_public_key_content, remote_exec_command,  \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
     DEFAULT_SSH_USER
@@ -40,8 +41,12 @@ class ConsoleLoggingErrorHandler(object):
             console_output = self.cloud.get_console_output(args)
 
             if console_output:
-                logging.error("Dumping latest console output for {}:".format(args.search_pattern))
-                logging.error(console_output)
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                out_file_path = f"/tmp/{args.search_pattern}-{timestamp}-console.log"
+                logging.warning(f"Dumping latest console output to {out_file_path}")
+
+                with open(out_file_path, 'a') as f:
+                    f.write(console_output + '\n')
 
 
 class AbstractMethod(object):
@@ -1071,7 +1076,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.search_pattern != 'localhost':
             host_info = self.cloud.get_host_info(args)
             if not host_info:
-                raise YBOpsRuntimeError("Instance: {} does not exists, cannot configure"
+                raise YBOpsRuntimeError("Instance: {} does not exist, cannot configure"
                                         .format(args.search_pattern))
 
             if host_info['server_type'] != args.type:
@@ -1274,7 +1279,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
         }
         host_info = self.cloud.get_host_info(args)
         if not host_info:
-            raise YBOpsRuntimeError("Instance: {} does not exists, cannot call initysql".format(
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot call initysql".format(
                                     args.search_pattern))
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         logging.info("Initializing YSQL on Instance: {}".format(args.search_pattern))
@@ -1535,3 +1540,30 @@ class TransferXClusterCerts(AbstractInstancesMethod):
         else:
             raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
                                     "or remove".format(args.action))
+
+
+class RebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(RebootInstancesMethod, self).__init__(base_command, "reboot")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to reboot".format(
+                args.search_pattern))
+        logging.info("Rebooting instance {}".format(args.search_pattern))
+
+        # Get Sudo SSH User
+        ssh_user = args.ssh_user
+        if ssh_user is None:
+            ssh_user = DEFAULT_SSH_USER
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        self.extra_vars.update({"ssh_user": ssh_user})
+        rc, stdout, stderr = remote_exec_command(
+                                self.extra_vars["ssh_host"],
+                                self.extra_vars["ssh_port"],
+                                self.extra_vars["ssh_user"],
+                                args.private_key_file,
+                                'sudo reboot')
+        self.wait_for_host(args, False)

@@ -626,9 +626,18 @@ YBCStatus YBCPgDmlAddRowLowerBound(YBCPgStatement handle,
                                                     is_inclusive));
 }
 
-YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
-    YBCPgExpr attr_value_end) {
-  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle, attr_num, attr_value, attr_value_end));
+YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle,
+                                        int attr_num,
+                                        YBCPgExpr attr_value,
+                                        bool start_inclusive,
+                                        YBCPgExpr attr_value_end,
+                                        bool end_inclusive) {
+  return ToYBCStatus(pgapi->DmlBindColumnCondBetween(handle,
+                                                     attr_num,
+                                                     attr_value,
+                                                     start_inclusive,
+                                                     attr_value_end,
+                                                     end_inclusive));
 }
 
 YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,

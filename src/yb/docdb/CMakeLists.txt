@@ -80,6 +80,7 @@ set(DOCDB_SRCS
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc
+        doc_ql_filefilter.cc
         expiration.cc
         compaction_file_filter.cc
         intent_aware_iterator.cc

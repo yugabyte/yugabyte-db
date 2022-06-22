@@ -328,10 +328,16 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   return Status::OK();
 }
 
-Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end) {
+Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value,
+                                        bool start_inclusive,
+                                        PgExpr *attr_value_end,
+                                        bool end_inclusive) {
   if (secondary_index_query_) {
     // Bind by secondary key.
-    return secondary_index_query_->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+    return secondary_index_query_->BindColumnCondBetween(attr_num, attr_value,
+                                                         start_inclusive,
+                                                         attr_value_end,
+                                                         end_inclusive);
   }
 
   DCHECK(attr_num != static_cast<int>(PgSystemAttrNum::kYBTupleId))
@@ -363,13 +369,21 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op3_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op4_pb = condition_expr_pb->mutable_condition()->add_operands();
+      auto op5_pb = condition_expr_pb->mutable_condition()->add_operands();
 
       op1_pb->set_column_id(col.id());
 
       RETURN_NOT_OK(attr_value->EvalTo(op2_pb));
       RETURN_NOT_OK(attr_value_end->EvalTo(op3_pb));
+      op4_pb->mutable_value()->set_bool_value(start_inclusive);
+      op5_pb->mutable_value()->set_bool_value(end_inclusive);
     } else {
-      condition_expr_pb->mutable_condition()->set_op(QL_OP_GREATER_THAN_EQUAL);
+      auto op = QL_OP_GREATER_THAN_EQUAL;
+      if (!start_inclusive) {
+        op = QL_OP_GREATER_THAN;
+      }
+      condition_expr_pb->mutable_condition()->set_op(op);
 
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();
@@ -380,7 +394,11 @@ Status PgDmlRead::BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr
     }
   } else {
     if (attr_value_end != nullptr) {
-      condition_expr_pb->mutable_condition()->set_op(QL_OP_LESS_THAN_EQUAL);
+      auto op = QL_OP_LESS_THAN_EQUAL;
+      if (!end_inclusive) {
+        op = QL_OP_LESS_THAN;
+      }
+      condition_expr_pb->mutable_condition()->set_op(op);
 
       auto op1_pb = condition_expr_pb->mutable_condition()->add_operands();
       auto op2_pb = condition_expr_pb->mutable_condition()->add_operands();

@@ -1110,9 +1110,16 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
-Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num, PgExpr *attr_value,
-    PgExpr *attr_value_end) {
-  return down_cast<PgDmlRead*>(handle)->BindColumnCondBetween(attr_num, attr_value, attr_value_end);
+Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
+                                           PgExpr *attr_value,
+                                           bool start_inclusive,
+                                           PgExpr *attr_value_end,
+                                           bool end_inclusive) {
+  return down_cast<PgDmlRead*>(handle)->BindColumnCondBetween(attr_num,
+                                                              attr_value,
+                                                              start_inclusive,
+                                                              attr_value_end,
+                                                              end_inclusive);
 }
 
 Status PgApiImpl::DmlBindColumnCondIn(PgStatement *handle, int attr_num, int n_attr_values,

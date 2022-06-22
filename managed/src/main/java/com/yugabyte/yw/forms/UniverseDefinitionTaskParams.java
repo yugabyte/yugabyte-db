@@ -266,10 +266,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate() {
+    public void validate(boolean validateGFlagsConsistency) {
       checkDeviceInfo();
       checkStorageType();
-      GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      if (validateGFlagsConsistency) {
+        GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
     }
 
     private void checkDeviceInfo() {

@@ -6,8 +6,10 @@ description: Steps for migrating a PostgreSQL schema for YugabyteDB.
 menu:
   preview:
     identifier: migrate-postgresql-schema
-    parent: migrate-from-postgresql
-    weight: 730
+    parent: manual-import
+    weight: 201
+aliases:
+  - /preview/migrate/migrate-from-postgresql/migrate-schema/
 isTocNested: false
 showAsideToc: true
 ---

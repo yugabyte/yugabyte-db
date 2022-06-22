@@ -388,9 +388,9 @@ Status DoGetRangePartitionBounds(const Schema& schema,
         range_cols, schema, schema.num_hash_key_columns()));
     QLScanRange scan_range(schema, condition_expr.condition());
     *lower_bound = docdb::GetRangeKeyScanSpec(
-        schema, &prefixed_range_components, &scan_range, true /* lower_bound */);
+        schema, &prefixed_range_components, &scan_range, nullptr, true /* lower_bound */);
     *upper_bound = docdb::GetRangeKeyScanSpec(
-        schema, &prefixed_range_components, &scan_range, false /* upper_bound */);
+        schema, &prefixed_range_components, &scan_range, nullptr, false /* upper_bound */);
   } else if (!range_cols.empty()) {
     *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
     *upper_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, false));
