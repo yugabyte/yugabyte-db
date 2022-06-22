@@ -4485,6 +4485,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'remove_table'
     auto it = req->producer_table_ids_to_remove();
     std::set<string> table_ids_to_remove(it.begin(), it.end());
+    std::set<string> consumer_table_ids_to_remove;
     // Filter out any tables that aren't in the existing replication config.
     {
       auto l = original_ri->LockForRead();
@@ -4509,6 +4510,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         for (auto& p : *stream_map) {
           if (table_ids_to_remove.count(p.second.producer_table_id()) > 0) {
             streams_to_remove.push_back(p.first);
+            // Also fetch the consumer table ids here so we can clean the in-memory maps after.
+            consumer_table_ids_to_remove.insert(p.second.consumer_table_id());
           }
         }
         if (streams_to_remove.size() == stream_map->size()) {
@@ -4569,6 +4572,18 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
           sys_catalog_->Upsert(leader_ready_term(), original_ri),
           "updating universe replication info in sys-catalog"));
       l.Commit();
+
+      // Also remove it from the in-memory map of consumer tables.
+      LockGuard lock(mutex_);
+      for (const auto& table : consumer_table_ids_to_remove) {
+        if (xcluster_consumer_tables_to_stream_map_[table].erase(req->producer_id()) < 1) {
+          LOG(WARNING) << "Failed to remove consumer table from mapping. "
+                       << "table_id: " << table << ": universe_id: " << req->producer_id();
+        }
+        if (xcluster_consumer_tables_to_stream_map_[table].empty()) {
+          xcluster_consumer_tables_to_stream_map_.erase(table);
+        }
+      }
     }
   } else if (req->producer_table_ids_to_add_size() > 0) {
     // 'add_table'
