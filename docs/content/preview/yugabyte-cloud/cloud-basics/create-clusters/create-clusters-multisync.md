@@ -61,9 +61,15 @@ Set the following options:
 
 ### Cluster Setup
 
-Select **Multi-Region Deployment** and **Replicate across regions**.
+Select **Multi-Region Deployment**.
 
 Set the following options:
+
+- **Select data distribution mode**
+
+  ![Add Cluster Wizard - Multi-region data distribution](/images/yb-cloud/cloud-addcluster-multisync-data.png)
+
+  - **Data distribution** - Choose **Replicate across regions**.
 
 - **Select regions and node size**
 

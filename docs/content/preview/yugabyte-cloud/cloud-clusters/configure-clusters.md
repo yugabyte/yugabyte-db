@@ -72,16 +72,16 @@ Depending on the number of nodes, the scaling operation can take several minutes
 
 ### Replicate across regions clusters
 
-You can scale multi-region replicated clusters horizontally and vertically. In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.
+You can scale multi-region replicated clusters horizontally and vertically. <!--In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.-->
 
-To scale and migrate nodes in a multi-region replicated cluster:
+To scale nodes in a multi-region replicated cluster:
 
 1. On the **Clusters** page, select your cluster.
 1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-sync.png)
 
-1. To migrate nodes to a different region, select the region. When migrating a node, you can also deploy it in a different VPN.
+    <!--1. To migrate nodes to a different region, select the region. When migrating a node, you can also deploy it in a different VPN.-->
 
 1. Enter the number of nodes, vCPUs per node, and disk size in GB per node for the cluster. The same number of nodes and node sizes apply across all regions.
     \
