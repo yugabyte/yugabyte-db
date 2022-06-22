@@ -277,7 +277,7 @@ By default, the YugabyteDB connector generates a [complex record](../change-data
 
 Simple sinks expect simple key/value JSON object where key is the column name and value is the contents of the column. For simple sinks, set `cdcsdk.server.transforms=FLATTEN`. With this configuration, the record structure will only emit the payload as a simple JSON.
 
-With `FLATTEN`, the simple format below is emitted:
+With `FLATTEN`, the following simple format is emitted:
 
 ```output
 {
