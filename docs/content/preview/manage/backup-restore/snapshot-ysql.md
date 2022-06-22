@@ -90,7 +90,7 @@ This command rolls back the database to the state which it had when the snapshot
 
 Currently, the in-cluster workflow described so far only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table will not be restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage), or use [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
 
-The limitation will be removed in the future. Tracking issue: [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
+The limitation will be removed in an upcoming release. Tracking issue: [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
 
 {{< /note >}}
 
@@ -168,10 +168,10 @@ If you do not wish to keep the in-cluster snapshot, you can safely [delete it](#
 
 You can restore a snapshot that you have [moved to external storage](#move-a-snapshot-to-external-storage), as follows:
 
-1. Make sure that the database you are going to restore doesn't exist and drop it if needed:
+1. Make sure that the database you are going to restore doesn't exist, and drop it if it does:
 
     ```sql
-    DROP DATABASE IF EXISTS <database_name>
+    DROP DATABASE IF EXISTS <database_name>;
     ```
 
 1. Fetch the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../admin/ycqlsh/) tool by executing the following command:
@@ -219,7 +219,6 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     cp -r snapshot/tablet-27ce76cade8e4894a4f7ffa154b33c3b.snapshots/0d4b4935-2c95-4523-95ab-9ead1e95e794 \
               ~/yugabyte-data-restore/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004001/tablet-111ab9d046d449d995ee9759bf32e028.snapshots/6beb9c0e-52ea-4f61-89bd-c160ec02c729
     ```
-
 
     For each tablet, you need to copy the snapshots folder on all tablet peers and in any configured read replica cluster.
 
