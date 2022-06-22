@@ -28,6 +28,7 @@
 #include "catalog/pg_type.h"
 #include "commands/copy.h"
 #include "commands/defrem.h"
+#include "commands/progress.h"
 #include "commands/trigger.h"
 #include "executor/execPartition.h"
 #include "executor/executor.h"
@@ -42,6 +43,7 @@
 #include "nodes/makefuncs.h"
 #include "parser/parse_relation.h"
 #include "port/pg_bswap.h"
+#include "pgstat.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/fd.h"
 #include "tcop/tcopprot.h"
@@ -222,6 +224,7 @@ typedef struct CopyStateData
 	char	   *raw_buf;
 	int			raw_buf_index;	/* next byte to process */
 	int			raw_buf_len;	/* total # of bytes stored */
+	uint64		bytes_processed;	/* number of bytes processed so far */
 } CopyStateData;
 
 /* DestReceiver for COPY (query) TO */
@@ -550,6 +553,10 @@ CopySendEndOfRow(CopyState cstate)
 			break;
 	}
 
+	/* Update the progress */
+	cstate->bytes_processed += fe_msgbuf->len;
+	pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
+
 	resetStringInfo(fe_msgbuf);
 }
 
@@ -770,6 +777,8 @@ CopyLoadRawBuf(CopyState cstate)
 	cstate->raw_buf[nbytes] = '\0';
 	cstate->raw_buf_index = 0;
 	cstate->raw_buf_len = nbytes;
+	cstate->bytes_processed += nbytes;
+	pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 	return (inbytes > 0);
 }
 
@@ -1810,6 +1819,8 @@ EndCopy(CopyState cstate)
 							cstate->filename)));
 	}
 
+	pgstat_progress_end_command();
+
 	MemoryContextDelete(cstate->copycontext);
 	pfree(cstate);
 }
@@ -1830,6 +1841,14 @@ BeginCopyTo(ParseState *pstate,
 	CopyState	cstate;
 	bool		pipe = (filename == NULL);
 	MemoryContext oldcontext;
+	const int	progress_cols[] = {
+		PROGRESS_COPY_COMMAND,
+		PROGRESS_COPY_TYPE
+	};
+	int64		progress_vals[] = {
+		PROGRESS_COPY_COMMAND_TO,
+		0
+	};
 
 	if (rel != NULL && rel->rd_rel->relkind != RELKIND_RELATION)
 	{
@@ -1875,6 +1894,8 @@ BeginCopyTo(ParseState *pstate,
 
 	if (pipe)
 	{
+		progress_vals[1] = PROGRESS_COPY_TYPE_PIPE;
+
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput != DestRemote)
 			cstate->copy_file = stdout;
@@ -1886,6 +1907,7 @@ BeginCopyTo(ParseState *pstate,
 
 		if (is_program)
 		{
+			progress_vals[1] = PROGRESS_COPY_TYPE_PROGRAM;
 			cstate->copy_file = OpenPipeStream(cstate->filename, PG_BINARY_W);
 			if (cstate->copy_file == NULL)
 				ereport(ERROR,
@@ -1898,6 +1920,7 @@ BeginCopyTo(ParseState *pstate,
 			mode_t		oumask; /* Pre-existing umask value */
 			struct stat st;
 
+			progress_vals[1] = PROGRESS_COPY_TYPE_FILE;
 			/*
 			 * Prevent write to relative path ... too easy to shoot oneself in
 			 * the foot by overwriting a database file ...
@@ -1945,6 +1968,13 @@ BeginCopyTo(ParseState *pstate,
 						 errmsg("\"%s\" is a directory", cstate->filename)));
 		}
 	}
+
+	/* initialize progress */
+	pgstat_progress_start_command(PROGRESS_COMMAND_COPY,
+								  cstate->rel ? RelationGetRelid(cstate->rel) : InvalidOid);
+	pgstat_progress_update_multi_param(2, progress_cols, progress_vals);
+
+	cstate->bytes_processed = 0;
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -2146,7 +2176,13 @@ CopyTo(CopyState cstate)
 
 			/* Format and send the data */
 			CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
-			processed++;
+
+			/*
+			 * Increment the number of processed tuples, and report the
+			 * progress.
+			 */
+			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+										 ++processed);
 
 			/* Free Yugabyte memory for this row */
 			if (is_yb_relation)
@@ -2413,7 +2449,7 @@ CopyFrom(CopyState cstate)
 	CommandId	mycid = GetCurrentCommandId(true);
 	int			hi_options = 0; /* start with default heap_insert options */
 	BulkInsertState bistate;
-	uint64		processed = 0;
+	int64		processed = 0;
 	bool		useMultiInsert;
 	bool		useYBMultiInsert;
 	bool		useHeapMultiInsert;
@@ -3105,7 +3141,7 @@ CopyFrom(CopyState cstate)
 				 * or FDW; this is the same definition used by nodeModifyTable.c
 				 * for counting tuples inserted by an INSERT command.
 				 */
-				processed++;
+				++processed;
 			}
 
 		next_tuple:
@@ -3137,11 +3173,18 @@ CopyFrom(CopyState cstate)
 			 * and relevant transaction state properties have been previously set.
 			 */
 			YBCCommitTransaction();
+			/* Update progress of the COPY command as well.
+			 */
+			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 			YBInitializeTransaction();
 
 			/* Start a new AFTER trigger */
 			AfterTriggerBeginQuery();
+			continue;
 		}
+		/* Update progress of the COPY command as well.
+		 */
+		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
 	}
 
 	/* Flush any remaining buffered tuples */
@@ -3314,6 +3357,16 @@ BeginCopyFrom(ParseState *pstate,
 	ExprState **defexprs;
 	MemoryContext oldcontext;
 	bool		volatile_defexprs;
+	const int	progress_cols[] = {
+		PROGRESS_COPY_COMMAND,
+		PROGRESS_COPY_TYPE,
+		PROGRESS_COPY_BYTES_TOTAL
+	};
+	int64		progress_vals[] = {
+		PROGRESS_COPY_COMMAND_FROM,
+		0,
+		0
+	};
 
 	cstate = BeginCopy(pstate, true, rel, NULL, InvalidOid, attnamelist, options);
 	oldcontext = MemoryContextSwitchTo(cstate->copycontext);
@@ -3407,6 +3460,11 @@ BeginCopyFrom(ParseState *pstate,
 		}
 	}
 
+	/* initialize progress */
+	pgstat_progress_start_command(PROGRESS_COMMAND_COPY,
+								  cstate->rel ? RelationGetRelid(cstate->rel) : InvalidOid);
+	cstate->bytes_processed = 0;
+
 	/* We keep those variables in cstate. */
 	cstate->in_functions = in_functions;
 	cstate->typioparams = typioparams;
@@ -3418,11 +3476,13 @@ BeginCopyFrom(ParseState *pstate,
 
 	if (data_source_cb)
 	{
+		progress_vals[1] = PROGRESS_COPY_TYPE_CALLBACK;
 		cstate->copy_dest = COPY_CALLBACK;
 		cstate->data_source_cb = data_source_cb;
 	}
 	else if (pipe)
 	{
+		progress_vals[1] = PROGRESS_COPY_TYPE_PIPE;
 		Assert(!is_program);	/* the grammar does not allow this */
 		if (whereToSendOutput == DestRemote)
 		{
@@ -3449,6 +3509,7 @@ BeginCopyFrom(ParseState *pstate,
 
 		if (cstate->is_program)
 		{
+			progress_vals[1] = PROGRESS_COPY_TYPE_PROGRAM;
 			cstate->copy_file = OpenPipeStream(cstate->filename, PG_BINARY_R);
 			if (cstate->copy_file == NULL)
 				ereport(ERROR,
@@ -3460,6 +3521,7 @@ BeginCopyFrom(ParseState *pstate,
 		{
 			struct stat st;
 
+			progress_vals[1] = PROGRESS_COPY_TYPE_FILE;
 			cstate->copy_file = AllocateFile(cstate->filename, PG_BINARY_R);
 			if (cstate->copy_file == NULL)
 			{
@@ -3485,8 +3547,11 @@ BeginCopyFrom(ParseState *pstate,
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is a directory", cstate->filename)));
+
+			progress_vals[2] = st.st_size;
 		}
 	}
+	pgstat_progress_update_multi_param(3, progress_cols, progress_vals);
 
 	if (!cstate->binary)
 	{
@@ -5151,8 +5216,10 @@ copy_dest_receive(TupleTableSlot *slot, DestReceiver *self)
 
 	/* And send the data */
 	CopyOneRowTo(cstate, InvalidOid, slot->tts_values, slot->tts_isnull);
-	myState->processed++;
 
+	/* Increment the number of processed tuples, and report the progress */
+	pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED,
+								 ++myState->processed);
 	return true;
 }
 

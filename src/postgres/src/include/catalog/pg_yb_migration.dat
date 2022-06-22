@@ -12,7 +12,7 @@
 [
 
 # For better version control conflict detection, list latest migration filename
-# here: V19__6560__pg_collation_icu_70.sql
-{ major => '19', minor => '0', name => '<baseline>', time_applied => '_null_' }
+# here: V20__11928__stat_progress_copy.sql
+{ major => '20', minor => '0', name => '<baseline>', time_applied => '_null_' }
 
 ]
