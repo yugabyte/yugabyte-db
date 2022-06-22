@@ -215,60 +215,62 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
             })
     }
 
-example()
-  .then (() => {
-      console.log("Ran the Prisma example successfully..")
-  })
-  .catch((e) => {
-    throw e
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
-```
+    example()
+      .then (() => {
+          console.log("Ran the Prisma example successfully.")
+      })
+      .catch((e) => {
+        throw e
+      })
+      .finally(async () => {
+        await prisma.$disconnect()
+      })
+    ```
 
-2. Run the example using:
+1. Run the example:
 
-```sh
-$ node example.js
-```
+    ```sh
+    $ node example.js
+    ```
 
-Output: 
+    \
+    Expect output similar to the following: 
 
-```output
-Created 3 employees.
-Fetched employees details sorted by employee ids -
-[
-  {
-    emp_id: 1,
-    emp_name: 'Jake',
-    emp_age: 24,
-    emp_email: 'jake24@example.com'
-  },
-  {
-    emp_id: 2,
-    emp_name: 'Sam',
-    emp_age: 30,
-    emp_email: 'sam30@example.com'
-  },
-  {
-    emp_id: 3,
-    emp_name: 'Tom',
-    emp_age: 22,
-    emp_email: 'tom22@example.com'
-  }
-]
-Ran the Prisma example successfully..
-```
+    ```output
+    Created 3 employees.
+    Fetched employee details sorted by employee IDs -
+    [
+      {
+        emp_id: 1,
+        emp_name: 'Jake',
+        emp_age: 24,
+        emp_email: 'jake24@example.com'
+      },
+      {
+        emp_id: 2,
+        emp_name: 'Sam',
+        emp_age: 30,
+        emp_email: 'sam30@example.com'
+      },
+      {
+        emp_id: 3,
+        emp_name: 'Tom',
+        emp_age: 22,
+        emp_email: 'tom22@example.com'
+      }
+    ]
+    Ran the Prisma example successfully.
+    ```
 
-### Using Prisma Studio to explore the data in the database
+### Use Prisma Studio to explore the data in the database
 
-You can use this command to start <b>Prisma Studio </b>:
+Run the following command to start Prisma Studio:
+
 ```sh
 $ npx prisma studio
 ```
-Now, go to this page [http://localhost:5555](http://localhost:5555), you will able to see the table and data created.
 
+Open [http://localhost:5555](http://localhost:5555) in your browser to see the table and data created.
 
 ## Next steps
 
