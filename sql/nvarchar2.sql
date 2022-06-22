@@ -1,6 +1,7 @@
 \set VERBOSITY terse
 SET client_encoding = utf8;
 
+SET search_path TO public, oracle;
 --
 -- test type modifier related rules
 --

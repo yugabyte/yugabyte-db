@@ -4,30 +4,31 @@ SET DATESTYLE TO ISO;
 SET client_encoding = utf8;
 \set ECHO all
 
+SET search_path TO public, oracle;
+
 --
 -- test built-in date type oracle compatibility functions
 --
 
-SELECT add_months ('2003-08-01', 3);
-SELECT add_months ('2003-08-01', -3);
-SELECT add_months ('2003-08-21', -3);
-SELECT add_months ('2003-01-31', 1);
-SELECT add_months ('2008-02-28', 1);
-SELECT add_months ('2008-02-29', 1);
-SELECT add_months ('2008-01-31', 12);
-SELECT add_months ('2008-01-31', -12);
-SELECT add_months ('2008-01-31', 95903);
-SELECT add_months ('2008-01-31', -80640);
-SELECT add_months ('03-21-2008',3);
-SELECT add_months ('21-MAR-2008',3);
-SELECT add_months ('21-MAR-08',3);
-SELECT add_months ('2008-MAR-21',3);
-SELECT add_months ('March 21,2008',3);
-SELECT add_months('03/21/2008',3);
-SELECT add_months('20080321',3);
-SELECT add_months('080321',3);
+SELECT add_months (date '2003-08-01', 3);
+SELECT add_months (date '2003-08-01', -3);
+SELECT add_months (date '2003-08-21', -3);
+SELECT add_months (date '2003-01-31', 1);
+SELECT add_months (date '2008-02-28', 1);
+SELECT add_months (date '2008-02-29', 1);
+SELECT add_months (date '2008-01-31', 12);
+SELECT add_months (date '2008-01-31', -12);
+SELECT add_months (date '2008-01-31', 95903);
+SELECT add_months (date '2008-01-31', -80640);
+SELECT add_months (date '03-21-2008',3);
+SELECT add_months (date '21-MAR-2008',3);
+SELECT add_months (date '21-MAR-08',3);
+SELECT add_months (date '2008-MAR-21',3);
+SELECT add_months (date 'March 21,2008',3);
+SELECT add_months(date '03/21/2008',3);
+SELECT add_months(date '20080321',3);
+SELECT add_months(date '080321',3);
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT add_months ('2003-08-01 10:12:21', 3);
 SELECT add_months ('2003-08-01 10:21:21', -3);
 SELECT add_months ('2003-08-21 12:21:21', -3);
@@ -46,15 +47,14 @@ SELECT add_months ('March 21,2008 12:32:12',3);
 SELECT add_months('03/21/2008 12:32:12',3);
 SELECT add_months('20080321 123244',3);
 SELECT add_months('080321 121212',3);
-SET search_path TO default;
 
 SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2004/02/03', 'yyyy/mm/dd'));
-SELECT last_day('1900-02-01');
-SELECT last_day('2000-02-01');
-SELECT last_day('2007-02-01');
-SELECT last_day('2008-02-01');
+SELECT last_day(date '1900-02-01');
+SELECT last_day(date '2000-02-01');
+SELECT last_day(date '2007-02-01');
+SELECT last_day(date '2008-02-01');
 
 SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT last_day(to_date('2003/03/15 11:12:21', 'yyyy/mm/dd hh:mi:ss'));
@@ -64,17 +64,16 @@ SELECT last_day('1900-02-01 12:12:11');
 SELECT last_day('2000-02-01 121143');
 SELECT last_day('2007-02-01 12:21:33');
 SELECT last_day('2008-02-01 121212');
-SET search_path TO default;
 
-SELECT next_day ('2003-08-01', 'TUESDAY');
-SELECT next_day ('2003-08-06', 'WEDNESDAY');
-SELECT next_day ('2003-08-06', 'SUNDAY');
-SELECT next_day ('2008-01-01', 'sun');
-SELECT next_day ('2008-01-01', 'sunAAA');
-SELECT next_day ('2008-01-01', 1);
-SELECT next_day ('2008-01-01', 7);
+SET search_path TO public, oracle;
+SELECT next_day (date '2003-08-01', 'TUESDAY');
+SELECT next_day (date '2003-08-06', 'WEDNESDAY');
+SELECT next_day (date '2003-08-06', 'SUNDAY');
+SELECT next_day (date '2008-01-01', 'sun');
+SELECT next_day (date '2008-01-01', 'sunAAA');
+SELECT next_day (date '2008-01-01', 1);
+SELECT next_day (date '2008-01-01', 7);
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT next_day ('2003-08-01 111211', 'TUESDAY');
 SELECT next_day ('2003-08-06 10:11:43', 'WEDNESDAY');
 SELECT next_day ('2003-08-06 11:21:21', 'SUNDAY');
@@ -82,7 +81,6 @@ SELECT next_day ('2008-01-01 111343', 'sun');
 SELECT next_day ('2008-01-01 121212', 'sunAAA');
 SELECT next_day ('2008-01-01 111213', 1);
 SELECT next_day ('2008-01-01 11:12:13', 7);
-SET search_path TO default;
 
 SELECT months_between (to_date ('2003/01/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
 SELECT months_between (to_date ('2003/07/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
@@ -94,7 +92,6 @@ SELECT months_between ('2008-02-29', '2008-03-31');
 SELECT months_between ('2008-02-29', '2008-04-30');
 SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
 
-SET search_path TO oracle,"$user", public, pg_catalog;
 SELECT months_between (to_date ('2003/01/01 12:12:12', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between (to_date ('2003/07/01 10:11:11', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/03/14 10:12:12', 'yyyy/mm/dd h24:mi:ss'));
 SELECT months_between (to_date ('2003/07/02 11:21:21', 'yyyy/mm/dd h24:mi:ss'), to_date ('2003/07/02 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
@@ -104,7 +101,6 @@ SELECT months_between ('2008-01-31 11:32:11', '2008-02-29 11:12:12');
 SELECT months_between ('2008-02-29 10:11:13', '2008-03-31 10:12:11');
 SELECT months_between ('2008-02-29 111111', '2008-04-30 12:12:12');
 SELECT trunc(months_between('21-feb-2008 12:11:11', '2008-02-29 11:11:11'));
-SET search_path TO default;
 
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
 select length('a bydlim ve Skalici'),dbms_pipe.pack_message('a bydlim ve Skalici');
@@ -210,7 +206,7 @@ SET search_path TO oracle,"$user", public, pg_catalog;
 select next_day(to_date('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY') = to_date ('05-Aug-03 101111', 'DD-MON-YY h24miss');
 select next_day(to_date('06-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS'), 'WEDNESDAY') = to_date ('13-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS');
 select next_day(to_date('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY') = to_date ('10-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS');
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 select instr('Tech on the net', 'e') =2;
 select instr('Tech on the net', 'e', 1, 1) = 2;
@@ -283,7 +279,7 @@ select nvl('A'::text, 'B');
 select nvl(NULL::text, 'B');
 select nvl(NULL::text, NULL);
 select nvl(1, 2);
-select nvl(NULL, 2);
+select nvl(NULL::int, 2);
 select nvl2('A'::text, 'B', 'C');
 select nvl2(NULL::text, 'B', 'C');
 select nvl2('A'::text, NULL, 'C');
@@ -641,7 +637,7 @@ select to_date('21052014 12:13:44+05:30');
 set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select to_date('210514 12:13:44+05:30');
 set orafce.nls_date_format='DDMMYY HH24:MI:SS.MS';
-select pg_catalog.to_date('210514 12:13:44.55');
+select oracle.orafce__obsolete_to_date('210514 12:13:44.55');
 select oracle.to_date('210514 12:13:44.55');
 
 -- Tests for oracle.to_date(text,text)
@@ -659,7 +655,7 @@ select to_date('14-Jan08 11:44:49+05:30' ,'YY-MonDD HH24:MI:SS');
 select to_date('14-08Jan 11:44:49+05:30','YY-DDMon HH24:MI:SS');
 select to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS');
 select to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS');
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 -- Tests for + operator with DATE and number(smallint,integer,bigint,numeric)
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -704,7 +700,7 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::numeric;
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') + 1.5;
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 -- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -749,7 +745,7 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::numeric;
 SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') - 1.5;
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -789,7 +785,7 @@ set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS'));
 set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'));
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 --Tests for oracle.-(oracle.date,oracle.date)
 SET search_path TO oracle,"$user", public, pg_catalog;
@@ -810,7 +806,7 @@ SELECT trunc(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 SELECT round(to_date('210514 12:13:44','DDMMYY HH24:MI:SS'));
 
 
-SET search_path TO default;
+SET search_path TO public,oracle;
 
 --
 -- Note: each Japanese character used below has display width of 2, otherwise 1.
