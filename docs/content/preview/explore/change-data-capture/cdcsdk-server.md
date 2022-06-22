@@ -39,7 +39,7 @@ A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/
 * Connect to the CDCSDK stream.
 * Get a list of tables and filter based on the include list.
 * Get and record a list of tablets.
-* Poll tablets in sequence every polling interval
+* Poll tablets in sequence every polling interval.
 
 ### Server
 
