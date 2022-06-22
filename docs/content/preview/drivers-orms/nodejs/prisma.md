@@ -48,7 +48,7 @@ This page provides details for getting started with Prisma for connecting to Yug
 
 This section describes how to use Data models (domain objects) to store and retrieve data from a YugabyteDB cluster.
  
-Prisma has a main file as `schema.prisma` where the configurations and data models are defined. The Data models are also called as Prisma models which represents the entities of your app and maps with the tables in the database. 
+Prisma has a main file as `schema.prisma` where the configurations and data models are defined. The data models are also called as Prisma models which represent the entities of your application, and maps with the tables in the database. 
 Prisma models also forms the basis of the queries available in the generated Prisma Client API.
 
 ## CRUD operations with Prisma
