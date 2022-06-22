@@ -37,25 +37,14 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
     Universe targetUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate);
-    try {
-      GetMasterClusterConfigResponse resp = client.getMasterClusterConfig();
-      if (resp.hasError()) {
-        String errMsg =
-            String.format(
-                "Failed to sync XClusterConfigs for Universe(%s): "
-                    + "Failed to get cluster config: %s",
-                targetUniverse.universeUUID, resp.errorMessage());
-        throw new RuntimeException(errMsg);
-      }
-
-      syncXClusterConfigs(resp.getConfig(), targetUniverse.universeUUID);
-
+    try (YBClient client =
+        ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
+          getClusterConfig(client, targetUniverse.universeUUID);
+      syncXClusterConfigs(clusterConfig, targetUniverse.universeUUID);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
-    } finally {
-      ybService.closeClient(client, targetUniverseMasterAddresses);
     }
 
     log.info("Completed {}", getName());
