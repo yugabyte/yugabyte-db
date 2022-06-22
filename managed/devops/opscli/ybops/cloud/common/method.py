@@ -18,6 +18,7 @@ import re
 import string
 import sys
 import time
+import datetime
 
 from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
@@ -40,8 +41,12 @@ class ConsoleLoggingErrorHandler(object):
             console_output = self.cloud.get_console_output(args)
 
             if console_output:
-                logging.error("Dumping latest console output for {}:".format(args.search_pattern))
-                logging.error(console_output)
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                out_file_path = f"/tmp/{args.search_pattern}-{timestamp}-console.log"
+                logging.warning(f"Dumping latest console output to {out_file_path}")
+
+                with open(out_file_path, 'a') as f:
+                    f.write(console_output + '\n')
 
 
 class AbstractMethod(object):
@@ -1071,7 +1076,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.search_pattern != 'localhost':
             host_info = self.cloud.get_host_info(args)
             if not host_info:
-                raise YBOpsRuntimeError("Instance: {} does not exists, cannot configure"
+                raise YBOpsRuntimeError("Instance: {} does not exist, cannot configure"
                                         .format(args.search_pattern))
 
             if host_info['server_type'] != args.type:
@@ -1274,7 +1279,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
         }
         host_info = self.cloud.get_host_info(args)
         if not host_info:
-            raise YBOpsRuntimeError("Instance: {} does not exists, cannot call initysql".format(
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot call initysql".format(
                                     args.search_pattern))
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         logging.info("Initializing YSQL on Instance: {}".format(args.search_pattern))
