@@ -39,7 +39,6 @@ showAsideToc: true
 This tutorial assumes that you have installed:
 - YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/). 
 - [node.js](https://nodejs.org/en/) version 16 or later.
-1. Also, you have installed the v16 or above of [Node.js](https://nodejs.org/en/).
 
 ## Clone the orm-examples repository
 
