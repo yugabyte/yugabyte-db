@@ -2,7 +2,7 @@
 title: CDCSDK Server
 headerTitle: CDCSDK Server
 linkTitle: CDCSDK Server
-description: A ready to use application used to capture the changes in a database.
+description: A ready-to-use application for capturing changes in a database.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 aliases:
   - /preview/explore/change-data-capture/cdcsdk-server-ysql
