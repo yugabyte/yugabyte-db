@@ -3,246 +3,247 @@
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit
 
-CREATE FUNCTION pg_catalog.trunc(value date, fmt text)
+CREATE SCHEMA oracle;
+
+CREATE FUNCTION oracle.trunc(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_trunc'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.trunc(date,text) IS 'truncate date according to the specified format';
+COMMENT ON FUNCTION oracle.trunc(date,text) IS 'truncate date according to the specified format';
 
-CREATE FUNCTION pg_catalog.round(value date, fmt text)
+CREATE FUNCTION oracle.round(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(date, text) IS 'round dates according to the specified format';
+COMMENT ON FUNCTION oracle.round(date, text) IS 'round dates according to the specified format';
 
-CREATE FUNCTION pg_catalog.next_day(value date, weekday text)
+CREATE FUNCTION oracle.next_day(value date, weekday text)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greater than a date value';
+COMMENT ON FUNCTION oracle.next_day (date, text) IS 'returns the first weekday that is greater than a date value';
 
-CREATE FUNCTION pg_catalog.next_day(value date, weekday integer)
+CREATE FUNCTION oracle.next_day(value date, weekday integer)
 RETURNS date
 AS 'MODULE_PATHNAME', 'next_day_by_index'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.next_day (date, integer) IS 'returns the first weekday that is greater than a date value';
+COMMENT ON FUNCTION oracle.next_day (date, integer) IS 'returns the first weekday that is greater than a date value';
 
-CREATE FUNCTION pg_catalog.last_day(value date)
+CREATE FUNCTION oracle.last_day(value date)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.last_day(date) IS 'returns last day of the month based on a date value';
+COMMENT ON FUNCTION oracle.last_day(date) IS 'returns last day of the month based on a date value';
 
-CREATE FUNCTION pg_catalog.months_between(date1 date, date2 date)
+CREATE FUNCTION oracle.months_between(date1 date, date2 date)
 RETURNS numeric
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.months_between(date, date) IS 'returns the number of months between date1 and date2';
+COMMENT ON FUNCTION oracle.months_between(date, date) IS 'returns the number of months between date1 and date2';
 
-CREATE FUNCTION pg_catalog.add_months(day date, value int)
+CREATE FUNCTION oracle.add_months(day date, value int)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.add_months(date, int) IS 'returns date plus n months';
+COMMENT ON FUNCTION oracle.add_months(date, int) IS 'returns date plus n months';
 
-CREATE FUNCTION pg_catalog.trunc(value timestamp with time zone, fmt text)
+CREATE FUNCTION oracle.trunc(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
+COMMENT ON FUNCTION oracle.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
 
-CREATE FUNCTION pg_catalog.round(value timestamp with time zone, fmt text)
+CREATE FUNCTION oracle.round(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','ora_timestamptz_round'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone, text) IS 'round dates according to the specified format';
+COMMENT ON FUNCTION oracle.round(timestamp with time zone, text) IS 'round dates according to the specified format';
 
-CREATE FUNCTION pg_catalog.round(value timestamp with time zone)
+CREATE FUNCTION oracle.round(value timestamp with time zone)
 RETURNS timestamp with time zone
-AS $$ SELECT pg_catalog.round($1, 'DDD'); $$
+AS $$ SELECT oracle.round($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone) IS 'will round dates according to the specified format';
+COMMENT ON FUNCTION oracle.round(timestamp with time zone) IS 'will round dates according to the specified format';
 
-CREATE FUNCTION pg_catalog.round(value date)
+CREATE FUNCTION oracle.round(value date)
 RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(value date)IS 'will round dates according to the specified format';
+COMMENT ON FUNCTION oracle.round(value date)IS 'will round dates according to the specified format';
 
-CREATE FUNCTION pg_catalog.trunc(value timestamp with time zone)
+CREATE FUNCTION oracle.trunc(value timestamp with time zone)
 RETURNS timestamp with time zone
-AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
+AS $$ SELECT oracle.trunc($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
+COMMENT ON FUNCTION oracle.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
 
-CREATE FUNCTION pg_catalog.trunc(value date)
+CREATE FUNCTION oracle.trunc(value date)
 RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.trunc(date) IS 'truncate date according to the specified format';
+COMMENT ON FUNCTION oracle.trunc(date) IS 'truncate date according to the specified format';
 
-CREATE FUNCTION pg_catalog.nlssort(text, text)
+CREATE FUNCTION oracle.nlssort(text, text)
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'ora_nlssort'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.nlssort(text, text) IS '';
+COMMENT ON FUNCTION oracle.nlssort(text, text) IS '';
 
-CREATE FUNCTION pg_catalog.nlssort(text)
+CREATE FUNCTION oracle.nlssort(text)
 RETURNS bytea
-AS $$ SELECT pg_catalog.nlssort($1, null); $$
+AS $$ SELECT oracle.nlssort($1, null); $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.nlssort(text)IS '';
+COMMENT ON FUNCTION oracle.nlssort(text)IS '';
 
-CREATE FUNCTION pg_catalog.set_nls_sort(text)
+CREATE FUNCTION oracle.set_nls_sort(text)
 RETURNS void
 AS 'MODULE_PATHNAME', 'ora_set_nls_sort'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.set_nls_sort(text) IS '';
+COMMENT ON FUNCTION oracle.set_nls_sort(text) IS '';
 
-CREATE FUNCTION pg_catalog.instr(str text, patt text, start int, nth int)
+CREATE FUNCTION oracle.instr(str text, patt text, start int, nth int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.instr(text, text, int, int) IS 'Search pattern in string';
+COMMENT ON FUNCTION oracle.instr(text, text, int, int) IS 'Search pattern in string';
 
-CREATE FUNCTION pg_catalog.instr(str text, patt text, start int)
+CREATE FUNCTION oracle.instr(str text, patt text, start int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.instr(text, text, int) IS 'Search pattern in string';
+COMMENT ON FUNCTION oracle.instr(text, text, int) IS 'Search pattern in string';
 
-CREATE FUNCTION pg_catalog.instr(str text, patt text)
+CREATE FUNCTION oracle.instr(str text, patt text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.instr(text, text) IS 'Search pattern in string';
+COMMENT ON FUNCTION oracle.instr(text, text) IS 'Search pattern in string';
 
-CREATE FUNCTION pg_catalog.to_char(num smallint)
+CREATE FUNCTION oracle.to_char(num smallint)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int4'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(smallint) IS 'Convert number to string';
+COMMENT ON FUNCTION oracle.to_char(smallint) IS 'Convert number to string';
 
-CREATE FUNCTION pg_catalog.to_char(num int)
+CREATE FUNCTION oracle.to_char(num int)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int4'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(int) IS 'Convert number to string';
+COMMENT ON FUNCTION oracle.to_char(int) IS 'Convert number to string';
 
-CREATE FUNCTION pg_catalog.to_char(num bigint)
+CREATE FUNCTION oracle.to_char(num bigint)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int8'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(bigint) IS 'Convert number to string';
+COMMENT ON FUNCTION oracle.to_char(bigint) IS 'Convert number to string';
 
-CREATE FUNCTION pg_catalog.to_char(num real)
+CREATE FUNCTION oracle.to_char(num real)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_float4'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(real) IS 'Convert number to string';
+COMMENT ON FUNCTION oracle.to_char(real) IS 'Convert number to string';
 
-CREATE FUNCTION pg_catalog.to_char(num double precision)
+CREATE FUNCTION oracle.to_char(num double precision)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_float8'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(double precision) IS 'Convert number to string';
+COMMENT ON FUNCTION oracle.to_char(double precision) IS 'Convert number to string';
 
-CREATE FUNCTION pg_catalog.to_char(num numeric)
+CREATE FUNCTION oracle.to_char(num numeric)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_numeric'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(numeric) IS 'Convert number to string';
+COMMENT ON FUNCTION oracle.to_char(numeric) IS 'Convert number to string';
 
-CREATE FUNCTION pg_catalog.to_number(str text)
+CREATE FUNCTION oracle.to_number(str text)
 RETURNS numeric
 AS 'MODULE_PATHNAME','orafce_to_number'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_number(text) IS 'Convert string to number';
+COMMENT ON FUNCTION oracle.to_number(text) IS 'Convert string to number';
 
-CREATE OR REPLACE FUNCTION pg_catalog.to_number(numeric)
+CREATE OR REPLACE FUNCTION oracle.to_number(numeric)
 RETURNS numeric AS $$
-SELECT pg_catalog.to_number($1::text);
+SELECT oracle.to_number($1::text);
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION pg_catalog.to_number(numeric,numeric)
+CREATE OR REPLACE FUNCTION oracle.to_number(numeric,numeric)
 RETURNS numeric AS $$
 SELECT pg_catalog.to_number($1::text,$2::text);
 $$ LANGUAGE SQL IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.to_date(str text)
+CREATE FUNCTION oracle.orafce__obsolete_to_date(str text)
 RETURNS timestamp
 AS 'MODULE_PATHNAME','ora_to_date'
 LANGUAGE C STABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
 
-CREATE FUNCTION to_multi_byte(str text)
+CREATE FUNCTION oracle.to_multi_byte(str text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_multi_byte'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
+COMMENT ON FUNCTION oracle.to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
 
-CREATE FUNCTION to_single_byte(str text)
+CREATE FUNCTION oracle.to_single_byte(str text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_single_byte'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
+COMMENT ON FUNCTION oracle.to_single_byte(text) IS 'Convert characters to their corresponding single-byte characters if possible';
 
-CREATE FUNCTION bitand(bigint, bigint)
+CREATE FUNCTION oracle.bitand(bigint, bigint)
 RETURNS bigint
 AS $$ SELECT $1 & $2; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION sinh(float8)
+CREATE FUNCTION oracle.sinh(float8)
 RETURNS float8 AS
 $$ SELECT (exp($1) - exp(-$1)) / 2; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION cosh(float8)
+CREATE FUNCTION oracle.cosh(float8)
 RETURNS float8 AS
 $$ SELECT (exp($1) + exp(-$1)) / 2; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION tanh(float8)
+CREATE FUNCTION oracle.tanh(float8)
 RETURNS float8 AS
 $$ SELECT sinh($1) / cosh($1); $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION nanvl(float4, float4)
+CREATE FUNCTION oracle.nanvl(float4, float4)
 RETURNS float4 AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION nanvl(float8, float8)
+CREATE FUNCTION oracle.nanvl(float8, float8)
 RETURNS float8 AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION nanvl(numeric, numeric)
+CREATE FUNCTION oracle.nanvl(numeric, numeric)
 RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION nanvl(float4, varchar)
+CREATE FUNCTION oracle.nanvl(float4, varchar)
 RETURNS float4 AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float4 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION nanvl(float8, varchar)
+CREATE FUNCTION oracle.nanvl(float8, varchar)
 RETURNS float8 AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float8 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION nanvl(numeric, varchar)
+CREATE FUNCTION oracle.nanvl(numeric, varchar)
 RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION dump("any")
+CREATE FUNCTION oracle.dump("any")
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE FUNCTION dump("any", integer)
+CREATE FUNCTION oracle.dump("any", integer)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
@@ -267,16 +268,13 @@ AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text) IS 'Reverse string or part of string';
 
-CREATE FUNCTION pg_catalog.lnnvl(bool)
+CREATE FUNCTION oracle.lnnvl(bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_lnnvl'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
+COMMENT ON FUNCTION oracle.lnnvl(bool) IS '';
 
 -- can't overwrite PostgreSQL functions!!!!
-
-CREATE SCHEMA oracle;
-
 CREATE FUNCTION oracle.substr(str text, start int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
@@ -434,7 +432,7 @@ CREATE OPERATOR oracle.- (
 
 CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
-AS $$ SELECT (pg_catalog.add_months($1::pg_catalog.date, $2) + $1::time)::oracle.date; $$
+AS $$ SELECT (oracle.add_months($1::pg_catalog.date, $2) + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.last_day(TIMESTAMPTZ)
@@ -444,22 +442,22 @@ LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE)
 RETURNS NUMERIC
-AS $$ SELECT pg_catalog.months_between($1::pg_catalog.date,$2::pg_catalog.date); $$
+AS $$ SELECT oracle.months_between($1::pg_catalog.date,$2::pg_catalog.date); $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.next_day(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
-AS $$ SELECT (pg_catalog.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
+AS $$ SELECT (oracle.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.next_day(TIMESTAMP WITH TIME ZONE,TEXT)
 RETURNS TIMESTAMP
-AS $$ SELECT (pg_catalog.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
+AS $$ SELECT (oracle.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.to_date(TEXT)
 RETURNS oracle.date
-AS $$ SELECT pg_catalog.to_date($1)::oracle.date; $$
+AS $$ SELECT oracle.orafce__obsolete_to_date($1)::oracle.date; $$
 LANGUAGE SQL STABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.to_date(TEXT,TEXT)
@@ -492,9 +490,9 @@ LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION oracle.dbtimezone() IS 'Ruturns server time zone (orafce.timezone)';
 
 -- emulation of dual table
-CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
-REVOKE ALL ON public.dual FROM PUBLIC;
-GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
+CREATE VIEW oracle.dual AS SELECT 'X'::varchar AS dummy;
+REVOKE ALL ON oracle.dual FROM PUBLIC;
+GRANT SELECT, REFERENCES ON oracle.dual TO PUBLIC;
 
 -- this packege is emulation of dbms_output Oracle packege
 --
@@ -557,287 +555,287 @@ COMMENT ON FUNCTION dbms_output.get_lines(OUT text[], INOUT int4) IS 'Get lines 
 
 -- others functions
 
-CREATE FUNCTION public.nvl(anyelement, anyelement)
+CREATE FUNCTION oracle.nvl(anyelement, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.nvl2("any", anyelement, anyelement)
+CREATE FUNCTION oracle.nvl2("any", anyelement, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl2'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.nvl2("any", text, text)
+CREATE FUNCTION oracle.nvl2("any", text, text)
 RETURNS text
 AS 'MODULE_PATHNAME','ora_nvl2'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, text)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, text, text)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, text, text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, text, anyelement, text)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, text, anyelement, text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, text, anyelement, text, text)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, text, anyelement, text, text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, text, anyelement, text, anyelement, text)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, text, anyelement, text, anyelement, text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, text, anyelement, text, anyelement, text, text)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, text, anyelement, text, anyelement, text, text)
 RETURNS text
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bpchar)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bpchar)
 RETURNS bpchar
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bpchar, bpchar)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bpchar, bpchar)
 RETURNS bpchar
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bpchar, anyelement, bpchar)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bpchar, anyelement, bpchar)
 RETURNS bpchar
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bpchar, anyelement, bpchar, bpchar)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bpchar, anyelement, bpchar, bpchar)
 RETURNS bpchar
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar)
 RETURNS bpchar
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar, bpchar)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bpchar, anyelement, bpchar, anyelement, bpchar, bpchar)
 RETURNS bpchar
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, integer)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, integer, integer)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, integer, integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, integer, anyelement, integer)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, integer, anyelement, integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, integer, anyelement, integer, integer)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, integer, anyelement, integer, integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer, integer)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, integer, anyelement, integer, anyelement, integer, integer)
 RETURNS integer
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bigint)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bigint)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bigint, bigint)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bigint, bigint)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bigint, anyelement, bigint)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bigint, anyelement, bigint)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bigint, anyelement, bigint, bigint)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bigint, anyelement, bigint, bigint)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint, bigint)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, bigint, anyelement, bigint, anyelement, bigint, bigint)
 RETURNS bigint
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, numeric)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, numeric)
 RETURNS numeric
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, numeric, numeric)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, numeric, numeric)
 RETURNS numeric
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, numeric, anyelement, numeric)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, numeric, anyelement, numeric)
 RETURNS numeric
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, numeric, anyelement, numeric, numeric)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, numeric, anyelement, numeric, numeric)
 RETURNS numeric
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric)
 RETURNS numeric
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric, numeric)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, numeric, anyelement, numeric, anyelement, numeric, numeric)
 RETURNS numeric
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, date)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, date)
 RETURNS date
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, date, date)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, date, date)
 RETURNS date
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, date, anyelement, date)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, date, anyelement, date)
 RETURNS date
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, date, anyelement, date, date)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, date, anyelement, date, date)
 RETURNS date
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, date, anyelement, date, anyelement, date)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, date, anyelement, date, anyelement, date)
 RETURNS date
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, date, anyelement, date, anyelement, date, date)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, date, anyelement, date, anyelement, date, date)
 RETURNS date
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, time)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, time)
 RETURNS time
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, time, time)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, time, time)
 RETURNS time
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, time, anyelement, time)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, time, anyelement, time)
 RETURNS time
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, time, anyelement, time, time)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, time, anyelement, time, time)
 RETURNS time
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, time, anyelement, time, anyelement, time)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, time, anyelement, time, anyelement, time)
 RETURNS time
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, time, anyelement, time, anyelement, time, time)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, time, anyelement, time, anyelement, time, time)
 RETURNS time
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamp)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamp)
 RETURNS timestamp
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamp, timestamp)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamp, timestamp)
 RETURNS timestamp
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamp, anyelement, timestamp)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamp, anyelement, timestamp)
 RETURNS timestamp
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamp, anyelement, timestamp, timestamp)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamp, anyelement, timestamp, timestamp)
 RETURNS timestamp
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp)
 RETURNS timestamp
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp, timestamp)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamp, anyelement, timestamp, anyelement, timestamp, timestamp)
 RETURNS timestamp
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamptz)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamptz)
 RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamptz, timestamptz)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamptz, timestamptz)
 RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz)
 RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
 RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz)
 RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION public.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
+CREATE FUNCTION oracle.decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz)
 RETURNS timestamptz
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
@@ -2040,12 +2038,12 @@ AS 'MODULE_PATHNAME','dbms_random_value'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greater or equal to 0 and less then 1';
 
-CREATE FUNCTION dump(text)
+CREATE FUNCTION oracle.dump(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE FUNCTION dump(text, integer)
+CREATE FUNCTION oracle.dump(text, integer)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
@@ -2062,268 +2060,268 @@ AS $$SELECT utl_file.put_line($1, $2::text, true); $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, anyelement, bool) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION pg_catalog.listagg1_transfn(internal, text)
+CREATE FUNCTION oracle.listagg1_transfn(internal, text)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_listagg1_transfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.wm_concat_transfn(internal, text)
+CREATE FUNCTION oracle.wm_concat_transfn(internal, text)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_wm_concat_transfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.listagg2_transfn(internal, text, text)
+CREATE FUNCTION oracle.listagg2_transfn(internal, text, text)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.listagg_finalfn(internal)
+CREATE FUNCTION oracle.listagg_finalfn(internal)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_listagg_finalfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE AGGREGATE pg_catalog.listagg(text) (
-  SFUNC=pg_catalog.listagg1_transfn,
+CREATE AGGREGATE oracle.listagg(text) (
+  SFUNC=oracle.listagg1_transfn,
   STYPE=internal,
-  FINALFUNC=pg_catalog.listagg_finalfn
+  FINALFUNC=oracle.listagg_finalfn
 );
 
 /*
  * Undocumented function wm_concat - removed from
  * Oracle 12c.
  */
-CREATE AGGREGATE pg_catalog.wm_concat(text) (
-  SFUNC=pg_catalog.wm_concat_transfn,
+CREATE AGGREGATE oracle.wm_concat(text) (
+  SFUNC=oracle.wm_concat_transfn,
   STYPE=internal,
-  FINALFUNC=pg_catalog.listagg_finalfn
+  FINALFUNC=oracle.listagg_finalfn
 );
 
-CREATE AGGREGATE pg_catalog.listagg(text, text) (
-  SFUNC=pg_catalog.listagg2_transfn,
+CREATE AGGREGATE oracle.listagg(text, text) (
+  SFUNC=oracle.listagg2_transfn,
   STYPE=internal,
-  FINALFUNC=pg_catalog.listagg_finalfn
+  FINALFUNC=oracle.listagg_finalfn
 );
 
-CREATE FUNCTION pg_catalog.median4_transfn(internal, real)
+CREATE FUNCTION oracle.median4_transfn(internal, real)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_median4_transfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.median4_finalfn(internal)
+CREATE FUNCTION oracle.median4_finalfn(internal)
 RETURNS real
 AS 'MODULE_PATHNAME','orafce_median4_finalfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.median8_transfn(internal, double precision)
+CREATE FUNCTION oracle.median8_transfn(internal, double precision)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_median8_transfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE FUNCTION pg_catalog.median8_finalfn(internal)
+CREATE FUNCTION oracle.median8_finalfn(internal)
 RETURNS double precision
 AS 'MODULE_PATHNAME','orafce_median8_finalfn'
 LANGUAGE C IMMUTABLE;
 
-CREATE AGGREGATE pg_catalog.median(real) (
-  SFUNC=pg_catalog.median4_transfn,
+CREATE AGGREGATE oracle.median(real) (
+  SFUNC=oracle.median4_transfn,
   STYPE=internal,
-  FINALFUNC=pg_catalog.median4_finalfn
+  FINALFUNC=oracle.median4_finalfn
 );
 
-CREATE AGGREGATE pg_catalog.median(double precision) (
-  SFUNC=pg_catalog.median8_transfn,
+CREATE AGGREGATE oracle.median(double precision) (
+  SFUNC=oracle.median8_transfn,
   STYPE=internal,
-  FINALFUNC=pg_catalog.median8_finalfn
+  FINALFUNC=oracle.median8_finalfn
 );
 
 -- oracle.varchar2 type support
 
-CREATE FUNCTION varchar2in(cstring,oid,integer)
-RETURNS varchar2
+CREATE FUNCTION oracle.varchar2in(cstring,oid,integer)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','varchar2in'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2out(varchar2)
+CREATE FUNCTION oracle.varchar2out(oracle.varchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','varchar2out'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2_transform(internal)
+CREATE FUNCTION oracle.varchar2_transform(internal)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_varchar_transform'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2recv(internal,oid,integer)
-RETURNS varchar2
+CREATE FUNCTION oracle.varchar2recv(internal,oid,integer)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','varchar2recv'
 LANGUAGE C
 STRICT
 STABLE;
 
-CREATE FUNCTION varchar2send(varchar2)
+CREATE FUNCTION oracle.varchar2send(oracle.varchar2)
 RETURNS bytea
 AS 'varcharsend'
 LANGUAGE internal
 STRICT
 STABLE;
 
-CREATE FUNCTION varchar2typmodin(cstring[])
+CREATE FUNCTION oracle.varchar2typmodin(cstring[])
 RETURNS integer
 AS 'varchartypmodin'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2typmodout(integer)
+CREATE FUNCTION oracle.varchar2typmodout(integer)
 RETURNS CSTRING
 AS 'varchartypmodout'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2(varchar2,integer,boolean)
-RETURNS varchar2
+CREATE FUNCTION oracle.varchar2(oracle.varchar2,integer,boolean)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','varchar2'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
 /* CREATE TYPE */
-CREATE TYPE varchar2 (
+CREATE TYPE oracle.varchar2 (
 internallength = VARIABLE,
-input = varchar2in,
-output = varchar2out,
-receive = varchar2recv,
-send = varchar2send,
+input = oracle.varchar2in,
+output = oracle.varchar2out,
+receive = oracle.varchar2recv,
+send = oracle.varchar2send,
 category = 'S',
-typmod_in = varchar2typmodin,
-typmod_out = varchar2typmodout,
+typmod_in = oracle.varchar2typmodin,
+typmod_out = oracle.varchar2typmodout,
 collatable = true
 );
 
-CREATE FUNCTION oracle.orafce_concat2(varchar2, varchar2)
-RETURNS varchar2
+CREATE FUNCTION oracle.orafce_concat2(oracle.varchar2, oracle.varchar2)
+RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
 LANGUAGE C STABLE;
 
 /* CREATE CAST */
-CREATE CAST (varchar2 AS text)
+CREATE CAST (oracle.varchar2 AS text)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (text AS varchar2)
+CREATE CAST (text AS oracle.varchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS char)
+CREATE CAST (oracle.varchar2 AS char)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (char AS varchar2)
+CREATE CAST (char AS oracle.varchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS varchar)
+CREATE CAST (oracle.varchar2 AS varchar)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar AS varchar2)
+CREATE CAST (varchar AS oracle.varchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS varchar2)
-WITH FUNCTION varchar2(varchar2,integer,boolean)
+CREATE CAST (oracle.varchar2 AS oracle.varchar2)
+WITH FUNCTION oracle.varchar2(oracle.varchar2,integer,boolean)
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS real)
+CREATE CAST (oracle.varchar2 AS real)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (real AS varchar2)
+CREATE CAST (real AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS double precision)
+CREATE CAST (oracle.varchar2 AS double precision)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (double precision AS varchar2)
+CREATE CAST (double precision AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS integer)
+CREATE CAST (oracle.varchar2 AS integer)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (integer AS varchar2)
+CREATE CAST (integer AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS smallint)
+CREATE CAST (oracle.varchar2 AS smallint)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (smallint AS varchar2)
+CREATE CAST (smallint AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS bigint)
+CREATE CAST (oracle.varchar2 AS bigint)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (bigint AS varchar2)
+CREATE CAST (bigint AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS numeric)
+CREATE CAST (oracle.varchar2 AS numeric)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (numeric AS varchar2)
+CREATE CAST (numeric AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS date)
+CREATE CAST (oracle.varchar2 AS date)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (date AS varchar2)
+CREATE CAST (date AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS timestamp)
+CREATE CAST (oracle.varchar2 AS timestamp)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (timestamp AS varchar2)
+CREATE CAST (timestamp AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (varchar2 AS interval)
+CREATE CAST (oracle.varchar2 AS interval)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (interval AS varchar2)
+CREATE CAST (interval AS oracle.varchar2)
 WITH INOUT
 AS IMPLICIT;
 
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    ALTER FUNCTION varchar2(varchar2, integer, boolean) SUPPORT varchar2_transform;
+    ALTER FUNCTION oracle.varchar2(oracle.varchar2, integer, boolean) SUPPORT oracle.varchar2_transform;
   ELSE
-    UPDATE pg_proc SET protransform= 'varchar2_transform'::regproc::oid WHERE proname='varchar2';
+    UPDATE pg_proc SET protransform= 'oracle.varchar2_transform'::regproc::oid WHERE proname='varchar2';
 
     INSERT INTO pg_depend (classid, objid, objsubid,
                            refclassid, refobjid, refobjsubid, deptype)
-       VALUES('pg_proc'::regclass::oid, 'varchar2'::regproc::oid, 0,
-              'pg_proc'::regclass::oid, 'varchar2_transform'::regproc::oid, 0, 'n');
+       VALUES('pg_proc'::regclass::oid, 'oracle.varchar2'::regproc::oid, 0,
+              'pg_proc'::regclass::oid, 'oracle.varchar2_transform'::regproc::oid, 0, 'n');
   END IF;
 END
 $$;
@@ -2331,218 +2329,218 @@ $$;
 -- string functions for varchar2 type
 -- these are 'byte' versions of corresponsing text/varchar functions
 
-CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer, integer) RETURNS varchar2
+CREATE OR REPLACE FUNCTION oracle.substrb(oracle.varchar2, integer, integer) RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','oracle_substrb3'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+COMMENT ON FUNCTION oracle.substrb(oracle.varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer) RETURNS varchar2
+CREATE OR REPLACE FUNCTION oracle.substrb(oracle.varchar2, integer) RETURNS oracle.varchar2
 AS 'MODULE_PATHNAME','oracle_substrb2'
 LANGUAGE C
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+COMMENT ON FUNCTION oracle.substrb(oracle.varchar2, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.lengthb(varchar2) RETURNS integer
+CREATE OR REPLACE FUNCTION oracle.lengthb(oracle.varchar2) RETURNS integer
 AS 'byteaoctetlen'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.lengthb(varchar2) IS 'returns byte length of the input varchar2 string';
+COMMENT ON FUNCTION oracle.lengthb(oracle.varchar2) IS 'returns byte length of the input varchar2 string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.strposb(varchar2, varchar2) RETURNS integer
+CREATE OR REPLACE FUNCTION oracle.strposb(oracle.varchar2, oracle.varchar2) RETURNS integer
 AS 'byteapos'
 LANGUAGE internal
 STRICT IMMUTABLE;
-COMMENT ON FUNCTION pg_catalog.strposb(varchar2, varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
+COMMENT ON FUNCTION oracle.strposb(oracle.varchar2, oracle.varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
 
 -- oracle.nvarchar2 type support
 
-CREATE FUNCTION nvarchar2in(cstring,oid,integer)
-RETURNS nvarchar2
+CREATE FUNCTION oracle.nvarchar2in(cstring,oid,integer)
+RETURNS oracle.nvarchar2
 AS 'MODULE_PATHNAME','nvarchar2in'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION nvarchar2out(nvarchar2)
+CREATE FUNCTION oracle.nvarchar2out(oracle.nvarchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','nvarchar2out'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION nvarchar2_transform(internal)
+CREATE FUNCTION oracle.nvarchar2_transform(internal)
 RETURNS internal
 AS 'MODULE_PATHNAME','orafce_varchar_transform'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION nvarchar2recv(internal,oid,integer)
-RETURNS nvarchar2
+CREATE FUNCTION oracle.nvarchar2recv(internal,oid,integer)
+RETURNS oracle.nvarchar2
 AS 'MODULE_PATHNAME','nvarchar2recv'
 LANGUAGE C
 STRICT
 STABLE;
 
-CREATE FUNCTION nvarchar2send(nvarchar2)
+CREATE FUNCTION oracle.nvarchar2send(oracle.nvarchar2)
 RETURNS bytea
 AS 'varcharsend'
 LANGUAGE internal
 STRICT
 STABLE;
 
-CREATE FUNCTION nvarchar2typmodin(cstring[])
+CREATE FUNCTION oracle.nvarchar2typmodin(cstring[])
 RETURNS integer
 AS 'varchartypmodin'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION nvarchar2typmodout(integer)
+CREATE FUNCTION oracle.nvarchar2typmodout(integer)
 RETURNS CSTRING
 AS 'varchartypmodout'
 LANGUAGE internal
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION nvarchar2(nvarchar2,integer,boolean)
-RETURNS nvarchar2
+CREATE FUNCTION oracle.nvarchar2(oracle.nvarchar2,integer,boolean)
+RETURNS oracle.nvarchar2
 AS 'MODULE_PATHNAME','nvarchar2'
 LANGUAGE C
 STRICT
 IMMUTABLE;
 
 /* CREATE TYPE */
-CREATE TYPE nvarchar2 (
+CREATE TYPE oracle.nvarchar2 (
 internallength = VARIABLE,
-input = nvarchar2in,
-output = nvarchar2out,
-receive = nvarchar2recv,
-send = nvarchar2send,
+input = oracle.nvarchar2in,
+output = oracle.nvarchar2out,
+receive = oracle.nvarchar2recv,
+send = oracle.nvarchar2send,
 category = 'S',
-typmod_in = nvarchar2typmodin,
-typmod_out = nvarchar2typmodout,
+typmod_in = oracle.nvarchar2typmodin,
+typmod_out = oracle.nvarchar2typmodout,
 collatable = true
 );
 
-CREATE FUNCTION oracle.orafce_concat2(nvarchar2, nvarchar2)
-RETURNS nvarchar2
+CREATE FUNCTION oracle.orafce_concat2(oracle.nvarchar2, oracle.nvarchar2)
+RETURNS oracle.nvarchar2
 AS 'MODULE_PATHNAME','orafce_concat2'
 LANGUAGE C IMMUTABLE;
 
 /* CREATE CAST */
-CREATE CAST (nvarchar2 AS text)
+CREATE CAST (oracle.nvarchar2 AS text)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (text AS nvarchar2)
+CREATE CAST (text AS oracle.nvarchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS char)
+CREATE CAST (oracle.nvarchar2 AS char)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (char AS nvarchar2)
+CREATE CAST (char AS oracle.nvarchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS varchar)
+CREATE CAST (oracle.nvarchar2 AS varchar)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (varchar AS nvarchar2)
+CREATE CAST (varchar AS oracle.nvarchar2)
 WITHOUT FUNCTION
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS nvarchar2)
-WITH FUNCTION nvarchar2(nvarchar2, integer, boolean)
+CREATE CAST (oracle.nvarchar2 AS oracle.nvarchar2)
+WITH FUNCTION oracle.nvarchar2(oracle.nvarchar2, integer, boolean)
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS real)
+CREATE CAST (oracle.nvarchar2 AS real)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (real AS nvarchar2)
+CREATE CAST (real AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS double precision)
+CREATE CAST (oracle.nvarchar2 AS double precision)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (double precision AS nvarchar2)
+CREATE CAST (double precision AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS integer)
+CREATE CAST (oracle.nvarchar2 AS integer)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (integer AS nvarchar2)
+CREATE CAST (integer AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS smallint)
+CREATE CAST (oracle.nvarchar2 AS smallint)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (smallint AS nvarchar2)
+CREATE CAST (smallint AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS bigint)
+CREATE CAST (oracle.nvarchar2 AS bigint)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (bigint AS nvarchar2)
+CREATE CAST (bigint AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS numeric)
+CREATE CAST (oracle.nvarchar2 AS numeric)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (numeric AS nvarchar2)
+CREATE CAST (numeric AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS date)
+CREATE CAST (oracle.nvarchar2 AS date)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (date AS nvarchar2)
+CREATE CAST (date AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS timestamp)
+CREATE CAST (oracle.nvarchar2 AS timestamp)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (timestamp AS nvarchar2)
+CREATE CAST (timestamp AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (nvarchar2 AS interval)
+CREATE CAST (oracle.nvarchar2 AS interval)
 WITH INOUT
 AS IMPLICIT;
 
-CREATE CAST (interval AS nvarchar2)
+CREATE CAST (interval AS oracle.nvarchar2)
 WITH INOUT
 AS IMPLICIT;
 
 do $$
 BEGIN
   IF EXISTS(SELECT * FROM pg_settings WHERE name = 'server_version_num' AND setting::int >= 120000) THEN
-    ALTER FUNCTION nvarchar2(nvarchar2, integer, boolean) SUPPORT nvarchar2_transform;
+    ALTER FUNCTION oracle.nvarchar2(oracle.nvarchar2, integer, boolean) SUPPORT oracle.nvarchar2_transform;
   ELSE
-    UPDATE pg_proc SET protransform= 'nvarchar2_transform'::regproc::oid WHERE proname='nvarchar2';
+    UPDATE pg_proc SET protransform= 'oracle.nvarchar2_transform'::regproc::oid WHERE proname='nvarchar2';
 
     INSERT INTO pg_depend (classid, objid, objsubid,
                            refclassid, refobjid, refobjsubid, deptype)
-       VALUES('pg_proc'::regclass::oid, 'nvarchar2'::regproc::oid, 0,
-              'pg_proc'::regclass::oid, 'nvarchar2_transform'::regproc::oid, 0, 'n');
+       VALUES('pg_proc'::regclass::oid, 'oracle.nvarchar2'::regproc::oid, 0,
+              'pg_proc'::regclass::oid, 'oracle.nvarchar2_transform'::regproc::oid, 0, 'n');
   END IF;
 END
 $$;
@@ -2552,8 +2550,8 @@ $$;
  * because older release doesn't know function.
  *
  */
-CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = varchar2, rightarg = varchar2);
-CREATE OPERATOR || (procedure = oracle.orafce_concat2, leftarg = nvarchar2, rightarg = nvarchar2);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = oracle.varchar2, rightarg = oracle.varchar2);
+CREATE OPERATOR oracle.|| (procedure = oracle.orafce_concat2, leftarg = oracle.nvarchar2, rightarg = oracle.nvarchar2);
 
 /* PAD */
 
@@ -2582,14 +2580,14 @@ LANGUAGE 'c'
 STRICT  IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(char, integer, varchar2)
+CREATE FUNCTION oracle.lpad(char, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(char, integer, nvarchar2)
+CREATE FUNCTION oracle.lpad(char, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2610,14 +2608,14 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, char)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2, integer, char)
+CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2631,14 +2629,14 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(text, integer, varchar2)
+CREATE FUNCTION oracle.lpad(text, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(text, integer, nvarchar2)
+CREATE FUNCTION oracle.lpad(text, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
@@ -2652,56 +2650,56 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, text)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, varchar2)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer, nvarchar2)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2, integer)
+CREATE FUNCTION oracle.lpad(oracle.varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2, integer, text)
+CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2, integer, varchar2)
+CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2, integer, nvarchar2)
+CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_lpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2, integer)
+CREATE FUNCTION oracle.lpad(oracle.nvarchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
@@ -2733,14 +2731,14 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(char, integer, varchar2)
+CREATE FUNCTION oracle.rpad(char, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(char, integer, nvarchar2)
+CREATE FUNCTION oracle.rpad(char, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2761,14 +2759,14 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, char)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2, integer, char)
+CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2782,14 +2780,14 @@ LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(text, integer, varchar2)
+CREATE FUNCTION oracle.rpad(text, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(text, integer, nvarchar2)
+CREATE FUNCTION oracle.rpad(text, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
@@ -2803,56 +2801,56 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, text)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, varchar2)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer, nvarchar2)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2, integer)
+CREATE FUNCTION oracle.rpad(oracle.varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2, integer, text)
+CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2, integer, varchar2)
+CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, oracle.varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2, integer, nvarchar2)
+CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer, oracle.nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_rpad'
 LANGUAGE 'c'
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2, integer)
+CREATE FUNCTION oracle.rpad(oracle.nvarchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
@@ -2886,14 +2884,14 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(char, varchar2)
+CREATE FUNCTION oracle.ltrim(char, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(char, nvarchar2)
+CREATE FUNCTION oracle.ltrim(char, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
@@ -2921,14 +2919,14 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(text, varchar2)
+CREATE FUNCTION oracle.ltrim(text, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(text, nvarchar2)
+CREATE FUNCTION oracle.ltrim(text, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
@@ -2942,70 +2940,70 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, char)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, text)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, varchar2)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2, nvarchar2)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(varchar2)
+CREATE FUNCTION oracle.ltrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(nvarchar2, char)
+CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, char)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(nvarchar2, text)
+CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, text)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(nvarchar2, varchar2)
+CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(nvarchar2, nvarchar2)
+CREATE FUNCTION oracle.ltrim(oracle.nvarchar2, oracle.nvarchar2)
 RETURNS text
 AS 'ltrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.ltrim(nvarchar2)
+CREATE FUNCTION oracle.ltrim(oracle.nvarchar2)
 RETURNS text
 AS $$ SELECT oracle.ltrim($1, ' '::text) $$
 LANGUAGE SQL
@@ -3027,14 +3025,14 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(char, varchar2)
+CREATE FUNCTION oracle.rtrim(char, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(char, nvarchar2)
+CREATE FUNCTION oracle.rtrim(char, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
@@ -3062,14 +3060,14 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(text, varchar2)
+CREATE FUNCTION oracle.rtrim(text, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(text, nvarchar2)
+CREATE FUNCTION oracle.rtrim(text, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
@@ -3083,70 +3081,70 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, char)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, text)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, varchar2)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2, nvarchar2)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(varchar2)
+CREATE FUNCTION oracle.rtrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(nvarchar2, char)
+CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, char)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(nvarchar2, text)
+CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, text)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(nvarchar2, varchar2)
+CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(nvarchar2, nvarchar2)
+CREATE FUNCTION oracle.rtrim(oracle.nvarchar2, oracle.nvarchar2)
 RETURNS text
 AS 'rtrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.rtrim(nvarchar2)
+CREATE FUNCTION oracle.rtrim(oracle.nvarchar2)
 RETURNS text
 AS $$ SELECT oracle.rtrim($1, ' '::text) $$
 LANGUAGE SQL
@@ -3168,14 +3166,14 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(char, varchar2)
+CREATE FUNCTION oracle.btrim(char, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(char, nvarchar2)
+CREATE FUNCTION oracle.btrim(char, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
@@ -3203,14 +3201,14 @@ LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(text, varchar2)
+CREATE FUNCTION oracle.btrim(text, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(text, nvarchar2)
+CREATE FUNCTION oracle.btrim(text, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
@@ -3224,70 +3222,70 @@ LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, char)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, text)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, varchar2)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2, nvarchar2)
+CREATE FUNCTION oracle.btrim(oracle.varchar2, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(varchar2)
+CREATE FUNCTION oracle.btrim(oracle.varchar2)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(nvarchar2, char)
+CREATE FUNCTION oracle.btrim(oracle.nvarchar2, char)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(nvarchar2, text)
+CREATE FUNCTION oracle.btrim(oracle.nvarchar2, text)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(nvarchar2, varchar2)
+CREATE FUNCTION oracle.btrim(oracle.nvarchar2, oracle.varchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(nvarchar2, nvarchar2)
+CREATE FUNCTION oracle.btrim(oracle.nvarchar2, oracle.nvarchar2)
 RETURNS text
 AS 'btrim'
 LANGUAGE internal
 STRICT IMMUTABLE
 ;
 
-CREATE FUNCTION oracle.btrim(nvarchar2)
+CREATE FUNCTION oracle.btrim(oracle.nvarchar2)
 RETURNS text
 AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
@@ -3323,29 +3321,29 @@ ALTER FUNCTION dbms_assert.enquote_name ( character varying ) STRICT;
 ALTER FUNCTION dbms_assert.enquote_name ( character varying, boolean ) STRICT;
 ALTER FUNCTION dbms_assert.noop ( character varying ) STRICT;
 
-CREATE FUNCTION pg_catalog.trunc(value timestamp without time zone, fmt text)
+CREATE FUNCTION oracle.trunc(value timestamp without time zone, fmt text)
 RETURNS timestamp without time zone
 AS 'MODULE_PATHNAME', 'ora_timestamp_trunc'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.trunc(timestamp without time zone, text) IS 'truncate date according to the specified format';
+COMMENT ON FUNCTION oracle.trunc(timestamp without time zone, text) IS 'truncate date according to the specified format';
 
-CREATE FUNCTION pg_catalog.round(value timestamp without time zone, fmt text)
+CREATE FUNCTION oracle.round(value timestamp without time zone, fmt text)
 RETURNS timestamp without time zone
 AS 'MODULE_PATHNAME','ora_timestamp_round'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone, text) IS 'round dates according to the specified format';
+COMMENT ON FUNCTION oracle.round(timestamp with time zone, text) IS 'round dates according to the specified format';
 
-CREATE FUNCTION pg_catalog.round(value timestamp without time zone)
+CREATE FUNCTION oracle.round(value timestamp without time zone)
 RETURNS timestamp without time zone
-AS $$ SELECT pg_catalog.round($1, 'DDD'); $$
+AS $$ SELECT oracle.round($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(timestamp without time zone) IS 'will round dates according to the specified format';
+COMMENT ON FUNCTION oracle.round(timestamp without time zone) IS 'will round dates according to the specified format';
 
-CREATE FUNCTION pg_catalog.trunc(value timestamp without time zone)
+CREATE FUNCTION oracle.trunc(value timestamp without time zone)
 RETURNS timestamp without time zone
-AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
+AS $$ SELECT oracle.trunc($1, 'DDD'); $$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
+COMMENT ON FUNCTION oracle.trunc(timestamp without time zone) IS 'truncate date according to the specified format';
 
 CREATE OR REPLACE FUNCTION oracle.round(double precision, int)
 RETURNS numeric
