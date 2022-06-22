@@ -48,7 +48,7 @@ A Debezium Engine is hosted within the CDCSDK server. The implementation is base
 ## Quick Start
 
 ### Create a CDCSDK stream in YugabyteDB
-Use [yb-admin](../../admin/yb-admin/#createchangedatastream) to create a CDC stream. A successful operation returns an output with the stream ID, make note of it to be used in further steps. For example:
+Use [yb-admin](../../admin/yb-admin/#createchangedatastream) to create a CDC stream. If successful, the operation returns the stream ID; note the ID, as it is used in later steps. For example:
 
 ```output
 CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
@@ -56,7 +56,7 @@ CDC Stream ID: d540f5e4890c4d3b812933cbfd703ed3
 
 ### Download and run CDCSDK Server
 
-CDCSDK Server distribution archives are available in [Github Releases](https://github.com/yugabyte/cdcsdk-server/releases) of the project. Each of the releases has a tar.gz labelled as CDCSDK Server.
+Download CDCSDK Server from the GitHub project [Releases](https://github.com/yugabyte/cdcsdk-server/releases) page. Each releases includes a tar.gz file named CDCSDK Server.
 
 The archive has the following layout:
 
@@ -68,7 +68,7 @@ cdcsdk-server
   |-- run.sh
 ```
 
-### Unpack and run instructions
+### Unpack and run the application
 
 ```sh
 export CDCSDK_VERSION=<x.y.z>
@@ -86,8 +86,8 @@ touch conf/application.properties
 
 ## Configuration
 
-The main configuration file is `conf/application.properties`. There are multiple sections configured:
-* `cdcsdk.source`: is for source connector configuration. Each instance of Debezium Server runs exactly one connector.
+The main configuration file is `conf/application.properties`, which includes the following sections:
+* `cdcsdk.source` is for configuring the source connector. Each instance of Debezium Server runs exactly one connector.
 * `cdcsdk.sink` is for the sink system configuration.
 * `cdcsdk.format` is for the output serialization format configuration.
 * `cdcsdk.transforms` is for the configuration of message transformations.
@@ -114,7 +114,7 @@ cdcsdk.source.snapshot.mode=never
 
 #### Confluent Cloud
 
-If you are using a Confluent Cloud deployment of Kafka, you will need to add the following configuration:
+If you are using a Confluent Cloud deployment of Kafka, you need to add the following configuration:
 
 ```properties
 cdcsdk.sink.type=kafka
@@ -149,9 +149,9 @@ cdcsdk.source.snapshot.mode=never
 
 The `cdcsdk.source` configurations are nothing but the Debezium Connector's configurations only where you can specify the `cdcsdk.source` as a prefix to any of the connector's configurations. For a complete list of the Debezium configurations, see [Debezium Connector for YugabyteDB configurations](../change-data-capture/debezium-connector-yugabytedb/#connector-configuration-properties).
 
-### Configuring using environment variables
+### Configure using environment variables
 
-Configuration using environment variables maybe useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, `cdcsdk.source.database.port` has to be changed to `CDCSDK_SOURCE_DATABASE_PORT`.
+Using environment variables for configuration can be useful when running in containers. The rule of thumb is to convert the keys to UPPER CASE and replace `.` with `_`. For example, change `cdcsdk.source.database.port` to `CDCSDK_SOURCE_DATABASE_PORT`.
 
 ### Server configuration
 
@@ -164,12 +164,12 @@ Configuration using environment variables maybe useful when running in container
 | :--- | :--- | :--- |
 | `quarkus.http.port` | 8080 | The port on which CDCSDK Server exposes Microprofile Health endpoint and other exposed status information. |
 | `quarkus.log.level` | INFO | The default log level for every log category. |
-| `quarkus.log.console.json` | true | Determine whether to enable the JSON console formatting extension, which disables "normal" console formatting. | 
+| `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. | 
 
 
 ### HTTP Client
 
-The HTTP Client will stream changes to any HTTP Server for additional processing with the original design goal to make Debezium act as a native event source.
+The HTTP client streams changes to any HTTP server for additional processing, with the goal of making Debezium act as a native event source.
 
 | Property | Default | Description |
 | :---- | :---- | :---- |
@@ -189,19 +189,19 @@ The Amazon S3 Sink streams changes to an AWS S3 bucket. Only Inserts are support
 | `cdcsdk.sink.s3.basedir` | | Base directory or path where the data has to be stored. |
 | `cdcsdk.sink.s3.pattern` | | Pattern to generate paths (sub-directory and filename) for data files. |
 | `cdcsdk.sink.s3.flushBytesMB` | 200 | Trigger Data File Rollover on file size. |
-| `cdcsdk.sink.s3.flushRecords` | 10000 | Trigger Data File Rolloever on number of records |
+| `cdcsdk.sink.s3.flushRecords` | 10000 | Trigger Data File Rollover on number of records |
 
 {{< note title="Note" >}}
 
-Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations should be setup.
+Amazon S3 Sink supports a single table at a time. Specifically `cdcsdk.source.table.include.list` should contain only one table at a time. If multiple tables need to be exported to Amazon S3, set up multiple CDCSDK servers that read from the same CDC Stream ID but write to different S3 locations.
 
 {{< /note >}}
 
-### Mapping records to S3 objects
+#### Mapping records to S3 objects
 
 The Amazon S3 Sink only supports [create events](../change-data-capture/debezium-connector-yugabytedb.md#create-events) in the CDC Stream. It writes `payload.after` fields to a file in S3.
 
-The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.pattern}`. Pattern can contain placeholders to customize the filenames. It supports the following placeholders:
+The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.pattern}`. Pattern can contain placeholders to customize the filenames, as follows:
 
 * {YEAR}: Year in which the sync was writing the output data in.
 * {MONTH}: Month in which the sync was writing the output data in.
@@ -211,9 +211,9 @@ The filename in S3 is generated as `${cdcsdk.sink.s3.basedir}/${cdcsdk.sink.s3.p
 * {SECOND}: Second in which the sync was writing the output data in.
 * {MILLISECOND}: Millisecond in which the sync was writing the output data in.
 * {EPOCH}: Milliseconds since Epoch in which the sync was writing the output data in.
-* {UUID}: Random uuid string
+* {UUID}: Random uuid string.
 
-For example, the following pattern can be used to create hourly partitions with multiple files each of which are no greater than 200MB:
+For example, the following pattern can be used to create hourly partitions with multiple files, each of which is no greater than 200MB:
 
 ```output
 {YEAR}-{MONTH}-{DAY}-{HOUR}/data-{UUID}.jsonl
@@ -275,7 +275,7 @@ Note: This is the IAM policy for the user account and not a bucket policy.
 
 By default, the YugabyteDB connector generates a [complex record](../change-data-capture/debezium-connector-yugabytedb.md#data-change-events) in JSON with key and value information including payload. A sophisticated sink can use the information to generate appropriate commands in the receiving system.
 
-Simple sinks expect simple key/value JSON object where key is the column name and value is the contents of the column. For simple sinks, set `cdcsdk.server.transforms=FLATTEN`. With this configuration, the record structure will only emit the payload as a simple JSON.
+Simple sinks expect simple key/value JSON objects, where key is the column name and value is the contents of the column. For simple sinks, set `cdcsdk.server.transforms=FLATTEN`. With this configuration, the record structure will only emit the payload as simple JSON.
 
 With `FLATTEN`, the following simple format is emitted:
 
