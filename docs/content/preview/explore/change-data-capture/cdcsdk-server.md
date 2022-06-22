@@ -43,7 +43,7 @@ A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/
 
 ### Server
 
-A Debezium Engine is hosted within the CDCSDK server. The implementation is based on the [Debezium Server](https://debezium.io/documentation/reference/1.9/operations/debezium-server.html). It uses the Quarkus framework and extensions to provide a server shell, metrics and alerts. By default, a server runs one Engine implementation within a thread. A server can also run in multi-threaded mode wherein multiple engines are assigned to a thread each. The server splits tablets into groups in a deterministic manner. Each group of tablets is assigned to an Engine.
+The CDCSDK server hosts a Debezium Engine. The implementation is based on the [Debezium Server](https://debezium.io/documentation/reference/1.9/operations/debezium-server.html). It uses the Quarkus framework and extensions to provide a server shell, metrics, and alerts. By default, a server runs one Engine implementation in a thread. A server can also run in multi-threaded mode wherein multiple engines are assigned to a thread each. The server splits tablets into groups in a deterministic manner. Each group of tablets is assigned to an Engine.
 
 ## Quick Start
 
