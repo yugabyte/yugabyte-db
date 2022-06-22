@@ -1168,16 +1168,16 @@ public class TestPgSelect extends BasePgSQLTest {
 
         Set<Row> allRows = new HashSet<>();
         for (int i = 1; i <= 100000; i++) {
-            allRows.add(new Row(i/1000, (i/100)%10, (i/10)%10, i%10, i));
+          allRows.add(new Row(i/1000, (i/100)%10, (i/10)%10, i%10, i));
         }
 
         // Select where hash code is specified and one range constraint
         query = "SELECT * FROM sample_table WHERE h = 1 AND r3 < 6";
 
         Set<Row> expectedRows = allRows.stream()
-                                .filter(r -> r.getInt(0) == 1
-                                        && r.getInt(3) < 6)
-                                .collect(Collectors.toSet());
+                                       .filter(r -> r.getInt(0) == 1 &&
+                                               r.getInt(3) < 6)
+                                       .collect(Collectors.toSet());
         assertRowSet(statement, query, expectedRows);
 
         RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
@@ -1207,18 +1207,18 @@ public class TestPgSelect extends BasePgSQLTest {
         r3Filter.addAll(Arrays.asList(r3FilterArray));
 
         expectedRows = allRows.stream()
-                                .filter(r -> r.getInt(0) == 1
-                                        && r.getInt(1) < 2
-                                        && r3Filter.contains(r.getInt(3)))
-                                .collect(Collectors.toSet());
+                              .filter(r -> r.getInt(0) == 1 &&
+                                      r.getInt(1) < 2 &&
+                                      r3Filter.contains(r.getInt(3)))
+                              .collect(Collectors.toSet());
         assertRowSet(statement, query, expectedRows);
 
         metrics = assertFullDocDBFilter(statement, query, "sample_table");
-        // For each of the 3 * 10 possible pairs of (r1, r2) we seek through
+        // For each of the 2 * 10 possible pairs of (r1, r2) we seek through
         // 4 values of r3 (8, 7, 2, kHighest). We must have that seek to
         // r3 = kHighest in order to get to the next value of (r1,r2).
         // We also have one initial seek into the hash key, making the total
-        // number of seeks 3 * 10 * 4 + 1 = 121
+        // number of seeks 2 * 10 * 4 + 1 = 81
         // Seek(SubDocKey(DocKey(0x1210, [1], [kLowest]), []))
         // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 8]), []))
         // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, 7]), []))
@@ -1226,9 +1226,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // Seek(SubDocKey(DocKey(0x1210, [1], [0, 0, kHighest]), []))
         // Seek(SubDocKey(DocKey(0x1210, [1], [0, 1, 8]), []))
         // ...
-        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 9, 2]), []))
-        // Seek(SubDocKey(DocKey(0x1210, [1], [2, 9, kHighest]), []))
-        assertEquals(121, metrics.seekCount);
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 9, 2]), []))
+        // Seek(SubDocKey(DocKey(0x1210, [1], [1, 9, kHighest]), []))
+        assertEquals(81, metrics.seekCount);
 
         // Select where all keys have some sort of discrete constraint
         // on them
@@ -1237,13 +1237,13 @@ public class TestPgSelect extends BasePgSQLTest {
                 "AND r3 IN (2, 25, 8, 7, 23, 18)";
 
         expectedRows = allRows.stream()
-                                .filter(r -> r.getInt(0) == 1
-                                        && (r.getInt(1) == 1
-                                            || r.getInt(1) == 2)
-                                        && (r.getInt(2) == 2
-                                            || r.getInt(2) == 3)
-                                        && r3Filter.contains(r.getInt(3)))
-                                .collect(Collectors.toSet());
+                              .filter(r -> r.getInt(0) == 1 &&
+                                      (r.getInt(1) == 1 ||
+                                       r.getInt(1) == 2) &&
+                                      (r.getInt(2) == 2 ||
+                                       r.getInt(2) == 3) &&
+                                      r3Filter.contains(r.getInt(3)))
+                              .collect(Collectors.toSet());
         assertRowSet(statement, query, expectedRows);
 
         metrics = assertFullDocDBFilter(statement, query, "sample_table");
@@ -1278,11 +1278,11 @@ public class TestPgSelect extends BasePgSQLTest {
                 "h = 1 AND r2 IN (2,3) AND r3 IN (2, 25, 8, 7, 23, 18)";
 
         expectedRows = allRows.stream()
-                                .filter(r -> r.getInt(0) == 1
-                                        && (r.getInt(2) == 2
-                                            || r.getInt(2) == 3)
-                                        && r3Filter.contains(r.getInt(3)))
-                                .collect(Collectors.toSet());
+                              .filter(r -> r.getInt(0) == 1 &&
+                                      (r.getInt(2) == 2 ||
+                                       r.getInt(2) == 3) &&
+                                      r3Filter.contains(r.getInt(3)))
+                              .collect(Collectors.toSet());
         assertRowSet(statement, query, expectedRows);
 
         metrics = assertFullDocDBFilter(statement, query, "sample_table");
@@ -1318,12 +1318,12 @@ public class TestPgSelect extends BasePgSQLTest {
                 "h IN (1,5) AND r2 IN (2,3) AND r3 IN (2, 25, 8, 7, 23, 18)";
 
         expectedRows = allRows.stream()
-                                .filter(r -> (r.getInt(0) == 1
-                                            || r.getInt(0) == 5)
-                                        && (r.getInt(2) == 2
-                                            || r.getInt(2) == 3)
-                                        && r3Filter.contains(r.getInt(3)))
-                                .collect(Collectors.toSet());
+                              .filter(r -> (r.getInt(0) == 1 ||
+                                            r.getInt(0) == 5) &&
+                                      (r.getInt(2) == 2 ||
+                                       r.getInt(2) == 3) &&
+                                      r3Filter.contains(r.getInt(3)))
+                              .collect(Collectors.toSet());
         assertRowSet(statement, query, expectedRows);
 
         metrics = assertFullDocDBFilter(statement, query, "sample_table");
@@ -1334,6 +1334,188 @@ public class TestPgSelect extends BasePgSQLTest {
         // AND r3 IN (2, 25, 8, 7, 23, 18)
         // We have 91 * 2 = 182 seeks
         assertEquals(182, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testStrictInequalities() throws Exception {
+    String query = "CREATE TABLE sample_table(h INT, r1 INT, r2 INT, r3 INT, " +
+                   "v INT, PRIMARY KEY(h HASH, r1 ASC, r2 ASC, r3 DESC))";
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(query);
+
+      // v has values from 1 to 100000 and the other columns are
+      // various digits of v as such
+      // h    r1  r2  r3      v
+      // 0    0   0   0       0
+      // 0    0   0   1       1
+      // ...
+      // 12   4   9   3      12493
+      // ...
+      // 100  0   0   0      100000
+      query = "INSERT INTO sample_table SELECT i/1000, (i/100)%10, " +
+              "(i/10)%10, i%10, i FROM generate_series(1, 100000) i";
+      statement.execute(query);
+
+      Set<Row> allRows = new HashSet<>();
+      for (int i = 1; i <= 100000; i++) {
+        allRows.add(new Row(i/1000, (i/100)%10, (i/10)%10, i%10, i));
+      }
+
+      {
+        // Select where hash code is specified and three range constraints
+        query = "SELECT * FROM sample_table WHERE h = 1 AND " +
+                "r1 IN (1,4,6)AND r2 < 3 AND r3 IN (1,3,5,7)";
+
+        Set<Row> expectedRows = allRows.stream()
+                                       .filter(r -> r.getInt(0) == 1 &&
+                                               (r.getInt(1) == 1 ||
+                                                r.getInt(1) == 4 ||
+                                                r.getInt(1) == 6) &&
+                                               r.getInt(2) < 3 &&
+                                               (r.getInt(3) % 2 == 1) &&
+                                               r.getInt(3) < 9 &&
+                                               r.getInt(3) > 0)
+                                       .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are m = 3 values of r1 to look at, n = 3 values of r2 and
+        // p = 4 values of r3 to look at. For each (r1,r2) we seek to each
+        // value of r3 along with (+Inf) to get to the next value of r2,
+        // resulting in p + 1 seeks.
+        // For each r1, there are n * (p+1) + 1 seeks. The +1 is needed
+        // at the start of an r1 value to determine what r2 value to start
+        // with using a seek to (r1, -Inf)
+        // So there are m*(n*(p+1) + 1) = 48 seeks
+        assertEquals(48, metrics.seekCount);
+      }
+
+      {
+        // Select where hash code is specified and three range constraints
+        query = "SELECT * FROM sample_table WHERE h = 1 AND "
+                + "r1 IN (1,4,6) AND r2 < 5 AND r2 > 1 AND r3 IN (1,3,5,7)";
+
+        Set<Row> expectedRows = allRows.stream()
+                                       .filter(r -> r.getInt(0) == 1 &&
+                                               (r.getInt(1) == 1 ||
+                                                r.getInt(1) == 4 ||
+                                                r.getInt(1) == 6) &&
+                                               r.getInt(2) < 5 &&
+                                               r.getInt(2) > 1 &&
+                                               (r.getInt(3) % 2 == 1) &&
+                                               r.getInt(3) < 9 &&
+                                               r.getInt(3) > 0)
+                                       .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are m = 3 values of r1 to look at, n = 3 values of r2 and
+        // p = 4 values of r3 to look at. For each (r1,r2) we seek to each
+        // value of r3 along with (+Inf) to get to the next value of r2,
+        // resulting in p + 1 seeks.
+        // For each r1, there are n * (p+1) + 1 seeks. The +1 is needed
+        // at the start of an r1 value to determine what r2 value to start
+        // with using a seek to (r1, 1, +Inf)
+        // So there are m*(n*(p+1) + 1) = 48 seeks
+        assertEquals(48, metrics.seekCount);
+      }
+
+      {
+        // Select where hash code is specified and three range constraints
+        query = "SELECT * FROM sample_table WHERE h = 1 AND r1 " +
+                "IN (1,4,6) AND r2 < 5 AND r2 >= 1 AND r3 IN (1,3,5,7)";
+
+        Set<Row> expectedRows = allRows.stream()
+                                       .filter(r -> r.getInt(0) == 1 &&
+                                               (r.getInt(1) == 1 ||
+                                                r.getInt(1) == 4 ||
+                                                r.getInt(1) == 6) &&
+                                               r.getInt(2) < 5 &&
+                                               r.getInt(2) >= 1 &&
+                                               (r.getInt(3) % 2 == 1) &&
+                                               r.getInt(3) < 9 &&
+                                               r.getInt(3) > 0)
+                                       .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are m = 3 values of r1 to look at, n = 4 values of r2 and
+        // p = 4 values of r3 to look at. For each (r1,r2) we seek to each
+        // value of r3 along with (+Inf) to get to the next value of r2,
+        // resulting in p + 1 seeks.
+        // For each r1, there are n * (p+1) seeks.
+        // So there are m*(n*(p+1)) = 60 seeks
+        assertEquals(60, metrics.seekCount);
+      }
+
+      {
+        // Select where hash code is specified and three range constraints
+        query = "SELECT * FROM sample_table WHERE h = 1 AND " +
+                "r1 IN (1,4,6) AND r2 <= 5 AND r2 > 1 AND r3 IN (1,3,5,7)";
+
+        Set<Row> expectedRows = allRows.stream()
+                                       .filter(r -> r.getInt(0) == 1 &&
+                                               (r.getInt(1) == 1 ||
+                                                r.getInt(1) == 4 ||
+                                                r.getInt(1) == 6) &&
+                                               r.getInt(2) <= 5 &&
+                                               r.getInt(2) > 1 &&
+                                               (r.getInt(3) % 2 == 1) &&
+                                               r.getInt(3) < 9 &&
+                                               r.getInt(3) > 0)
+                                       .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are m = 3 values of r1 to look at, n = 4 values of r2 and
+        // p = 4 values of r3 to look at. For each (r1,r2) we seek to each
+        // value of r3 along with (+Inf) to get to the next value of r2,
+        // resulting in p + 1 seeks in most cases.
+        // (Note: This extra + 1 doesn't occur when r2 = 5)
+        // For each r1, there are n * (p+1) + 1 - n seeks. The + 1 is needed
+        // at the start of an r1 value to determine what r2 value to start
+        // with using a seek to (r1, 1, +Inf). The -n is to account for the
+        // above note.
+        // So there are m*(n*(p+1) + 1 - n) = 60 seeks
+        assertEquals(60, metrics.seekCount);
+      }
+
+      {
+        // Select where hash code is specified and three range constraints
+        query = "SELECT * FROM sample_table WHERE h = 1 AND " +
+                "r1 > 1 AND r1 < 6 AND r2 < 5 AND r2 > 1 AND " +
+                "r3 > 4 AND r3 <= 8 ORDER BY r1 DESC, r2 DESC, r3 ASC";
+
+        Set<Row> expectedRows = allRows.stream()
+                                       .filter(r -> r.getInt(0) == 1 &&
+                                               r.getInt(1) > 1 &&
+                                               r.getInt(1) < 6 &&
+                                               r.getInt(2) > 1 &&
+                                               r.getInt(2) < 5 &&
+                                               r.getInt(3) > 4 &&
+                                               r.getInt(3) <= 8)
+                                       .collect(Collectors.toSet());
+        assertRowSet(statement, query, expectedRows);
+
+        RocksDBMetrics metrics = assertFullDocDBFilter(statement, query, "sample_table");
+        // There are m = 4 values of r1 to look at, n = 3 values of r2 and
+        // p = 4 values of r3 to look at. For each (r1,r2) we seek to each
+        // value of r3 along with (-Inf) to get to the next value of r2,
+        // resulting in p + 1 seeks.
+        // For each r1, there are n * (p+1) + 2 seeks.
+        // The + 2 is needed for two special seeks.
+        // One at the start of an r1 value to determine
+        // what r2 value to start by using a seek to (r1, 1, +Inf)/
+        // Another one at the end of each r1 value to determine the next
+        // r1 value via a seek to (r1, -Inf)
+        // There is also one seek at the beginning of the entire scan
+        // to (6, -Inf) to determine the first r1 value
+        // So there are m*(n*(p+1) + 2) + 1 = 69 seeks
+        // Each seek during a reverse scan is implemented with two seeks,
+        // so in total there are 69 * 2 = 138 seeks.
+        assertEquals(138, metrics.seekCount);
+      }
     }
   }
 

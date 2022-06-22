@@ -74,6 +74,12 @@ DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 
+DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+            "When set, it enables automatic tablet splitting for tables that are part of an "
+            "xCluster replication setup and are currently being bootstrapped for xCluster.");
+TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
+TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, hidden);
+
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
@@ -219,6 +225,17 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         "Tablet splitting is not supported for tables that are a part of"
         " a CDC stream, tablet_id: $0", table.id());
   }
+  // Check if the table is in the bootstrapping phase of xCluster.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
+      filter_->IsTablePartOfBootstrappingCdcStream(table)) {
+    VLOG(1) << Format("Tablet splitting is not supported for tables that are a part of"
+                      " a bootstrapping CDC stream, table_id: $0", table.id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, tablet_id: $0", table.id());
+  }
+
   if (table.GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     VLOG(1) << Format("Tablet splitting is not supported for transaction status tables, "
                       "table_id: $0", table.id());

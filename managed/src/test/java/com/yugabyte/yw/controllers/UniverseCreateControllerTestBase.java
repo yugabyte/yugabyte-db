@@ -68,10 +68,8 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
@@ -454,6 +452,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     assertBadRequest(
         result,
         "G-Flag value 'false' for 'enable_ysql' is not compatible with intent value 'true'");
+
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    Result cloudResult = sendCreateRequest(bodyJson);
+    assertOk(cloudResult);
   }
 
   @Test
