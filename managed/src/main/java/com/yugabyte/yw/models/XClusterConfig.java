@@ -211,12 +211,16 @@ public class XClusterConfig extends Model {
   }
 
   @Transactional
-  public void setReplicationSetupDone(Set<String> tableIds) {
+  public void setReplicationSetupDone(Collection<String> tableIds, boolean replicationSetupDone) {
+    // Ensure there is no duplicate in the tableIds collection.
+    if (tableIds.size() != new HashSet<>(tableIds).size()) {
+      String errMsg = String.format("There are duplicate values in tableIds: %s", tableIds);
+      throw new RuntimeException(errMsg);
+    }
     for (String tableId : tableIds) {
       Optional<XClusterTableConfig> tableConfig = maybeGetTableById(tableId);
       if (tableConfig.isPresent()) {
-        tableConfig.get().replicationSetupDone = true;
-        log.info("Replication for table {} in xCluster config {} is set up", tableId, name);
+        tableConfig.get().replicationSetupDone = replicationSetupDone;
       } else {
         String errMsg =
             String.format(
@@ -224,7 +228,16 @@ public class XClusterConfig extends Model {
         throw new RuntimeException(errMsg);
       }
     }
+    log.info(
+        "Replication for tables {} in xCluster config {} is set to {}",
+        tableIds,
+        name,
+        replicationSetupDone);
     update();
+  }
+
+  public void setReplicationSetupDone(Collection<String> tableIds) {
+    setReplicationSetupDone(tableIds, true /* replicationSetupDone */);
   }
 
   @Transactional
