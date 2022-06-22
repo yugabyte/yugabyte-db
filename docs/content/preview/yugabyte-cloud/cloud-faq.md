@@ -70,7 +70,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
-- Upgrade to a [Dedicated cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
+- Upgrade to a fault tolerant [single- or multi-region cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
 To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{<support-cloud>}} for trial credits.
 
@@ -209,7 +209,7 @@ For more details, refer to [Connect to clusters](../cloud-connect/).
 
 Sandbox clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-For more details, refer to [Inactive Sandbox clusters](../cloud-basics/create-clusters-free/#inactive-sandbox-clusters).
+For more details, refer to [Inactive Sandbox clusters](../cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
 
 ### How do I keep my Sandbox cluster from being paused or deleted?
 
