@@ -158,62 +158,62 @@ Create a data model in the `prisma/schema.prisma` file and migrate it to Yugabyt
 The `prisma migrate` command creates a `migration.sql` file with the folder name `<unique-id>_first_migration` under `prisma/migrations`, applies those to the database, and generates a Prisma client, which can be used as a query builder to communicate with the database.
 
 
-### Step 4: Create and Run an example using Prisma and YugabyteDB
+### Step 4: Create and run an example using Prisma and YugabyteDB
 
-Use Prisma Client to create a few records in the `employee` table and fetch those records from the database.
+Use the Prisma client to create a few records in the `employee` table and fetch those records from the database.
 
-1. Add the following code in the `example.js` file to create three employee records in the employee table, and fetch those employee details in the order of their employee ids:
+1. Add the following code in the `example.js` file to create three employee records in the employee table, and fetch those employee details in the order of their employee IDs:
 
-```js
-const { PrismaClient } = require('@prisma/client')
+    ```js
+    const { PrismaClient } = require('@prisma/client')
 
-const prisma = new PrismaClient()
+    const prisma = new PrismaClient()
 
-async function example() {
-    
-    const employee1 = {
-        emp_id: 1,
-        emp_name: "Jake",
-        emp_age: 24,
-        emp_email: "jake24@example.com" 
+    async function example() {
+        
+        const employee1 = {
+            emp_id: 1,
+            emp_name: "Jake",
+            emp_age: 24,
+            emp_email: "jake24@example.com" 
+        }
+        const employee2 = {
+            emp_id: 2,
+            emp_name: "Sam",
+            emp_age: 30,
+            emp_email: "sam30@example.com" 
+        }
+        const employee3 = {
+            emp_id: 3,
+            emp_name: "Tom",
+            emp_age: 22,
+            emp_email: "tom22@example.com" 
+        }
+
+        await prisma.employee
+            .createMany({
+                data: [employee1, employee2, employee3,]
+            })
+            .then(async (res) => {
+              console.log("Created",res.count,"employees.");
+              await prisma.employee
+                  .findMany({
+                    orderBy: {
+                        emp_id: 'asc'
+                    },
+                  })
+                  .then((res) => {
+                    console.log("Fetched employee details sorted by employee IDs -");
+                    console.log(res);
+                  })
+                  .catch((err) => {
+                    console.log("Error in fetching employees: ",err);
+                  })
+            })
+            .catch((err)=>{
+              console.log("Error in creating employees: ",err); 
+            })
     }
-    const employee2 = {
-        emp_id: 2,
-        emp_name: "Sam",
-        emp_age: 30,
-        emp_email: "sam30@example.com" 
-    }
-    const employee3 = {
-        emp_id: 3,
-        emp_name: "Tom",
-        emp_age: 22,
-        emp_email: "tom22@example.com" 
-    }
-    
-    await prisma.employee
-        .createMany({
-            data: [employee1, employee2, employee3,]
-        })
-        .then(async (res) => {
-          console.log("Created",res.count,"employees.");
-           await prisma.employee
-              .findMany({
-                orderBy: {
-                    emp_id: 'asc'
-                },
-              })
-              .then((res) => {
-                console.log("Fetched employees details sorted by employee ids -");
-                console.log(res);
-              })
-              .catch((err) => {
-                console.log("Error in fetching employees: ",err);
-              })
-        })
-        .catch((err)=>{
-          console.log("Error in creating employees: ",err); 
-        })
-}
 
 example()
   .then (() => {
