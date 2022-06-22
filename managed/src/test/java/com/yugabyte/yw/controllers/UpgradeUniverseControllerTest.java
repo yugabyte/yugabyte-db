@@ -964,6 +964,36 @@ public class UpgradeUniverseControllerTest extends WithApplication {
     assertAuditEntry(1, customer.uuid);
   }
 
+  @Test
+  public void testRebootUniverse() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID universeUUID = createUniverse(customer.getCustomerId()).universeUUID;
+
+    String url =
+        "/api/customers/" + customer.uuid + "/universes/" + universeUUID + "/upgrade/reboot";
+    ObjectNode bodyJson = Json.newObject().put("upgradeOption", "Rolling");
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    ArgumentCaptor<UpgradeTaskParams> argCaptor = ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.RebootUniverse), argCaptor.capture());
+
+    UpgradeTaskParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(
+        task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RebootUniverse)));
+    assertAuditEntry(1, customer.uuid);
+  }
+
   private UUID prepareUniverseForCertsRotate(boolean onprem)
       throws IOException, NoSuchAlgorithmException {
     UUID rootCA = UUID.randomUUID();

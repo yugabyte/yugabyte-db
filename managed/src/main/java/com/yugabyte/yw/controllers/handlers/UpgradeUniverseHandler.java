@@ -350,6 +350,20 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
+  public UUID rebootUniverse(
+      UpgradeTaskParams requestParams, Customer customer, Universe universe) {
+    requestParams.verifyParams(universe);
+    requestParams.universeUUID = universe.universeUUID;
+    requestParams.expectedUniverseVersion = universe.version;
+
+    return submitUpgradeTask(
+        TaskType.RebootUniverse,
+        CustomerTask.TaskType.RebootUniverse,
+        requestParams,
+        customer,
+        universe);
+  }
+
   private UUID submitUpgradeTask(
       TaskType taskType,
       CustomerTask.TaskType customerTaskType,
