@@ -2227,17 +2227,8 @@ JumbleQuery(JumbleState *jstate, Query *query)
 	JumbleExpr(jstate, (Node *) query->cteList);
 
 	JumbleRangeTable(jstate, query->rtable, query->commandType);
-
-    /*
-     * Skip jointree and targetlist in case of insert statment
-     * to avoid queryid duplication problem.
-     */
-	if (query->commandType != CMD_INSERT)
-	{
-		JumbleExpr(jstate, (Node *) query->jointree);
-		JumbleExpr(jstate, (Node *) query->targetList);
-	}
-
+	JumbleExpr(jstate, (Node *) query->jointree);
+	JumbleExpr(jstate, (Node *) query->targetList);
 	JumbleExpr(jstate, (Node *) query->onConflict);
 	JumbleExpr(jstate, (Node *) query->returningList);
 	JumbleExpr(jstate, (Node *) query->groupClause);
