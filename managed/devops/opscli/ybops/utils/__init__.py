@@ -697,7 +697,7 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
     return 1, None, None  # treat this as a non-zero return code
 
 
-def scp_to_tmp(filepath, host, user, port, private_key):
+def scp_to_tmp(filepath, host, user, port, private_key, retries=3):
     dest_path = os.path.join("/tmp", os.path.basename(filepath))
     logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
@@ -712,24 +712,38 @@ def scp_to_tmp(filepath, host, user, port, private_key):
         "-vvvv",
         filepath, "{}@{}:{}".format(user, host, dest_path)
     ]
-    # Save the debug output to temp files.
-    out_fd, out_name = tempfile.mkstemp(text=True)
-    err_fd, err_name = tempfile.mkstemp(text=True)
-    # Start the scp and redirect out and err.
-    proc = subprocess.Popen(scp_cmd, stdout=out_fd, stderr=err_fd)
-    # Wait for finish and cleanup FDs.
-    proc.wait()
-    os.close(out_fd)
-    os.close(err_fd)
-    # In case of errors, copy over the tmp output.
-    if proc.returncode != 0:
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        shutil.copyfile(out_name, "/tmp/{}-{}.out".format(host, timestamp))
-        shutil.copyfile(err_name, "/tmp/{}-{}.err".format(host, timestamp))
-    # Cleanup the temp files now that they are clearly not needed.
-    os.remove(out_name)
-    os.remove(err_name)
-    return proc.returncode
+
+    rc = 0
+    while retries > 0:
+        # Save the debug output to temp files.
+        out_fd, out_name = tempfile.mkstemp(text=True)
+        err_fd, err_name = tempfile.mkstemp(text=True)
+        # Start the scp and redirect out and err.
+        proc = subprocess.Popen(scp_cmd, stdout=out_fd, stderr=err_fd)
+        # Wait for finish and cleanup FDs.
+        proc.wait()
+        os.close(out_fd)
+        os.close(err_fd)
+        rc = proc.returncode
+
+        # In case of errors, copy over the tmp output.
+        if rc != 0:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            basename = f"/tmp/{host}-{timestamp}"
+            logging.warning(f"Command '{' '.join(scp_cmd)}' failed with exit code {rc}")
+
+            for ext, name in {'out': out_name, 'err': err_name}.items():
+                logging.warning(f"Dumping std{ext} to {basename}.{ext}")
+                shutil.move(name, f"{basename}.out")
+
+            retries -= 1
+        else:
+            # Cleanup the temp files now that they are clearly not needed.
+            os.remove(out_name)
+            os.remove(err_name)
+            break
+
+    return rc
 
 
 def get_or_create(getter):
