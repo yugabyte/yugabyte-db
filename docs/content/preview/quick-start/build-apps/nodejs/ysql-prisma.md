@@ -6,7 +6,7 @@ menu:
   preview:
     parent: build-apps
     name: Node.js
-    identifier: nodejs-2
+    identifier: nodejs-4
     weight: 551
 type: page
 isTocNested: true
@@ -21,13 +21,13 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link active">
+    <a href="{{< relref "./ysql-sequelize.md" >}}" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Sequelize
     </a>
   </li>
   <li>
-    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YSQL - Prisma
     </a>
@@ -38,13 +38,17 @@ showAsideToc: true
       YCQL
     </a>
   </li>
+  
 </ul>
 
+{{< tip title="YugabyteDB Managed requires SSL" >}}
+
+Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites).
+
+{{</ tip >}}
 ## Prerequisites
 
-This tutorial assumes that you have installed:
-- YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/). 
-- [node.js](https://nodejs.org/en/) version 16 or later.
+This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
 
 ## Clone the orm-examples repository
 
@@ -52,49 +56,109 @@ This tutorial assumes that you have installed:
 $ git clone https://github.com/yugabyte/orm-examples.git
 ```
 
-This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the Sequelize ORM. It consists of the following:
+This repository has a Node.js example that implements a REST API server. The scenario is that of an e-commerce application. Database access in this application is managed through the [Prisma](https://prisma.io). It consists of the following:
 
 - The `users` table contains the users of the e-commerce site.
 - The `products` table contains a list of products the e-commerce site sells.
 - Orders placed by the users are populated in the `orders` table. An order can consist of multiple line items, each of these are inserted in the `orderline` table.
 
-The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize). You can customize a number of options using the properties file located at `config/config.json`.
+The application source is in the [repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).
 
 ## Build the application
 
 ```sh
-$ cd ./node/sequelize/
+$ cd ./node/prisma/
 ```
 
 ```sh
-npm install
+$ npm install
 ```
 
-## Specifying SSL configuration
-This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+## Create database
 
-Use the configuration in the following way in the `models/index.js` file when you create the sequelize object:
-```js
-sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
-    dialect: 'postgres',
-    port: 5433,
-    host: "<host_name>",
-    dialectOptions: {
-        ssl: {
-            rejectUnauthorized: true,
-            ca: fs.readFileSync('<path_to_root_crt>').toString(),
-        }
-    }
-  });
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
+
+```sh
+$ ./bin/ysqlsh
 ```
+
+```output
+ysqlsh (11.2)
+Type "help" for help.
+
+yugabyte=#
+```
+
+Create the `ysql_prisma` database using the following command:
+
+```sql
+yugabyte=# CREATE DATABASE ysql_prisma;
+```
+
+Connect to the database using the following command:
+
+```sql
+yugabyte=# \c ysql_prisma;
+```
+
+## Specify the configuration
+
+Modify the `DATABASE_URL` in the `.env` file according to your cluster configuration:
+
+```sh
+DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
+```
+
+If you have a YugabyteDB Managed cluster, do the following:
+
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/#download-your-cluster-certificate).
+
+1. Install OpenSSL, if not present.
+
+1. Convert the certificate from `.crt` to `.pem` format using:
+
+    ```sh
+    $ openssl x509 -in <root_crt_path> -out cert.pem
+    ```
+
+1. Modify the `DATABASE_URL` by including  the `cert_path` as the relative path of `cert.pem` with respect to the `/prisma` folder:
+
+    ```sh
+    DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
+    ```
+
+## Apply the migrations 
+
+Create the tables in YugabyteDB by applying the migration for the data models in the file `prisma/schema.prisma`, and generate the Prisma client using the following command:
+
+```sh
+$ npx prisma migrate dev --name first_migration
+```
+
+ {{< note title="Note" >}}
+
+To use the Prisma CLI without `npx`, install Prisma globally, as follows:
+
+```sh
+npm install -g prisma
+```
+
+{{< /note >}}
 
 ## Run the application
 
-Start the Node.js API server at <http://localhost:8080> with DEBUG logs on.
+Start the Node.js API server at <http://localhost:8080>.
 
 ```sh
-$ DEBUG=sequelize:* npm start
+$ npm start
 ```
+
+If port 8080 is already in use, change the port using the following command:
+
+```sh
+$ export PORT=<new_port>
+```
+
 
 ## Send requests to the application
 
@@ -128,7 +192,7 @@ Create 2 orders.
 
 ```sh
 $ curl \
-  --data '{ "userId": "2", "products": [ { "productId": 1, "units": 2 } ] }' \
+  --data '{ "userId": "1", "products": [ { "productId": 1, "units": 2 } ] }' \
   -v -X POST -H 'Content-Type:application/json' http://localhost:8080/orders
 ```
 
@@ -142,19 +206,8 @@ $ curl \
 
 ### Using ysqlsh
 
-```sh
-$ ./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2)
-Type "help" for help.
-
-yugabyte=#
-```
-
 ```plpgsql
-yugabyte=# SELECT count(*) FROM users;
+ysql_prisma=# SELECT count(*) FROM users;
 ```
 
 ```output
@@ -165,7 +218,7 @@ yugabyte=# SELECT count(*) FROM users;
 ```
 
 ```plpgsql
-yugabyte=# SELECT count(*) FROM products;
+ysql_prisma=# SELECT count(*) FROM products;
 ```
 
 ```output
@@ -176,7 +229,7 @@ yugabyte=# SELECT count(*) FROM products;
 ```
 
 ```plpgsql
-yugabyte=# SELECT count(*) FROM orders;
+ysql_prisma=# SELECT count(*) FROM orders;
 ```
 
 ```output
@@ -207,8 +260,7 @@ $ curl http://localhost:8080/users
       "lastName": "Smith",
       "email": "jsmith@example.com"
     }
-  ],
-  ...
+  ]
 }
 ```
 
@@ -231,8 +283,7 @@ $ curl http://localhost:8080/products
       "description": "200 page notebook",
       "price": 7.5
     }
-  ],
-  ...
+  ]
 }
 ```
 
@@ -244,36 +295,46 @@ $ curl http://localhost:8080/orders
 {
   "content": [
     {
-      "orderTime": "2019-05-10T04:26:54.590+0000",
       "orderId": "999ae272-f2f4-46a1-bede-5ab765bb27fe",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 2,
       "orderTotal": 25,
-      "products": []
+      "orderLines":[
+        {
+          "productId": 1,
+          "quantity": 2
+        },
+        { 
+          "productId": 2, 
+          "quantity": 4
+        }
+      ]
     },
     {
-      "orderTime": "2019-05-10T04:26:48.074+0000",
       "orderId": "1598c8d4-1857-4725-a9ab-14deb089ab4e",
-      "user": {
-        "userId": 2,
-        "firstName": "Tom",
-        "lastName": "Stewart",
-        "email": "tstewart@example.com"
-      },
-      "userId": null,
+      "userId": 1,
       "orderTotal": 15,
-      "products": []
+      "orderLines":[
+        {
+          "productId": 1,
+          "quantity": 2
+        }
+      ]
     }
-  ],
-  ...
+  ]
 }
 ```
+### Use Prisma Studio 
+
+Start Prisma Studio using the following command:
+
+```sh
+$ npx prisma studio
+```
+
+To view the tables and data created, go to [http://localhost:5555](http://localhost:5555).
+
+![Prisma studio](/images/develop/ecosystem-integrations/prisma-orm-nodejs.png)
 
 ## Explore the source
 
-The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize).
+The application source is in the [orm-examples repository](https://github.com/yugabyte/orm-examples/tree/master/node/prisma).
