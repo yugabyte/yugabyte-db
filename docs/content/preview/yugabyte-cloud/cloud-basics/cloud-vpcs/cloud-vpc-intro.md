@@ -39,7 +39,7 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 - You can create a maximum of 3 GCP VPCs.
 - VPCs are not supported on Sandbox clusters.
 
-If you need additional VPCs, contact {{<support-cloud>}}.
+If you need additional VPCs, contact {{%support-cloud%}}.
 
 ## Prerequisites
 
