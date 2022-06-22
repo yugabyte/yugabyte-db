@@ -36,7 +36,7 @@ Yugabyte CDCSDK Server is an open source project that provides a streaming platf
 ### Engine
 
 A [Debezium Engine](https://debezium.io/documentation/reference/1.9/development/engine.html) implementation is the unit of work. It implements a pipeline consisting of a source, sink, and simple transforms. The only supported source is YugabyteDB. The source is assigned a set of tablets that is polled at a configurable interval. An engine’s workflow is as follows:
-* Connect to CDCSDK stream
+* Connect to the CDCSDK stream.
 * Get a list of tables and filter based on the include list.
 * Get and record a list of tablets.
 * Poll tablets in sequence every polling interval
