@@ -81,10 +81,34 @@ All the performance optimizations suggested for data import phase is applicable 
 
 {{< /note >}}
 
-## Experiment showcasing how to obtain good ingestion speed
+## Experiment showcasing how to obtain faster ingestion speed
 
-With increased disk and CPU usage, the data ingestion speed is faster.
-The following table includes details from an experiment for importing from a CSV file.
+- Experiment details : Import from a CSV file
+
+- File size : 40GB
+
+- Number of rows : 120 million
+
+- Table schema:
+
+```sql
+CREATE TABLE topology_flat (
+    userid_fill uuid,
+    idtype_fill text,
+    userid uuid,
+    idtype text,
+    level int,
+    locationgroupid uuid,
+    locationid uuid,
+    parentid uuid,
+    attrs jsonb,
+    PRIMARY KEY (userid, level, locationgroupid, parentid, locationid)
+);
+```
+
+With increased disk and CPU usage, the data ingestion speed is faster. The experiment includes runs performed with varying configurations including more parallel jobs, multiple disks, and a larger cluster.
+
+The following table includes results from the experiment. Notice the increasing average throughput numbers as more optimizations are introduced with each run.
 
 | Experiment | Cluster configuration | yb-voyager flags | CPU usage | Average throughput |
 | :---------- | :------------------- | :--------------- | :-------- | :----------------- |
