@@ -70,11 +70,11 @@ To scale a single-region cluster:
 
 Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
 
-### Multi-region synchronous clusters
+### Replicate across regions clusters
 
-You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.
+You can scale multi-region replicated clusters horizontally and vertically. In addition, you can migrate nodes to different regions; migrated nodes can be deployed to different VPCs.
 
-To scale and migrate nodes in a multi-region synchronous cluster:
+To scale and migrate nodes in a multi-region replicated cluster:
 
 1. On the **Clusters** page, select your cluster.
 1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
@@ -91,9 +91,9 @@ To scale and migrate nodes in a multi-region synchronous cluster:
 
 Depending on the number of nodes, the scaling operation can take several minutes or more, during which time some cluster operations will not be available.
 
-<!--### Multi-region geo-partioned cluster
+<!--### Partition by region cluster
 
-You can scale multi-region synchronous clusters horizontally and vertically. In addition, you can add new regions; these must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster.
+You can scale geo-partitioned clusters horizontally and vertically. In addition, you can add new regions; these must be deployed in a VPC. New regions have the same fault tolerance as the primary cluster.
 
 To scale a multi-region geo-partioned cluster:
 

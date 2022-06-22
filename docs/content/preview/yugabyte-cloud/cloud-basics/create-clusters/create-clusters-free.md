@@ -1,13 +1,15 @@
 ---
 title: Create a Sandbox cluster
-linkTitle: Create a Sandbox cluster
+linkTitle: Sandbox
 description: Create Sandbox clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
+aliases:
+  - /preview/deploy/yugabyte-cloud/cloud-basics/create-clusters-free/
 menu:
   preview:
     identifier: create-clusters-free
-    parent: cloud-basics
+    parent: create-clusters
     weight: 40
 isTocNested: true
 showAsideToc: true
@@ -21,8 +23,8 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- A [preview release](../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
-- Available in all [regions](../../release-notes#cloud-provider-regions).
+- A [preview release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
+- Available in all [regions](../../../release-notes#cloud-provider-regions).
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).
 
@@ -63,7 +65,7 @@ Save your database credentials. If you lose them, you won't be able to use the d
 
 After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes.
 
-When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) tab is displayed.
+When the cluster is ready, the cluster [Overview](../../../cloud-monitor/overview/) tab is displayed.
 
 You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed with the database admin credentials you specified.
 
@@ -71,9 +73,9 @@ You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Man
 
 The admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
 
-For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/).
+For security reasons, the admin user does not have YSQL superuser privileges, but does have sufficient privileges for most tasks. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/).
 
-After the cluster is provisioned, you can [add more users and change your password](../../cloud-secure-clusters/add-users/).
+After the cluster is provisioned, you can [add more users and change your password](../../../cloud-secure-clusters/add-users/).
 
 ## Inactive Sandbox clusters
 
@@ -107,8 +109,8 @@ YugabyteDB is a distributed database optimized for deployment across multiple no
 
 ## Next steps
 
-- [Assign IP allow lists](../../cloud-secure-clusters/add-connections/)
-- [Connect to your cluster](../../cloud-connect/)
-- [Add database users](../../cloud-secure-clusters/add-users/)
-- [Build an application](../../cloud-quickstart/cloud-build-apps/)
-- [Database authorization in YugabyteDB Managed clusters](../../cloud-secure-clusters/cloud-users/)
+- [Assign IP allow lists](../../../cloud-secure-clusters/add-connections/)
+- [Connect to your cluster](../../../cloud-connect/)
+- [Add database users](../../../cloud-secure-clusters/add-users/)
+- [Build an application](../../../cloud-quickstart/cloud-build-apps/)
+- [Database authorization in YugabyteDB Managed clusters](../../../cloud-secure-clusters/cloud-users/)

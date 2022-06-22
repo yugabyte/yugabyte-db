@@ -23,8 +23,8 @@ YugabyteDB Managed offers a number of deployment and replication options in geo-
 | Type | Consistency | Read Latency | Write Latency | Best For |
 | :--- | :--- | :--- | :--- | :--- |
 | Multi zone | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Zone-level resilience |
-| Multi region synchronous | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
-| Geo partitioned | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
+| Replicate across regions | Strong | High with strong consistency or low with eventual consistency | Depends on inter-region distances | Region-level resilience |
+| Partition by region | Strong | Low in region (1-10ms); high across regions (40-100ms) | Low in region (1-10ms); high across regions (40-100ms) | Compliance, low latency I/O by moving data closer to customers |
 | xCluster active-passive | Strong | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery, low latency I/O |
 | xCluster active-active | Eventual (timeline) | Low in region (1-10ms) | Low in region (1-10ms) | Backup and data recovery-, low latency I/O |
 | Read replica | Strong in source, eventual in replica | Low in primary region (1-10ms) | Low in region (1-10ms) | Low latency reads |
@@ -58,9 +58,9 @@ To deploy a multi-zone cluster, create a single-region cluster with Availability
 
 If you deploy your cluster in a VPC, you can geo partition the cluster after it is created.
 
-## Sync across all regions
+## Replicate across regions
 
-In a synchronous multi-region cluster, the nodes of the cluster are deployed in different regions rather than in different availability zones of the same region.
+In a cluster that is replicated across regions, the nodes of the cluster are deployed in different regions rather than in different availability zones of the same region.
 
 ![Single cluster deployed across three regions](/images/yb-cloud/Geo-Distribution-Blog-Post-Image-2.png)
 
@@ -82,9 +82,9 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 - Write latency can be high (depends on the distance//network packet transfer times
 - Follower reads trade off consistency for latency
 
-To deploy a multi-region synchronous cluster, refer to [Deploy a multi-region synchronous cluster](../create-clusters-multisync/).
+To deploy a multi-region synchronous cluster, refer to [Replicate across regions](../create-clusters-multisync/).
 
-## Geo-partitioned
+## Partition by region
 
 Applications that need to keep user data in a particular geographic region to comply with data sovereignty regulations can use row-level geo-partitioning in YugabyteDB. This feature allows fine-grained control over pinning rows in a user table to specific geographic locations.
 
