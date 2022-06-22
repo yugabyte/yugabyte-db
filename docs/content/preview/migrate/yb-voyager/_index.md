@@ -62,17 +62,6 @@ A typical migration workflow using yb-voyager consists of the following steps:
 ![Migration workflow](/images/migrate/migration-workflow.png)
 
 <div class="row">
-  <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="migration-steps/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
-        <div class="title">Migration steps</div>
-      </div>
-      <div class="body">
-        Overview of the steps for migrating to YugabyteDB using YugabyteDB Voyager.
-      </div>
-    </a>
-  </div> -->
    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="install-yb-voyager/">
       <div class="head">
@@ -84,17 +73,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
     </a>
   </div>
-  <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prepare-databases/">
-      <div class="head">
-       <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Prepare databases</div>
-      </div>
-      <div class="body">
-        Set up the databases for migration.
-      </div>
-    </a>
-  </div> -->
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="migrate-steps/">
       <div class="head">
@@ -106,7 +85,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
     </a>
   </div>
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="performance/">
       <div class="head">
        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true">
@@ -116,7 +95,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
         Evaluate performance metrics.
       </div>
     </a>
-  </div>
+  </div> -->
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="yb-voyager-cli/">
       <div class="head">
