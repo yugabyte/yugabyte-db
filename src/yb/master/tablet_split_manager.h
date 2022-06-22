@@ -77,10 +77,6 @@ class TabletSplitManager {
  private:
   void ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule);
 
-  // Whether a table has any outstanding splits. This does not validate whether the table is a valid
-  // candidate for splitting.
-  bool HasOutstandingTabletSplits(const TableInfo& table);
-
   void DoSplitting(const TableInfoMap& table_info_map, const TabletInfoMap& tablet_info_map);
 
   Status ValidateIndexTablePartitioning(const TableInfo& table);

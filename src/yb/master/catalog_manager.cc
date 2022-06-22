@@ -635,12 +635,6 @@ class IndexInfoBuilder {
   IndexInfoPB& index_info_;
 };
 
-#define VERIFY_NAMESPACE_FOUND(expr, resp) RESULT_CHECKER_HELPER( \
-    expr, \
-    if (!__result.ok()) { \
-        return SetupError((resp)->mutable_error(), __result.status()); \
-    });
-
 MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
   switch (state) {
     case SysNamespaceEntryPB::PREPARING: FALLTHROUGH_INTENDED;
@@ -1815,6 +1809,8 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
+  xcluster_parent_tablet_deletion_task_.StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -1826,6 +1822,7 @@ void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
+  xcluster_parent_tablet_deletion_task_.CompleteShutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -4822,6 +4819,7 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
 
 Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
     const TableInfoPtr& table_info) {
+  table_info->LockForRead();
   RSTATUS_DCHECK_EQ(
       table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
       Format("Expected YSQL table, got: $0", table_info->GetTableType()));
@@ -4837,6 +4835,7 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
     const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids) {
+  namespace_info->LockForRead();
   RSTATUS_DCHECK_EQ(
       namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
       Format("Expected YSQL database, got: $0", namespace_info->database_type()));
@@ -6091,19 +6090,21 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     resp->mutable_schema()->CopyFrom(l->pb.schema());
   }
 
-  // Due to pgschema_name being added after 2.13, older tables may not have this field.
-  // So backfill pgschema_name for non-system YSQL table schema.
-  if (!table->is_system() && l->table_type() == TableType::PGSQL_TABLE_TYPE &&
-      !resp->schema().has_pgschema_name()) {
+  // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
+  // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
+  if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      !resp->schema().has_pgschema_name() &&
+      !table->is_system() &&
+      !IsSequencesSystemTable(*table) &&
+      !table->IsColocationParentTable()) {
     SharedLock lock(mutex_);
     TRACE("Acquired catalog manager lock for schema name lookup");
 
     auto pgschema_name = GetPgSchemaName(table);
     if (!pgschema_name.ok() || pgschema_name->empty()) {
-      Status s = STATUS_SUBSTITUTE(NotFound,
+      LOG(WARNING) << Format(
           "Unable to find schema name for YSQL table $0.$1 due to error: $2",
           table->namespace_name(), table->name(), pgschema_name.ToString());
-      return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_SCHEMA, s);
     } else {
       resp->mutable_schema()->set_pgschema_name(*pgschema_name);
     }
@@ -7094,6 +7095,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         .tablet_id = tablet_id,
         .info = tablet,
         .report = &report,
+        .tables = {}
       });
       // For colocated tablet, update all the tables that need processing.
       for (const auto& id_to_version : report.table_to_version()) {
@@ -9017,6 +9019,8 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
+  xcluster_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+
   return Status::OK();
 }
 
@@ -9278,77 +9282,112 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     TabletInfo::WriteLock lock;
     HideOnly hide_only;
   };
-  std::vector<TabletData> tablets_data;
-  tablets_data.reserve(tablets.size());
-  std::vector<TabletInfo*> tablet_infos;
-  tablet_infos.reserve(tablets_data.size());
+
   std::vector<TabletInfoPtr> marked_as_hidden;
-
-  // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
   {
-    SharedLock read_lock(mutex_);
-    for (const auto& tablet : tablets) {
-      tablets_data.push_back(TabletData {
-        .tablet = tablet,
-        .lock = tablet->LockForWrite(),
-        // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
-        .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
-      });
-      if (!tablets_data.back().hide_only) {
-        // Also check if this tablet is part of a cdc stream and is not already hidden. If this is
-        // a cdc stream producer and is already hidden, then we should delete this tablet.
-        tablets_data.back().hide_only = HideOnly(
-            IsTableCdcProducer(*tablet->table()) && !tablets_data.back().lock->ListedAsHidden());
+    std::vector<TabletData> tablets_data;
+    tablets_data.reserve(tablets.size());
+    std::vector<TabletInfo*> tablet_infos;
+    tablet_infos.reserve(tablets_data.size());
+
+    // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
+    {
+      SharedLock read_lock(mutex_);
+      for (const auto& tablet : tablets) {
+        tablets_data.push_back(TabletData {
+          .tablet = tablet,
+          .lock = tablet->LockForWrite(),
+          // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
+          .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
+        });
+
+        if (!tablets_data.back().hide_only && IsTableCdcProducer(*tablet->table())) {
+          // For xCluster, the only time we try to delete a tablet that is part of an active stream
+          // is during tablet splitting, where we need to keep the parent tablet around until we
+          // have replicated its SPLIT_OP record.
+
+          // There are a few cases to handle here:
+          // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
+          //    the tablet and also add it to retained_by_xcluster_ so that it stays hidden.
+          // 2. The tablet is hidden and part of retained_by_xcluster_. Keep this tablet hidden.
+          // 3. This tablet is hidden but not part of retained_by_xcluster_. This means that the
+          //    bg task DoProcessXClusterParentTabletDeletion processed it and found that all
+          //    streams for this tablet have replicated the split record. We can now delete it as
+          //    long as it isn't being kept by a snapshot schedule.
+          if (!tablets_data.back().lock->ListedAsHidden() ||
+              retained_by_xcluster_.contains(tablet->id())) {
+            tablets_data.back().hide_only = HideOnly(true);
+          }
+        }
+
+        tablet_infos.emplace_back(tablet.get());
       }
-
-      tablet_infos.emplace_back(tablet.get());
     }
-  }
 
-  // Use the same hybrid time for all hidden tablets.
-  HybridTime hide_hybrid_time = master_->clock()->Now();
+    // Use the same hybrid time for all hidden tablets.
+    HybridTime hide_hybrid_time = master_->clock()->Now();
 
-  // Mark the tablets as deleted.
-  for (auto& tablet_data : tablets_data) {
-    auto& tablet = tablet_data.tablet;
-    auto& tablet_lock = tablet_data.lock;
+    // Mark the tablets as deleted.
+    for (auto& tablet_data : tablets_data) {
+      auto& tablet = tablet_data.tablet;
+      auto& tablet_lock = tablet_data.lock;
 
-    bool was_hidden = tablet_lock->ListedAsHidden();
-    // Inactive tablet now, so remove it from partitions_.
-    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
-    tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
+      bool was_hidden = tablet_lock->ListedAsHidden();
+      // Inactive tablet now, so remove it from partitions_.
+      // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+      tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
 
-    if (tablet_data.hide_only) {
-      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
-      tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
-      *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-          retained_by_snapshot_schedules;
-    } else {
-      LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
-      tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      if (tablet_data.hide_only) {
+        LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
+        tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
+        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+            retained_by_snapshot_schedules;
+      } else {
+        LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
+        tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      }
+      if (tablet_lock->ListedAsHidden() && !was_hidden) {
+        marked_as_hidden.push_back(tablet);
+      }
     }
-    if (tablet_lock->ListedAsHidden() && !was_hidden) {
-      marked_as_hidden.push_back(tablet);
+
+    // Update all the tablet states in raft in bulk.
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_infos));
+
+    // Commit the change.
+    for (auto& tablet_data : tablets_data) {
+      auto& tablet = tablet_data.tablet;
+      auto& tablet_lock = tablet_data.lock;
+
+      tablet_lock.Commit();
+      LOG(INFO) << (tablet_data.hide_only ? "Hid" : "Deleted") << " tablet " << tablet->tablet_id();
+
+      DeleteTabletReplicas(tablet.get(), deletion_msg, tablet_data.hide_only);
     }
-  }
-
-  // Update all the tablet states in raft in bulk.
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_infos));
-
-  // Commit the change.
-  for (auto& tablet_data : tablets_data) {
-    auto& tablet = tablet_data.tablet;
-    auto& tablet_lock = tablet_data.lock;
-
-    tablet_lock.Commit();
-    LOG(INFO) << (tablet_data.hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
-
-    DeleteTabletReplicas(tablet.get(), deletion_msg, tablet_data.hide_only);
   }
 
   if (!marked_as_hidden.empty()) {
     LockGuard lock(mutex_);
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
+    // Also keep track of all tablets that were hid due to xCluster.
+    for (const auto& tablet : marked_as_hidden) {
+      if (IsTableCdcProducer(*tablet->table()) ) {
+        auto tablet_lock = tablet->LockForRead();
+        const auto& children = tablet_lock->pb.split_tablet_ids();
+        if (children.size() < 2) {
+          // We are hiding this tablet for PITR and not for xCluster.
+          continue;
+        }
+        HiddenReplicationParentTabletInfo info {
+          .table_id_ = tablet->table()->id(),
+          .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
+                             ? tablet_lock->pb.split_parent_tablet_id()
+                             : "",
+          .split_tablets_ = {children.Get(0), children.Get(1)}
+        };
+        retained_by_xcluster_.emplace(tablet->id(), info);
+      }
+    }
   }
 
   return Status::OK();

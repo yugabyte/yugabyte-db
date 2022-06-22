@@ -18,10 +18,11 @@ import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
-import com.yugabyte.yw.common.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.NativeKubernetesManager;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.ShellProcessHandler;
@@ -138,6 +139,7 @@ public class Module extends AbstractModule {
       bind(NativeKubernetesManager.class).asEagerSingleton();
       bind(SupportBundleUtil.class).asEagerSingleton();
       bind(MetricGrafanaController.class).asEagerSingleton();
+      bind(PlatformScheduler.class).asEagerSingleton();
     }
   }
 

@@ -33,7 +33,7 @@ class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
 
     def _host_info_with_current_root_volume(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return (args, host_info["root_volume_device_name"])
+        return (vars(args), host_info["root_volume_device_name"])
 
 
 class GcpCreateInstancesMethod(CreateInstancesMethod):
@@ -299,7 +299,7 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return args
+        return vars(args)
 
 
 class GcpResumeInstancesMethod(AbstractInstancesMethod):
@@ -312,7 +312,7 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(args, [args.custom_ssh_port])
+        self.cloud.start_instance(vars(args), [args.custom_ssh_port])
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):
@@ -325,7 +325,7 @@ class GcpPauseInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to pause.")
 
     def callback(self, args):
-        self.cloud.stop_instance(args)
+        self.cloud.stop_instance(vars(args))
 
 
 class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):

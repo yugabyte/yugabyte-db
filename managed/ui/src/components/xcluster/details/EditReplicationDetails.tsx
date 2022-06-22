@@ -28,8 +28,8 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
       (universe: any) => universe.universeUUID === replication.targetUniverseUUID
     );
     initialValues['targetUniverseUUID'] = {
-      label: targetUniverse.name,
-      value: targetUniverse.universeUUID
+      label: targetUniverse?.name,
+      value: targetUniverse?.universeUUID
     };
   }
 
@@ -76,6 +76,6 @@ export function EditReplicationDetails({ onHide, visible, replication }: Props) 
 
         return <TargetUniverseForm isEdit={true} {...props} universeList={universeList} />;
       }}
-    ></YBModalForm>
+    />
   );
 }

@@ -1,8 +1,9 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.google.common.annotations.VisibleForTesting;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -13,7 +14,6 @@ import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import scala.concurrent.ExecutionContext;
 
 @Singleton
 @Slf4j
@@ -42,19 +42,15 @@ public class TaskGarbageCollector {
     registerMetrics();
   }
 
-  private final Scheduler scheduler;
+  private final PlatformScheduler platformScheduler;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private final ExecutionContext executionContext;
 
   @Inject
   public TaskGarbageCollector(
-      ActorSystem actorSystem,
-      RuntimeConfigFactory runtimeConfigFactory,
-      ExecutionContext executionContext) {
+      PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
 
-    this.scheduler = actorSystem.scheduler();
+    this.platformScheduler = platformScheduler;
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.executionContext = executionContext;
   }
 
   @VisibleForTesting
@@ -84,11 +80,11 @@ public class TaskGarbageCollector {
       log.warn("!!! TASK GC DISABLED !!!");
     } else {
       log.info("Scheduling TaskGC every " + gcInterval);
-      scheduler.schedule(
+      platformScheduler.schedule(
+          getClass().getSimpleName(),
           Duration.ZERO, // InitialDelay
           gcInterval,
-          this::scheduleRunner,
-          this.executionContext);
+          this::scheduleRunner);
     }
   }
 

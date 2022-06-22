@@ -50,10 +50,10 @@ export default class NodeDetailsTable extends Component {
         isMaster ? row.masterPort : row.tserverPort
       );
       const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive;
-      if (isAlive) {
+      if (!row.isLoading) {
         return (
           <div>
-            {successIcon}&nbsp;
+            {isAlive ? successIcon : warningIcon}&nbsp;
             {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
               <a
                 href={href}
@@ -72,7 +72,7 @@ export default class NodeDetailsTable extends Component {
       } else {
         return (
           <div>
-            {row.isLoading ? loadingIcon : warningIcon}&nbsp;{isMaster ? 'Master' : 'TServer'}
+            {loadingIcon}&nbsp;{isMaster ? 'Master' : 'TServer'}
           </div>
         );
       }

@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.AlertingFormData;
@@ -48,12 +49,12 @@ import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -97,6 +98,8 @@ public class CustomerController extends AuthenticatedController {
   @Inject private CloudQueryHelper cloudQueryHelper;
 
   @Inject private AlertConfigurationService alertConfigurationService;
+
+  @Inject private CustomerConfigService customerConfigService;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -194,15 +197,16 @@ public class CustomerController extends AuthenticatedController {
             alertingFormData.alertingData.activeAlertNotificationIntervalMs;
         long oldActiveAlertNotificationPeriod = 0;
         if (config == null) {
-          CustomerConfig.createAlertConfig(
-              customerUUID, Json.toJson(alertingFormData.alertingData));
+          customerConfigService.create(
+              CustomerConfig.createAlertConfig(
+                  customerUUID, Json.toJson(alertingFormData.alertingData)));
         } else {
           AlertingData oldData = Json.fromJson(config.getData(), AlertingData.class);
           if (oldData != null) {
             oldActiveAlertNotificationPeriod = oldData.activeAlertNotificationIntervalMs;
           }
           config.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.alertingData));
-          config.update();
+          customerConfigService.edit(config);
         }
 
         if (activeAlertNotificationPeriod != oldActiveAlertNotificationPeriod) {
@@ -248,10 +252,11 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && alertingFormData.smtpData != null) {
-        CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
+        customerConfigService.create(
+            CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData)));
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
-        smtpConfig.update();
+        customerConfigService.edit(smtpConfig);
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {

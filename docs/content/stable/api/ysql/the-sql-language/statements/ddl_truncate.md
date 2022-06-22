@@ -36,10 +36,10 @@ Applying `TRUNCATE` to a set of tables produces the same ultimate outcome as doe
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/truncate.diagram.md" %}}
   </div>
 </div>
 
@@ -100,7 +100,7 @@ order by p.k, c.k;
 This is the result:
 
 ```output
- parents.v |  children.v  
+ parents.v |  children.v
 -----------+--------------
  dog       | dog-child-a
  dog       | dog-child-b
@@ -159,7 +159,7 @@ select
 The `truncate` statement now finishes without error. This is the result:
 
 ```
- parents count | children count 
+ parents count | children count
 ---------------+----------------
              0 |              0
 ```

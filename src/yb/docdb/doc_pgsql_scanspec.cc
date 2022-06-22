@@ -19,10 +19,9 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/value_type.h"
-
-#include "yb/rocksdb/db/compaction.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -31,63 +30,6 @@ DECLARE_bool(disable_hybrid_scan);
 
 namespace yb {
 namespace docdb {
-
-//--------------------------------------------------------------------------------------------------
-extern rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
-
-// TODO(neil) The following implementation is just a prototype. Need to complete the implementation
-// and test accordingly.
-class PgsqlRangeBasedFileFilter : public rocksdb::ReadFileFilter {
- public:
-  PgsqlRangeBasedFileFilter(const std::vector<KeyEntryValue>& lower_bounds,
-                            const std::vector<KeyEntryValue>& upper_bounds)
-      : lower_bounds_(EncodePrimitiveValues(lower_bounds, upper_bounds.size())),
-        upper_bounds_(EncodePrimitiveValues(upper_bounds, lower_bounds.size())) {
-  }
-
-  std::vector<KeyBytes> EncodePrimitiveValues(const std::vector<KeyEntryValue>& source,
-                                              size_t min_size) {
-    size_t size = source.size();
-    std::vector<KeyBytes> result(std::max(min_size, size));
-    for (size_t i = 0; i != size; ++i) {
-      source[i].AppendToKey(&result[i]);
-    }
-    return result;
-  }
-
-  bool Filter(const rocksdb::FdWithBoundaries& file) const override {
-    for (size_t i = 0; i != lower_bounds_.size(); ++i) {
-      const Slice lower_bound = lower_bounds_[i].AsSlice();
-      const Slice upper_bound = upper_bounds_[i].AsSlice();
-
-      rocksdb::UserBoundaryTag tag = TagForRangeComponent(i);
-      const Slice *smallest = file.smallest.user_value_with_tag(tag);
-      const Slice *largest = file.largest.user_value_with_tag(tag);
-
-      if (!GreaterOrEquals(&upper_bound, smallest) || !GreaterOrEquals(largest, &lower_bound)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  bool GreaterOrEquals(const Slice *lhs, const Slice *rhs) const {
-    // TODO(neil) Need to double check this NULL-equals-all logic or make the code clearer.
-    if (lhs == nullptr || rhs == nullptr) {
-      return true;
-    }
-    if (lhs->empty() || rhs->empty()) {
-      return true;
-    }
-    return lhs->compare(*rhs) >= 0;
-  }
-
- private:
-  std::vector<KeyBytes> lower_bounds_;
-  std::vector<KeyBytes> upper_bounds_;
-};
-
-//--------------------------------------------------------------------------------------------------
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
                                    const rocksdb::QueryId query_id,
@@ -304,8 +246,16 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   return result;
 }
 
-std::vector<KeyEntryValue> DocPgsqlScanSpec::range_components(const bool lower_bound) const {
-  return GetRangeKeyScanSpec(schema_, range_components_, range_bounds_.get(), lower_bound);
+std::vector<KeyEntryValue> DocPgsqlScanSpec::range_components(const bool lower_bound,
+                                                              std::vector<bool> *inclusivities,
+                                                              bool use_strictness) const {
+  return GetRangeKeyScanSpec(schema_,
+                             range_components_,
+                             range_bounds_.get(),
+                             inclusivities,
+                             lower_bound,
+                             false,
+                             use_strictness);
 }
 
 // Return inclusive lower/upper range doc key considering the start_doc_key.
@@ -340,13 +290,20 @@ Result<KeyBytes> DocPgsqlScanSpec::Bound(const bool lower_bound) const {
 }
 
 std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() const {
-  auto lower_bound = range_components(true);
-  auto upper_bound = range_components(false);
+  std::vector<bool> lower_bound_incl;
+  auto lower_bound = range_components(true, &lower_bound_incl, false);
+  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
+
+  std::vector<bool> upper_bound_incl;
+  auto upper_bound = range_components(false, &upper_bound_incl, false);
+  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
   if (lower_bound.empty() && upper_bound.empty()) {
     return std::shared_ptr<rocksdb::ReadFileFilter>();
   } else {
-    return std::make_shared<PgsqlRangeBasedFileFilter>(std::move(lower_bound),
-                                                       std::move(upper_bound));
+    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
+                                                    std::move(lower_bound_incl),
+                                                    std::move(upper_bound),
+                                                    std::move(upper_bound_incl));
   }
 }
 

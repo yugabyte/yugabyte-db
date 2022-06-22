@@ -74,6 +74,12 @@ DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 
+DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
+            "When set, it enables automatic tablet splitting for tables that are part of an "
+            "xCluster replication setup and are currently being bootstrapped for xCluster.");
+TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
+TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, hidden);
+
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
               "disabled if this value is set to 0.");
@@ -188,7 +194,7 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
   }
   {
     auto l = table.LockForRead();
-    if (l->started_deleting() || l->started_hiding()) {
+    if (l->started_deleting()) {
       VLOG(1) << Format("Table is deleted; ignoring for splitting. table_id: $0", table.id());
       return STATUS_FORMAT(
           NotSupported, "Table is deleted; ignoring for splitting. table_id: $0", table.id());
@@ -219,6 +225,17 @@ Status TabletSplitManager::ValidateSplitCandidateTable(
         "Tablet splitting is not supported for tables that are a part of"
         " a CDC stream, tablet_id: $0", table.id());
   }
+  // Check if the table is in the bootstrapping phase of xCluster.
+  if (PREDICT_TRUE(!FLAGS_enable_tablet_split_of_xcluster_bootstrapping_tables) &&
+      filter_->IsTablePartOfBootstrappingCdcStream(table)) {
+    VLOG(1) << Format("Tablet splitting is not supported for tables that are a part of"
+                      " a bootstrapping CDC stream, table_id: $0", table.id());
+    return STATUS_FORMAT(
+        NotSupported,
+        "Tablet splitting is not supported for tables that are a part of"
+        " a bootstrapping CDC stream, tablet_id: $0", table.id());
+  }
+
   if (table.GetTableType() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     VLOG(1) << Format("Tablet splitting is not supported for transaction status tables, "
                       "table_id: $0", table.id());
@@ -630,25 +647,6 @@ void TabletSplitManager::DoSplitting(
   ScheduleSplits(state.GetSplitsToSchedule());
 }
 
-bool TabletSplitManager::HasOutstandingTabletSplits(const TableInfo& table) {
-  for (const auto& task : table.GetTasks()) {
-    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
-        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
-      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table.id()
-                                    << " has outstanding splitting tasks";
-      return true;
-    }
-  }
-
-  for (const auto& tablet : table.GetTablets()) {
-    auto tablet_lock = tablet->LockForRead();
-    if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool TabletSplitManager::IsRunning() {
   return is_running_;
 }
@@ -665,10 +663,24 @@ bool TabletSplitManager::IsTabletSplittingComplete(const TableInfo& table) {
   if (is_running_) {
     return false;
   }
+  // Deleted tables should not have any splits.
   if (table.is_deleted()) {
     return true;
   }
-  return !HasOutstandingTabletSplits(table);
+  // Colocated tables should not have any splits.
+  if (table.colocated()) {
+    return true;
+  }
+  for (const auto& task : table.GetTasks()) {
+    if (task->type() == yb::server::MonitoredTask::ASYNC_GET_TABLET_SPLIT_KEY ||
+        task->type() == yb::server::MonitoredTask::ASYNC_SPLIT_TABLET) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table " << table.id()
+                                    << " has outstanding splitting tasks";
+      return false;
+    }
+  }
+
+  return !table.HasOutstandingSplits();
 }
 
 void TabletSplitManager::DisableSplittingFor(

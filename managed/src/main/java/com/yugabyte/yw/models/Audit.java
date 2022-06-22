@@ -126,6 +126,12 @@ public class Audit extends Model {
 
     @EnumValue("GFlags")
     GFlags,
+
+    @EnumValue("Hook")
+    Hook,
+
+    @EnumValue("Hook Scope")
+    HookScope
   }
 
   public enum ActionType {
@@ -227,6 +233,9 @@ public class Audit extends Model {
 
     @EnumValue("Upgrade Systemd")
     UpgradeSystemd,
+
+    @EnumValue("Reboot Universe")
+    RebootUniverse,
 
     @EnumValue("Resize Node")
     ResizeNode,
@@ -389,6 +398,27 @@ public class Audit extends Model {
 
     @EnumValue("Create TableSpaces")
     CreateTableSpaces,
+
+    @EnumValue("Create Hook")
+    CreateHook,
+
+    @EnumValue("Delete Hook")
+    DeleteHook,
+
+    @EnumValue("Update Hook")
+    UpdateHook,
+
+    @EnumValue("Create Hook Scope")
+    CreateHookScope,
+
+    @EnumValue("Delete Hook Scope")
+    DeleteHookScope,
+
+    @EnumValue("Add Hook to Hook Scope")
+    AddHook,
+
+    @EnumValue("Remove Hook from Hook Scope")
+    RemoveHook
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

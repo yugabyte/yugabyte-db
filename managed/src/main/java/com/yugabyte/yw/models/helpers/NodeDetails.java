@@ -96,8 +96,12 @@ public class NodeDetails {
     Starting(START, REMOVE),
     // Set when node has been stopped and no longer has a master or a tserver running.
     Stopped(START, REMOVE, QUERY),
-    // Set when node is unreachable but has not been Removed from the universe.
+    // Nodes are never set to Unreachable, this is just one of the possible return values in a
+    // status query.
     Unreachable(),
+    // Nodes are never set to MetricsUnavailable, this is just one of the possible return values in
+    // a status query
+    MetricsUnavailable(),
     // Set when a node is marked for removal. Note that we will wait to get all its data out.
     ToBeRemoved(REMOVE),
     // Set when a node is about to be removed (unjoined) from the cluster.
@@ -125,7 +129,9 @@ public class NodeDetails {
     Terminating(RELEASE, DELETE),
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
-    Terminated(DELETE);
+    Terminated(DELETE),
+    // Set when the node is being rebooted
+    Rebooting();
 
     private final NodeActionType[] allowedActions;
 
@@ -292,6 +298,7 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isActive() {
     return !(state == NodeState.Unreachable
+        || state == NodeState.MetricsUnavailable
         || state == NodeState.ToBeRemoved
         || state == NodeState.Removing
         || state == NodeState.Removed

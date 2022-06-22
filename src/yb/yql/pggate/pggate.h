@@ -120,6 +120,8 @@ class PgApiImpl {
     return &pg_callbacks_;
   }
 
+  // Interrupt aborts all pending RPCs immediately to unblock main thread.
+  void Interrupt();
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -378,25 +380,31 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
   Status DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-  Status DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
-      YBCPgExpr attr_value_end);
-  Status DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-      YBCPgExpr *attr_value);
+  Status DmlBindColumnCondBetween(YBCPgStatement handle,
+                                  int attr_num,
+                                  PgExpr *attr_value,
+                                  bool start_inclusive,
+                                  PgExpr *attr_value_end,
+                                  bool end_inclusive);
+  Status DmlBindColumnCondIn(YBCPgStatement handle,
+                             int attr_num,
+                             int n_attr_values,
+                             YBCPgExpr *attr_value);
 
   Status DmlBindHashCode(PgStatement *handle, bool start_valid,
-                                bool start_inclusive, uint64_t start_hash_val,
-                                bool end_valid, bool end_inclusive,
-                                uint64_t end_hash_val);
+                         bool start_inclusive, uint64_t start_hash_val,
+                         bool end_valid, bool end_inclusive,
+                         uint64_t end_hash_val);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
-                                    int n_col_values,
-                                    YBCPgExpr *col_values,
-                                    bool is_inclusive);
+                             int n_col_values,
+                             YBCPgExpr *col_values,
+                             bool is_inclusive);
 
   Status DmlAddRowLowerBound(YBCPgStatement handle,
-                                    int n_col_values,
-                                    YBCPgExpr *col_values,
-                                    bool is_inclusive);
+                             int n_col_values,
+                             YBCPgExpr *col_values,
+                             bool is_inclusive);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   Status DmlBindTable(YBCPgStatement handle);
@@ -528,7 +536,9 @@ class PgApiImpl {
   Status ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
-  Status RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
+  double GetTransactionPriority() const;
+  TxnPriorityRequirement GetTransactionPriorityType() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -593,6 +603,8 @@ class PgApiImpl {
   const MemTracker &GetMemTracker() { return *mem_tracker_; }
 
  private:
+  class Interrupter;
+
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -601,6 +613,7 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
+  std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 

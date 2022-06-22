@@ -396,5 +396,24 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   ASSERT_OK(update_value(0, kHalfBigValue, 2));
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddColumn)) {
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE DATABASE test WITH colocated = true"));
+  }
+
+  auto conn = ASSERT_RESULT(ConnectToDB("test"));
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, ival INT) WITH (colocated = true)"));
+  ASSERT_OK(conn.Execute("CREATE INDEX t_idx ON t(ival)"));
+
+  auto conn2 = ASSERT_RESULT(ConnectToDB("test"));
+  ASSERT_OK(conn2.Execute("INSERT INTO t (key, ival) VALUES (1, 1)"));
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v1 INT"));
+
+  ASSERT_OK(conn2.Execute("INSERT INTO t (key, ival) VALUES (2, 2)"));
+}
+
 } // namespace pgwrapper
 } // namespace yb

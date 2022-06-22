@@ -179,7 +179,8 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
+      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
     // Update table_tombstone_time based on what is written to RocksDB if its not already set.
     // Otherwise, just accept its value.
     // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
@@ -244,6 +245,7 @@ class DocDBTableReader::GetHelper {
       .key_entry = KeyBytes(),
       .write_time = DocHybridTime(),
       .expiration = reader_.table_expiration_,
+      .key_value = {},
       .out = &result_,
     });
   }

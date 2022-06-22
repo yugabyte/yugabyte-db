@@ -13,9 +13,10 @@ const initialStateFeatureInTest = {
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: false,
-  enableOIDC: false,
+  enableOIDC: true,
   supportBundle: false,
-  enableThirdpartyUpgrade: false
+  enableThirdpartyUpgrade: false,
+  topNodeMetrics: false
 };
 
 const initialStateFeatureReleased = {
@@ -31,9 +32,10 @@ const initialStateFeatureReleased = {
   enableNodeComparisonModal: false,
   enablePathStyleAccess: false,
   backupv2: true,
-  enableOIDC: false,
+  enableOIDC: true,
   supportBundle: true,
-  enableThirdpartyUpgrade: false
+  enableThirdpartyUpgrade: false,
+  topNodeMetrics: false
 };
 
 export const FeatureFlag = (

@@ -9,31 +9,27 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.UUID;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import java.util.Date;
+import java.util.UUID;
 import org.apache.commons.lang.time.DateUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Matchers;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.class)
 public class SchedulerTest extends FakeDBApplication {
@@ -43,26 +39,22 @@ public class SchedulerTest extends FakeDBApplication {
   private CustomerConfig s3StorageConfig;
   com.yugabyte.yw.scheduler.Scheduler scheduler;
   Customer defaultCustomer;
-  ActorSystem mockActorSystem;
-  ExecutionContext mockExecutionContext;
+  PlatformScheduler mockPlatformScheduler;
 
   @Before
   public void setUp() {
-    mockActorSystem = mock(ActorSystem.class);
-    mockExecutionContext = mock(ExecutionContext.class);
+    mockPlatformScheduler = mock(PlatformScheduler.class);
     mockCommissioner = mock(Commissioner.class);
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
 
-    scheduler =
-        new com.yugabyte.yw.scheduler.Scheduler(
-            mockActorSystem, mockExecutionContext, mockCommissioner);
+    scheduler = new com.yugabyte.yw.scheduler.Scheduler(mockPlatformScheduler, mockCommissioner);
   }
 
   @Test
   public void schedulerDeletesExpiredBackups() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup backup =
@@ -89,7 +81,7 @@ public class SchedulerTest extends FakeDBApplication {
   @Test
   public void schedulerDeletesExpiredBackups_universeDeleted() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Backup backup =
@@ -109,7 +101,7 @@ public class SchedulerTest extends FakeDBApplication {
   @Test
   public void schedulerDeletesExpiredBackupsCreatedFromSchedule() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
@@ -151,7 +143,7 @@ public class SchedulerTest extends FakeDBApplication {
   @Test
   public void testClearScheduleBacklog() {
     UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(Matchers.any(), Matchers.any())).thenReturn(fakeTaskUUID);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     Schedule s =
         ModelFactory.createScheduleBackup(
@@ -190,6 +182,7 @@ public class SchedulerTest extends FakeDBApplication {
   public static void setUniveseBackupInProgress(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
+          @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.backupInProgress = value;
@@ -202,6 +195,7 @@ public class SchedulerTest extends FakeDBApplication {
   public static void setUniversePaused(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
+          @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.universePaused = value;

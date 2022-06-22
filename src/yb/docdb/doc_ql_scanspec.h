@@ -102,7 +102,9 @@ class DocQLScanSpec : public QLScanSpec {
   KeyBytes bound_key(const bool lower_bound) const;
 
   // Returns the lower/upper range components of the key.
-  std::vector<KeyEntryValue> range_components(const bool lower_bound) const;
+  std::vector<KeyEntryValue> range_components(const bool lower_bound,
+                                              std::vector<bool> *inclusivities = nullptr,
+                                              bool use_strictness = true) const;
 
   // The scan range within the hash key when a WHERE condition is specified.
   const std::unique_ptr<const QLScanRange> range_bounds_;

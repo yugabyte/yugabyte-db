@@ -1093,7 +1093,7 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 static void
 YbAppendIndexReloptions(StringInfoData buf,
 						Oid index_oid,
-						const YBCPgTableProperties* yb_table_properties)
+						YbTableProperties yb_table_properties)
 {
 	char *str = flatten_reloptions(index_oid);
 
@@ -1484,20 +1484,16 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 	if (!attrsOnly)
 	{
-		YBCPgTableDesc yb_tabledesc = NULL;
-		YBCPgTableProperties yb_table_properties;
-
-		if (includeYbMetadata && IsYBRelationById(indexrelid) &&
-			!idxrec->indisprimary)
-		{
-			YbGetTableDescAndProps(indexrelid, false,
-								   &yb_tabledesc, &yb_table_properties);
-		}
+		Relation indexrel = index_open(indexrelid, AccessShareLock);
 
 		appendStringInfoChar(&buf, ')');
 
-		YbAppendIndexReloptions(buf, indexrelid,
-			yb_tabledesc ? &yb_table_properties : NULL);
+		if (includeYbMetadata && IsYBRelation(indexrel) &&
+			!idxrec->indisprimary)
+		{
+			YbLoadTablePropertiesIfNeeded(indexrel, false /* allow_missing */);
+			YbAppendIndexReloptions(buf, indexrelid, indexrel->yb_table_properties);
+		}
 
 		/*
 		 * Print tablespace, but only if requested
@@ -1506,7 +1502,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		{
 			Oid			tblspc;
 
-			tblspc = get_rel_tablespace(indexrelid);
+			tblspc = indexrel->rd_rel->reltablespace;
 			if (!OidIsValid(tblspc))
 				tblspc = MyDatabaseTableSpace;
 			if (isConstraint)
@@ -1518,17 +1514,18 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		/*
 		 * Print SPLIT INTO/AT clause.
 		 */
-		if (includeYbMetadata && yb_tabledesc)
+		if (includeYbMetadata && indexrel->yb_table_properties)
 		{
-			if (yb_table_properties.num_hash_key_columns > 0)
+			if (indexrel->yb_table_properties->num_hash_key_columns > 0)
 			{
 				/* For hash-partitioned tables */
-				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS", yb_table_properties.num_tablets);
+				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
+								 indexrel->yb_table_properties->num_tablets);
 			}
 			else
 			{
 				/* For range-partitioned tables */
-				if (yb_table_properties.num_tablets > 1)
+				if (indexrel->yb_table_properties->num_tablets > 1)
 				{
 					ereport(WARNING,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1537,7 +1534,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 							 errdetail("Index '%s' will be created with default (1) tablets "
 									   "instead of %" PRIu64 ".",
 									   generate_relation_name(indrelid, NIL),
-									   yb_table_properties.num_tablets),
+									   indexrel->yb_table_properties->num_tablets),
 							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4873."
 									 " Click '+' on the description to raise its priority.")));
 				}
@@ -1547,15 +1544,17 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 			/*
 			 * If the indexed table's tablegroup mismatches that of an
-			 * index table, append an explicit [NO] TABLEGROUP clause.
+			 * index table, this is a leftover from beta days of tablegroup
+			 * feature. We cannot replicate this via DDL statement anymore.
 			 */
-			if (yb_table_properties.tablegroup_oid != RelationGetTablegroupOid(indrel))
+			if (indexrel->yb_table_properties->tablegroup_oid != RelationGetTablegroupOid(indrel))
 			{
-				if (OidIsValid(yb_table_properties.tablegroup_oid))
-					appendStringInfo(&buf, " TABLEGROUP %s",
-									 get_tablegroup_name(yb_table_properties.tablegroup_oid));
-				else
-					appendStringInfo(&buf, " NO TABLEGROUP");
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("tablegroup of an index %s does not match its "
+								"indexed table, this is no longer supported",
+								NameStr(idxrelrec->relname)),
+						 errhint("Please drop and re-create the index.")));
 			}
 
 			heap_close(indrel, AccessShareLock);
@@ -1587,6 +1586,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			else
 				appendStringInfo(&buf, " WHERE %s", str);
 		}
+
+		index_close(indexrel, AccessShareLock);
 	}
 
 	/* Clean up */
@@ -2249,24 +2250,21 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				/* XXX why do we only print these bits if fullCommand? */
 				if (fullCommand && OidIsValid(indexId))
 				{
-					YBCPgTableDesc		 yb_tabledesc = NULL;
-					YBCPgTableProperties yb_table_properties;
+					Relation indexrel = index_open(indexId, AccessShareLock);
 
-					if (IsYBRelationById(indexId) && conForm->contype != CONSTRAINT_PRIMARY)
-						YbGetTableDescAndProps(indexId, false,
-											   &yb_tabledesc, &yb_table_properties);
+					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
+						YbLoadTablePropertiesIfNeeded(indexrel, false /* allow_missing */);
 
-					YbAppendIndexReloptions(buf, indexId,
-						yb_tabledesc ? &yb_table_properties : NULL);
+					YbAppendIndexReloptions(buf, indexId, indexrel->yb_table_properties);
 
 					Oid			tblspc;
 
-					tblspc = get_rel_tablespace(indexId);
+					tblspc = indexrel->rd_rel->reltablespace;
 					if (OidIsValid(tblspc))
 						appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
 										 quote_identifier(get_tablespace_name(tblspc)));
 
-					/* TODO: Add TABLEGROUP clause when #11600 is implemented. */
+					index_close(indexrel, AccessShareLock);
 				}
 
 				break;

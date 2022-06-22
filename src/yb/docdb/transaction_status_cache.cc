@@ -95,6 +95,8 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
     return GetCommitDataResult {
       .transaction_local_state = std::move(*local_commit_data_opt),
       .source = CommitTimeSource::kLocalBefore,
+      .status_time = {},
+      .safe_time = {},
     };
   }
 
@@ -128,9 +130,12 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
       if (txn_status_result.status().IsNotFound()) {
         // We have intent w/o metadata, that means that transaction was already cleaned up.
         LOG(WARNING) << "Intent for transaction w/o metadata: " << transaction_id;
-        return GetCommitDataResult {
-          .transaction_local_state = TransactionLocalState { .commit_ht = HybridTime::kMin },
-          .source = CommitTimeSource::kNoMetadata,
+        return GetCommitDataResult{
+            .transaction_local_state =
+                TransactionLocalState{.commit_ht = HybridTime::kMin, .aborted_subtxn_set = {}},
+            .source = CommitTimeSource::kNoMetadata,
+            .status_time = {},
+            .safe_time = {},
         };
       }
       LOG(WARNING)
@@ -180,11 +185,12 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
       };
     }
 
-    return GetCommitDataResult {
-      .transaction_local_state = TransactionLocalState {HybridTime::kMin},
-      .source = CommitTimeSource::kRemoteAborted,
-      .status_time = txn_status.status_time,
-      .safe_time = safe_time,
+    return GetCommitDataResult{
+        .transaction_local_state =
+            TransactionLocalState {.commit_ht = HybridTime::kMin, .aborted_subtxn_set = {}},
+        .source = CommitTimeSource::kRemoteAborted,
+        .status_time = txn_status.status_time,
+        .safe_time = safe_time,
     };
   }
 
@@ -195,13 +201,18 @@ Result<TransactionStatusCache::GetCommitDataResult> TransactionStatusCache::DoGe
         .aborted_subtxn_set = txn_status.aborted_subtxn_set
       },
       .source = CommitTimeSource::kRemoteCommitted,
+      .status_time = {},
+      .safe_time = {},
     };
   }
 
-  return GetCommitDataResult {
-    // TODO(savepoints) - surface aborted subtxn data for pending transactions.
-    .transaction_local_state = TransactionLocalState {HybridTime::kMin},
-    .source = CommitTimeSource::kRemotePending,
+  return GetCommitDataResult{
+      // TODO(savepoints) - surface aborted subtxn data for pending transactions.
+      .transaction_local_state =
+          TransactionLocalState {.commit_ht = HybridTime::kMin, .aborted_subtxn_set = {}},
+      .source = CommitTimeSource::kRemotePending,
+      .status_time = {},
+      .safe_time = {},
   };
 }
 

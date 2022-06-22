@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.certmgmt.providers.VaultPKI;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -84,6 +85,8 @@ public class UniverseCRUDHandler {
   @Inject play.Configuration appConfig;
 
   @Inject RuntimeConfigFactory runtimeConfigFactory;
+
+  @Inject SettableRuntimeConfigFactory settableRuntimeConfigFactory;
 
   @Inject KubernetesManagerFactory kubernetesManagerFactory;
   @Inject PasswordPolicyService passwordPolicyService;
@@ -326,12 +329,14 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, "root and clientRootCA cannot be different for Kubernetes env.");
     }
+    boolean cloudEnabled =
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     for (Cluster c : taskParams.clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
       // Set the provider code.
       c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-      c.validate();
+      c.validate(!cloudEnabled);
       // Check if for a new create, no value is set, we explicitly set it to UNEXPOSED.
       if (c.userIntent.enableExposingService
           == UniverseDefinitionTaskParams.ExposingServiceState.NONE) {
@@ -423,6 +428,17 @@ public class UniverseCRUDHandler {
         universe.name,
         customer.getCustomerId());
 
+    if (taskParams.runtimeFlags != null) {
+      // iterate through the flags and set via runtime config
+      for (Map.Entry<String, String> entry : taskParams.runtimeFlags.entrySet()) {
+        if (entry.getValue() != null) {
+          settableRuntimeConfigFactory
+              .forUniverse(universe)
+              .setValue(entry.getKey(), entry.getValue());
+        }
+      }
+    }
+
     TaskType taskType = TaskType.CreateUniverse;
     Cluster primaryCluster = taskParams.getPrimaryCluster();
 
@@ -480,7 +496,7 @@ public class UniverseCRUDHandler {
     universe.updateConfig(ImmutableMap.of(Universe.TAKE_BACKUPS, "true"));
     // If cloud enabled and deployment AZs have two subnets, mark the cluster as a
     // non legacy cluster for proper operations.
-    if (runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+    if (cloudEnabled) {
       Provider provider =
           Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
       AvailabilityZone zone = provider.regions.get(0).zones.get(0);
@@ -749,33 +765,35 @@ public class UniverseCRUDHandler {
           BAD_REQUEST, "Can only have one read-only cluster per universe for now.");
     }
 
-    Cluster cluster = getOnlyReadReplicaOrBadRequest(newReadOnlyClusters);
-    if (cluster.uuid == null) {
+    Cluster readOnlyCluster = getOnlyReadReplicaOrBadRequest(newReadOnlyClusters);
+    if (readOnlyCluster.uuid == null) {
       String errMsg = "UUID of read-only cluster should be non-null.";
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
-    if (cluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
+    if (readOnlyCluster.clusterType != UniverseDefinitionTaskParams.ClusterType.ASYNC) {
       String errMsg =
           "Read-only cluster type should be "
               + UniverseDefinitionTaskParams.ClusterType.ASYNC
               + " but is "
-              + cluster.clusterType;
+              + readOnlyCluster.clusterType;
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
-    validateConsistency(primaryCluster, cluster);
+    taskParams.clusters.add(primaryCluster);
+    validateConsistency(primaryCluster, readOnlyCluster);
 
     // Set the provider code.
-    Cluster c = taskParams.clusters.get(0);
-    Provider provider = Provider.getOrBadRequest(UUID.fromString(c.userIntent.provider));
-    c.userIntent.providerType = Common.CloudType.valueOf(provider.code);
-    c.validate();
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(readOnlyCluster.userIntent.provider));
+    readOnlyCluster.userIntent.providerType = Common.CloudType.valueOf(provider.code);
+    readOnlyCluster.validate(
+        !runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled"));
 
     TaskType taskType = TaskType.ReadOnlyClusterCreate;
-    if (c.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
+    if (readOnlyCluster.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       try {
         checkK8sProviderAvailability(provider, customer);
         taskType = TaskType.ReadOnlyKubernetesClusterCreate;
@@ -784,7 +802,8 @@ public class UniverseCRUDHandler {
       }
     }
 
-    PlacementInfoUtil.updatePlacementInfo(taskParams.getNodesInCluster(c.uuid), c.placementInfo);
+    PlacementInfoUtil.updatePlacementInfo(
+        taskParams.getNodesInCluster(readOnlyCluster.uuid), readOnlyCluster.placementInfo);
 
     // Submit the task to create the cluster.
     UUID taskUUID = commissioner.submit(taskType, taskParams);

@@ -828,6 +828,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
           return ApplyTransactionState{
               .key = key_slice.ToBuffer(),
               .write_id = write_id,
+              .aborted = {},
           };
         }
         {

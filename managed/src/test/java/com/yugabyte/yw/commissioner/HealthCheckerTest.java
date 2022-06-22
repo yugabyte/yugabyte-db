@@ -4,7 +4,10 @@ package com.yugabyte.yw.commissioner;
 
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -20,8 +23,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ApiUtils;
@@ -32,6 +33,7 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
@@ -42,12 +44,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.HealthCheck;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.MetricKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
@@ -63,6 +66,7 @@ import java.util.concurrent.ExecutorService;
 import javax.mail.MessagingException;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -73,7 +77,6 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import play.Environment;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(JUnitParamsRunner.class)
 public class HealthCheckerTest extends FakeDBApplication {
@@ -87,10 +90,8 @@ public class HealthCheckerTest extends FakeDBApplication {
 
   private HealthChecker healthChecker;
 
-  @Mock private ActorSystem mockActorSystem;
   @Mock private play.Configuration mockConfig;
-  @Mock private ExecutionContext mockExecutionContext;
-  @Mock private Scheduler mockScheduler;
+  @Mock private PlatformScheduler mockPlatformScheduler;
   @Mock private ExecutorService executorService;
 
   private Customer defaultCustomer;
@@ -121,8 +122,6 @@ public class HealthCheckerTest extends FakeDBApplication {
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
     kubernetesProvider = ModelFactory.kubernetesProvider(defaultCustomer);
 
-    when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
-
     ShellResponse dummyShellResponse =
         ShellResponse.create(
             0,
@@ -151,6 +150,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     when(mockRuntimeConfig.getInt("yb.health.max_num_parallel_checks")).thenReturn(11);
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.health.logOutput")).thenReturn(false);
+    when(mockConfigUniverseScope.getInt("yb.health.nodeCheckTimeoutSec")).thenReturn(1);
     when(mockConfigUniverseScope.getInt("yb.health.max_num_parallel_node_checks")).thenReturn(10);
     doAnswer(
             i -> {
@@ -167,9 +167,8 @@ public class HealthCheckerTest extends FakeDBApplication {
     healthChecker =
         new HealthChecker(
             app.injector().instanceOf(Environment.class),
-            mockActorSystem,
             mockConfig,
-            mockExecutionContext,
+            mockPlatformScheduler,
             report,
             mockEmailHelper,
             metricService,
@@ -236,6 +235,7 @@ public class HealthCheckerTest extends FakeDBApplication {
     if (null == customerConfig) {
       // Setup alerting data.
       customerConfig = CustomerConfig.createAlertConfig(defaultCustomer.uuid, Json.toJson(data));
+      customerConfig.save();
     } else {
       customerConfig.data = (ObjectNode) Json.toJson(data);
       customerConfig.update();
@@ -715,6 +715,32 @@ public class HealthCheckerTest extends FakeDBApplication {
             .targetUuid(u.getUniverseUUID())
             .build(),
         0.0);
+  }
+
+  @Test
+  public void testNodeCheckTimeout() {
+    Universe u = setupUniverse("test");
+    when(mockEmailHelper.getSmtpData(defaultCustomer.uuid))
+        .thenReturn(EmailFixtures.createSmtpData());
+    setupAlertingData(YB_ALERT_TEST_EMAIL, false, false);
+
+    when(mockNodeUniverseManager.runCommand(any(), any(), anyString(), any()))
+        .thenReturn(ShellResponse.create(9, StringUtils.EMPTY));
+    healthChecker.checkSingleUniverse(
+        new HealthChecker.CheckSingleUniverseParams(
+            u, defaultCustomer, true, false, false, YB_ALERT_TEST_EMAIL));
+
+    HealthCheck results = HealthCheck.getLatest(u.getUniverseUUID());
+    assertThat(results, notNullValue());
+    assertThat(results.detailsJson.getData(), hasSize(3));
+    for (NodeData nodeData : results.detailsJson.getData()) {
+
+      assertThat(
+          nodeData.getDetails(),
+          contains(
+              "Node check failed: java.lang.RuntimeException:"
+                  + " Error occurred. Code: 9. Output: "));
+    }
   }
 
   @Test

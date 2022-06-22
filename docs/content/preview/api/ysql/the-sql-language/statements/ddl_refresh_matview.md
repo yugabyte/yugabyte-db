@@ -36,10 +36,10 @@ Use the `REFRESH MATERIALIZED VIEW` statement to replace the contents of a mater
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/refresh_matview.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/refresh_matview.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/refresh_matview.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/refresh_matview.diagram.md" %}}
   </div>
 </div>
 

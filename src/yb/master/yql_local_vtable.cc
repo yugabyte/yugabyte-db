@@ -68,7 +68,7 @@ Result<std::shared_ptr<QLRowBlock>> LocalVTable::RetrieveData(
   struct Entry {
     size_t index;
     TSInformationPB ts_info;
-    util::PublicPrivateIPFutures ips;
+    util::PublicPrivateIPFutures ips{};
   };
 
   std::vector<Entry> entries;

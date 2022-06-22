@@ -16,8 +16,6 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
 import static com.yugabyte.yw.forms.PlatformResults.withData;
-import static com.yugabyte.yw.models.Users.Role;
-import static com.yugabyte.yw.models.Users.UserType;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,7 +35,6 @@ import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.forms.CustomerLoginFormData;
 import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.forms.PasswordPolicyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.SetSecurityFormData;
@@ -45,6 +42,9 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.Users.UserType;
+import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
@@ -577,7 +577,8 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result getPasswordPolicy(UUID customerUUID) {
-    PasswordPolicyFormData validPolicy = passwordPolicyService.getPasswordPolicyData(customerUUID);
+    CustomerConfigPasswordPolicyData validPolicy =
+        passwordPolicyService.getPasswordPolicyData(customerUUID);
     if (validPolicy != null) {
       return PlatformResults.withData(validPolicy);
     }

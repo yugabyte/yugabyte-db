@@ -322,14 +322,18 @@ ybginSetupBindsForPrefix(TupleDesc tupdesc, YbginScanOpaque ybso,
 		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
 													 1 /* attr_num */,
 													 expr_start,
-													 expr_end));
+													 true,
+													 expr_end,
+													 false));
 		pfree(greaterstr);
 	}
 	else
 		HandleYBStatus(YBCPgDmlBindColumnCondBetween(ybso->handle,
 													 1 /* attr_num */,
 													 expr_start,
-													 NULL /* attr_value_end */));
+													 true,
+													 NULL /* attr_value_end */,
+													 true));
 }
 
 static void
