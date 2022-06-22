@@ -191,6 +191,31 @@ Employees Details:
 ]
 ```
 
+## Specifying SSL configuration
+This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+1. Install the `fs` package to read the SSL certificate:
+    ```sh
+    npm install fs
+    ```
+1. Add the following line to use the `fs` module:
+    ```js
+    const fs = require('fs');
+    ```
+1. Use the following configuration in the `models/index.js` file when you create the sequelize object:
+    ```js
+    const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
+        dialect: 'postgres',
+        port: 5433,
+        host: "<host_name>",
+        dialectOptions: {
+            ssl: {
+                rejectUnauthorized: true,
+                ca: fs.readFileSync('<path_to_root_crt>').toString(),
+            }
+        }
+      });
+    ```
+
 ## Limitations
 
 YugabyteDB YSQL is compatible with Sequelize ORM's PostgreSQL dialect. Currently, YugabyteDB doesn't support the Sequelize ORM `findorCreate()` API, and some other features, which may prevent you from successfully implementing Node.js applications. There is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package. In the meantime, use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications.
