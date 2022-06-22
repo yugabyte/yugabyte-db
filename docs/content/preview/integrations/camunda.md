@@ -48,8 +48,7 @@ This tutorial assumes that:
 
 1. Download the PostgreSQL JDBC driver [JAR file](https://jdbc.postgresql.org/download/postgresql-42.3.5.jar) and place it in the `camunda-bpm-run-7.17.0/configuration/userlib` directory.
 
-Alternatively, you can also use YugabyteDB JDBC Driver to connect Camunda to a YugabyteDB cluster.
-To do so, modify the `spring.datasource` section  in each file to point to the YugabyteDB cluster you started, and replace the value of `driver-class-name` with `com.yugabyte.Driver`.
+    <br/><br/>Alternatively, you can also use the YugabyteDB JDBC driver to connect Camunda to a YugabyteDB cluster. To do so, modify the `spring.datasource` section  in each file to point to the YugabyteDB cluster you started, and replace the value of `driver-class-name` with `com.yugabyte.Driver`.
 
     ```yml
     # datasource configuration is required
