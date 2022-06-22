@@ -15,6 +15,20 @@ showAsideToc: true
 
 ## Releases
 
+### June 22, 2022
+
+#### Enhancements
+
+- Support for creating multi-region replicated clusters (preview release). Create clusters that are resilient to region-level outages, with data synchronously replicated across 3 regions.
+
+#### Database
+
+- Stable release updated to version 2.12.6 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+#### Infrastructure
+
+- Instance type for new Dedicated clusters on AWS updated to [m5.large](https://aws.amazon.com/ec2/instance-types/m5/).
+
 ### June 14, 2022
 
 #### Enhancements

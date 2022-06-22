@@ -218,4 +218,4 @@ To deploy a read replica cluster, contact {{<support-cloud>}}.
 
 - [Plan your cluster](../create-clusters-overview/)
 - [Create a single region cluster](../create-clusters/)
-- [Create a synchronous mulit-region cluster](../create-clusters-multisync/)
+- [Create a synchronous multi-region cluster](../create-clusters/create-clusters-multisync/)
