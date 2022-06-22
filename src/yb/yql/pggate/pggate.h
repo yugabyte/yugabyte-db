@@ -17,6 +17,7 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "yb/client/async_initializer.h"
 #include "yb/client/client_fwd.h"
@@ -51,6 +52,35 @@ namespace yb {
 namespace pggate {
 class PgSysTablePrefetcher;
 class PgSession;
+
+struct PgMemctxComparator {
+  using is_transparent = void;
+
+  bool operator()(PgMemctx* l, PgMemctx* r) const {
+    return l == r;
+  }
+
+  template<class T1, class T2>
+  bool operator()(const T1& l, const T2& r) const {
+    return (*this)(GetPgMemctxPtr(l), GetPgMemctxPtr(r));
+  }
+
+ private:
+  static PgMemctx* GetPgMemctxPtr(PgMemctx* value) {
+    return value;
+  }
+
+  static PgMemctx* GetPgMemctxPtr(const std::unique_ptr<PgMemctx>& value) {
+    return value.get();
+  }
+};
+
+struct PgMemctxHasher {
+  using is_transparent = void;
+
+  size_t operator()(const std::unique_ptr<PgMemctx>& value) const;
+  size_t operator()(PgMemctx* value) const;
+};
 
 //--------------------------------------------------------------------------------------------------
 
@@ -90,6 +120,8 @@ class PgApiImpl {
     return &pg_callbacks_;
   }
 
+  // Interrupt aborts all pending RPCs immediately to unblock main thread.
+  void Interrupt();
   void ResetCatalogReadTime();
 
   // Initialize ENV within which PGSQL calls will be executed.
@@ -100,14 +132,10 @@ class PgApiImpl {
   // If database_name is empty, a session is created without connecting to any database.
   Status InitSession(const PgEnv *pg_env, const std::string& database_name);
 
-  // YB Memctx: Create, Destroy, and Reset must be "static" because a few contexts are created
-  //            before YugaByte environments including PgGate are created and initialized.
-  // Create YB Memctx. Each memctx will be associated with a Postgres's MemoryContext.
-  static PgMemctx *CreateMemctx();
-  // Destroy YB Memctx.
-  static Status DestroyMemctx(PgMemctx *memctx);
-  // Reset YB Memctx.
-  static Status ResetMemctx(PgMemctx *memctx);
+  PgMemctx *CreateMemctx();
+  Status DestroyMemctx(PgMemctx *memctx);
+  Status ResetMemctx(PgMemctx *memctx);
+
   // Cache statements in YB Memctx. When Memctx is destroyed, the statement is destructed.
   Status AddToCurrentPgMemctx(std::unique_ptr<PgStatement> stmt,
                                       PgStatement **handle);
@@ -240,6 +268,7 @@ class PgApiImpl {
                                 const PgObjectId& tablegroup_oid,
                                 const ColocationId colocation_id,
                                 const PgObjectId& tablespace_oid,
+                                bool is_matview,
                                 const PgObjectId& matview_pg_table_oid,
                                 PgStatement **handle);
 
@@ -351,25 +380,31 @@ class PgApiImpl {
   //     contain bind-variables (placeholders) and constants whose values can be updated for each
   //     execution of the same allocated statement.
   Status DmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value);
-  Status DmlBindColumnCondBetween(YBCPgStatement handle, int attr_num, YBCPgExpr attr_value,
-      YBCPgExpr attr_value_end);
-  Status DmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-      YBCPgExpr *attr_value);
+  Status DmlBindColumnCondBetween(YBCPgStatement handle,
+                                  int attr_num,
+                                  PgExpr *attr_value,
+                                  bool start_inclusive,
+                                  PgExpr *attr_value_end,
+                                  bool end_inclusive);
+  Status DmlBindColumnCondIn(YBCPgStatement handle,
+                             int attr_num,
+                             int n_attr_values,
+                             YBCPgExpr *attr_value);
 
   Status DmlBindHashCode(PgStatement *handle, bool start_valid,
-                                bool start_inclusive, uint64_t start_hash_val,
-                                bool end_valid, bool end_inclusive,
-                                uint64_t end_hash_val);
+                         bool start_inclusive, uint64_t start_hash_val,
+                         bool end_valid, bool end_inclusive,
+                         uint64_t end_hash_val);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
-                                    int n_col_values,
-                                    YBCPgExpr *col_values,
-                                    bool is_inclusive);
+                             int n_col_values,
+                             YBCPgExpr *col_values,
+                             bool is_inclusive);
 
   Status DmlAddRowLowerBound(YBCPgStatement handle,
-                                    int n_col_values,
-                                    YBCPgExpr *col_values,
-                                    bool is_inclusive);
+                             int n_col_values,
+                             YBCPgExpr *col_values,
+                             bool is_inclusive);
 
   // Binding Tables: Bind the whole table in a statement.  Do not use with BindColumn.
   Status DmlBindTable(YBCPgStatement handle);
@@ -501,7 +536,9 @@ class PgApiImpl {
   Status ExitSeparateDdlTxnMode();
   void ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
-  Status RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
+  double GetTransactionPriority() const;
+  TxnPriorityRequirement GetTransactionPriorityType() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -561,7 +598,13 @@ class PgApiImpl {
   // System Validation.
   Status ValidatePlacement(const char *placement_info);
 
+  Result<bool> CheckIfPitrActive();
+
+  const MemTracker &GetMemTracker() { return *mem_tracker_; }
+
  private:
+  class Interrupter;
+
   // Metrics.
   std::unique_ptr<MetricRegistry> metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
@@ -570,6 +613,7 @@ class PgApiImpl {
   std::shared_ptr<MemTracker> mem_tracker_;
 
   PgApiContext::MessengerHolder messenger_holder_;
+  std::unique_ptr<Interrupter> interrupter_;
 
   std::unique_ptr<rpc::ProxyCache> proxy_cache_;
 
@@ -594,6 +638,7 @@ class PgApiImpl {
 
   scoped_refptr<PgSession> pg_session_;
   std::unique_ptr<PgSysTablePrefetcher> pg_sys_table_prefetcher_;
+  std::unordered_set<std::unique_ptr<PgMemctx>, PgMemctxHasher, PgMemctxComparator> mem_contexts_;
 };
 
 }  // namespace pggate

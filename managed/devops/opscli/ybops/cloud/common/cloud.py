@@ -164,6 +164,8 @@ class AbstractCloud(AbstractCommandParser):
             "process": process,
             "command": command
         }
+        if args.systemd_services:
+            updated_vars.update({"systemd_services": args.systemd_services})
         updated_vars.update(extra_vars)
         updated_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         remote_shell = RemoteShell(updated_vars)
@@ -182,20 +184,6 @@ class AbstractCloud(AbstractCommandParser):
 
         if process == "thirdparty" or process == "platform-services":
             self.setup_ansible(args).run("yb-server-ctl.yml", updated_vars, host_info)
-            return
-
-        if args.systemd_services:
-            if command == "start":
-                remote_shell.run_command(
-                    "sudo systemctl enable yb-{}".format(process)
-                )
-            remote_shell.run_command(
-                "sudo systemctl {} yb-{}".format(command, process)
-            )
-            if command == "stop":
-                remote_shell.run_command(
-                    "sudo systemctl disable yb-{}".format(process)
-                )
             return
 
         if os.environ.get("YB_USE_FABRIC", False):

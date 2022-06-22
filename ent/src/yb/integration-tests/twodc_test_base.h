@@ -67,11 +67,15 @@ class TwoDCTestBase : public YBTest {
     boost::optional<client::TransactionManager> txn_mgr_;
 
     Result<pgwrapper::PGConn> Connect() {
-      return pgwrapper::PGConn::Connect(pg_host_port_);
+      return ConnectToDB(std::string() /* dbname */);
     }
 
     Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
-      return pgwrapper::PGConn::Connect(pg_host_port_, dbname);
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname
+      }).Connect();
     }
   };
 
@@ -116,8 +120,6 @@ class TwoDCTestBase : public YBTest {
 
   Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
-
-  size_t NumProducerTabletsPolled(MiniCluster* cluster);
 
   Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 

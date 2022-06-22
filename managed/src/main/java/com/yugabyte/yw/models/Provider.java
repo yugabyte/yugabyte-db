@@ -167,6 +167,13 @@ public class Provider extends Model {
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   public List<String> ntpServers = new ArrayList<>();
 
+  // Indicates whether the provider was created before or after PLAT-3009
+  // True if it was created after, else it was created before.
+  // Dictates whether or not to show the set up NTP option in the provider UI
+  @Transient
+  @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+  public boolean showSetUpChrony = true;
+
   // Hosted Zone for the deployment
   @Transient
   @ApiModelProperty(TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
@@ -177,15 +184,8 @@ public class Provider extends Model {
   // Set and encrypt config
   @JsonProperty("config")
   public void setConfig(Map<String, String> configMap) {
-    Map<String, String> newConfigMap = this.getUnmaskedConfig();
-    newConfigMap.putAll(configMap);
-    if (this.customerUUID != null) {
-      this.config = encryptProviderConfig(newConfigMap, this.customerUUID, this.code);
-    } else {
-      // When a Provider object is not being persisted, it may not have a customer ID. In this
-      // case, we can't encrypt.
-      this.config = newConfigMap;
-    }
+    this.config =
+        customerUUID == null ? configMap : encryptProviderConfig(configMap, customerUUID, code);
   }
 
   @JsonProperty("config")
@@ -196,14 +196,13 @@ public class Provider extends Model {
   // Get the decrypted config
   @JsonIgnore
   public Map<String, String> getUnmaskedConfig() {
-    if (this.config == null) {
+    if (config == null) {
       return new HashMap<>();
-    } else if (!this.config.containsKey("encrypted")) {
-      // When a Provider object is not being persisted, it may not be encrypted.
-      return new HashMap<>(this.config);
-    } else {
-      return decryptProviderConfig(this.config, this.customerUUID, this.code);
     }
+    if (config.containsKey("encrypted")) {
+      return decryptProviderConfig(config, customerUUID, code);
+    }
+    return new HashMap<>(config);
   }
 
   // Get the raw config

@@ -38,10 +38,10 @@ The same syntax rules govern a subquery, wherever you might use one—like, for 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.diagram.md" %}}
   </div>
 </div>
 

@@ -23,11 +23,11 @@ import java.util.stream.Collectors;
 
 public class BootstrapUniverseRequest extends YRpc<BootstrapUniverseResponse> {
 
-  private final List<String> tableIDs;
+  private final List<String> tableIds;
 
-  BootstrapUniverseRequest(YBTable table, List<String> tableIDs) {
+  BootstrapUniverseRequest(YBTable table, List<String> tableIds) {
     super(table);
-    this.tableIDs = tableIDs;
+    this.tableIds = tableIds;
   }
 
   @Override
@@ -36,19 +36,19 @@ public class BootstrapUniverseRequest extends YRpc<BootstrapUniverseResponse> {
 
     final CdcService.BootstrapProducerRequestPB.Builder builder =
       CdcService.BootstrapProducerRequestPB.newBuilder()
-      .addAllTableIds(tableIDs);
+      .addAllTableIds(tableIds);
 
     return toChannelBuffer(header, builder.build());
   }
 
   @Override
   String serviceName() {
-    return MASTER_SERVICE_NAME;
+    return CDC_SERVICE_NAME;
   }
 
   @Override
   String method() {
-    return "BootstrapUniverse";
+    return "BootstrapProducer";
   }
 
   @Override
@@ -60,15 +60,15 @@ public class BootstrapUniverseRequest extends YRpc<BootstrapUniverseResponse> {
     readProtobuf(callResponse.getPBMessage(), builder);
 
     final CdcService.CDCErrorPB error = builder.hasError() ? builder.getError() : null;
-    final List<String> bootstrapIDs = builder
+    final List<String> bootstrapIds = builder
       .getCdcBootstrapIdsList()
       .stream()
-      .map(ByteString::toString)
+      .map(ByteString::toStringUtf8)
       .collect(Collectors.toList());
 
     BootstrapUniverseResponse response =
       new BootstrapUniverseResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error, bootstrapIDs);
+        tsUUID, error, bootstrapIds);
 
     return new Pair<>(response, error);
   }

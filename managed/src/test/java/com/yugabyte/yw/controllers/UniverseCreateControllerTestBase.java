@@ -30,6 +30,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.anyMap;
 import static org.mockito.Mockito.times;
@@ -47,6 +48,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.NodeInstanceFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -58,6 +60,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
@@ -83,12 +86,17 @@ import play.mvc.Result;
 @RunWith(JUnitParamsRunner.class)
 public abstract class UniverseCreateControllerTestBase extends UniverseControllerTestBase {
 
+  protected static final String FORBIDDEN_IP_1 = "1.2.3.4";
+  protected static final String FORBIDDEN_IP_2 = "2.3.4.5";
+
   private String TMP_CHART_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName() + "/charts";
 
   @Before
   public void setUp() {
     super.setUp();
     new File(TMP_CHART_PATH).mkdirs();
+    when(mockAppConfig.getString(eq("yb.security.forbidden_ips"), anyString()))
+        .thenReturn(FORBIDDEN_IP_1 + ", " + FORBIDDEN_IP_2);
   }
 
   @After
@@ -150,6 +158,67 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         "Invalid universe name format, regex used for validation is "
             + "^[a-zA-Z0-9]([-a-zA-Z0-9]*[a-zA-Z0-9])?$.");
     assertAuditEntry(0, customer.uuid);
+  }
+
+  @Test
+  public void testUniverseCreateWithRuntimeFlagsSet() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(
+            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "SingleUserUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("enableYSQL", "false")
+            .put("accessKeyCode", accessKeyCode);
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+    ObjectNode runtimeFlags = Json.newObject();
+    runtimeFlags.put("yb.security.type", "securityType");
+    bodyJson.set("runtimeFlags", runtimeFlags);
+
+    Result result = sendCreateRequest(bodyJson);
+    assertOk(result);
+    JsonNode json = getUniverseJson(result);
+    assertNotNull(json.get("universeUUID"));
+    assertNotNull(json.get("universeDetails"));
+    assertNotNull(json.get("universeConfig"));
+    // setTxnTableWaitCountFlag will be false as enableYSQL is false in this case
+    assertFalse(json.get("universeDetails").get("setTxnTableWaitCountFlag").asBoolean());
+
+    CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(th);
+    assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
+    assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("SingleUserUniverse")));
+    assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Create)));
+
+    SettableRuntimeConfigFactory factory =
+        app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    assertNotNull(
+        factory
+            .forUniverse(Universe.getUniverseByName("SingleUserUniverse"))
+            .getString("yb.security.type"));
+    assertAuditEntry(1, customer.uuid);
   }
 
   @Test
@@ -336,6 +405,57 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
     assertBadRequest(result, "Password shouldn't be empty.");
+  }
+
+  @Test
+  public void testUniverseCreateWithContradictoryGflags() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(
+            Matchers.any(TaskType.class), Matchers.any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+
+    Provider p = ModelFactory.awsProvider(customer);
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.uuid, accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    InstanceType i =
+        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+
+    ObjectNode bodyJson = Json.newObject();
+    ObjectNode userIntentJson =
+        Json.newObject()
+            .put("universeName", "SingleUserUniverse")
+            .put("instanceType", i.getInstanceTypeCode())
+            .put("replicationFactor", 3)
+            .put("numNodes", 3)
+            .put("provider", p.uuid.toString())
+            .put("accessKeyCode", accessKeyCode)
+            .put("enableYSQL", "true");
+    userIntentJson
+        .putArray("masterGFlags")
+        .add(Json.newObject().put("name", "enable_ysql").put("value", "false"));
+
+    ArrayNode regionList = Json.newArray().add(r.uuid.toString());
+    userIntentJson.set("regionList", regionList);
+    userIntentJson.set("deviceInfo", createValidDeviceInfo(Common.CloudType.aws));
+    ArrayNode clustersJsonArray =
+        Json.newArray().add(Json.newObject().set("userIntent", userIntentJson));
+    bodyJson.set("clusters", clustersJsonArray);
+    bodyJson.set("nodeDetailsSet", Json.newArray());
+
+    String url = "/api/customers/" + customer.uuid + "/universes";
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    assertBadRequest(
+        result,
+        "G-Flag value 'false' for 'enable_ysql' is not compatible with intent value 'true'");
+
+    when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
+    Result cloudResult = sendCreateRequest(bodyJson);
+    assertOk(cloudResult);
   }
 
   @Test

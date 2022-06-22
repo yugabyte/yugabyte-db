@@ -15,8 +15,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import lombok.extern.slf4j.Slf4j;
 
 @Singleton
+@Slf4j
 public class NodeUniverseManager extends DevopsBase {
   private static final ShellProcessContext DEFAULT_CONTEXT =
       ShellProcessContext.builder().logCmdOutput(true).build();
@@ -154,7 +156,10 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
+    // Escaping double quotes at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+    // Escaping single quotes after.
+    escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
     bashCommand.add("\"" + escapedYsqlCommand + "\"");
     command.add(String.join(" ", bashCommand));
     ShellProcessContext context =
@@ -210,7 +215,8 @@ public class NodeUniverseManager extends DevopsBase {
     if (universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
       String kubeconfig =
           PlacementInfoUtil.getKubernetesConfigPerPod(
-                  cluster.placementInfo, universe.getUniverseDetails().nodeDetailsSet)
+                  cluster.placementInfo,
+                  universe.getUniverseDetails().getNodesInCluster(cluster.uuid))
               .get(node.cloudInfo.private_ip);
       if (kubeconfig == null) {
         throw new RuntimeException("kubeconfig cannot be null");
@@ -236,7 +242,12 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
-    LOG.debug("Executing command: " + commandArgs);
+    String logMsg = "Executing command: " + commandArgs;
+    if (context.isTraceLogging()) {
+      log.trace(logMsg);
+    } else {
+      log.debug(logMsg);
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 

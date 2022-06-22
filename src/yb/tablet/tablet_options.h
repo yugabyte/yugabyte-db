@@ -53,6 +53,8 @@ struct TabletOptions {
   std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
 };
 
+using TransactionManagerProvider = std::function<client::TransactionManager&()>;
+
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
   std::shared_future<client::YBClient*> client_future;
@@ -71,6 +73,7 @@ struct TabletInitData {
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  TransactionManagerProvider transaction_manager_provider;
 };
 
 } // namespace tablet

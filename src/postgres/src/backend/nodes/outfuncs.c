@@ -292,6 +292,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_NODE_FIELD(utilityStmt);
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_LOCATION_FIELD(stmt_len);
+	WRITE_INT_FIELD(yb_num_referenced_relations);
 }
 
 /*

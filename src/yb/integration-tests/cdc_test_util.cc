@@ -22,6 +22,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -96,6 +97,42 @@ void VerifyWalRetentionTime(MiniCluster* cluster,
     }
   }
   ASSERT_GT(ntablets_checked, 0);
+}
+
+size_t NumProducerTabletsPolled(MiniCluster* cluster) {
+  size_t size = 0;
+  for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
+    size_t new_size = 0;
+    auto* tserver = dynamic_cast<tserver::enterprise::TabletServer*>(mini_tserver->server());
+    tserver::enterprise::CDCConsumer* cdc_consumer;
+    if (tserver && (cdc_consumer = tserver->GetCDCConsumer())) {
+      auto tablets_running = cdc_consumer->TEST_producer_tablets_running();
+      new_size = tablets_running.size();
+    }
+    size += new_size;
+  }
+  return size;
+}
+
+Status CorrectlyPollingAllTablets(
+    MiniCluster* cluster, size_t num_producer_tablets, MonoDelta timeout) {
+  return LoggedWaitFor(
+      [&]() -> Result<bool> {
+        static int i = 0;
+        constexpr int kNumIterationsWithCorrectResult = 5;
+        auto cur_tablets = NumProducerTabletsPolled(cluster);
+        if (cur_tablets == num_producer_tablets) {
+          if (i++ == kNumIterationsWithCorrectResult) {
+            i = 0;
+            return true;
+          }
+        } else {
+          i = 0;
+        }
+        LOG(INFO) << "Tablets being polled: " << cur_tablets;
+        return false;
+      },
+      timeout, "Num producer tablets being polled");
 }
 
 } // namespace cdc

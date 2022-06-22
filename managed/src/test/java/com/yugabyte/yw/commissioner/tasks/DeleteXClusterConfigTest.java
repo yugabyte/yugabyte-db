@@ -10,22 +10,32 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.google.common.collect.ImmutableList;
+import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
+import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
@@ -50,9 +60,17 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
   private Universe targetUniverse;
   private String exampleTableID1;
   private String exampleTableID2;
-  private HashSet<String> exampleTables;
+  private Set<String> exampleTables;
   private XClusterConfigCreateFormData createFormData;
   private YBClient mockClient;
+
+  List<TaskType> DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE =
+      ImmutableList.of(
+          TaskType.DeleteReplication,
+          TaskType.DeleteBootstrapIds,
+          TaskType.DeleteXClusterConfigFromDb,
+          TaskType.UniverseUpdateSucceeded,
+          TaskType.UniverseUpdateSucceeded);
 
   @Before
   @Override
@@ -100,7 +118,7 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
           targetUniverse.universeUUID,
           taskUUID,
           TargetType.XClusterConfig,
-          CustomerTask.TaskType.DeleteXClusterConfig,
+          CustomerTask.TaskType.Delete,
           xClusterConfig.name);
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
@@ -116,14 +134,22 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
 
     try {
       DeleteUniverseReplicationResponse mockDeleteResponse =
-          new DeleteUniverseReplicationResponse(0, "", null);
-      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName()))
+          new DeleteUniverseReplicationResponse(0, "", null, null);
+      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName(), true))
           .thenReturn(mockDeleteResponse);
     } catch (Exception e) {
     }
 
     TaskInfo taskInfo = submitTask(xClusterConfig);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
+
+    assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.size(), taskInfo.getSubTasks().size());
+    for (int i = 0; i < DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.size(); i++) {
+      TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);
+      assertNotNull(subtaskGroup);
+      assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
+    }
 
     assertFalse(XClusterConfig.maybeGet(xClusterConfig.uuid).isPresent());
 
@@ -143,14 +169,22 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
 
     try {
       DeleteUniverseReplicationResponse mockDeleteResponse =
-          new DeleteUniverseReplicationResponse(0, "", null);
-      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName()))
+          new DeleteUniverseReplicationResponse(0, "", null, null);
+      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName(), true))
           .thenReturn(mockDeleteResponse);
     } catch (Exception e) {
     }
 
     TaskInfo taskInfo = submitTask(xClusterConfig);
+    assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
+
+    assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.size(), taskInfo.getSubTasks().size());
+    for (int i = 0; i < DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.size(); i++) {
+      TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);
+      assertNotNull(subtaskGroup);
+      assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
+    }
 
     assertFalse(XClusterConfig.maybeGet(xClusterConfig.uuid).isPresent());
 
@@ -159,30 +193,6 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
-  }
-
-  @Test
-  public void testDeleteXClusterStateInit() {
-    XClusterConfig xClusterConfig =
-        XClusterConfig.create(createFormData, XClusterConfigStatusType.Init);
-
-    TaskInfo taskInfo = submitTask(xClusterConfig);
-    assertEquals(Failure, taskInfo.getTaskState());
-
-    String taskErrMsg = taskInfo.getTaskDetails().get("errorString").asText();
-    String expectedErrMsg =
-        String.format("Cannot delete XClusterConfig(%s) in `Init` state.", xClusterConfig.uuid);
-    assertThat(taskErrMsg, containsString(expectedErrMsg));
-
-    xClusterConfig.refresh();
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
-
-    targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertFalse("universe unlocked", targetUniverse.universeIsLocked());
-    assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
-    assertFalse("update failed", targetUniverse.getUniverseDetails().updateSucceeded);
-
-    xClusterConfig.delete();
   }
 
   @Test
@@ -200,19 +210,28 @@ public class DeleteXClusterConfigTest extends CommissionerBaseTest {
               .setStatus(appStatusBuilder.build())
               .setCode(Code.UNKNOWN_ERROR);
       DeleteUniverseReplicationResponse mockSetupResponse =
-          new DeleteUniverseReplicationResponse(0, "", masterErrorBuilder.build());
-      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName()))
+          new DeleteUniverseReplicationResponse(0, "", masterErrorBuilder.build(), null);
+      when(mockClient.deleteUniverseReplication(xClusterConfig.getReplicationGroupName(), true))
           .thenReturn(mockSetupResponse);
     } catch (Exception e) {
     }
 
     TaskInfo taskInfo = submitTask(xClusterConfig);
+    assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
-    assertEquals(TaskType.XClusterConfigDelete, taskInfo.getSubTasks().get(0).getTaskType());
+    assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.size(), taskInfo.getSubTasks().size());
+    for (int i = 0; i < DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.size(); i++) {
+      TaskInfo subtaskGroup = taskInfo.getSubTasks().get(i);
+      assertNotNull(subtaskGroup);
+      assertEquals(DELETE_XCLUSTER_CONFIG_TASK_SEQUENCE.get(i), subtaskGroup.getTaskType());
+    }
+
     String taskErrMsg = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
-        String.format("Failed to delete XClusterConfig(%s): %s", xClusterConfig.uuid, deleteErrMsg);
+        String.format(
+            "Failed to delete replication for XClusterConfig(%s): %s",
+            xClusterConfig.uuid, deleteErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
 
     xClusterConfig.refresh();

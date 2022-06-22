@@ -102,6 +102,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_NODE_FIELD(utilityStmt);
 	COPY_LOCATION_FIELD(stmt_location);
 	COPY_LOCATION_FIELD(stmt_len);
+	COPY_SCALAR_FIELD(yb_num_referenced_relations);
 
 	return newnode;
 }
@@ -3490,7 +3491,6 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(relationId);
 	COPY_STRING_FIELD(accessMethod);
 	COPY_STRING_FIELD(tableSpace);
-	COPY_NODE_FIELD(tablegroup);
 	COPY_NODE_FIELD(indexParams);
 	COPY_NODE_FIELD(indexIncludingParams);
 	COPY_NODE_FIELD(options);

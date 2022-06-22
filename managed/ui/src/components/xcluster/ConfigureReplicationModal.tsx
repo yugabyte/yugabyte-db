@@ -1,11 +1,14 @@
 import { Field } from 'formik';
 import React, { useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { YBFormInput, YBFormSelect, YBInputField } from '../common/forms/fields';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import * as Yup from 'yup';
+import { toast } from 'react-toastify';
+import _ from 'lodash';
 
+import { YBFormInput, YBFormSelect, YBInputField } from '../common/forms/fields';
 import { YBModalForm } from '../common/forms';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
-import { IReplicationTable } from './IClusterReplication';
 import { YBLoading } from '../common/indicators';
 import {
   createXClusterReplication,
@@ -13,11 +16,12 @@ import {
   fetchTaskUntilItCompletes,
   fetchUniversesList
 } from '../../actions/xClusterReplication';
-
-import { useMutation, useQuery, useQueryClient } from 'react-query';
-import * as Yup from 'yup';
-import { toast } from 'react-toastify';
 import { YSQL_TABLE_TYPE } from './ReplicationUtils';
+import { isNonEmptyArray } from '../../utils/ObjectUtils';
+import { getUniverseStatus, universeState } from '../universes/helpers/universeHelpers';
+
+import { IReplicationTable } from './IClusterReplication';
+
 import './ConfigureReplicationModal.scss';
 
 const validationSchema = Yup.object().shape({
@@ -44,6 +48,15 @@ interface Props {
   currentUniverseUUID: string;
 }
 
+// TODO: Would be nice to start adding interfaces for all the nested fields in Universe
+//       as when need them and move all the universe types to a common folder
+interface Universe {
+  name: string;
+  universeUUID: string;
+  universeDetails: {};
+  state?: typeof universeState[keyof typeof universeState];
+}
+
 export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
   const queryClient = useQueryClient();
@@ -62,15 +75,16 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
         fetchTaskUntilItCompletes(resp.data.taskUUID, (err: boolean) => {
           if (err) {
             toast.error(
-              <span className='alertMsg'>
+              <span className="alertMsg">
                 <i className="fa fa-exclamation-circle" />
                 <span>Replication creation failed.</span>
-                <a href={`/tasks/${resp.data.taskUUID}`} rel="noopener noreferrer" target="_blank">View Details</a>
+                <a href={`/tasks/${resp.data.taskUUID}`} rel="noopener noreferrer" target="_blank">
+                  View Details
+                </a>
               </span>
             );
           }
           queryClient.invalidateQueries('universe');
-
         });
       },
       onError: (err: any) => {
@@ -79,12 +93,13 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
     }
   );
 
-  const { data: universeList, isLoading: isUniverseListLoading } = useQuery(['universeList'], () =>
-    fetchUniversesList().then((res) => res.data)
+  const { data: universeList, isLoading: isUniverseListLoading } = useQuery<Universe[]>(
+    ['universeList'],
+    () => fetchUniversesList().then((res) => res.data)
   );
 
   const { data: tables, isLoading: isTablesLoading } = useQuery(
-    [currentUniverseUUID, 'tables'],
+    ['xcluster',currentUniverseUUID, 'tables'],
     () => fetchTablesInUniverse(currentUniverseUUID).then((res) => res.data)
   );
 
@@ -97,6 +112,13 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
     targetUniverseUUID: undefined,
     tables: []
   };
+  // Add universe status field
+  if (_.isObject(universeList) && isNonEmptyArray(universeList)) {
+    universeList.forEach((universe) => {
+      const universeStatus = getUniverseStatus(universe);
+      universe.state = universeStatus.state;
+    });
+  }
 
   return (
     <YBModalForm
@@ -111,7 +133,7 @@ export function ConfigureReplicationModal({ onHide, visible, currentUniverseUUID
           setCurrentStep(currentStep + 1);
         } else {
           if (values['tables'].length === 0) {
-            toast.error('Configuration must have atleast one table');
+            toast.error('Configuration must have at least one table');
             return;
           }
           addReplication.mutateAsync(values).then(() => {
@@ -145,7 +167,7 @@ export function TargetUniverseForm({
   currentUniverseUUID
 }: {
   isEdit: boolean;
-  universeList: { name: string; universeUUID: string }[];
+  universeList: Universe[];
   initialValues: {};
   currentUniverseUUID: string;
 }) {
@@ -174,7 +196,11 @@ export function TargetUniverseForm({
             name="targetUniverseUUID"
             component={YBFormSelect}
             options={universeList
-              .filter((universe) => universe.universeUUID !== currentUniverseUUID)
+              .filter(
+                (universe) =>
+                  universe.universeUUID !== currentUniverseUUID &&
+                  universe.state === universeState.GOOD
+              )
               .map((universe) => {
                 return {
                   label: universe.name,

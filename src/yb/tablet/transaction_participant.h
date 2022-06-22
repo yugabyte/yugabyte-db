@@ -136,7 +136,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   HybridTime LocalCommitTime(const TransactionId& id) override;
 
-  boost::optional<CommitMetadata> LocalCommitData(const TransactionId& id) override;
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override;
 
   void RequestStatusAt(const StatusRequest& request) override;
 
@@ -210,7 +210,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   std::string DumpTransactions() const;
 
-  void SetRetainOpId(const OpId& op_id) const;
+  void SetIntentRetainOpIdAndTime(const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration);
 
   OpId GetRetainOpId() const;
 

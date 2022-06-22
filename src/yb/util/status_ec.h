@@ -57,6 +57,26 @@ class IntegralBackedErrorTag {
   }
 };
 
+class StringBackedErrorTag {
+ public:
+  typedef typename std::string Value;
+  typedef uint64_t SizeType;
+
+  static Value Decode(const uint8_t* source);
+
+  static size_t DecodeSize(const uint8_t* source) {
+    return Load<SizeType, LittleEndian>(source) + sizeof(SizeType);
+  }
+
+  static size_t EncodedSize(const Value& value);
+
+  static uint8_t* Encode(const Value& value, uint8_t* out);
+
+  static std::string DecodeToString(const uint8_t* source) {
+    return Decode(source);
+  }
+};
+
 class StringVectorBackedErrorTag {
  public:
   typedef typename std::vector<std::string> Value;

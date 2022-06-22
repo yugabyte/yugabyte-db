@@ -49,9 +49,9 @@ For operations like `UPDATE ... IF EXISTS` and `INSERT ... IF NOT EXISTS` that r
 
 YugabyteDB supports the [`jsonb`](../../api/ycql/type_jsonb/) data type that makes it easy to model JSON data, which does not have a set schema and might change often. You can use JSONB to group less interesting and less accessed columns of a table. YCQL also supports JSONB expression indexes that can be used to speed up data retrieval that would otherwise require scanning the JSON entries.
 
-{{< note title="Use jsonb columns only when necessary" >}}
+{{< note title="Use JSONB columns only when necessary" >}}
 
-`jsonb` columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency harder. A good schema design is to keep most columns as regular ones or collections, and only using `jsonb` for truly dynamic values. Don't create a `data jsonb` column where you store everything, but a `dynamic_data jsonb` column and other ones being primitive columns.
+`jsonb` columns are slower to read and write compared to normal columns. They also take more space because they need to store keys in strings and make keeping data consistency more difficult. A good schema design is to keep most columns as regular columns or collections, and use `jsonb` only for truly dynamic values. Don't create a `data jsonb` column where you store everything; instead, use a `dynamic_data jsonb` column with the others being primitive columns.
 
 {{< /note >}}
 
@@ -91,15 +91,13 @@ Use batching for writing a set of operations. This will send all operations in a
 
 ### Column and row sizes
 
-For consistent latency/performance, try keeping columns in the `2MB` range or less even though you support an individual column being about `32 MB`.
+For consistent latency/performance, keep columns in the 2 MB range or less.
 
-Big columns add up when selecting full rows or multiple of them. For consistent latency/performance, you suggest keeping the size of rows in the `32 MB` range or less.
+Big columns add up when selecting multiple columns or full rows. For consistent latency and performance, keep the size of individual rows in the 32 MB range or less.
 
 ### Don't use big collections
 
-Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages).
-While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them.
-In particular, some list operations (insert at an index and remove elements) require a read-before-write.
+Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages). While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. In particular, some list operations (insert at an index and remove elements) require a read-before-write.
 
 ### Collections with many elements
 
@@ -109,8 +107,7 @@ If your collections are immutable, or you update the whole collection in full, c
 
 ### Use `partition_hash` for large table scans
 
-`partition_hash` function can be handy for querying a subset of the data to get approximate row counts or to breakdown
- full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
+`partition_hash` function can be handy for querying a subset of the data to get approximate row counts or to break down full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
 ## Miscellaneous
 

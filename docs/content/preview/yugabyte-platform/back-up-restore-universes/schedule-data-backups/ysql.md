@@ -38,48 +38,54 @@ You can use YugabyteDB Anywhere to perform regularly scheduled backups of Yugaby
 
 To back up your universe YSQL data immediately, see [Back up universe YSQL data](../../back-up-universe-data/ysql/).
 
-## Schedule a backup
+## Create a scheduled backup policy
 
-You can schedule a backup of your universe YSQL data as follows:
+Before scheduling a backup of your universe YSQL data, create a policy, as follows:
 
 1. Navigate to **Universes**.
 
 2. Select the name of the universe for which you want to schedule backups.
 
-3. Click the **Tables** tab and verify that backups are enabled. If disabled, click **Enable Backup**.
+3. Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
 
-4. Select the **Backups** tab and then click **Create Scheduled Backup** to open the **Create Backup** dialog shown in the following illustration:
-    <br/>
-    <br/>
+4. Select the **Backups** tab and then select **Scheduled Backup Policies**. 
+   
+5. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
+    <br><br>
 
-    ![Create Backup form](/images/yp/scheduled-backup-ysql.png)
+    ![Create Backup form](/images/yp/scheduled-backup-ysql.png)<br><br>
 
-5. Enter the **Backup frequency** (interval in milliseconds) or a **Cron expression (UTC)***. For details on valid `cron` expression formats, hover over the question mark (?) icon.
+6. Provide the backup policy name.
 
-6. Select the **YSQL** tab and enter values for the following fields:
+7. Specify the interval between backups or select **Use cron expression (UTC)**.
 
-    - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
-    - **Namespace**: Select the namespace from the drop-down list of available namespaces.
-    - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
-    - **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
+8. Select the backup storage configuration. Notice that the contents of the **Select the storage config you want to use for your backup** list depends on your existing backup storage configurations. For more information, see [Configure backup storage](../../configure-backup-storage/).
 
-7. Click **OK**. <br>
+9. Select the database to backup. You may also choose to back up all databases associated with your universe.
 
-    The initial backup will begin immediately.
+10. Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
 
-Subsequent backups are created based on the value you specified for **Backup frequency** or **Cron expression**.
+11. Specify the number of threads that should be available for the backup process.
 
-## Disable scheduled backups
+12. Click **Create**.
 
-You can temporarily disable all scheduled backups, as follows:
+Subsequent backups are created based on the value you specified for **Set backup intervals** or **Use cron expression**.
 
-1. Go to the **Tables** tab in the universe.
-2. Click **Disable Backups**.
+## Disable backups
+
+You can disable all backups, including scheduled ones, as follows:
+
+1. Navigate to the universe's **Tables** tab.
+2. Click **Actions > Disable Backup**.
+
+<!--  
 
 ## Delete a scheduled backup
 
 You can permanently remove a scheduled backup, as follows:
 
-1. Go to the **Backups** tab for the universe.
-2. Find the scheduled backup and click **Options**.
-3. Click **Delete schedule**.
+1. Navigate to the universe's **Backups** tab.
+
+2. Find the scheduled backup and click **... > Delete Schedule**.
+
+   -->

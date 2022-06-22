@@ -395,7 +395,7 @@ void OperationDriver::ApplyTask(int64_t leader_term, OpIds* applied_op_ids) {
   scoped_refptr<OperationDriver> ref(this);
 
   {
-    auto status = operation_->Replicated(leader_term);
+    auto status = operation_->Replicated(leader_term, WasPending::kTrue);
     LOG_IF_WITH_PREFIX(FATAL, !status.ok())
         << "Apply failed: " << status
         << ", request: " << operation_->request()->ShortDebugString();

@@ -86,7 +86,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Some initialization tasks are asynchronous, such as the bootstrapping
   // of tablets. Caller can block, waiting for the initialization to fully
   // complete by calling WaitInited().
-  Status Init();
+  Status Init() override;
 
   Status GetRegistration(ServerRegistrationPB* reg,
     server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
@@ -94,8 +94,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Waits for the tablet server to complete the initialization.
   Status WaitInited();
 
-  Status Start();
-  virtual void Shutdown();
+  Status Start() override;
+  void Shutdown() override;
 
   std::string ToString() const override;
 
@@ -148,7 +148,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
-  const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
+  const std::string& permanent_uuid() const override { return fs_manager_->uuid(); }
+
+  bool has_faulty_drive() const { return fs_manager_->has_faulty_drive(); }
 
   // Returns the proxy to call this tablet server locally.
   const std::shared_ptr<TabletServerServiceProxy>& proxy() const { return proxy_; }
@@ -204,7 +206,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
     return std::numeric_limits<int32_t>::max();
   }
 
-  client::TransactionPool* TransactionPool() override;
+  client::TransactionPool& TransactionPool() override;
 
   const std::shared_future<client::YBClient*>& client_future() const override;
 
@@ -226,6 +228,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   Status DisplayRpcIcons(std::stringstream* output) override;
 
   Status ValidateMasterAddressResolution() const;
+
+  MonoDelta default_client_timeout() override;
+  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
   std::atomic<bool> initted_{false};
 

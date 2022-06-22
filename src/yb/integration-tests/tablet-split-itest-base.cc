@@ -334,6 +334,19 @@ void TabletSplitITestBase<MiniClusterType>::CheckTableKeysInRange(const size_t n
   ASSERT_EQ(keys.size(), num_keys);
 }
 
+template <class MiniClusterType>
+Result<bool> TabletSplitITestBase<MiniClusterType>::IsSplittingComplete(
+    yb::master::MasterAdminProxy* master_proxy) {
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  master::IsTabletSplittingCompleteRequestPB is_tablet_splitting_complete_req;
+  master::IsTabletSplittingCompleteResponsePB is_tablet_splitting_complete_resp;
+
+  RETURN_NOT_OK(master_proxy->IsTabletSplittingComplete(is_tablet_splitting_complete_req,
+      &is_tablet_splitting_complete_resp, &controller));
+  return is_tablet_splitting_complete_resp.is_tablet_splitting_complete();
+}
+
 template class TabletSplitITestBase<MiniCluster>;
 template class TabletSplitITestBase<ExternalMiniCluster>;
 
@@ -385,6 +398,22 @@ Result<tserver::GetSplitKeyResponsePB> TabletSplitITest::GetSplitKey(const std::
   controller.set_timeout(kRpcTimeout);
   tserver::GetSplitKeyResponsePB resp;
   RETURN_NOT_OK(ts_service_proxy->GetSplitKey(req, &resp, &controller));
+  return resp;
+}
+
+Result<master::SplitTabletResponsePB> TabletSplitITest::SendMasterSplitTabletRpcSync(
+    const std::string& tablet_id) {
+  auto master = cluster_->mini_master();
+  auto master_admin_proxy =
+      std::make_unique<master::MasterAdminProxy>(proxy_cache_.get(), master->bound_rpc_addr());
+
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_id);
+
+  rpc::RpcController controller;
+  controller.set_timeout(kRpcTimeout);
+  master::SplitTabletResponsePB resp;
+  RETURN_NOT_OK(master_admin_proxy->SplitTablet(req, &resp, &controller));
   return resp;
 }
 
@@ -679,7 +708,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
         },
         15s * kTimeMultiplier,
         Format(
-            "Waiting for tablet replica $0 to apply all ops from leader ...", peer->LogPrefix())));
+             "Waiting for tablet replica $0 to apply all ops from leader ...", peer->LogPrefix())));
     LOG(INFO) << "Last applied op id for " << peer->LogPrefix() << ": "
               << AsString(peer->shared_consensus()->GetLastAppliedOpId());
 
@@ -751,7 +780,8 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
   rpc::RpcController rpc;
   rpc.set_timeout(30s * kTimeMultiplier);
 
-  RETURN_NOT_OK(cluster_->GetMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
+  RETURN_NOT_OK(
+      cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>().SplitTablet(req, &resp, &rpc));
   if (resp.has_error()) {
     RETURN_NOT_OK(StatusFromPB(resp.error().status()));
   }

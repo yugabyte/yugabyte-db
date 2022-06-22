@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode.HA_ONLY;
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
@@ -30,6 +31,7 @@ import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -307,6 +309,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   public void testAddNodeSuccess(boolean isHAConfig) throws Exception {
 
     if (isHAConfig) {
+      SettableRuntimeConfigFactory factory =
+          app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+      factory.globalRuntimeConf().setValue("yb.universe_version_check_mode", HA_ONLY.name());
       HighAvailabilityConfig.create("clusterKey");
     }
     mockWaits(mockClient, 3);

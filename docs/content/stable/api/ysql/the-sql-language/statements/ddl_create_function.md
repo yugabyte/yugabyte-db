@@ -34,10 +34,10 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_function,arg_decl,function_attribute,security_kind,lang_name,implementation_definition,sql_stmt_list.diagram.md" %}}
   </div>
 </div>
 
@@ -47,14 +47,14 @@ Use the `CREATE FUNCTION` statement to create a function in a database.
 
 - The languages supported by default are `sql`, `plpgsql` and `C`.
 
-- `VOLATILE`, `STABLE` and `IMMUTABLE` inform the query optimizer about the behavior the function. 
+- `VOLATILE`, `STABLE` and `IMMUTABLE` inform the query optimizer about the behavior the function.
     - `VOLATILE` is the default and indicates that the function result could be different for every call. For instance `random()` or `now()`.
     - `STABLE` indicates that the function cannot modify the database so that within a single scan it will return the same result given the same arguments.
     - `IMMUTABLE` indicates that the function cannot modify the database _and_ always returns the same results given the same arguments.
 
 - `CALLED ON NULL INPUT`, `RETURNS NULL ON NULL INPUT` and `STRICT` define the function's behavior with respect to 'null's.
     - `CALLED ON NULL INPUT` indicates that input arguments may be `null`.
-    - `RETURNS NULL ON NULL INPUT` or `STRICT` indicate that the function always returns `null` if any of its arguments are `null`. 
+    - `RETURNS NULL ON NULL INPUT` or `STRICT` indicate that the function always returns `null` if any of its arguments are `null`.
 
 ## Examples
 

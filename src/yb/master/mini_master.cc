@@ -248,7 +248,7 @@ HostPort MiniMaster::bound_rpc_addr() const {
 
 Endpoint MiniMaster::bound_http_addr() const {
   CHECK(running_);
-  return master_->first_http_address();
+  return CHECK_RESULT(master_->first_http_address());
 }
 
 std::string MiniMaster::permanent_uuid() const {

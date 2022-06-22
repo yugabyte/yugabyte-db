@@ -2,7 +2,7 @@
 
 import React from 'react';
 import * as Yup from 'yup';
-import { USE_SSO } from '../../../../config';
+import { isSSOEnabled } from '../../../../config';
 import { Row, Col } from 'react-bootstrap';
 import { Field, Formik } from 'formik';
 import { YBModal, YBFormSelect, YBFormInput } from '../../../common/forms/fields';
@@ -32,7 +32,7 @@ export const AddUserModal = (props) => {
     role: undefined
   };
 
-  const oidcEnabled = USE_SSO;
+  const oidcEnabled = isSSOEnabled();
 
   const submitForm = async (values) => {
     values.role = values.role.value;

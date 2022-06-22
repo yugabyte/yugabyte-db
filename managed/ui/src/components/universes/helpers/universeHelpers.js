@@ -1,80 +1,88 @@
 import React from 'react';
-import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from '../../../utils/ObjectUtils';
+import { isNonEmptyArray } from '../../../utils/ObjectUtils';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 
 import _ from 'lodash';
 
-export const status = {
+/**
+ * A mapping from universe state to display text and className.
+ */
+export const universeState = {
   GOOD: {
-    statusText: 'Ready',
-    statusClassName: 'good'
+    text: 'Ready',
+    className: 'good'
   },
   PAUSED: {
-    statusText: 'Paused',
-    statusClassName: 'paused'
+    text: 'Paused',
+    className: 'paused'
   },
   PENDING: {
-    statusText: 'Pending',
-    statusClassName: 'pending'
+    text: 'Pending',
+    className: 'pending'
   },
   WARNING: {
-    statusText: 'Ready',
-    statusClassName: 'warning'
+    text: 'Ready',
+    className: 'warning'
   },
   BAD: {
-    statusText: 'Error',
-    statusClassName: 'bad'
+    text: 'Error',
+    className: 'bad'
   },
   UNKNOWN: {
-    statusText: 'Loading',
-    statusClassName: 'unknown'
+    text: 'Loading',
+    className: 'unknown'
   }
 };
 
-export const getUniverseStatus = (universe, universePendingTask) => {
+/**
+ * Returns a universe status object with:
+ *  - state - A universe state from the universe state mapping {@link universeState}
+ *  - error - The error string from the current universe
+ */
+export const getUniverseStatus = (universe) => {
   const {
     updateInProgress,
+    backupInProgress,
     updateSucceeded,
     universePaused,
     errorString
   } = universe.universeDetails;
 
-  // statusText stores the status for display
-  // warning stores extra information for internal use (ex. warning icons for certain errors)
-  if (!isDefinedNotNull(universePendingTask) && updateSucceeded && !universePaused) {
-    return { status: status.GOOD, warning: '' };
+  const taskInProgress = updateInProgress || backupInProgress;
+  if (!taskInProgress && updateSucceeded && !universePaused) {
+    return { state: universeState.GOOD, error: errorString };
   }
-  if (!isDefinedNotNull(universePendingTask) && updateSucceeded && universePaused) {
-    return { status: status.PAUSED, warning: '' };
+  if (!taskInProgress && updateSucceeded && universePaused) {
+    return { state: universeState.PAUSED, error: errorString };
   }
-  if (updateInProgress && isNonEmptyObject(universePendingTask)) {
-    return { status: status.PENDING, warning: '' };
+  if (taskInProgress) {
+    return { state: universeState.PENDING, error: errorString };
   }
-  if (!updateInProgress && !updateSucceeded) {
+  if (!taskInProgress && !updateSucceeded) {
     return errorString === 'Preflight checks failed.'
-      ? { status: status.WARNING, warning: errorString }
-      : { status: status.BAD, warning: errorString };
+      ? { state: universeState.WARNING, error: errorString }
+      : { state: universeState.BAD, error: errorString };
   }
-  return { status: status.UNKNOWN, warning: '' };
+  return { state: universeState.UNKNOWN, error: errorString };
 };
 
 export const getUniverseStatusIcon = (curStatus) => {
-  if (_.isEqual(curStatus, status.GOOD)) {
+  if (_.isEqual(curStatus, universeState.GOOD)) {
     return <i className="fa fa-check-circle" />;
   }
-  if (_.isEqual(curStatus, status.PAUSED)) {
+  if (_.isEqual(curStatus, universeState.PAUSED)) {
     return <i className="fa fa-pause-circle-o" />;
   }
-  if (_.isEqual(curStatus, status.PENDING)) {
+  if (_.isEqual(curStatus, universeState.PENDING)) {
     return <i className="fa fa-hourglass-half" />;
   }
-  if (_.isEqual(curStatus, status.WARNING)) {
+  if (_.isEqual(curStatus, universeState.WARNING)) {
     return <i className="fa fa-warning" />;
   }
-  if (_.isEqual(curStatus, status.BAD)) {
+  if (_.isEqual(curStatus, universeState.BAD)) {
     return <i className="fa fa-warning" />;
   }
-  if (_.isEqual(curStatus, status.UNKNOWN)) {
+  if (_.isEqual(curStatus, universeState.UNKNOWN)) {
     return <YBLoadingCircleIcon size="small" />;
   }
 };
@@ -83,8 +91,7 @@ export const isPendingUniverseTask = (universeUUID, taskItem) => {
   return (
     taskItem.targetUUID === universeUUID &&
     (taskItem.status === 'Running' || taskItem.status === 'Initializing') &&
-    Number(taskItem.percentComplete) !== 100 &&
-    taskItem.target.toLowerCase() !== 'backup'
+    Number(taskItem.percentComplete) !== 100
   );
 };
 

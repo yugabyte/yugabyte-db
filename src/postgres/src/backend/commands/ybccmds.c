@@ -468,6 +468,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	ListCell       *listptr;
 	bool           is_shared_relation = tablespaceId == GLOBALTABLESPACE_OID;
 	Oid            databaseId         = YBCGetDatabaseOidFromShared(is_shared_relation);
+	bool           is_matview         = relkind == RELKIND_MATVIEW;
 
 	char *db_name = get_database_name(databaseId);
 	char *schema_name = stmt->relation->schemaname;
@@ -611,6 +612,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
+									   is_matview,
 									   matviewPgTableId,
 									   &handle));
 
@@ -636,16 +638,27 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 }
 
 void
-YBCDropTable(Oid relationId)
+YBCDropTable(Relation relation)
 {
+	YbLoadTablePropertiesIfNeeded(relation, true /* allow_missing */);
+
+	if (!relation->yb_table_properties)
+	{
+		/* Table was not found on YB side, nothing to do */
+		return;
+	}
+	/*
+	 * However, since we were likely hitting the cache, we still need to
+	 * safeguard against NotFound errors.
+	 */
+
 	YBCPgStatement handle = NULL;
-	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
+	Oid			databaseId = YBCGetDatabaseOid(relation);
 	/* Whether the table is colocated (via DB or tablegroup) */
-	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
-	Relation	relation = relation_open(relationId, AccessExclusiveLock);
+	bool		is_colocated = relation->yb_table_properties->is_colocated;
 
 	/* Create table-level tombstone for colocated/tablegroup tables */
-	if (colocated)
+	if (is_colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
@@ -676,7 +689,6 @@ YBCDropTable(Oid relationId)
 													   false, /* if_exists */
 													   &handle),
 													   &not_found);
-		relation_close(relation, AccessExclusiveLock);
 		const bool valid_handle = !not_found;
 		if (valid_handle)
 		{
@@ -690,18 +702,24 @@ YBCDropTable(Oid relationId)
 }
 
 void
-YBCTruncateTable(Relation rel)
+YbTruncate(Relation rel)
 {
+	YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
+
 	YBCPgStatement handle;
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			databaseId = YBCGetDatabaseOid(rel);
 	bool		isRegionLocal = YBCIsRegionLocal(rel);
-	/* Whether the table is colocated (via DB or tablegroup) */
-	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
+	/* Whether the relation is colocated (via DB, tablegroup, or syscatalog) */
+	bool		is_colocated = rel->yb_table_properties->is_colocated ||
+							   IsSystemRelation(rel);
 
-	if (colocated)
+	if (is_colocated)
 	{
-		/* Create table-level tombstone for colocated/tablegroup tables */
+		/*
+		 * Create table-level tombstone for colocated/tablegroup/syscatalog
+		 * relations.
+		 */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
@@ -713,7 +731,7 @@ YBCTruncateTable(Relation rel)
 	}
 	else
 	{
-		/* Send truncate table RPC to master for non-colocated tables */
+		/* Send truncate table RPC to master for non-colocated relations */
 		HandleYBStatus(YBCPgNewTruncateTable(databaseId,
 											 relationId,
 											 &handle));
@@ -739,7 +757,7 @@ YBCTruncateTable(Relation rel)
 		 * considered to not be transaction-safe, it doesn't really matter.
 		 */
 		Relation indexRel = index_open(indexId, AccessExclusiveLock);
-		YBCTruncateTable(indexRel);
+		YbTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
 
@@ -1190,19 +1208,32 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 }
 
 void
-YBCDropIndex(Oid relationId)
+YBCDropIndex(Relation index)
 {
+	YbLoadTablePropertiesIfNeeded(index, true /* allow_missing */);
+
+	if (!index->yb_table_properties)
+	{
+		/* Index was not found on YB side, nothing to do */
+		return;
+	}
+	/*
+	 * However, since we were likely hitting the cache, we still need to
+	 * safeguard against NotFound errors.
+	 */
+
 	YBCPgStatement handle;
-	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
-	/* Whether the table is colocated (via DB or tablegroup) */
-	bool		colocated = YbIsUserTableColocated(databaseId, relationId);
+	Oid			indexId      = RelationGetRelid(index);
+	Oid			databaseId   = YBCGetDatabaseOid(index);
+	/* Whether the index is colocated (via DB or tablegroup) */
+	bool		is_colocated = index->yb_table_properties->is_colocated;
 
 	/* Create table-level tombstone for colocated/tablegroup indexes */
-	if (colocated)
+	if (is_colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   relationId,
+															   indexId,
 															   false,
 															   false,
 															   &handle),
@@ -1221,7 +1252,7 @@ YBCDropIndex(Oid relationId)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropIndex(databaseId,
-													   relationId,
+													   indexId,
 													   false, /* if_exists */
 													   &handle),
 									 &not_found);

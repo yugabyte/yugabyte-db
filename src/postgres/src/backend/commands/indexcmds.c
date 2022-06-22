@@ -649,67 +649,29 @@ DefineIndex(Oid relationId,
 						   get_tablespace_name(tablespaceId));
 	}
 
-	/*
-	 * Select tablegroup to use. Default to the tablegroup of the indexed table.
-	 * If no tablegroup for the indexed table then set to InvalidOid (no tablegroup).
-	 * If tablegroup specified then perform a lookup unless has_tablegroup is false.
-	 */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists)
+	/* Use tablegroup of the indexed table, if any. */
+	Oid tablegroupId = YbTablegroupCatalogExists ?
+		get_tablegroup_oid_by_table_oid(relationId) : InvalidOid;
+
+	if (OidIsValid(tablegroupId) && stmt->split_options)
 	{
-		if (!stmt->tablegroup)
-		{
-			// If NULL tablegroup, follow tablegroup of indexed table.
-			tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
-			if (OidIsValid(tablegroupId) && stmt->split_options)
-			{
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("Cannot use TABLEGROUP with SPLIT."),
-						 errdetail("Please supply NO TABLEGROUP to opt-out of indexed table's tablegroup.")));
-			}
-		}
-		else
-		{
-			OptTableGroup *grp = stmt->tablegroup;
-			if (grp->has_tablegroup)
-			{
-				if (stmt->split_options)
-				{
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							 errmsg("Cannot use TABLEGROUP with SPLIT.")));
-				}
-				tablegroupId = get_tablegroup_oid(grp->tablegroup_name, false);
-			}
-		}
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+				 errmsg("Cannot use TABLEGROUP with SPLIT.")));
 	}
 
 	bool is_colocated = false;
 
 	/*
-	 * Unless there's an explicit tablegroup on an index, follow colocation
-	 * rules of the indexed table.
+	 * Get whether the indexed table is colocated
+	 * (either via database or a tablegroup).
 	 */
-	if (stmt->tablegroup)
+	if (IsYBRelation(rel) &&
+		!IsBootstrapProcessingMode() &&
+		!YBIsPreparingTemplates())
 	{
-		is_colocated = stmt->tablegroup->has_tablegroup;
-	}
-	else
-	{
-		/*
-		 * Get whether the indexed table is colocated.  This includes tables
-		 * that are colocated because they are part of a tablegroup with
-		 * colocation.
-		 */
-		if (IsYugaByteEnabled() &&
-			!IsBootstrapProcessingMode() &&
-			!YBIsPreparingTemplates() &&
-			IsYBRelation(rel))
-		{
-			is_colocated = YbIsUserTableColocated(databaseId,
-												  YbGetStorageRelid(rel));
-		}
+		YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
+		is_colocated = rel->yb_table_properties->is_colocated;
 	}
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
@@ -1401,7 +1363,6 @@ DefineIndex(Oid relationId,
 	 * No need to break (abort) ongoing txns since this is an online schema
 	 * change.
 	 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
-	 * level 1).
 	 */
 	YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
 	                           false /* is_breaking_catalog_change */);
@@ -1584,7 +1545,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	int			attn;
 	int			nkeycols = indexInfo->ii_NumIndexKeyAttrs;
 	bool		use_yb_ordering = false;
-	bool		colocated = false;
+	bool		is_colocated = false;
 
 	/* Allocate space for exclusion operator info, if needed */
 	if (exclusionOpNames)
@@ -1603,24 +1564,28 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 	 * colocated.  For now, regarding colocation, the index always follows the
 	 * indexed table, so just figure out whether the indexed table is
 	 * colocated.
+	 *
+	 * Also get whether the index is part of a tablegroup.
 	 */
+	Oid tablegroupId = InvalidOid;
 	if (IsYugaByteEnabled() &&
 		!IsBootstrapProcessingMode() &&
 		!YBIsPreparingTemplates())
 	{
 		Relation rel = RelationIdGetRelation(relId);
-		use_yb_ordering = IsYBRelation(rel) && !IsSystemRelation(rel);
 		if (IsYBRelation(rel))
-			colocated = YbIsUserTableColocated(YBCGetDatabaseOid(rel),
-											   YbGetStorageRelid(rel));
+		{
+			YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
+
+			is_colocated = rel->yb_table_properties->is_colocated;
+
+			if (YbTablegroupCatalogExists)
+				tablegroupId = get_tablegroup_oid_by_table_oid(relId);
+
+			use_yb_ordering = !IsSystemRelation(rel);
+		}
 		RelationClose(rel);
 	}
-
-	/* Get whether the index is part of a tablegroup */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists && IsYugaByteEnabled() &&
-		!IsBootstrapProcessingMode() && !YBIsPreparingTemplates())
-		tablegroupId = get_tablegroup_oid_by_table_oid(relId);
 
 	/*
 	 * process attributeList
@@ -1651,7 +1616,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						 * colocated tables, the first attribute defaults to
 						 * ASC.
 						 */
-						if (attn > 0 || colocated || tablegroupId != InvalidOid)
+						if (attn > 0 || is_colocated || tablegroupId != InvalidOid)
 						{
 							range_index = true;
 							break;
@@ -1934,7 +1899,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (use_yb_ordering &&
 				attn == 0 &&
 				attribute->ordering == SORTBY_DEFAULT &&
-				!colocated && tablegroupId == InvalidOid)
+				!is_colocated && tablegroupId == InvalidOid)
 				colOptionP[attn] |= INDOPTION_HASH;
 
 			/* default null ordering is LAST for ASC, FIRST for DESC */

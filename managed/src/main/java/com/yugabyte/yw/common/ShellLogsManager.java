@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.common;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -37,13 +35,11 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import scala.concurrent.ExecutionContext;
 
 @Singleton
 @Slf4j
 public class ShellLogsManager {
-  private final Scheduler scheduler;
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
   private final String customLogsDir;
   private final Config config;
   static final String YB_LOGS_SHELL_OUTPUT_DIR_KEY = "yb.logs.shell.output_dir"; // Optional
@@ -59,11 +55,8 @@ public class ShellLogsManager {
 
   @Inject
   public ShellLogsManager(
-      RuntimeConfigFactory runtimeConfigFactory,
-      ActorSystem actorSystem,
-      ExecutionContext executionContext) {
-    this.scheduler = actorSystem.scheduler();
-    this.executionContext = executionContext;
+      PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
+    this.platformScheduler = platformScheduler;
     this.config = runtimeConfigFactory.globalRuntimeConf();
     this.customLogsDir =
         config.hasPath(YB_LOGS_SHELL_OUTPUT_DIR_KEY)
@@ -73,13 +66,13 @@ public class ShellLogsManager {
 
   public void startLogsGC() {
     if (isRetainLogs()) {
-      scheduler.schedule(
+      platformScheduler.schedule(
+          getClass().getSimpleName(),
           Duration.ZERO,
           Duration.of(SHELL_LOGS_GC_INTERVAL_HOURS, ChronoUnit.HOURS),
           () -> {
             this.rotateLogs(getMaxCustomDirSizeBytes(), getLogsRetentionHours());
-          },
-          this.executionContext);
+          });
     } else {
       log.debug("Not starting logs gc (no retention policy configured)");
     }

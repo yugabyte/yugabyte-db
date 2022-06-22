@@ -333,8 +333,33 @@ const Status TableInfo::GetSchema(Schema* schema) const {
   return SchemaFromPB(LockForRead()->schema(), schema);
 }
 
+bool TableInfo::has_pgschema_name() const {
+  return LockForRead()->schema().has_pgschema_name();
+}
+
+const string& TableInfo::pgschema_name() const {
+  return LockForRead()->schema().pgschema_name();
+}
+
+bool TableInfo::has_pg_type_oid() const {
+  for (const auto& col : LockForRead()->schema().columns()) {
+    if (!col.has_pg_type_oid()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
+}
+
+std::string TableInfo::matview_pg_table_id() const {
+  return LockForRead()->pb.matview_pg_table_id();
+}
+
+bool TableInfo::is_matview() const {
+  return LockForRead()->pb.is_matview();
 }
 
 std::string TableInfo::indexed_table_id() const {
@@ -556,6 +581,20 @@ bool TableInfo::AreAllTabletsDeleted() const {
   return true;
 }
 
+Status TableInfo::CheckAllActiveTabletsRunning() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  for (const auto& tablet_it : partitions_) {
+    const auto& tablet = tablet_it.second;
+    if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
+      return STATUS_EC_FORMAT(IllegalState,
+                              MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                              "Found tablet that is not running, table_id: $0, tablet_id: $1",
+                              id(), tablet->tablet_id());
+    }
+  }
+  return Status::OK();
+}
+
 bool TableInfo::IsCreateInProgress() const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : partitions_) {
@@ -575,15 +614,6 @@ Status TableInfo::SetIsBackfilling() {
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
   }
 
-  for (const auto& tablet_it : partitions_) {
-    const auto& tablet = tablet_it.second;
-    if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
-      return STATUS_EC_FORMAT(IllegalState,
-                              MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
-                              "Some tablets are not running, table_id: $0 tablet_id: $1",
-                              id(), tablet->tablet_id());
-    }
-  }
   is_backfilling_ = true;
   return Status::OK();
 }
@@ -712,7 +742,7 @@ void TableInfo::WaitTasksCompletion() {
   }
 }
 
-std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() {
+std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() const {
   SharedLock<decltype(lock_)> l(lock_);
   return pending_tasks_;
 }
@@ -751,6 +781,36 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
     }
   }
   return result;
+}
+
+bool TableInfo::HasOutstandingSplits() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  DCHECK(!colocated());
+  std::unordered_set<TabletId> partitions_tablets;
+  for (const auto& p : partitions_) {
+    auto tablet_lock = p.second->LockForRead();
+    if (tablet_lock->pb.has_split_parent_tablet_id() && !tablet_lock->is_running()) {
+      YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Child tablet " << p.second->tablet_id()
+                                   << " belonging to table " << id() << " is not yet running";
+      return true;
+    }
+    partitions_tablets.insert(p.second->tablet_id());
+  }
+  for (const auto& p : tablets_) {
+    // If any parents have not been deleted yet, the split is not yet complete.
+    if (!partitions_tablets.contains(p.second->tablet_id())) {
+      auto tablet_lock = p.second->LockForRead();
+      if (!tablet_lock->is_deleted() && !tablet_lock->is_hidden()) {
+        YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Parent tablet " << p.second->tablet_id()
+                                     << " belonging to table " << id()
+                                     << " is not yet deleted or hidden";
+        return true;
+      }
+    }
+  }
+  YB_LOG_EVERY_N_SECS(INFO, 10) << "Tablet Splitting: Table "
+                               << id() << " does not have any outstanding splits";
+  return false;
 }
 
 TabletInfoPtr TableInfo::GetColocatedTablet() const {

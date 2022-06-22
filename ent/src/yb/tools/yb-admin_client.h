@@ -29,6 +29,10 @@ namespace enterprise {
 YB_DEFINE_ENUM(ListSnapshotsFlag, (SHOW_DETAILS)(NOT_SHOW_RESTORED)(SHOW_DELETED)(JSON));
 using ListSnapshotsFlags = EnumBitSet<ListSnapshotsFlag>;
 
+// Constants for disabling tablet splitting during PITR restores.
+static constexpr double kPitrSplitDisableDurationSecs = 600;
+static constexpr double kPitrSplitDisableCheckFreqMs = 500;
+
 class ClusterAdminClient : public yb::tools::ClusterAdminClient {
   typedef yb::tools::ClusterAdminClient super;
  public:
@@ -133,6 +137,8 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   void CleanupEnvironmentOnSetupUniverseReplicationFailure(
     const std::string& producer_uuid, const Status& failure_status);
+
+  Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };

@@ -1051,25 +1051,7 @@ Status MetaCache::ProcessTabletLocations(
 
           CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
           if (tablets_by_key) {
-            auto emplace_result = tablets_by_key->emplace(partition.partition_key_start(), remote);
-            if (!emplace_result.second) {
-              const auto& old_tablet = emplace_result.first->second;
-              if (old_tablet->split_depth() < remote->split_depth()) {
-                // Only replace with tablet of higher split_depth.
-                emplace_result.first->second = remote;
-              } else {
-                // If split_depth is the same - it should be the same tablet.
-                if (old_tablet->split_depth() == loc.split_depth()
-                    && old_tablet->tablet_id() != tablet_id) {
-                  const auto error_msg = Format(
-                      "Can't replace tablet $0 with $1 at partition_key_start $2, split_depth $3",
-                      old_tablet->tablet_id(), tablet_id, loc.partition().partition_key_start(),
-                      old_tablet->split_depth());
-                  LOG_WITH_PREFIX(DFATAL) << error_msg;
-                  // Just skip updating this tablet for release build.
-                }
-              }
-            }
+            (*tablets_by_key)[partition.partition_key_start()] = remote;
           }
           MaybeUpdateClientRequests(*remote);
         }
@@ -1131,7 +1113,8 @@ void MetaCache::MaybeUpdateClientRequests(const RemoteTablet& tablet) {
     tablet_requests.emplace(
         tablet.tablet_id(),
         YBClient::Data::TabletRequests {
-            .request_id_seq = kInitializeFromMinRunning
+            .request_id_seq = kInitializeFromMinRunning,
+            .running_requests = {}
         });
     return;
   }

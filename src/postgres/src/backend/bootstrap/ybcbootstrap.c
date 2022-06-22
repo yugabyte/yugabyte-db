@@ -142,6 +142,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	                                   InvalidOid /* tablegroup_oid */,
 	                                   InvalidOid /* colocation_id */,
 	                                   InvalidOid /* tablespace_oid */,
+	                                   false /* is_matview */,
 	                                   InvalidOid /* matviewPgTableId */,
 	                                   &yb_stmt));
 

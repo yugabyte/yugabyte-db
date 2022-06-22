@@ -8,8 +8,7 @@ import { Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { Formik, Form, Field } from 'formik';
 import { YBFormInput, YBButton, YBModal, YBToggle } from '../../common/forms/fields';
 import YBInfoTip from '../../common/descriptors/YBInfoTip';
-import { YBBanner } from '../../common/descriptors/YBBanner';
-import ResetIcon from '../icons/reset_icon';
+import { setSSO } from '../../../config';
 import WarningIcon from '../icons/warning_icon';
 
 const VALIDATION_SCHEMA = Yup.object().shape({
@@ -104,6 +103,7 @@ export const OIDCAuth = (props) => {
         key: `${OIDC_PATH}.use_oauth `,
         value: true
       });
+      setSSO(true);
       response && fetchRunTimeConfigs();
       toast.success('OIDC configuration is saved successfully', TOAST_OPTIONS);
     } catch {
@@ -121,6 +121,7 @@ export const OIDCAuth = (props) => {
         key: `${OIDC_PATH}.use_oauth`,
         value: true
       });
+      setSSO(true);
       toast.success(`OIDC authentication is enabled`, TOAST_OPTIONS);
     }
   };
@@ -136,6 +137,7 @@ export const OIDCAuth = (props) => {
       key: `${OIDC_PATH}.use_oauth`,
       value: 'false'
     });
+    setSSO(false);
     toast.warn(`OIDC authentication is disabled`, TOAST_OPTIONS);
   };
 
@@ -146,18 +148,6 @@ export const OIDCAuth = (props) => {
     setToggleVisible(!!oidcConfig);
     setOIDC(escapeStr(oidcConfig?.value) === 'true');
   }, [configEntries, setToggleVisible, setOIDC]);
-
-  const restartBanner = () => (
-    <YBBanner variant="WARNING" className="oidc-footer">
-      <ResetIcon />
-      &nbsp; &nbsp;
-      <div className="oidc_footer_text">
-        <span>
-          <b>Note!&nbsp;</b> Platform restart is required to apply this change.
-        </span>
-      </div>
-    </YBBanner>
-  );
 
   return (
     <div className="bottom-bar-padding">
@@ -182,9 +172,6 @@ export const OIDCAuth = (props) => {
             authentication provider. Are you sure?
           </div>
         </div>
-
-        {restartBanner()}
-        <br />
       </YBModal>
       <Col>
         <Formik
@@ -392,19 +379,6 @@ export const OIDCAuth = (props) => {
                       disabled={isSubmitting || isDisabled || isSaveDisabled}
                       btnClass="btn btn-orange pull-right"
                     />
-                  </Col>
-                </Row>
-
-                <br />
-
-                <Row key="footer_banner">
-                  <Col xs={12} sm={11} md={10} lg={6} className="ua-field-row-c">
-                    <Row className="ua-field-row">
-                      <Col className="ua-label-c"></Col>
-                      <Col lg={12} className="ua-field">
-                        {restartBanner()}
-                      </Col>
-                    </Row>
                   </Col>
                 </Row>
               </Form>

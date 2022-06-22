@@ -172,6 +172,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
                              const PgObjectId& tablegroup_oid,
                              const ColocationId colocation_id,
                              const PgObjectId& tablespace_oid,
+                             bool is_matview,
                              const PgObjectId& matview_pg_table_oid)
     : PgDdl(pg_session) {
   table_id.ToPB(req_.mutable_table_id());
@@ -189,6 +190,7 @@ PgCreateTable::PgCreateTable(PgSession::ScopedRefPtr pg_session,
     req_.set_colocation_id(colocation_id);
   }
   tablespace_oid.ToPB(req_.mutable_tablespace_oid());
+  req_.set_is_matview(is_matview);
   matview_pg_table_oid.ToPB(req_.mutable_matview_pg_table_oid());
 
   // Add internal primary key column to a Postgres table without a user-specified primary key.

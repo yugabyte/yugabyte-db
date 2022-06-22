@@ -40,6 +40,7 @@ export const BackupDeleteModal: FC<BackupDeleteProps> = ({ backupsList, visible,
     <YBModalForm
       visible={visible}
       title="Delete Backup"
+      className="backup-modal"
       showCancelButton={true}
       onHide={onHide}
       onFormSubmit={async (_values: any, { setSubmitting }: { setSubmitting: Function }) => {

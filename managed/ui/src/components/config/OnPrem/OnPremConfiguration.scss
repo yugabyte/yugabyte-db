@@ -197,4 +197,12 @@
   .form-item-label{
     min-width: 200px !important;
   }
+  .form-right-aligned-labels
+  {
+    display: block;
+    &>.form-group{
+      display: flex;
+      align-items: center;
+    }
+  }
 }

@@ -11,6 +11,8 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -20,6 +22,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -62,7 +65,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Update the user intent.
       writeUserIntentToUniverse();
 
-      Provider provider = Provider.get(UUID.fromString(primaryCluster.userIntent.provider));
+      Provider provider =
+          Provider.getOrBadRequest(
+              UUID.fromString(taskParams().getPrimaryCluster().userIntent.provider));
 
       KubernetesPlacement placement = new KubernetesPlacement(pi);
 
@@ -79,12 +84,49 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
-      createPodsTask(placement, masterAddresses);
+      createPodsTask(placement, masterAddresses, /*isReadOnlyCluster*/ false);
 
-      createSingleKubernetesExecutorTask(KubernetesCommandExecutor.CommandType.POD_INFO, pi);
+      createSingleKubernetesExecutorTask(
+          KubernetesCommandExecutor.CommandType.POD_INFO, pi, /*isReadOnlyCluster*/ false);
 
       Set<NodeDetails> tserversAdded =
-          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz);
+          getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
+
+      // Check if we need to create read cluster pods also.
+      List<Cluster> readClusters = taskParams().getReadOnlyClusters();
+      if (readClusters.size() > 1) {
+        String msg = "Expected at most 1 read cluster but found " + readClusters.size();
+        log.error(msg);
+        throw new RuntimeException(msg);
+      } else if (readClusters.size() == 1) {
+        Cluster readCluster = readClusters.get(0);
+        PlacementInfo readClusterPI = readCluster.placementInfo;
+        Provider readClusterProvider =
+            Provider.getOrBadRequest(UUID.fromString(readCluster.userIntent.provider));
+        CloudType readClusterProviderType = readCluster.userIntent.providerType;
+        if (readClusterProviderType != CloudType.kubernetes) {
+          String msg =
+              String.format(
+                  "Read replica clusters provider type is expected to be kubernetes but found %s",
+                  readClusterProviderType.name());
+          log.error(msg);
+          throw new IllegalArgumentException(msg);
+        }
+
+        KubernetesPlacement readClusterPlacement = new KubernetesPlacement(readClusterPI);
+        // Skip choosing masters from read cluster.
+        boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
+        createPodsTask(readClusterPlacement, masterAddresses, true);
+        createSingleKubernetesExecutorTask(
+            KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
+        tserversAdded.addAll(
+            getPodsToAdd(
+                readClusterPlacement.tservers,
+                null,
+                ServerType.TSERVER,
+                isReadClusterMultiAz,
+                true));
+      }
 
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)

@@ -181,6 +181,7 @@
 #include "yb/util/oid_generator.h"
 #include "yb/util/random_util.h"
 #include "yb/util/rw_mutex.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
@@ -633,37 +634,6 @@ class IndexInfoBuilder {
  private:
   IndexInfoPB& index_info_;
 };
-
-template<class Lock>
-Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock) {
-  // This covers both in progress and fully deleted objects.
-  if (lock->started_deleting()) {
-    return STATUS_EC_FORMAT(
-        NotFound, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "The object '$0.$1' does not exist", lock->namespace_id(), lock->name());
-  }
-  if (!lock->visible_to_client()) {
-    return STATUS_EC_FORMAT(
-        ServiceUnavailable, MasterError(MasterErrorPB::OBJECT_NOT_FOUND),
-        "The object '$0.$1' is not running", lock->namespace_id(), lock->name());
-  }
-  return Status::OK();
-}
-
-template<class Lock, class RespClass>
-Status CheckIfTableDeletedOrNotVisibleToClient(const Lock& lock, RespClass* resp) {
-  auto status = CheckIfTableDeletedOrNotVisibleToClient(lock);
-  if (!status.ok()) {
-    return SetupError(resp->mutable_error(), status);
-  }
-  return Status::OK();
-}
-
-#define VERIFY_NAMESPACE_FOUND(expr, resp) RESULT_CHECKER_HELPER( \
-    expr, \
-    if (!__result.ok()) { \
-        return SetupError((resp)->mutable_error(), __result.status()); \
-    });
 
 MasterErrorPB_Code NamespaceMasterError(SysNamespaceEntryPB_State state) {
   switch (state) {
@@ -1839,6 +1809,8 @@ bool CatalogManager::StartShutdown() {
 
   refresh_ysql_tablespace_info_task_.StartShutdown();
 
+  xcluster_parent_tablet_deletion_task_.StartShutdown();
+
   if (sys_catalog_) {
     sys_catalog_->StartShutdown();
   }
@@ -1850,6 +1822,7 @@ void CatalogManager::CompleteShutdown() {
   // Shutdown the Catalog Manager background thread (load balancing).
   refresh_yql_partitions_task_.CompleteShutdown();
   refresh_ysql_tablespace_info_task_.CompleteShutdown();
+  xcluster_parent_tablet_deletion_task_.CompleteShutdown();
 
   if (background_tasks_) {
     background_tasks_->Shutdown();
@@ -2381,7 +2354,7 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
             << yb::ToString(index_info);
   TRACE("Locking indexed table");
   auto l = DCHECK_NOTNULL(indexed_table)->LockForWrite();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Make sure that the index appears to not have been added to the table until the tservers apply
   // the alter and respond back.
@@ -2728,27 +2701,46 @@ Status CatalogManager::DoSplitTablet(
   std::array<PartitionPB, kNumSplitParts> new_tablets_partition = VERIFY_RESULT(
       CreateNewTabletsPartition(*source_tablet_info, split_partition_key));
 
-  std::array<TabletId, kNumSplitParts> new_tablet_ids;
+  std::array<TabletId, kNumSplitParts> new_tablet_ids_sorted;
   for (int i = 0; i < kNumSplitParts; ++i) {
-    if (i < source_tablet_lock->pb.split_tablet_ids_size()) {
-      // Post-split tablet `i` has been already registered.
-      new_tablet_ids[i] = source_tablet_lock->pb.split_tablet_ids(i);
-    } else {
+    TabletId child_tablet_id;
+    for (const auto& split_tablet_id : source_tablet_lock->pb.split_tablet_ids()) {
+      const auto child_tablet = VERIFY_RESULT(GetTabletInfo(split_tablet_id));
+      const auto child_partition = child_tablet->LockForRead()->pb.partition();
+      if (child_partition.partition_key_start() == new_tablets_partition[i].partition_key_start()) {
+        child_tablet_id = split_tablet_id;
+        break;
+      }
+    }
+
+    if (child_tablet_id.empty()) {
       auto new_tablet_info = VERIFY_RESULT(RegisterNewTabletForSplit(
           source_tablet_info.get(), new_tablets_partition[i],
           &source_table_lock, &source_tablet_lock));
 
-      new_tablet_ids[i] = new_tablet_info->id();
+      child_tablet_id = new_tablet_info->id();
     }
+
+    new_tablet_ids_sorted[i] = child_tablet_id;
   }
   source_tablet_lock.Commit();
   source_table_lock.Commit();
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_registering_split_children);
 
+  // Handle xCluster metadata updates for local splits. Handle after registration but before
+  // sending the split rpcs so that this is retried as part of the tablet split retry logic.
+  SplitTabletIds split_tablet_ids {
+    .source = source_tablet_info->tablet_id(),
+    .children = { new_tablet_ids_sorted[0], new_tablet_ids_sorted[1] }
+  };
+  RETURN_NOT_OK(tablet_split_manager_.ProcessSplitTabletResult(
+      source_tablet_info->table()->id(),
+      split_tablet_ids));
+
   // TODO(tsplit): what if source tablet will be deleted before or during TS leader is processing
   // split? Add unit-test.
   RETURN_NOT_OK(SendSplitTabletRequest(
-      source_tablet_info, new_tablet_ids, split_encoded_key, split_partition_key));
+      source_tablet_info, new_tablet_ids_sorted, split_encoded_key, split_partition_key));
 
   return Status::OK();
 }
@@ -2810,11 +2802,11 @@ Status CatalogManager::SplitTablet(
                    tserver::TabletServerErrorPB::TABLET_SPLIT_DISABLED_TTL_EXPIRY) {
           LOG(INFO) << "AsyncGetTabletSplitKey task failed for tablet " << tablet->tablet_id()
               << ". Tablet split not supported for tablets with TTL file expiration.";
-          tablet_split_manager()->MarkTtlTableForSplitIgnore(tablet->table()->id());
+          tablet_split_manager()->DisableSplittingForTtlTable(tablet->table()->id());
         } else if (tserver::TabletServerError(result.status()) ==
                    tserver::TabletServerErrorPB::TABLET_SPLIT_KEY_RANGE_TOO_SMALL) {
           LOG(INFO) << "Tablet key range is too small to split, disabling splitting temporarily.";
-          tablet_split_manager()->MarkSmallKeyRangeTabletForSplitIgnore(tablet->id());
+          tablet_split_manager()->DisableSplittingForSmallKeyRangeTablet(tablet->id());
         } else {
           LOG(WARNING) << "AsyncGetTabletSplitKey task failed with status: " << result.status();
         }
@@ -3329,7 +3321,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     }
 
     TRACE("Locking indexed table");
-    RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(indexed_table->LockForRead(), resp));
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(
+        indexed_table->LockForRead(), resp));
   }
 
   // Determine if this table should be colocated with its database.
@@ -3863,15 +3856,18 @@ Status CatalogManager::VerifyTablePgLayer(scoped_refptr<TableInfo> table, bool r
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const auto pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-  auto table_storage_id = GetPgsqlTableOid(table->id());
-  {
-    SharedLock lock(mutex_);
-    if (matview_pg_table_ids_map_.find(table->id()) != matview_pg_table_ids_map_.end()) {
-      table_storage_id = GetPgsqlTableOid(matview_pg_table_ids_map_[table->id()]);
-    }
+
+  auto entry_id = table->id();
+  auto relfilenode_id = TableId();
+
+  if (!table->matview_pg_table_id().empty()) {
+    relfilenode_id = entry_id;
+    entry_id = table->matview_pg_table_id();
   }
+
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, table_storage_id));
+      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlTableOid(entry_id),
+                                       relfilenode_id));
   auto l = table->LockForWrite();
   auto& metadata = table->mutable_metadata()->mutable_dirty()->pb;
 
@@ -4108,7 +4104,7 @@ Status CatalogManager::CreateTransactionStatusTableInternal(
     return STATUS_SUBSTITUTE(AlreadyPresent, "Table already exists: $0", table_name);
   }
 
-  LOG(INFO) << "Creating transaction status table " << table_name;
+  LOG(INFO) << "Creating transaction status table: " << table_name;
   // Set up a CreateTable request internally.
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
@@ -4211,7 +4207,7 @@ Status CatalogManager::GetGlobalTransactionStatusTablets(
   auto global_txn_table = VERIFY_RESULT(GetGlobalTransactionStatusTable());
 
   auto l = global_txn_table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   for (const auto& tablet : global_txn_table->GetTablets()) {
     TabletLocationsPB locs_pb;
@@ -4375,12 +4371,12 @@ Status CatalogManager::CreateMetricsSnapshotsTableIfNeeded(rpc::RpcContext *rpc)
 Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
   const auto& pb = l->pb;
 
   // 2. Verify if the create is in-progress.
-  TRACE("Verify if the table creation is in progress for $0", table->ToString());
   auto result = !table->IsCreateInProgress();
+  TRACE("Verify if the table creation is in progress for $0, $1", table->ToString(), result);
 
   // 3. Set any current errors, if we are experiencing issues creating the table. This will be
   // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
@@ -4634,6 +4630,13 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
     metadata->set_is_pg_shared_table(true);
   }
 
+  if (req.is_matview()) {
+    metadata->set_is_matview(true);
+    if (req.has_matview_pg_table_id()) {
+      metadata->set_matview_pg_table_id(req.matview_pg_table_id());
+    }
+  }
+
   return table;
 }
 
@@ -4804,14 +4807,40 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
 
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
   uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+
+  if (!table_info->matview_pg_table_id().empty()) {
+      table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->matview_pg_table_id()));
+  }
+
+  const uint32_t relnamespace_oid = VERIFY_RESULT(
+      sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
+  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
+}
+
+Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMap(
+    const TableInfoPtr& table_info) {
+  table_info->LockForRead();
+  RSTATUS_DCHECK_EQ(
+      table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
+      Format("Expected YSQL table, got: $0", table_info->GetTableType()));
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
+  uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
   {
     if (matview_pg_table_ids_map_.find(table_info->id()) != matview_pg_table_ids_map_.end()) {
       table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
     }
   }
-  const uint32_t relnamespace_oid = VERIFY_RESULT(
-      sys_catalog_->ReadPgClassRelnamespace(database_oid, table_oid));
-  return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
+  return sys_catalog_->ReadPgAttributeInfo(database_oid, table_oid);
+}
+
+Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
+    const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids) {
+  namespace_info->LockForRead();
+  RSTATUS_DCHECK_EQ(
+      namespace_info->database_type(), YQL_DATABASE_PGSQL, InternalError,
+      Format("Expected YSQL database, got: $0", namespace_info->database_type()));
+  const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(namespace_info->id()));
+  return sys_catalog_->ReadPgTypeInfo(database_oid, type_oids);
 }
 
 // Truncate a Table.
@@ -4845,7 +4874,7 @@ Status CatalogManager::TruncateTable(const TableId& table_id,
 
   TRACE(Substitute("Locking object with id $0", table_id));
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // Truncate on a colocated table should not hit master because it should be handled by a write
   // DML that creates a table-level tombstone.
@@ -4937,7 +4966,8 @@ Status CatalogManager::IsTruncateTableDone(const IsTruncateTableDoneRequestPB* r
   }
 
   TRACE("Locking table");
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
+  RETURN_NOT_OK(
+      CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(table->LockForRead(), resp));
 
   resp->set_done(!table->HasTasks(MonitoredTask::Type::ASYNC_TRUNCATE_TABLET));
   return Status::OK();
@@ -5279,6 +5309,9 @@ Status CatalogManager::DeleteTableInternal(
       }
     }
   }
+
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTable(
+      resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
   // because we keep track of the permissions based on the canonical resource name which is a
@@ -5687,6 +5720,21 @@ Status ApplyAlterSteps(server::Clock* clock,
         break;
       }
 
+      case AlterTableRequestPB::SET_COLUMN_PG_TYPE: {
+        if (!step.has_set_column_pg_type()) {
+          return STATUS(InvalidArgument, "SET_COLUMN_PG_TYPE missing column info");
+        }
+
+        RETURN_NOT_OK(builder.SetColumnPGType(
+            step.set_column_pg_type().name(), step.set_column_pg_type().pg_type_oid()));
+        ddl_log_entries->emplace_back(
+            time, table_id, current_pb,
+            Format(
+                "Set pg_type_oid for column $0 => $1", step.set_column_pg_type().name(),
+                step.set_column_pg_type().pg_type_oid()));
+        break;
+      }
+
         // TODO: EDIT_COLUMN.
 
       default: {
@@ -5750,7 +5798,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForWrite();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   bool has_changes = false;
   auto& table_pb = l.mutable_data()->pb;
@@ -5771,6 +5819,11 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     DCHECK_NE(next_col_id, 0);
     DCHECK_EQ(new_schema.find_column_by_id(next_col_id),
               static_cast<int>(Schema::kColumnNotFound));
+    has_changes = true;
+  }
+
+  if (req->has_pgschema_name()) {
+    new_schema.SetSchemaName(req->pgschema_name());
     has_changes = true;
   }
 
@@ -5931,7 +5984,7 @@ Status CatalogManager::IsAlterTableDone(const IsAlterTableDoneRequestPB* req,
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   // 2. Verify if the alter is in-progress.
   TRACE("Verify if there is an alter operation in progress for $0", table->ToString());
@@ -6025,7 +6078,7 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   TRACE("Locking table");
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   if (l->pb.has_fully_applied_schema()) {
     // An AlterTable is in progress; fully_applied_schema is the last
@@ -6035,6 +6088,26 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   } else {
     // There's no AlterTable, the regular schema is "fully applied".
     resp->mutable_schema()->CopyFrom(l->pb.schema());
+  }
+
+  // Due to pgschema_name being added after 2.13, older YSQL tables may not have this field.
+  // So backfill pgschema_name for older YSQL tables. Skip for some special cases.
+  if (l->table_type() == TableType::PGSQL_TABLE_TYPE &&
+      !resp->schema().has_pgschema_name() &&
+      !table->is_system() &&
+      !IsSequencesSystemTable(*table) &&
+      !table->IsColocationParentTable()) {
+    SharedLock lock(mutex_);
+    TRACE("Acquired catalog manager lock for schema name lookup");
+
+    auto pgschema_name = GetPgSchemaName(table);
+    if (!pgschema_name.ok() || pgschema_name->empty()) {
+      LOG(WARNING) << Format(
+          "Unable to find schema name for YSQL table $0.$1 due to error: $2",
+          table->namespace_name(), table->name(), pgschema_name.ToString());
+    } else {
+      resp->mutable_schema()->set_pgschema_name(*pgschema_name);
+    }
   }
 
   if (get_fully_applied_indexes && l->pb.has_fully_applied_schema()) {
@@ -6156,7 +6229,7 @@ Status CatalogManager::GetColocatedTabletSchema(const GetColocatedTabletSchemaRe
   {
     TRACE("Locking table");
     auto l = parent_colocated_table->LockForRead();
-    RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+    RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
   }
 
   if (!parent_colocated_table->colocated() || !parent_colocated_table->IsColocatedDbParentTable()) {
@@ -6223,6 +6296,7 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
   bool has_rel_filter = req->relation_type_filter_size() > 0;
   bool include_user_table = has_rel_filter ? false : true;
   bool include_user_index = has_rel_filter ? false : true;
+  bool include_user_matview = has_rel_filter ? false : true;
   bool include_system_table = req->exclude_system_tables() ? false
       : (has_rel_filter ? false : true);
 
@@ -6233,6 +6307,8 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
       include_user_table = true;
     } else if (relation == INDEX_TABLE_RELATION) {
       include_user_index = true;
+    } else if (relation == MATVIEW_TABLE_RELATION) {
+      include_user_matview = true;
     }
   }
 
@@ -6263,6 +6339,11 @@ Status CatalogManager::ListTables(const ListTablesRequestPB* req,
         continue;
       }
       relation_type = INDEX_TABLE_RELATION;
+    } else if (IsMatviewTable(table_info)) {
+      if (!include_user_matview) {
+        continue;
+      }
+      relation_type = MATVIEW_TABLE_RELATION;
     } else if (IsUserTableUnlocked(table_info)) {
       if (!include_user_table) {
         continue;
@@ -6462,6 +6543,10 @@ bool CatalogManager::IsSequencesSystemTable(const TableInfo& table) const {
     }
   }
   return false;
+}
+
+bool CatalogManager::IsMatviewTable(const TableInfo& table) const {
+  return table.GetTableType() == PGSQL_TABLE_TYPE && table.is_matview();
 }
 
 void CatalogManager::NotifyTabletDeleteFinished(const TabletServerId& tserver_uuid,
@@ -7010,6 +7095,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         .tablet_id = tablet_id,
         .info = tablet,
         .report = &report,
+        .tables = {}
       });
       // For colocated tablet, update all the tables that need processing.
       for (const auto& id_to_version : report.table_to_version()) {
@@ -7541,7 +7627,7 @@ Status CatalogManager::VerifyNamespacePgLayer(
   // Upon Transaction completion, check pg system table using OID to ensure SUCCESS.
   const auto pg_table_id = GetPgsqlTableId(atoi(kSystemNamespaceId), kPgDatabaseTableOid);
   auto entry_exists = VERIFY_RESULT(
-      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id())));
+      ysql_transaction_->PgEntryExists(pg_table_id, GetPgsqlDatabaseOid(ns->id()), TableId()));
   auto l = ns->LockForWrite();
   SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
 
@@ -8063,6 +8149,7 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
     id_list.push_back(table_and_lock.first->id());
   }
   RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(id_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
   for (auto &table_and_lock : tables) {
@@ -8544,24 +8631,37 @@ Status CatalogManager::ListUDTypes(const ListUDTypesRequestPB* req,
   return Status::OK();
 }
 
+void CatalogManager::DisableTabletSplittingInternal(
+    const MonoDelta& duration, const std::string& feature) {
+  tablet_split_manager_.DisableSplittingFor(duration, feature);
+}
+
 Status CatalogManager::DisableTabletSplitting(
     const DisableTabletSplittingRequestPB* req, DisableTabletSplittingResponsePB* resp,
     rpc::RpcContext* rpc) {
   const MonoDelta disable_duration = MonoDelta::FromMilliseconds(req->disable_duration_ms());
-  tablet_split_manager_.DisableSplittingFor(disable_duration);
+  DisableTabletSplittingInternal(disable_duration, req->feature_name());
   return Status::OK();
 }
 
 Status CatalogManager::IsTabletSplittingComplete(
     const IsTabletSplittingCompleteRequestPB* req, IsTabletSplittingCompleteResponsePB* resp,
     rpc::RpcContext* rpc) {
-  TableInfoMap table_info_map;
+  vector<TableInfoPtr> tables;
   {
     SharedLock lock(mutex_);
-    table_info_map = *table_ids_map_;
+    tables.reserve(table_ids_map_->size());
+    for (const auto& table : *table_ids_map_) {
+      tables.push_back(table.second);
+    }
   }
-  resp->set_is_tablet_splitting_complete(
-      tablet_split_manager_.IsTabletSplittingComplete(table_info_map));
+  for (const auto& table : tables) {
+    if (!tablet_split_manager_.IsTabletSplittingComplete(*table)) {
+      resp->set_is_tablet_splitting_complete(false);
+      return Status::OK();
+    }
+  }
+  resp->set_is_tablet_splitting_complete(true);
   return Status::OK();
 }
 
@@ -8574,6 +8674,13 @@ Status CatalogManager::DeleteCDCStreamsForTables(const vector<TableId>& table_id
   return Status::OK();
 }
 
+Status CatalogManager::DeleteCDCStreamsMetadataForTable(const TableId& table) {
+  return Status::OK();
+}
+
+Status CatalogManager::DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids) {
+  return Status::OK();
+}
 
 bool CatalogManager::CDCStreamExistsUnlocked(const CDCStreamId& stream_id) {
   return false;
@@ -8912,6 +9019,8 @@ Status CatalogManager::EnableBgTasks() {
   RETURN_NOT_OK(background_tasks_thread_pool_->SubmitFunc(
       [this]() { RebuildYQLSystemPartitions(); }));
 
+  xcluster_parent_tablet_deletion_task_.Bind(&master_->messenger()->scheduler());
+
   return Status::OK();
 }
 
@@ -9108,8 +9217,7 @@ Status CatalogManager::SendSplitTabletRequest(
   VLOG(2) << "Scheduling SplitTablet request to leader tserver for source tablet ID: "
           << tablet->tablet_id() << ", after-split tablet IDs: " << AsString(new_tablet_ids);
   auto call = std::make_shared<AsyncSplitTablet>(
-      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key,
-      &tablet_split_manager_);
+      master_, AsyncTaskPool(), tablet, new_tablet_ids, split_encoded_key, split_partition_key);
   tablet->table()->AddTask(call);
   return ScheduleTask(call);
 }
@@ -9174,77 +9282,112 @@ Status CatalogManager::DeleteTabletListAndSendRequests(
     TabletInfo::WriteLock lock;
     HideOnly hide_only;
   };
-  std::vector<TabletData> tablets_data;
-  tablets_data.reserve(tablets.size());
-  std::vector<TabletInfo*> tablet_infos;
-  tablet_infos.reserve(tablets_data.size());
+
   std::vector<TabletInfoPtr> marked_as_hidden;
-
-  // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
   {
-    SharedLock read_lock(mutex_);
-    for (const auto& tablet : tablets) {
-      tablets_data.push_back(TabletData {
-        .tablet = tablet,
-        .lock = tablet->LockForWrite(),
-        // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
-        .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
-      });
-      if (!tablets_data.back().hide_only) {
-        // Also check if this tablet is part of a cdc stream and is not already hidden. If this is
-        // a cdc stream producer and is already hidden, then we should delete this tablet.
-        tablets_data.back().hide_only = HideOnly(
-            IsTableCdcProducer(*tablet->table()) && !tablets_data.back().lock->ListedAsHidden());
+    std::vector<TabletData> tablets_data;
+    tablets_data.reserve(tablets.size());
+    std::vector<TabletInfo*> tablet_infos;
+    tablet_infos.reserve(tablets_data.size());
+
+    // Grab tablets and tablet write locks. The list should already be in tablet_id sorted order.
+    {
+      SharedLock read_lock(mutex_);
+      for (const auto& tablet : tablets) {
+        tablets_data.push_back(TabletData {
+          .tablet = tablet,
+          .lock = tablet->LockForWrite(),
+          // Hide tablet if it is retained by snapshot schedule, or is part of a cdc stream.
+          .hide_only = HideOnly(!retained_by_snapshot_schedules.empty()),
+        });
+
+        if (!tablets_data.back().hide_only && IsTableCdcProducer(*tablet->table())) {
+          // For xCluster, the only time we try to delete a tablet that is part of an active stream
+          // is during tablet splitting, where we need to keep the parent tablet around until we
+          // have replicated its SPLIT_OP record.
+
+          // There are a few cases to handle here:
+          // 1. This tablet is not yet hidden, and so this is the first time we are hiding it. Hide
+          //    the tablet and also add it to retained_by_xcluster_ so that it stays hidden.
+          // 2. The tablet is hidden and part of retained_by_xcluster_. Keep this tablet hidden.
+          // 3. This tablet is hidden but not part of retained_by_xcluster_. This means that the
+          //    bg task DoProcessXClusterParentTabletDeletion processed it and found that all
+          //    streams for this tablet have replicated the split record. We can now delete it as
+          //    long as it isn't being kept by a snapshot schedule.
+          if (!tablets_data.back().lock->ListedAsHidden() ||
+              retained_by_xcluster_.contains(tablet->id())) {
+            tablets_data.back().hide_only = HideOnly(true);
+          }
+        }
+
+        tablet_infos.emplace_back(tablet.get());
       }
-
-      tablet_infos.emplace_back(tablet.get());
     }
-  }
 
-  // Use the same hybrid time for all hidden tablets.
-  HybridTime hide_hybrid_time = master_->clock()->Now();
+    // Use the same hybrid time for all hidden tablets.
+    HybridTime hide_hybrid_time = master_->clock()->Now();
 
-  // Mark the tablets as deleted.
-  for (auto& tablet_data : tablets_data) {
-    auto& tablet = tablet_data.tablet;
-    auto& tablet_lock = tablet_data.lock;
+    // Mark the tablets as deleted.
+    for (auto& tablet_data : tablets_data) {
+      auto& tablet = tablet_data.tablet;
+      auto& tablet_lock = tablet_data.lock;
 
-    bool was_hidden = tablet_lock->ListedAsHidden();
-    // Inactive tablet now, so remove it from partitions_.
-    // After all the tablets have been deleted from the tservers, we remove it from tablets_.
-    tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
+      bool was_hidden = tablet_lock->ListedAsHidden();
+      // Inactive tablet now, so remove it from partitions_.
+      // After all the tablets have been deleted from the tservers, we remove it from tablets_.
+      tablet->table()->RemoveTablet(tablet->id(), DeactivateOnly::kTrue);
 
-    if (tablet_data.hide_only) {
-      LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
-      tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
-      *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
-          retained_by_snapshot_schedules;
-    } else {
-      LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
-      tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      if (tablet_data.hide_only) {
+        LOG(INFO) << "Hiding tablet " << tablet->tablet_id();
+        tablet_lock.mutable_data()->pb.set_hide_hybrid_time(hide_hybrid_time.ToUint64());
+        *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
+            retained_by_snapshot_schedules;
+      } else {
+        LOG(INFO) << "Deleting tablet " << tablet->tablet_id();
+        tablet_lock.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
+      }
+      if (tablet_lock->ListedAsHidden() && !was_hidden) {
+        marked_as_hidden.push_back(tablet);
+      }
     }
-    if (tablet_lock->ListedAsHidden() && !was_hidden) {
-      marked_as_hidden.push_back(tablet);
+
+    // Update all the tablet states in raft in bulk.
+    RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_infos));
+
+    // Commit the change.
+    for (auto& tablet_data : tablets_data) {
+      auto& tablet = tablet_data.tablet;
+      auto& tablet_lock = tablet_data.lock;
+
+      tablet_lock.Commit();
+      LOG(INFO) << (tablet_data.hide_only ? "Hid" : "Deleted") << " tablet " << tablet->tablet_id();
+
+      DeleteTabletReplicas(tablet.get(), deletion_msg, tablet_data.hide_only);
     }
-  }
-
-  // Update all the tablet states in raft in bulk.
-  RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_infos));
-
-  // Commit the change.
-  for (auto& tablet_data : tablets_data) {
-    auto& tablet = tablet_data.tablet;
-    auto& tablet_lock = tablet_data.lock;
-
-    tablet_lock.Commit();
-    LOG(INFO) << (tablet_data.hide_only ? "Hid tablet " : "Deleted tablet ") << tablet->tablet_id();
-
-    DeleteTabletReplicas(tablet.get(), deletion_msg, tablet_data.hide_only);
   }
 
   if (!marked_as_hidden.empty()) {
     LockGuard lock(mutex_);
     hidden_tablets_.insert(hidden_tablets_.end(), marked_as_hidden.begin(), marked_as_hidden.end());
+    // Also keep track of all tablets that were hid due to xCluster.
+    for (const auto& tablet : marked_as_hidden) {
+      if (IsTableCdcProducer(*tablet->table()) ) {
+        auto tablet_lock = tablet->LockForRead();
+        const auto& children = tablet_lock->pb.split_tablet_ids();
+        if (children.size() < 2) {
+          // We are hiding this tablet for PITR and not for xCluster.
+          continue;
+        }
+        HiddenReplicationParentTabletInfo info {
+          .table_id_ = tablet->table()->id(),
+          .parent_tablet_id_ = tablet_lock->pb.has_split_parent_tablet_id()
+                             ? tablet_lock->pb.split_parent_tablet_id()
+                             : "",
+          .split_tablets_ = {children.Get(0), children.Get(1)}
+        };
+        retained_by_xcluster_.emplace(tablet->id(), info);
+      }
+    }
   }
 
   return Status::OK();
@@ -10176,7 +10319,7 @@ Status CatalogManager::GetTableLocations(
   }
 
   auto l = table->LockForRead();
-  RETURN_NOT_OK(CheckIfTableDeletedOrNotVisibleToClient(l, resp));
+  RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l, resp));
 
   vector<scoped_refptr<TabletInfo>> tablets;
   table->GetTabletsInRange(req, &tablets);
@@ -11174,6 +11317,13 @@ Status CatalogManager::TryRemoveFromTablegroup(const TableId& table_id) {
   if (tablegroup) {
     RETURN_NOT_OK(tablegroup->RemoveChildTable(table_id));
   }
+  return Status::OK();
+}
+
+Status CatalogManager::CheckIfPitrActive(
+    const CheckIfPitrActiveRequestPB* req, CheckIfPitrActiveResponsePB* resp) {
+  LOG(INFO) << "Servicing CheckIfPitrActive request";
+  resp->set_is_pitr_active(IsPitrActive());
   return Status::OK();
 }
 

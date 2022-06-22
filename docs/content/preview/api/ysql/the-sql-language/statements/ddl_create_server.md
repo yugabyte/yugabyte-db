@@ -13,7 +13,7 @@ showAsideToc: true
 
 ## Synopsis
 
-Use the `CREATE SERVER` command to create a foreign table. 
+Use the `CREATE SERVER` command to create a foreign table.
 
 ## Syntax
 
@@ -34,10 +34,10 @@ Use the `CREATE SERVER` command to create a foreign table.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_server.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_server.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_server.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_server.diagram.md" %}}
   </div>
 </div>
 
@@ -56,7 +56,7 @@ The `VERSION` clause can be optionally used to specify the server version.
 The `FOREIGN DATA WRAPPER` clause can be used to specify the name of the foreign-data wrapper.
 
 ### Options:
-The `OPTIONS` clause specifies options for the foreign server. They typically define the connection details of the server, but the actual permitted option names and values are specific to the server’s foreign data wrapper. 
+The `OPTIONS` clause specifies options for the foreign server. They typically define the connection details of the server, but the actual permitted option names and values are specific to the server’s foreign data wrapper.
 
 ## Examples
 

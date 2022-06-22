@@ -587,8 +587,6 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 
-  boost::optional<yb::client::AsyncClientInitialiser> async_client_init_;
-
   TabletPeers shutting_down_peers_;
 
   std::shared_ptr<TabletMemoryManager> mem_manager_;
@@ -596,6 +594,12 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   std::unordered_set<std::string> bootstrap_source_addresses_;
 
   std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
+
+  // Gauge to monitor applied split operations.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
+
+  // Gauge to monitor post-split compactions that have been started.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_compaction_added_;
 
   mutable simple_spinlock snapshot_schedule_allowed_history_cutoff_mutex_;
   std::unordered_map<SnapshotScheduleId, HybridTime, SnapshotScheduleIdHash>

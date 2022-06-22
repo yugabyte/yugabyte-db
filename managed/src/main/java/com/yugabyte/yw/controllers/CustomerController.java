@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.AlertingFormData;
@@ -39,6 +40,8 @@ import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.models.Alert;
@@ -46,12 +49,12 @@ import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.AlertFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -95,6 +98,8 @@ public class CustomerController extends AuthenticatedController {
   @Inject private CloudQueryHelper cloudQueryHelper;
 
   @Inject private AlertConfigurationService alertConfigurationService;
+
+  @Inject private CustomerConfigService customerConfigService;
 
   private static boolean checkNonNullMountRoots(NodeDetails n) {
     return n.cloudInfo != null
@@ -192,15 +197,16 @@ public class CustomerController extends AuthenticatedController {
             alertingFormData.alertingData.activeAlertNotificationIntervalMs;
         long oldActiveAlertNotificationPeriod = 0;
         if (config == null) {
-          CustomerConfig.createAlertConfig(
-              customerUUID, Json.toJson(alertingFormData.alertingData));
+          customerConfigService.create(
+              CustomerConfig.createAlertConfig(
+                  customerUUID, Json.toJson(alertingFormData.alertingData)));
         } else {
           AlertingData oldData = Json.fromJson(config.getData(), AlertingData.class);
           if (oldData != null) {
             oldActiveAlertNotificationPeriod = oldData.activeAlertNotificationIntervalMs;
           }
           config.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.alertingData));
-          config.update();
+          customerConfigService.edit(config);
         }
 
         if (activeAlertNotificationPeriod != oldActiveAlertNotificationPeriod) {
@@ -246,10 +252,11 @@ public class CustomerController extends AuthenticatedController {
 
       CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
       if (smtpConfig == null && alertingFormData.smtpData != null) {
-        CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData));
+        customerConfigService.create(
+            CustomerConfig.createSmtpConfig(customerUUID, Json.toJson(alertingFormData.smtpData)));
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
-        smtpConfig.update();
+        customerConfigService.edit(smtpConfig);
       } // In case we want to reset the smtpData and use the default mailing server.
       else if (request.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
@@ -476,6 +483,9 @@ public class CustomerController extends AuthenticatedController {
     if (params.containsKey("tableName")) {
       filterJson.put("table_name", params.remove("tableName"));
     }
+    if (params.containsKey("tableId")) {
+      filterJson.put("table_id", params.remove("tableId"));
+    }
     if (params.containsKey("xClusterConfigUuid")) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(UUID.fromString(params.remove("xClusterConfigUuid")));
@@ -511,19 +521,22 @@ public class CustomerController extends AuthenticatedController {
     // We need to figure out the correct namespace for each AZ.  We do
     // that by getting the the universe's provider and then go through
     // the azConfigs.
-    // TODO: account for readonly replicas when we support them for
-    // Kubernetes providers.
-    Provider provider =
-        Provider.get(
-            UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
     List<String> namespaces = new ArrayList<>();
-    boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
 
-    for (Region r : Region.getByProvider(provider.uuid)) {
-      for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
-        namespaces.add(
-            PlacementInfoUtil.getKubernetesNamespace(
-                isMultiAZ, nodePrefix, az.code, az.getUnmaskedConfig(), newNamingStyle));
+    for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      for (Region r : Region.getByProvider(provider.uuid)) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+          boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+          namespaces.add(
+              PlacementInfoUtil.getKubernetesNamespace(
+                  isMultiAZ,
+                  nodePrefix,
+                  az.code,
+                  az.getUnmaskedConfig(),
+                  newNamingStyle,
+                  cluster.clusterType == ClusterType.ASYNC));
+        }
       }
     }
 

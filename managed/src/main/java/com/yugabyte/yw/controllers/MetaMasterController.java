@@ -156,7 +156,8 @@ public class MetaMasterController extends Controller {
                 universeDetails.nodePrefix,
                 azName,
                 config,
-                universeDetails.useNewHelmNamingStyle);
+                universeDetails.useNewHelmNamingStyle,
+                false);
 
         String ip =
             kubernetesManagerFactory

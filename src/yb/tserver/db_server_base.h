@@ -35,19 +35,33 @@ class DbServerBase : public server::RpcAndWebServerBase {
 
   int GetSharedMemoryFd();
 
-  client::TransactionManager* TransactionManager();
+  client::TransactionManager& TransactionManager();
 
-  client::TransactionPool* TransactionPool();
+  client::TransactionPool& TransactionPool();
 
-  virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
+  virtual MonoDelta default_client_timeout() = 0;
+  virtual const std::string& permanent_uuid() const = 0;
+  virtual void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) = 0;
 
   virtual client::LocalTabletFilter CreateLocalTabletFilter() = 0;
 
+  const std::shared_future<client::YBClient*>& client_future() const;
+
   tserver::TServerSharedData& shared_object();
 
+  Status Init() override;
+
+  Status Start() override;
+
+  void Shutdown() override;
+
  protected:
+  void EnsureTransactionPoolCreated();
+
   // Shared memory owned by the tablet server.
   std::unique_ptr<tserver::TServerSharedObject> shared_object_;
+
+  std::unique_ptr<client::AsyncClientInitialiser> async_client_init_;
 
   std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
   std::atomic<client::TransactionManager*> transaction_manager_{nullptr};

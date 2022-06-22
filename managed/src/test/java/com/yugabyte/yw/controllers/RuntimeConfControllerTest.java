@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -261,7 +262,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     final String actualValue =
         internal_getConfig_universe_inherited(
             scopeType, presetIntervalValue, scopeUUID, GC_CHECK_INTERVAL_KEY);
-    compareToExpectedValue(expectedIntervalValue, actualValue, "\"1 hour\"");
+    compareToExpectedValue(expectedIntervalValue, actualValue, "1 hour");
   }
 
   // Same test as above except the config is set as external Script object with retention  key
@@ -279,7 +280,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         internal_getConfig_universe_inherited(
             scopeType, presetIntervalValue, scopeUUID, EXT_SCRIPT_KEY);
     final Config configObj = ConfigFactory.parseString(actualObjValue);
-    compareToExpectedValue(expectedIntervalValue, configObj.getValue("schedule").render(), "\"\"");
+    String expectedValue = null;
+    if (configObj.hasPath("schedule")) {
+      expectedValue = configObj.getValue("schedule").render();
+    }
+    compareToExpectedValue(expectedIntervalValue, expectedValue, null);
   }
 
   private String internal_getConfig_universe_inherited(
@@ -311,7 +316,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   private void compareToExpectedValue(
       String presetIntervalValue, String value, String defaultValue) {
-    if (presetIntervalValue.isEmpty()) {
+    if (StringUtils.isEmpty(presetIntervalValue)) {
       assertEquals(defaultValue, value);
     } else {
       assertEquals(presetIntervalValue, value);
@@ -338,26 +343,45 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
       new Object[] {ScopeType.CUSTOMER, "", ""},
       new Object[] {ScopeType.PROVIDER, "", ""},
       new Object[] {ScopeType.UNIVERSE, "", ""},
-      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
-      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
-      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},
-      // Set without escape quotes should be allowed for string objects backward compatibility
-      // We will Json stringify response for proper escaping during "GET"
-      new Object[] {ScopeType.UNIVERSE, "11\"", "\"11\\\"\""},
+      // We will return any strings as unquoted even if they were set as quoted
+      new Object[] {ScopeType.GLOBAL, "\"33 days\"", "33 days"},
+      new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "44 seconds"},
+      new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "22 hours"},
+      // Set without quotes should be allowed for string objects backward compatibility
+      // Even when set with quotes we will return string without redundant quotes.
+      // But we will do proper escaping for special characters
+      new Object[] {ScopeType.UNIVERSE, "11\"", "11\\\""},
     };
   }
 
   public Object[] scopeAndPresetParamsObj() {
     return new Object[] {
-      new Object[] {ScopeType.GLOBAL, "", ""},
-      new Object[] {ScopeType.CUSTOMER, "", ""},
-      new Object[] {ScopeType.PROVIDER, "", ""},
-      new Object[] {ScopeType.UNIVERSE, "", ""},
+      new Object[] {ScopeType.GLOBAL, "", null},
+      new Object[] {ScopeType.CUSTOMER, "", null},
+      new Object[] {ScopeType.PROVIDER, "", null},
+      new Object[] {ScopeType.UNIVERSE, "", null},
       new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
       new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
       new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},
       // Set without escape quotes should not be allowed within a json object
       new Object[] {ScopeType.UNIVERSE, "\"11\\\"\"", "\"11\\\"\""},
     };
+  }
+
+  @Test
+  public void configResolution() {
+    RuntimeConfigFactory runtimeConfigFactory =
+        app.injector().instanceOf(RuntimeConfigFactory.class);
+    assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+    setCloudEnabled(defaultUniverse.universeUUID);
+    assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean("yb.upgrade.vmImage"));
+  }
+
+  private void setCloudEnabled(UUID scopeUUID) {
+    Http.RequestBuilder request =
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, "yb.cloud.enabled"))
+            .header("X-AUTH-TOKEN", authToken)
+            .bodyText("true");
+    route(app, request);
   }
 }

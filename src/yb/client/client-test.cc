@@ -2487,7 +2487,7 @@ TEST_F(ClientTest, BadMasterAddress) {
     opts.SetMasterAddresses(master_addr);
 
     AsyncClientInitialiser async_init(
-        "test-client", /* num_reactors= */ 1, /* timeout_seconds= */ 1, "UUID", &opts,
+        "test-client", /* timeout= */ 1s, "UUID", &opts,
         /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
     async_init.Start();
     async_init.get_client_future().wait_for(1s);

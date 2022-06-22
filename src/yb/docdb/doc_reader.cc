@@ -179,7 +179,8 @@ void DocDBTableReader::SetTableTtl(const Schema& table_schema) {
 }
 
 Status DocDBTableReader::UpdateTableTombstoneTime(const Slice& root_doc_key) {
-  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId) {
+  if (root_doc_key[0] == KeyEntryTypeAsChar::kColocationId ||
+      root_doc_key[0] == KeyEntryTypeAsChar::kTableId) {
     // Update table_tombstone_time based on what is written to RocksDB if its not already set.
     // Otherwise, just accept its value.
     // TODO -- this is a bit of a hack to allow DocRowwiseIterator to pass along the table tombstone
@@ -244,6 +245,7 @@ class DocDBTableReader::GetHelper {
       .key_entry = KeyBytes(),
       .write_time = DocHybridTime(),
       .expiration = reader_.table_expiration_,
+      .key_value = {},
       .out = &result_,
     });
   }
@@ -322,7 +324,8 @@ class DocDBTableReader::GetHelper {
   Result<bool> HandleRecord(CheckExistOnly check_exist_only) {
     auto key_result = VERIFY_RESULT(reader_.iter_->FetchKey());
     VLOG_WITH_PREFIX_AND_FUNC(4)
-        << "Key: " << SubDocKey::DebugSliceToString(key_result.key) << ", "
+        << "check_exist_only: " << check_exist_only << ", key: "
+        << SubDocKey::DebugSliceToString(key_result.key) << ", write time: "
         << key_result.write_time << ", value: " << reader_.iter_->value().ToDebugHexString();
     DCHECK(key_result.key.starts_with(root_doc_key_));
     auto subkeys = key_result.key.WithoutPrefix(root_doc_key_.size());
@@ -384,7 +387,7 @@ class DocDBTableReader::GetHelper {
       CheckExistOnly check_exist_only) {
     subkeys = CleanupState(subkeys);
     if (state_.back().write_time >= write_time) {
-      VLOG_WITH_FUNC(4)
+      VLOG_WITH_PREFIX_AND_FUNC(4)
           << "State: " << AsString(state_) << ", write_time: " << write_time;
       return Status::OK();
     }
@@ -534,9 +537,11 @@ class DocDBTableReader::GetHelper {
 
     auto slice = schema_packing_->GetValue(column_id, packed_row_.AsSlice());
     if (!slice) {
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "No packed row data";
       return PackedColumnData();
     }
 
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Packed row: " << slice->ToDebugHexString();
     return PackedColumnData {
       .row = &packed_row_data_,
       .encoded_value = slice->empty() ? NullSlice() : *slice,

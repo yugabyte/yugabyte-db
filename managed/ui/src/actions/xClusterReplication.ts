@@ -85,11 +85,11 @@ export function queryLagMetricsForUniverse(
   return axios.post(`${ROOT_URL}/customers/${customerUUID}/metrics`, DEFAULT_GRAPH_FILTER);
 }
 
-export function queryLagMetricsForTable(tableName: string, nodePrefix: string | undefined) {
+export function queryLagMetricsForTable(tableId: string, nodePrefix: string | undefined) {
   const DEFAULT_GRAPH_FILTER = {
     start: moment().utc().subtract('1', 'hour').format('X'),
     end: moment().utc().format('X'),
-    tableName,
+    tableId,
     nodePrefix,
     metrics: ['tserver_async_replication_lag_micros']
   };

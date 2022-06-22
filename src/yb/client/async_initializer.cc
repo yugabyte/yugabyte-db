@@ -31,15 +31,13 @@ namespace yb {
 namespace client {
 
 AsyncClientInitialiser::AsyncClientInitialiser(
-    const std::string& client_name, const uint32_t num_reactors, const uint32_t timeout_seconds,
-    const std::string& tserver_uuid, const yb::server::ServerBaseOptions* opts,
-    scoped_refptr<MetricEntity> metric_entity,
-    const std::shared_ptr<MemTracker>& parent_mem_tracker,
-    rpc::Messenger* messenger)
+    const std::string& client_name, MonoDelta default_timeout, const std::string& tserver_uuid,
+    const yb::server::ServerBaseOptions* opts, scoped_refptr<MetricEntity> metric_entity,
+    const std::shared_ptr<MemTracker>& parent_mem_tracker, rpc::Messenger* messenger)
     : client_builder_(std::make_unique<YBClientBuilder>()), messenger_(messenger),
       client_future_(client_promise_.get_future()) {
   client_builder_->set_client_name(client_name);
-  client_builder_->default_rpc_timeout(MonoDelta::FromSeconds(timeout_seconds));
+  client_builder_->default_rpc_timeout(default_timeout);
   // Client does not care about master replication factor, it only needs endpoint of master leader.
   // So we put all known master addresses to speed up leader resolution.
   std::vector<std::string> master_addresses;
@@ -53,9 +51,6 @@ AsyncClientInitialiser::AsyncClientInitialiser(
   client_builder_->set_skip_master_leader_resolution(
       master_addresses.size() == 1 && !FLAGS_TEST_force_master_leader_resolution);
   client_builder_->set_metric_entity(metric_entity);
-  if (num_reactors > 0) {
-    client_builder_->set_num_reactors(num_reactors);
-  }
   client_builder_->set_parent_mem_tracker(parent_mem_tracker);
 
   // Build cloud_info_pb.

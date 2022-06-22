@@ -5,7 +5,7 @@ import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
-import com.yugabyte.yw.cloud.AWSInitializer;
+import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
@@ -165,8 +165,7 @@ public class AppInit {
 
       replicationManager.init();
 
-      scheduler.resetRunningStatus();
-      scheduler.start();
+      scheduler.init();
       callHome.start();
       queryAlerts.start();
       healthChecker.initialize();

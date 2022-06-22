@@ -34,10 +34,10 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" %}}
   </div>
 </div>
 

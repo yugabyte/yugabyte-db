@@ -150,7 +150,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       }
     }
 
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi);
+    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi, false);
 
     KubernetesPlacement placement = new KubernetesPlacement(pi);
 

@@ -21,6 +21,12 @@
 
 #include "yb/integration-tests/backfill-test-util.h"
 
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_error.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/format.h"
@@ -207,6 +213,50 @@ void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
 // Make sure that backfill works.
 TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Simple)) {
   TestSimpleBackfill();
+}
+
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(WaitForSplitsToComplete)) {
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  constexpr int kTimeoutSec = 3;
+  constexpr int kNumRows = 1000;
+  // Use 1 tablet so we guarantee we have a middle key to split by.
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int) SPLIT INTO 1 TABLETS", kTableName));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES (generate_series(1, $1))", kTableName, kNumRows));
+
+  const TabletId tablet_to_split = ASSERT_RESULT(GetSingleTabletId(kTableName));
+  // Flush the data to generate SST files that can be split.
+  const std::string table_id = ASSERT_RESULT(GetTableIdByTableName(
+      client.get(), kDatabaseName, kTableName));
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSec,
+      false /* is_compaction */));
+
+  // Create a split that will not complete until we set the test flag to true.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "true"));
+  auto proxy = cluster_->GetLeaderMasterProxy<master::MasterAdminProxy>();
+  master::SplitTabletRequestPB req;
+  req.set_tablet_id(tablet_to_split);
+  master::SplitTabletResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(30s * kTimeMultiplier);
+  rpc::RpcController controller;
+  ASSERT_OK(proxy.SplitTablet(req, &resp, &controller));
+
+  // The create index should fail while there is an ongoing split.
+  auto status = conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName);
+  ASSERT_TRUE(status.message().ToBuffer().find("failed") != std::string::npos);
+
+  // Drop the index since we don't automatically clean it up.
+  ASSERT_OK(conn_->ExecuteFormat("DROP INDEX $0", kIndexName));
+  // Allow the split to complete. We intentionally do not wait for the split to complete before
+  // trying to create the index again, to validate that in a normal case (in which we don't have
+  // a split that is stuck), the timeout on FLAGS_index_backfill_tablet_split_completion_timeout_sec
+  // is large enough to allow for splits to complete.
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_pause_tserver_get_split_key", "false"));
+  ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
 }
 
 // Make sure that partial indexes work for index backfill.
@@ -799,16 +849,13 @@ TEST_F_EX(PgIndexBackfillTest,
 
   LOG(INFO) << "backfill table on " << this->kAuthDbName << " database";
   {
-    const std::string& host = pg_ts->bind_host();
-    const uint16_t port = pg_ts->pgsql_rpc_port();
-
-    PGConn auth_conn = ASSERT_RESULT(ConnectUsingString(Format(
-        "user=$0 password=$1 host=$2 port=$3 dbname=$4",
-        "yugabyte",
-        "yugabyte",
-        host,
-        port,
-        this->kAuthDbName)));
+    auto auth_conn = ASSERT_RESULT(PGConnBuilder({
+        .host = pg_ts->bind_host(),
+        .port = pg_ts->pgsql_rpc_port(),
+        .dbname = this->kAuthDbName,
+        .user = "yugabyte",
+        .password = "yugabyte"
+    }).Connect());
     ASSERT_OK(auth_conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
     ASSERT_OK(auth_conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
   }
@@ -1503,9 +1550,11 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Create connection to the same tablet server as the one running CREATE INDEX";
   PGConn same_ts_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   LOG(INFO) << "Create connection to a different tablet server from the one running CREATE INDEX";
-  PGConn diff_ts_conn = ASSERT_RESULT(PGConn::Connect(
-      HostPort(diff_ts->bind_host(), diff_ts->pgsql_rpc_port()),
-      kDatabaseName));
+  PGConn diff_ts_conn = ASSERT_RESULT(PGConnBuilder({
+    .host = diff_ts->bind_host(),
+    .port = diff_ts->pgsql_rpc_port(),
+    .dbname = kDatabaseName
+  }).Connect());
 
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1)", kTableName));

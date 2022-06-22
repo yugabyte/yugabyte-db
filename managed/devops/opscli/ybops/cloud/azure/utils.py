@@ -315,6 +315,7 @@ class AzureCloudAdmin():
         self.credentials = get_credentials()
         self.compute_client = ComputeManagementClient(self.credentials, SUBSCRIPTION_ID)
         self.network_client = NetworkManagementClient(self.credentials, SUBSCRIPTION_ID)
+
         self.dns_client = None
 
     def network(self, per_region_meta={}):
@@ -864,3 +865,22 @@ class AzureCloudAdmin():
         if it's not given in Resource ID format.
         """
         return self._get_dns_zone_info_long(dns_zone_id)[:2]
+
+    def get_vm_status(self, vm_name):
+        return (
+            self.compute_client.virtual_machines.get(RESOURCE_GROUP,
+                                                     vm_name,
+                                                     expand='instanceView')
+            .instance_view.statuses[1].display_status
+        )
+
+    def deallocate_instance(self, vm_name):
+        async_vm_deallocate = self.compute_client.virtual_machines.deallocate(RESOURCE_GROUP,
+                                                                              vm_name)
+        async_vm_deallocate.wait()
+        return async_vm_deallocate.result()
+
+    def start_instance(self, vm_name):
+        async_vm_start = self.compute_client.virtual_machines.start(RESOURCE_GROUP, vm_name)
+        async_vm_start.wait()
+        return async_vm_start.result()

@@ -703,9 +703,17 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 	if (IsYugaByteEnabled() && relpersistence != RELPERSISTENCE_TEMP)
 	{
 		CreateStmt *dummyStmt = makeNode(CreateStmt);
-		dummyStmt->relation = makeRangeVar(NULL, NewHeapName, -1);
-		YBCCreateTable(dummyStmt, RELKIND_RELATION, OldHeapDesc, OIDNewHeap, namespaceid,
-					   InvalidOid, InvalidOid, NewTableSpace, OIDOldHeap);
+		dummyStmt->relation   = makeRangeVar(NULL, NewHeapName, -1);
+		char relkind          = RELKIND_RELATION;
+		Oid matviewPgTableId  = InvalidOid;
+
+		if (OldHeap->rd_rel->relkind == RELKIND_MATVIEW) {
+			relkind = RELKIND_MATVIEW;
+			matviewPgTableId = OIDOldHeap;
+		}
+
+		YBCCreateTable(dummyStmt, relkind, OldHeapDesc, OIDNewHeap, namespaceid,
+					   InvalidOid, InvalidOid, NewTableSpace, matviewPgTableId);
 	}
 
 	ReleaseSysCache(tuple);
@@ -1597,6 +1605,13 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_UNLOGGED;
 	else if (newrelpersistence == RELPERSISTENCE_PERMANENT)
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_PERMANENT;
+
+	/*
+	 * For YB materialized views, we need to drop and create the index instead
+	 * of reindexing the same index.
+	 */
+	if (IsYBRelationById(OIDOldHeap))
+		reindex_flags |= REINDEX_REL_YB_DROP_AND_CREATE;
 
 	reindex_relation(OIDOldHeap, reindex_flags, 0);
 

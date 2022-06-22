@@ -2,30 +2,28 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
+import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
 import com.yugabyte.yw.forms.PlatformResults;
-import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
-import com.yugabyte.yw.commissioner.tasks.DeleteCustomerConfig;
-import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Inject;
@@ -48,8 +46,6 @@ public class CustomerConfigController extends AuthenticatedController {
 
   @Inject Commissioner commissioner;
 
-  @Inject CustomerConfigValidator configValidator;
-
   @ApiOperation(
       value = "Create a customer configuration",
       response = CustomerConfig.class,
@@ -59,7 +55,7 @@ public class CustomerConfigController extends AuthenticatedController {
         name = "Config",
         value = "Configuration data to be created",
         required = true,
-        dataType = "com.yugabyte.yw.models.CustomerConfig",
+        dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
   public Result create(UUID customerUUID) {
@@ -192,7 +188,7 @@ public class CustomerConfigController extends AuthenticatedController {
         name = "Config",
         value = "Configuration data to be updated",
         required = true,
-        dataType = "com.yugabyte.yw.models.CustomerConfig",
+        dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
   public Result edit(UUID customerUUID, UUID configUUID) {
@@ -224,7 +220,7 @@ public class CustomerConfigController extends AuthenticatedController {
         name = "Config",
         value = "Configuration data to be updated",
         required = true,
-        dataType = "com.yugabyte.yw.models.CustomerConfig",
+        dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
   public Result editYb(UUID customerUUID, UUID configUUID) {

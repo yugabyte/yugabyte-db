@@ -38,8 +38,10 @@ option java_package = "org.yb.cdc";
 import "yb/common/common_net.proto";
 
 message ProducerTabletListPB {
-  // List of tablet ids for a given producer table.
+  // List of tablet ids, start and end keys for a given producer table.
   repeated string tablets = 1;
+  repeated bytes start_key = 2;
+  repeated bytes end_key = 3;
 }
 
 message StreamEntryPB {
@@ -47,7 +49,7 @@ message StreamEntryPB {
   map<string, ProducerTabletListPB> consumer_producer_tablet_map = 1;
   string consumer_table_id = 2;
   string producer_table_id = 3;
-  bool same_num_producer_consumer_tablets = 4;
+  bool local_tserver_optimized = 4;
 }
 
 message ProducerEntryPB {

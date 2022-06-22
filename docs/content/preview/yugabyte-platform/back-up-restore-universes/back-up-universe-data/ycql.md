@@ -32,22 +32,42 @@ showAsideToc: true
 
 You can use YugabyteDB Anywhere to back up your YugabyteDB universe YCQL data.
 
-To schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
+{{< note title="Note" >}}
 
-To immediately back up your YugabyteDB universe YCQL data, perform the following:
+Non-transactional backups are not supported.
 
-1. Navigate to your universe and select **Backups**.
+{{< /note >}}
 
-1. Click **Create Backup** to open the **Create Backup** dialog shown in the following illustration:
+To view, [restore](../../restore-universe-data/ycql/), or delete existing backups for your universe, navigate to that universe and select **Backups**, as per the following illustration:
 
-    <br/><br/>
+![Create Backup](/images/yp/create-backup-new-1.png)
 
-    ![Create Backup - YCQL](/images/yp/create-backup-ycql.png)<br><br>
+By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year,  last month, and so on. In addition, you can specify a custom time period.
 
-1. Complete the fields presented in the **YCQL** tab.
+To view detailed information about an existing backup, click on it to open **Backup Details**.
 
-    Notice that the contents of the **Storage** field list depends on your existing backup storage configurations.
+The **Backups** page allows you to create new backups that start immediately, as follows: 
 
-1. Click **OK** to start the requested backup immediately.
+- Click **Backup now** to open the dialog shown in the following illustration:<br><br>
+
+  ![Backup](/images/yp/create-backup-new-3.png)<br><br>
+
+- In the **Backup Now** dialog, select YCQL as the API type.
+
+- Complete the **Select the storage config you want to use for your backup** field whose list depends on your existing backup storage configurations. For more information, see [Configure backup storage](../../configure-backup-storage/).
+
+- Select the database to back up. 
+
+- Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
+
+- Specify the period of time during which the backup is to be retained. Note that there's an option to never delete the backup.
+
+- Optionally, specify the number of threads that should be available for the backup process.
+
+- Click **Backup**.
 
 If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file containing key references is also backed up.
+
+For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql/).
+
+To access a list of all backups from all universes, including the deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.

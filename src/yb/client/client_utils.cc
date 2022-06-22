@@ -80,14 +80,10 @@ Result<std::vector<internal::RemoteTabletPtr>> FilterTabletsByHashPartitionKeyRa
                                                            partition_key_end));
   std::vector<internal::RemoteTabletPtr> filtered_results;
   for (const auto& remote_tablet : all_tablets) {
-    auto tablet_partition_start = remote_tablet->partition().partition_key_start();
-    auto tablet_partition_end = remote_tablet->partition().partition_key_end();
-    // Is this tablet at the start
-    bool start_condition = partition_key_start.empty() || tablet_partition_end.empty() ||
-                           tablet_partition_end > partition_key_start;
-    bool end_condition = partition_key_end.empty() || tablet_partition_start < partition_key_end;
-
-    if (start_condition && end_condition) {
+    if (PartitionSchema::GetOverlap(
+            remote_tablet->partition().partition_key_start(),
+            remote_tablet->partition().partition_key_end(), partition_key_start,
+            partition_key_end)) {
       filtered_results.push_back(remote_tablet);
     }
   }

@@ -137,56 +137,42 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 	if (yb_type == YB_YQL_DATA_TYPE_UNKNOWN_DATA) {
 		HeapTuple type = typeidType(type_id);
 		Form_pg_type tp = (Form_pg_type) GETSTRUCT(type);
-		Oid basetp_oid = tp->typbasetype;
 		ReleaseSysCache(type);
 
-		switch (tp->typtype) {
-			case TYPTYPE_BASE:
-				if (tp->typbyval) {
-					/* fixed-length, pass-by-value base type */
-					return &YBCFixedLenByValTypeEntity;
-				} else {
-					switch (tp->typlen) {
-						case -2:
-							/* null-terminated, pass-by-reference base type */
-							return &YBCNullTermByRefTypeEntity;
-							break;
-						case -1:
-							/* variable-length, pass-by-reference base type */
-							return &YBCVarLenByRefTypeEntity;
-							break;
-						default:;
-							/* fixed-length, pass-by-reference base type */
-							YBCPgTypeEntity *fixed_ref_type_entity = (YBCPgTypeEntity *)palloc(
-									sizeof(YBCPgTypeEntity));
-							fixed_ref_type_entity->type_oid = InvalidOid;
-							fixed_ref_type_entity->yb_type = YB_YQL_DATA_TYPE_BINARY;
-							fixed_ref_type_entity->allow_for_primary_key = false;
-							fixed_ref_type_entity->datum_fixed_size = tp->typlen;
-							fixed_ref_type_entity->datum_to_yb = (YBCPgDatumToData)YbDatumToDocdb;
-							fixed_ref_type_entity->yb_to_datum =
-								(YBCPgDatumFromData)YbDocdbToDatum;
-							return fixed_ref_type_entity;
-							break;
-					}
+		if (tp->typtype == TYPTYPE_BASE) {
+			if (tp->typbyval) {
+				/* fixed-length, pass-by-value base type */
+				return &YBCFixedLenByValTypeEntity;
+			} else {
+				switch (tp->typlen) {
+					case -2:
+						/* null-terminated, pass-by-reference base type */
+						return &YBCNullTermByRefTypeEntity;
+						break;
+					case -1:
+						/* variable-length, pass-by-reference base type */
+						return &YBCVarLenByRefTypeEntity;
+						break;
+					default:;
+						/* fixed-length, pass-by-reference base type */
+						YBCPgTypeEntity *fixed_ref_type_entity = (YBCPgTypeEntity *)palloc(
+								sizeof(YBCPgTypeEntity));
+						fixed_ref_type_entity->type_oid = InvalidOid;
+						fixed_ref_type_entity->yb_type = YB_YQL_DATA_TYPE_BINARY;
+						fixed_ref_type_entity->allow_for_primary_key = false;
+						fixed_ref_type_entity->datum_fixed_size = tp->typlen;
+						fixed_ref_type_entity->datum_to_yb = (YBCPgDatumToData)YbDatumToDocdb;
+						fixed_ref_type_entity->yb_to_datum =
+							(YBCPgDatumFromData)YbDocdbToDatum;
+						return fixed_ref_type_entity;
+						break;
 				}
-				break;
-			case TYPTYPE_COMPOSITE:
-				basetp_oid = RECORDOID;
-				break;
-			case TYPTYPE_DOMAIN:
-				break;
-			case TYPTYPE_ENUM:
-				basetp_oid = ANYENUMOID;
-				break;
-			case TYPTYPE_RANGE:
-				basetp_oid = ANYRANGEOID;
-				break;
-			default:
-				YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
-				break;
+			}
+		} else {
+			Oid primitive_type_oid =
+				YbGetPrimitiveTypeOid(type_id, tp->typtype, tp->typbasetype);
+			return YbDataTypeFromOidMod(InvalidAttrNumber, primitive_type_oid);
 		}
-		return YbDataTypeFromOidMod(InvalidAttrNumber, basetp_oid);
 	}
 
 	/* Report error if type is not supported */
@@ -196,6 +182,32 @@ YbDataTypeFromOidMod(int attnum, Oid type_id)
 
 	/* Return the type-mapping entry */
 	return type_entity;
+}
+
+const Oid YbGetPrimitiveTypeOid(Oid type_id, char typtype, Oid typbasetype) {
+	Oid primitive_type_oid;
+	switch (typtype)
+	{
+		case TYPTYPE_BASE:
+			primitive_type_oid = type_id;
+			break;
+		case TYPTYPE_COMPOSITE:
+			primitive_type_oid = RECORDOID;
+			break;
+		case TYPTYPE_DOMAIN:
+			primitive_type_oid = typbasetype;
+			break;
+		case TYPTYPE_ENUM:
+			primitive_type_oid = ANYENUMOID;
+			break;
+		case TYPTYPE_RANGE:
+			primitive_type_oid = ANYRANGEOID;
+			break;
+		default:
+			YB_REPORT_TYPE_NOT_SUPPORTED(type_id);
+			break;
+	}
+	return primitive_type_oid;
 }
 
 bool

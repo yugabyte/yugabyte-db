@@ -252,6 +252,16 @@ class PartitionSchema {
 
   static bool IsValidHashPartitionKeyBound(const std::string& partition_key);
 
+  // Get the overlap between two key ranges.
+  static uint32_t GetOverlap(
+      const std::string& key_start,
+      const std::string& key_end,
+      const std::string& other_key_start,
+      const std::string& other_key_end);
+
+  // Get the Partition range size.
+  static uint32_t GetPartitionRangeSize(const std::string& key_start, const std::string& key_end);
+
   template <class T>
   static void ProcessHashKeyEntry(const T* value_pb, std::string* out) {
     if (value_pb) {

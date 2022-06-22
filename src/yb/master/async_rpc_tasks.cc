@@ -24,7 +24,6 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
-#include "yb/master/tablet_split_complete_handler.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -1330,8 +1329,11 @@ bool AsyncRemoveTableFromTablet::SendRequest(int attempt) {
 
 namespace {
 
-bool IsDefinitelyPermanentError(const Status& s) {
-  return s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported();
+// These are errors that we are unlikely to recover from by retrying the GetSplitKey or SplitTablet
+// RPC task. Automatic splits that receive these errors may still be retried in the next run, so we
+// should try to not trigger splits that might hit these errors.
+bool ShouldRetrySplitTabletRPC(const Status& s) {
+  return !(s.IsInvalidArgument() || s.IsNotFound() || s.IsNotSupported() || s.IsIncomplete());
 }
 
 } // namespace
@@ -1354,7 +1356,7 @@ void AsyncGetTabletSplitKey::HandleResponse(int attempt) {
     LOG_WITH_PREFIX(WARNING) << "TS " << permanent_uuid() << ": GetSplitKey (attempt " << attempt
                              << ") failed for tablet " << tablet_id() << " with error code "
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
-    if (IsDefinitelyPermanentError(s) ||
+    if (!ShouldRetrySplitTabletRPC(s) ||
         (s.IsIllegalState() && code != tserver::TabletServerErrorPB::NOT_THE_LEADER)) {
       // It can happen that tablet leader has completed post-split compaction after previous split,
       // but followers have not yet completed post-split compaction.
@@ -1404,10 +1406,8 @@ void AsyncGetTabletSplitKey::Finished(const Status& status) {
 AsyncSplitTablet::AsyncSplitTablet(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TabletInfo>& tablet,
     const std::array<TabletId, kNumSplitParts>& new_tablet_ids,
-    const std::string& split_encoded_key, const std::string& split_partition_key,
-    TabletSplitCompleteHandlerIf* tablet_split_complete_handler)
-    : AsyncTabletLeaderTask(master, callback_pool, tablet),
-      tablet_split_complete_handler_(tablet_split_complete_handler) {
+    const std::string& split_encoded_key, const std::string& split_partition_key)
+    : AsyncTabletLeaderTask(master, callback_pool, tablet) {
   req_.set_tablet_id(tablet_id());
   req_.set_new_tablet1_id(new_tablet_ids[0]);
   req_.set_new_tablet2_id(new_tablet_ids[1]);
@@ -1424,7 +1424,7 @@ void AsyncSplitTablet::HandleResponse(int attempt) {
                              << TabletServerErrorPB::Code_Name(code) << ": " << s;
     if (s.IsAlreadyPresent()) {
       TransitionToCompleteState();
-    } else if (IsDefinitelyPermanentError(s)) {
+    } else if (!ShouldRetrySplitTabletRPC(s)) {
       TransitionToFailedState(state(), s);
     }
   } else {
@@ -1444,21 +1444,6 @@ bool AsyncSplitTablet::SendRequest(int attempt) {
       << "Sent split tablet request to " << permanent_uuid() << " (attempt " << attempt << "):\n"
       << req_.DebugString();
   return true;
-}
-
-void AsyncSplitTablet::Finished(const Status& status) {
-  // Also treat AlreadyPresent errors as an error, since we only want to run these post split
-  // operations once.
-  if (tablet_split_complete_handler_ && status.ok() && !resp_.has_error()) {
-    SplitTabletIds split_tablet_ids {
-      .source = req_.tablet_id(),
-      .children = {req_.new_tablet1_id(), req_.new_tablet2_id()}
-    };
-    tablet_split_complete_handler_->ProcessSplitTabletResult(table_->id(), split_tablet_ids);
-  } else {
-    VLOG_WITH_PREFIX(1) << "Skipping processing of AsyncSplitTablet result for table "
-                        << table_->id() << ", tablet " << req_.tablet_id() << ".";
-  }
 }
 
 AsyncTestRetry::AsyncTestRetry(

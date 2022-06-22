@@ -133,6 +133,7 @@ extern bool optimize_bounded_sort;
 
 static double yb_transaction_priority_lower_bound = 0.0;
 static double yb_transaction_priority_upper_bound = 1.0;
+static double yb_transaction_priority = 0.0;
 
 static int	GUC_check_errcode_value;
 
@@ -192,6 +193,7 @@ static const char *show_tcp_keepalives_idle(void);
 static const char *show_tcp_keepalives_interval(void);
 static const char *show_tcp_keepalives_count(void);
 static bool check_maxconnections(int *newval, void **extra, GucSource source);
+static const char *yb_show_maxconnections(void);
 static bool check_max_worker_processes(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_max_workers(int *newval, void **extra, GucSource source);
 static bool check_autovacuum_work_mem(int *newval, void **extra, GucSource source);
@@ -209,6 +211,9 @@ static bool check_transaction_priority_lower_bound(double *newval, void **extra,
 extern void YBCAssignTransactionPriorityLowerBound(double newval, void* extra);
 static bool check_transaction_priority_upper_bound(double *newval, void **extra, GucSource source);
 extern void YBCAssignTransactionPriorityUpperBound(double newval, void* extra);
+extern double YBCGetTransactionPriority();
+extern TxnPriorityRequirement YBCGetTransactionPriorityType();
+static const char *show_transaction_priority(void);
 
 static void assign_ysql_upgrade_mode(bool newval, void *extra);
 
@@ -2074,7 +2079,19 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_upsert_mode,
 		false,
 		NULL, NULL, NULL
-    },
+	},
+
+	{
+		{"yb_planner_custom_plan_for_partition_pruning", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("If enabled, choose custom plan over generic plan "
+						 " for prepared statements based on the number of "
+						 "partition pruned."),
+			NULL
+		},
+		&enable_choose_custom_plan_for_partition_pruning,
+		true,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -2240,7 +2257,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&MaxConnections,
 		100, 1, MAX_BACKENDS,
-		check_maxconnections, NULL, NULL
+		check_maxconnections, NULL, yb_show_maxconnections
 	},
 
 	{
@@ -2381,7 +2398,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&temp_file_limit,
-		-1, -1, INT_MAX,
+		1024 * 1024, -1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -3400,6 +3417,18 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("The number of times to force custom plan generation "
+						 "for prepared statements before considering a "
+						 "generic plan."),
+			NULL
+		},
+		&yb_test_planner_custom_plan_threshold,
+		5, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -3624,6 +3653,16 @@ static struct config_real ConfigureNamesReal[] =
 		&yb_transaction_priority_upper_bound,
 		1.0, 0.0, 1.0,
 		check_transaction_priority_upper_bound, YBCAssignTransactionPriorityUpperBound, NULL
+	},
+	{
+		{"yb_transaction_priority", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
+			gettext_noop("Gets the transaction priority used by the current active "
+						 "transaction in the session. If no transaction is active, return 0"),
+			NULL
+		},
+		&yb_transaction_priority,
+		0.0, 0.0, 1.0,
+		NULL, NULL, show_transaction_priority
 	},
 
 	{
@@ -11540,6 +11579,27 @@ check_maxconnections(int *newval, void **extra, GucSource source)
 	return true;
 }
 
+/*
+ * For YB-managed (cloud), the cloud user won't be aware of superuser.
+ * When YB shows max_connections, the connections reserved for superusers (and 
+ * other backends) are hidden from cloud users.
+ * The reference of the relations can be found in postmaster.c.
+ */
+static const char *
+yb_show_maxconnections(void)
+{
+	static char buf[32];
+
+	int64 yb_adj_max_con = MaxConnections;
+	if (IsYugaByteEnabled() && !superuser())
+	{
+		yb_adj_max_con -= (ReservedBackends + max_wal_senders);
+	}
+
+	snprintf(buf, sizeof(buf), INT64_FORMAT, yb_adj_max_con);
+	return buf;
+}
+
 static bool
 check_autovacuum_max_workers(int *newval, void **extra, GucSource source)
 {
@@ -11729,6 +11789,28 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 	}
 
 	return true;
+}
+
+static const char *
+show_transaction_priority(void)
+{
+	TxnPriorityRequirement txn_priority_type;
+	double				   txn_priority;
+	static char			   buf[50];
+
+	txn_priority_type = YBCGetTransactionPriorityType();
+	txn_priority	  = YBCGetTransactionPriority();
+
+	if (txn_priority_type == kHighestPriority)
+		snprintf(buf, sizeof(buf), "Highest priority transaction");
+	else if (txn_priority_type == kHigherPriorityRange)
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (High priority transaction)", txn_priority);
+	else
+		snprintf(buf, sizeof(buf),
+				 "%.9lf (Normal priority transaction)", txn_priority);
+
+	return buf;
 }
 
 static void

@@ -97,7 +97,7 @@ class PgClient {
 
   Status SetActiveSubTransaction(
       SubTransactionId id, tserver::PgPerformOptionsPB* options);
-  Status RollbackSubTransaction(SubTransactionId id);
+  Status RollbackToSubTransaction(SubTransactionId id);
 
   Status ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req);
 
@@ -127,6 +127,8 @@ class PgClient {
       tserver::PgPerformOptionsPB* options,
       PgsqlOps* operations,
       const PerformCallback& callback);
+
+  Result<bool> CheckIfPitrActive();
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \

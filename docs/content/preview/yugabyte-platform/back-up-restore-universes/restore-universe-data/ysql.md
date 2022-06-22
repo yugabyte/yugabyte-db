@@ -33,29 +33,66 @@ showAsideToc: true
 
 </ul>
 
+## Basic restore procedure
+
 You can restore YugabyteDB universe YSQL data from a backup as follows:
 
 1. Open your universe and select **Backups**.
 
-2. Click **Restore Backup** to open the **Restore data to** dialog shown in the following illustration:
+2. If you want to restore a backup from a specific keyspace, click on the backup and use its **Backup Details** page to perform the restore procedure.
+
+3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
+
+    ![Restore backup](/images/yp/restore-entire-backup.png)<br><br><br>
+
+4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
 
     <br/><br/>
-    ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)
+    ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)<br><br><br>
 
-3. Complete the following fields:
+    - Select the name of the universe to which you want to restore the backup.
 
-    - **Storage**: Select the storage configuration type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
-    - **Storage Location**: Specify the storage location.
-    - **Universe**: Select the universe to restore.
-    - **Keyspace**: Leave blank. This is used for YCQL data only.
-    - **Table**: Leave blank. Backup and restore of YSQL data is for full universe data only.
-    - **Parallel Threads**: Default is `8`. This value can be changed to a value between `1` and `100`.
-    - **KMS Configuration**: Optional, if the backup was from a universe that has [encryption at rest enabled](../../../security/enable-encryption-at-rest), then select the KMS configuration to use.
+    - Optionally and depending on your cloud provider, if the backup was from a universe that has [encryption at rest enabled](../../../security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-4. Click **OK**.
+    - Refrain from selecting  **Rename databases in this backup before restoring**.
 
-    <br/>The restore begins immediately. When finished, a completed **Restore Backup** task appears in the **Tasks** tab.
+    - Optionally, specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
-5. To confirm the restore succeeded, select **Tables** to compare the original table with the table to which you restored, as per the following illustration:
+    - Click **Restore**.<br>
 
-  ![Tables View](/images/yp/tables-view-ysql.png)
+      The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
+
+5. To confirm that the restore succeeded, select **Tables** to compare the original table with the table to which you restored.
+
+## Advanced restore procedure
+
+In addition to the basic restore, an advanced option is available if you have more than one YugabyteDB Anywhere installation and want to restore a database or keyspace from a different YugabyteDB Anywhere installation to the current universe. 
+
+To perform this type of restore, click **... > Advanced Restore**, as per the following illustration:
+
+![Restore advanced - YSQL](/images/yp/restore-advanced.png)<br>
+
+To proceed, complete the fields of the **Advanced Restore** dialog shown in the following illustration:
+
+![Restore advanced - YSQL](/images/yp/restore-advanced-ysql.png)<br>
+
+- Select YSQL as the type of API.
+
+- Specify the location of the backup you want to restore.
+
+- Select the cloud provider-specific configuration of the backup storage. The storage could be on Google Cloud, Amazon S3, Azure, or Network File System. 
+
+- Specify the name of the database from which you are performing a restore.
+
+- Optionally, specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
+
+- Optionally, if the backup involved universes that had [encryption at rest enabled](https://docs.yugabyte.com/preview/yugabyte-platform/security/enable-encryption-at-rest), then select the KMS configuration to use.
+
+- If you do not select **Rename databases in this backup before restoring**, then click **Restore** to start the restore process immediately.<br>
+
+  If you select **Rename databases in this backup before restoring**, then click **Next: Rename Database/Keyspaces**, specify the new name for a keyspace or database in the backup and click **Restore**.
+
+You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
+
+![Backups - YSQL](/images/yp/backups.png)<br>
+

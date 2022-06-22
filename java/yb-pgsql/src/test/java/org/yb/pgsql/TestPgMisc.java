@@ -24,7 +24,9 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.sql.SQLWarning;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -143,6 +145,84 @@ public class TestPgMisc extends BasePgSQLTest {
         .connect();
         Statement statement = connection.createStatement()) {
       statement.execute(query);
+    }
+  }
+
+  /*
+   * Test to make sure that pg_hint_plan works consistently with interleaved extended queries.
+   * See issue #12741.
+   */
+  @Test
+  public void testPgHintPlanExtendedQuery() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate("CREATE TABLE test_table(r1 int, r2 int," +
+                              "PRIMARY KEY(r1 asc, r2 asc))");
+      statement.executeUpdate("CREATE INDEX bad_index on test_table(r1 asc)");
+
+      String HINT_QUERY = "/*+IndexScan(test_table bad_index)*/ " +
+                          "SELECT count(*) FROM test_table " +
+                          "WHERE r1 <= 20 AND r2 <= ?";
+      PreparedStatement withhint = connection.prepareStatement(HINT_QUERY);
+      // Make sure we're always preparing statements at the server
+      com.yugabyte.jdbc.PgStatement pgstmt = (com.yugabyte.jdbc.PgStatement) withhint;
+      pgstmt.setPrepareThreshold(1);
+
+      // Make sure we set pg_hint_plan debug statements to WARNING so we can detect them
+      // here
+      statement.executeUpdate("SET pg_hint_plan.enable_hint TO ON;");
+      statement.executeUpdate("SET pg_hint_plan.debug_print TO ON;");
+      statement.executeUpdate("SET pg_hint_plan.message_level TO WARNING");
+
+      String EXPECTED_AVAILABLE_IDX_STRING = "available indexes for IndexScan(test_table): " +
+                                             "bad_index";
+      String EXPECTED_HINT_DEBUG_STRING = "pg_hint_plan:\n" +
+                                          "used hint:\n" +
+                                          "IndexScan(test_table bad_index)\n" +
+                                          "not used hint:\n" +
+                                          "duplication hint:\n" +
+                                          "error hint:\n";
+
+      withhint.setInt(1, 28);
+      withhint.executeQuery();
+
+      // The following checks are to make sure the hints were processed
+      SQLWarning warning = withhint.getWarnings();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_AVAILABLE_IDX_STRING),
+                 warning.getMessage().equals(EXPECTED_AVAILABLE_IDX_STRING));
+      warning = warning.getNextWarning();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_HINT_DEBUG_STRING),
+                 warning.getMessage().equals(EXPECTED_HINT_DEBUG_STRING));
+      withhint.clearWarnings();
+
+      // Execute a query with no hint. This should not affect hint processing for
+      // subsequent queries.
+      statement.executeQuery("SELECT 1;");
+      withhint.clearWarnings();
+
+      // This query should still process hints despite the preceding hintless query.
+      withhint.setInt(1, 30);
+      withhint.executeQuery();
+
+      warning = withhint.getWarnings();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_AVAILABLE_IDX_STRING),
+                 warning.getMessage().equals(EXPECTED_AVAILABLE_IDX_STRING));
+      warning = warning.getNextWarning();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_HINT_DEBUG_STRING),
+                 warning.getMessage().equals(EXPECTED_HINT_DEBUG_STRING));
+
+      statement.executeUpdate("DROP TABLE test_table;");
     }
   }
 }

@@ -387,6 +387,17 @@ public class Universe extends Model {
   }
 
   /**
+   * Checks if all nodes in universe have the node state 'Live'
+   *
+   * @return true if all nodes are in LIVE state
+   */
+  public boolean allNodesLive() {
+    return getNodes()
+        .stream()
+        .allMatch(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live));
+  }
+
+  /**
    * Checks if there is any node in a transit state across the universe.
    *
    * @return true if there is any such node.
@@ -470,6 +481,26 @@ public class Universe extends Model {
         .stream()
         .filter(server -> primaryNodes.contains(server))
         .collect(Collectors.toList());
+  }
+
+  /**
+   * Return the list of live TServers in the primary cluster. TODO: junit tests for this
+   * functionality (UniverseTest.java)
+   *
+   * @return a list of TServer nodes
+   */
+  public List<NodeDetails> getLiveTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers
+            .stream()
+            .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
+            .collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+    }
+    return filteredServers;
   }
 
   /**
@@ -595,6 +626,16 @@ public class Universe extends Model {
    */
   public String getTserverHTTPAddresses() {
     return getHostPortsString(getTServers(), ServerType.TSERVER, PortType.HTTP);
+  }
+
+  /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
   }
 
   /**

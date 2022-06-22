@@ -1,15 +1,15 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import static com.yugabyte.yw.controllers.ScheduleScriptController.PLT_EXT_SCRIPT_CONTENT;
-import static com.yugabyte.yw.controllers.ScheduleScriptController.PLT_EXT_SCRIPT_PARAM;
+import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_RUNTIME_CONFIG_PATH;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
@@ -20,7 +20,6 @@ import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -39,8 +38,6 @@ public class RunExternalScript extends AbstractTaskBase {
   }
 
   @Inject private SettableRuntimeConfigFactory sConfigFactory;
-
-  @Inject private play.Configuration appConfig;
 
   private static final String TEMP_SCRIPT_FILE_NAME = "tempScript_";
   private static final String SCRIPT_DIR = "tmp_external_scripts/";
@@ -64,20 +61,20 @@ public class RunExternalScript extends AbstractTaskBase {
     try {
       Universe universe = Universe.getOrBadRequest(params().universeUUID);
       RuntimeConfig<Universe> config = sConfigFactory.forUniverse(universe);
-
-      List<String> keys = Arrays.asList(PLT_EXT_SCRIPT_CONTENT, PLT_EXT_SCRIPT_PARAM);
-      Map<String, String> configKeysMap;
+      Config configObj;
+      String content, params;
       try {
-        // Extracting the set of keys in synchronized way as they are interconnected and During the
-        // scheduled script update the task should not extract partially updated multi keys.
-        configKeysMap = Util.getLockedMultiKeyConfig(config, keys);
+        String actualObjValue = config.getValue(EXT_SCRIPT_RUNTIME_CONFIG_PATH).render();
+        configObj = ConfigFactory.parseString(actualObjValue);
+        content = configObj.getString("content");
+        params = configObj.getString("params");
       } catch (Exception e) {
         throw new RuntimeException(
-            "Extrenal Script Task failed as the schedule is stopped and this is a old task");
+            "External Script Task failed as the schedule is stopped and this is a old task");
       }
 
       // Create a temporary file to store script and make it executable.
-      String devopsHome = appConfig.getString("yb.devops.home");
+      String devopsHome = sConfigFactory.globalRuntimeConf().getString("yb.devops.home");
       File directory = new File(devopsHome + SCRIPT_STORE_DIR);
       if (!directory.exists()) {
         if (!directory.mkdir()) {
@@ -90,7 +87,7 @@ public class RunExternalScript extends AbstractTaskBase {
 
       FileOutputStream file = new FileOutputStream(tempScriptFile.getAbsoluteFile());
       try (OutputStreamWriter output = new OutputStreamWriter(file, StandardCharsets.UTF_8)) {
-        output.write(configKeysMap.get(PLT_EXT_SCRIPT_CONTENT));
+        output.write(content);
       }
       if (!tempScriptFile.setExecutable(true)) {
         throw new RuntimeException("script file permission change failed " + tempScriptFile);
@@ -109,7 +106,7 @@ public class RunExternalScript extends AbstractTaskBase {
       Users.getOrBadRequest(params().userUUID);
       commandList.add(Users.getOrBadRequest(params().userUUID).createAuthToken());
 
-      String scriptParam = configKeysMap.get(PLT_EXT_SCRIPT_PARAM);
+      String scriptParam = params;
       if (!StringUtils.isEmpty(scriptParam)) {
         final ObjectMapper mapper = new ObjectMapper();
         JsonNode jsonNode = mapper.readTree(scriptParam);
@@ -135,7 +132,7 @@ public class RunExternalScript extends AbstractTaskBase {
     } finally {
       // Delete temporary file if exists.
       if (tempScriptFile != null && tempScriptFile.exists()) {
-        if (tempScriptFile.delete()) {
+        if (!tempScriptFile.delete()) {
           log.warn("Failed to delete file {}", tempScriptFile);
         }
       }

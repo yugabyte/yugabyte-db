@@ -34,10 +34,10 @@ Use the `ALTER SERVER` command to alter the definition of a foreign server. The 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_server.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_server.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_server.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_server.diagram.md" %}}
   </div>
 </div>
 
@@ -46,7 +46,7 @@ Use the `ALTER SERVER` command to alter the definition of a foreign server. The 
 Alter the foreign server named **server_name**.
 
 ### Version
-The `VERSION` clause can be used to specify the updated version of the server. 
+The `VERSION` clause can be used to specify the updated version of the server.
 
 ### Options
 The `OPTIONS` clause can be used to specify the new options of the foreign server. `ADD`, `SET`, and `DROP` specify the action to be performed. `ADD` is assumed if no operation is explicitly specified.

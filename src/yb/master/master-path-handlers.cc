@@ -119,6 +119,19 @@ YQLDatabase DatabaseTypeByName(const string& db_type_name) {
   return YQLDatabase::YQL_DATABASE_UNKNOWN;
 }
 
+std::optional<HostPortPB> GetPublicHttpHostPort(const ServerRegistrationPB& registration) {
+  if (registration.http_addresses().empty()) {
+    return {};
+  }
+  if (registration.broadcast_addresses().empty()) {
+    return registration.http_addresses(0);
+  }
+  HostPortPB public_http_hp;
+  public_http_hp.set_host(registration.broadcast_addresses(0).host());
+  public_http_hp.set_port(registration.http_addresses(0).port());
+  return public_http_hp;
+}
+
 } // namespace
 
 using consensus::RaftPeerPB;
@@ -318,8 +331,9 @@ int GetTserverCountForDisplay(const TSManager* ts_manager) {
 
 string MasterPathHandlers::GetHttpHostPortFromServerRegistration(
     const ServerRegistrationPB& reg) const {
-  if (reg.http_addresses().size() > 0) {
-    return HostPortPBToString(reg.http_addresses(0));
+  auto hp = GetPublicHttpHostPort(reg);
+  if (hp) {
+    return HostPortPBToString(*hp);
   }
   return "";
 }
@@ -662,7 +676,7 @@ void MasterPathHandlers::HandleTabletServers(const Webserver::WebRequest& req,
 }
 
 void MasterPathHandlers::HandleGetTserverStatus(const Webserver::WebRequest& req,
-                                             Webserver::WebResponse* resp) {
+                                                Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   master_->catalog_manager()->AssertLeaderLockAcquiredForReading();
 
@@ -1772,8 +1786,7 @@ void MasterPathHandlers::HandleMasters(const Webserver::WebRequest& req,
       continue;
     }
     auto reg = master.registration();
-    string host_port = GetHttpHostPortFromServerRegistration(reg);
-    string reg_text = RegistrationToHtml(reg, host_port);
+    string reg_text = RegistrationToHtml(reg, GetHttpHostPortFromServerRegistration(reg));
     if (master.instance_id().permanent_uuid() == master_->instance_pb().permanent_uuid()) {
       reg_text = Substitute("<b>$0</b>", reg_text);
     }
@@ -1920,7 +1933,7 @@ class JsonTabletDumper : public Visitor<PersistentTabletInfo>, public JsonDumper
         jw_->String(peer.permanent_uuid());
 
         jw_->String("addr");
-        const auto& host_port = peer.last_known_private_addr()[0];
+        const auto& host_port = peer.last_known_private_addr(0);
         jw_->String(HostPortPBToString(host_port));
 
         jw_->EndObject();
@@ -2177,11 +2190,10 @@ void MasterPathHandlers::HandlePrettyLB(
 
       // Point to the tablet servers link.
       TSRegistrationPB reg = desc->GetRegistration();
-      string host_port = GetHttpHostPortFromServerRegistration(reg.common());
       *output << Substitute("<div class='panel-heading'>"
                             "<h6 class='panel-title'><a href='http://$0'>TServer - $0    "
                             "<i class='fa $1'></i></a></h6></div>\n",
-                            HostPortPBToString(reg.common().http_addresses(0)),
+                            GetHttpHostPortFromServerRegistration(reg.common()),
                             icon_type);
 
       *output << "<table class='table table-borderless table-hover'>\n";
@@ -2196,7 +2208,7 @@ void MasterPathHandlers::HandlePrettyLB(
         }
         *output << Substitute("<td><h4><a href='http://$0/table?id=$1'>"
                               "<i class='fa fa-table'></i>    $2</a></h4>\n",
-                              HostPortPBToString(reg.http_addresses(0)),
+                              GetHttpHostPortFromServerRegistration(reg),
                               table.first,
                               tname);
         // Replicas of this table.
@@ -2354,12 +2366,13 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
                                               const std::string& tablet_id) const {
   TSRegistrationPB reg = desc.GetRegistration();
 
-  if (reg.common().http_addresses().size() > 0) {
+  auto public_http_hp = GetPublicHttpHostPort(reg.common());
+  if (public_http_hp) {
     return Substitute(
         "<a href=\"http://$0/tablet?id=$1\">$2</a>",
-        HostPortPBToString(reg.common().http_addresses(0)),
+        HostPortPBToString(*public_http_hp),
         EscapeForHtmlToString(tablet_id),
-        EscapeForHtmlToString(reg.common().http_addresses(0).host()));
+        EscapeForHtmlToString(public_http_hp->host()));
   } else {
     return EscapeForHtmlToString(desc.permanent_uuid());
   }
@@ -2368,9 +2381,10 @@ string MasterPathHandlers::TSDescriptorToHtml(const TSDescriptor& desc,
 string MasterPathHandlers::RegistrationToHtml(
     const ServerRegistrationPB& reg, const std::string& link_text) const {
   string link_html = EscapeForHtmlToString(link_text);
-  if (reg.http_addresses().size() > 0) {
+  auto public_http_hp = GetPublicHttpHostPort(reg);
+  if (public_http_hp) {
     link_html = Substitute("<a href=\"http://$0/\">$1</a>",
-                           HostPortPBToString(reg.http_addresses(0)),
+                           HostPortPBToString(*public_http_hp),
                            link_html);
   }
   return link_html;

@@ -36,10 +36,10 @@ The same syntax rules govern a subquery, wherever you might use one—like, for 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/select,common_table_expression,fn_over_window,ordinary_aggregate_fn_invocation,within_group_aggregate_fn_invocation,grouping_element,order_expr.diagram.md" %}}
   </div>
 </div>
 
@@ -100,7 +100,7 @@ When you understand the story of the invocation of these two kinds of functions 
   42809: WITHIN GROUP is required for ordered-set aggregate mode
   ```
 
-**Note:** The documentation in the [Aggregate functions](../../../exprs/aggregate_functions/) major section usually refers to the syntax that the `ordinary_aggregate_fn_invocation` rule and the `within_group_aggregate_fn_invocation` rule jointly govern as the [`GROUP BY` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#group-by-syntax) because it's these two syntax variants (and _only_ these two) can be used together with the `GROUP BY` clause (and therefore the `HAVING` clause). And it usually refers to the syntax that the `fn_over_window` rule governs as the [`OVER` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#over-syntax) because this syntax variant _requires_ the use of the `OVER` clause. Moreover, the use of the `GROUP BY` clause (and therefore the `HAVING` clause) is illegal with this syntax variant. 
+**Note:** The documentation in the [Aggregate functions](../../../exprs/aggregate_functions/) major section usually refers to the syntax that the `ordinary_aggregate_fn_invocation` rule and the `within_group_aggregate_fn_invocation` rule jointly govern as the [`GROUP BY` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#group-by-syntax) because it's these two syntax variants (and _only_ these two) can be used together with the `GROUP BY` clause (and therefore the `HAVING` clause). And it usually refers to the syntax that the `fn_over_window` rule governs as the [`OVER` syntax](../../../exprs/aggregate_functions/function-syntax-semantics/avg-count-max-min-sum/#over-syntax) because this syntax variant _requires_ the use of the `OVER` clause. Moreover, the use of the `GROUP BY` clause (and therefore the `HAVING` clause) is illegal with this syntax variant.
 
 ## Examples
 

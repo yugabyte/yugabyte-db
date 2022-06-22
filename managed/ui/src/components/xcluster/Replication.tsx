@@ -18,7 +18,7 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
 
   const showConfigureMaxLagTimeModal = () => {
     dispatch(openDialog('configureMaxLagTimeModal'));
-  }
+  };
 
   const hideModal = () => dispatch(closeDialog());
 
@@ -46,7 +46,13 @@ export default function Replication({ currentUniverseUUID }: { currentUniverseUU
             <Row className="cluster_support_text">
               <i className="fa fa-exclamation-circle"></i> For replicating a source universe with
               existing data, please{' '}
-              <a href="https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/#bootstrapping-a-sink-cluster" target='_blank' rel="noopener noreferrer">contact support</a>
+              <a
+                href="https://docs.yugabyte.com/latest/deploy/multi-dc/async-replication/#bootstrapping-a-sink-cluster"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                contact support
+              </a>
             </Row>
           </Row>
         </Col>

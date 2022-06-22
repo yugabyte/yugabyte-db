@@ -179,6 +179,12 @@ typedef enum PgDatumKind {
   YB_YQL_DATUM_LIMIT_MIN,
 } YBCPgDatumKind;
 
+typedef enum TxnPriorityRequirement {
+  kLowerPriorityRange,
+  kHigherPriorityRange,
+  kHighestPriority
+} TxnPriorityRequirement;
+
 // API to read type information.
 const YBCPgTypeEntity *YBCPgFindTypeEntity(int type_oid);
 YBCPgDataType YBCPgGetType(const YBCPgTypeEntity *type_entity);
@@ -325,11 +331,13 @@ typedef struct PgCallbacks {
   YBCPgMemctx (*GetCurrentYbMemctx)();
   const char* (*GetDebugQueryString)();
   void (*WriteExecOutParam)(PgExecOutParam *, const YbcPgExecOutParamValue *);
+  void (*YbPgMemUpdateMax)();
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
   const bool*     log_ysql_catalog_versions;
   const bool*     ysql_disable_index_backfill;
+  const bool*     ysql_enable_reindex;
   const int32_t*  ysql_max_read_restart_attempts;
   const int32_t*  ysql_max_write_restart_attempts;
   const int32_t*  ysql_output_buffer_size;
@@ -338,13 +346,15 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
 } YBCPgGFlagsAccessor;
 
-typedef struct PgTableProperties {
+typedef struct YbTablePropertiesData {
   uint64_t num_tablets;
   uint64_t num_hash_key_columns;
-  bool is_colocated;
+  bool is_colocated; /* via database or tablegroup, but not for system tables */
   YBCPgOid tablegroup_oid; /* 0 if none */
   YBCPgOid colocation_id; /* 0 if not colocated */
-} YBCPgTableProperties;
+} YbTablePropertiesData;
+
+typedef struct YbTablePropertiesData* YbTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;

@@ -53,7 +53,7 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.overrideKeyValidate = provider.overrideKeyValidate;
       taskParams.setUpChrony = provider.setUpChrony;
       taskParams.ntpServers = provider.ntpServers;
-      taskParams.showSetUpChrony = true; // For all new providers, we should show setUpChrony
+      taskParams.showSetUpChrony = provider.showSetUpChrony;
       taskParams.perRegionMetadata =
           provider
               .regions
@@ -170,12 +170,16 @@ public class CloudBootstrap extends CloudTaskBase {
     // TODO(bogdan): only used/needed for GCP.
     public String destVpcId = null;
 
+    // Dictates whether or not NTP should be configured on newly provisioned nodes.
     public boolean setUpChrony = false;
+
+    // Dictates which NTP servers should be configured on newly provisioned nodes.
     public List<String> ntpServers = new ArrayList<>();
 
-    // Dictates whether or not to show the set up NTP option in the provider UI
-    // False by default so the old providers can continue to show useTimeSync
-    public boolean showSetUpChrony = false;
+    // Indicates whether the provider was created before or after PLAT-3009.
+    // True if it was created after, else it was created before.
+    // Dictates whether or not to show the set up NTP option in the provider UI.
+    public boolean showSetUpChrony = true;
 
     // Whether or not task is a pure region add.
     // This dictates whether the task skips the initialization and bootstrapping of the cloud.

@@ -4,8 +4,6 @@ package com.yugabyte.yw.commissioner;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
@@ -15,6 +13,7 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -32,15 +31,12 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicBoolean;
-
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
 
 @Singleton
 public class Commissioner {
@@ -253,18 +249,14 @@ public class Commissioner {
 
     private static final String YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL =
         "yb.commissioner.progress_check_interval";
-    private final Scheduler scheduler;
+    private final PlatformScheduler platformScheduler;
     private final RuntimeConfigFactory runtimeConfigFactory;
-    private final ExecutionContext executionContext;
 
     @Inject
     public ProgressMonitor(
-        ActorSystem actorSystem,
-        RuntimeConfigFactory runtimeConfigFactory,
-        ExecutionContext executionContext) {
-      this.scheduler = actorSystem.scheduler();
+        PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
+      this.platformScheduler = platformScheduler;
       this.runtimeConfigFactory = runtimeConfigFactory;
-      this.executionContext = executionContext;
     }
 
     public void start(Map<UUID, RunnableTask> runningTasks) {
@@ -273,23 +265,14 @@ public class Commissioner {
         log.info(YB_COMMISSIONER_PROGRESS_CHECK_INTERVAL + " set to 0.");
         log.warn("!!! TASK GC DISABLED !!!");
       } else {
-        AtomicBoolean isRunning = new AtomicBoolean();
         log.info("Scheduling Progress Check every " + checkInterval);
-        scheduler.schedule(
+        platformScheduler.schedule(
+            getClass().getSimpleName(),
             Duration.ZERO, // InitialDelay
             checkInterval,
             () -> {
-              if (isRunning.compareAndSet(false, true)) {
-                try {
-                  scheduleRunner(runningTasks);
-                } finally {
-                  isRunning.set(false);
-                }
-              } else {
-                LOG.warn("Skipping task heartbeating as it is running.");
-              }
-            },
-            this.executionContext);
+              scheduleRunner(runningTasks);
+            });
       }
     }
 

@@ -122,6 +122,9 @@ export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
 export const UPDATE_BACKUP_STATE = 'UPDATE_BACKUP_STATE';
 export const UPDATE_BACKUP_STATE_RESPONSE = 'UPDATE_BACKUP_STATE_RESPONSE';
 
+export const FETCH_SUPPORTED_RELEASES = 'FETCH_SUPPORTED_RELEASES';
+export const FETCH_SUPPORTED_RELEASES_RESPONSE = 'FETCH_SUPPORTED_RELEASES_RESPONSE';
+
 /**
  *  Mapping from taskType to api route
  * */
@@ -177,6 +180,22 @@ export function resetUniverseInfo() {
 export function fetchUniverseInfoResponse(response) {
   return {
     type: FETCH_UNIVERSE_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchReleasesByProvider(pUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
+  return {
+    type: FETCH_SUPPORTED_RELEASES,
+    payload: request
+  };
+}
+
+export function fetchReleasesResponse(response) {
+  return {
+    type: FETCH_SUPPORTED_RELEASES_RESPONSE,
     payload: response
   };
 }
@@ -801,6 +820,16 @@ export async function validateGFlags(dbVersion, payload) {
       payload
     );
     return request;
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+//Fetch releases by provider
+export async function fetchSupportedReleases(pUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
   } catch (e) {
     throw e.response.data;
   }

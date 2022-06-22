@@ -822,7 +822,8 @@ typedef enum OnConflictAction
 {
 	ONCONFLICT_NONE,			/* No "ON CONFLICT" clause */
 	ONCONFLICT_NOTHING,			/* ON CONFLICT ... DO NOTHING */
-	ONCONFLICT_UPDATE			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_YB_REPLACE		/* Replace the existing tuple (upsert mode) */
 } OnConflictAction;
 
 #endif							/* NODES_H */

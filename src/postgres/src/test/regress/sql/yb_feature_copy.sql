@@ -380,6 +380,47 @@ copy copy_options from stdin with (format csv, skip 2);
 
 select * from copy_options order by a;
 
+-- skip with invalid rows being included
+truncate copy_options;
+copy copy_options from stdin with (format csv, skip 3);
+1
+2
+##,##
+4,4
+5,5
+\.
+
+select * from copy_options order by a;
+
+-- replace
+truncate copy_options;
+insert into copy_options (a, b) values (1, 0), (2, 1), (3, 2);
+select a, b from copy_options order by a;
+
+copy copy_options from stdin with (format csv, replace);
+1,1
+2,2
+3,3
+4,4
+5,5
+\.
+
+select * from copy_options order by a;
+
+-- DISABLE_FK_CHECK
+create table ref_table(a int primary key);
+insert into ref_table(a) values (1), (2), (3);
+create table main_table(a int references ref_table, b int);
+copy main_table from stdin with (format csv, disable_fk_check);
+1,1
+2,2
+3,3
+4,4
+5,5
+\.
+
+select * from main_table order by a;
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -396,3 +437,5 @@ DROP TABLE p;
 DROP TABLE u;
 DROP TABLE v;
 DROP TABLE copy_options;
+DROP TABLE main_table;
+DROP TABLE ref_table;

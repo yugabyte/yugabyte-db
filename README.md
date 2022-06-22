@@ -1,4 +1,4 @@
-<img src="https://www.yugabyte.com/wp-content/uploads/2021/05/yb_horizontal_alt_color_RGB.png" align="center" alt="YugabyteDB" width="50%"/>
+<img src="https://www.yugabyte.com/wp-content/themes/yugabyte/assets/images/yugabyteDB-site-logo-new-blue.svg" align="center" alt="YugabyteDB" width="50%"/>
 
 ---------------------------------------
 

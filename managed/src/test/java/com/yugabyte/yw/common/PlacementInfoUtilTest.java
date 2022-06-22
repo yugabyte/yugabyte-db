@@ -8,13 +8,11 @@ import static com.yugabyte.yw.common.ApiUtils.getTestUserIntent;
 import static com.yugabyte.yw.common.ModelFactory.createFromConfig;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static com.yugabyte.yw.common.ModelFactory.getOrCreatePlacementAZ;
-import static com.yugabyte.yw.common.PlacementInfoUtil.UNIVERSE_ALIVE_METRIC;
 import static com.yugabyte.yw.common.PlacementInfoUtil.removeNodeByName;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.EDIT;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Live;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
-import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Unreachable;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
@@ -22,22 +20,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -48,7 +37,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -88,7 +76,6 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
 public class PlacementInfoUtilTest extends FakeDBApplication {
@@ -807,147 +794,6 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     }
     assertFalse(nodeFound);
     assertEquals(nodes.size(), 9);
-  }
-
-  private JsonNode getPerNodeStatus(
-      Universe u, Set<NodeDetails> deadTservers, Set<NodeDetails> deadMasters) {
-    ObjectNode status = Json.newObject();
-    ArrayNode dataArray = Json.newArray();
-    ArrayNode aliveArray = Json.newArray().add("1").add("1").add("1");
-    ArrayNode deadArray = Json.newArray().add("0").add("0").add("0");
-
-    for (NodeDetails nodeDetails : u.getNodes()) {
-
-      // Set up tserver status for node
-      ObjectNode tserverStatus =
-          Json.newObject().put("name", nodeDetails.cloudInfo.private_ip + ":9000");
-      if (deadTservers == null || !deadTservers.contains(nodeDetails)) {
-        dataArray.add(tserverStatus.set("y", aliveArray.deepCopy()));
-      } else {
-        dataArray.add(tserverStatus.set("y", deadArray.deepCopy()));
-      }
-
-      // Set up master status for node
-      ObjectNode masterStatus =
-          Json.newObject().put("name", nodeDetails.cloudInfo.private_ip + ":7000");
-      if (deadMasters == null || !deadMasters.contains(nodeDetails)) {
-        dataArray.add(masterStatus.set("y", aliveArray.deepCopy()));
-      } else {
-        dataArray.add(masterStatus.set("y", deadArray.deepCopy()));
-      }
-    }
-
-    status.set(UNIVERSE_ALIVE_METRIC, Json.newObject().set("data", dataArray));
-
-    MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
-    when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(status);
-
-    return PlacementInfoUtil.getUniverseAliveStatus(u, mockMetricQueryHelper);
-  }
-
-  private void validatePerNodeStatus(
-      JsonNode result,
-      Collection<NodeDetails> baseNodeDetails,
-      Set<NodeDetails> deadTservers,
-      Set<NodeDetails> deadMasters) {
-    for (NodeDetails nodeDetails : baseNodeDetails) {
-      JsonNode jsonNode = result.get(nodeDetails.nodeName);
-      assertNotNull(jsonNode);
-      boolean tserverAlive = deadTservers == null || !deadTservers.contains(nodeDetails);
-      assertEquals(tserverAlive, jsonNode.get("tserver_alive").asBoolean());
-      boolean masterAlive = deadMasters == null || !deadMasters.contains(nodeDetails);
-      assertEquals(masterAlive, jsonNode.get("master_alive").asBoolean());
-      NodeDetails.NodeState nodeState = (!masterAlive && !tserverAlive) ? Unreachable : Live;
-      assertEquals(nodeState.toString(), jsonNode.get("node_status").asText());
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusAllHealthy() {
-    for (TestData t : testData) {
-      JsonNode result = getPerNodeStatus(t.universe, null, null);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, null);
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusAllDead() {
-    for (TestData t : testData) {
-      Set<NodeDetails> deadNodes = ImmutableSet.copyOf(t.universe.getNodes());
-      JsonNode result = getPerNodeStatus(t.universe, deadNodes, deadNodes);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), deadNodes, deadNodes);
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusError() {
-    for (TestData t : testData) {
-      ObjectNode fakeReturn = Json.newObject().put("error", "foobar");
-      MetricQueryHelper mockMetricQueryHelper = mock(MetricQueryHelper.class);
-      when(mockMetricQueryHelper.query(anyList(), anyMap())).thenReturn(fakeReturn);
-
-      JsonNode result = PlacementInfoUtil.getUniverseAliveStatus(t.universe, mockMetricQueryHelper);
-
-      assertTrue(result.has("error"));
-      assertEquals("foobar", result.get("error").asText());
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusOneTserverDead() {
-    for (TestData t : testData) {
-      Set<NodeDetails> deadTservers =
-          ImmutableSet.of(t.universe.getNodes().stream().findFirst().get());
-      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null);
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusManyTserversDead() {
-    for (TestData t : testData) {
-      Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
-      Set<NodeDetails> deadTservers = ImmutableSet.of(nodesIt.next(), nodesIt.next());
-      JsonNode result = getPerNodeStatus(t.universe, deadTservers, null);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), deadTservers, null);
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusOneMasterDead() {
-    for (TestData t : testData) {
-      Set<NodeDetails> deadMasters = ImmutableSet.of(t.universe.getNodes().iterator().next());
-      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters);
-    }
-  }
-
-  @Test
-  public void testGetUniversePerNodeStatusManyMastersDead() {
-    for (TestData t : testData) {
-      Iterator<NodeDetails> nodesIt = t.universe.getNodes().iterator();
-      Set<NodeDetails> deadMasters = ImmutableSet.of(nodesIt.next(), nodesIt.next());
-      JsonNode result = getPerNodeStatus(t.universe, null, deadMasters);
-
-      assertFalse(result.has("error"));
-      assertEquals(t.universe.universeUUID.toString(), result.get("universe_uuid").asText());
-      validatePerNodeStatus(result, t.universe.getNodes(), null, deadMasters);
-    }
   }
 
   @Test
@@ -1725,7 +1571,8 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az3.uuid, pi);
 
     assertEquals(
-        expectedConfigs, PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider));
+        expectedConfigs,
+        PlacementInfoUtil.getConfigPerNamespace(pi, nodePrefix, k8sProvider, false));
   }
 
   // TODO: use parameters here?
@@ -1736,32 +1583,55 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String ns = "ns-1";
     String nodePrefix = "demo-universe";
     String nodePrefixAz = String.format("%s-%s", nodePrefix, az);
-
-    assertEquals(
-        nodePrefixAz, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, false));
-    assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, false));
-    assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, true));
-    assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, true));
+    boolean isReadCluster = false;
 
     assertEquals(
         nodePrefixAz,
-        PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, false));
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, false, isReadCluster));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, false));
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, false, isReadCluster));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, true));
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, az, config, true, isReadCluster));
     assertEquals(
-        nodePrefix, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, true));
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(nodePrefix, null, config, true, isReadCluster));
+
+    assertEquals(
+        nodePrefixAz,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, true, isReadCluster));
+    assertEquals(
+        nodePrefix,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, true, isReadCluster));
 
     config.put("KUBENAMESPACE", ns);
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, false));
     assertEquals(
-        ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, false));
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(true, nodePrefix, az, config, true));
-    assertEquals(ns, PlacementInfoUtil.getKubernetesNamespace(false, nodePrefix, az, config, true));
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, false, isReadCluster));
+    assertEquals(
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            true, nodePrefix, az, config, true, isReadCluster));
+    assertEquals(
+        ns,
+        PlacementInfoUtil.getKubernetesNamespace(
+            false, nodePrefix, az, config, true, isReadCluster));
   }
 
   @Test
@@ -1843,7 +1713,9 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     String masterAddresses =
         PlacementInfoUtil.computeMasterAddresses(
             pi, azToNumMasters, "demo-universe", k8sProvider, 1234, true);
-    assertNull(masterAddresses);
+    assertEquals(
+        "demo-universe-yb-master-0.demo-universe-yb-masters.demo-universe.svc.cluster.local:1234",
+        masterAddresses);
   }
 
   @Test

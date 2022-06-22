@@ -1254,6 +1254,9 @@ Status ClusterAdminClient::ListTables(bool include_db_type,
         case master::INDEX_TABLE_RELATION:
           str << " index";
           break;
+        case master::MATVIEW_TABLE_RELATION:
+          str << "matview";
+          break;
         default:
           str << " other";
       }
@@ -2102,19 +2105,30 @@ Status ClusterAdminClient::SplitTablet(const std::string& tablet_id) {
   return Status::OK();
 }
 
-Status ClusterAdminClient::DisableTabletSplitting(int64_t disable_duration_ms) {
+Result<master::DisableTabletSplittingResponsePB> ClusterAdminClient::DisableTabletSplitsInternal(
+    int64_t disable_duration_ms, const std::string& feature_name) {
   master::DisableTabletSplittingRequestPB req;
   req.set_disable_duration_ms(disable_duration_ms);
-  const auto resp = VERIFY_RESULT(
-      InvokeRpc(&master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req));
+  req.set_feature_name(feature_name);
+  return InvokeRpc(&master::MasterAdminProxy::DisableTabletSplitting, *master_admin_proxy_, req);
+}
+
+Status ClusterAdminClient::DisableTabletSplitting(
+    int64_t disable_duration_ms, const std::string& feature_name) {
+  const auto resp = VERIFY_RESULT(DisableTabletSplitsInternal(disable_duration_ms, feature_name));
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }
 
+Result<master::IsTabletSplittingCompleteResponsePB>
+    ClusterAdminClient::IsTabletSplittingCompleteInternal() {
+  master::IsTabletSplittingCompleteRequestPB req;
+  return InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req);
+}
+
 Status ClusterAdminClient::IsTabletSplittingComplete() {
   master::IsTabletSplittingCompleteRequestPB req;
-  const auto resp = VERIFY_RESULT(
-      InvokeRpc(&master::MasterAdminProxy::IsTabletSplittingComplete, *master_admin_proxy_, req));
+  const auto resp = VERIFY_RESULT(IsTabletSplittingCompleteInternal());
   std::cout << "Response: " << AsString(resp) << std::endl;
   return Status::OK();
 }

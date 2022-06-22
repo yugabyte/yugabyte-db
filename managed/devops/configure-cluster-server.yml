@@ -8,7 +8,7 @@
 
 - name: Install and configure server
   hosts: "{{ yb_prebuilt_ami_host | default(instance_search_pattern) }}"
-  gather_facts: no
+  gather_facts: yes
   vars_files:
     - "{{ vars_file | default(placeholder_vars_file) }}"
   roles:

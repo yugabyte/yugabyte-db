@@ -12,13 +12,15 @@
   gather_facts: no
   become: yes
   become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
   tasks:
-    - name: "install python36"
+    - name: "Install python36 on RHEL8 family"
       raw: >
         (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
         (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
         (echo "Python already installed or not CentOS 8")
-      when: install_python is defined
+      when: not air_gapped
       tags: yb-prebuilt-ami
 
 - name: "Pre-provisioning tasks"

@@ -246,7 +246,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill(
@@ -255,12 +255,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   template <typename SomeYBqlOp>
@@ -721,8 +721,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     return *client_future_.get();
   }
 
-  client::TransactionManager* transaction_manager() {
-    return transaction_manager_.get();
+  client::TransactionManager& transaction_manager() {
+    return transaction_manager_provider_();
   }
 
   // Creates a new shared pointer of the object managed by metadata_cache_. This is done
@@ -937,8 +937,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   std::shared_future<client::YBClient*> client_future_;
 
-  // Created only when secondary indexes are present.
-  std::unique_ptr<client::TransactionManager> transaction_manager_;
+  // Expected to live while this object is alive.
+  TransactionManagerProvider transaction_manager_provider_;
 
   // This object should not be accessed directly to avoid race conditions.
   // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it
@@ -951,6 +951,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::atomic<int64_t> last_committed_write_index_{0};
 
   HybridTimeLeaseProvider ht_lease_provider_;
+
+  std::unique_ptr<docdb::ExternalTxnIntentsState> external_txn_intents_state_;
 
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;
