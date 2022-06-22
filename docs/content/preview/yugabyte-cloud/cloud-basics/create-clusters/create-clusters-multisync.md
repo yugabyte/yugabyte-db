@@ -3,6 +3,7 @@ title: Replicate across regions
 linkTitle: Replicate across regions
 description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent:
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
     identifier: create-clusters-multisync
@@ -14,12 +15,6 @@ showAsideToc: true
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
-{{< note title="Preview release" >}}
-
-Replicated across region deployment is a preview release. Send your feedback to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
-
-{{< /note >}}
-
 ## Features
 
 Multi-region replicated clusters include the following features:
@@ -29,8 +24,6 @@ Multi-region replicated clusters include the following features:
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
 - Automated and on-demand backups.
-- Create as many as you need.
-- Provisioned with a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{<support-cloud>}}.
 - Available in all [regions](../../../release-notes#cloud-provider-regions).
 - Enterprise support.
 
@@ -56,8 +49,8 @@ The **Create Cluster** wizard has the following pages:
 Set the following options:
 
 - **Cluster Name**: Enter a name for the cluster.
-- **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{<support-cloud>}}.
-- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{%support-cloud%}}.
+- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{%support-cloud%}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 ### Cluster Setup
 
