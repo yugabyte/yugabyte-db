@@ -317,7 +317,6 @@ All of the health REST endpoints return a simple JSON object with two fields:
 
 The general status of the health check is computed as a logical AND of all the declared health check procedures. In the following example, the checks array is empty as no health check procedure have been specified yet.
 
-**Example:**
 
 ```output
 curl http://localhost:8080/q/health/live
