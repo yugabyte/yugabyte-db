@@ -217,7 +217,7 @@ Leader preference helps optimize workloads that require distribution of data ove
 
 The leaders handle all [reads](../../../../architecture/core-functions/read-path/) and [writes](../../../../architecture/core-functions/write-path/), which reduces the number of network hops, which in turn reduces latency for increased performance. Leader preference allows you to specify the zones in which to place the leaders when the system is stable, and fallback zones when an outage or maintenance occurs in the preferred zones.
 
-In the following example our tablespace is setup to have replicas in us-east-1, us-east-2 and us-west-1. This enables it to survive the loss of an entire Region. The clients are located in us-east-1. By default we would have a third of the leaders in us-west-1, which has a latency of 62ms from our clients.
+In the following example our tablespace is setup to have replicas in us-east-1, us-east-2 and us-west-1. This enables it to survive the loss of an entire region. The clients are located in us-east-1. By default we would have a third of the leaders in us-west-1, which has a latency of 62ms from our clients.
 ![Multi Region Table](/images/explore/tablespaces/multi_region_latency.png)
 
 ```sql
@@ -226,6 +226,32 @@ CREATE TABLESPACE us_east1_region_tablespace
     {"cloud":"aws","region":"us-east-1","zone":"us-east-1b","min_num_replicas":1,"leader_preference":1},
     {"cloud":"aws","region":"us-east-2","zone":"us-east-2a","min_num_replicas":1,"leader_preference":2},
     {"cloud":"aws","region":"us-west-1","zone":"us-west-1a","min_num_replicas":1}]}');
+
+CREATE TABLE preferred_leader_table (id INTEGER, field text)
+  TABLESPACE us_east1_region_tablespace;
+```
+
+```sql
+yugabyte=# INSERT INTO preferred_leader_table VALUES (1, 'field1'), (2, 'field2'), (3, 'field3');
+```
+
+```output
+Time: 43.712 ms
+```
+
+```sql
+yugabyte=# SELECT * FROM preferred_leader_table;
+```
+
+```output
+ id | field
+----+--------
+  3 | field3
+  2 | field2
+  1 | field1
+(3 rows)
+
+Time: 1.052 ms
 ```
 
 Setting `leader_preference` of us-east-1b to 1 (most preferred) informs the YugabyteDB load balancer to place all associated tablet leaders in this zone, dropping the latency to less than 1ms. If all the nodes in us-east-1a are unavailable, they we will fallback to the next preferred zone us-east2 which only has a 12ms latency.
