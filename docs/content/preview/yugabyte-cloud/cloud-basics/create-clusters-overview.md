@@ -1,7 +1,7 @@
 ---
-title: Planning a cluster
-linkTitle: Planning a cluster
-description: Planning a cluster in YugabyteDB Managed.
+title: Plan your cluster
+linkTitle: Plan your cluster
+description: Plan a cluster in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
@@ -21,7 +21,7 @@ The following best practices are recommended for production clusters.
 
 | Feature | Recommendation |
 | :--- | :--- |
-| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>You need to create the VPC before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
+| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
@@ -29,6 +29,34 @@ The following best practices are recommended for production clusters.
 | [Security and authorization](#security) | YugabyteDB Managed clusters are secure by default. After deploying, set up IP allow lists and add database users to allow clients, applications, and application VPCs to connect. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/). |
 
 ## In depth
+
+### Topology
+
+A YugabyteDB cluster typically consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes in a single availability zone, across multiple zones in a single region, and across regions. With more advanced topologies, you can place multiple clusters across multiple regions. The [topology](../create-clusters-topology/) you choose depends on your requirements for latency, availability, and geo-distribution.
+
+#### Single Region
+
+Single-region clusters are available in the following topologies:
+
+- **Single availability zone**. Resilient to node outages.
+- **Multiple availability zones**. Resilient to node and availability zone outages.
+
+Cloud providers like AWS and Google Cloud design zones to minimize the risk of correlated failures caused by physical infrastructure outages like power, cooling, or networking. In other words, single failure events usually affect only a single zone. By deploying nodes across zones in a region, you get resilience to a zone failure as well as high availability.
+
+Single-region clusters are not resilient to region-level outages.
+
+#### Multiple Region
+
+Multi-region clusters are resilient to region-level outages, and are available in the following topologies:
+
+- **Replicate across regions**. Cluster nodes are deployed across 3 regions, with data replicated synchronously.
+- **Partition by region**. Cluster nodes are deployed in separate regions. Data is pinned to specific geographic regions. Allows fine-grained control over pinning rows in a user table to specific geographic locations.
+- **Cross-cluster**. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously.
+- **Read replica**. Multiple clusters are deployed in separate regions. Data is written in a single region, and copied to the other regions, where it can be read. The primary cluster gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
+
+Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC. Refer to [VPC networking](../cloud-vpcs/).
+
+For more details, refer to [Topologies](../create-clusters-topology/).
 
 ### Provider and region
 
@@ -68,7 +96,7 @@ For application development and testing, you can set fault tolerance to **None**
 
 ### Sizing
 
-The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 2GB of RAM per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
+The size of the cluster is based on the number of vCPUs. The basic configuration for YugabyteDB Managed clusters includes 2 vCPUs per node. Each vCPU comes with 50GB of storage. A node has a minimum of 2 vCPUs, and 4GB of memory per vCPU. For the cluster to be [fault tolerant](#fault-tolerance), you need a minimum of 3 nodes.
 
 Depending on your performance requirements, you can increase the number of vCPUs per node, as well as the total number of nodes. You can also increase the disk size per node. However, once increased, you can't lower the disk size per node.
 
@@ -96,7 +124,11 @@ YugabyteDB Managed performs full cluster (all namespaces) level backups, and the
 
 Clusters are secure by default. You need to explicitly allow access to clusters by adding IP addresses of clients connecting to the cluster to the cluster IP allow list. Refer to [IP allow lists](../../cloud-secure-clusters/add-connections/).
 
-If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list. You need to create the VPC before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../../cloud-basics/cloud-vpcs/).
+If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list.
+
+Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC.
+
+You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
 
 #### User authorization
 

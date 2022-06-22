@@ -1,7 +1,7 @@
 ---
-title: Create a free cluster
-linkTitle: Create a free cluster
-description: Create a Free cluster to get started using YugabyteDB Managed.
+title: Create a Sandbox cluster
+linkTitle: Create a Sandbox cluster
+description: Create a Sandbox cluster to get started using YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
 menu:
@@ -13,49 +13,49 @@ isTocNested: true
 showAsideToc: true
 ---
 
-The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.
+The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one Sandbox cluster.
 
 {{< youtube id="KZSrl12x1ew" title="Create your first YugabyteDB Managed cluster" >}}
 
-After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed. YugabyteDB Managed has the following main sections, accessed via the left menu:
+After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed.
 
-- **Getting Started** - Create your free cluster and access documentation.
+The first time you sign in, YugabyteDB Managed provides a guided tour to help you get started. Follow the tour to:
 
-- **Clusters** - Add, monitor, and manage clusters.
+- create your free Sandbox cluster
+- connect to your cluster and explore distributed SQL using the Cloud Shell tutorial
+- explore a sample application
 
-- **Alerts** - Configure cluster and billing alerts, and view notifications.
+## Create your Sandbox cluster
 
-- **Network Access** - Set up VPC networks and authorize access to your clusters using IP allow lists.
+To create your Sandbox cluster:
 
-- **Admin** - Manage billing and payment methods, add users, and review account activity.
+![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
 
-## Create your free cluster
+1. On the welcome page, click **Create a Free cluster**.
 
-To create your free cluster:
+1. Select **Sandbox** and click **Choose**.
 
-1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard.
+1. Enter a name for the cluster, and choose the cloud provider (AWS or GCP), then click **Next**.
 
-1. Select **YugabyteDB Managed Free** and click **Next**.
-
-1. Choose the cloud provider (AWS or GCP), enter a name for the cluster, and choose the region in which to deploy the cluster, then click **Next**.
+1. Choose the region in which to deploy the cluster, then click **Next**.
 
 1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
 
 1. Click **Create Cluster**.
 
-After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
+After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
 When the cluster is ready, the cluster [Overview](../../cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 
-{{< note title="Note" >}}
+{{< note title="Sandbox clusters" >}}
 
-YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
+YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../cloud-build-apps/). To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
 {{< /note >}}
 
 ### Learn more
 
-[Differences between free and standard clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters)
+[Differences between Sandbox and Dedicated clusters](../../cloud-faq/#what-are-the-differences-between-free-and-standard-clusters)
 
 [Deploy production clusters](../../cloud-basics/)
 
