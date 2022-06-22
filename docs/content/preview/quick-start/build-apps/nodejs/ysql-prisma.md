@@ -41,6 +41,11 @@ showAsideToc: true
   
 </ul>
 
+{{< tip title="YugabyteDB Managed requires SSL" >}}
+
+Are you using YugabyteDB Managed? Install the [prerequisites](#prerequisites).
+
+{{</ tip >}}
 ## Prerequisites
 
 This tutorial assumes that you have installed YugabyteDB and created a cluster. Refer to [Quick Start](../../../../quick-start/).
@@ -70,7 +75,7 @@ $ npm install
 ```
 ## Create Database
 
-From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using:
+From your local YugabyteDB installation directory, connect to the [YSQL](../../../../admin/ysqlsh/) shell using the following command:
 
   ```sh
   $ ./bin/ysqlsh
@@ -83,13 +88,13 @@ From your local YugabyteDB installation directory, connect to the [YSQL](../../.
   yugabyte=#
   ```
 
-- Create the `ysql_prisma` database using:
+- Create the `ysql_prisma` database using the following command:
 
   ```sql
   yugabyte=# CREATE DATABASE ysql_prisma;
   ```
 
-- Connect to the database using:
+- Connect to the database using the following command:
 
   ```sql
   yugabyte=# \c ysql_prisma;
@@ -102,38 +107,41 @@ Modify the `DATABASE_URL` in the `.env` file according to your cluster configura
 ```sh
 $ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
 ```
-- Using the YugabyteDB Managed Cluster to connect:
+If you have a YugabyteDB Managed cluster, modify the `DATABASE_URL` using the following steps:
 
-1. Download the root certificate.
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/#download-your-cluster-certificate).
 2. Install OpenSSL, if not present.
 3. Convert the certificate from `.crt` to `.pem` format using:
   ```sh
   $ openssl x509 -in <root_crt_path> -out cert.pem
   ```
-4. Modify the `DATABASE_URL` in this format where <b>cert_path</b> should be the relative path of `cert.pem` with respect to `/prisma` folder:
+4. Modify the `DATABASE_URL` by including  the `cert_path` as the relative path of `cert.pem` with respect to `/prisma` folder:
 ```sh
 $ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
   ```
 ## Apply the Migrations 
 
-Create the tables in the YugabyteDB by applying the migration for the data models in the file `prisma/schema.prisma` using the following command and generate the <b>PrismaClient</b>: 
-```
+Create the tables in YugabyteDB by applying migration for the data models in the file `prisma/schema.prisma`, and generate the **Prisma Client** using the following command:
+```sh
 $ npx prisma migrate dev --name first_migration
 ```
-<b>Note: </b>If you want to use the Prisma CLI without `npx`, you need to install Prisma globally using: 
-```
-npm i -g prisma
-``` 
+ {{< note title="Note" >}}
 
+If you want to use the Prisma CLI without `npx`, install Prisma globally using the following command:
+  ```sh
+  npm install -g prisma
+  ```
+
+{{< /note >}}
 ## Run the application
 
-Start the Node.js API server at <http://localhost:8080> :
+Start the Node.js API server at <http://localhost:8080> .
 
 ```sh
 $ npm start
 ```
-<b>Note:</b> If your `PORT` 8080 is already in use, change the port using 
-```
+If your `PORT` 8080 is already in use, change the port using the following command:
+```sh
 $ export PORT=<new_port>
 ```
 
@@ -302,11 +310,11 @@ $ curl http://localhost:8080/orders
 ```
 ### Using Primsa Studio 
 
-You can use this command to start <b>Prisma Studio </b>:
+Start Prisma Studio using the following command:
 ```sh
 $ npx prisma studio
 ```
-Now, go to this page [http://localhost:5555](http://localhost:5555) and you can see the tables and data created as-
+To view the tables and data created, go to [http://localhost:5555](http://localhost:5555).
 
 ![Prisma studio](/images/develop/ecosystem-integrations/prisma-orm-nodejs.png)
 

@@ -36,7 +36,7 @@ showAsideToc: true
   </li>
 </ul>
 
-[Prisma](https://prisma.io/) is an open-source Object Relational Mapping(ORM) for Node.js or TypeScript applications. Prisma has various components including **Prisma Client** , which is used as a query builder to communicate with databases, **Prisma Migrate**, which acts as a migration tool, and **Prisma Studio **, which is a GUI based tool to manage data in the Database.
+[Prisma](https://prisma.io/) is an open-source Object Relational Mapping(ORM) for Node.js or TypeScript applications. Prisma has various components including **Prisma Client** , which is used as a query builder to communicate with databases, **Prisma Migrate**, which acts as a migration tool, and **Prisma Studio** , which is a GUI based tool to manage data in the Database.
 
 Prisma Client can be a REST API, a GraphQL API, a gRPC API, or anything else that needs a database.
 
@@ -80,10 +80,14 @@ To create a basic Node.js project and install the `prisma` package, do the follo
     ```sh
     $ npm install prisma
     ```
-  <b>Note:</b> If you want to use the Prisma CLI without `npx`, you need to install Prisma globally using: 
-  ```
+  {{< note title="Note" >}}
+
+If you want to use the Prisma CLI without `npx`, install Prisma globally using the following command:
+  ```sh
   npm install -g prisma
-  ``` 
+  ```
+
+{{< /note >}}
 1. Create an empty example.js file:
 
     ```sh
@@ -92,9 +96,7 @@ To create a basic Node.js project and install the `prisma` package, do the follo
 
 ### Step 2: Initialise Prisma and Connect with YugabyteDB 
 
-Now, we need to initialise our project with prisma. 
-
-1. Initialise prisma in project using: 
+1. Initialise Prisma in your project using the following command:
     ```sh
     $ npx prisma init
     ```
@@ -104,26 +106,26 @@ Now, we need to initialise our project with prisma.
     - `schema.prisma` file consists of configurations and data models for the project.
     -  `.env` file defines environment variable `DATABASE_URL` which is used in configuring the database.
 
-2. Specify the configuration to connect  with YugabyteDB cluster in `.env` file as `DATABASE_URL` environment variable:
+2. Configure the `DATABASE_URL` environment variable in the `.env` file to connect with a YugabyteDB cluster.
     ```
     DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>"
     ```
-    - Using the YugabyteDB Managed Cluster to connect:
+If you have a YugabyteDB Managed cluster, modify the `DATABASE_URL` using the following steps:
 
-    1. Download the root certificate.
-    2. Install OpenSSL, if not present.
-    3. Convert the certificate from `.crt` to `.pem` format using:
-        ```sh
-        $ openssl x509 -in <root_crt_path> -out cert.pem
-        ```
-    4. Add the `DATABASE_URL` in `.env` file in this format where <b>cert_path</b> should be the relative path of `cert.pem` with respect to `/prisma` folder :
-        ```
-        DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"' 
-        ```
+1. Download your [cluster certificate](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/#download-your-cluster-certificate).
+2. Install OpenSSL, if not present.
+3. Convert the certificate from `.crt` to `.pem` format using:
+  ```sh
+  $ openssl x509 -in <root_crt_path> -out cert.pem
+  ```
+4. Modify the `DATABASE_URL` by including  the `cert_path` as the relative path of `cert.pem` with respect to `/prisma` folder:
+  ```sh
+  $ DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
+  ```
 
 ### Step 3: Create and Migrate a Prisma model
 
-Now, we will create a data model in `prisma/schema.prisma` file and migrate it to the YugabyteDB using <b>Prisma Migrate</b>.
+Create a data model in `prisma/schema.prisma` file and migrate it to the YugabyteDB using **Prisma Migrate**.
 
 1. Create a data model as `Employee` in `prisma/schema.prisma` file by specifying the following in the file:
 
@@ -138,19 +140,19 @@ model Employee {
 }
 ```
 
-2. Migrate this data model to the YugabyteDB using:
+2. Migrate this data model to YugabyteDB using the following command:
 ```sh
 $ npx prisma migrate dev --name first_migration
 ```
 
-This will create the migration file `migration.sql` with folder name `<unique-id>_first_migration` under `prisma/migrations` folder and apply those on the database and generate a <b>Prisma Client</b> which can be used a query builder to communicate with database.
+The `prisma migrate` command creates a `migration.sql` file with the folder name `<unique-id>_first_migration` under `prisma/migrations`,  applies those to the database, and generates a Prisma Client, which can be used as a query builder to communicate with the database.
 
 
 ### Step 4: Create and Run an example using Prisma and YugabyteDB
 
-Now, we will try using <b>Prisma Client</b> to create few records in `employee` table and fetch those records from Database.
+Use Prisma Client to create a few records in the `employee` table and fetch those records from the database.
 
-1. Add the following in the `example.js` to create three employees records in the employee table and fetch those employees details in the order of their employee id:
+1. Add the following code in the `example.js` file to create three employee records in the employee table, and fetch those employee details in the order of their employee ids:
 
 ```js
 const { PrismaClient } = require('@prisma/client')
