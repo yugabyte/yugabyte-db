@@ -54,9 +54,9 @@ In a single-region multi-zone cluster, the nodes of the YugabyteDB cluster are p
 
 **Deployment**
 
-To deploy a multi-zone cluster, create a single-region cluster with Availability Zone Level fault tolerance. Refer to [Create a single-region cluster](../create-clusters/).
+To deploy a multi-zone cluster, create a single-region cluster with Availability Zone Level fault tolerance. Refer to [Create a single-region cluster](../create-clusters/create-single-region/).
 
-If you deploy your cluster in a VPC, you can geo partition the cluster after it is created.
+If you deploy your cluster in a VPC, you can [geo-partition](#partition-by-region) the cluster after it is created.
 
 ## Replicate across regions
 
@@ -82,7 +82,7 @@ Write latencies in this deployment mode can be high. This is because the tablet 
 - Write latency can be high (depends on the distance//network packet transfer times
 - Follower reads trade off consistency for latency
 
-To deploy a multi-region synchronous cluster, refer to [Replicate across regions](../create-clusters-multisync/).
+To deploy a multi-region replicated cluster, refer to [Replicate across regions](../create-clusters/create-clusters-multisync/).
 
 ## Partition by region
 

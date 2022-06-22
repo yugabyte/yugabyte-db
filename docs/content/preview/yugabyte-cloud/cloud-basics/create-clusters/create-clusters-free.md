@@ -5,7 +5,7 @@ description: Create Sandbox clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 aliases:
-  - /preview/deploy/yugabyte-cloud/cloud-basics/create-clusters-free/
+  - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
 menu:
   preview:
     identifier: create-clusters-free

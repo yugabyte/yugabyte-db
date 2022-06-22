@@ -12,11 +12,11 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Clusters [replicated across regions](../../create-clusters-topology/#sync-across-all-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
+Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
 
 {{< note title="Preview release" >}}
 
-Replicated across region deployment is a preview release. Send your feedback to {{<support-cloud>}}.
+Replicated across region deployment is a preview release. Send your feedback to [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
 
 {{< /note >}}
 
@@ -36,7 +36,7 @@ Multi-region replicated clusters include the following features:
 
 ## Prerequisites
 
-- Create VPCs in the regions where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
+- Multi-region clusters must be deployed in VPCs. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC in AWS](../../cloud-vpcs/cloud-add-vpc-aws/#create-a-vpc) or [Create a VPC in GCP](../../cloud-vpcs/cloud-add-vpc-gcp/#create-a-vpc).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a multi-region replicated cluster
@@ -57,7 +57,7 @@ Set the following options:
 
 - **Cluster Name**: Enter a name for the cluster.
 - **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{<support-cloud>}}.
-- **Database Version**: By default, clusters are deployed using a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 ### Cluster Setup
 

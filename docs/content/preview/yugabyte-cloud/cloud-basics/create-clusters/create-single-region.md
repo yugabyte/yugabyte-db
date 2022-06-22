@@ -56,13 +56,13 @@ Set the following options:
 
 - **Cluster Name**: Enter a name for the cluster.
 - **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{<support-cloud>}}.
-- **Database Version**: By default, clusters are deployed using a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on). If you want to use a [preview release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{<support-cloud>}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 ### Cluster Setup
 
 Select **Single-Region Deployment** and set the following options:
 
-- **Fault Tolerance** determines how resilient the cluster is to node and cloud zone failures.
+- **Select a fault tolerance for your cluster**. Fault tolerance determines how resilient the cluster is to node and cloud zone failures.
 
   ![Add Cluster Wizard - Fault tolerance](/images/yb-cloud/cloud-addcluster-paid3.1.png)
 

@@ -21,7 +21,7 @@ The following best practices are recommended for production clusters.
 
 | Feature | Recommendation |
 | :--- | :--- |
-| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>You need to create the VPC before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
+| [Provider and region](#provider-and-region) | Deploy your cluster in a virtual private cloud (VPC), with the same provider and in the same region as your application VPC. YugabyteDB Managed supports AWS and GCP.<br>Multi-region clusters must be deployed in VPCs. You need to create the VPCs before you deploy the cluster. Refer to [VPC network](../cloud-vpcs/). |
 | [Fault tolerance](#fault-tolerance) | Availability zone (AZ) level - minimum of three nodes across multiple AZs, with a replication factor of 3. |
 | [Sizing](#sizing) | For most production applications, at least 3 nodes with 4 to 8 vCPUs per node.<br>When scaling your cluster, for best results increase node size up to 16 vCPUs before adding more nodes. For example, for a 3-node cluster with 4 vCPUs per node, scale up to 8 or 16 vCPUs before adding a fourth node. |
 | [YugabyteDB version](#yugabytedb-version) | Use the **Stable** release track. |
