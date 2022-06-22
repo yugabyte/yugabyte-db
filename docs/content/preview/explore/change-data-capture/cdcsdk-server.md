@@ -187,8 +187,8 @@ The Amazon S3 Sink streams changes to an AWS S3 bucket. Only Inserts are support
 | `cdcsdk.sink.s3.region` | | Name of the region of the S3 bucket. |
 | `cdcsdk.sink.s3.basedir` | | Base directory or path where the data has to be stored. |
 | `cdcsdk.sink.s3.pattern` | | Pattern to generate paths (sub-directory and filename) for data files. |
-| `cdcsdk.sink.s3.flushBytesMB` | 200 | Trigger Data File Rollover on file size. |
-| `cdcsdk.sink.s3.flushRecords` | 10000 | Trigger Data File Rollover on number of records |
+| `cdcsdk.sink.s3.flush.sizeMB` | 200 | Trigger Data File Rollover on file size. |
+| `cdcsdk.sink.s3.flush.records` | 10000 | Trigger Data File Rollover on number of records |
 
 {{< note title="Note" >}}
 
