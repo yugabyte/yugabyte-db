@@ -36,7 +36,7 @@ showAsideToc: true
   </li>
 </ul>
 
-[Prisma](https://prisma.io/) is an open-source Object Relational Mapping(ORM) for Node.js or TypeScript applications. Prisma has various parts such as <b>Prisma Client</b> which is used as a query builder to communicate with database, <b>Prisma Migrate</b> which act as a migration tool and <b>Prisma Studio </b>which is a GUI based tool to manage data in the Database.
+[Prisma](https://prisma.io/) is an open-source Object Relational Mapping(ORM) for Node.js or TypeScript applications. Prisma has various components including **Prisma Client** , which is used as a query builder to communicate with databases, **Prisma Migrate**, which acts as a migration tool, and **Prisma Studio **, which is a GUI based tool to manage data in the Database.
 
 Prisma Client can be a REST API, a GraphQL API, a gRPC API, or anything else that needs a database.
 
