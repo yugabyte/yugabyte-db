@@ -298,7 +298,7 @@ With `FLATTEN`, the following simple format is emitted:
 
 ### Networking
 
-A CDCSDK Server requires access to open ports in Yugabytedb. Therefore it has to run in the same VPC (or peered VPC) as the Yugabytedb. The server also requires access to sinks in the case of Kafka or HTTP REST Endpoint and the appropriate credentials for writing to AWS S3.
+A CDCSDK Server requires access to open ports in YugabyteDB. Therefore it has to run in the same VPC (or peered VPC) as the YugabyteDB database. The server also requires access to sinks in the case of Kafka or an HTTP REST Endpoint and the appropriate credentials for writing to AWS S3.
 
 ### Health checks
 
