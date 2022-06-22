@@ -27,7 +27,7 @@ showAsideToc: true
 
 #### Infrastructure
 
-- Instance type for new Dedicated clusters on AWS updated to [EC2 m5.large](https://aws.amazon.com/ec2/instance-types/m5/).
+- Instance type for new Dedicated clusters on AWS updated to [m5](https://aws.amazon.com/ec2/instance-types/m5/).
 
 ### June 14, 2022
 
