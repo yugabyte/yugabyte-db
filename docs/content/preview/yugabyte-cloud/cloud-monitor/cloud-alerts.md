@@ -100,7 +100,7 @@ If your cluster experiences frequent spikes in CPU use, consider optimizing your
 
 Unoptimized queries can lead to CPU alerts. Use the [Slow Queries](../cloud-queries-slow/) and [Live Queries](../cloud-queries-live/) views to identify potentially problematic queries, then use the EXPLAIN statement to see the query execution plan and identify optimizations. Consider adding one or more indexes to improve query performance. For more information, refer to [Analyzing Queries with EXPLAIN](../../../explore/query-1-performance/explain-analyze/).
 
-High CPU use could also indicate a problem and may require debugging by {{%support-cloud%}}.
+High CPU use could also indicate a problem and may require debugging by {{% support-cloud %}}.
 
 If CPU use is continuously higher than 80%, your workload may also exceed the capacity of your cluster. Consider scaling your cluster by adding vCPUs. Refer to [Scale and configure clusters](../../cloud-clusters/configure-clusters/).
 
@@ -126,7 +126,7 @@ If your cluster generates this alert, you may need to rate limit your queries. L
 - Reduce query parallelism.
 - If needed, set the driver execution to "sync" rather than "async" to serialize queries.
 
-If your cluster generates this alert but isn’t under a very large workload, contact {{%support-cloud%}}.
+If your cluster generates this alert but isn’t under a very large workload, contact {{% support-cloud %}}.
 
 ### Billing alerts
 
@@ -136,6 +136,6 @@ Billing alerts trigger for the following events:
 | :--- | :--- |
 | Credit card expiring within 3 months | Add a new credit card. |
 | Invoice payment failure | Check with your card issuer to ensure that your card is still valid and has not exceeded its limit. Alternatively, you can add another credit card to your billing profile. |
-| Credit point usage exceeds the 50%, 75%, and 90% limit | Add a credit card to your billing profile, or contact {{%support-cloud%}}. |
+| Credit point usage exceeds the 50%, 75%, and 90% limit | Add a credit card to your billing profile, or contact {{% support-cloud %}}. |
 
 For information on adding credit cards and managing your billing profile, refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).

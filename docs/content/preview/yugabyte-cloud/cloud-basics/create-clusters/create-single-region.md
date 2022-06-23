@@ -29,7 +29,7 @@ Single-region dedicated clusters include the following features:
 - VPC networking support.
 - Automated and on-demand backups.
 - Create as many as you need.
-- Provisioned with a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{%support-cloud%}}.
+- Provisioned with a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{% support-cloud %}}.
 - Available in all [regions](../../../release-notes#cloud-provider-regions).
 - Enterprise support.
 
@@ -55,8 +55,8 @@ The **Create Cluster** wizard has the following pages:
 Set the following options:
 
 - **Cluster Name**: Enter a name for the cluster.
-- **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{%support-cloud%}}.
-- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{%support-cloud%}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **Provider**: Choose a cloud provider - AWS or GCP. If you want to use Azure, contact {{% support-cloud %}}.
+- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 ### Cluster Setup
 
