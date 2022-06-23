@@ -143,7 +143,11 @@ export const UniverseSupportBundle = (props) => {
         {steps === stepsObj.secondStep && (
           <SecondStep
             onOptionsChange={(selectedOptions) => {
-              setPayload(selectedOptions);
+              if(selectedOptions) {
+                setPayload(selectedOptions);
+              } else {
+                setPayload(defaultOptions)
+              }
             }}
           />
         )}
