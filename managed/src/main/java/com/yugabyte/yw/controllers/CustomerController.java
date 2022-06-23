@@ -577,6 +577,12 @@ public class CustomerController extends AuthenticatedController {
                       u.getUniverseDetails().nodePrefix != null
                           && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
               .collect(Collectors.toList());
+      if (CollectionUtils.isEmpty(universes)) {
+        LOG.warn(
+            "Failed to find universe with node prefix {}, will not add mount point filter",
+            nodePrefix);
+        return filterOverrides;
+      }
       if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType
           == CloudType.onprem) {
         final String mountRoots =
