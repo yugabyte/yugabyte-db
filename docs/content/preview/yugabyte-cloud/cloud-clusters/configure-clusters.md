@@ -39,7 +39,7 @@ The **Regions** section on the cluster **Settings** tab summarizes the cluster c
 
 - You can horizontally scale nodes in clusters with Node level fault tolerance in increments of 1. Nodes in clusters with Availability zone level fault tolerance are scaled in increments of 3.
 
-- You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{<support-cloud>}}.
+- You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
 
