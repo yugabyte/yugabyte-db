@@ -39,7 +39,6 @@ typedef struct TriggerData
 	Buffer		tg_newtuplebuf;
 	Tuplestorestate *tg_oldtable;
 	Tuplestorestate *tg_newtable;
-	bool		disable_fk_check;
 } TriggerData;
 
 /*
