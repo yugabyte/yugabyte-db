@@ -75,12 +75,14 @@ import play.Environment;
 import play.libs.Json;
 
 public class CloudProviderHandler {
+  public static final String YB_FIREWALL_TAGS = "YB_FIREWALL_TAGS";
 
   private static final Logger LOG = LoggerFactory.getLogger(CloudProviderHandler.class);
   private static final JsonNode KUBERNETES_CLOUD_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"cloud\", \"numCores\": 0.5, \"memSizeGB\": 1.5}");
   private static final JsonNode KUBERNETES_DEV_INSTANCE_TYPE =
       Json.parse("{\"instanceTypeCode\": \"dev\", \"numCores\": 0.5, \"memSizeGB\": 0.5}");
+
   private static final JsonNode KUBERNETES_INSTANCE_TYPES =
       Json.parse(
           "["
@@ -365,10 +367,11 @@ public class CloudProviderHandler {
   }
 
   private void updateProviderConfig(Provider provider, Map<String, String> config) {
-    Map<String, String> newConfig = config;
+    Map<String, String> newConfig = new HashMap<>(config);
     if ("gcp".equals(provider.code)) {
-      // Remove the key to avoid generating a credentials file unnecessarily.
+      // Remove these keys to avoid generating a credentials file unnecessarily.
       config.remove(GCPCloudImpl.GCE_HOST_PROJECT_PROPERTY);
+      String ybFirewallTags = config.remove(YB_FIREWALL_TAGS);
       if (!config.isEmpty()) {
         String gcpCredentialsFile =
             accessManager.createCredentialsFile(provider.uuid, Json.toJson(config));
@@ -383,6 +386,9 @@ public class CloudProviderHandler {
         }
         if (gcpCredentialsFile != null) {
           newConfig.put(GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY, gcpCredentialsFile);
+        }
+        if (ybFirewallTags != null) {
+          newConfig.put(YB_FIREWALL_TAGS, ybFirewallTags);
         }
       }
     }
