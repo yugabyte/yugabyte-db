@@ -394,7 +394,8 @@ body:not(.td-home) .td-main main {
 }
 
 .td-content p a,
-.td-content *:not(.nav-item) a,
+.td-content li:not(.nav-item) a,
+.td-content .note a,
 .td-content td a {
   color: #f75821;
 
@@ -416,7 +417,7 @@ body:not(.td-home) .td-main main {
 :root {
   --theme-color: #f75821;
   --theme-dark-color: #ed3d00;
-  --left_menu_bg: rgba(249, 176, 151, 0.05);
+  --left_menu_bg: rgba(249, 176, 151, 0.2);
 }
 
 [data-theme="purple"] {
