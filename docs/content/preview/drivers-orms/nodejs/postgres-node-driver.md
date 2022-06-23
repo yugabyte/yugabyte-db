@@ -1,12 +1,9 @@
 ---
-title: NodeJS drivers
-linkTitle: NodeJS drivers
-description: NodeJS drivers for YSQL
-headcontent: NodeJS drivers for YSQL
+title: Connect an app
+linkTitle: Connect an app
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: NodeJS drivers
     identifier: postgres-node-driver
     parent: nodejs-drivers
     weight: 500
@@ -111,7 +108,7 @@ async function createTableAndInsertData(client){
                 }).catch((err) => {
                     console.log(err.stack);
                 })
-    
+
     var insert_emp1 = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')"
     await client.query(insert_emp1).then(() => {
         console.log("Inserted Employee 1");

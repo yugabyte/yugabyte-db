@@ -1,4 +1,4 @@
----
+<!-- ---
 title: Supported Versions
 linkTitle: Supported Versions
 description: Supported Versions for NodeJS Drivers, ORMs and AppDev Frameworks
@@ -40,4 +40,4 @@ showAsideToc: true
 | [1.0.6](https://www.npmjs.com/package/sequelize-yugabytedb) | 2.13 (latest) | full
 | 1.0.6 |  2.12 (stable) | full
 | 1.0.6 |  2.8  | full
-| 1.0.6 | 2.6 | full
+| 1.0.6 | 2.6 | full -->

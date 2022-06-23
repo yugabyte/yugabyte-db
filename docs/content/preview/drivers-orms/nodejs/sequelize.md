@@ -1,8 +1,8 @@
 ---
-title: NodeJS ORMs
-linkTitle: NodeJS ORMs
-description: Sequelize ORM support for YugabyteDB
-headcontent: Sequelize ORM support for YugabyteDB
+title: Use an ORM
+linkTitle: Use an ORM
+description: NodeJS ORM support for YugabyteDB
+headcontent: NodeJS ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -61,31 +61,31 @@ To create a basic Node.js project and install the `sequelize` core package, do t
 1. Create a new directory.
 
     ```sh
-    `mkdir nodejs-quickstart-example && cd nodejs-quickstart-example`
+    mkdir nodejs-quickstart-example && cd nodejs-quickstart-example
     ```
 
 1. Create a package.json file:
 
     ```sh
-    `echo {} > package.json`
+    echo {} > package.json
     ```
 
 1. Install sequelize-yugabytedb package:
 
     ```sh
-    `npm install sequelize`
+    npm install sequelize
     ```
 
 1. Install the node-postgres driver:
 
     ```sh
-    `npm install pg`
+    npm install pg
     ```
 
 1. Create an empty demo.js file:
 
     ```sh
-    `touch example.js`
+    touch example.js
     ```
 
 ### Step 2: Create a Node.js example using Sequelize ORM
@@ -132,7 +132,7 @@ async function createTableAndInsert() {
    console.log("Created the employees Table.")
 
   //Insert 3 rows into the employees table
-   
+
    await Employee.create({emp_id: 1, emp_name: 'sam', emp_age: 25, emp_email: 'sam@example.com'})
    await Employee.create({emp_id: 2, emp_name: 'bob', emp_age: 27, emp_email: 'bob@example.com'})
    await Employee.create({emp_id: 3, emp_name: 'Jake', emp_age: 29, emp_email: 'jake@example.com'})
@@ -168,7 +168,7 @@ Executing (default): INSERT INTO "employees" ("emp_id","emp_name","emp_age","emp
 Inserted the data of three employees into the employees table
 Fetching the data of all employees.
 Executing (default): SELECT "emp_id", "emp_name", "emp_age", "emp_email", "createdAt", "updatedAt" FROM "employees" AS "employees";
-Employees Details: 
+Employees Details:
  [
   {
     emp_id: 1,
@@ -198,16 +198,23 @@ Employees Details:
 ```
 
 ## Specifying SSL configuration
+
 This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+
 1. Install the `fs` package to read the SSL certificate:
+
     ```sh
     npm install fs
     ```
+
 1. Add the following line to use the `fs` module:
+
     ```js
     const fs = require('fs');
     ```
+
 1. Use the following configuration in the `models/index.js` file when you create the sequelize object:
+
     ```js
     const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
         dialect: 'postgres',
