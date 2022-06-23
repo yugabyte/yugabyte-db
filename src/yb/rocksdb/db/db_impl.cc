@@ -162,7 +162,7 @@ DEFINE_int32(automatic_compaction_extra_priority, 0,
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_bool(task_ignore_disk_priority, false,
+DEFINE_bool(task_ignore_disk_priority, true,
               "Ignore disk priority when considering compaction and flush priorities.");
 
 DEFINE_bool(rocksdb_use_logging_iterator, false,
