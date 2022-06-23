@@ -112,6 +112,7 @@ const initialState = {
   instanceTypeSelected: '',
   azCheckState: true,
   providerSelected: '',
+  primaryClusterProvider: '',
   regionList: [],
   numNodes: 3,
   nodeSetViaAZList: false,
@@ -403,6 +404,7 @@ export default class ClusterFields extends Component {
         this.setState({
           isKubernetesUniverse: isKubernetesUniverse(this.props.universe.currentUniverse.data),
           providerSelected: providerUUID,
+          primaryClusterProvider: primaryCluster?.userIntent?.provider,
           instanceTypeSelected: userIntent.instanceType,
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
@@ -1645,7 +1647,8 @@ export default class ClusterFields extends Component {
     let currentProviderUUID = self.state.providerSelected;
     let currentAccessKey = self.state.accessKeyCode;
 
-    const primaryProviderUUID = formValues['primary']?.provider ?? '';
+    const primaryProviderUUID =
+      formValues['primary']?.provider ?? self.state.primaryClusterProvider;
     let primaryProviderCode = '';
 
     if (formValues[clusterType]) {
