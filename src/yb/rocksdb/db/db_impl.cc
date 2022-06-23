@@ -149,7 +149,7 @@ DEFINE_int32(compaction_priority_step_size, 5,
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_bool(task_ignore_disk_priority, false,
+DEFINE_bool(task_ignore_disk_priority, true,
             "Ignore disk priority when considering compaction and flush priorities.");
 
 DEFINE_int32(automatic_compaction_extra_priority, 50,
