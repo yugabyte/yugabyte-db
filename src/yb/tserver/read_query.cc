@@ -207,6 +207,10 @@ bool ReadQuery::IsForBackfill() const {
 }
 
 Status ReadQuery::DoPerform() {
+  if (req_->include_trace()) {
+    context_.EnsureTraceCreated();
+  }
+  ADOPT_TRACE(context_.trace());
   TRACE("Start Read");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Read", "tablet_id", req_->tablet_id());
   VLOG(2) << "Received Read RPC: " << req_->DebugString();

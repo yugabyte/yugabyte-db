@@ -2634,6 +2634,11 @@ bool CatalogManager::ShouldSplitValidCandidate(
     num_servers = ts_descs.size();
   }
 
+  if (num_servers == 0) {
+    LOG(WARNING) << Format("No live, non-blacklisted tservers for tablet $0. Cannot calculate "
+                           "average number of tablets per tserver.", tablet_info.id());
+    return false;
+  }
   int64 num_tablets_per_server = tablet_info.table()->NumPartitions() / num_servers;
 
   if (num_tablets_per_server < FLAGS_tablet_split_low_phase_shard_count_per_node) {

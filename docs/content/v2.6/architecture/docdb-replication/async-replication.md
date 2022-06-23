@@ -34,7 +34,7 @@ The replication could be unidirectional from a source cluster (aka the master cl
 
 The source-sink deployment architecture is shown in the diagram below:
 
-<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-source-sink-deployment.png" style="max-width:750px;"/>
+<img src="/images/architecture/replication/2DC-source-sink-deployment.png" style="max-width:750px;"/>
 
 ### Active-Active
 
@@ -48,7 +48,7 @@ The multi-master deployment is built internally using two master-slave unidirect
 
 The architecture diagram is shown below:
 
-<img src="https://github.com/yugabyte/yugabyte-db/raw/master/architecture/design/images/2DC-multi-master-deployment.png" style="max-width:750px;"/>
+<img src="/images/architecture/replication/2DC-multi-master-deployment.png" style="max-width:750px;"/>
 
 ## Features and limitations
 

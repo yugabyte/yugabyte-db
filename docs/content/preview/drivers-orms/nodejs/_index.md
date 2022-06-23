@@ -25,6 +25,7 @@ The following projects are recommended for implementing Node applications using 
 | :------ | :--- | :------ | :------- |
 | [node-postgres](postgres-node-driver) | Node.JS Driver | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-pg/) <br />[CRUD](postgres-node-driver) |
 | [Sequelize](sequelize) | ORM | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-sequelize/) <br />[CRUD](sequelize) |
+| [Prisma](prisma) | ORM | Full | [Hello World](/preview/quick-start/build-apps/nodejs/ysql-prisma/) <br /> [CRUD](prisma) |
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
 
