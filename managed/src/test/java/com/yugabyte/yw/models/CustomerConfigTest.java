@@ -28,7 +28,9 @@ public class CustomerConfigTest extends FakeDBApplication {
 
   private CustomerConfig createData(Customer customer) {
     JsonNode formData =
-        Json.parse("{\"name\": \"Test\", \"type\": \"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
+        Json.parse(
+            "{\"name\": \"Test\", \"configName\": \"Test\", \"type\": "
+                + "\"STORAGE\", \"data\": {\"foo\": \"bar\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
@@ -51,8 +53,9 @@ public class CustomerConfigTest extends FakeDBApplication {
   public void testGetData() {
     JsonNode formData =
         Json.parse(
-            "{\"name\": \"Test\", \"type\": \"STORAGE\", "
-                + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", \"DATA\": \"HELLO\"}}");
+            "{\"name\": \"Test\", \"configName\": \"Test\", \"type\": \"STORAGE\", "
+                + "\"data\": {\"KEY\": \"ABCDEFGHIJ\", \"SECRET\": \"123456789\", "
+                + "\"DATA\": \"HELLO\"}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
 
