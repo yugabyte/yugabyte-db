@@ -1648,6 +1648,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     context.RespondSuccess();
     return;
   }
+  if (req->include_trace()) {
+    context.EnsureTraceCreated();
+  }
+  ADOPT_TRACE(context.trace());
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());

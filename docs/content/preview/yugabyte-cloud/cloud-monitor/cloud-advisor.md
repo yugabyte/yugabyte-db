@@ -85,7 +85,7 @@ Connections should be distributed equally across all the nodes in the cluster. U
 
 **Fix the problem**
 
-- If a load balancer is used to distribute connections among nodes of cluster, review the configuration of the load balancer. If you are using the YugabyteDB Managed load balancer, contact {{<support-cloud>}}.
+- If a load balancer is used to distribute connections among nodes of cluster, review the configuration of the load balancer. If you are using the YugabyteDB Managed load balancer, contact {{% support-cloud %}}.
 - If you are load balancing in your application or client, review your implementation.
 
 ### Query load skew
@@ -96,7 +96,7 @@ Queries should be distributed equally across all nodes in the cluster. Query loa
 
 **Fix the problem**
 
-If you see query load skew, contact {{<support-cloud>}}.
+If you see query load skew, contact {{% support-cloud %}}.
 
 ### CPU skew and CPU usage
 

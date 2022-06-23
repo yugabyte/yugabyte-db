@@ -311,6 +311,20 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
   TestCompaction("WITH (colocated = true)");
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CompactAfterTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGSERIAL PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'one')"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 'two')"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 'odin' WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 'dva' WHERE key = 2"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(cluster_->CompactTablets());
+  auto value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test ORDER BY key"));
+  ASSERT_EQ(value, "1, odin; 2, dva");
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));

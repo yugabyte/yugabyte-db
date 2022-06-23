@@ -74,7 +74,7 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   }
 }
 
-#elif (__GNUC__ >= 9)
+#elif (__GNUC__ >= 9 && __GNUC__ < 11)
 
 inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
   const auto capacity = value.capacity();
