@@ -15,15 +15,10 @@ export const CustomDateRangePicker = ({ onRangeChange }) => {
     onRangeChange({ start:localEndDate, end: timestamp});
   };
 
-  const handleEndDateTimeChange = useCallback((timestamp) => {
+  const handleEndDateTimeChange = (timestamp) => {
     setLocalEndDate(timestamp)
     onRangeChange({ start:localStartDate, end: timestamp});
-  }, [setLocalEndDate, onRangeChange, localStartDate]);
-
-  useEffect(() => {
-    handleEndDateTimeChange(new Date());
-  }, [handleEndDateTimeChange]);
-
+  };
 
   return (
     <span className="support-bundle-custom-date-range">
