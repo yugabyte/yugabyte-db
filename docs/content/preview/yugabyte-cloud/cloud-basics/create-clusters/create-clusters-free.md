@@ -105,7 +105,7 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
   - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
   - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors.
 
-YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate YugabyteDB Managed for production use or conduct a POC, contact {{<support-cloud>}}.
+YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single node, they are not suitable for proof-of-concept (POC) or performance testing. To evaluate YugabyteDB Managed for production use or conduct a POC, contact {{% support-cloud %}}.
 
 ## Next steps
 

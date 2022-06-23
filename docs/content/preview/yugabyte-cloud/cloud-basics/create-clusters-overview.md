@@ -83,7 +83,7 @@ The _fault tolerance_ determines how resilient the cluster is to node and cloud 
 
 - **Node level**. Includes a minimum of 3 nodes deployed in a single availability zone with a RF of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to cloud availability zone outages.
 
-- **Region level**. Yugabyte supports multi-region clusters with regional fault tolerance. Contact {{%support-cloud%}} for help configuring regional fault tolerance.
+- **Region level**. Yugabyte supports multi-region clusters with regional fault tolerance. Contact {{% support-cloud %}} for help configuring regional fault tolerance.
 
 Although you can't change the cluster fault tolerance after the cluster is created, you can scale horizontally as follows:
 
@@ -112,7 +112,7 @@ By default, clusters are created using a stable release, taken from the [stable 
 
 You can choose to deploy your cluster using a preview release for development and testing. YugabyteDB Managed database preview releases are typically taken from the [preview release series](../../../releases/versioning/#preview-releases) of YugabyteDB, though they can also include a recently released stable release.
 
-If you need a feature from a preview release (that isn't yet available in a stable release) for a production deployment, contact {{%support-cloud%}} before you create your cluster.
+If you need a feature from a preview release (that isn't yet available in a stable release) for a production deployment, contact {{% support-cloud %}} before you create your cluster.
 
 Yugabyte manages upgrades for you. After you choose a track, database upgrades continue to take releases from the track you chose. For multi-node clusters, Yugabyte performs a rolling upgrade without any downtime. You can manage when Yugabyte performs maintenance and upgrades by configuring the [maintenance window](../../cloud-clusters/cloud-maintenance/) for your cluster.
 
@@ -152,7 +152,7 @@ Cluster charges are based on the total number of vCPUs used and how long they ha
 
 Before creating a cluster, you need to create your billing profile and add a payment method. Refer to [Manage your billing profile and payment method](../../cloud-admin/cloud-billing-profile/).
 
-If you're interested in evaluating YugabyteDB Managed for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{%support-cloud%}}.
+If you're interested in evaluating YugabyteDB Managed for production use and would like trial credits to conduct a proof-of-concept (POC), contact {{% support-cloud %}}.
 
 ## Next steps
 
