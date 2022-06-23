@@ -394,7 +394,7 @@ body:not(.td-home) .td-main main {
 }
 
 .td-content p a,
-.td-content li:not(.nav-item) a,
+.td-content *:not(.nav-item) a,
 .td-content td a {
   color: #f75821;
 
@@ -479,5 +479,32 @@ div#main_navbar {
 
   .switcher {
     margin-left: 0;
+  }
+}
+
+.breadcrumb-item + .breadcrumb-item {
+  padding-left: 0.25rem;
+
+  &::before {
+    padding-right: 0.25rem;
+    color: #5d6c74;
+    content: "→";
+    font-size: 1.3em;
+    line-height: 22px;
+  }
+}
+
+.breadcrumb a {
+  color: #5d6c74;
+}
+
+.breadcrumb-item.active {
+  color: #21313c;
+}
+
+.breadcrumb {
+  .active a,
+  a:hover {
+    color: #21313c;
   }
 }
