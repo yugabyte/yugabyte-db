@@ -7151,8 +7151,8 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	attnum = targetatt->attnum;
 
-	/* 
-	 * In YB, a table cannot drop key columns. 
+	/*
+	 * In YB, a table cannot drop key columns.
 	 * This check makes sure a consistent state after attempting to drop
 	 * key columns by preventing dropping key columns on postgres side.
 	 */
@@ -10588,7 +10588,6 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigger = &trig;
 		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
 		trigdata.tg_newtuplebuf = InvalidBuffer;
-		trigdata.disable_fk_check = false;
 
 		fcinfo.context = (Node *) &trigdata;
 
