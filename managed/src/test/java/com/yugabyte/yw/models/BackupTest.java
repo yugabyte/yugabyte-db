@@ -83,7 +83,9 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testCreateWithNonS3StorageUUID() {
-    JsonNode formData = Json.parse("{\"name\": \"NFS\", \"type\": \"STORAGE\", \"data\": {}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"NFS\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
     UUID universeUUID = UUID.randomUUID();
@@ -104,7 +106,9 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testCreateWithInvalidConfigName() throws Exception {
-    JsonNode formData = Json.parse("{\"name\": \"TEST\", \"type\": \"STORAGE\", \"data\": {}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"TEST\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
     UUID universeUUID = UUID.randomUUID();
