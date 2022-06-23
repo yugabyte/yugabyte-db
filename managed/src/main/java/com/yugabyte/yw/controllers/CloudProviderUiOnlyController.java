@@ -192,9 +192,9 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
           config.put("GCE_HOST_PROJECT", contents.textValue());
         }
 
-        contents = configNode.get("YB_FIREWALL_TAGS");
+        contents = configNode.get(CloudProviderHandler.YB_FIREWALL_TAGS);
         if (contents != null && !contents.textValue().isEmpty()) {
-          config.put("YB_FIREWALL_TAGS", contents.textValue());
+          config.put(CloudProviderHandler.YB_FIREWALL_TAGS, contents.textValue());
         }
         ((ObjectNode) requestBody).set("config", Json.toJson(config));
       }
