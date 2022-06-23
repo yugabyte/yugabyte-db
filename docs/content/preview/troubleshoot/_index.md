@@ -4,6 +4,10 @@ headerTitle: Troubleshoot YugabyteDB
 linkTitle: Troubleshoot
 description: Diagnose and solve YugabyteDB cluster and node issues.
 image: /images/section_icons/index/troubleshoot.png
+menu:
+  preview:
+    identifier: troubleshoot
+    parent: launch-and-manage
 type: indexpage
 ---
 

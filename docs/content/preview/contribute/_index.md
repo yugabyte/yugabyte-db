@@ -5,10 +5,6 @@ linkTitle: Contribute
 description: Contribute to the YugabyteDB code and documentation.
 image: /images/section_icons/index/quick_start.png
 headcontent: Contribute code and docs to improve YugabyteDB.
-menu:
-  preview:
-    identifier: contribute
-    weight: 2800
 type: indexpage
 ---
 We are big believers in open source. [YugabyteDB](https://github.com/yugabyte/yugabyte-db) is distributed under the Apache v2.0 license, which is very permissive open source license. We value external contributions and fully welcome them! We accept contributions as GitHub pull requests. This page contains everything you need to get you going quickly.

@@ -9,7 +9,6 @@ menu:
   v2.8:
     identifier: deploy
     parent: launch-and-manage
-    weight: 634
 type: indexpage
 ---
 

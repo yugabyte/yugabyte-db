@@ -12,7 +12,6 @@ menu:
   preview:
     identifier: deploy
     parent: launch-and-manage
-    weight: 634
 type: indexpage
 ---
 <div class="row">

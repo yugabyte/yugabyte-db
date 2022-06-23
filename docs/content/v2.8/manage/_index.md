@@ -9,7 +9,6 @@ menu:
   v2.8:
     identifier: manage
     parent: launch-and-manage
-    weight: 900
 type: indexpage
 ---
 

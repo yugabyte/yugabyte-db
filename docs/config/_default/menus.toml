@@ -62,30 +62,22 @@
   parent = "documentation"
 
 [[main]]
-  name = "Launch and Manage"
-  weight = 7
-  url = "/deploy/"
-  parent = "documentation"
-
-[[main]]
-  name = "Benchmark"
-  weight = 8
-  url = "/benchmark/"
-  parent = "documentation"
-
-[[main]]
   name = "Secure"
-  weight = 9
+  weight = 7
   url = "/secure/"
   parent = "documentation"
 
 [[main]]
-  name = "Troubleshoot"
-  weight = 10
-  url = "/preview/troubleshoot/"
+  name = "Launch and Manage"
+  weight = 8
+  url = "/launch-and-manage/"
   parent = "documentation"
-  [main.params]
-    excludeVersion = true
+
+[[main]]
+  name = "Benchmark"
+  weight = 9
+  url = "/benchmark/"
+  parent = "documentation"
 
 [[main]]
   name = "Integrations"
@@ -102,9 +94,9 @@
   parent = "documentation"
 
 [[main]]
-  name = "Misc"
+  name = "Contribute"
   weight = 13
-  url = "/preview/yedis/"
+  url = "/preview/conntribute/"
   parent = "documentation"
   [main.params]
     excludeVersion = true
@@ -246,33 +238,26 @@
     showSection = true
 
 [[preview]]
-  name = "Launch and Manage"
-  weight = 7
-  identifier = "launch-and-manage"
-  [preview.params]
-    showSection = true
-
-[[preview]]
-  name = "Benchmark"
-  weight = 8
-  identifier = "benchmark"
-  url = "/preview/benchmark/"
-  [preview.params]
-    showSection = true
-
-[[preview]]
   name = "Secure"
-  weight = 9
+  weight = 7
   identifier = "secure"
   url = "/preview/secure/"
   [preview.params]
     showSection = true
 
 [[preview]]
-  name = "Troubleshoot"
-  weight = 10
-  identifier = "troubleshoot"
-  url = "/preview/troubleshoot/"
+  name = "Launch and Manage"
+  weight = 8
+  identifier = "launch-and-manage"
+  url = "/preview/launch-and-manage/"
+  [preview.params]
+    showSection = true
+
+[[preview]]
+  name = "Benchmark"
+  weight = 9
+  identifier = "benchmark"
+  url = "/preview/benchmark/"
   [preview.params]
     showSection = true
 
@@ -292,8 +277,14 @@
 
 [[preview]]
   name = "Misc"
-  weight = 13
   identifier = "misc"
+	parent = "reference"
+
+[[preview]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+	url = "/preview/contribute/"
   [preview.params]
     showSection = true
 
@@ -431,32 +422,31 @@
     showSection = true
 
 [[stable]]
-  name = "Launch and Manage"
-  weight = 7
-  identifier = "launch-and-manage"
-  [stable.params]
-    showSection = true
-
-[[stable]]
-  name = "Benchmark"
-  weight = 8
-  identifier = "benchmark"
-  url = "/stable/benchmark/"
-  [stable.params]
-    showSection = true
-
-[[stable]]
   name = "Secure"
-  weight = 9
+  weight = 7
   identifier = "secure"
   url = "/stable/secure/"
   [stable.params]
     showSection = true
 
 [[stable]]
+  name = "Launch and Manage"
+  weight = 8
+  identifier = "launch-and-manage"
+  url = "/stable/launch-and-manage/"
+  [stable.params]
+    showSection = true
+
+[[stable]]
   name = "Troubleshoot"
-  weight = 10
+	parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
+
+[[stable]]
+  name = "Benchmark"
+  weight = 9
+  identifier = "benchmark"
+  url = "/stable/benchmark/"
   [stable.params]
     showSection = true
 
@@ -476,10 +466,8 @@
 
 [[stable]]
   name = "Misc"
-  weight = 13
   identifier = "misc"
-  [stable.params]
-    showSection = true
+	parent = "reference"
 
 [[stable]]
   name = "YEDIS"
@@ -492,6 +480,14 @@
   weight = 2
   url = "/preview/legal/"
   parent = "misc"
+
+[[stable]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+	url = "/preview/contribute/"
+  [stable.params]
+    showSection = true
 
 [[stable]]
   name = "View all products"
@@ -576,32 +572,31 @@
     showSection = true
 
 [["v2.8"]]
-  name = "Launch and Manage"
-  weight = 7
-  identifier = "launch-and-manage"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
-  name = "Benchmark"
-  weight = 8
-  identifier = "benchmark"
-  url = "/v2.8/benchmark/"
-  ["v2.8".params]
-    showSection = true
-
-[["v2.8"]]
   name = "Secure"
-  weight = 9
+  weight = 7
   identifier = "secure"
   url = "/v2.8/secure/"
   ["v2.8".params]
     showSection = true
 
 [["v2.8"]]
+  name = "Launch and Manage"
+  weight = 8
+  identifier = "launch-and-manage"
+  url = "/v2.8/launch-and-manage/"
+  ["v2.8".params]
+    showSection = true
+
+[["v2.8"]]
   name = "Troubleshoot"
-  weight = 10
+	parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
+
+[["v2.8"]]
+  name = "Benchmark"
+  weight = 9
+  identifier = "benchmark"
+  url = "/v2.8/benchmark/"
   ["v2.8".params]
     showSection = true
 
@@ -622,10 +617,8 @@
 
 [["v2.8"]]
   name = "Misc"
-  weight = 13
   identifier = "misc"
-  ["v2.8".params]
-    showSection = true
+	parent = "reference"
 
 [["v2.8"]]
   name = "YEDIS"
@@ -638,6 +631,14 @@
   weight = 2
   url = "/preview/legal/"
   parent = "misc"
+
+[["v2.8"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+	url = "/preview/contribute/"
+  ["v2.8".params]
+    showSection = true
 
 [["v2.8"]]
   name = "View all products"
@@ -722,33 +723,31 @@
     showSection = true
 
 [["v2.6"]]
-  name = "Launch and Manage"
-  weight = 7
-  identifier = "launch-and-manage"
-  ["v2.6".params]
-    showSection = true
-
-[["v2.6"]]
-  name = "Benchmark"
-  weight = 8
-  identifier = "benchmark"
-  url = "/v2.6/benchmark/"
-  ["v2.6".params]
-    showSection = true
-
-[["v2.6"]]
   name = "Secure"
-  weight = 9
+  weight = 7
   identifier = "secure"
   url = "/v2.6/secure/"
   ["v2.6".params]
     showSection = true
 
 [["v2.6"]]
+  name = "Launch and Manage"
+  weight = 8
+  identifier = "launch-and-manage"
+  url = "/v2.6/launch-and-manage/"
+  ["v2.6".params]
+    showSection = true
+
+[["v2.6"]]
   name = "Troubleshoot"
-  weight = 10
-  identifier = "troubleshoot"
+	parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
+
+[["v2.6"]]
+  name = "Benchmark"
+  weight = 9
+  identifier = "benchmark"
+  url = "/v2.6/benchmark/"
   ["v2.6".params]
     showSection = true
 
@@ -770,8 +769,14 @@
 
 [["v2.6"]]
   name = "Misc"
-  weight = 13
   identifier = "misc"
+	parent = "reference"
+
+[["v2.6"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+	url = "/preview/contribute/"
   ["v2.6".params]
     showSection = true
 
@@ -858,33 +863,31 @@
     showSection = true
 
 [["v2.4"]]
-  name = "Launch and Manage"
-  weight = 7
-  identifier = "launch-and-manage"
-  ["v2.4".params]
-    showSection = true
-
-[["v2.4"]]
-  name = "Benchmark"
-  weight = 8
-  identifier = "benchmark"
-  url = "/v2.4/benchmark/"
-  ["v2.4".params]
-    showSection = true
-
-[["v2.4"]]
   name = "Secure"
-  weight = 9
+  weight = 7
   identifier = "secure"
   url = "/v2.4/secure/"
   ["v2.4".params]
     showSection = true
 
 [["v2.4"]]
+  name = "Launch and Manage"
+  weight = 8
+  identifier = "launch-and-manage"
+  url = "/v2.4/launch-and-manage/"
+  ["v2.4".params]
+    showSection = true
+
+[["v2.4"]]
   name = "Troubleshoot"
-  weight = 10
-  identifier = "troubleshoot"
+	parent = "launch-and-manage"
   url = "/preview/troubleshoot/"
+
+[["v2.4"]]
+  name = "Benchmark"
+  weight = 9
+  identifier = "benchmark"
+  url = "/v2.4/benchmark/"
   ["v2.4".params]
     showSection = true
 
@@ -898,8 +901,14 @@
 
 [["v2.4"]]
   name = "Misc"
-  weight = 13
   identifier = "misc"
+	parent = "reference"
+
+[["v2.4"]]
+  name = "Contribute"
+  weight = 13
+  identifier = "contribute"
+	url = "/preview/contribute/"
   ["v2.4".params]
     showSection = true
 
