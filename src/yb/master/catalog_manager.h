@@ -1424,6 +1424,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
@@ -1482,6 +1487,23 @@ class CatalogManager :
 
   // Tablets that was hidden instead of deleting, used to cleanup such tablets when time comes.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
+
+  // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
+  // track of these tablets until their children tablets start being polled, at which point they
+  // can be deleted and cdc_state metadata can also be cleaned up. retained_by_xcluster_ is a
+  // subset of hidden_tablets_.
+  struct HiddenReplicationParentTabletInfo {
+    TableId table_id_;
+    std::string parent_tablet_id_;
+    std::array<TabletId, kNumSplitParts> split_tablets_;
+  };
+  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_xcluster_
+      GUARDED_BY(mutex_);
+
+  // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
+  // Background task for deleting parent split tablets retained by xCluster streams.
+  rpc::ScheduledTaskTracker xcluster_parent_tablet_deletion_task_;
+  std::atomic<bool> xcluster_parent_tablet_deletion_task_running_{false};
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(mutex_);

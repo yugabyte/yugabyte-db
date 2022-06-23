@@ -75,7 +75,7 @@ struct TabletCheckpoint {
   CoarseTimePoint last_active_time;
 
   bool ExpiredAt(std::chrono::milliseconds duration, std::chrono::time_point<CoarseMonoClock> now) {
-    return (now - last_update_time) > duration;
+    return !IsInitialized(last_update_time) || (now - last_update_time) >= duration;
   }
 };
 
@@ -329,6 +329,11 @@ class CDCServiceImpl : public CDCServiceIf {
       const OpId& checkpoint, const string& tablet_id,
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
+  Status UpdateChildrenTabletsOnSplitOp(
+      const ProducerTabletInfo& producer_tablet,
+      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
+      const client::YBSessionPtr& session);
+
   // Get enum map from the cache.
   Result<EnumOidLabelMap> GetEnumMapFromCache(const NamespaceName& ns_name);
 
@@ -337,12 +342,6 @@ class CDCServiceImpl : public CDCServiceIf {
 
   // Update enum map in cache.
   Status UpdateEnumMapInCacheUnlocked(const NamespaceName& ns_name) REQUIRES(mutex_);
-
-  Status UpdateChildrenTabletsOnSplitOp(
-      const std::string& stream_id,
-      const std::string& tablet_id,
-      std::shared_ptr<yb::consensus::ReplicateMsg> split_op_msg,
-      const client::YBSessionPtr& session);
 
   rpc::Rpcs rpcs_;
 
