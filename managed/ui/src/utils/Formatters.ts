@@ -54,10 +54,11 @@ export const formatDuration = (milliseconds: number) => {
   }
 
   let allocatedDuration = 0;
-  durationUnits.forEach((durationUnit) => {
-    durationUnit.value = Math.floor(
-      (absoluteMilliseconds - allocatedDuration) / durationUnit.baseUnitFactor
-    );
+  durationUnits.forEach((durationUnit, index) => {
+    durationUnit.value =
+      index === durationUnits.length - 1
+        ? Math.ceil((absoluteMilliseconds - allocatedDuration) / durationUnit.baseUnitFactor)
+        : Math.floor((absoluteMilliseconds - allocatedDuration) / durationUnit.baseUnitFactor);
     allocatedDuration += durationUnit.value * durationUnit.baseUnitFactor;
   });
 
