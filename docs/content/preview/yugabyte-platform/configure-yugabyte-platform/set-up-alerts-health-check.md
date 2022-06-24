@@ -345,6 +345,8 @@ The tablet leader is missing for more than 5 minutes for `$value` tablets in uni
 max by (node_prefix) (count by (node_prefix, exported_instance) (max_over_time(yb_node_leaderless_tablet{node_prefix="$node_prefix"}[5m])) > 0)
 ```
 
+<!--
+
 #### Command to obtain information
 
 You can obtain information for alert templates from YugabyteDB Anywhere by executing the following command:
@@ -352,6 +354,8 @@ You can obtain information for alert templates from YugabyteDB Anywhere by execu
 ```sh
 aakra01@UCTDES01 ~ k exec yb-support-platform-yugaware-0 -c prometheus -n yb-platform -- ls /opt/yugabyte/prometheus/rules |more -5 yugaware.ad.034b2eec-23c6-4ef2-8a25-aab9820a4086.yml yugaware.ad.04b30133-e62d-44ef-a7c1-7aadb6bf4c39.yml yugaware.ad.0d28c7a4-e44f-4247-8343-029662075233.yml yugaware.ad.155697f8-f928-40a3-98e5-78f0b645c4f6.yml yugaware.ad.18175790-3fae-4008-83a8-41bb221a2cf7.yml --More--   aakra01@UCTDES01 ~ k get configmap/yb-support-platform-yugaware-prometheus-config -n yb-platform -o yaml |grep -i rule    rule_files:    - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
 ```
+
+-->
 
 ## Define notification channels
 
