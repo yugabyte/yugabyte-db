@@ -165,7 +165,7 @@
   to = "/stable/quick-start/explore/ysql/"
   force = true
 
-# Switch from CentOS to AlmaLinux, TODO: Update this in stable too once it hits stable
+# Switch from CentOS to AlmaLinux
 
 [[redirects]]
   from = "/preview/contribute/core-database/build-from-src-centos/"
