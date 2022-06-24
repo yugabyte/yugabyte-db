@@ -44,15 +44,11 @@ Use one or more of the following techniques to improve import performance:
 
 - Load data in parallel. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to the number of nodes in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.\
 \
-  Use the [-–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set -parallel-jobs to the number of available cores in the entire cluster.
+  Use the [-–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set --parallel-jobs to the number of available cores in the entire cluster.\
+\
+  If CPU use is greater than 80%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
-  {{< note title="Note" >}}
-
-If CPU use is greater than 80%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
-
-  {{< /note >}}
-
-- Increase batch size. If the [--batch-size](../../yb-voyager/yb-voyager-cli/#batch-size) (Default is 100000) is too small, the import will run slower because the time spent importing data may be comparable or less than the time spent on other tasks, such as bookkeeping, setting up the client connection, and so on.
+- Increase batch size. If the [--batch-size](../../yb-voyager/yb-voyager-cli/#batch-size) (default is 100000) is too small, the import will run slower because the time spent importing data may be comparable or less than the time spent on other tasks, such as bookkeeping, setting up the client connection, and so on.
 
 - Add disks to reduce disk write contention. YugabyteDB servers can be configured with one or multiple disk volumes to store tablet data. If all tablets are writing to a single disk, write contention can slow down the ingestion speed. Configuring the [YB-TServers](../../../reference/configuration/yb-tserver/) with multiple disks can reduce disk write contention, thereby increasing throughput. Disks with higher IOPS and better throughput also improve write performance.
 
@@ -60,7 +56,7 @@ If CPU use is greater than 80%, you should lower the number of jobs. Similarly, 
 
   - For larger tables and indexes that are [hash](../../../architecture/docdb-sharding/sharding/#hash-sharding) sharded, specify the number of initial tablet splits as a part of the table DDL statement. This can help distribute the table data across multiple nodes right from the get go. Refer to [hash-sharded tables](../../../architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables) for an example of how to specify the number of tablets at table creation time.
 
-  - For larger tables and indexes that are [range](../../../architecture/docdb-sharding/sharding/#range-sharding) sharded, if the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. Refer to [range-sharded tables](../../../architecture/docdb-sharding/tablet-splitting/#hash-sharded-tables) for an example of how to specify the split points.
+  - For larger tables and indexes that are [range](../../../architecture/docdb-sharding/sharding/#range-sharding) sharded, if the value ranges of the primary key columns are known ahead of time, pre-split them at the time of creation. Refer to [range-sharded tables](../../../architecture/docdb-sharding/tablet-splitting/#range-sharded-tables) for an example of how to specify the split points.
 
 - Increase cluster size. Write contention is reduced with larger cluster sizes.
 
@@ -72,7 +68,7 @@ These performance optimizations apply whether you are importing data using the y
 
 ## Improve export performance
 
-By default, yb-voyager exports one table at a time. To improve data export, parallelize the export of data from multiple tables using the [–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
+By default, yb-voyager exports one table at a time. To improve data export, parallelize the export of data from multiple tables using the [–-parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
 
 ## Data import speeds
 
