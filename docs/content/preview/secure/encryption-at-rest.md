@@ -22,8 +22,7 @@ This page describes how to enable and disable encryption at rest in a YugabyteDB
 
 ### Step 1. Create encryption key
 
-First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys
-are more secure with slightly worse performance. Run the following on your local filesystem.
+First, you will generate the universe key data. This data can have length 32, 40, or 48. Larger keys are more secure with slightly worse performance. Run the following on your local filesystem.
 
 ```sh
 $ openssl rand -out /path/to/universe_key [ 32 | 40 | 48 ]
@@ -32,18 +31,15 @@ $ openssl rand -out /path/to/universe_key [ 32 | 40 | 48 ]
 
 ### Step 2. Copy key to master nodes
 
-In this example, assume a 3 node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip2:7100,ip3:7100.`
-Choose any string <key_id> for this key and use yb-admin to copy the key to each of the masters.
+In this example, assume a 3 node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip2:7100,ip3:7100`. Choose any string <key_id> for this key and use yb-admin to copy the key to each of the masters.
 
 ```sh
-$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters
-<key_id> /path/to/universe_key
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters \
+           <key_id> /path/to/universe_key
 ```
 
 {{< note title="Note" >}}
-This operation doesn't actually perform the key rotation, but rather seeds each master's in-memory
-state.
-The key only lives in-memory, and the plaintext key will never be persisted to disk.
+This operation doesn't actually perform the key rotation, but rather seeds each master's in-memory state. The key only lives in-memory, and the plaintext key will never be persisted to disk.
 {{< /note >}}
 
 ### Step 3. Enable cluster-wide encryption
@@ -105,16 +101,14 @@ Make sure the <key_id> is different from any previous keys.
 
 ### Step 3. Rotate key
 
-Do the same validation as enabling that the masters know about the key and then perform the
-rotation.
+Do the same validation as enabling that the masters know about the key and then perform the rotation.
 
 ```sh
 $ yb-admin -master_addresses $MASTER_ADDRESSES rotate_universe_key_in_memory <key_id_2>
 ```
 
 {{< note title="Note" >}}
-Since this key will only be used for new data and will only eventually encrypt older data through
-compactions, it is best to ensure old keys remain secure.
+Since this key will only be used for new data and will only eventually encrypt older data through compactions, it is best to ensure old keys remain secure.
 {{< /note >}}
 
 ### Step 4. Verify new key
