@@ -141,6 +141,12 @@ class ClusterAdminClient : public yb::tools::ClusterAdminClient {
 
   Status DisableTabletSplitsDuringRestore(CoarseTimePoint deadline);
 
+  std::string GetDBTypeName(const master::SysNamespaceEntryPB& pb);
+  // Map: Old name -> New name.
+  typedef std::unordered_map<NamespaceName, NamespaceName> NSNameToNameMap;
+  Status UpdateUDTypes(
+      QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name);
+
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
 

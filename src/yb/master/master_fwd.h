@@ -109,7 +109,8 @@ YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 
 YB_DEFINE_ENUM(
-    CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));
+    CollectFlag,
+    (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes));
 using CollectFlags = EnumBitSet<CollectFlag>;
 
 using TableToTablespaceIdMap = std::unordered_map<TableId, boost::optional<TablespaceId>>;
