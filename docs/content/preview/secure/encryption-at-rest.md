@@ -36,7 +36,7 @@ In this example, assume a 3 node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip
 Choose any string <key_id> for this key and use yb-admin to copy the key to each of the masters.
 
 ```sh
-$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters 
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters
 <key_id> /path/to/universe_key
 ```
 
@@ -51,7 +51,7 @@ The key only lives in-memory, and the plaintext key will never be persisted to d
 Before rotating the key, make sure the masters know about <key_id>.
 
 ```sh
-yb-admin -master_addresses $MASTER_ADDRESSES all_masters_have_universe_key_in_memory <key_id> 
+yb-admin -master_addresses $MASTER_ADDRESSES all_masters_have_universe_key_in_memory <key_id>
 ```
 
 If this fails, re-run step 2. Once this succeeds, tell the cluster to start using new universe key.
@@ -72,7 +72,7 @@ To check the encryption status of the cluster, run the following yb-admin comman
 $ yb-admin -master_addresses $MASTER_ADDRESSES is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: ENABLED with key id <key_id>
 ```
 
@@ -84,7 +84,6 @@ First, create the key to be rotated.
 
 ```sh
 $ openssl rand -out /path/to/universe_key_2 [ 32 | 40 | 48 ]
-
 ```
 
 {{< note title="Note" >}}
@@ -96,12 +95,12 @@ Make sure to use a different key path to avoid overwriting the previous key file
 As with enabling, tell the master nodes about the new key.
 
 ```sh
-$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters 
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters
 <key_id_2> /path/to/universe_key_2
 ```
 
 {{< note title="Note" >}}
-Make sure to use a distict <key_id> from any past key.
+Make sure the <key_id> is different from any previous keys.
 {{< /note >}}
 
 ### Step 3. Rotate key
@@ -126,7 +125,7 @@ Check that the new key is encrypting the cluster.
 $ yb-admin -master_addresses $MASTER_ADDRESSES is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: ENABLED with key id <key_id_2>
 ```
 
@@ -150,6 +149,6 @@ Check that encryption is disabled.
 $ yb-admin -master_addresses $MASTER_ADDRESSES is_encryption_enabled
 ```
 
-```
+```output
 Encryption status: DISABLED
 ```
