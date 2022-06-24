@@ -120,45 +120,5 @@ bool SnapshotInfo::IsDeleteInProgress() const {
   return LockForRead()->is_deleting();
 }
 
-void SnapshotInfo::AddEntries(
-    const TableDescription& table_description, std::unordered_set<NamespaceId>* added_namespaces) {
-  SysSnapshotEntryPB& pb = mutable_metadata()->mutable_dirty()->pb;
-  AddEntries(
-      table_description, pb.mutable_entries(), pb.mutable_tablet_snapshots(), added_namespaces);
-}
-
-void SnapshotInfo::AddEntries(
-    const TableDescription& table_description,
-    google::protobuf::RepeatedPtrField<SysRowEntry>* out,
-    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos,
-    std::unordered_set<NamespaceId>* added_namespaces) {
-  // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
-  // Add namespace entry.
-  if (added_namespaces->emplace(table_description.namespace_info->id()).second) {
-    TRACE("Locking namespace");
-    AddInfoEntry(table_description.namespace_info.get(), out);
-  }
-
-  // Add table entry.
-  {
-    TRACE("Locking table");
-    AddInfoEntry(table_description.table_info.get(), out);
-  }
-
-  // Add tablet entries.
-  for (const scoped_refptr<TabletInfo>& tablet : table_description.tablet_infos) {
-    SysSnapshotEntryPB::TabletSnapshotPB* const tablet_info =
-        tablet_infos ? tablet_infos->Add() : nullptr;
-
-    TRACE("Locking tablet");
-    auto l = AddInfoEntry(tablet.get(), out);
-
-    if (tablet_info) {
-      tablet_info->set_id(tablet->id());
-      tablet_info->set_state(SysSnapshotEntryPB::CREATING);
-    }
-  }
-}
-
 } // namespace master
 } // namespace yb

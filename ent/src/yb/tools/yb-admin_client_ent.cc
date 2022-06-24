@@ -22,6 +22,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/json_util.h"
+#include "yb/common/ql_type_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/encryption/encryption_util.h"
@@ -40,6 +41,7 @@
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/master_admin.pb.h"
 #include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_util.h"
 
 #include "yb/tools/yb-admin_cli.h"
 #include "yb/tools/yb-admin_client.h"
@@ -78,8 +80,10 @@ using namespace std::literals;
 
 using std::cout;
 using std::endl;
+using std::pair;
 using std::string;
 using std::vector;
+using std::unordered_map;
 
 using google::protobuf::RepeatedPtrField;
 
@@ -116,6 +120,7 @@ using master::SysRowEntryType;
 using master::BackupRowEntryPB;
 using master::SysTablesEntryPB;
 using master::SysSnapshotEntryPB;
+using master::SysUDTypeEntryPB;
 
 PB_ENUM_FORMATTERS(yb::master::SysSnapshotEntryPB::State);
 
@@ -182,6 +187,11 @@ Status ClusterAdminClient::ListSnapshots(const ListSnapshotsFlags& flags) {
           case SysRowEntryType::NAMESPACE: {
             auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
             meta.clear_transaction();
+            decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
+            break;
+          }
+          case SysRowEntryType::UDTYPE: {
+            auto meta = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
             decoded_data = JsonWriter::ToJson(meta, JsonWriter::COMPACT);
             break;
           }
@@ -266,6 +276,7 @@ Status ClusterAdminClient::CreateSnapshot(
     }
 
     req.set_add_indexes(add_indexes);
+    req.set_add_ud_types(true); // No-op for YSQL.
     req.set_transaction_aware(true);
     return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
   }));
@@ -733,6 +744,37 @@ Status ClusterAdminClient::CreateSnapshotMetaFile(const string& snapshot_id,
   return Status::OK();
 }
 
+string ClusterAdminClient::GetDBTypeName(const SysNamespaceEntryPB& pb) {
+  const YQLDatabase db_type = GetDatabaseType(pb);
+  switch (db_type) {
+    case YQL_DATABASE_UNKNOWN: return "UNKNOWN DB TYPE";
+    case YQL_DATABASE_CQL: return "YCQL keyspace";
+    case YQL_DATABASE_PGSQL: return "YSQL database";
+    case YQL_DATABASE_REDIS: return "YEDIS namespace";
+  }
+  FATAL_INVALID_ENUM_VALUE(YQLDatabase, db_type);
+}
+
+Status ClusterAdminClient::UpdateUDTypes(
+    QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name) {
+  return IterateAndDoForUDT(
+      pb_type,
+      [update_meta, &ns_name_to_name](QLTypePB::UDTypeInfo* udtype_info) -> Status {
+        auto ns_it = ns_name_to_name.find(udtype_info->keyspace_name());
+        if (ns_it == ns_name_to_name.end()) {
+          return STATUS_FORMAT(
+              InvalidArgument, "No metadata for keyspace '$0' referenced in UDType '$1'",
+              udtype_info->keyspace_name(), udtype_info->name());
+        }
+
+        if (udtype_info->keyspace_name() != ns_it->second) {
+          udtype_info->set_keyspace_name(ns_it->second);
+          *DCHECK_NOTNULL(update_meta) = true;
+        }
+        return Status::OK();
+      });
+}
+
 Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
                                                   const TypedNamespaceName& keyspace,
                                                   const vector<YBTableName>& tables) {
@@ -766,6 +808,12 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
   cout << "Importing snapshot " << SnapshotIdToString(snapshot_info->id())
        << " (" << snapshot_info->entry().state() << ")" << endl;
 
+  // Map: Old namespace ID -> [Old name, New name] pair.
+  typedef pair<NamespaceName, NamespaceName> NSNamePair;
+  typedef unordered_map<NamespaceId, NSNamePair> NSIdToNameMap;
+  NSIdToNameMap ns_id_to_name;
+  NSNameToNameMap ns_name_to_name;
+
   size_t table_index = 0;
   bool was_table_renamed = false;
   for (BackupRowEntryPB& backup_entry : *snapshot_info->mutable_backup_entries()) {
@@ -776,9 +824,41 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     switch (entry.type()) {
       case SysRowEntryType::NAMESPACE: {
         auto meta = VERIFY_RESULT(ParseFromSlice<SysNamespaceEntryPB>(entry.data()));
+        const string db_type = GetDBTypeName(meta);
+        cout << "Target imported " << db_type << " name: "
+             << (keyspace.name.empty() ? meta.name() : keyspace.name) << endl
+             << db_type << " being imported: " << meta.name() << endl;
 
         if (!keyspace.name.empty() && keyspace.name != meta.name()) {
+          ns_id_to_name[entry.id()] = NSNamePair(meta.name(), keyspace.name);
+          ns_name_to_name[meta.name()] = keyspace.name;
+
           meta.set_name(keyspace.name);
+          entry.set_data(meta.SerializeAsString());
+        } else {
+          ns_id_to_name[entry.id()] = NSNamePair(meta.name(), meta.name());
+          ns_name_to_name[meta.name()] = meta.name();
+        }
+        break;
+      }
+      case SysRowEntryType::UDTYPE: {
+        // Note: UDT renaming is not supported.
+        auto meta = VERIFY_RESULT(ParseFromSlice<SysUDTypeEntryPB>(entry.data()));
+        const auto ns_it = ns_id_to_name.find(meta.namespace_id());
+        cout << "Target imported user-defined type name: "
+             << (ns_it == ns_id_to_name.end() ? "[" + meta.namespace_id() + "]" :
+                 ns_it->second.second) << "." << meta.name() << endl
+             << "User-defined type being imported: "
+             << (ns_it == ns_id_to_name.end() ? "[" + meta.namespace_id() + "]" :
+                 ns_it->second.first) << "." << meta.name() << endl;
+
+        bool update_meta = false;
+        // Update QLTypePB::UDTypeInfo::keyspace_name in the UDT params.
+        for (int i = 0; i < meta.field_names_size(); ++i) {
+          RETURN_NOT_OK(UpdateUDTypes(meta.mutable_field_types(i), &update_meta, ns_name_to_name));
+        }
+
+        if (update_meta) {
           entry.set_data(meta.SerializeAsString());
         }
         break;
@@ -792,27 +872,6 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
         }
 
         auto meta = VERIFY_RESULT(ParseFromSlice<SysTablesEntryPB>(entry.data()));
-
-        bool update_meta = false;
-        if (!table_name.empty() && table_name.table_name() != meta.name()) {
-          meta.set_name(table_name.table_name());
-          update_meta = true;
-          was_table_renamed = true;
-        }
-        if (!keyspace.name.empty() && keyspace.name != meta.namespace_name()) {
-          meta.set_namespace_name(keyspace.name);
-          update_meta = true;
-        }
-
-        if (meta.name().empty()) {
-          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
-        }
-
-        // Update the table name if needed.
-        if (update_meta) {
-          entry.set_data(meta.SerializeAsString());
-        }
-
         const auto colocated_prefix = meta.colocated() ? "colocated " : "";
 
         if (meta.indexed_table_id().empty()) {
@@ -832,10 +891,40 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
                << keyspace.name << "." << meta.name() << endl;
         }
 
+        // Print old table name before the table renaming in the code below.
         cout << (meta.colocated() ? "Colocated t" : "T") << "able being imported: "
              << (meta.namespace_name().empty() ?
                  "[" + meta.namespace_id() + "]" : meta.namespace_name())
              << "." << meta.name() << endl;
+
+        bool update_meta = false;
+        if (!table_name.empty() && table_name.table_name() != meta.name()) {
+          meta.set_name(table_name.table_name());
+          update_meta = true;
+          was_table_renamed = true;
+        }
+        if (!keyspace.name.empty() && keyspace.name != meta.namespace_name()) {
+          meta.set_namespace_name(keyspace.name);
+          update_meta = true;
+        }
+
+        if (meta.name().empty()) {
+          return STATUS(IllegalState, "Could not find table name from snapshot metadata");
+        }
+
+        // Update QLTypePB::UDTypeInfo::keyspace_name in all UDT params in the table Schema.
+        SchemaPB* const schema = meta.mutable_schema();
+        // Recursively update ids in used user-defined types.
+        for (int i = 0; i < schema->columns_size(); ++i) {
+          QLTypePB* const pb_type = schema->mutable_columns(i)->mutable_type();
+          RETURN_NOT_OK(UpdateUDTypes(pb_type, &update_meta, ns_name_to_name));
+        }
+
+        // Update the table name if needed.
+        if (update_meta) {
+          entry.set_data(meta.SerializeAsString());
+        }
+
         ++table_index;
         break;
       }
@@ -881,6 +970,14 @@ Status ClusterAdminClient::ImportSnapshotMetaFile(const string& file_name,
     cout << pad_object_type(table_type) << kColumnSep
          << table_meta.table_ids().old_id() << kColumnSep
          << new_table_id << endl;
+
+    const RepeatedPtrField<IdPairPB>& udts_map = table_meta.ud_types_ids();
+    for (int j = 0; j < udts_map.size(); ++j) {
+      const IdPairPB& pair = udts_map.Get(j);
+      cout << pad_object_type("UDType") << kColumnSep
+           << pair.old_id() << kColumnSep
+           << pair.new_id() << endl;
+    }
 
     const RepeatedPtrField<IdPairPB>& tablets_map = table_meta.tablets_ids();
     for (int j = 0; j < tablets_map.size(); ++j) {
