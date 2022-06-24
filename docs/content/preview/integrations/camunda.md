@@ -3,13 +3,12 @@ title: Camunda
 linkTitle: Camunda
 description: Use Camunda with YSQL
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
+    parent: integrations
     identifier: camunda
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Camunda](https://camunda.com/) is a Java-based framework supporting BPMN (Business Process Modeling Notation) for workflow and process automation, CMMN (Case Management Model and Notation) for Case Management and DMN (Decision Model and Notation) for business decision management.

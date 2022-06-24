@@ -7,12 +7,11 @@ aliases:
   - /preview/deploy/yugabyte-cloud/create-clusters/
   - /preview/yugabyte-cloud/create-clusters/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-single-region
     parent: create-clusters
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Single-region dedicated clusters support multi-node and highly available deployments and are suitable for production deployments.

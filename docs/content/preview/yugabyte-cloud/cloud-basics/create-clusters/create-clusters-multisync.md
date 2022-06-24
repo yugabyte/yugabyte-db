@@ -5,12 +5,11 @@ description: Deploy multi-region synchronous clusters in YugabyteDB Managed.
 headcontent:
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-multisync
     parent: create-clusters
     weight: 60
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
