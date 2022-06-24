@@ -1,0 +1,16 @@
+[Unit]
+Description=Yugabyte Controller
+After=network.target
+#StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=yugabyte
+WorkingDirectory={{yb_home_dir}}
+ExecStart={{yb_home_dir}}/yb-controller/bin/yb-controller-server \
+    --flagfile {{yb_home_dir}}/yb-controller/conf/yb-controller.conf
+
+[Install]
+WantedBy=multi-user.target

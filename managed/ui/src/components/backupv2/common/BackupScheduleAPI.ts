@@ -25,7 +25,9 @@ export const getScheduledBackupList = (pageno: number) => {
   const records_to_fetch = 500;
   const params = {
     direction: 'ASC',
-    filter: {},
+    filter: {
+      "taskTypes": ["BackupUniverse", "MultiTableBackup", "CreateBackup"]
+    },
     limit: records_to_fetch,
     offset: pageno * records_to_fetch,
     sortBy: 'taskType'

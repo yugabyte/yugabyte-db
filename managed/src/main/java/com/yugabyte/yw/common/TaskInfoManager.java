@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import com.yugabyte.yw.models.TaskInfo;
 import javax.inject.Singleton;
+import org.apache.commons.collections.CollectionUtils;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,5 +17,10 @@ public class TaskInfoManager {
       return true;
     }
     return false;
+  }
+
+  public boolean isDeleteBackupTaskAlreadyPresent(UUID customerUUID, UUID backupUUID) {
+    List<TaskInfo> tasksList = TaskInfo.findIncompleteDeleteBackupTasks(customerUUID, backupUUID);
+    return !CollectionUtils.isEmpty(tasksList);
   }
 }

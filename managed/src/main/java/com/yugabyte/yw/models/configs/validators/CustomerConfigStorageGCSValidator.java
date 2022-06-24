@@ -40,10 +40,9 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageWith
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
     if (!StringUtils.isEmpty(gcsData.gcsCredentialsJson)) {
-      String gcpCredentials = gcsData.gcsCredentialsJson;
       Storage storage = null;
       try {
-        storage = factory.createGcpStorage(gcpCredentials);
+        storage = factory.createGcpStorage(gcsData);
       } catch (IOException ex) {
         throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
       }

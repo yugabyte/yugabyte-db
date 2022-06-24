@@ -48,7 +48,7 @@ public class SchedulerTest extends FakeDBApplication {
     defaultCustomer = ModelFactory.testCustomer();
     s3StorageConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST28");
 
-    scheduler = new com.yugabyte.yw.scheduler.Scheduler(mockPlatformScheduler, mockCommissioner);
+    scheduler = new Scheduler(mockPlatformScheduler, mockCommissioner, mockTaskManager);
   }
 
   @Test
@@ -161,7 +161,7 @@ public class SchedulerTest extends FakeDBApplication {
     Schedule s =
         ModelFactory.createScheduleBackup(
             defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
-    setUniveseBackupInProgress(true, universe);
+    setUniverseBackupInProgress(true, universe);
     scheduler.scheduleRunner();
     verify(mockCommissioner, times(0)).submit(any(), any());
     s.refresh();
@@ -179,7 +179,33 @@ public class SchedulerTest extends FakeDBApplication {
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
-  public static void setUniveseBackupInProgress(boolean value, Universe universe) {
+  @Test
+  public void testSkipAlreadyRunningDeleteBackupTask() {
+    Universe universe = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    Backup backup =
+        ModelFactory.createBackupWithExpiry(
+            defaultCustomer.uuid, universe.universeUUID, s3StorageConfig.configUUID);
+    backup.transitionState(Backup.BackupState.Completed);
+
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockTaskManager.isDeleteBackupTaskAlreadyPresent(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(true);
+    scheduler.scheduleRunner();
+    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(null, CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID));
+    verify(mockCommissioner, times(0)).submit(any(), any());
+
+    when(mockTaskManager.isDeleteBackupTaskAlreadyPresent(defaultCustomer.uuid, backup.backupUUID))
+        .thenReturn(false);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    scheduler.scheduleRunner();
+    CustomerTask task = CustomerTask.get(defaultCustomer.uuid, fakeTaskUUID);
+    assertEquals(1, Backup.getExpiredBackups().get(defaultCustomer).size());
+    assertEquals(CustomerTask.TaskType.Delete, task.getType());
+    verify(mockCommissioner, times(1)).submit(any(), any());
+  }
+
+  public static void setUniverseBackupInProgress(boolean value, Universe universe) {
     Universe.UniverseUpdater updater =
         new Universe.UniverseUpdater() {
           @Override
