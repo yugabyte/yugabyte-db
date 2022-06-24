@@ -312,10 +312,10 @@ body:not(.td-home) .td-main main {
     background-color: #fff;
     overflow: hidden;
     transition: all 0.2s;
-    color: $YB_ORANGE;
+    color: var(--theme-color);
 
     &:hover {
-      background-color: $YB_ORANGE;
+      background-color: var(--theme-color);
       color: #fff;
     }
 
@@ -397,10 +397,10 @@ body:not(.td-home) .td-main main {
 .td-content li:not(.nav-item) a,
 .td-content .note a,
 .td-content td a {
-  color: #f75821;
+  color: #3176d9;
 
   i {
-    color: #323a69;
+    color: var(--theme-color);
     margin-left: 5px;
     font-size: 12px;
   }

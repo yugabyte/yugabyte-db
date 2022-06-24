@@ -24,7 +24,7 @@
 
     li:hover,
     li.active {
-      border-color: $YB_ORANGE;
+      border-color: var(--theme-color);
     }
 
     li a {
@@ -33,11 +33,11 @@
     }
 
     li:hover a {
-      color: $YB_ORANGE;
+      color: var(--theme-color);
     }
 
     li.active a {
-      color: $YB_ORANGE;
+      color: var(--theme-color);
     }
   }
 }

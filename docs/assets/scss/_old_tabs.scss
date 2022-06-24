@@ -12,7 +12,7 @@
       border-radius: 7px !important;
       border: 1px solid #cdd0dc;
       font-size: 16px;
-      color: #f75821;
+      color: var(--theme-color);
       font-weight: 600;
 
       i {
@@ -33,7 +33,7 @@
       }
 
       &:hover {
-        border: 1px solid #f75821 !important;
+        border: 1px solid var(--theme-color) !important;
       }
     }
   }
