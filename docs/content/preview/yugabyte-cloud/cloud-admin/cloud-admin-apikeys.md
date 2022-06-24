@@ -4,12 +4,11 @@ headerTitle:
 linkTitle: Manage API keys
 description: Manage your cloud API keys.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-admin-apikeys
     parent: cloud-admin
     weight: 150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed provides a REST API so that you can manage clusters programmatically. The API uses bearer token authentication, and each request requires a secret key, called an API key. Admin users can generate API keys for your account.
