@@ -1,0 +1,81 @@
+.td-content pre {
+  background: transparent !important;
+  padding: 0 !important;
+  margin-top: 20.3438px !important;
+  position: relative !important;
+  overflow: hidden;
+
+  > code {
+    font-size: 100%;
+    display: block;
+    width: 100% !important;
+    line-height: 1.5;
+    border-radius: 7px;
+    padding: 12px 20px;
+    margin: 0;
+    border: 1px solid #dee0ea;
+    background: $YB_LIGHT_GRAY !important;
+    border-color: #dee0ea;
+    white-space: pre !important;
+    word-wrap: normal;
+    word-break: keep-all;
+    overflow: auto;
+  }
+
+  button.copy {
+    position: absolute;
+    border: none !important;
+    text-transform: uppercase;
+    right: 0;
+    top: 0;
+    width: 42px;
+    font-size: 12px;
+    line-height: inherit;
+    font-weight: 500;
+    text-align: center;
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin: 12px 12px 0 0;
+    background-color: #fff;
+    overflow: hidden;
+    transition: all 0.2s;
+    color: var(--theme-color);
+
+    &:hover {
+      background-color: var(--theme-color);
+      color: #fff;
+    }
+
+    &::after {
+      position: absolute;
+      top: 0;
+      left: 0;
+      font: normal normal normal 18px/1 "Font Awesome 5 Free";
+      font-weight: 900;
+      content: "\f00c";
+      color: #fff;
+      text-align: center;
+      border-radius: 2px;
+      width: 100%;
+      height: 27px;
+      line-height: 26px;
+      opacity: 1;
+      background-color: $YB_SUCCESS_COLOR !important;
+    }
+
+    &.unclicked::after {
+      content: "";
+      opacity: 0;
+      -webkit-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+      -moz-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+      -o-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+      transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+    }
+  }
+}
+
+@media (min-width: 992px) {
+  .td-content > pre {
+    max-width: 100%;
+  }
+}
