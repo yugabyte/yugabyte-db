@@ -140,6 +140,8 @@
   identifier = "join-our-community"
   pre = "<i class='fa fa-hands-helping'></i>"
   post = "<i></i>"
+  [leftbottom.params]
+    classes = "arrow-menu"
 
 [[leftbottom]]
   name = "Slack"
@@ -293,6 +295,7 @@
   weight = 14
   identifier = "view-all-products"
   [preview.params]
+    classes = "arrow-menu"
     showSection = true
 
 [[preview]]
@@ -494,6 +497,7 @@
   weight = 14
   identifier = "view-all-products"
   [stable.params]
+    classes = "arrow-menu"
     showSection = true
 
 [[stable]]
@@ -645,6 +649,7 @@
   weight = 14
   identifier = "view-all-products"
   ["v2.8".params]
+    classes = "arrow-menu"
     showSection = true
 
 [["v2.8"]]
@@ -785,6 +790,7 @@
   weight = 14
   identifier = "view-all-products"
   ["v2.6".params]
+    classes = "arrow-menu"
     showSection = true
 
 [["v2.6"]]
@@ -917,6 +923,7 @@
   weight = 14
   identifier = "view-all-products"
   ["v2.4".params]
+    classes = "arrow-menu"
     showSection = true
 
 [["v2.4"]]
