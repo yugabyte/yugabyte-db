@@ -13,7 +13,10 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.*;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertTrue;
 
 import java.io.File;
 import java.net.URL;
@@ -33,7 +36,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 @RunWith(value = YBTestRunnerNonTsanOnly.class)
@@ -52,6 +54,15 @@ public class TestPgAlterTableAddPrimaryKey extends BasePgSQLTest {
     try (Statement stmt = connection.createStatement()) {
       stmt.executeUpdate("CREATE TABLE nopk (id int)");
       alterAddPrimaryKey(stmt, "nopk", "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
+    }
+  }
+
+  @Test
+  public void withNoForceRowLevelSecurity() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE nopk (id int)");
+      alterAddPrimaryKey(stmt, "nopk", "NO FORCE ROW LEVEL SECURITY, " +
+                                       "ADD PRIMARY KEY (id)", 1, NUM_TABLET_SERVERS);
     }
   }
 
