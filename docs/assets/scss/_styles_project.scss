@@ -444,3 +444,28 @@ div#main_navbar {
 .breadcrumb-item.active {
   color: #21313c;
 }
+
+/******* For Inline SVG **********/
+
+.rrdiagram .connector {
+  fill: none;
+  stroke: #222;
+}
+
+.rrdiagram .text {
+  fill: #000;
+  font-family: Verdana, sans-serif;
+  font-size: 12px;
+}
+
+.rrdiagram .literal {
+  fill: #90d9ff;
+  stroke: #222;
+}
+
+.rrdiagram .rule {
+  fill: #d3f0ff;
+  stroke: #222;
+}
+
+/******* For Inline SVG **********/
