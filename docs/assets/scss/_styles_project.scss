@@ -14,6 +14,22 @@
   background: $YB_LIGHT_GRAY_BACK;
 }
 
+/******* Variables for Color Theme Switcher **********/
+
+:root {
+  --theme-color: #f75821;
+  --theme-dark-color: #ed3d00;
+  --left_menu_bg: rgba(249, 176, 151, 0.2);
+}
+
+[data-theme="purple"] {
+  --theme-color: #312965;
+  --theme-dark-color: #5b5480;
+  --left_menu_bg: #cecdd6;
+}
+
+/******* Variables for Color Theme Switcher **********/
+
 @media (min-width: 768px) {
   .td-main main {
     padding-top: 9.5rem;
@@ -414,18 +430,6 @@ body:not(.td-home) .td-main main {
 
 /******* For Color Theme Switcher **********/
 
-:root {
-  --theme-color: #f75821;
-  --theme-dark-color: #ed3d00;
-  --left_menu_bg: rgba(249, 176, 151, 0.2);
-}
-
-[data-theme="purple"] {
-  --theme-color: #312965;
-  --theme-dark-color: #5b5480;
-  --left_menu_bg: #cecdd6;
-}
-
 .activity-timeline {
   display: flex;
   justify-content: space-between;
@@ -489,23 +493,27 @@ div#main_navbar {
   &::before {
     padding-right: 0.25rem;
     color: #5d6c74;
-    content: "→";
     font-size: 1.3em;
     line-height: 22px;
   }
 }
 
-.breadcrumb a {
-  color: #5d6c74;
+.breadcrumb {
+  a {
+    color: #5d6c74;
+
+    &:hover {
+      color: #21313c;
+    }
+  }
+
+  .active {
+    a {
+      color: #21313c;
+    }
+  }
 }
 
 .breadcrumb-item.active {
   color: #21313c;
-}
-
-.breadcrumb {
-  .active a,
-  a:hover {
-    color: #21313c;
-  }
 }
