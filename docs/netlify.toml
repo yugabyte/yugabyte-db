@@ -165,6 +165,13 @@
   to = "/stable/quick-start/explore/ysql/"
   force = true
 
+# Switch from CentOS to AlmaLinux, TODO: Update this in stable too once it hits stable
+
+[[redirects]]
+  from = "/preview/contribute/core-database/build-from-src-centos/"
+  to = "/preview/contribute/core-database/build-from-src-almalinux/"
+  force = true
+
 # Yugabyte Extensions top hit
 
 [[redirects]]
