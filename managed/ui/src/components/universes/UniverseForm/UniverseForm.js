@@ -325,10 +325,6 @@ class UniverseForm extends Component {
   getUniverseName = () => {
     const { formValues, universe } = this.props;
 
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].universeName;
-    }
-
     const {
       currentUniverse: {
         data: { universeDetails }
@@ -336,7 +332,7 @@ class UniverseForm extends Component {
     } = universe;
     if (isNonEmptyObject(universeDetails)) {
       const primaryCluster = getPrimaryCluster(universeDetails.clusters);
-      return primaryCluster.userIntent.universeName;
+      return formValues['primary']?.universeName || primaryCluster?.userIntent?.universeName || '';
     }
     // We shouldn't get here!!!
     return null;
