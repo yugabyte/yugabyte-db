@@ -1,3 +1,11 @@
+.tab-content .tab-pane {
+  max-width: 100%;
+
+  pre {
+    border: none;
+  }
+}
+
 .custom-tabs.tabs-style-1 {
   &::-webkit-scrollbar {
     display: none;
