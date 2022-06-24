@@ -4008,6 +4008,23 @@ Result<scoped_refptr<NamespaceInfo>> CatalogManager::FindNamespace(
   return FindNamespaceUnlocked(ns_identifier);
 }
 
+Result<scoped_refptr<UDTypeInfo>> CatalogManager::FindUDTypeById(
+    const UDTypeId& udt_id) const {
+  SharedLock lock(mutex_);
+  return FindUDTypeByIdUnlocked(udt_id);
+}
+
+Result<scoped_refptr<UDTypeInfo>> CatalogManager::FindUDTypeByIdUnlocked(
+    const UDTypeId& udt_id) const {
+  scoped_refptr<UDTypeInfo> tp = FindPtrOrNull(udtype_ids_map_, udt_id);
+  if (tp == nullptr) {
+    VLOG_WITH_FUNC(4) << "UDType not found: " << udt_id << "\n" << GetStackTrace();
+    return STATUS(NotFound, "UDType identifier not found", udt_id,
+                  MasterError(MasterErrorPB::TYPE_NOT_FOUND));
+  }
+  return tp;
+}
+
 Result<TableDescription> CatalogManager::DescribeTable(
     const TableIdentifierPB& table_identifier, bool succeed_if_create_in_progress) {
   TRACE("Looking up table");
@@ -7405,6 +7422,7 @@ Status CatalogManager::CreateUDType(const CreateUDTypeRequestPB* req,
     tp = FindPtrOrNull(udtype_names_map_, std::make_pair(ns->id(), req->name()));
 
     if (tp != nullptr) {
+      resp->set_id(tp->id());
       s = STATUS_SUBSTITUTE(AlreadyPresent,
           "Type '$0.$1' already exists", ns->name(), req->name());
       LOG(WARNING) << "Found type: " << tp->id() << ". Failed creating type with error: "

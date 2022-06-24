@@ -79,7 +79,8 @@ using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestorati
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
 YB_DEFINE_ENUM(
-    CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));
+    CollectFlag,
+    (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress)(kAddUDTypes));
 using CollectFlags = EnumBitSet<CollectFlag>;
 
 } // namespace master

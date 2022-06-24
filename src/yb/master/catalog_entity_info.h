@@ -902,7 +902,7 @@ void FillInfoEntry(const Info& info, SysRowEntry* entry) {
 }
 
 template <class Info>
-auto AddInfoEntry(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
+auto AddInfoEntryToPB(Info* info, google::protobuf::RepeatedPtrField<SysRowEntry>* out) {
   auto lock = info->LockForRead();
   FillInfoEntry(*info, out->Add());
   return lock;
