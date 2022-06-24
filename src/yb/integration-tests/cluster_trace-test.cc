@@ -18,10 +18,16 @@ namespace yb {
 
 class TraceClusterTest : public ExternalMiniClusterITestBase {
  public:
-  void SetTracingFlag(bool enabled) {
+  void SetTracingFlag(bool enabled, int sampling_freq, int print_freq) {
     for (int i = 0; i < 3; ++i) {
       ASSERT_OK(cluster_->SetFlag(
           cluster_->tablet_server(i), "enable_tracing", enabled ? "1" : "0"));
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(i), "collect_end_to_end_traces", "true"));
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(i), "sampled_trace_1_in_n", yb::ToString(sampling_freq)));
+      ASSERT_OK(cluster_->SetFlag(
+          cluster_->tablet_server(i), "print_trace_every", yb::ToString(print_freq)));
     }
     WaitForInserts(workload_->rows_inserted() + 1000);
   }
@@ -50,7 +56,9 @@ TEST_F(TraceClusterTest, TestTracingUnderLoad) {
 
   // Cycle through enable/disable a bunch of times.
   for (int i = 0; i < 10; ++i) {
-    SetTracingFlag(static_cast<bool>(i % 2));
+    auto rows_inserted = workload_->rows_inserted();
+    SetTracingFlag(static_cast<bool>(i % 2), (i % 5), 1);
+    WaitForInserts(rows_inserted + 100);
   }
 
   // Stop the workload.

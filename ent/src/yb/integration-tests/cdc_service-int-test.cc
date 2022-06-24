@@ -1604,13 +1604,14 @@ TEST_P(CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime) {
   ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
                                                               &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
-  ASSERT_EQ(segment_sequence.size(),
-            tablet_peer->log()->reader_->segments_violate_max_time_policy_->size());
-
-  for (size_t i = 0; i < segment_sequence.size(); i++) {
-    ASSERT_EQ(segment_sequence[i]->path(),
-              (*tablet_peer->log()->reader_->segments_violate_max_time_policy_)[i]->path());
-    LOG(INFO) << "Segment " << segment_sequence[i]->path() << " to be GCed";
+  const auto& segments_violate =
+      *(tablet_peer->log()->reader_->TEST_segments_violate_max_time_policy_);
+  ASSERT_EQ(segment_sequence.size(), segments_violate.size());
+  auto it1 = segment_sequence.begin();
+  auto it2 = segments_violate.begin();
+  for (; it1 != segment_sequence.end() && it2 != segments_violate.end(); ++it1, ++it2) {
+    ASSERT_EQ((*it1)->path(), (*it2)->path());
+    LOG(INFO) << "Segment " << (*it1)->path() << " to be GCed";
   }
 }
 
@@ -1778,13 +1779,14 @@ TEST_P(CDCServiceTestMinSpace, TestLogRetentionByOpId_MinSpace) {
   ASSERT_OK(tablet_peer->log()->GetSegmentsToGCUnlocked(std::numeric_limits<int64_t>::max(),
                                                         &segment_sequence));
   ASSERT_GT(segment_sequence.size(), 0);
-  ASSERT_EQ(segment_sequence.size(),
-            tablet_peer->log()->reader_->segments_violate_min_space_policy_->size());
-
-  for (size_t i = 0; i < segment_sequence.size(); i++) {
-    ASSERT_EQ(segment_sequence[i]->path(),
-              (*tablet_peer->log()->reader_->segments_violate_min_space_policy_)[i]->path());
-    LOG(INFO) << "Segment " << segment_sequence[i]->path() << " to be GCed";
+  const auto& segments_violate =
+      *(tablet_peer->log()->reader_->TEST_segments_violate_min_space_policy_);
+  ASSERT_EQ(segment_sequence.size(), segments_violate.size());
+  auto it1 = segment_sequence.begin();
+  auto it2 = segments_violate.begin();
+  for (; it1 != segment_sequence.end() && it2 != segments_violate.end(); ++it1, ++it2) {
+    ASSERT_EQ((*it1)->path(), (*it2)->path());
+    LOG(INFO) << "Segment " << (*it1)->path() << " to be GCed";
   }
 
   int32_t num_gced(0);

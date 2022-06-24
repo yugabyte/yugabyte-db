@@ -2489,7 +2489,6 @@ ExecBSInsertTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -2550,7 +2549,6 @@ ExecBRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2632,7 +2630,6 @@ ExecIRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2707,7 +2704,6 @@ ExecBSDeleteTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -2802,7 +2798,6 @@ ExecBRDeleteTriggers(EState *estate, EPQState *epqstate,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2888,7 +2883,6 @@ ExecIRDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -2949,7 +2943,6 @@ ExecBSUpdateTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -3055,7 +3048,6 @@ ExecBRUpdateTriggers(EState *estate, EPQState *epqstate,
 	LocTriggerData.tg_relation = relinfo->ri_RelationDesc;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	updatedCols = GetUpdatedColumns(relinfo, estate);
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
@@ -3171,7 +3163,6 @@ ExecIRUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 	LocTriggerData.tg_relation = relinfo->ri_RelationDesc;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	for (i = 0; i < trigdesc->numtriggers; i++)
 	{
 		Trigger    *trigger = &trigdesc->triggers[i];
@@ -3242,7 +3233,6 @@ ExecBSTruncateTriggers(EState *estate, ResultRelInfo *relinfo)
 	LocTriggerData.tg_newtuple = NULL;
 	LocTriggerData.tg_oldtable = NULL;
 	LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	LocTriggerData.tg_trigtuplebuf = InvalidBuffer;
 	LocTriggerData.tg_newtuplebuf = InvalidBuffer;
 	for (i = 0; i < trigdesc->numtriggers; i++)
@@ -3908,8 +3898,7 @@ static void AfterTriggerExecute(AfterTriggerEvent event,
 					Instrumentation *instr,
 					MemoryContext per_tuple_context,
 					TupleTableSlot *trig_tuple_slot1,
-					TupleTableSlot *trig_tuple_slot2,
-					const bool disable_fk_check);
+					TupleTableSlot *trig_tuple_slot2);
 static AfterTriggersTableData *GetAfterTriggersTableData(Oid relid,
 						  CmdType cmdType);
 static void AfterTriggerFreeQuery(AfterTriggersQueryData *qs);
@@ -4264,7 +4253,6 @@ afterTriggerDeleteHeadEventChunk(AfterTriggersQueryData *qs)
  *	per_tuple_context: memory context to call trigger function in.
  *	trig_tuple_slot1: scratch slot for tg_trigtuple (foreign tables only)
  *	trig_tuple_slot2: scratch slot for tg_newtuple (foreign tables only)
- *	disable_fk_check: should FK check be disabled.
  * ----------
  */
 static void
@@ -4273,8 +4261,7 @@ AfterTriggerExecute(AfterTriggerEvent event,
 					FmgrInfo *finfo, Instrumentation *instr,
 					MemoryContext per_tuple_context,
 					TupleTableSlot *trig_tuple_slot1,
-					TupleTableSlot *trig_tuple_slot2,
-					const bool disable_fk_check)
+					TupleTableSlot *trig_tuple_slot2)
 {
 	AfterTriggerShared evtshared = GetTriggerSharedData(event);
 	Oid			tgoid = evtshared->ats_tgoid;
@@ -4392,7 +4379,6 @@ AfterTriggerExecute(AfterTriggerEvent event,
 	 * query level, they'll go into new transition tables.
 	 */
 	LocTriggerData.tg_oldtable = LocTriggerData.tg_newtable = NULL;
-	LocTriggerData.disable_fk_check = false;
 	if (evtshared->ats_table)
 	{
 		if (LocTriggerData.tg_trigger->tgoldtable)
@@ -4415,7 +4401,6 @@ AfterTriggerExecute(AfterTriggerEvent event,
 	LocTriggerData.tg_event =
 		evtshared->ats_event & (TRIGGER_EVENT_OPMASK | TRIGGER_EVENT_ROW);
 	LocTriggerData.tg_relation = rel;
-	LocTriggerData.disable_fk_check = disable_fk_check;
 
 	MemoryContextReset(per_tuple_context);
 
@@ -4632,8 +4617,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 				 * won't try to re-fire it.
 				 */
 				AfterTriggerExecute(event, rel, trigdesc, finfo, instr,
-									per_tuple_context, slot1, slot2,
-									estate->yb_es_is_fk_check_disabled);
+									per_tuple_context, slot1, slot2);
 
 				/*
 				 * Mark the event as done.
@@ -6048,6 +6032,11 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 							modifiedCols, oldtup, newtup))
 			continue;
 
+		const bool is_fk_trigger_on_yb_table = IsYBBackedRelation(rel) &&
+				RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK;
+		if (estate->yb_es_is_fk_check_disabled && is_fk_trigger_on_yb_table)
+			continue;
+
 		/*
 		 * If the trigger is a foreign key enforcement trigger, there are
 		 * certain cases where we can skip queueing the event because we can
@@ -6156,8 +6145,9 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 			}
 		}
 
-		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
+		if (is_fk_trigger_on_yb_table)
 			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);
+
 		afterTriggerAddEvent(
 				&afterTriggers.query_stack[afterTriggers.query_depth].events, &new_event, &new_shared);
 	}

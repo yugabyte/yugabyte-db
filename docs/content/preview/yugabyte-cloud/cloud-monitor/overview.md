@@ -24,7 +24,7 @@ You can enable alerts for some performance metrics. Refer to [Alerts](../cloud-a
 
 ![Cluster Performance Metrics](/images/yb-cloud/cloud-clusters-metrics.png)
 
-You can show metrics for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
+You can show metrics by region and by node, for the past hour, 6 hours, 12 hours, 24 hours, or 7 days.
 
 ## Overview metrics
 
@@ -36,7 +36,7 @@ The following table describes the metrics available on the **Overview**.
 
 | Graph | Description | Use |
 | :---| :--- | :--- |
-| Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Since random reads always hit disk, you should increase IOPS capacity for this type of workload. |
+| Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload. |
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
 | Disk Usage | Shows the amount of disk space provisioned for and used by the cluster. | Typically you would scale up at 80%, but consider this metric in the context of your environment. For example, usage can be higher on larger disks; some file systems issue an alert at 75% usage due to performance degradation. |
@@ -50,7 +50,7 @@ The **Performance** tab provides the following metrics.
 | Graph | Description | Use |
 | :---| :--- | :--- |
 | **Overall** | | |
-| Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Since random reads always hit disk, you should increase IOPS capacity for this type of workload. |
+| Operations/sec | The number of disk input / output read and write operations (IOPS) per second. | Large spikes usually indicate large compactions. Rarely, in cases of a spiky workload, this could indicate block cache misses.<br>Because random reads always hit disk, you should increase IOPS capacity for this type of workload. |
 | Average Latency | Read: the average latency of read operations at the tablet level.<br>Write: the average latency of write operations at the tablet level. | When latency starts to degrade, performance may be impacted by the storage layer. |
 | **General** | | |
 | CPU Usage | The percentage of CPU use being consumed by the tablet or master server Yugabyte processes, as well as other processes, if any. In general, CPU usage is a measure of all processes running on the server. | High CPU use could indicate a problem and may require debugging by Yugabyte Support. |
@@ -69,7 +69,7 @@ The **Performance** tab provides the following metrics.
 | YCQL Latency | The average time (in milliseconds) of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | When latency is close to or higher than your application SLA, it may be a cause for concern. |
 | YCQL Latency (P99) | The average time (in milliseconds) of the top 99% of DELETE, INSERT, SELECT, and UPDATE transactions, as well as other statements through the YCQL API. | If this value is significantly higher than expected, then it might be a cause for concern. You should check whether or not there are consistent spikes in latency. |
 | **Tablet Server** | | |
-| WAL Bytes Written / Sec / Node | The number of bytes written to the write-ahead logging (WAL) since the tablet start. | A low-level metric related to the storage layer. This can be useful to help debug certain latency or throughput issues by isolating where the bottleneck happens. |
+| WAL Bytes Written / Sec / Node | The number of bytes written to the write-ahead logging (WAL) after the tablet start. | A low-level metric related to the storage layer. This can help debug certain latency or throughput issues by isolating where the bottleneck happens. |
 | **DocDB** | | |
 | Compaction | The number of bytes being read and written to do compaction. | If not a lot of data is being deleted, these levels are similar. In some cases, you might see a large delete indicated by large reads but low writes afterwards (because a large percentage of data was removed in compaction). |
-| Average SSTables / Node | The average number of SSTable (SST) files across nodes. | A low-level metric related to the storage layer. This can be useful to help debug certain latency or throughput issues by isolating where the bottleneck happens. |
+| Average SSTables / Node | The average number of SSTable (SST) files across nodes. | A low-level metric related to the storage layer. This can help debug certain latency or throughput issues by isolating where the bottleneck happens. |

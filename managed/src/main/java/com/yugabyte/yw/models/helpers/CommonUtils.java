@@ -705,13 +705,4 @@ public class CommonUtils {
             universe.getUniverseDetails().universePaused);
     return stateLogMsg;
   }
-
-  public static boolean canConfigureYbc(Universe universe) {
-    if (universe == null) {
-      return false;
-    }
-    String ybcPackagePath =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcPackagePath;
-    return StringUtils.isNotEmpty(ybcPackagePath);
-  }
 }

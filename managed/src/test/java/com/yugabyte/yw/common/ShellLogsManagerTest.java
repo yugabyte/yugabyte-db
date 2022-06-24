@@ -5,8 +5,6 @@ package com.yugabyte.yw.common;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import java.io.File;
@@ -18,7 +16,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import junit.framework.TestCase;
@@ -27,7 +24,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ShellLogsManagerTest extends TestCase {
@@ -35,16 +31,11 @@ public class ShellLogsManagerTest extends TestCase {
 
   @Mock Config mockConfig;
 
-  @Mock ActorSystem actorSystem;
-
-  @Mock Scheduler scheduler;
-
-  @Mock ExecutionContext executionContext;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Before
   public void beforeTest() {
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
-    when(actorSystem.scheduler()).thenReturn(scheduler);
   }
 
   @Test
@@ -104,11 +95,10 @@ public class ShellLogsManagerTest extends TestCase {
   @Test
   public void testNotDeletingCurrentlyUsedLogs() throws IOException {
     Long baseTS = System.currentTimeMillis();
-    AtomicInteger deleted = new AtomicInteger();
     List<File> files = new ArrayList<>();
 
     ShellLogsManager mockManager =
-        new ShellLogsManager(mockRuntimeConfigFactory, actorSystem, executionContext) {
+        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory) {
           @Override
           protected List<File> listLogFiles() {
             return files;
@@ -155,7 +145,7 @@ public class ShellLogsManagerTest extends TestCase {
     }
     Collections.shuffle(mockFiles);
     ShellLogsManager mockManager =
-        new ShellLogsManager(mockRuntimeConfigFactory, actorSystem, executionContext) {
+        new ShellLogsManager(mockPlatformScheduler, mockRuntimeConfigFactory) {
           @Override
           protected Long getBaseTimestamp(long retentionHours) {
             return baseTS - TimeUnit.HOURS.toMillis(retentionHours);

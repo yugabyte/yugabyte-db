@@ -137,7 +137,9 @@ class CDCSDKTestBase : public YBTest {
       const uint32_t num_tablets = 1,
       const bool add_primary_key = true,
       bool colocated = false,
-      const int table_oid = 0);
+      const int table_oid = 0,
+      bool enum_value = false,
+      const std::string& enum_suffix = "");
 
   Result<std::string> GetNamespaceId(const std::string& namespace_name);
 

@@ -139,6 +139,9 @@ public class CustomerTask extends Model {
     @EnumValue("SystemdUpgrade")
     SystemdUpgrade,
 
+    @EnumValue("RebootUniverse")
+    RebootUniverse,
+
     @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
@@ -344,6 +347,8 @@ public class CustomerTask extends Model {
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         case RotateAccessKey:
           return completed ? "Rotated Access Key" : "Rotating Access Key";
+        case RebootUniverse:
+          return completed ? "Rebooted " : "Rebooting ";
         default:
           return null;
       }
@@ -369,6 +374,10 @@ public class CustomerTask extends Model {
           return "Start Master Process on";
         case PrecheckNode:
           return "Precheck";
+        case RebootUniverse:
+          return "Reboot";
+        case RestartUniverse:
+          return "Restart";
         default:
           return toFriendlyTypeName();
       }

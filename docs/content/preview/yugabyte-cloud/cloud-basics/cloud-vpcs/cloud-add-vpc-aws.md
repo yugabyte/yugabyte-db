@@ -39,7 +39,7 @@ To create a VPC network in AWS, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
-| **[Create the VPC](#create-a-vpc)** | Reserves a range of IP addresses for the network.<br>The status of the VPC is _Active_ when done. |
+| **[Create the VPC](#create-a-vpc)** | Reserves a range of IP addresses for the network.<br>You need to create a VPC for each region in multi-region clusters.<br>The status of the VPC is _Active_ when done. |
 | **[Deploy a cluster in the VPC](#deploy-a-cluster-in-the-vpc)** | This can be done at any time - you don't need to wait until the VPC is peered. |
 | **[Create a peering connection](#create-a-peering-connection)** | Connects your VPC and the application VPC on the cloud provider network.<br>The status of the peering connection is _Pending_ when done. |
 | **[Accept the peering request in AWS](#accept-the-peering-request-in-aws)** | Confirms the connection between your VPC and the application VPC.<br>The status of the peering connection is _Active_ when done. |
@@ -52,6 +52,8 @@ For information on VPC network peering in AWS, refer to [VPC Peering](https://do
 ## Create a VPC
 
 To avoid cross-region data transfer costs, deploy your VPC in the same region as the application VPC you are peering with.
+
+If you intend to deploy a multi-region cluster, you need to create a VPC for each region.
 
 > **What you need**<br>The CIDR range for the application VPC with which you want to peer, as _the addresses can't overlap_.
 >
@@ -73,18 +75,15 @@ The VPC's network name and project ID are automatically assigned. You'll need th
 
 ## Deploy a cluster in the VPC
 
-You can deploy your cluster in a VPC any time after the VPC is created.
+You can deploy your cluster in a VPC any time after the VPC is created. You must deploy the cluster in the VPC; the VPC can't be changed after cluster creation.
 
 To deploy a cluster in a VPC:
 
 1. On the **Clusters** page, click **Add Cluster**.
-1. Choose **YugabyteDB Managed** and click **Next**.
-1. Choose the provider you used for your VPC.
-1. Enter a name for the cluster.
-1. Select the **Region**. Choose the region where the VPC is deployed.
-1. Set the **Fault Tolerance**. For production clusters, typically this will be Availability Zone Level.
-1. Under **Network Access**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.
-1. Click **Create Cluster**.
+1. Choose **Dedicated**.
+1. Enter a name for the cluster, choose **AWS**, and click **Next**.
+1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
+For a **Multi-Region Deployment**, specify a VPC for each region.
 
 For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 

@@ -229,6 +229,11 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .stream()
             .filter(tableInfo -> tableIds.contains(tableInfo.getId().toStringUtf8()))
             .collect(Collectors.toList());
+    Set<String> tableIdsNeedBootstrap =
+        getTablesNeedBootstrap()
+            .stream()
+            .map(tableConfig -> tableConfig.tableId)
+            .collect(Collectors.toSet());
     // All tables are found.
     if (requestedTablesInfoList.size() != tableIds.size()) {
       Set<String> foundTableIds =
@@ -283,7 +288,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             .map(tableInfo -> tableInfo.getId().toStringUtf8())
             .collect(Collectors.toSet());
     if (tableType == CommonTypes.TableType.PGSQL_TABLE_TYPE
-        && getTablesNeedBootstrap().size() > 0
+        && tableIdsNeedBootstrap.size() > 0
         && !tableIdsInKeyspace.equals(tableIds)) {
       throw new RuntimeException(
           String.format(
@@ -293,7 +298,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     }
     // Backup index table is not supported for YCQL.
     if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
-      List<String> indexTablesIdList =
+      List<String> indexTablesIdWithBootstrapList =
           requestedTablesInfoList
               .stream()
               .filter(
@@ -302,13 +307,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                           && tableInfo.getRelationType()
                               == MasterTypes.RelationType.INDEX_TABLE_RELATION)
               .map(tableInfo -> tableInfo.getId().toStringUtf8())
+              .filter(tableIdsNeedBootstrap::contains)
               .collect(Collectors.toList());
-      if (indexTablesIdList.size() > 0) {
+      if (indexTablesIdWithBootstrapList.size() > 0) {
         throw new RuntimeException(
             String.format(
-                "For YCQL tables, none of the table must be of index type, but %s are index "
-                    + "tables",
-                indexTablesIdList));
+                "Bootstrap is not supported for YCQL index tables, but %s are index tables",
+                indexTablesIdWithBootstrapList));
       }
     }
 

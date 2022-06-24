@@ -22,7 +22,7 @@ To change the backup schedule, [create your own schedule](#schedule-backups). To
 
 You can also perform backups [on demand](#on-demand-backups) and manually [restore backups](#restore-a-backup).
 
-Backups are not supported for Free clusters.
+Backups are not supported for Sandbox clusters.
 
 ![Cluster Backups page](/images/yb-cloud/cloud-clusters-backups.png)
 

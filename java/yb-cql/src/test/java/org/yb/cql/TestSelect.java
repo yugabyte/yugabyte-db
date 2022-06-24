@@ -1412,23 +1412,25 @@ public class TestSelect extends BaseCQLTest {
               "Row[1, 60, 40, 164]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
-      // There are n = 5 values of r1 to look at (90, 80, 70, 60, 50).
-      // For each r1 we have m = 4 values to look for in the range (20, 30, 40, 50). But, we only
-      // seek to the very first one. Then do Next(s) until we get out of range for r2.
+      // There are n = 3 values of r1 to look at (80, 70, 60).
+      // For each r1 we have m = 2 values to look for in the range (30, 40). But, we only
+      // seek to the very first one.
+      // Then do Next(s) until we get out of range for r2.
       // If there are more r1's to look at, we'd seek to r2=Max.
       // We will be performing (n - 1) seeks to the Max value for finding the next r1
-      // Thus, this scan will have to Seek to n * 1 + (n - 1) = 5 * 1 + (5 - 1) = 9 locations.
+      // We also do one seek per r1 to get the initial r2 value in range.
+      // We also do an initial seek to find the first valid value for r1
+      // Thus, this scan will have to Seek to n + n + 1 = 3 + 3 + 1 = 7
+      // locations.
       // For example,
-      //   Seeking to DocKey(0x0a73, [1], [90, "20"])
       //   Seeking to DocKey(0x0a73, [1], [90, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [80, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [80, "20", +Inf])
       //   Seeking to DocKey(0x0a73, [1], [80, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [70, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [70, "20", +inf])
       //   Seeking to DocKey(0x0a73, [1], [70, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [60, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [60, "20", +inf])
       //   Seeking to DocKey(0x0a73, [1], [60, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [50, "20"])
-      assertEquals(9, metrics.seekCount);
+      assertEquals(7, metrics.seekCount);
     }
 
     // Test basic seek optimisation with fwd scans.
@@ -1452,6 +1454,20 @@ public class TestSelect extends BaseCQLTest {
       // We will be performing (n - 1) seeks to the Max value for finding the next r1
       // Thus, this scan will have to Seek to n * 1 + (n - 1) = 3 * 1 + (3 - 1) = 5 locations.
       assertEquals(5, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 > 60 AND r1 < 80 AND " +
+                     "r2  > '30' AND r2 < '40'";
+
+      String[] rows = {};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // We first will seek to (60, Inf) to find a plausible value for r1
+      // Then we seek to (70, 30, Inf) to get a plausible r2 value
+      // Then we seek to (70, Inf) in hopes of getting another plausible r1
+      // value
+      assertEquals(3, metrics.seekCount);
     }
 
     // Test basic seek optimisation with fwd scans. No hash componenet specified.
@@ -1551,22 +1567,81 @@ public class TestSelect extends BaseCQLTest {
 
       // use unordered because the hash keys could go in random order.
       RocksDBMetrics metrics = assertUnorderedPartialRangeSpec("in_range_test", query, rows);
-      // For each Hash key in 0 .. 9 we'll have 11 of these seeks.
-      // Seeking to DocKey(0x0a73, [h], [90, "20"])
+      // For each Hash key in 0 .. 9 we'll have 8 of these seeks.
       // Seeking to DocKey(0x0a73, [h], [90, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [80, "20"])
+      // Seeking to DocKey(0x0a73, [h], [80, "20", +Inf])
       // Seeking to DocKey(0x0a73, [h], [80, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [70, "20"])
+      // Seeking to DocKey(0x0a73, [h], [70, "20", +Inf])
       // Seeking to DocKey(0x0a73, [h], [70, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [60, "20"])
+      // Seeking to DocKey(0x0a73, [h], [60, "20", +Inf])
       // Seeking to DocKey(0x0a73, [h], [60, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [50, "20"])
-      // Seeking to DocKey(0x0a73, [h], [50, +Inf])
       // Seeking to DocKey(0x0a73, [h], [+Inf])
       // Additionally, one
       //   Seeking to DocKey([], []) per tablet.
-      // Overall, 11 * 10 + 9
-      assertEquals(109, metrics.seekCount);
+      // Overall, 8 * 10 + 9
+      assertEquals(89, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+                     "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50'";
+
+      String[] rows = {"Row[1, 30, 30, 133]",
+                       "Row[1, 30, 40, 134]",
+                       "Row[1, 20, 30, 123]",
+                       "Row[1, 20, 40, 124]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // Similar to above.
+      // There are n = 2 values of r1 to look at. For each r1 we have m = 2
+      // values to look for in the range. During the scan, for each r1
+      // we look at m + 1 = 3 values before deciding to seek out of r1 by
+      // going to r2=Max. We will be performing n seeks to the Max value for
+      // finding the next r1.
+      // Thus, this scan will have to Seek to
+      // n * (m + 1) + (n - 1) = 2 * 3 + 2 = 8 locations.
+      // But reverse scans do 2 seeks for each option
+      // since PrevDocKey calls Seek twice internally.
+      // So, the expected number of seeks = 8 * 2 = 16
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "10"]), []))
+      // Trying to seek out of r1 = 20. [1, 20, _]
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "90"]), []))
+      // Try to get into the range for r2.
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "10"]), []))
+      // Trying to seek out of r1 = 30. [1, 30, _]
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "90"]), []))
+      // Try to get into the range for r2.
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "10"]), []))
+      assertEquals(4, metrics.seekCount);
     }
 
     // Test ORDER BY clause (reverse scan).
@@ -1602,7 +1677,33 @@ public class TestSelect extends BaseCQLTest {
 
     {
       String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
-              "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50' ORDER BY r1 ASC, r2 DESC";
+                     "r1 >= 20 AND r1 < 30 AND r2  > '30' AND r2 <= '40' ORDER BY r1 ASC, r2 DESC";
+
+      String[] rows = {"Row[1, 20, 40, 124]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // There are n = 1 values of r1 to look at. For each r1 we have m = 1 values to look for
+      // in the range. During the scan, for each r1 we look at m + 1 = 3 values before deciding
+      // to seek out of r1 by going to r2=Max. We will be performing n seeks to the Max
+      // value for finding the next r1.
+      // Thus, this scan will have to Seek to n * (m + 1) + n = 3 locations.
+      // But reverse scans do 2 seeks for each option since PrevDocKey
+      // calls Seek twice internally.
+      // So the total number of seeks will be 3 * 2 = 6
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                       kString : "40"]), []))
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                       kLowest"]), []))
+      // Trying to seek out of r1 = 20. [1, 20, _]
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                       kString : "90"]), []))
+
+      assertEquals(6, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+                     "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50' ORDER BY r1 ASC, r2 DESC";
 
       String[] rows = {
               "Row[1, 20, 40, 124]",
@@ -1611,37 +1712,33 @@ public class TestSelect extends BaseCQLTest {
               "Row[1, 30, 30, 133]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
-      // Similar to above. But would stop at 2 extra values of r2 for each r1. (due to </> instead
-      // of <=/>=) so n = 3, m = 4
-      // There are n = 3 values of r1 to look at. For each r1 we have m = 4 values to look for in
-      // the range. During the scan, for each r1 we look at m + 1 = 5 values before deciding to
+      // Similar to above.
+      // There are n = 2 values of r1 to look at. For each r1 we have m = 2 values to look for in
+      // the range. During the scan, for each r1 we look at m + 1 = 3 values before deciding to
       // seek out of r1 by going to r2=Max
-      // We will be performing (n - 1) seeks to the Max value for finding the next r1
-      // Thus, this scan will have to Seek to n * (m + 1) + (n - 1) = 3 * 5 + 2 = 17 locations.
+      // We will be performing n seeks to the Max value for finding the next r1
+      // Thus, this scan will have to Seek to n * (m + 1) + n = 2 * 3 + 2 = 8 locations.
       // But reverse scans do 2 seeks for each option since PrevDocKey calls Seek twice internally.
-      // So, the expected number of seeks = 17 * 2 = 34
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "50"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "40"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "30"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "20"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "10"]), []))
+      // So, the expected number of seeks = 8 * 2 = 16
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "50"], kLowest), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kLowest]), []))
       // Trying to seek out of r1 = 20. [1, 20, _]
-      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "90"]), []))
       // Try to get into the range for r2.
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "50"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "40"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "30"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "20"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "10"]), []))
-      // Trying to seek out of r1 = 30. [1, 30, _]
-      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "90"]), []))
-      // Try to get into the range for r2.
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "50"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "40"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "30"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "20"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "10"]), []))
-      assertEquals(28, metrics.seekCount);
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "50"], kLowest), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kLowest), []))
+      assertEquals(16, metrics.seekCount);
     }
   }
 

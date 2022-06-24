@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
@@ -76,6 +77,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // This should be a globally unique name - it is a combination of the customer id and the universe
   // id. This is used as the prefix of node names in the universe.
   @ApiModelProperty public String nodePrefix = null;
+
+  // Runtime flags to be set when creating the Universe
+  @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+  @ApiModelProperty
+  public Map<String, String> runtimeFlags = null;
 
   // The UUID of the rootCA to be used to generate node certificates and facilitate TLS
   // communication between database nodes.
@@ -144,8 +150,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // set during universe creation. Default is set to false for
   // backward compatability.
   @ApiModelProperty public boolean useNewHelmNamingStyle = false;
-
-  @ApiModelProperty public boolean useYbcForBackups = false;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -262,9 +266,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate() {
+    public void validate(boolean validateGFlagsConsistency) {
       checkDeviceInfo();
       checkStorageType();
+      if (validateGFlagsConsistency) {
+        GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
+      }
     }
 
     private void checkDeviceInfo() {
@@ -365,8 +372,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     // The software version of YB to install.
     @Constraints.Required() @ApiModelProperty public String ybSoftwareVersion;
-
-    @ApiModelProperty public String ybcPackagePath = null;
 
     @Constraints.Required() @ApiModelProperty public String accessKeyCode;
 
@@ -477,7 +482,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
       newUserIntent.ybSoftwareVersion = ybSoftwareVersion;
-      newUserIntent.ybcPackagePath = ybcPackagePath;
       newUserIntent.useSystemd = useSystemd;
       newUserIntent.accessKeyCode = accessKeyCode;
       newUserIntent.assignPublicIP = assignPublicIP;
@@ -509,7 +513,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && instanceType.equals(other.instanceType)
           && numNodes == other.numNodes
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (ybcPackagePath == null || ybcPackagePath.equals(other.ybcPackagePath))
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP
@@ -530,7 +533,6 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && instanceType.equals(other.instanceType)
           && numNodes == other.numNodes
           && ybSoftwareVersion.equals(other.ybSoftwareVersion)
-          && (ybcPackagePath == null || ybcPackagePath.equals(other.ybcPackagePath))
           && (accessKeyCode == null || accessKeyCode.equals(other.accessKeyCode))
           && assignPublicIP == other.assignPublicIP
           && assignStaticPublicIP == other.assignStaticPublicIP

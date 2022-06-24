@@ -14,9 +14,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -29,7 +28,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(MockitoJUnitRunner.class)
 public class TaskGarbageCollectorTest extends TestCase {
@@ -58,15 +56,11 @@ public class TaskGarbageCollectorTest extends TestCase {
             new String[] {customerUuid.toString()}));
   }
 
-  @Mock ActorSystem mockActorSystem;
-
-  @Mock Scheduler mockScheduler;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock Config mockAppConfig;
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
-
-  @Mock ExecutionContext mockExecutionContext;
 
   @Mock Customer mockCustomer;
 
@@ -77,9 +71,8 @@ public class TaskGarbageCollectorTest extends TestCase {
   @Before
   public void setUp() {
     when(mockRuntimeConfigFactory.staticApplicationConf()).thenReturn(mockAppConfig);
-    when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
     taskGarbageCollector =
-        new TaskGarbageCollector(mockActorSystem, mockRuntimeConfigFactory, mockExecutionContext);
+        new TaskGarbageCollector(mockPlatformScheduler, mockRuntimeConfigFactory);
     defaultRegistry.clear();
     TaskGarbageCollector.registerMetrics();
   }
@@ -88,15 +81,15 @@ public class TaskGarbageCollectorTest extends TestCase {
   public void testStart_disabled() {
     when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL)).thenReturn(Duration.ZERO);
     taskGarbageCollector.start();
-    verifyZeroInteractions(mockScheduler);
+    verifyZeroInteractions(mockPlatformScheduler);
   }
 
   @Test
   public void testStart_enabled() {
     when(mockAppConfig.getDuration(YB_TASK_GC_GC_CHECK_INTERVAL)).thenReturn(Duration.ofDays(1));
     taskGarbageCollector.start();
-    verify(mockScheduler, times(1))
-        .schedule(eq(Duration.ZERO), eq(Duration.ofDays(1)), any(), eq(mockExecutionContext));
+    verify(mockPlatformScheduler, times(1))
+        .schedule(any(), eq(Duration.ZERO), eq(Duration.ofDays(1)), any());
   }
 
   @Test

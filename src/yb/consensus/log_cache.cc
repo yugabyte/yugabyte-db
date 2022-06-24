@@ -288,6 +288,25 @@ int64_t TotalByteSizeForMessage(const ReplicateMsg& msg) {
   return msg_size;
 }
 
+Status UpdateResultHeaderSchemaFromSegment(
+    log::LogReader* log_reader, const int64_t segment_seq_num, ReadOpsResult* result) {
+  const auto segment_result = log_reader->GetSegmentBySequenceNumber(segment_seq_num);
+  if (!segment_result.ok()) {
+    if (segment_result.status().IsNotFound()) {
+      // Just ignore that.
+      return Status::OK();
+    }
+    // Return error.
+    return segment_result.status();
+  }
+  const auto& header = (*segment_result)->header();
+  if (header.has_schema()) {
+    result->header_schema.CopyFrom(header.schema());
+    result->header_schema_version = header.schema_version();
+  }
+  return Status::OK();
+}
+
 } // anonymous namespace
 
 Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index, size_t max_size_bytes) {
@@ -348,13 +367,8 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
           Substitute("Failed to read ops $0..$1", next_index, up_to));
 
       if ((starting_op_segment_seq_num != -1) && !result.header_schema.IsInitialized()) {
-        scoped_refptr<log::ReadableLogSegment> segment =
-            log_->GetLogReader()->GetSegmentBySequenceNumber(starting_op_segment_seq_num);
-
-        if (segment != nullptr && segment->header().has_unused_schema()) {
-          result.header_schema.CopyFrom(segment->header().unused_schema());
-          result.header_schema_version = segment->header().unused_schema_version();
-        }
+        RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
+            log_->GetLogReader(), starting_op_segment_seq_num, &result));
       }
 
       metrics_.disk_reads->IncrementBy(raw_replicate_ptrs.size());
@@ -382,12 +396,8 @@ Result<ReadOpsResult> LogCache::ReadOps(int64_t after_op_index,
       starting_op_segment_seq_num = VERIFY_RESULT(log_->GetLogReader()->LookupHeader(next_index));
 
       if ((starting_op_segment_seq_num != -1)) {
-        scoped_refptr<log::ReadableLogSegment> segment =
-            log_->GetLogReader()->GetSegmentBySequenceNumber(starting_op_segment_seq_num);
-        if (segment != nullptr && segment->header().has_unused_schema()) {
-          result.header_schema.CopyFrom(segment->header().unused_schema());
-          result.header_schema_version = segment->header().unused_schema_version();
-        }
+        RETURN_NOT_OK(UpdateResultHeaderSchemaFromSegment(
+            log_->GetLogReader(), starting_op_segment_seq_num, &result));
       }
       // Pull contiguous messages from the cache until the size limit is achieved.
       for (; iter != cache_.end(); ++iter) {

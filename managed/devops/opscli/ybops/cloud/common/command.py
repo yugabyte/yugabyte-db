@@ -48,6 +48,7 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(VerifySSHConnection(self))
         self.add_method(AddAuthorizedKey(self))
         self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(RebootInstanceMethod(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):
@@ -70,8 +71,7 @@ class ControlInstanceCommand(AbstractPerCloudCommand):
         super(ControlInstanceCommand, self).__init__("control")
         self.commands_per_server_type = {
             "master": self.MASTER_COMMANDS,
-            "tserver": self.BASE_COMMANDS,
-            "yb-controller": self.BASE_COMMANDS
+            "tserver": self.BASE_COMMANDS
             }
 
     def add_subcommands(self):

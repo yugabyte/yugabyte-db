@@ -238,6 +238,11 @@ struct SubTransactionMetadata {
     return YB_STRUCT_TO_STRING(subtransaction_id, aborted);
   }
 
+  bool operator==(const SubTransactionMetadata& other) const {
+    return subtransaction_id == other.subtransaction_id &&
+      aborted == other.aborted;
+  }
+
   // Returns true if this is the default state, i.e. default subtransaction_id. This indicates
   // whether the client has interacted with savepoints at all in the context of a session. If true,
   // the client could, for example, skip sending subtransaction-related metadata in RPCs.

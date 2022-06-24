@@ -18,12 +18,13 @@ import re
 import string
 import sys
 import time
+import datetime
 
 from pprint import pprint
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import get_ssh_host_port, wait_for_ssh, get_path_from_yb, \
     generate_random_password, validated_key_file, format_rsa_key, validate_cron_status, \
-    get_public_key_content, \
+    get_public_key_content, remote_exec_command,  \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT, \
     DEFAULT_SSH_USER
@@ -40,8 +41,12 @@ class ConsoleLoggingErrorHandler(object):
             console_output = self.cloud.get_console_output(args)
 
             if console_output:
-                logging.error("Dumping latest console output for {}:".format(args.search_pattern))
-                logging.error(console_output)
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                out_file_path = f"/tmp/{args.search_pattern}-{timestamp}-console.log"
+                logging.warning(f"Dumping latest console output to {out_file_path}")
+
+                with open(out_file_path, 'a') as f:
+                    f.write(console_output + '\n')
 
 
 class AbstractMethod(object):
@@ -161,10 +166,6 @@ class AbstractInstancesMethod(AbstractMethod):
                                  action="store_true",
                                  default=False,
                                  help="check if systemd services is set")
-        self.parser.add_argument("--configure_ybc",
-                                 action="store_true",
-                                 default=False,
-                                 help="configure yb-controller on node.")
         self.parser.add_argument("--machine_image",
                                  required=False,
                                  help="The machine image (e.g. an AMI on AWS) to install, "
@@ -694,7 +695,6 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars.update({"systemd_option": args.systemd_services})
         self.extra_vars.update({"instance_type": args.instance_type})
-        self.extra_vars.update({"configure_ybc": args.configure_ybc})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
 
         self.cloud.setup_ansible(args).run("yb-server-provision.yml", self.extra_vars, host_info)
@@ -952,13 +952,11 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument('--package', default=None)
         self.parser.add_argument('--num_releases_to_keep', type=int,
                                  help="Number of releases to keep after upgrade.")
-        self.parser.add_argument('--ybc_package', default=None)
         self.parser.add_argument('--yb_process_type', default=None,
                                  choices=self.VALID_PROCESS_TYPES)
         self.parser.add_argument('--extra_gflags', default=None)
         self.parser.add_argument('--gflags', default=None)
         self.parser.add_argument('--gflags_to_remove', default=None)
-        self.parser.add_argument('--ybc_flags', default=None)
         self.parser.add_argument('--master_addresses_for_tserver')
         self.parser.add_argument('--master_addresses_for_master')
         self.parser.add_argument('--server_broadcast_addresses')
@@ -1044,7 +1042,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                 self.supported_types))
 
         self.extra_vars["systemd_option"] = args.systemd_services
-        self.extra_vars["configure_ybc"] = args.configure_ybc
 
         # Make sure we set server_type so we pick the right configure.
         self.update_ansible_vars_with_args(args)
@@ -1059,11 +1056,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.num_releases_to_keep is not None:
             self.extra_vars["num_releases_to_keep"] = args.num_releases_to_keep
-        if args.ybc_package is not None:
-            self.extra_vars["ybc_package"] = args.ybc_package
-
-        if args.ybc_flags is not None:
-            self.extra_vars["ybc_flags"] = args.ybc_flags
 
         if args.extra_gflags is not None:
             self.extra_vars["extra_gflags"] = json.loads(args.extra_gflags)
@@ -1084,7 +1076,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         if args.search_pattern != 'localhost':
             host_info = self.cloud.get_host_info(args)
             if not host_info:
-                raise YBOpsRuntimeError("Instance: {} does not exists, cannot configure"
+                raise YBOpsRuntimeError("Instance: {} does not exist, cannot configure"
                                         .format(args.search_pattern))
 
             if host_info['server_type'] != args.type:
@@ -1117,14 +1109,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         raise YBOpsRuntimeError("{} is not a valid s3 URI. Must match {}"
                                                 .format(args.package, s3_uri_pattern))
 
-                    if args.ybc_package is not None:
-                        match = re.match(s3_uri_pattern, args.ybc_package)
-                        if not match:
-                            raise YBOpsRuntimeError("{} is not a valid s3 URI. Must match {}"
-                                                    .format(args.ybc_package, s3_uri_pattern))
-
                     self.extra_vars['s3_package_path'] = args.package
-                    self.extra_vars['s3_ybc_package_path'] = args.ybc_package
                     self.extra_vars['aws_access_key'] = aws_access_key
                     self.extra_vars['aws_secret_key'] = aws_secret_key
                     logging.info(
@@ -1145,14 +1130,7 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         raise YBOpsRuntimeError("{} is not a valid gs URI. Must match {}"
                                                 .format(args.package, gcs_uri_pattern))
 
-                    if args.ybc_package is not None:
-                        match = re.match(gcs_uri_pattern, args.ybc_package)
-                        if not match:
-                            raise YBOpsRuntimeError("{} is not a valid gs URI. Must match {}"
-                                                    .format(args.ybc_package, gcs_uri_pattern))
-
                     self.extra_vars['gcs_package_path'] = args.package
-                    self.extra_vars['gcs_ybc_package_path'] = args.ybc_package
                     self.extra_vars['gcs_credentials_json'] = gcs_credentials_json
                     logging.info(
                         "Variables to download {} directly on the remote host added."
@@ -1166,19 +1144,13 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
                     # Remove query string part from http url.
                     self.extra_vars["package"] = match.group(1)
+
                     # Pass the complete http url to download the package.
                     self.extra_vars['http_package_path'] = match.group(0)
                     self.extra_vars['http_package_checksum'] = args.http_package_checksum
                     logging.info(
                         "Variables to download {} directly on the remote host added."
                         .format(args.package))
-
-                    match = re.match(http_url_pattern, args.ybc_package)
-                    if not match:
-                        raise YBOpsRuntimeError("{} is not a valid HTTP URL. Must match {}"
-                                                .format(args.ybc_package, http_url_pattern))
-                    self.extra_vars["http_ybc_package"] = match.group(0)
-
                 elif args.itest_s3_package_path and args.type == self.YB_SERVER_TYPE:
                     itest_extra_vars = self.extra_vars.copy()
                     itest_extra_vars["itest_s3_package_path"] = args.itest_s3_package_path
@@ -1200,19 +1172,6 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                         args.private_key_file)
                     logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
                         args.package, args.search_pattern, time.time() - start_time))
-
-                    if args.ybc_package is not None:
-                        ybc_package_path = args.ybc_package
-                        if os.path.isfile(ybc_package_path):
-                            start_time = time.time()
-                            scp_to_tmp(
-                                ybc_package_path,
-                                self.extra_vars["private_ip"],
-                                self.extra_vars["ssh_user"],
-                                self.extra_vars["ssh_port"],
-                                args.private_key_file)
-                            logging.info("[app] Copying package {} to {} took {:.3f} sec".format(
-                                ybc_package_path, args.search_pattern, time.time() - start_time))
 
         logging.info("Configuring Instance: {}".format(args.search_pattern))
         ssh_options = {
@@ -1320,7 +1279,7 @@ class InitYSQLMethod(AbstractInstancesMethod):
         }
         host_info = self.cloud.get_host_info(args)
         if not host_info:
-            raise YBOpsRuntimeError("Instance: {} does not exists, cannot call initysql".format(
+            raise YBOpsRuntimeError("Instance: {} does not exist, cannot call initysql".format(
                                     args.search_pattern))
         ssh_options.update(get_ssh_host_port(host_info, args.custom_ssh_port))
         logging.info("Initializing YSQL on Instance: {}".format(args.search_pattern))
@@ -1581,3 +1540,30 @@ class TransferXClusterCerts(AbstractInstancesMethod):
         else:
             raise YBOpsRuntimeError("The action \"{}\" was not found: Must be either copy, "
                                     "or remove".format(args.action))
+
+
+class RebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(RebootInstancesMethod, self).__init__(base_command, "reboot")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to reboot".format(
+                args.search_pattern))
+        logging.info("Rebooting instance {}".format(args.search_pattern))
+
+        # Get Sudo SSH User
+        ssh_user = args.ssh_user
+        if ssh_user is None:
+            ssh_user = DEFAULT_SSH_USER
+
+        self.extra_vars.update(get_ssh_host_port(host_info, args.custom_ssh_port))
+        self.extra_vars.update({"ssh_user": ssh_user})
+        rc, stdout, stderr = remote_exec_command(
+                                self.extra_vars["ssh_host"],
+                                self.extra_vars["ssh_port"],
+                                self.extra_vars["ssh_user"],
+                                args.private_key_file,
+                                'sudo reboot')
+        self.wait_for_host(args, False)

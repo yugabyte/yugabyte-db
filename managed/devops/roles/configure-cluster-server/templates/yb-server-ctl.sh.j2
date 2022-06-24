@@ -31,7 +31,6 @@ Usage: ${0##*/} <daemon> <command> OR
 Daemons:
   master
   tserver
-  yb-controller
 Commands:
   create        - Start the YB process on this node in cluster creation node (only applicable for
                   master)
@@ -189,12 +188,6 @@ case "$daemon" in
       exit 1
     fi
   ;;
-  yb-controller)
-    if [ "$command" == "create" ]; then
-      echo "create command is not valid for yb-controller"
-      exit 1
-    fi
-  ;;
   *)
     echo "Invalid Daemon: $daemon"
     print_help
@@ -203,16 +196,9 @@ esac
 
 daemon_home="{{ yb_home_dir }}/$daemon"
 daemon_logs_dir="$daemon_home/logs"
-if [[ $daemon == yb-controller ]]; then
-  daemon_binary="$daemon_home/bin/$daemon-server"
-  daemon_conf="$daemon_home/conf/$daemon.conf"
-  daemon_pid_file="$daemon_logs_dir/$daemon.pid"
-else
-  daemon_binary="$daemon_home/bin/yb-$daemon"
-  daemon_conf="$daemon_home/conf/server.conf"
-  daemon_pid_file="$daemon_logs_dir/yb-$daemon.pid"
-fi
-
+daemon_binary="$daemon_home/bin/yb-$daemon"
+daemon_conf="$daemon_home/conf/server.conf"
+daemon_pid_file="$daemon_logs_dir/yb-$daemon.pid"
 
 case "$command" in
   create|start)

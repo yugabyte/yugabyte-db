@@ -111,13 +111,15 @@ public class GCPUtil {
         StorageBatch storageBatch = storage.batch();
         try {
           Page<Blob> blobs = storage.list(bucketName, Storage.BlobListOption.prefix(objectPrefix));
-          log.debug(
-              "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
-          StreamSupport.stream(blobs.iterateAll().spliterator(), true)
-              .forEach(
-                  blob -> {
-                    results.add(storageBatch.delete(blob.getBlobId()));
-                  });
+          if (blobs != null) {
+            log.debug(
+                "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
+            StreamSupport.stream(blobs.iterateAll().spliterator(), true)
+                .forEach(
+                    blob -> {
+                      results.add(storageBatch.delete(blob.getBlobId()));
+                    });
+          }
         } finally {
           if (!results.isEmpty()) {
             storageBatch.submit();

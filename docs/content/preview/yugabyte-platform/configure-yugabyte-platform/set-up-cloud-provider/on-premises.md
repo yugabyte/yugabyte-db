@@ -246,15 +246,17 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo chronyc makestep   # (force instant sync to NTP server)
     ```
 
-1. Add a new `yugabyte:yugabyte` user and group (sudo is required):
+1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag (sudo is required):
 
-    ```sh
-    sudo useradd yugabyte   # (add group yugabyte + create /home/yugabyte)
+    ```bash
+    sudo useradd -s /bin/bash -m yugabyte   # (add user yugabyte and create /home/yugabyte)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    <br>Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
+    <br>
+
+    Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
 

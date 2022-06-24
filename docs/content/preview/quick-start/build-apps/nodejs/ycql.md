@@ -25,6 +25,12 @@ type: docs
     </a>
   </li>
   <li>
+    <a href="{{< relref "./ysql-prisma.md" >}}" class="nav-link ">
+      <i class="icon-cassandra" aria-hidden="true"></i>
+      YSQL - Prisma
+    </a>
+  </li>
+  <li>
     <a href="{{< relref "./ycql.md" >}}" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL

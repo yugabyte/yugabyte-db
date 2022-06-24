@@ -1266,8 +1266,8 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
-  FATAL_INVALID_ENUM_VALUE(ValueEntryType, value_type);
-  return Status::OK();
+  RSTATUS_DCHECK(
+      false, Corruption, "Wrong value type $0 in $1", value_type, rocksdb_slice.ToDebugHexString());
 }
 
 POD_FACTORY(Double, double);

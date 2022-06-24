@@ -129,7 +129,9 @@ public class NodeDetails {
     Terminating(RELEASE, DELETE),
     // Set after the node has been terminated in the IaaS provider.
     // If the node is still hanging around due to failure, it can be deleted.
-    Terminated(DELETE);
+    Terminated(DELETE),
+    // Set when the node is being rebooted
+    Rebooting();
 
     private final NodeActionType[] allowedActions;
 
@@ -184,12 +186,6 @@ public class NodeDetails {
 
   @ApiModelProperty(value = "Tablet server RPC port")
   public int tserverRpcPort = 9100;
-
-  @ApiModelProperty(value = "Yb controller HTTP port")
-  public int ybControllerHttpPort = 14000;
-
-  @ApiModelProperty(value = "Yb controller RPC port")
-  public int ybControllerRpcPort = 18018;
 
   // True if this node is a Redis server, along with port info.
   @ApiModelProperty(value = "True if this node is a REDIS server")

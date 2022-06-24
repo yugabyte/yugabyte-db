@@ -38,43 +38,45 @@ For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed 
 
 Refer to [Cloud provider regions](../release-notes/#cloud-provider-regions) for a list currently supported regions.
 
-YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. We are continuously improving region coverage, so if there are any regions you would like us to support, reach out to {{<support-cloud>}}.
+YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
 
 ## Clusters
 
-### What are the differences between free and standard clusters?
+### What are the differences between Sandbox and Dedicated clusters?
 
-Use the free cluster to get started with YugabyteDB. The free cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Free clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one free cluster. Free clusters that are inactive for 21 days are [paused](#why-is-my-free-cluster-paused); after 30 days they are deleted.
+Use the free Sandbox cluster to get started with YugabyteDB. The Sandbox cluster is limited to a single node and 10GB of storage. Although not suitable for production workloads or performance testing, the cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB. Sandbox clusters are provisioned with a [preview release](#what-version-of-yugabytedb-does-my-cluster-run-on). You can only have one Sandbox cluster. Sandbox clusters that are inactive for 21 days are [paused](#why-is-my-sandbox-cluster-paused); after 30 days they are deleted.
 
-Standard clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Standard clusters also support VPC peering, and scheduled and manual backups. By default, standard clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
+Dedicated clusters can have unlimited nodes and storage and are suitable for production workloads. They also support horizontal and vertical scaling - nodes and storage can be added or removed to suit your production loads. Dedicated clusters also support VPC peering, and scheduled and manual backups. By default, Dedicated clusters are provisioned using a [stable release](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
-A YugabyteDB Managed account is limited to a single free cluster; you can add as many standard clusters as you need.
+A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add as many Dedicated clusters as you need.
 
-| Feature | Free | Standard |
+| Feature | Sandbox | Dedicated |
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
-| vCPU/Storage | Up to 2 vCPU / 4 GB RAM / 10 GB storage | Any |
+| vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
 | [Regions](../release-notes/#cloud-provider-regions) | All | All |
 | Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
 | [VPC Peering](../cloud-basics/cloud-vpcs/) | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
+| Connections | Up to 10 simultaneous connections | 10 per vCPU per node |
 | [Scaling](../cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
 | [Backups](../cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
+| Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced) |
 | Support | Slack Community | Enterprise Support |
 
-### What can I do if I run out of resources on my free cluster?
+### What can I do if I run out of resources on my Sandbox cluster?
 
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
-- Upgrade to a [standard cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
+- Upgrade to a fault tolerant [single- or multi-region cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
-To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{<support-cloud>}} for trial credits.
+To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{% support-cloud %}} for trial credits.
 
-### Can I migrate my free cluster to a standard cluster?
+### Can I migrate my Sandbox cluster to a Dedicated cluster?
 
-Currently self-service migration is not supported. Contact {{<support-cloud>}} for help with migration.
+Currently self-service migration is not supported. Contact {{% support-cloud %}} for help with migration.
 
 ### What is the upgrade policy for clusters?
 
@@ -90,7 +92,7 @@ To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte
 
 Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
 
-The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either preview or stable). Free clusters are always in the preview track.
+The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either preview or stable). Sandbox clusters are always in the preview track.
 
 Database upgrades of high-availability (multi-node) clusters are done on a rolling basis to avoid any downtime.
 
@@ -98,9 +100,9 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 ### What version of YugabyteDB does my cluster run on?
 
-Free clusters are provisioned with a **preview** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
+Sandbox clusters are provisioned with a **preview** release, most often from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series; it may also be a recent stable release.
 
-By default, new standard clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the preview track when you create the cluster.-->
+By default, new Dedicated clusters are provisioned with a **stable** release, from the YugabyteDB [stable release](../../releases/release-notes/stable-release/) series. <!--You can choose the preview track when you create the cluster.-->
 
 Once a cluster is created, it is upgraded with releases from the release track that was assigned at creation (that is, either preview or stable).
 
@@ -114,9 +116,9 @@ To test locally, [download](https://download.yugabyte.com) and install YugabyteD
 
 ### Is support included in the base price?
 
-Enterprise Support is included in the base price for standard clusters. Refer to the [YugabyteDB Managed Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
+Enterprise Support is included in the base price for Dedicated clusters. Refer to the [YugabyteDB Managed Support Services Terms and Conditions](https://www.yugabyte.com/yugabyte-cloud-support-services-terms-and-conditions/).
 
-Free and standard cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
+Sandbox and Dedicated cluster customers can also use the [YugabyteDB Slack community]({{<slack-invite>}}).
 
 ### Where can I find the support policy and Service Level Agreement (SLA) for YugabyteDB Managed?
 
@@ -152,9 +154,9 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to node
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 
-For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{<support-cloud>}}.
+For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{% support-cloud %}}.
 
-Free clusters are limited to a single node in a single region.
+Sandbox clusters are limited to a single node in a single region.
 
 ### How do I connect to my cluster?
 
@@ -203,21 +205,21 @@ Before you can connect, your application has to be able to reach your YugabyteDB
 
 For more details, refer to [Connect to clusters](../cloud-connect/).
 
-### Why is my free cluster paused?
+### Why is my Sandbox cluster paused?
 
-Free clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
+Sandbox clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-For more details, refer to [Inactive free clusters](../cloud-basics/create-clusters-free/#inactive-free-clusters).
+For more details, refer to [Inactive Sandbox clusters](../cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
 
-### How do I keep my free cluster from being paused or deleted?
+### How do I keep my Sandbox cluster from being paused or deleted?
 
-Free clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
+Sandbox clusters are paused after 21 days of inactivity. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](#what-qualifies-as-activity-on-a-cluster)
 
 To keep a paused cluster from being deleted, sign in to YugabyteDB Managed, select the cluster on the **Clusters** page, and click **Resume**.
 
 ### What qualifies as activity on a cluster?
 
-Free clusters are paused after 21 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
+Sandbox clusters are paused after 21 days of inactivity. To keep your cluster from being paused, you (or, where applicable, an application connected to the database) can perform any of the following actions:
 
 - Any SELECT, UPDATE, INSERT, or DELETE database operation.
 
@@ -239,8 +241,8 @@ Backups are retained in the same region as the cluster.
 
 Backups for AWS clusters are encrypted using AWS S3 server-side encryption. Backups for GCP clusters are encrypted using Google-managed server-side encryption keys.
 
-Currently, YugabyteDB Managed does not support backups of free clusters.
+Currently, YugabyteDB Managed does not support backups of Sandbox clusters.
 
 ### Can I download backups?
 
-Currently, YugabyteDB Managed does not support self-service backup downloads. Contact {{<support-cloud>}} for assistance.
+Currently, YugabyteDB Managed does not support self-service backup downloads. Contact {{% support-cloud %}} for assistance.

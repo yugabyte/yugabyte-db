@@ -201,6 +201,9 @@ class RpcContext {
   // Return the trace buffer for this call.
   Trace* trace();
 
+  // Ensure that this call has a trace associated with it.
+  void EnsureTraceCreated();
+
   // Send a response to the call. The service may call this method
   // before or after returning from the original handler method,
   // and it may call this method from a different thread.

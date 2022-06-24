@@ -32,7 +32,7 @@ To begin using YugabyteDB Managed, go to [Quick start](../cloud-quickstart/).
 |  | |
 | :--- | :--- |
 | **Cluster basics** |  |
-| [Deploy](../cloud-basics/) | Create single region clusters that can be deployed across multiple and single availability zones. (To deploy multi-region clusters, contact {{<support-cloud>}}.)<br>Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
+| [Deploy](../cloud-basics/) | Create single region clusters that can be deployed across multiple and single availability zones. (To deploy multi-region clusters, contact {{% support-cloud %}}.)<br>Create virtual private cloud (VPC) networks to peer clusters with application VPCs.
 | [Secure](../cloud-secure-clusters/) | Manage cluster security features, including network authorization, database authorization, encryption, and auditing.<br> Use IP allow lists to manage access to clusters. |
 | [Connect](../cloud-connect/) | Connect to clusters from a browser using Cloud Shell, from your desktop using a shell, and from applications. |
 | [Monitor](../cloud-monitor/) | Monitor cluster performance and get notified of potential problems. |

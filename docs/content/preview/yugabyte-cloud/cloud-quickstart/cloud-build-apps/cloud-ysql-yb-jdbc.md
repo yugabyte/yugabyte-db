@@ -66,7 +66,7 @@ Start the application.
 $ java -cp target/yugabyte-simple-java-app-1.0-SNAPSHOT.jar SampleApp
 ```
 
-If you are running the application on a free or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
+If you are running the application on a Sandbox or single node cluster, the driver displays a warning that the load balance failed and will fall back to a regular connection.
 
 You should see output similar to the following:
 

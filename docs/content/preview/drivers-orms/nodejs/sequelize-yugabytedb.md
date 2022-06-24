@@ -27,7 +27,12 @@ type: docs
       sequelize-yugabytedb
     </a>
   </li>
-
+<li >
+    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link ">
+      <i class="fab fa-node-js" aria-hidden="true"></i>
+      Prisma
+    </a>
+  </li>
 </ul>
 
 [Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It is a promise-based ORM for Node.js that enables JavaScript developers to work with relational databases, with support for features such as solid transaction support, relations, read replication, and more.
@@ -178,6 +183,30 @@ Employees Details:
   }
 ]
 ```
+## Specifying SSL configuration
+This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+1. Install the `fs` package to read the SSL certificate:
+    ```sh
+    npm install fs
+    ```
+1. Add the following line to use the `fs` module:
+    ```js
+    const fs = require('fs');
+    ```
+1. Use the following configuration in the `models/index.js` file when you create the sequelize object:
+    ```js
+    const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
+        dialect: 'postgres',
+        port: 5433,
+        host: "<host_name>",
+        dialectOptions: {
+            ssl: {
+                rejectUnauthorized: true,
+                ca: fs.readFileSync('<path_to_root_crt>').toString(),
+            }
+        }
+      });
+    ```
 
 ## Next steps
 

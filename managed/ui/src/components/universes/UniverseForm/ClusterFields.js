@@ -120,7 +120,6 @@ const initialState = {
   deviceInfo: {},
   placementInfo: {},
   ybSoftwareVersion: '',
-  ybcPackagePath: '',
   gflags: {},
   storageType: DEFAULT_STORAGE_TYPES['AWS'],
   accessKeyCode: '',
@@ -347,9 +346,7 @@ export default class ClusterFields extends Component {
 
     if (isNonEmptyObject(formValues['primary']) && clusterType !== 'primary') {
       this.setState({ universeName: formValues['primary'].universeName });
-      this.setState({ ybcPackagePath: formValues['primary'].ybcPackagePath });
       updateFormField(`${clusterType}.universeName`, formValues['primary'].universeName);
-      updateFormField(`${clusterType}.ybcPackagePath`, formValues['primary'].ybcPackagePath);
     }
 
     // This flag will prevent configure from being fired on component load
@@ -366,13 +363,11 @@ export default class ClusterFields extends Component {
           ? readOnlyCluster
             ? readOnlyCluster && {
                 ...readOnlyCluster.userIntent,
-                universeName: primaryCluster.userIntent.universeName,
-                ybcPackagePath: primaryCluster.userIntent.ybcPackagePath
+                universeName: primaryCluster.userIntent.universeName
               }
             : primaryCluster && {
                 ...primaryCluster.userIntent,
-                universeName: primaryCluster.userIntent.universeName,
-                ybcPackagePath: primaryCluster.userIntent.ybcPackagePath
+                universeName: primaryCluster.userIntent.universeName
               }
           : primaryCluster && primaryCluster.userIntent;
       const providerUUID = userIntent && userIntent.provider;
@@ -407,7 +402,6 @@ export default class ClusterFields extends Component {
           numNodes: userIntent.numNodes,
           replicationFactor: userIntent.replicationFactor,
           ybSoftwareVersion: userIntent.ybSoftwareVersion,
-          ybcPackagePath: userIntent.ybcPackagePath,
           assignPublicIP: userIntent.assignPublicIP,
           useTimeSync: userIntent.useTimeSync,
           enableYSQL: userIntent.enableYSQL,
@@ -2742,17 +2736,6 @@ export default class ClusterFields extends Component {
                     onInputChanged={this.softwareVersionChanged}
                     readOnlySelect={isSWVersionReadOnly}
                   />
-
-                  {(featureFlags.test['enableYbc'] ||
-                      featureFlags.released['enableYbc']) && (
-                    <Field
-                      name={`${clusterType}.ybcPackagePath`}
-                      type="text"
-                      component={YBTextInputWithLabel}
-                      label="YBC package path"
-                      isReadOnly={isFieldReadOnly}
-                    />
-                  )}
                 </div>
               </Col>
               {!this.state.isKubernetesUniverse && (

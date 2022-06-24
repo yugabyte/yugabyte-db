@@ -2049,7 +2049,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
-
 	{
 		{"suppress_nonpg_logs", PGC_SIGHUP, LOGGING_WHAT,
 			gettext_noop("Suppresses non-Postgres logs from appearing in the Postgres log file."),
@@ -2059,7 +2058,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"yb_enable_optimizer_statistics", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables use postgres selectivity model."),
+			NULL
+		},
+		&yb_enable_optimizer_statistics,
+		false,
+		NULL, NULL, NULL
 
+	},
 	{
 		{"yb_enable_expression_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Push supported expressions down to DocDB for evaluation."),
@@ -2398,7 +2406,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_KB
 		},
 		&temp_file_limit,
-		-1, -1, INT_MAX,
+		1024 * 1024, -1, INT_MAX,
 		NULL, NULL, NULL
 	},
 

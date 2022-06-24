@@ -10,12 +10,12 @@
 
 package com.yugabyte.yw.commissioner;
 
-import akka.actor.ActorSystem;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -23,25 +23,18 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
 public class SetUniverseKey {
 
-  private AtomicBoolean running = new AtomicBoolean(false);
-
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final EncryptionAtRestManager keyManager;
 
@@ -52,27 +45,19 @@ public class SetUniverseKey {
   @Inject
   public SetUniverseKey(
       EncryptionAtRestManager keyManager,
-      ExecutionContext executionContext,
-      ActorSystem actorSystem,
+      PlatformScheduler platformScheduler,
       YBClientService ybService) {
     this.keyManager = keyManager;
-    this.actorSystem = actorSystem;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.ybService = ybService;
   }
 
-  public void setRunningState(AtomicBoolean state) {
-    this.running = state;
-  }
-
   public void start() {
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.create(0, TimeUnit.MINUTES),
-            Duration.create(YB_SET_UNIVERSE_KEY_INTERVAL, TimeUnit.MINUTES),
-            this::scheduleRunner,
-            this.executionContext);
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ZERO,
+        Duration.ofMinutes(YB_SET_UNIVERSE_KEY_INTERVAL),
+        this::scheduleRunner);
   }
 
   private void setKeyInMaster(Universe u, HostAndPort masterAddr, byte[] keyRef, byte[] keyVal) {
@@ -148,11 +133,6 @@ public class SetUniverseKey {
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of universe key setter is in progress");
-      return;
-    }
-
     try {
       if (HighAvailabilityConfig.isFollower()) {
         log.debug("Skipping universe key setter for follower platform");
@@ -170,8 +150,6 @@ public class SetUniverseKey {
               });
     } catch (Exception e) {
       log.error("Error running universe key setter", e);
-    } finally {
-      running.set(false);
     }
   }
 }

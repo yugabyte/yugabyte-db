@@ -306,6 +306,34 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universeUUID);
   }
 
+  /**
+   * API that reboots all nodes in the universe. Only supports rolling upgrade.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Result of update operation with task id
+   */
+  @ApiOperation(
+      value = "Reboot universe",
+      notes = "Queues a task to perform a rolling reboot in a universe.",
+      nickname = "rebootUniverse",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "upgrade_task_params",
+          value = "Upgrade Task Params",
+          dataType = "com.yugabyte.yw.forms.UpgradeTaskParams",
+          required = true,
+          paramType = "body"))
+  public Result rebootUniverse(UUID customerUUID, UUID universeUUID) {
+    return requestHandler(
+        upgradeUniverseHandler::rebootUniverse,
+        UpgradeTaskParams.class,
+        Audit.ActionType.RebootUniverse,
+        customerUUID,
+        universeUUID);
+  }
+
   private <T extends UpgradeTaskParams> Result requestHandler(
       IUpgradeUniverseHandlerMethod<T> serviceMethod,
       Class<T> type,

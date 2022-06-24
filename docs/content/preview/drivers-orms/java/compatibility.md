@@ -1,4 +1,4 @@
----
+<!-- ---
 title: Supported versions
 linkTitle: Supported versions
 description: Supported versions for Java drivers, ORMs and AppDev frameworks
@@ -28,4 +28,4 @@ type: docs
 | [42.2.14](https://mvnrepository.com/artifact/org.postgresql/postgresql/42.2.14) | 2.13 (latest) | full
 | 42.2.14 |  2.12 (stable) | full
 | 42.2.14 |  2.8  | full
-| 42.2.14 | 2.6 | full
+| 42.2.14 | 2.6 | full -->

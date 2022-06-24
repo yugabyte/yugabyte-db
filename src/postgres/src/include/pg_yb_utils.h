@@ -185,12 +185,6 @@ extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 extern bool YbIsDatabaseColocated(Oid dbid);
 
 /*
- * Whether non-system table is colocated (via database or a tablegroup).
- * Returns false for nonexistent tables.
- */
-extern bool YbIsUserTableColocated(Oid dbid, Oid relid);
-
-/*
  * Check if a relation has row triggers that may reference the old row.
  * Specifically for an update/delete DML (where there actually is an old row).
  */
@@ -284,7 +278,7 @@ extern void YBCAbortTransaction();
 
 extern void YBCSetActiveSubTransaction(SubTransactionId id);
 
-extern void YBCRollbackSubTransaction(SubTransactionId id);
+extern void YBCRollbackToSubTransaction(SubTransactionId id);
 
 /*
  * Return true if we want to allow PostgreSQL's own locking. This is needed
@@ -418,6 +412,14 @@ extern int yb_index_state_flags_update_delay;
  */
 extern bool yb_enable_expression_pushdown;
 
+/*
+ * YSQL guc variable that is used to enable the use of Postgres's selectivity
+ * functions and YSQL table statistics.
+ * e.g. 'SET yb_enable_optimizer_statistics = true'
+ * See also the corresponding entries in guc.c.
+ */
+extern bool yb_enable_optimizer_statistics;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -500,18 +502,20 @@ YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
- * Fetch YBCPgTableDesc and YBCPgTableProperties for the given table.
- *
  * If allow_missing is true, existence precheck will be done and table
- * missing in DocDB will result in desc set to NULL.
+ * missing in DocDB will result in yb_table_properties remaining NULL.
  * Otherwise, DocDB will be queried unconditionally and the table missing
  * will trigger an error.
+ *
+ * Note that this call will rarely send out RPC because of TableDesc cache.
+ *
+ * TODO(alex):
+ *    An optimization we could use is to amend RelationBuildDesc or
+ *    ScanPgRelation to do a custom RPC fetching YB properties as well.
+ *    However, TableDesc cache makes this low-priority.
  */
 void
-YbGetTableDescAndProps(Oid table_oid,
-					   bool allow_missing,
-					   YBCPgTableDesc *desc,
-					   YBCPgTableProperties *props);
+YbLoadTablePropertiesIfNeeded(Relation rel, bool allow_missing);
 
 /*
  * Check whether the given libc locale is supported in YugaByte mode.

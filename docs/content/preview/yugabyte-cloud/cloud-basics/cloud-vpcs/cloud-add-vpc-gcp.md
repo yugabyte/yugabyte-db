@@ -63,7 +63,7 @@ To create a VPC, do the following:
 1. Choose the provider (GCP).
 1. Choose one of the following options:
     - **Automated** - VPCs are created globally and assigned to all regions supported by YugabyteDB Managed.
-    - **Custom** - Select a region. Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap.
+    - **Custom** - Select a region. Click **Add Region** to add additional regions. CIDR addresses in different regions cannot overlap. If the VPC is to be used for a multi-region cluster, add a region for each of the regions in the cluster.
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc).
     - For Automated, use network sizes of /16, /17, or /18.
     - For Custom, use network sizes of /24, /25, or /26.
@@ -83,13 +83,10 @@ You can deploy a cluster in the VPC any time after the VPC is created.
 To deploy a cluster in a VPC:
 
 1. On the **Clusters** page, click **Add Cluster**.
-1. Choose **YugabyteDB Managed** and click **Next**.
-1. Choose the provider you used for your VPC.
-1. Enter a name for the cluster.
-1. Select the **Region**. If you are deploying in a GCP custom VPC, choose the region where the VPC is deployed. If you are deploying in a GCP automated VPC, all regions are available; choose the same region as the application VPC you are peering with.
-1. Set the **Fault Tolerance**. For production clusters, typically this will be Availability Zone Level.
-1. Under **Network Access**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.
-1. Click **Create Cluster**.
+1. Choose **Dedicated**.
+1. Enter a name for the cluster, choose **GCP**, and click **Next**.
+1. For a **Single-Region Deployment**, choose the region where the VPC is deployed, and under **Configure VPC**, choose **Deploy this cluster in a dedicated VPC**, and select your VPC.<br><br>
+For a **Multi-Region Deployment**, specify a VPC for each region.
 
 For more information on creating clusters, refer to [Create a cluster](../../create-clusters/).
 
