@@ -339,8 +339,8 @@ aside.td-sidebar {
     > ul {
       padding-left: 0;
 
-      >li:not(.bottom-link):not(.arrow-menu),
-      >li.unlink-list {
+      >li:not(.bottom-link):not(.arrow-menu):not(:last-child),
+      >li.unlink-list:not(:last-child) {
         border-bottom: 1px solid rgba(209, 214, 223, 0.3);
       }
 
@@ -613,6 +613,7 @@ aside.td-sidebar {
 
           &.current {
             background: var(--left_menu_bg);
+            background: transparent;
 
             + i {
               transition: none !important;
@@ -709,15 +710,22 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu {
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a {
-  padding: 8px 0 8px 5px;
+  padding: 8px 0 8px 0;
   line-height: 23.3px;
   max-width: calc(100% - 23px);
+}
+
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a.current {
+  padding: 8px 0 8px 5px;
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i {
   top: inherit;
   background: none;
   margin-left: 0;
+  right: 0;
+  width: 16px;
+  height: 10px;
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i::before {
@@ -729,6 +737,10 @@ aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > i::before {
   content: '';
   left: 0;
   border: none;
+}
+
+aside.td-sidebar nav > ul > li.unlink-list > ul > li.submenu > a.current + i::before {
+  background: var(--theme-color) !important;
 }
 
 aside.td-sidebar nav > ul > li.unlink-list > ul {
@@ -1367,4 +1379,8 @@ aside.td-sidebar nav > ul > li.bottom-link.arrow-menu > i:hover {
 aside.td-sidebar nav > ul > li.arrow-menu > i::before,
 aside.td-sidebar nav > ul > li.bottom-link.arrow-menu > i::before {
   display: none;
+}
+
+.left-bottom-nav .internal.list {
+  padding: 0;
 }

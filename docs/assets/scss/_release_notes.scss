@@ -21,8 +21,8 @@
 
     &:hover {
       color: #fff !important;
-      background: $YB_ORANGE;
-      border-color: $YB_ORANGE;
+      background: var(--theme-color);
+      border-color: var(--theme-color);
       transition: all 0.4s ease 0s;
     }
 
