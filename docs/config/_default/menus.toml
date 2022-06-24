@@ -96,7 +96,7 @@
 [[main]]
   name = "Contribute"
   weight = 13
-  url = "/preview/conntribute/"
+  url = "/preview/contribute/"
   parent = "documentation"
   [main.params]
     excludeVersion = true
