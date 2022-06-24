@@ -15,16 +15,6 @@ showAsideToc: true
 
 This page explains the factors which may affect the performance of migration jobs being carried out using [yb-voyager](https://github.com/yugabyte/yb-voyager). It also explains the tunable parameters to improve the performance of jobs.
 
-## Factors affecting export performance
-
-- How busy is the source database
-
-- Size of the tables
-
-- Storage Type
-
-- Parallel export of data from multiple tables
-
 ## Factors affecting import data performance
 
 Some of the factors known to slow down the performance of data ingestion in any database are as follows:
@@ -80,6 +70,10 @@ If the cpu usage is going beyond 80%, then it is recommended to lower the parall
 All the performance optimizations suggested for data import phase is applicable for ingestion from _files_ as well.
 
 {{< /note >}}
+
+## Factors affecting export performance
+
+- Parallel export of data from multiple tables - yb-voyager by default exports one table data at a time. Include the [–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) to the export data command to override the default of 1. Increasing them to a big value may have a negative impact as well. We have noticed that a value of '4' is good. 
 
 ## Experiment showcasing how to obtain faster ingestion speed
 
