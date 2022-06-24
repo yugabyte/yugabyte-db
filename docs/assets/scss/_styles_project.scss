@@ -30,6 +30,34 @@
 }
 
 /******* Variables for Color Theme Switcher **********/
+ol.breadcrumb {
+  .breadcrumb-item {
+    font-size: 14px;
+
+    &.active {
+      color: #21313c;
+    }
+
+    a {
+      color: #5d6c74;
+
+      &:hover {
+        color: #21313c;
+      }
+    }
+
+    + .breadcrumb-item {
+      padding-left: 0.25rem;
+
+      &::before {
+        padding-right: 0.25rem;
+        color: #5d6c74;
+        font-size: 13px;
+        line-height: 22px;
+      }
+    }
+  }
+}
 
 @media (min-width: 768px) {
   .td-main main {
@@ -412,37 +440,6 @@ div#main_navbar {
   .switcher {
     margin-left: 0;
   }
-}
-
-.breadcrumb-item + .breadcrumb-item {
-  padding-left: 0.25rem;
-
-  &::before {
-    padding-right: 0.25rem;
-    color: #5d6c74;
-    font-size: 1.3em;
-    line-height: 22px;
-  }
-}
-
-.breadcrumb {
-  a {
-    color: #5d6c74;
-
-    &:hover {
-      color: #21313c;
-    }
-  }
-
-  .active {
-    a {
-      color: #21313c;
-    }
-  }
-}
-
-.breadcrumb-item.active {
-  color: #21313c;
 }
 
 /******* For Inline SVG **********/
