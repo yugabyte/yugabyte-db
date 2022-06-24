@@ -82,7 +82,7 @@ class PriorityThreadPoolTask {
 // Tasks submitted to this pool have assigned priority and are picked from queue using it.
 class PriorityThreadPool {
  public:
-  explicit PriorityThreadPool(size_t max_running_tasks);
+  explicit PriorityThreadPool(size_t max_running_tasks, bool use_group_no_priority = false);
   ~PriorityThreadPool();
 
   // Submit task to the pool.
