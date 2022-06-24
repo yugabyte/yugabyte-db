@@ -23,10 +23,14 @@ using std::string;
 using std::unique_ptr;
 
 DECLARE_bool(TEST_mini_cluster_mode);
+DECLARE_bool(TEST_import_snapshot_failed);
 
 namespace yb {
 
-const string kDefaultTableName = "users";
+YB_DEFINE_ENUM(ObjectOp, (kKeep)(kDrop));
+typedef ObjectOp UDTypeOp;
+
+const string kDefaultTableName = "test_tbl";
 
 class CqlBackupTest : public CqlTestBase<MiniCluster> {
  public:
@@ -45,15 +49,17 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
     ASSERT_OK(session_->ExecuteQuery(query));
   }
 
+  int64 getRowCount(const string& table_name = kDefaultTableName) {
+    auto result = EXPECT_RESULT(session_->ExecuteWithResult("SELECT count(*) FROM " + table_name));
+    auto iterator = result.CreateIterator();
+    EXPECT_TRUE(iterator.Next());
+    return iterator.Row().Value(0).As<int64>();
+  }
+
   void createTestTable(const string& table_name = kDefaultTableName) {
     cql("CREATE TABLE " + table_name + "(userid INT PRIMARY KEY, fullname TEXT)");
     cql("INSERT INTO " + table_name + " (userid, fullname) values (1, 'yb');");
-
-    auto result = ASSERT_RESULT(session_->ExecuteWithResult("SELECT count(*) FROM " + table_name));
-    auto iterator = result.CreateIterator();
-    ASSERT_TRUE(iterator.Next());
-    auto count = iterator.Row().Value(0).As<int64>();
-    EXPECT_EQ(count, 1);
+    ASSERT_EQ(1, getRowCount(table_name));
   }
 
   yb::ThreadPtr stopWebServerAndStartAfter(size_t tsIdx, double startAfterSec) {
@@ -72,6 +78,12 @@ class CqlBackupTest : public CqlTestBase<MiniCluster> {
         }, &thread));
     return thread;
   }
+
+ protected:
+  void DoTestRestoreUDT(const string& new_ks, UDTypeOp udtOp);
+
+  template <typename Fn1, typename Fn2> // void fn()
+  void DoTestImportSnapshotFailure(Fn1 fnBeforeRestore, Fn2 fnAfterRestore);
 
  protected:
   string backup_dir_;
@@ -106,6 +118,160 @@ TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestBackupRestoreWith
 
   thread->Join();
   cql("DROP TABLE " + kDefaultTableName);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+void CqlBackupTest::DoTestRestoreUDT(const string& new_ks, UDTypeOp udtOp) {
+  cql("CREATE TYPE udt1 (a int, b int)");
+  cql("CREATE TYPE udt2 (a int, b frozen<udt1>)");
+  cql("CREATE TABLE " + kDefaultTableName + " (id INT PRIMARY KEY, v udt2)");
+  cql("INSERT INTO " + kDefaultTableName + " (id, v) values (1, {a:2, b:{a:3, b:4}});");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir_, "--keyspace", kCqlTestKeyspace, "create"}));
+
+  cql("DROP TABLE " + kDefaultTableName);
+  // There are 3 different test-cases in the code below.
+  //
+  // Test-case 1 (no type dropping - reuse existing types in keyspace 'test'):
+  //     DROP TABLE test.test_tbl
+  //   Backup-restore:
+  //     CREATE TABLE test.test_tbl
+  //
+  // Test-case 2 (all operations are in keyspace 'test'):
+  //     DROP TABLE test.test_tbl
+  //     DROP TYPE test.udt2
+  //     DROP TYPE test.udt1
+  //   Backup-restore:
+  //     CREATE TYPE test.udt1
+  //     CREATE TYPE test.udt2
+  //     CREATE TABLE test.test_tbl
+  //
+  // Test-case 3 (restoring into keyspace 'ks2'):
+  //     DROP TABLE test.test_tbl
+  //   Backup-restore:
+  //     CREATE TYPE ks2.udt1
+  //     CREATE TYPE ks2.udt2
+  //     # Possible error: creating test.udt1 & test.udt2 here (wrong keyspace in UDT).
+  //     # That's why the types test.udt1/udt2 were not dropped before to catch
+  //     # the case via getting 'AlreadyExists' error in the case.
+  //     CREATE TABLE ks2.test_tbl
+  //     # Possible error: ks2.test_tbl can reuse test.udt1/udt2
+  //                       (wrong keyspace in the table schema).
+  //     # To catch the case via the error "UDT is used in table"- let's drop test.udt1/udt2 types:
+  //     DROP TYPE test.udt2
+  //     DROP TYPE test.udt1
+
+  if (new_ks == kCqlTestKeyspace && udtOp == UDTypeOp::kDrop) {
+    cql("DROP TYPE udt2");
+    cql("DROP TYPE udt1");
+  }
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir_, "--keyspace", new_ks, "restore"}));
+
+  if (new_ks != kCqlTestKeyspace) {
+    if (udtOp == UDTypeOp::kDrop) {
+      // Restored table must use types: ks2.udt1 & ks2.udt2. Delete UDT: test.udt1 & test.udt2.
+      cql("DROP TYPE udt2");
+      cql("DROP TYPE udt1");
+    }
+
+    cql("USE ks2");
+  }
+  EXPECT_EQ(1, getRowCount(kDefaultTableName));
+
+  // Ensure the user-defined types are available in the current keyspace.
+  cql("CREATE TABLE " + kDefaultTableName + "2" + " (id INT PRIMARY KEY, v1 udt1, v2 udt2)");
+
+  // Drop the tables to unblock the UD types dropping below.
+  cql("DROP TABLE " + kDefaultTableName);
+  cql("DROP TABLE " + kDefaultTableName + "2");
+  // Test the types dropping. Ensure that nothing blocks dropping of the types.
+  cql("DROP TYPE udt2");
+  cql("DROP TYPE udt1");
+}
+
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreUDT)) {
+  DoTestRestoreUDT(kCqlTestKeyspace, UDTypeOp::kDrop);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreReuseExistingUDT)) {
+  DoTestRestoreUDT(kCqlTestKeyspace, UDTypeOp::kKeep);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestRestoreUDTIntoNewKS)) {
+  DoTestRestoreUDT("ks2", UDTypeOp::kDrop);
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+template <typename Fn1, typename Fn2>
+void CqlBackupTest::DoTestImportSnapshotFailure(Fn1 fnBeforeRestore, Fn2 fnAfterRestore) {
+  cql("CREATE KEYSPACE ks1");
+  cql("USE ks1");
+  cql("CREATE TYPE udt (a int, b int)");
+  cql("CREATE TABLE " + kDefaultTableName + " (id INT PRIMARY KEY, v udt)");
+
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir_, "--keyspace", "ks1", "create"}));
+
+  fnBeforeRestore();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_import_snapshot_failed) = true;
+  ASSERT_NOK(RunBackupCommand(
+      {"--backup_location", backup_dir_, "--keyspace", "ks2", "restore"}));
+
+  fnAfterRestore();
+}
+
+TEST_F(CqlBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnapshot)) {
+  DoTestImportSnapshotFailure(
+    []() -> void {}, // Before backup-restore
+    [this]() -> void { // After backup-restore
+      // Clean-up must delete all created objects: ks2.test_tbl, ks2.udt, ks2.
+      // Try to create them manually to ensure that they were deleted.
+      cql("CREATE KEYSPACE ks2");
+      cql("USE ks2");
+      cql("CREATE TYPE udt (a int, b int)");
+      cql("CREATE TABLE " + kDefaultTableName + " (id INT PRIMARY KEY, v udt)");
+    });
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnapshotKeepExistingUDT)) {
+  DoTestImportSnapshotFailure(
+    [this]() -> void { // Before backup-restore
+      cql("CREATE KEYSPACE ks2");
+      cql("USE ks2");
+      cql("CREATE TYPE udt (a int, b int)");
+    },
+    [this]() -> void { // After backup-restore
+      // Clean-up must delete only just created table: ks2.test_tbl.
+      // Try to use available UDT ks2.udt.
+      cql("CREATE TABLE " + kDefaultTableName + " (id INT PRIMARY KEY, v udt)");
+    });
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(CqlBackupTest,
+       YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestFailedImportSnapshotKeepExistingKS)) {
+  DoTestImportSnapshotFailure(
+    [this]() -> void { // Before backup-restore
+      cql("CREATE KEYSPACE ks2");
+    },
+    [this]() -> void { // After backup-restore
+      // Clean-up must delete only just created table & udt: ks2.test_tbl, ks2.udt.
+      // Try to use available keyspace ks2.
+      cql("USE ks2");
+      cql("CREATE TYPE udt (a int, b int)");
+      cql("CREATE TABLE " + kDefaultTableName + " (id INT PRIMARY KEY, v udt)");
+    });
+
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

@@ -45,6 +45,11 @@ message CreateSnapshotRequestPB {
   optional bool imported = 4;
 
   optional bytes schedule_id = 5; // Create snapshot to this schedule. Other fields are ignored.
+
+  // Automatically add used User Defined Types into the snapshot.
+  // This is for YCQL only. For YSQL it's no-op currently because
+  // YSQL does not use SysUDTypeEntryPB records in the SysCatalog.
+  optional bool add_ud_types = 6 [default = false];
 }
 
 message CreateSnapshotResponsePB {
@@ -165,6 +170,7 @@ message ImportSnapshotMetaResponsePB {
     optional IdPairPB table_ids = 2;
     repeated IdPairPB tablets_ids = 3;
     optional TableType table_type = 4 [ default = TABLE ];
+    repeated IdPairPB ud_types_ids = 5;
   }
 
   repeated TableMetaPB tables_meta = 3;
