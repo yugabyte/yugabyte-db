@@ -44,11 +44,11 @@ Use one or more of the following techniques to improve import performance:
 
 - Load data in parallel. yb-voyager executes N parallel batch ingestion jobs at any given time, where N is equal to the number of nodes in the YugabyteDB cluster. Normally this is considered good default practice. However, if the target cluster runs on high resource machines with a large number of CPU cores, the default may result in underusing CPU resources.\
 \
-  Use the [–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set -parallel-jobs to the number of available cores in the entire cluster.
+  Use the [-–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the import data command to override the default setting. Set -parallel-jobs to the number of available cores in the entire cluster.
 
   {{< note title="Note" >}}
 
-If CPU use is greater than 80%, you should lower –parallel-jobs. Similarly, if CPU use is low, you can increase –parallel-jobs.
+If CPU use is greater than 80%, you should lower the number of jobs. Similarly, if CPU use is low, you can increase the number of jobs.
 
   {{< /note >}}
 
@@ -66,13 +66,13 @@ If CPU use is greater than 80%, you should lower –parallel-jobs. Similarly, if
 
 {{< note title="Note" >}}
 
-These performance optimizations apply to both the data import phase and for importing from _files_.
+These performance optimizations apply whether you are importing data using the yb-voyager [import data command](../migrate-steps/#import-data) or the [import data file command](../migrate-steps/#import-data-file).
 
 {{< /note >}}
 
 ## Improve export performance
 
-To improve data export, parallelize the export of data from multiple tables. By default, yb-voyager exports one table at a time. Use the [–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
+By default, yb-voyager exports one table at a time. To improve data export, parallelize the export of data from multiple tables using the [–parallel-jobs](../../yb-voyager/yb-voyager-cli/#parallel-jobs) argument with the export data command to increase the number of jobs. Setting the value too high can however negatively impact performance; a setting of '4' typically performs well.
 
 ## Data import speeds
 
