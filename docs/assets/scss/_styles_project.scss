@@ -447,6 +447,10 @@ div#main_navbar {
 
 /******* For Inline SVG **********/
 
+svg.rrdiagram {
+  max-width: 100%;
+}
+
 .rrdiagram .connector {
   fill: none;
   stroke: #222;
