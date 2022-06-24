@@ -46,6 +46,7 @@ class PriorityThreadPoolWorker;
 
 static constexpr int kEmptyQueueTaskPriority = -1;
 static constexpr int kEmptyQueueGroupNoPriority = -1;
+static constexpr int kNoGroupPriority = 0;
 
 YB_STRONGLY_TYPED_BOOL(PickTask);
 
@@ -425,7 +426,9 @@ PriorityThreadPoolTask::PriorityThreadPoolTask()
 // If the queue is empty, the worker is added to the vector of free workers.
 class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
  public:
-  explicit Impl(size_t max_running_tasks) : max_running_tasks_(max_running_tasks) {
+  explicit Impl(size_t max_running_tasks, bool prioritize_by_group_no)
+    : max_running_tasks_(max_running_tasks),
+      prioritize_by_group_no_(prioritize_by_group_no) {
     CHECK_GE(max_running_tasks, 1);
   }
 
@@ -552,7 +555,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     const PriorityThreadPoolPriorities worker_task_priorities = worker->task()->GetPriorities();
     const PriorityThreadPoolPriorities defer_priorities{
         max_task_priority_to_defer_.load(std::memory_order_acquire),
-        max_group_no_priority_to_defer_.load()
+        max_group_no_priority_to_defer()
     };
     // If worker_task has higher priority than the defer priorities, no need to pause
     if (ComparePriorities(defer_priorities, worker_task_priorities) < 0) {
@@ -567,7 +570,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       // Check defer priorities again now that we're holding the lock (double-checked locking).
       const PriorityThreadPoolPriorities defer_priorities{
         max_task_priority_to_defer_.load(std::memory_order_acquire),
-        max_group_no_priority_to_defer_.load()
+        max_group_no_priority_to_defer()
       };
       if (
           ComparePriorities(defer_priorities, worker_task_priorities) < 0 ||
@@ -583,15 +586,17 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       // If worker task is a better fit, we can return.
       auto it = tasks_.get<StateAndPriorityTag>().begin();
 
-      if (stopping_.load(std::memory_order_acquire)) {
-        return;
-      } else if (it->group_no() == worker->task()->group_no() &&
-          ComparePriorities(it->GetPriorities(), worker_task_priorities) <= 0) {
-        return;
-      } else if (it->group_no() != worker->task()->group_no() &&
-          ComparePriorities(
-              PriorityThreadPoolPriorities{it->task_priority(), it->group_no_priority() - 1},
-              worker_task_priorities) <= 0) {
+      if (prioritize_by_group_no_) {
+        if (it->group_no() == worker->task()->group_no() &&
+            ComparePriorities(it->GetPriorities(), worker_task_priorities) <= 0) {
+          return;
+        } else if (it->group_no() != worker->task()->group_no() &&
+            ComparePriorities(
+                PriorityThreadPoolPriorities{it->task_priority(), it->group_no_priority() - 1},
+                worker_task_priorities) <= 0) {
+          return;
+        }
+      } else if (ComparePriorities(it->GetPriorities(), worker_task_priorities) <= 0) {
         return;
       }
 
@@ -599,7 +604,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
                 << " in favor of " << it->ToString() << ", max task priority of a task to defer: "
                 << max_task_priority_to_defer_.load(std::memory_order_acquire) <<
                 ", max group_no priority of a task to defer: "
-                << max_group_no_priority_to_defer_.load();
+                << max_group_no_priority_to_defer();
 
       // We need to increment the number of paused workers here even though we may decrease it very
       // soon as we un-pause a different worker, because there is logic inside PickWorker() that
@@ -686,25 +691,28 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   }
 
   bool PrioritizeTask(size_t serial_no) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto& index = tasks_.get<SerialNoTag>();
-    auto it = index.find(serial_no);
-    if (it == index.end() || it->group_no_priority_frozen()) {
-      return false;
+    if (prioritize_by_group_no_) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto& index = tasks_.get<SerialNoTag>();
+      auto it = index.find(serial_no);
+      if (it == index.end() || it->group_no_priority_frozen()) {
+        return false;
+      }
+
+      int priority = kHighPriority;
+      bool freeze = true;
+      // Change Task Priority
+      index.modify(it, [priority, freeze](PriorityThreadPoolInternalTask& task) {
+        task.SetTaskPriority(priority);
+        task.SetGroupNoPriority(priority);
+        task.SetGroupNoPriorityFrozen(freeze);
+      });
+
+      UpdateMaxPriorityToDefer();
+
+      return true;
     }
-
-    int priority = kHighPriority;
-    bool freeze = true;
-    // Change Task Priority
-    index.modify(it, [priority, freeze](PriorityThreadPoolInternalTask& task) {
-      task.SetTaskPriority(priority);
-      task.SetGroupNoPriority(priority);
-      task.SetGroupNoPriorityFrozen(freeze);
-    });
-
-    UpdateMaxPriorityToDefer();
-
-    return true;
+    return ChangeTaskPriority(serial_no, kHighPriority);
   }
 
 
@@ -729,7 +737,7 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
             "stopping: $5 max_task_priority_to_defer: $6 max_group_no_priority_to_defer $7 }",
         max_running_tasks_, tasks_, workers_, paused_workers_, free_workers_,
         stopping_.load(), max_task_priority_to_defer_.load(),
-        max_group_no_priority_to_defer_.load());
+        max_group_no_priority_to_defer());
   }
 
   void AbortTasks(const std::vector<TaskPtr>& tasks, const Status& abort_status) {
@@ -847,18 +855,21 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
   const PriorityThreadPoolInternalTask* AddTask(
       int task_priority, TaskPtr task, PriorityThreadPoolWorker* worker, const uint64_t group_no)
       REQUIRES(mutex_) {
-    std::unordered_map<size_t, int>::iterator iter = active_tasks_per_group_.find(group_no);
-    if (iter == active_tasks_per_group_.end()) {
-        active_tasks_per_group_.insert(std::make_pair(group_no, 0));
+    int group_no_priority = kNoGroupPriority;
+    if (prioritize_by_group_no_) {
+      std::unordered_map<size_t, int>::iterator iter = active_tasks_per_group_.find(group_no);
+      if (iter == active_tasks_per_group_.end()) {
+          active_tasks_per_group_.insert(std::make_pair(group_no, 0));
+      }
+      group_no_priority = task->CalculateGroupNoPriority(active_tasks_per_group_[group_no]);
     }
-    int group_no_priority = task->CalculateGroupNoPriority(active_tasks_per_group_[group_no]);
     auto it = tasks_.emplace(
         task_priority, group_no_priority, std::move(task), worker, group_no, &mutex_).first;
     UpdateMaxPriorityToDefer();
     VLOG(4) << "New task added " << it->ToString() << ", max task to defer: "
             << max_task_priority_to_defer_.load(std::memory_order_acquire)
             << ", max group_no to defer: "
-            << max_group_no_priority_to_defer_.load();
+            << max_group_no_priority_to_defer();
     return &*it;
   }
 
@@ -869,11 +880,13 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     int task_priority = tasks_.size() <= max_running_tasks_
         ? kEmptyQueueTaskPriority
         : tasks_.nth(max_running_tasks_)->task_priority();
-    int group_no_priority = tasks_.size() <= max_running_tasks_
-        ? kEmptyQueueGroupNoPriority
-        : tasks_.nth(max_running_tasks_)->group_no_priority();
     max_task_priority_to_defer_.store(task_priority, std::memory_order_release);
-    max_group_no_priority_to_defer_.store(group_no_priority);
+    if (prioritize_by_group_no_) {
+      int group_no_priority = tasks_.size() <= max_running_tasks_
+          ? kEmptyQueueGroupNoPriority
+          : tasks_.nth(max_running_tasks_)->group_no_priority();
+      max_group_no_priority_to_defer_.store(group_no_priority);
+    }
   }
 
   // This function is responsible for updating any tracking related to state changes to a state.
@@ -882,9 +895,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
     task.task()->UpdateStatsStateChangedTo(state);
-    if (state == PriorityThreadPoolTaskState::kRunning) {
-      ++active_tasks_per_group_[task.group_no()];
-      UpdateGroupNoPriority(task.group_no());
+    if (prioritize_by_group_no_) {
+      if (state == PriorityThreadPoolTaskState::kRunning) {
+        ++active_tasks_per_group_[task.group_no()];
+        UpdateGroupNoPriority(task.group_no());
+      }
     }
   }
 
@@ -894,9 +909,11 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
       const PriorityThreadPoolInternalTask& task,
       const PriorityThreadPoolTaskState state) REQUIRES(mutex_) {
     task.task()->UpdateStatsStateChangedFrom(state);
-    if (state == PriorityThreadPoolTaskState::kRunning) {
-      --active_tasks_per_group_[task.group_no()];
-      UpdateGroupNoPriority(task.group_no());
+    if (prioritize_by_group_no_) {
+      if (state == PriorityThreadPoolTaskState::kRunning) {
+        --active_tasks_per_group_[task.group_no()];
+        UpdateGroupNoPriority(task.group_no());
+      }
     }
   }
 
@@ -936,7 +953,13 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
     });
   }
 
+  int max_group_no_priority_to_defer() const {
+    return prioritize_by_group_no_ ? max_group_no_priority_to_defer_.load() : kNoGroupPriority;
+  }
+
   const size_t max_running_tasks_;
+  // If true, priorities will be evaluated in groups first, followed by task priority.
+  const bool prioritize_by_group_no_;
   std::mutex mutex_;
 
   // Number of paused workers.
@@ -1003,8 +1026,8 @@ class PriorityThreadPool::Impl : public PriorityThreadPoolWorkerContext {
 // Forwarding method calls for the "pointer to impl" idiom
 // ------------------------------------------------------------------------------------------------
 
-PriorityThreadPool::PriorityThreadPool(size_t max_running_tasks)
-    : impl_(new Impl(max_running_tasks)) {
+PriorityThreadPool::PriorityThreadPool(size_t max_running_tasks, bool prioritize_by_group_no)
+    : impl_(new Impl(max_running_tasks, prioritize_by_group_no)) {
 }
 
 PriorityThreadPool::~PriorityThreadPool() {
