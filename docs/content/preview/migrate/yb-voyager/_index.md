@@ -20,11 +20,11 @@ The engine manages the entire lifecycle of a database migration, including clust
 
 ## Features
 
-- It’s free and completely open source.
-- The engine supports widely used databases for migration and does not require changes to the [source databases](#source-databases) in most cases.
-- All YugabyteDB products (v2.12 and above) are supported as a [target database](#target-database).
-- A unified [CLI](../yb-voyager/yb-voyager-cli/) experience for all different source databases.
-- It's auto-tunable based on workloads, by analyzing the target cluster capacity. By default, it runs parallel jobs.
+- Free and completely open source.
+- Supports widely used databases for migration and doesn't require changes to the [source databases](#source-databases) in most cases.
+- Supports all YugabyteDB products (v2.12 and above) as the [target database](#target-database).
+- Provides a unified [CLI](../yb-voyager/yb-voyager-cli/) experience for all different source databases.
+- Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Monitor the import status, and expected time for data export and import to complete using progress bars.
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
@@ -97,7 +97,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
         <div class="title">Performance</div>
       </div>
       <div class="body">
-        Learn about the factors affecting export and import performance.
+        Learn about factors that can affect migration performance.
       </div>
     </a>
   </div>
