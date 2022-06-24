@@ -587,7 +587,7 @@ Much of YugabyteDB code is wired to return `Status`, in order to provide the inf
 Status foo(int* return_variable);
 ```
 
-However, now there is now a better way to achieve the same goal: the `Result` type can encapsulate both an output parameter (in the successful case) and a `Status` (in case of an error):
+However, there is now a better way to achieve the same goal: the `Result` type can encapsulate both an output parameter (in the successful case) and a `Status` (in case of an error):
 
 ```cpp
 Result<int> foo();
