@@ -130,12 +130,15 @@ $(document).ready(() => {
 
   // Change the version dropdown text with the selected version text.
   if ($('#navbarDropdown') && $('.dropdown-menu')) {
-    const versionDir = `/${location.pathname.split('/')[1]}/`;
-    $('.dropdown-menu a').each((index, element) => {
-      if ($(element).attr('href').indexOf(versionDir) !== -1) {
-        $('#navbarDropdown').text($(element).text());
-      }
-    });
+    const versionDir = location.pathname.split('/')[1];
+    if (versionDir !== '') {
+      $('.dropdown-menu a').each((index, element) => {
+        if ($(element).attr('href').indexOf(`/${versionDir}/`) !== -1) {
+          $('#navbarDropdown').text($(element).text());
+          return false;
+        }
+      });
+    }
   }
 
   // Hide Empty Right sidebar.
