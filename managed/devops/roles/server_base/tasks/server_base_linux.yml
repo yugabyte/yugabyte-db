@@ -137,7 +137,7 @@
       state: latest
       update_cache: yes
     with_items:
-      - "{{ linux_packages }}"
+      - "{{ linux_packages + new_install_packages }}"
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
@@ -150,7 +150,7 @@
       name: "{{ item }}"
       state: latest
     with_items:
-      - "{{ linux_packages }}"
+      - "{{ linux_packages + new_install_packages }}"
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
@@ -166,7 +166,7 @@
       name: "{{ item }}"
       state: latest
     with_items:
-      - "{{ linux_packages + aarch64_packages }}"
+      - "{{ linux_packages + aarch64_packages + new_install_packages }}"
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
@@ -185,7 +185,7 @@
       name: "{{ item }}"
       state: latest
     with_items:
-      - "{{ linux_packages + debian_aarch64_packages }}"
+      - "{{ linux_packages + debian_aarch64_packages + new_install_packages }}"
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
