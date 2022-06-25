@@ -13,18 +13,22 @@ menu:
     weight: 100
 ---
 
-YugabyteDB Voyager is a powerful open-source database migration engine provided by Yugabyte.
-It accelerates cloud native adoption by removing barriers while moving applications to the public or private cloud; thereby migrating databases to YugabyteDB securely.
+YugabyteDB Voyager is a powerful open-source data migration engine that accelerates cloud native adoption by removing barriers to moving applications to the public or private cloud. It helps you migrate databases to YugabyteDB quickly and securely.
 
-The engine manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
+YugabyteDB Voyager manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
 
 ## Features
 
-- The engine supports widely used databases for migration and does not require changes to the [source databases](#source-databases) in most cases.
-- All YugabyteDB products (v2.12 and above) are supported as a [target database](#target-database).
-- Currently YugabyteDB Voyager supports migrating up to 1TB of data.
-- A unified [CLI](../yb-voyager/yb-voyager-cli/) experience for all different source databases.
-- YugabyteDB Voyager is auto-tunable based on workloads, by analyzing the target cluster capacity.
+- Free and completely open source.
+- Supports widely used databases for migration and doesn't require changes to the [source databases](#source-databases) in most cases.
+- Supports all YugabyteDB products (v2.12 and above) as the [target database](#target-database).
+- Provides a unified [CLI](../yb-voyager/yb-voyager-cli/) experience for all different source databases.
+- Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
+- Monitor the import status, and expected time for data export and import to complete using progress bars.
+- In case of failures, data import can be resumed.
+- Parallelism of data across tables.
+- Supports direct data import from CSV files.
+- Currently, supports migrating up to 1TB of data.
 - Live migration - Coming soon. For more details, refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/50) and for any questions, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new).
 
 ## Source databases
@@ -85,17 +89,17 @@ A typical migration workflow using yb-voyager consists of the following steps:
       </div>
     </a>
   </div>
-   <!-- <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="performance/">
       <div class="head">
        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true">
         <div class="title">Performance</div>
       </div>
       <div class="body">
-        Evaluate performance metrics.
+        Learn about factors that can affect migration performance.
       </div>
     </a>
-  </div> -->
+  </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="yb-voyager-cli/">
       <div class="head">
