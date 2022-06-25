@@ -45,8 +45,8 @@ autoscales
 autoscaling
 awardable
 awardables
-Ayoa
 Axios
+Ayoa
 Azure
 B-tree
 backfilling
@@ -95,9 +95,9 @@ canonicalized
 captcha
 CentOS
 Certbot
+chai
 changeset
 changesets
-chai
 ChaosKube
 chatbot
 chatbots
@@ -459,6 +459,7 @@ prepending
 prepends
 prepopulated
 Prettifier
+Prisma
 Pritaly
 Priyanka
 profiler
@@ -695,8 +696,8 @@ triaged
 triages
 triaging
 Trivy
-truthy
 Truststore
+truthy
 Twilio
 Twitter
 TypeScript
@@ -834,8 +835,8 @@ worktrees
 Worldline
 Xcode
 Xeon
-YouTrack
 ycqlsh
+YouTrack
 ysqlsh
 ytt
 Yubico
