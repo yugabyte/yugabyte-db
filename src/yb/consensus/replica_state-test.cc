@@ -95,7 +95,7 @@ TEST_F(RaftConsensusStateTest, TestPendingPersistent) {
   ASSERT_OK(state_->LockForConfigChange(&lock));
 
   config_.clear_opid_index();
-  ASSERT_OK(state_->SetPendingConfigUnlocked(config_));
+  ASSERT_OK(state_->SetPendingConfigUnlocked(config_, OpId()));
   ASSERT_TRUE(state_->IsConfigChangePendingUnlocked());
   ASSERT_FALSE(state_->GetPendingConfigUnlocked().has_opid_index());
   ASSERT_TRUE(state_->GetCommittedConfigUnlocked().has_opid_index());
@@ -117,13 +117,13 @@ TEST_F(RaftConsensusStateTest, TestPersistentWrites) {
   ASSERT_EQ(kInvalidOpIdIndex, state_->GetCommittedConfigUnlocked().opid_index());
 
   config_.clear_opid_index();
-  ASSERT_OK(state_->SetPendingConfigUnlocked(config_));
+  ASSERT_OK(state_->SetPendingConfigUnlocked(config_, OpId()));
   config_.set_opid_index(1);
   ASSERT_OK(state_->SetCommittedConfigUnlocked(config_));
   ASSERT_EQ(1, state_->GetCommittedConfigUnlocked().opid_index());
 
   config_.clear_opid_index();
-  ASSERT_OK(state_->SetPendingConfigUnlocked(config_));
+  ASSERT_OK(state_->SetPendingConfigUnlocked(config_, OpId()));
   config_.set_opid_index(2);
   ASSERT_OK(state_->SetCommittedConfigUnlocked(config_));
   ASSERT_EQ(2, state_->GetCommittedConfigUnlocked().opid_index());

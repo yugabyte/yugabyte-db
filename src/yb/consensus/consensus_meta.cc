@@ -181,13 +181,27 @@ const RaftConfigPB& ConsensusMetadata::pending_config() const {
 void ConsensusMetadata::clear_pending_config() {
   has_pending_config_ = false;
   pending_config_.Clear();
+  pending_config_op_id_ = OpId();
   UpdateActiveRole();
 }
 
-void ConsensusMetadata::set_pending_config(const RaftConfigPB& config) {
+void ConsensusMetadata::set_pending_config(const RaftConfigPB& config, const OpId& config_op_id) {
   has_pending_config_ = true;
   pending_config_ = config;
+  pending_config_op_id_ = config_op_id;
   UpdateActiveRole();
+}
+
+Status ConsensusMetadata::set_pending_config_op_id(const OpId& config_op_id) {
+  SCHECK(has_pending_config_, IllegalState, "Expected pending config to be set");
+  if (pending_config_op_id_.is_valid_not_empty() && pending_config_op_id_ != config_op_id) {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Pending config OpId is already set to $0, but requested to overwrite with $1",
+        pending_config_op_id_, config_op_id);
+  }
+  pending_config_op_id_ = config_op_id;
+  return Status::OK();
 }
 
 const RaftConfigPB& ConsensusMetadata::active_config() const {

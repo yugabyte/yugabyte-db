@@ -212,10 +212,13 @@ class ReplicaState {
 
   // Sets the given configuration as pending commit. Does not persist into the peers
   // metadata. In order to be persisted, SetCommittedConfigUnlocked() must be called.
-  CHECKED_STATUS SetPendingConfigUnlocked(const RaftConfigPB& new_config);
+  CHECKED_STATUS SetPendingConfigUnlocked(const RaftConfigPB& new_config, const OpId& config_op_id);
+  CHECKED_STATUS SetPendingConfigOpIdUnlocked(const OpId& config_op_id);
 
   // Clears the pending config.
   CHECKED_STATUS ClearPendingConfigUnlocked();
+
+  OpId GetPendingConfigOpIdUnlocked() { return cmeta_->pending_config_op_id(); }
 
   // Return the pending configuration, or crash if one is not set.
   const RaftConfigPB& GetPendingConfigUnlocked() const;

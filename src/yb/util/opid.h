@@ -53,6 +53,10 @@ struct OpId {
     return term == 0 && index == 0;
   }
 
+  bool is_valid_not_empty() const {
+    return term > 0 && index > 0;
+  }
+
   bool operator!() const {
     return empty();
   }

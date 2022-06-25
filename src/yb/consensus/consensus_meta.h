@@ -39,6 +39,8 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/gutil/macros.h"
+
+#include "yb/util/opid.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -121,7 +123,10 @@ class ConsensusMetadata {
 
   // Set & clear the pending configuration.
   void clear_pending_config();
-  void set_pending_config(const RaftConfigPB& config);
+  void set_pending_config(const RaftConfigPB& config, const OpId& config_op_id);
+  CHECKED_STATUS set_pending_config_op_id(const OpId& config_op_id);
+
+  OpId pending_config_op_id() { return pending_config_op_id_; }
 
   // If a pending configuration is set, return it.
   // Otherwise, return the committed configuration.
@@ -201,6 +206,7 @@ class ConsensusMetadata {
                             // configuration change pending.
   // RaftConfig used by the peers when there is a pending config change operation.
   RaftConfigPB pending_config_;
+  OpId pending_config_op_id_;
 
   // Cached role of the peer_uuid_ within the active configuration.
   RaftPeerPB::Role active_role_;

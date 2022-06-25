@@ -323,7 +323,8 @@ Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
   return Status::OK();
 }
 
-Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
+Status ReplicaState::SetPendingConfigUnlocked(
+    const RaftConfigPB& new_config, const OpId& config_op_id) {
   DCHECK(IsLocked());
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM),
                         "Invalid config to set as pending");
@@ -331,10 +332,15 @@ Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
       << "Attempt to set pending config while another is already pending! "
       << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
       << "Attempted new pending config: " << new_config.ShortDebugString();
-  cmeta_->set_pending_config(new_config);
+  cmeta_->set_pending_config(new_config, config_op_id);
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
   return Status::OK();
+}
+
+Status ReplicaState::SetPendingConfigOpIdUnlocked(const OpId& config_op_id) {
+  DCHECK(IsLocked());
+  return cmeta_->set_pending_config_op_id(config_op_id);
 }
 
 Status ReplicaState::ClearPendingConfigUnlocked() {
@@ -649,7 +655,7 @@ Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, Operati
       // messages were delayed.
       const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
       if (round->replicate_msg()->id().index() > committed_config.opid_index()) {
-        CHECK_OK(SetPendingConfigUnlocked(new_config));
+        CHECK_OK(SetPendingConfigUnlocked(new_config, round->id()));
       } else {
         LOG_WITH_PREFIX(INFO)
             << "Ignoring setting pending config change with OpId "
