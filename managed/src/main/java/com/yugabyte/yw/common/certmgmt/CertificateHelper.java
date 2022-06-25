@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.math.BigInteger;
+import java.security.Key;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -46,11 +48,25 @@ import org.apache.commons.validator.routines.InetAddressValidator;
 import org.bouncycastle.asn1.DERSequence;
 import org.bouncycastle.asn1.x500.RDN;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x509.BasicConstraints;
+import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.bouncycastle.asn1.x509.GeneralNames;
+import org.bouncycastle.asn1.x509.KeyUsage;
+import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.X509v3CertificateBuilder;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
+import org.bouncycastle.operator.ContentSigner;
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.flywaydb.play.FileUtils;
@@ -204,16 +220,8 @@ public class CertificateHelper {
 
       } else {
         // storagePath is null, converting it to string and returning it.
-        StringWriter certWriter = new StringWriter();
-        StringWriter keyWriter = new StringWriter();
-        certificateWriter = new JcaPEMWriter(certWriter);
-        certKeyWriter = new JcaPEMWriter(keyWriter);
-        certificateWriter.writeObject(clientCert);
-        certificateWriter.flush();
-        certKeyWriter.writeObject(pKey);
-        certKeyWriter.flush();
-        certificateDetails.crt = certWriter.toString();
-        certificateDetails.key = keyWriter.toString();
+        certificateDetails.crt = getAsPemString(clientCert);
+        certificateDetails.key = getAsPemString(pKey);
         LOG.info("Returning certificate {} as Strings", clientCert.getSubjectDN().toString());
       }
     } finally {
@@ -314,7 +322,6 @@ public class CertificateHelper {
 
   public static String extractHostNamesFromGeneralNamesAsString(
       Map<String, Integer> subjectAltNames) {
-    InetAddressValidator ipAddressValidator = InetAddressValidator.getInstance();
     String names = "";
 
     if (subjectAltNames == null) return null;
@@ -668,7 +675,7 @@ public class CertificateHelper {
     }
   }
 
-  public static void writeKeyFileContentToKeyPath(PrivateKey keyContent, String keyPath) {
+  public static void writeKeyFileContentToKeyPath(Key keyContent, String keyPath) {
     File keyFile = new File(keyPath);
     try (JcaPEMWriter keyWriter = new JcaPEMWriter(new FileWriter(keyFile))) {
       keyWriter.writeObject(keyContent);
@@ -710,6 +717,118 @@ public class CertificateHelper {
 
   public static String getCertsForClientDir(String ybHomeDir) {
     return ybHomeDir + CERT_CLIENT_NODE_SUBDIR;
+  }
+
+  public static X509Certificate generateCACertificate(
+      String certLabel, KeyPair keyPair, int expiryInYear) {
+    try {
+      Calendar cal = Calendar.getInstance();
+      Date certStart = cal.getTime();
+      cal.add(Calendar.YEAR, expiryInYear);
+      Date certExpiry = cal.getTime();
+
+      X500Name subject =
+          new X500NameBuilder(BCStyle.INSTANCE)
+              .addRDN(BCStyle.CN, certLabel)
+              .addRDN(BCStyle.O, "example.com")
+              .build();
+      BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
+      X509v3CertificateBuilder certGen =
+          new JcaX509v3CertificateBuilder(
+              subject, serial, certStart, certExpiry, subject, keyPair.getPublic());
+      BasicConstraints basicConstraints = new BasicConstraints(1);
+      KeyUsage keyUsage =
+          new KeyUsage(
+              KeyUsage.digitalSignature
+                  | KeyUsage.nonRepudiation
+                  | KeyUsage.keyEncipherment
+                  | KeyUsage.keyCertSign);
+
+      certGen.addExtension(Extension.basicConstraints, true, basicConstraints.toASN1Primitive());
+      certGen.addExtension(Extension.keyUsage, true, keyUsage.toASN1Primitive());
+      ContentSigner signer =
+          new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO).build(keyPair.getPrivate());
+      X509CertificateHolder holder = certGen.build(signer);
+      JcaX509CertificateConverter converter = new JcaX509CertificateConverter();
+      converter.setProvider(new BouncyCastleProvider());
+      return converter.getCertificate(holder);
+    } catch (Exception e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  public static X509Certificate createAndSignCertificate(
+      String username,
+      X500Name subject,
+      KeyPair newCertKeyPair,
+      X509Certificate caCert,
+      PrivateKey caPrivateKey,
+      Map<String, Integer> subjectAltNames) {
+    try {
+      X500Name newCertSubject = new X500Name(String.format("CN=%s", username));
+      BigInteger newCertSerial = BigInteger.valueOf(System.currentTimeMillis());
+      PKCS10CertificationRequestBuilder p10Builder =
+          new JcaPKCS10CertificationRequestBuilder(newCertSubject, newCertKeyPair.getPublic());
+      ContentSigner csrContentSigner =
+          new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO).build(caPrivateKey);
+      PKCS10CertificationRequest csr = p10Builder.build(csrContentSigner);
+
+      KeyUsage keyUsage =
+          new KeyUsage(
+              KeyUsage.digitalSignature
+                  | KeyUsage.nonRepudiation
+                  | KeyUsage.keyEncipherment
+                  | KeyUsage.keyCertSign);
+
+      X509v3CertificateBuilder newCertBuilder =
+          new X509v3CertificateBuilder(
+              subject,
+              newCertSerial,
+              caCert.getNotBefore(),
+              caCert.getNotAfter(),
+              csr.getSubject(),
+              csr.getSubjectPublicKeyInfo());
+      JcaX509ExtensionUtils newCertExtUtils = new JcaX509ExtensionUtils();
+      newCertBuilder.addExtension(
+          Extension.basicConstraints, true, new BasicConstraints(false).toASN1Primitive());
+      newCertBuilder.addExtension(
+          Extension.authorityKeyIdentifier,
+          false,
+          newCertExtUtils.createAuthorityKeyIdentifier(caCert));
+      newCertBuilder.addExtension(
+          Extension.subjectKeyIdentifier,
+          false,
+          newCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
+      newCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
+
+      GeneralNames generalNames = CertificateHelper.extractGeneralNames(subjectAltNames);
+      if (generalNames != null)
+        newCertBuilder.addExtension(Extension.subjectAlternativeName, false, generalNames);
+
+      X509CertificateHolder newCertHolder = newCertBuilder.build(csrContentSigner);
+      X509Certificate newCert =
+          new JcaX509CertificateConverter()
+              .setProvider(new BouncyCastleProvider())
+              .getCertificate(newCertHolder);
+
+      newCert.verify(caCert.getPublicKey(), "BC");
+
+      return newCert;
+    } catch (Exception e) {
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  public static String getAsPemString(Object certObj) {
+    try (StringWriter certOutput = new StringWriter();
+        JcaPEMWriter certWriter = new JcaPEMWriter(certOutput); ) {
+      certWriter.writeObject(certObj);
+      certWriter.flush();
+      return certOutput.toString();
+    } catch (Exception e) {
+      LOG.error(e.getMessage(), e);
+      throw new RuntimeException(e.getMessage(), e);
+    }
   }
 
   private static boolean verifySignature(X509Certificate cert, String key) {

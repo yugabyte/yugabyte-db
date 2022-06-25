@@ -21,11 +21,9 @@ import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import java.io.File;
-import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -34,24 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x500.X500NameBuilder;
-import org.bouncycastle.asn1.x500.style.BCStyle;
-import org.bouncycastle.asn1.x509.BasicConstraints;
-import org.bouncycastle.asn1.x509.Extension;
-import org.bouncycastle.asn1.x509.GeneralNames;
-import org.bouncycastle.asn1.x509.KeyUsage;
-import org.bouncycastle.cert.X509CertificateHolder;
-import org.bouncycastle.cert.X509v3CertificateBuilder;
-import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
-import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
-import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
-import org.bouncycastle.jce.provider.BouncyCastleProvider;
-import org.bouncycastle.operator.ContentSigner;
-import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
-import org.bouncycastle.pkcs.PKCS10CertificationRequest;
-import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
-import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.flywaydb.play.FileUtils;
 
 @Slf4j
@@ -115,7 +96,8 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       }
 
       X509Certificate newCert =
-          createAndSignCertificate(username, subject, newCertKeyPair, cer, pk, subjectAltNames);
+          CertificateHelper.createAndSignCertificate(
+              username, subject, newCertKeyPair, cer, pk, subjectAltNames);
       log.info(
           "Created a certificate for username {} signed by root CA {} - {}.",
           username,
@@ -149,106 +131,15 @@ public class CertificateSelfSigned extends CertificateProviderBase {
   @Override
   public X509Certificate generateCACertificate(String certLabel, KeyPair keyPair) throws Exception {
     log.debug("Called generateCACertificate for: {}", certLabel);
-    Calendar cal = Calendar.getInstance();
-    Date certStart = cal.getTime();
     int timeInYears = 4;
     try {
       timeInYears = appConfig.getInt("yb.tlsCertificate.expiryInYears");
     } catch (Exception e) {
       log.error("Failed to get yb.tlsCertificate.expiryInYears");
     }
-    cal.add(Calendar.YEAR, timeInYears);
-    Date certExpiry = cal.getTime();
 
-    X500Name subject =
-        new X500NameBuilder(BCStyle.INSTANCE)
-            .addRDN(BCStyle.CN, certLabel)
-            .addRDN(BCStyle.O, "example.com")
-            .build();
-    BigInteger serial = BigInteger.valueOf(System.currentTimeMillis());
-    X509v3CertificateBuilder certGen =
-        new JcaX509v3CertificateBuilder(
-            subject, serial, certStart, certExpiry, subject, keyPair.getPublic());
-    BasicConstraints basicConstraints = new BasicConstraints(1);
-    KeyUsage keyUsage =
-        new KeyUsage(
-            KeyUsage.digitalSignature
-                | KeyUsage.nonRepudiation
-                | KeyUsage.keyEncipherment
-                | KeyUsage.keyCertSign);
-
-    certGen.addExtension(Extension.basicConstraints, true, basicConstraints.toASN1Primitive());
-    certGen.addExtension(Extension.keyUsage, true, keyUsage.toASN1Primitive());
-    ContentSigner signer =
-        new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO).build(keyPair.getPrivate());
-    X509CertificateHolder holder = certGen.build(signer);
-    JcaX509CertificateConverter converter = new JcaX509CertificateConverter();
-    converter.setProvider(new BouncyCastleProvider());
-    X509Certificate x509 = converter.getCertificate(holder);
-
-    curCaCertificate = x509;
+    curCaCertificate = CertificateHelper.generateCACertificate(certLabel, keyPair, timeInYears);
     curKeyPair = keyPair;
-
-    return x509;
-  }
-
-  public X509Certificate createAndSignCertificate(
-      String username,
-      X500Name subject,
-      KeyPair newCertKeyPair,
-      X509Certificate caCert,
-      PrivateKey pk,
-      Map<String, Integer> subjectAltNames)
-      throws Exception {
-    log.debug("Called createAndSignCertificate for: {}, {}", username, subject);
-    X500Name newCertSubject = new X500Name(String.format("CN=%s", username));
-    BigInteger newCertSerial = BigInteger.valueOf(System.currentTimeMillis());
-    PKCS10CertificationRequestBuilder p10Builder =
-        new JcaPKCS10CertificationRequestBuilder(newCertSubject, newCertKeyPair.getPublic());
-    ContentSigner csrContentSigner =
-        new JcaContentSignerBuilder(CertificateHelper.SIGNATURE_ALGO).build(pk);
-    PKCS10CertificationRequest csr = p10Builder.build(csrContentSigner);
-
-    KeyUsage keyUsage =
-        new KeyUsage(
-            KeyUsage.digitalSignature
-                | KeyUsage.nonRepudiation
-                | KeyUsage.keyEncipherment
-                | KeyUsage.keyCertSign);
-
-    X509v3CertificateBuilder newCertBuilder =
-        new X509v3CertificateBuilder(
-            subject,
-            newCertSerial,
-            caCert.getNotBefore(),
-            caCert.getNotAfter(),
-            csr.getSubject(),
-            csr.getSubjectPublicKeyInfo());
-    JcaX509ExtensionUtils newCertExtUtils = new JcaX509ExtensionUtils();
-    newCertBuilder.addExtension(
-        Extension.basicConstraints, true, new BasicConstraints(false).toASN1Primitive());
-    newCertBuilder.addExtension(
-        Extension.authorityKeyIdentifier,
-        false,
-        newCertExtUtils.createAuthorityKeyIdentifier(caCert));
-    newCertBuilder.addExtension(
-        Extension.subjectKeyIdentifier,
-        false,
-        newCertExtUtils.createSubjectKeyIdentifier(csr.getSubjectPublicKeyInfo()));
-    newCertBuilder.addExtension(Extension.keyUsage, false, keyUsage.toASN1Primitive());
-
-    GeneralNames generalNames = CertificateHelper.extractGeneralNames(subjectAltNames);
-    if (generalNames != null)
-      newCertBuilder.addExtension(Extension.subjectAlternativeName, false, generalNames);
-
-    X509CertificateHolder newCertHolder = newCertBuilder.build(csrContentSigner);
-    X509Certificate newCert =
-        new JcaX509CertificateConverter()
-            .setProvider(new BouncyCastleProvider())
-            .getCertificate(newCertHolder);
-
-    newCert.verify(caCert.getPublicKey(), "BC");
-
-    return newCert;
+    return curCaCertificate;
   }
 }

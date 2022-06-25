@@ -437,7 +437,12 @@ POST    /customers/:cUUID/universes/:uniUUID/run_hooks                         c
 
 # Custom Hook Scope API
 GET     /customers/:cUUID/hook_scopes                                          com.yugabyte.yw.controllers.HookScopeController.list(cUUID: java.util.UUID )
-POST    /customers/:cUUID/hook_scopes                                         com.yugabyte.yw.controllers.HookScopeController.create(cUUID: java.util.UUID)
-DELETE  /customers/:cUUID/hook_scopes/:hsUUID                                 com.yugabyte.yw.controllers.HookScopeController.delete(cUUID: java.util.UUID, hsUUID: java.util.UUID)
-POST    /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                    com.yugabyte.yw.controllers.HookScopeController.addHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
-DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                    com.yugabyte.yw.controllers.HookScopeController.removeHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
+POST    /customers/:cUUID/hook_scopes                                          com.yugabyte.yw.controllers.HookScopeController.create(cUUID: java.util.UUID)
+DELETE  /customers/:cUUID/hook_scopes/:hsUUID                                  com.yugabyte.yw.controllers.HookScopeController.delete(cUUID: java.util.UUID, hsUUID: java.util.UUID)
+POST    /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     com.yugabyte.yw.controllers.HookScopeController.addHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
+DELETE  /customers/:cUUID/hook_scopes/:hsUUID/hooks/:hUUID                     com.yugabyte.yw.controllers.HookScopeController.removeHook(cUUID: java.util.UUID, hsUUID: java.util.UUID, hUUID: java.util.UUID)
+
+# Node Agent API
+POST /customers/:cUUID/node_agents                                             com.yugabyte.yw.controllers.NodeAgentController.register(cUUID: java.util.UUID)
+GET /customers/:cUUID/node_agents/:nUUID                                       com.yugabyte.yw.controllers.NodeAgentController.get(cUUID: java.util.UUID, nUUID: java.util.UUID)
+DELETE /customers/:cUUID/node_agents/:nUUID                                    com.yugabyte.yw.controllers.NodeAgentController.unregister(cUUID: java.util.UUID, nUUID: java.util.UUID)
