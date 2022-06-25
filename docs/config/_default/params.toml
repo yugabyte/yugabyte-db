@@ -49,7 +49,7 @@ version_menu = "Releases"
 
 [[versions]]
   url = "/preview/"
-  version = "v2.13 (Preview)"
+  version = "v2.15 (Preview)"
 [[versions]]
   url = "/stable/"
   version = "v2.12 (Stable)"
