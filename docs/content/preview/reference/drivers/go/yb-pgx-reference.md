@@ -42,7 +42,7 @@ showAsideToc: true
 
 ## Quick start
 
-Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a C# application](../../../../quick-start/build-apps/go/ysql-yb-pgx/).
+Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Go application](../../../../quick-start/build-apps/go/ysql-yb-pgx/).
 
 This page provides details for getting started with [YugabyteDB PGX driver](https://github.com/yugabyte/pgx) for connecting to YugabyteDB YSQL API.
 
@@ -233,7 +233,7 @@ The primary way of establishing a connection is with `pgxpool.Connect()`.
 pool, err := pgxpool.Connect(context.Background(), os.Getenv("DATABASE_URL"))
 ```
 
-One can also provide configuration for the pool as
+One can also provide configuration for the pool as follows:
 
 ```go
 config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
@@ -247,11 +247,11 @@ config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 pool, err := pgxpool.ConnectConfig(context.Background(), config)
 ```
 
-For more details, see [pgxpool package doc](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool)
+For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) documentation.
 
 ### Configure SSL/TLS
 
-In order to build a Go application that communicates securely over SSL with YugabyteDB database,
+To build a Go application that communicates securely over SSL with YugabyteDB database,
 you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
 To generate these certificates and install them while launching the cluster, follow the instructions in
 [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
@@ -286,8 +286,8 @@ YugabyteDB supports transactions for inserting and querying data from the tables
 supports different [isolation levels](../../../../architecture/transactions/isolation-levels/) for
 maintaining strong consistency for concurrent data access.
 
-The PGX driver provides `conn.Begin()` function to start a transaction.
-Another function `conn.BeginEx()` can create a transaction with a specified isolation level.`
+The PGX driver provides the `conn.Begin()` function to start a transaction.
+The `conn.BeginEx()` function can create a transaction with a specified isolation level.
 
 ```go
 tx, err := conn.Begin()
