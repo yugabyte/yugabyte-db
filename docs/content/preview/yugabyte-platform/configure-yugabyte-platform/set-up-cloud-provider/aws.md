@@ -13,7 +13,7 @@ menu:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
+isTocNested: true
 showAsideToc: true
 ---
 
@@ -111,8 +111,8 @@ You can customize your network, including the virtual network. YugabyteDB Anywhe
 
 You can customize the Network Time Protocol server, as follows:
 
-- Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/). 
-- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+- Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
+- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
 - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image. Note that **Use AWS Time Sync** must be disabled during the universe creation; otherwise **Don’t set up NTP** will be overridden.
 
 ## Global deployment
@@ -129,12 +129,12 @@ You have an option to provide the following:
 
 - A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).<br>
 
-   <br>
-  
+  <br>
+
   ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)<br><br><br>
-  
-  To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, https://docs.yugabyte.com/preview/releases/release-notes/v2.13/) by clicking **Downloads > Linux ARM**. YugabyteDB Anywhere enables you to import releases via an S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
-  
+
+  \
+  To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)) by clicking **Downloads > Linux ARM**. YugabyteDB Anywhere enables you to import releases via an S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
 
 ### Self-managed configuration
 
