@@ -72,10 +72,22 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
     <a class="section-link icon-offset" href="cloud-queries-slow/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">View slow YSQL queries</div>
+        <div class="title">View slow queries</div>
       </div>
       <div class="body">
         Monitor and display past YSQL queries on your cluster.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-advisor/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <div class="title">Performance advisor</div>
+      </div>
+      <div class="body">
+        Scan your database for potential optimizations.
       </div>
     </a>
   </div>

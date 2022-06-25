@@ -321,6 +321,7 @@ public class CustomerConfig extends Model {
     customerConfig.customerUUID = customerUUID;
     ObjectNode callhome_json = Json.newObject().put("callhomeLevel", level);
     customerConfig.data = callhome_json;
+    customerConfig.configName = "callhome level-Default";
     customerConfig.save();
     return customerConfig;
   }

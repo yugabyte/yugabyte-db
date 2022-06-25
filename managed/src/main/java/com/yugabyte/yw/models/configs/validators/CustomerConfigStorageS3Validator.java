@@ -22,8 +22,9 @@ import play.libs.Json;
 
 public class CustomerConfigStorageS3Validator extends CustomerConfigStorageWithRegionsValidator {
 
+  // Adding http here since S3-compatible storages may use it in endpoint.
   private static final Collection<String> S3_URL_SCHEMES =
-      Arrays.asList(new String[] {"https", "s3"});
+      Arrays.asList(new String[] {"http", "https", "s3"});
 
   private final CloudClientsFactory factory;
 
@@ -52,7 +53,7 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageWithR
         AmazonS3 s3Client = null;
         String exceptionMsg = null;
         try {
-          s3Client = factory.createS3Client(Json.toJson(data));
+          s3Client = factory.createS3Client(s3data);
         } catch (AmazonS3Exception s3Exception) {
           exceptionMsg = s3Exception.getErrorMessage();
           throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, exceptionMsg);

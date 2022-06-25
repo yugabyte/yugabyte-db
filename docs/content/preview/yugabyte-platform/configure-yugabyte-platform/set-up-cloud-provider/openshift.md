@@ -1,6 +1,6 @@
 ---
 title: Configure the OpenShift cloud provider
-headerTitle: Configure the OpenShift cloud Pprovider
+headerTitle: Configure the OpenShift cloud provider
 linkTitle: Configure cloud providers
 description: Configure the OpenShift cloud provider
 aliases:
@@ -65,13 +65,13 @@ type: docs
 
 You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page requests to configure at least one provider.
 
-To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required Role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
+To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
 
-## Creating RBAC and kubeconfig
+## Create RBAC and kubeconfig
 
-kubeconfig is used by YugabyteDB Anywhere to create universes in the OCP cluster.
+kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
 
-To create a ServiceAccount in the yb-platform project, execute the following command:
+To create a service account in the yb-platform project, execute the following command:
 
 ```shell
 oc apply \
@@ -85,7 +85,9 @@ Expect the following output:
 serviceaccount/yugabyte-platform-universe-management created
 ```
 
-The next step is to grant access to this ServiceAccount using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. To create the required RBAC objects, execute the following command:
+The next step is to grant access to this service account using Roles and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you. If you are creating clusters across multiple namespaces, you need to create Roles and RoleBindings with a cluster-admin role in each namespace where you intend to create and deploy the universe. For more information, see [RBAC resources](https://github.com/yugabyte/charts/tree/master/rbac#c-platform-namespacedyaml).
+
+To create the required RBAC objects, execute the following command:
 
 ```shell
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
@@ -102,7 +104,7 @@ rolebinding.rbac.authorization.k8s.io/yugabyte-helm-operations created
 rolebinding.rbac.authorization.k8s.io/yugabyte-management created
 ```
 
-The next step is to create a kubeconfig for this ServiceAccount. You download a helper script for generating a kubeconfig file by executing the following command:
+The next step is to create a kubeconfig for this service account. You download a helper script for generating a kubeconfig file by executing the following command:
 
 ```shell
 wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
@@ -122,7 +124,7 @@ Expect the following output:
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
-## Creating a Provider in YugabyteDB Anywhere
+## Create a provider in YugabyteDB Anywhere
 
 Since YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
@@ -149,11 +151,11 @@ You can create a provider as follows:
 
 You should see the newly-added provider under **Red Hat OpenShift configs**.
 
-## Creating a Universe Using the Provider
+## Create a universe using the provider
 
 You can create a universe using the provider as follows:
 
-- Use YugabyteDB Anywhere UI to navigate to **Universes** and then click **Create Universe**.
+- Use YugabyteDB Anywhere UI to navigate to **Universes**, and then click **Create Universe**.
 
 - Complete the **Create Universe** page shown in the following illustration by entering the following information:
 
@@ -178,7 +180,7 @@ Upon successful creation of the universe, the **Overview** tab of universe-1 sho
 
 ![Universe 1](/images/ee/openshift-universe1.png)
 
-## Troubleshooting the Universe Creation
+## Troubleshoot the universe creation
 
 If the universe creation remains in Pending state for more than 2-3 minutes, open the OCP web console, navigate to **Workloads > Pods** and check if any of the pods are in pending state, as shown in the following illustration:
 
@@ -190,7 +192,7 @@ Alternatively, you can execute the following command to check status of the pods
 oc get pods -n yb-platform -l chart=yugabyte
 ```
 
-Expect output similar to the following:
+Expect an output similar to the following:
 
 ```output
 # output
@@ -212,7 +214,7 @@ If any of the pods are in pending state, perform the following:
 
 ![Edit Machine Count](/images/ee/openshift-open-macine.png)
 
-Alternatively, you can scale the MachineSets by executing the following command as admin user:
+Alternatively, you can scale the Machine Sets by executing the following command as admin user:
 
 ```shell
 oc scale machineset ocp-dev4-l5ffp-worker-a --replicas=2 -n openshift-machine-api

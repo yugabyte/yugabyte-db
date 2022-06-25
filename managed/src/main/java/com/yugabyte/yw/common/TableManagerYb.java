@@ -28,6 +28,8 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -39,6 +41,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
@@ -164,19 +167,20 @@ public class TableManagerYb extends DevopsBase {
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
 
         if (!customerConfig.name.toLowerCase().equals("nfs")) {
-          List<RegionLocations> regionLocations =
-              backupUtil.getRegionLocationsList(customerConfig.getData());
-
-          for (RegionLocations regionLocation : regionLocations) {
-            if (StringUtils.isNotBlank(regionLocation.REGION)
-                && StringUtils.isNotBlank(regionLocation.LOCATION)) {
-              commandArgs.add("--region");
-              commandArgs.add(regionLocation.REGION);
-              commandArgs.add("--region_location");
-              commandArgs.add(
-                  BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.LOCATION));
+          CustomerConfigStorageWithRegionsData regionsData =
+              (CustomerConfigStorageWithRegionsData) customerConfig.getDataObject();
+          if (CollectionUtils.isNotEmpty(regionsData.regionLocations))
+            for (CustomerConfigStorageWithRegionsData.RegionLocation regionLocation :
+                regionsData.regionLocations) {
+              if (StringUtils.isNotBlank(regionLocation.region)
+                  && StringUtils.isNotBlank(regionLocation.location)) {
+                commandArgs.add("--region");
+                commandArgs.add(regionLocation.region);
+                commandArgs.add("--region_location");
+                commandArgs.add(
+                    BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.location));
+              }
             }
-          }
         }
 
         backupKeysFile =
@@ -295,7 +299,8 @@ public class TableManagerYb extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
+      commandArgs.add(
+          ((CustomerConfigStorageNFSData) customerConfig.getDataObject()).backupLocation);
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

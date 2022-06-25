@@ -23,4 +23,12 @@ public class CustomerConfigStorageS3Data extends CustomerConfigStorageWithRegion
   @ApiModelProperty(value = "AWS host base", example = "s3.amazonaws.com")
   @JsonProperty("AWS_HOST_BASE")
   public String awsHostBase;
+
+  @ApiModelProperty(value = "path style access boolean")
+  @JsonProperty("PATH_STYLE_ACCESS")
+  public boolean isPathStyleAccess = false;
+
+  @ApiModelProperty(value = "IAM Instance profile")
+  @JsonProperty("AWS_IAM_INSTANCE_PROFILE")
+  public boolean isIAMInstanceProfile = false;
 }

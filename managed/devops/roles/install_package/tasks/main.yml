@@ -22,6 +22,12 @@
   tags:
     - always
 
+- name: Set ybc package name
+  set_fact:
+    ybc_package_name: "{{ ybc_package | basename }}"
+    remote_tmp_ybc_package: "/tmp/{{ ybc_package | basename }}"
+  when: ybc_package is defined
+
 # Need a separate set_fact since package_folder is not available until the previous set_fact has
 # completed.
 - set_fact:
