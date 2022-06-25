@@ -45,7 +45,7 @@ For details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
-| [v2.13](release-notes/v2.13/) ![PREVIEW](/images/releases/preview.png) | March 7, 2022 | n/a | n/a |
+| [v2.15](release-notes/v2.15/) ![PREVIEW](/images/releases/preview.png) | June 27, 2022 | n/a | n/a |
 | [v2.12](release-notes/v2.12/) ![CURRENT STABLE](/images/releases/current-stable.png) | February 22, 2022 | February 22, 2023 | August 22, 2023 |
 | [v2.8](release-notes/v2.8/) | November 15, 2021 | November 15, 2022 | June 15, 2023 |
 | [v2.6](release-notes/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
@@ -57,6 +57,8 @@ The following releases are no longer supported:
 
 | Release series | Released | End of maintenance support | End of Life (EOL) |
 | :------------- | :------- | :------------------------- | :---------------- |
+| [v2.13](release-notes/v2.13/) | March 7, 2022 | n/a | n/a |
+| [v2.11](release-notes/v2.11/) | November 22, 2021 | n/a | n/a |
 | [v2.9](release-notes/v2.9/) | August 31, 2021 | n/a | n/a |
 | [v2.7](release-notes/v2.7/) | May 5, 2021 | n/a | n/a |
 | [v2.5](release-notes/v2.5/) | November 12, 2020 | n/a | n/a |

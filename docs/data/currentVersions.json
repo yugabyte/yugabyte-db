@@ -2,11 +2,11 @@
   "docVersions":
   [
     {
-      "series": "v2.13",
-      "display": "v2.13 (Preview)",
-      "version": "2.13.2.0",
-      "versionShort": "2.13.2",
-      "appVersion": "2.13.2.0-b135",
+      "series": "v2.15",
+      "display": "v2.15 (Preview)",
+      "version": "2.15.0.0",
+      "versionShort": "2.15.0",
+      "appVersion": "2.15.0.0-b11",
       "alias": "preview"
     },
     {

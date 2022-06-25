@@ -128,12 +128,12 @@ You have an option to provide the following:
 
 - A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).<br>
 
-   <br>
+  <br>
 
   ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)<br><br><br>
 
-  To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, https://docs.yugabyte.com/preview/releases/release-notes/v2.13/) by clicking **Downloads > Linux ARM**. YugabyteDB Anywhere enables you to import releases via an S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
-
+  \
+  To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)) by clicking **Downloads > Linux ARM**. YugabyteDB Anywhere enables you to import releases via an S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
 
 ### Self-managed configuration
 
