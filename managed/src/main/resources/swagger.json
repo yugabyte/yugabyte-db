@@ -942,7 +942,7 @@
       "properties" : {
         "action" : {
           "description" : "Action",
-          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks" ],
+          "enum" : [ "Set", "Create", "Edit", "Update", "Delete", "Register", "Refresh", "Upload", "Upgrade", "Import", "Pause", "Resume", "Restart", "Abort", "Retry", "Restore", "Alter", "Drop", "Stop", "Validate", "Acknowledge", "SyncXClusterConfig", "Login", "Promote", "Bootstrap", "Configure", "RefreshPricing", "UpgradeSoftware", "UpgradeGFlags", "UpgradeCerts", "UpgradeTLS", "UpgradeVmImage", "UpgradeSystemd", "RebootUniverse", "ResizeNode", "AddMetrics", "CreateKubernetes", "SetupDocker", "RetrieveKmsKey", "RemoveKmsKeyReferenceHistory", "UpsertCustomerFeatures", "CreateSelfSignedCert", "UpdateEmptyCustomerCertificate", "GetRootCertificate", "AddClientCertificate", "SetDBCredentials", "CreateUserInDB", "SetHelm3Compatible", "SetBackupFlag", "SetUniverseKey", "ResetUniverseVersion", "ConfigUniverseAlert", "ToggleTls", "TlsConfigUpdate", "UpdateDiskSize", "CreateCluster", "DeleteCluster", "CreateAllClusters", "UpdatePrimaryCluster", "UpdateReadOnlyCluster", "CreateReadOnlyCluster", "DeleteReadOnlyCluster", "RunYsqlQuery", "BulkImport", "CreateBackup", "RestoreBackup", "CreateSingleTableBackup", "CreateMultiTableBackup", "CreateBackupSchedule", "EditBackupSchedule", "StartPeriodicBackup", "StopPeriodicBackup", "DetachedNodeInstanceAction", "NodeInstanceAction", "DeleteBackupSchedule", "ChangeUserRole", "ChangeUserPassword", "SetSecurity", "GenerateApiToken", "ResetSlowQueries", "ExternalScriptSchedule", "StopScheduledScript", "UpdateScheduledScript", "CreateInstanceType", "DeleteInstanceType", "GetUniverseResources", "ThirdpartySoftwareUpgrade", "CreateTableSpaces", "CreateHook", "DeleteHook", "UpdateHook", "CreateHookScope", "DeleteHookScope", "AddHook", "RemoveHook", "RotateAccessKey", "CreateAndRotateAccessKey", "RunHook", "RunApiTriggeredHooks", "AddNodeAgent", "DeleteNodeAgent" ],
           "example" : "Create User",
           "readOnly" : true,
           "type" : "string"
@@ -976,7 +976,7 @@
         },
         "target" : {
           "description" : "Target",
-          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope" ],
+          "enum" : [ "Session", "CloudProvider", "Region", "AvailabilityZone", "CustomerConfig", "KMSConfig", "Customer", "Release", "Certificate", "Alert", "AlertChannel", "AlertDestination", "MaintenanceWindow", "AccessKey", "Universe", "XClusterConfig", "Table", "Backup", "CustomerTask", "NodeInstance", "PlatformInstance", "Schedule", "User", "LoggingConfig", "RuntimeConfigKey", "HAConfig", "HABackup", "ScheduledScript", "SupportBundle", "GFlags", "Hook", "HookScope", "NodeAgent" ],
           "example" : "User",
           "readOnly" : true,
           "type" : "string"
@@ -4141,6 +4141,21 @@
       "required" : [ "nodeAction" ],
       "type" : "object"
     },
+    "NodeConfiguration" : {
+      "description" : "A node configuration.",
+      "properties" : {
+        "type" : {
+          "enum" : [ "NTP_SERVICE_STATUS" ],
+          "type" : "string"
+        },
+        "value" : {
+          "description" : "unlimited",
+          "type" : "string"
+        }
+      },
+      "required" : [ "type", "value" ],
+      "type" : "object"
+    },
     "NodeDetails" : {
       "description" : "Details of a cloud node",
       "properties" : {
@@ -4505,6 +4520,14 @@
           "description" : "IP address",
           "example" : "1.1.1.1",
           "type" : "string"
+        },
+        "nodeConfigurations" : {
+          "description" : "Node configurations",
+          "items" : {
+            "$ref" : "#/definitions/NodeConfiguration"
+          },
+          "type" : "array",
+          "uniqueItems" : true
         },
         "nodeName" : {
           "description" : "Node name",
