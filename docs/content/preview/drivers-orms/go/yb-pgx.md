@@ -39,11 +39,11 @@ For Go applications, most drivers provide database connectivity through the stan
 
 The [YugabyteDB PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. Use the driver to connect to YugabyteDB database to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
 
-## CRUD operations with PGX driver
+## CRUD operations
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-yb-pgx) page under the Quick start section.
 
-The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
+The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
 
 ### Step 1: Import the driver package
 
@@ -59,7 +59,7 @@ import (
 
 ### Step 2: Set up the database connection
 
-Go applications can connect to the YugabyteDB database using the `pgx.Connect()` and `pgxpool.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
+Go applications can connect to the YugabyteDB database using the `pgx.Connect()` and `pgxpool.Connect()` functions. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
 Use the `pgx.Connect()` method or `pgxpool.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
 
@@ -107,7 +107,7 @@ The following is an example connection string for connecting to YugabyteDB with 
 postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
 ```
 
-The following is a code snippet for connecting to YugabyteDB using the connection parameters.
+The following is a code snippet for connecting to YugabyteDB using topology-aware load balancing.
 
 ```go
 baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
@@ -118,7 +118,7 @@ conn, err := pgx.Connect(context.Background(), url)
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../quick-start/build-apps/go/ysql-yb-pgx/#enable-ssl-tls) for the default and supported modes.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../quick-start/build-apps/go/ysql-yb-pgx/#enable-ssl-tls) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -132,7 +132,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 
 ### Step 3: Create tables
 
-Execute an SQL statement like the DDL `CREATE TABLE ...` using the `Exec()` function on the `conn` instance.
+Execute an SQL statement like the DDL `CREATE TABLE` using the `Exec()` function on the `conn` instance.
 
 The CREATE DDL statement:
 
@@ -182,7 +182,7 @@ The pgx driver automatically prepares and caches statements by default, so you d
 
 #### Query data
 
-To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`. Query results are returned in `pgx.Rows` which can be iterated using `pgx.Rows.next()` method. Then read the data using `pgx.rows.Scan()`.
+To query data from YugabyteDB tables, execute the `SELECT` statement using the function `conn.Query()`. Query results are returned in `pgx.Rows` which can be iterated using the `pgx.Rows.next()` method. Then read the data using `pgx.rows.Scan()`.
 
 The SELECT DML statement:
 
