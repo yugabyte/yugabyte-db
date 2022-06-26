@@ -14,7 +14,6 @@ nproc_override_file: /etc/security/limits.d/yb-nproc.conf
 linux_packages:
   - rsync
   - openssl
-  - xxhash
 
 azure_packages:
   - libselinux-python
@@ -25,6 +24,3 @@ aarch64_packages:
 debian_aarch64_packages:
   - libatomic1
   - libncurses6
-
-new_install_packages:
-  - xxhash
