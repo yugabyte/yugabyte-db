@@ -491,8 +491,8 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // See the declaration of partitions_ structure to understand what constitutes inactive tablets.
   TabletInfos GetTablets(IncludeInactive include_inactive = IncludeInactive::kFalse) const;
 
-  // Get the tablet of the table.  The table must be colocated.
-  TabletInfoPtr GetColocatedTablet() const;
+  // Get the tablet of the table. The table must satisfy IsColocatedUserTable.
+  TabletInfoPtr GetColocatedUserTablet() const;
 
   // Get info of the specified index.
   IndexInfo GetIndexInfo(const TableId& index_id) const;

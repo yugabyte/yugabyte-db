@@ -36,12 +36,8 @@ const auto kWaitTime = kStepTime * 3;
 const int kNoDrive = 0;
 const int kDrive1 = 1;
 const int kDrive2 = 2;
-const int kNoDiskPriority = 0;
 const int kTopDiskCompactionPriority = 100;
 const int kTopDiskFlushPriority = 200;
-
-// Used as an analog to the task_ignore_disk_priority flag for test tasks.
-bool ignore_disk_priority = false;
 
 class Share {
  public:
@@ -124,9 +120,6 @@ class Task : public PriorityThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    if (ignore_disk_priority) {
-      return kNoDiskPriority;
-    }
     return compaction_
         ? kTopDiskCompactionPriority - active_tasks
         : kTopDiskFlushPriority - active_tasks;
@@ -236,9 +229,6 @@ class RandomTask : public PriorityThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    if (ignore_disk_priority) {
-      return kNoDiskPriority;
-    }
     return kTopDiskFlushPriority - active_tasks;
   }
 };
@@ -325,9 +315,9 @@ TEST(PriorityThreadPoolTest, ChangePriority) {
   ASSERT_EQ(running, std::vector<int>({2, 5, 6}));
 }
 
-TEST(PriorityThreadPoolTest, ActiveIORebalancing) {
+TEST(PriorityThreadPoolTest, GroupNoActiveIORebalancing) {
   const int kMaxRunningTasks = 5;
-  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  PriorityThreadPool thread_pool(kMaxRunningTasks, true /* prioritize_by_group_no */);
   Share share;
   std::vector<int> running;
 
@@ -363,9 +353,9 @@ TEST(PriorityThreadPoolTest, ActiveIORebalancing) {
   ASSERT_EQ(running, std::vector<int>({2, 3, 8, 9, 10}));
 }
 
-TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
+TEST(PriorityThreadPoolTest, GroupNoPicksTaskOnLessBusyDrive) {
   const int kMaxRunningTasks = 2;
-  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  PriorityThreadPool thread_pool(kMaxRunningTasks, true /* prioritize_by_group_no */);
   Share share;
   std::vector<int> running;
 
@@ -399,18 +389,11 @@ TEST(PriorityThreadPoolTest, PicksTaskOnLessBusyDrive) {
   // it should run first.
   share.FillRunningTaskPriorities(&running);
   ASSERT_EQ(running, std::vector<int>({7, 9}));
-
-  ANNOTATE_UNPROTECTED_WRITE(ignore_disk_priority) = true;
-  // With disk priority disabled, task 8 should run before task 6.
-  share.Stop(7);
-  share.FillRunningTaskPriorities(&running);
-  ASSERT_EQ(running, std::vector<int>({8, 9}));
-  ANNOTATE_UNPROTECTED_WRITE(ignore_disk_priority) = false;
 }
 
-TEST(PriorityThreadPoolTest, OtherTasksRunBeforeCompactionTasks) {
+TEST(PriorityThreadPoolTest, GroupNoOtherTasksRunBeforeCompactionTasks) {
   const int kMaxRunningTasks = 2;
-  PriorityThreadPool thread_pool(kMaxRunningTasks);
+  PriorityThreadPool thread_pool(kMaxRunningTasks, true /* prioritize_by_group_no */ );
   Share share;
   std::vector<int> running;
 
