@@ -1,4 +1,5 @@
-# Top header menu
+########## Top header menu
+
 [[top_nav]]
   name = "Join us on"
   weight = 1
@@ -22,7 +23,8 @@
   [top_nav.params]
     newTab = true
 
-# Secondary header menu
+########## Secondary header menu
+
 [[main]]
   name = "Documentation"
   weight = 1
@@ -133,7 +135,8 @@
   [main.params]
     excludeVersion = true
 
-# Bottom menu for left navigation
+########## Bottom menu for left navigation
+
 [[leftbottom]]
   name = "Join our community"
   weight = 1
@@ -197,7 +200,8 @@
   [leftbottom.params]
     newTab = true
 
-# Menus for preview
+########## Menus for preview
+
 [[preview]]
   name = "Docs Home"
   weight = 1
@@ -314,6 +318,8 @@
   [preview.params]
     showSection = true
 
+########## Menus (in preview) for releases section
+
 [[preview_releases]]
   name = "Docs Home"
   weight = 1
@@ -330,6 +336,8 @@
   [preview_releases.params]
     showSection = true
     hideLink = true
+
+########## Menus (in preview) for FAQ section
 
 [[preview_faq]]
   name = "Docs Home"
@@ -348,6 +356,8 @@
     showSection = true
     hideLink = true
 
+########## Menus (in preview) for YB Anywhere section
+
 [[preview_yugabyte-platform]]
   name = "Docs Home"
   weight = 1
@@ -364,6 +374,8 @@
   [preview_yugabyte-platform.params]
     showSection = true
     hideLink = true
+
+########## Menus (in preview) for YB Managed section
 
 [[preview_yugabyte-cloud]]
   name = "Docs Home"
@@ -382,7 +394,8 @@
     showSection = true
     hideLink = true
 
-# Menus for stable
+########## Menus for stable
+
 [[stable]]
   name = "Docs Home"
   weight = 1
@@ -516,6 +529,8 @@
   [stable.params]
     showSection = true
 
+########## Menus (in stable) for YB Anywhere section
+
 [[stable_yugabyte-platform]]
   name = "Docs Home"
   weight = 1
@@ -533,7 +548,8 @@
     showSection = true
     hideLink = true
 
-# Menus for v2.8
+########## Menus for v2.8
+
 [["v2.8"]]
   name = "Docs Home"
   weight = 1
@@ -668,6 +684,8 @@
   ["v2.8".params]
     showSection = true
 
+########## Menus (in v2.8) for YB Anywhere section
+
 [["v2.8_yugabyte-platform"]]
   name = "Docs Home"
   weight = 1
@@ -685,7 +703,8 @@
     showSection = true
     hideLink = true
 
-# Menus for v2.6
+########## Menus for v2.6
+
 [["v2.6"]]
   name = "Docs Home"
   weight = 1
@@ -809,6 +828,8 @@
   ["v2.6".params]
     showSection = true
 
+########## Menus (in v2.6) for YB Anywhere section
+
 [["v2.6_yugabyte-platform"]]
   name = "Docs Home"
   weight = 1
@@ -826,7 +847,8 @@
     showSection = true
     hideLink = true
 
-# Menus for v2.4
+########## Menus for v2.4
+
 [["v2.4"]]
   name = "Docs Home"
   weight = 1
@@ -941,6 +963,8 @@
 	url = "/preview/yugabyte-cloud/cloud-overview/"
   ["v2.4".params]
     showSection = true
+
+########## Menus (in v2.4) for YB Anywhere section
 
 [["v2.4_yugabyte-platform"]]
   name = "Docs Home"
