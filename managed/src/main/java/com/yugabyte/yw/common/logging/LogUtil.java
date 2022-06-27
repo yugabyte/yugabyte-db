@@ -30,6 +30,8 @@ public class LogUtil {
     LOG_OVERRIDE_PATH_SYS_PROPERTY, YB_CLOUD_ENABLED_SYS_PROPERTY, APPLICATION_HOME_SYS_PROPERTY
   };
 
+  public static final String CORRELATION_ID = "correlation-id";
+
   public static void updateLoggingFromConfig(
       SettableRuntimeConfigFactory sConfigFactory, Config config) {
     String logLevel = LogUtil.getLoggingLevel(sConfigFactory);

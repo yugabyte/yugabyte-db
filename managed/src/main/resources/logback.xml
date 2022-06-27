@@ -16,7 +16,7 @@
     </rollingPolicy>
     <encoder>
       <!-- Limit log message to 20MB. Truncate from front if longer -->
-      <pattern>%date [%level] from %logger{0} in %thread - %.2000000message%n%xException</pattern>
+      <pattern>%date [%level] %X{correlation-id} from %logger{0} in %thread - %.2000000message%n%xException</pattern>
     </encoder>
 
     <!--
@@ -75,7 +75,7 @@
       </then>
       <else>
         <encoder>
-          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5coloredLevel %F:%L [%thread] %msg%n</pattern>
+          <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5coloredLevel %X{correlation-id} %F:%L [%thread] %msg%n</pattern>
         </encoder>
       </else>
     </if>
