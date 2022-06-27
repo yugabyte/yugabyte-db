@@ -778,7 +778,6 @@ CopyLoadRawBuf(CopyState cstate)
 	cstate->raw_buf_index = 0;
 	cstate->raw_buf_len = nbytes;
 	cstate->bytes_processed += nbytes;
-	pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 	return (inbytes > 0);
 }
 
@@ -1759,6 +1758,7 @@ BeginCopy(ParseState *pstate,
 	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->file_encoding);
 
 	cstate->copy_dest = COPY_FILE;	/* default */
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_IN_PROG);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -1820,6 +1820,7 @@ EndCopy(CopyState cstate)
 	}
 
 	pgstat_progress_end_command();
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_SUCCESS);
 
 	MemoryContextDelete(cstate->copycontext);
 	pfree(cstate);
@@ -2329,6 +2330,7 @@ CopyFromErrorCallback(void *arg)
 
 	snprintf(curlineno_str, sizeof(curlineno_str), UINT64_FORMAT,
 			 cstate->cur_lineno);
+	pgstat_progress_update_param(PROGRESS_COPY_STATUS, CP_ERROR);
 
 	if (cstate->binary)
 	{
@@ -3176,15 +3178,19 @@ CopyFrom(CopyState cstate)
 			/* Update progress of the COPY command as well.
 			 */
 			pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+			pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 			YBInitializeTransaction();
 
 			/* Start a new AFTER trigger */
 			AfterTriggerBeginQuery();
 			continue;
 		}
-		/* Update progress of the COPY command as well.
-		 */
+		/* We need to flush buffered operations so that error callback is executed */
+		YBFlushBufferedOperations();
+
+		/* Update progress of the COPY command as well */
 		pgstat_progress_update_param(PROGRESS_COPY_TUPLES_PROCESSED, processed);
+		pgstat_progress_update_param(PROGRESS_COPY_BYTES_PROCESSED, cstate->bytes_processed);
 	}
 
 	/* Flush any remaining buffered tuples */

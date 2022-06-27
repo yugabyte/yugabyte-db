@@ -507,7 +507,8 @@ pg_stat_get_progress_info(PG_FUNCTION_ARGS)
 		 * Report values for only those backends which are running the given
 		 * command.
 		 */
-		if (!beentry || beentry->st_progress_command != cmdtype)
+		if (!beentry || (beentry->st_progress_command != cmdtype &&
+						beentry->st_progress_command != PROGRESS_COMMAND_COPY))
 			continue;
 
 		/* Value available to all callers */
