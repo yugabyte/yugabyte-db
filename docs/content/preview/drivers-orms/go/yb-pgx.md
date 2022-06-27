@@ -55,7 +55,7 @@ import (
 )
 ```
 
-[Optional] Learn how to use the `pgxpool` package in the [Using pgxpool API](/preview/reference/drivers/go/yb-pgx-reference/#using-pgxpool-api) section.
+Optionally, you can choose to import the pgxpool package instead. Refer to [Using pgxpool API](/preview/reference/drivers/go/yb-pgx-reference/#using-pgxpool-api) to learn more.
 
 ### Step 2: Set up the database connection
 
@@ -73,6 +73,7 @@ The following table describes the connection parameters required to connect to t
 | port |  Listen port for YSQL | 5433
 | dbname | database name | yugabyte
 | load_balance | enables uniform load balancing | true
+| topology_keys | enables topology-aware load balancing | true
 
 The following is an example connection string for connecting to YugabyteDB with uniform load balancing.
 
@@ -90,16 +91,6 @@ conn, err := pgx.Connect(context.Background(), url)
 ```
 
 The following table describes the connection parameters required to connect to the YugabyteDB database with **Topology-aware load balancing**.
-
-| Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| host  | hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| dbname | database name | yugabyte
-| load_balance | enables load balancing | true
-| topology_keys | enables topology-aware load balancing | true
 
 The following is an example connection string for connecting to YugabyteDB with topology-aware load balancing.
 
