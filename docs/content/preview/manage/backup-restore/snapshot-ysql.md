@@ -73,7 +73,7 @@ Snapshot UUID                         State
 Snapshots never expire and are retained as long as the cluster exists. If you no longer need a snapshot, you can delete it by executing the [`delete_snapshot`](../../../admin/yb-admin/#delete-snapshot) command, as follows:
 
 ```sh
-./bin/yb-admin delete_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> delete_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
 ```
 
 ## Restore a snapshot
@@ -81,18 +81,12 @@ Snapshots never expire and are retained as long as the cluster exists. If you no
 To restore the data backed up in one of the previously created snapshots, run the [`restore_snapshot`](../../../admin/yb-admin/#restore-snapshot) command, as follows:
 
 ```sh
-./bin/yb-admin restore_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
+./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> restore_snapshot 0d4b4935-2c95-4523-95ab-9ead1e95e794
 ```
 
 This command rolls back the database to the state which it had when the snapshot was created. The restore happens in-place: it changes the state of the existing database within the same cluster.
 
-{{< note title="Reverting schema changes" >}}
-
-Currently, the in-cluster workflow described so far only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table will not be restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage), or use [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/).
-
-The limitation will be removed in an upcoming release. Tracking issue: [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
-
-{{< /note >}}
+Note that the described in-cluster workflow only reverts data changes, but not schema changes. For example, if you create a snapshot, drop a table, and then restore the snapshot, the table is not restored. As a workaround, you can either [store snapshots outside of the cluster](#move-a-snapshot-to-external-storage) or use [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/). This limitation will be removed in an upcoming release. For more information, see the tracking issue [12977](https://github.com/yugabyte/yugabyte-db/issues/12977).
 
 ## Move a snapshot to external storage
 
@@ -174,7 +168,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     DROP DATABASE IF EXISTS <database_name>;
     ```
 
-1. Fetch the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../admin/ycqlsh/) tool by executing the following command:
+1. Retrieve the YSQL metadata file from the external storage and apply it using the [`ysqlsh`](../../../admin/ycqlsh/) tool by executing the following command:
 
     ```sh
     ./bin/ysqlsh -h 127.0.0.1 --echo-all --file=<database_name>_schema.sql
@@ -183,7 +177,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
 1. Fetch the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command, as follows:
 
     ```sh
-    ./bin/yb-admin import_snapshot <database_name>.snapshot <database_name>
+    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> import_snapshot <database_name>.snapshot <database_name>
     ```
 
     Notice that the following output contains the mapping between the old tablet IDs and the new tablet IDs:
@@ -206,7 +200,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     Snapshot         0d4b4935-2c95-4523-95ab-9ead1e95e794   6beb9c0e-52ea-4f61-89bd-c160ec02c729
     ```
 
-1. Copy the tablet snapshots. Use the tablet mappings to copy the tablet snapshot files from the external storage to the appropriate location such as `yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots`.
+1. Copy the tablet snapshots. Use the tablet mappings to copy the tablet snapshot files from the external storage to the appropriate location such as `yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots`.<br>
 
     Based on the preceding examples, you would execute the following commands:
 
