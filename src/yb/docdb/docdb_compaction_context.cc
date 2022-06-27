@@ -261,7 +261,9 @@ class PackedRowData {
       column_value = Slice();
     }
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
-    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, /* tail_size= */ 0));
+    // Use min ssize_t value to be sure that packing always succeed.
+    constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
+    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, kUnlimitedTail));
     RSTATUS_DCHECK(result, Corruption, "Unable to pack old value for $0", column_id);
     return Status::OK();
   }

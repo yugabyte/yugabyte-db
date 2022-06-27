@@ -44,7 +44,7 @@ void TestRowPacking(const Schema& schema, const std::vector<QLValuePB>& values) 
   ASSERT_EQ(schema.num_columns() - schema.num_key_columns(), values.size());
   constexpr int kVersion = 1;
   SchemaPacking schema_packing(schema);
-  RowPacker packer(kVersion, schema_packing, std::numeric_limits<uint64_t>::max());
+  RowPacker packer(kVersion, schema_packing, std::numeric_limits<int64_t>::max());
   size_t idx = schema.num_key_columns();
   for (const auto& value : values) {
     auto column_id = schema.column_id(idx);
