@@ -33,6 +33,10 @@ namespace yb {
 namespace pgwrapper {
 namespace {
 
+Status EnableCatcacheEventLogging(PGConn* conn) {
+  return conn->Execute("SET yb_debug_log_catcache_events = ON");
+}
+
 class PgCatalogPerfTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
@@ -44,7 +48,9 @@ class PgCatalogPerfTest : public PgMiniTestBase {
 
   Result<uint64_t> CacheRefreshRPCCount() {
     auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(EnableCatcacheEventLogging(&conn));
     auto conn_aux = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(EnableCatcacheEventLogging(&conn_aux));
     RETURN_NOT_OK(conn_aux.Execute("CREATE TABLE t (k INT)"));
     RETURN_NOT_OK(conn_aux.Execute("ALTER TABLE t ADD COLUMN v INT"));
     // Catalog version was increased by the conn_aux but conn may not detect this immediately.
