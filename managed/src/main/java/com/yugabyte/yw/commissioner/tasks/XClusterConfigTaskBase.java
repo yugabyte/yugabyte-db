@@ -46,7 +46,9 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.WireProtocol.AppStatusPB.ErrorCode;
 import org.yb.cdc.CdcConsumer;
+import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.IsSetupUniverseReplicationDoneResponse;
+import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import play.api.Play;
 
@@ -663,6 +665,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return subTaskGroup;
   }
 
+  protected CatalogEntityInfo.SysClusterConfigEntryPB getClusterConfig(
+      YBClient client, UUID universeUuid) throws Exception {
+    GetMasterClusterConfigResponse clusterConfigResp = client.getMasterClusterConfig();
+    if (clusterConfigResp.hasError()) {
+      String errMsg =
+          String.format(
+              "Failed to getMasterClusterConfig from target universe (%s): %s",
+              universeUuid, clusterConfigResp.errorMessage());
+      throw new RuntimeException(errMsg);
+    }
+    return clusterConfigResp.getConfig();
+  }
+
   protected void updateStreamIdsFromTargetUniverseClusterConfig(
       CatalogEntityInfo.SysClusterConfigEntryPB config,
       XClusterConfig xClusterConfig,
@@ -673,7 +688,10 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             .getProducerMapMap()
             .get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
-      String errMsg = "No replication group found with name (%s) in universe (%s) cluster config";
+      String errMsg =
+          String.format(
+              "No replication group found with name (%s) in universe (%s) cluster config",
+              xClusterConfig.getReplicationGroupName(), xClusterConfig.targetUniverseUUID);
       throw new RuntimeException(errMsg);
     }
 
