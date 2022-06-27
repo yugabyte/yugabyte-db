@@ -5284,30 +5284,30 @@ Status CatalogManager::DeleteTableInternal(
 
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
-    if (table.info->IsColocatedUserTable()) {
+    auto colocated_tablet = table.info->GetColocatedUserTablet();
+    if (colocated_tablet) {
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
       if (table.retained_by_snapshot_schedules.empty()) {
         RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
         LOG(INFO) << "Notifying tablet with id "
-                  << table.info->GetColocatedTablet()->tablet_id()
+                  << colocated_tablet->tablet_id()
                   << " to remove this colocated table " << table.info->name()
                   << " from its metadata.";
         auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
+            master_, AsyncTaskPool(), colocated_tablet, table.info);
         table.info->AddTask(call);
         WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
       } else {
         // Hide this table if it is covered by some schedule.
         {
-          auto tablet_info = table.info->GetColocatedTablet();
-          auto tablet_lock = tablet_info->LockForWrite();
+          auto tablet_lock = colocated_tablet->LockForWrite();
 
           *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
               table.retained_by_snapshot_schedules;
 
           // Upsert to sys catalog and commit to memory.
-          RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_info));
+          RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), colocated_tablet));
           tablet_lock.Commit();
         }
         CheckTableDeleted(table.info);
