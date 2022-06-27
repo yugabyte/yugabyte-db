@@ -68,8 +68,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
         isMultiAz ? getDefaultUserIntent(provider) : getDefaultUserIntentSingleAZ(provider);
     Universe universe = createUniverse(defaultCustomer.getCustomerId());
     Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(ui, true));
-    defaultCustomer.addUniverseUUID(universe.universeUUID);
-    defaultCustomer.save();
     return universe;
   }
 
@@ -347,8 +345,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testServerGetWithValidUniverse(boolean isYql) {
     Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host", aws));
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.save();
 
     Result r =
         route(
@@ -367,8 +363,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testNoYSQLServers() {
     Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(false));
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.save();
 
     Result r =
         route(
@@ -388,8 +382,6 @@ public class MetaMasterControllerTest extends FakeDBApplication {
   private void testYSQLServers() {
     Universe u1 = createUniverse("Universe-1", defaultCustomer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdaterWithYSQLNodes(true));
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.save();
 
     Result r =
         route(

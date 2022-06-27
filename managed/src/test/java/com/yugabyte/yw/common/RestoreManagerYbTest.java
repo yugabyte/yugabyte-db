@@ -115,8 +115,6 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
-    testCustomer.addUniverseUUID(testUniverse.universeUUID);
-    testCustomer.save();
   }
 
   @Test
