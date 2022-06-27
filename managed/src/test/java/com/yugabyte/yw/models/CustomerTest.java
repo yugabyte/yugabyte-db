@@ -122,8 +122,6 @@ public class CustomerTest extends FakeDBApplication {
     userIntent.regionList.add(r.uuid);
     universe =
         Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-    c.addUniverseUUID(universe.universeUUID);
-    c.save();
     Set<Universe> universes = c.getUniversesForProvider(randProviderUUID);
     assertEquals(1, universes.size());
   }

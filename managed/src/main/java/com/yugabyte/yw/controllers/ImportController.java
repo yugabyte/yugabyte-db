@@ -505,9 +505,6 @@ public class ImportController extends AuthenticatedController {
     // ---------------------------------------------------------------------------------------------
     // Finalize universe entry in DB
     // ---------------------------------------------------------------------------------------------
-    // Add the universe to the current user account
-    customer.addUniverseUUID(universe.universeUUID);
-    customer.save();
 
     results.state = State.FINISHED;
 

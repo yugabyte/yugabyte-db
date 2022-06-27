@@ -937,6 +937,27 @@ public class Universe extends Model {
     return universeDetailsIfReleaseExists(version).size() != 0;
   }
 
+  static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
+    return find.query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
+        .stream()
+        .map(Universe::getUniverseUUID)
+        .collect(Collectors.toSet());
+  }
+
+  static Set<Universe> getUniversesForCustomer(Long customerId) {
+    return find.query()
+        .where()
+        .eq("customer_id", customerId)
+        .findSet()
+        .stream()
+        .peek(Universe::fillUniverseDetails)
+        .collect(Collectors.toSet());
+  }
+
   static boolean isUniversePaused(UUID uuid) {
     Universe universe = maybeGet(uuid).orElse(null);
     if (universe == null) {
