@@ -45,7 +45,7 @@ EXPLAIN SELECT * FROM t1 WHERE h = 1 and v1 = 1;
 (3 rows)
 
 SELECT * FROM t1 WHERE h = 1 and v1 = 1;
- h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3
 ---+---+----+----+----
  1 | 1 |  1 |  1 |  1
  1 | 2 |  1 |  2 |  5
@@ -60,7 +60,7 @@ EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1;
 (3 rows)
 
 SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1;
- h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3
 ---+---+----+----+----
  1 | 1 |  1 |  1 |  1
  1 | 2 |  1 |  2 |  5
@@ -75,7 +75,7 @@ EXPLAIN SELECT * FROM t1 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
 (3 rows)
 
 SELECT * FROM t1 WHERE h = 1 and r = 2 and v1 = 1 and v2 = 2;
- h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3
 ---+---+----+----+----
  1 | 2 |  1 |  2 |  5
 (1 row)
@@ -89,7 +89,7 @@ EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and r = 2 and v
 (3 rows)
 
 SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and r = 2 and v1 = 1 and v2 = 2;
- h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3
 ---+---+----+----+----
  1 | 2 |  1 |  2 |  5
 (1 row)
@@ -104,7 +104,7 @@ EXPLAIN SELECT * FROM t1 WHERE h = 1 and v1 = 1 and v2 = 2;
 (3 rows)
 
 SELECT * FROM t1 WHERE h = 1 and v1 = 1 and v2 = 2;
- h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3
 ---+---+----+----+----
  1 | 2 |  1 |  2 |  5
 (1 row)
@@ -118,7 +118,7 @@ EXPLAIN SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1 and 
 (3 rows)
 
 SELECT * FROM t1 WHERE yb_hash_code(h) = yb_hash_code(1) and v1 = 1 and v2 = 2;
- h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3
 ---+---+----+----+----
  1 | 2 |  1 |  2 |  5
 (1 row)

@@ -21,10 +21,12 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Retryable
 public class RotateAccessKey extends UniverseTaskBase {
 
   @Inject NodeManager nodeManager;
@@ -48,6 +50,7 @@ public class RotateAccessKey extends UniverseTaskBase {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     String customSSHUser = Util.DEFAULT_YB_SSH_USER;
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    checkPausedOrNonLiveNodes(universe, newAccessKey);
     try {
       lockUniverse(-1);
       // create check connection with current keys and create add key task
@@ -127,11 +130,15 @@ public class RotateAccessKey extends UniverseTaskBase {
                 "RemoveAuthorizedKey",
                 customSSHUser)
             .setSubTaskGroupType(subtaskGroupType);
+        createUpdateUniverseAccessKeyTask(universeUUID, cluster.uuid, newAccessKey.getKeyCode())
+            .setSubTaskGroupType(subtaskGroupType);
       }
-      createUpdateUniverseAccessKeyTask(universeUUID, newAccessKey.getKeyCode())
-          .setSubTaskGroupType(subtaskGroupType);
       getRunnableTask().runSubTasks();
     } catch (Exception e) {
+      log.error(
+          "Access Key Rotation failed for universe: {} with uuid {}",
+          universe.name,
+          universe.universeUUID);
       throw new RuntimeException(e);
     } finally {
       unlockUniverseForUpdate();
@@ -173,18 +180,39 @@ public class RotateAccessKey extends UniverseTaskBase {
   }
 
   public SubTaskGroup createUpdateUniverseAccessKeyTask(
-      UUID universeUUID, String newAccessKeyCode) {
+      UUID universeUUID, UUID clusterUUID, String newAccessKeyCode) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("UpdateUniverseAccessKey", executor);
 
     UpdateUniverseAccessKey.Params params = new UpdateUniverseAccessKey.Params();
     params.newAccessKeyCode = newAccessKeyCode;
     params.universeUUID = universeUUID;
+    params.clusterUUID = clusterUUID;
     UpdateUniverseAccessKey task = createTask(UpdateUniverseAccessKey.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  private void checkPausedOrNonLiveNodes(Universe universe, AccessKey newAccessKey) {
+    if (universe.getUniverseDetails().universePaused) {
+      throw new RuntimeException(
+          "The universe "
+              + universe.name
+              + " is paused,"
+              + " cannot run access key rotation. Retry with access key "
+              + newAccessKey.getKeyCode()
+              + " after resuming it!");
+    } else if (!universe.allNodesLive()) {
+      throw new RuntimeException(
+          "The universe "
+              + universe.name
+              + " has non-live nodes,"
+              + " cannot run access key rotation. Retry with access key "
+              + newAccessKey.getKeyCode()
+              + " after fixing node status!");
+    }
   }
 }

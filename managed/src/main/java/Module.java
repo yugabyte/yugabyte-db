@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
+import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.AlertManager;
 import com.yugabyte.yw.common.ConfigHelper;
@@ -140,6 +141,7 @@ public class Module extends AbstractModule {
       bind(SupportBundleUtil.class).asEagerSingleton();
       bind(MetricGrafanaController.class).asEagerSingleton();
       bind(PlatformScheduler.class).asEagerSingleton();
+      bind(AccessKeyRotationUtil.class).asEagerSingleton();
     }
   }
 

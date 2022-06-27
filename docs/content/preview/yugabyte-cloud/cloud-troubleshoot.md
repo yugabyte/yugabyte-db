@@ -71,7 +71,15 @@ The database admin credentials are separate from your YugabyteDB Managed credent
 
 If you are a database user who was added to the database by an administrator, ask your administrator to either re-send your credentials or [change your database password](../cloud-secure-clusters/add-users/).
 
-If you are the database admin and are unable to locate your database admin credentials file, contact {{<support-cloud>}}.
+Verify the case of the user name. Similarly to SQL and CQL, YSQL and YCQL are case-insensitive. When adding roles, names are automatically converted to lowercase. For example, the following command:
+
+```sql
+CREATE ROLE Alice LOGIN PASSWORD 'Password';
+```
+
+creates the user "alice". If you subsequently try to log in as "Alice", the login will fail. To use a case-sensitive name for a role, enclose the name in quotes. For example, to create the role "Alice", use `CREATE ROLE "Alice"`.
+
+If you are the database admin and are unable to locate your database admin credentials file, contact {{% support-cloud %}}.
 
 ### VPC networking
 
@@ -79,7 +87,7 @@ If you have set up a VPC network and are unable to connect, verify the following
 
 #### VPC status is Failed
 
-If you are unable to successfully create the VPC, contact {{<support-cloud>}}.
+If you are unable to successfully create the VPC, contact {{% support-cloud %}}.
 
 #### Peering connection status is Pending
 
@@ -108,7 +116,7 @@ ERROR:  permission denied to [...]
 HINT:  Must be superuser to [...].
 ```
 
-For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{<support-cloud>}}.
+For security reasons, the database admin user is not a superuser. The admin user is a member of yb_superuser, which does allow most operations. For more information on database roles and privileges in YugabyteDB Managed, refer to [Database authorization in YugabyteDB Managed clusters](../cloud-secure-clusters/cloud-users/). If you need to perform an operation that requires superuser privileges, contact {{% support-cloud %}}.
 
 ### I need to change my database admin password
 
@@ -118,4 +126,4 @@ YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) 
 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
 
-50GB of disk space per vCPU is included in the base price for standard clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{<support-cloud>}}.
+50GB of disk space per vCPU is included in the base price for Dedicated clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{% support-cloud %}}.

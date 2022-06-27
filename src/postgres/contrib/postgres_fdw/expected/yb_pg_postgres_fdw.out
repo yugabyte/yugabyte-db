@@ -7758,6 +7758,13 @@ select tableoid::regclass, * FROM remp2 order by 1, 2, 3;
 copy remp1 from stdin;
 WARNING:  Batched COPY is not supported on foreign tables. Defaulting to using one transaction for the entire copy.
 HINT:  Either copy onto non-temporary table or set rows_per_transaction option to `0` to disable batching and remove this warning.
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+ relid |  command  | yb_status | type | bytes_processed | bytes_total | tuples_processed | tuples_excluded
+-------+-----------+-----------+------+-----------------+-------------+------------------+-----------------
+ remp1 | COPY FROM | SUCCESS   | PIPE |               6 |           0 |                1 |               0
+(1 row)
+
 select tableoid::regclass, * FROM remp1 order by 1, 2, 3;
  tableoid | a |  b
 ----------+---+-----

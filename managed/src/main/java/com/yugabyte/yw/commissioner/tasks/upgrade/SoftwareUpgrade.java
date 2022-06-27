@@ -59,7 +59,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                   .forUniverse(universe)
                   .getLong("yb.dbmem.checks.mem_available_limit_kb");
           createAvailabeMemoryCheck(nodes.getRight(), Util.AVAILABLE_MEMORY, memAvailableLimit)
-              .setSubTaskGroupType(getTaskSubGroupType());
+              .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
           String newVersion = taskParams().ybSoftwareVersion;
 
@@ -68,7 +68,8 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // Install software on nodes.
           createUpgradeTaskFlow(
               (nodes1, processTypes) ->
-                  createSoftwareInstallTasks(nodes1, getSingle(processTypes), newVersion),
+                  createSoftwareInstallTasks(
+                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
               SOFTWARE_UPGRADE_CONTEXT);
           // Run YSQL upgrade on the universe.

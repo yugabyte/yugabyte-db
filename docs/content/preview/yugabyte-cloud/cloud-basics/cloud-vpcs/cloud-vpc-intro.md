@@ -28,7 +28,7 @@ Deploying your cluster in a VPC network has the following advantages:
 
 ## Pricing
 
-There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for free clusters.
+There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
 
 ## Limitations
 
@@ -37,9 +37,9 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 - You can't peer VPCs with overlapping ranges with the same application VPC.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
-- VPCs are not supported on free clusters.
+- VPCs are not supported on Sandbox clusters.
 
-If you need additional VPCs, contact {{<support-cloud>}}.
+If you need additional VPCs, contact {{% support-cloud %}}.
 
 ## Prerequisites
 

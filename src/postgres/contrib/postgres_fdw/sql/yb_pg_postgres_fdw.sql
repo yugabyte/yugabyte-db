@@ -2039,6 +2039,9 @@ copy remp1 from stdin;
 1	bar
 \.
 
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+
 select tableoid::regclass, * FROM remp1 order by 1, 2, 3;
 
 drop table ctrtest;

@@ -5,7 +5,7 @@ description: Prisma
 section: INTEGRATIONS
 menu:
   preview:
-    identifier: prisma
+    identifier: prisma-integration
     weight: 571
 isTocNested: true
 showAsideToc: true
