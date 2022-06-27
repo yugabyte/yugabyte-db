@@ -189,4 +189,4 @@ if err != nil {
 ## Next steps
 
 - Learn how to build Go applications using [GORM](../gorm).
-- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/) of the PGX Driver.
+- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/#fundamentals) of the PGX Driver.

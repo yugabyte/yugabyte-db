@@ -233,7 +233,7 @@ The primary way of establishing a connection is with `pgxpool.Connect()`.
 pool, err := pgxpool.Connect(context.Background(), os.Getenv("DATABASE_URL"))
 ```
 
-One can also provide configuration for the pool as follows:
+You can also provide configuration for the pool as follows:
 
 ```go
 config, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))

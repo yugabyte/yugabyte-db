@@ -37,7 +37,7 @@ For Go applications, most drivers provide database connectivity through the stan
 
 </ul>
 
-The [YugabyteDB PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL. Use the driver to connect to YugabyteDB database to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
+The [YugabyteDB PGX driver](https://pkg.go.dev/github.com/yugabyte/pgx) is a Go driver based on [jackc/pgx](https://github.com/jackc/pgx/), with an additional feature of [Connection load balancing](https://github.com/yugabyte/pgx#connection-load-balancing).
 
 ## CRUD operations
 
@@ -109,7 +109,7 @@ conn, err := pgx.Connect(context.Background(), url)
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../quick-start/build-apps/go/ysql-yb-pgx/#enable-ssl-tls) for the default and supported modes.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the following SSL-related environment variables at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [Configure SSL/TLS](../../../quick-start/build-apps/go/ysql-pgx/#ssl-tls-configuration) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -212,4 +212,4 @@ if err != nil {
 ## Next steps
 
 - Learn how to build Go applications using [GORM](../gorm).
-- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/) of the PGX Driver.
+- Learn more about [fundamentals](../../../reference/drivers/go/yb-pgx-reference/#fundamentals) of the YugabyteDB PGX Driver.
