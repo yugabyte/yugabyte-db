@@ -914,7 +914,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
     // Wait for the heartbeat response
     for (auto& future : heartbeat_futures) {
-      RETURN_NOT_OK(future.get());
+      auto status = future.get();
+      // If the transaction has been aborted or no longer exists, we don't have to do anything
+      // further. The rollback heartbeat which tries to update the list of aborted sub-txns is as
+      // good as successful.
+      if (!(status.IsAborted() || status.IsExpired()))
+        RETURN_NOT_OK(status);
     }
 
     #ifndef NDEBUG
