@@ -2227,36 +2227,38 @@ void CatalogManager::CleanupHiddenTables(
       auto lock = table->LockForRead();
       // If the table is colocated and hidden then remove it from its colocated tablet if
       // it has expired.
-      if (lock->is_hidden() && !lock->started_deleting() && table->IsColocatedUserTable()) {
-        auto tablet_info = table->GetColocatedTablet();
-        auto tablet_lock = tablet_info->LockForRead();
-        bool cleanup = true;
-        auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+      if (lock->is_hidden() && !lock->started_deleting()) {
+        auto tablet_info = table->GetColocatedUserTablet();
+        if (tablet_info) {
+          auto tablet_lock = tablet_info->LockForRead();
+          bool cleanup = true;
+          auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
 
-        for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
-          auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-          auto it = schedule_min_restore_time.find(schedule_id);
-          // If schedule is not present in schedule_min_restore_time then it means that schedule
-          // was deleted, so it should not retain the tablet.
-          if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
-            VLOG_WITH_PREFIX(1)
-                << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
-                << hide_hybrid_time << ", because of schedule: " << schedule_id
-                << ", min restore time: " << it->second;
-            cleanup = false;
-            break;
+          for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
+            auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+            auto it = schedule_min_restore_time.find(schedule_id);
+            // If schedule is not present in schedule_min_restore_time then it means that schedule
+            // was deleted, so it should not retain the tablet.
+            if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
+              VLOG_WITH_PREFIX(1)
+                  << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
+                  << hide_hybrid_time << ", because of schedule: " << schedule_id
+                  << ", min restore time: " << it->second;
+              cleanup = false;
+              break;
+            }
           }
-        }
 
-        if (!cleanup) {
-          return true;
+          if (!cleanup) {
+            return true;
+          }
+          LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
+          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+              master_, AsyncTaskPool(), tablet_info, table);
+          table->AddTask(call);
+          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+          table->ClearTabletMaps();
         }
-        LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
-        auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), tablet_info, table);
-        table->AddTask(call);
-        WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-        table->ClearTabletMaps();
       }
       if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
         return true;
