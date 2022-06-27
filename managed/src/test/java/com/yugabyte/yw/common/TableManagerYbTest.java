@@ -253,8 +253,6 @@ public class TableManagerYbTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
-    testCustomer.addUniverseUUID(testUniverse.universeUUID);
-    testCustomer.save();
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
   }

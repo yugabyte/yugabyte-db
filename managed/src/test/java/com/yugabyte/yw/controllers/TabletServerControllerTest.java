@@ -48,8 +48,6 @@ public class TabletServerControllerTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.save();
     Result r = tabletController.listTabletServers(customer.uuid, u1.universeUUID);
     assertEquals(200, r.status());
     assertAuditEntry(0, customer.uuid);
@@ -62,8 +60,6 @@ public class TabletServerControllerTest extends FakeDBApplication {
     Universe u1 = createUniverse(customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
     UUID universeUUID = u1.universeUUID;
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.save();
     Result result =
         assertPlatformException(
             () -> tabletController.listTabletServers(customer.uuid, universeUUID));

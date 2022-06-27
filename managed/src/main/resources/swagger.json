@@ -2660,17 +2660,6 @@
           "example" : "sridhar",
           "type" : "string"
         },
-        "universeUUIDs" : {
-          "description" : "Universe UUIDs",
-          "example" : "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]",
-          "items" : {
-            "format" : "uuid",
-            "type" : "string"
-          },
-          "readOnly" : true,
-          "type" : "array",
-          "uniqueItems" : true
-        },
         "uuid" : {
           "description" : "Customer UUID",
           "format" : "uuid",
