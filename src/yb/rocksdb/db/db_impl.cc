@@ -162,9 +162,6 @@ DEFINE_int32(automatic_compaction_extra_priority, 0,
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_bool(task_ignore_disk_priority, true,
-              "Ignore disk priority when considering compaction and flush priorities.");
-
 DEFINE_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
 
@@ -411,9 +408,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    if (FLAGS_task_ignore_disk_priority) {
-      return kNoDiskPriority;
-    }
     return kTopDiskCompactionPriority - active_tasks;
   }
 
@@ -522,9 +516,6 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    if (FLAGS_task_ignore_disk_priority) {
-      return kNoDiskPriority;
-    }
     return kTopDiskFlushPriority - active_tasks;
   }
 
