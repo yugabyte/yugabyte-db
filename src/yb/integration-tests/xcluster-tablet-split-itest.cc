@@ -350,13 +350,10 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
       int cur_num_tablets, bool parent_tablet_protected_from_deletion = false) {
     // Splits all tablets for cluster_.
     auto* catalog_mgr = VERIFY_RESULT(catalog_manager());
-    auto tablet_peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_->id());
-    EXPECT_EQ(tablet_peers.size(), cur_num_tablets);
-    for (const auto& peer : tablet_peers) {
-      const auto source_tablet_ptr = peer->tablet();
-      EXPECT_NE(source_tablet_ptr, nullptr);
-      const auto& source_tablet = *source_tablet_ptr;
-      RETURN_NOT_OK(SplitTablet(catalog_mgr, source_tablet));
+    auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+    EXPECT_EQ(tablet_ids.size(), cur_num_tablets);
+    for (const auto& tablet_id : tablet_ids) {
+      RETURN_NOT_OK(catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue));
     }
     size_t expected_non_split_tablets = cur_num_tablets * 2;
     size_t expected_split_tablets = parent_tablet_protected_from_deletion
