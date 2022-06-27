@@ -69,7 +69,7 @@ aside.td-sidebar {
     cursor: pointer;
     font-size: 0;
     left: calc(100% - 16px);
-    top: calc(100vh - 195px);
+    top: calc(100vh - 165px);
     overflow: hidden;
 
     .collapse-nav-tip {
@@ -1173,7 +1173,7 @@ aside.td-sidebar nav > ul > li.view-all-products > {
 }
 
 aside.td-sidebar nav > ul > li.view-all-products.open > i {
-  border-color: var(--theme-color) !important;
+  border-color: var(--theme-dmenu-color) !important;
 
   &::before {
     background: var(--theme-color) !important;
@@ -1340,8 +1340,8 @@ aside.td-sidebar nav > ul > li.bottom-link.arrow-menu > i {
   border: none;
   width: 9px;
   height: 9px;
-  border-bottom: 2px solid #666;
-  border-right: 2px solid #666;
+  border-bottom: 2px solid var(--theme-dmenu-color);
+  border-right: 2px solid var(--theme-dmenu-color);
   transform: rotate(45deg);
   transform-origin: 7px 7px;
   transition: transform 300ms ease;
@@ -1366,14 +1366,14 @@ aside.td-sidebar nav > ul > li.arrow-menu.open > i {
   transform: rotate(225deg);
 }
 
-aside.td-sidebar nav > ul > li.arrow-menu > a:hover + i {
+aside.td-sidebar nav > ul > li.arrow-menu > a:hover {
   border-color: var(--theme-color);
 }
 
 aside.td-sidebar nav > ul > li.arrow-menu > i:hover,
 aside.td-sidebar nav > ul > li.bottom-link.arrow-menu > i:hover {
   animation: none;
-  border-color: var(--theme-color);
+  border-color: var(--theme-dmenu-color);
 }
 
 aside.td-sidebar nav > ul > li.arrow-menu > i::before,

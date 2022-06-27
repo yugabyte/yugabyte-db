@@ -77,7 +77,7 @@ $(document).ready(() => {
         }
         const button = document.createElement('button');
         button.className = 'copy unclicked';
-        button.textContent = 'copy';
+        button.textContent = '';
         button.addEventListener('click', e => {
           const elem = e.target;
           elem.classList.remove('unclicked');
@@ -159,12 +159,12 @@ $(document).ready(() => {
     const expiryDate = 3600 * 1000 * 24 * 365;
 
     this.classList.toggle('change');
-    if (currentMode === 'purple') {
-      htmlAttr.setAttribute('data-theme', 'orange');
-      document.cookie = `yb_docs_theme_color=orange; expires=${expiryDate}; path=/`;
-    } else {
+    if (currentMode === 'orange') {
       htmlAttr.setAttribute('data-theme', 'purple');
       document.cookie = `yb_docs_theme_color=purple; expires=${expiryDate}; path=/`;
+    } else {
+      htmlAttr.setAttribute('data-theme', 'orange');
+      document.cookie = `yb_docs_theme_color=orange; expires=${expiryDate}; path=/`;
     }
   };
 

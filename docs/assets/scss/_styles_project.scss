@@ -18,15 +18,17 @@
 /******* Variables for Color Theme Switcher **********/
 
 :root {
-  --theme-color: #f75821;
-  --theme-dark-color: #ed3d00;
-  --left_menu_bg: rgba(249, 176, 151, 0.2);
-}
-
-[data-theme="purple"] {
   --theme-color: #312965;
   --theme-dark-color: #5b5480;
+  --theme-dmenu-color: #f75821;
   --left_menu_bg: #cecdd6;
+}
+
+[data-theme="orange"] {
+  --theme-color: #f75821;
+  --theme-dark-color: #ed3d00;
+  --theme-dmenu-color: #312965;
+  --left_menu_bg: rgba(249, 176, 151, 0.2);
 }
 
 /******* Variables for Color Theme Switcher **********/
@@ -403,7 +405,7 @@ body:not(.td-home) .td-main main {
   margin-left: 30px;
   cursor: pointer;
   position: relative;
-  border: 2px solid #f75821;
+  border: 2px solid $secondary;
 }
 
 .switcher::before {
@@ -411,7 +413,7 @@ body:not(.td-home) .td-main main {
   width: 15px;
   height: 15px;
   position: absolute;
-  background: #f75821;
+  background: $secondary;
   border-radius: 100%;
   top: 5px;
   left: 5px;
@@ -420,11 +422,11 @@ body:not(.td-home) .td-main main {
 
 .switcher.change::before {
   left: calc(100% - 20px);
-  background: #312965;
+  background: $primary;
 }
 
 .switcher.change {
-  border-color: #312965;
+  border-color: $primary;
 }
 
 div#main_navbar {

@@ -11,7 +11,7 @@
    * Decode the cookie and return the appropriate cookie value if found
    * Otherwise empty string is returned.
    *
-   * @param {*} cname Cookie name.
+   * @param {string} cname Cookie name.
    *
    * @returns string
    */
@@ -46,12 +46,13 @@
 
   if (ybHtmlAttr && ybThemeColor) {
     const ybCurrentMode = ybHtmlAttr.getAttribute('data-theme');
-    if (!ybCurrentMode || ybCurrentMode !== ybThemeColor) {
+    const themeSwitcher = document.querySelector('.switcher');
+    if (ybCurrentMode !== ybThemeColor) {
       ybHtmlAttr.setAttribute('data-theme', ybThemeColor);
-    }
 
-    if (ybThemeColor === 'purple' && document.querySelector('.switcher')) {
-      document.querySelector('.switcher').classList.toggle('change');
+      if (themeSwitcher && ybThemeColor === 'orange') {
+        themeSwitcher.classList.toggle('change');
+      }
     }
   }
 })();

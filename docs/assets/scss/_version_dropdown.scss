@@ -36,7 +36,7 @@
   }
 
   .dropdown-menu {
-    box-shadow: 0 8px 8px rgba(32, 41, 81, 0.16);
+    box-shadow: 0 8px 8px var(--theme-dmenu-color);
     border: none;
     border-radius: 7px;
   }
