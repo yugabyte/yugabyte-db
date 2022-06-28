@@ -116,6 +116,12 @@ h1 {
   height: auto;
 }
 
+.td-content .expandable-image {
+  display: block;
+  width: 350px;
+  cursor: pointer;
+}
+
 .heading-content {
   display: flex;
   width: 100%;
