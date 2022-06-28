@@ -825,7 +825,7 @@ CREATE INDEX idx2_tbl_group_tbl ON tbl_group_tbl (r1 NULLS LAST);
  v1     | integer |           |          |
  v2     | integer |           |          |
 Indexes:
-    "tbl_group_tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC), tablegroup "tbl_group"
+    "tbl_group_tbl_pkey" PRIMARY KEY, lsm (r1 ASC, r2 ASC)
     "idx2_tbl_group_tbl" lsm (r1 ASC), tablegroup "tbl_group"
     "idx_tbl_group_tbl" lsm (r1 ASC NULLS FIRST), tablegroup "tbl_group"
 Tablegroup: "tbl_group"

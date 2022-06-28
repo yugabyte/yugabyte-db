@@ -6181,6 +6181,13 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
 
   resp->set_colocated(table->colocated());
 
+  if (table->IsColocatedUserTable()) {
+    auto* tablegroup = tablegroup_manager_->FindByTable(table->id());
+    if (tablegroup) {
+      resp->set_tablegroup_id(tablegroup->id());
+    }
+  }
+
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
           << yb::ToString(*resp);
   return Status::OK();
