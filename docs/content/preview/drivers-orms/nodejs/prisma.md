@@ -9,8 +9,7 @@ menu:
     identifier: prisma
     parent: nodejs-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -40,14 +39,14 @@ showAsideToc: true
 
 The Prisma client can be a REST API, a GraphQL API, a gRPC API, or anything else that needs a database.
 
-Because YugabyteDB is PostgreSQL-compatible, Prisma supports the YugabyteDB YSQL API. 
+Because YugabyteDB is PostgreSQL-compatible, Prisma supports the YugabyteDB YSQL API.
 
 This page provides details for getting started with Prisma for connecting to YugabyteDB using the PostgreSQL database connector.
 
 ## Working with domain objects
 
 This section describes how to use data models (domain objects) to store and retrieve data from a YugabyteDB cluster.
- 
+
 Prisma has a main file called `schema.prisma` in which the configurations and data models are defined. The data models are also called Prisma models which represent the entities of your application, and map to the tables in the database. Prisma models also form the basis of the queries available in the generated Prisma Client API.
 
 ## CRUD operations with Prisma
@@ -94,7 +93,7 @@ npm install -g prisma
     $ touch example.js
     ```
 
-### Step 2: Initialize Prisma and connect to YugabyteDB 
+### Step 2: Initialize Prisma and connect to YugabyteDB
 
 1. Initialize Prisma in your project using the following command:
 
@@ -170,24 +169,24 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
     const prisma = new PrismaClient()
 
     async function example() {
-        
+
         const employee1 = {
             emp_id: 1,
             emp_name: "Jake",
             emp_age: 24,
-            emp_email: "jake24@example.com" 
+            emp_email: "jake24@example.com"
         }
         const employee2 = {
             emp_id: 2,
             emp_name: "Sam",
             emp_age: 30,
-            emp_email: "sam30@example.com" 
+            emp_email: "sam30@example.com"
         }
         const employee3 = {
             emp_id: 3,
             emp_name: "Tom",
             emp_age: 22,
-            emp_email: "tom22@example.com" 
+            emp_email: "tom22@example.com"
         }
 
         await prisma.employee
@@ -211,7 +210,7 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
                   })
             })
             .catch((err)=>{
-              console.log("Error in creating employees: ",err); 
+              console.log("Error in creating employees: ",err);
             })
     }
 
@@ -234,7 +233,7 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
     ```
 
     \
-    Expect output similar to the following: 
+    Expect output similar to the following:
 
     ```output
     Created 3 employees.

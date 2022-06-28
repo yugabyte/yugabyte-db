@@ -9,8 +9,7 @@ menu:
     identifier: cloud-advisor
     parent: cloud-monitor
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use Performance Advisor to scan your cluster for potential optimizations.
