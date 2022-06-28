@@ -23,8 +23,6 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 
-DECLARE_bool(transaction_tables_use_preferred_zones);
-
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
 namespace master {

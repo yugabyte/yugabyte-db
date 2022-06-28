@@ -243,16 +243,27 @@ ADD_YB_LIBRARY(tserver
   NONLINK_DEPS postgres)
 
 #########################################
+# yb-tserver_util
+#########################################
+
+set(YB_TSERVER_UTIL_SRCS
+  tserver_call_home.cc)
+
+ADD_YB_LIBRARY(yb-tserver_util
+  SRCS ${YB_TSERVER_UTIL_SRCS}
+  DEPS tserver)
+
+#########################################
 # yb-tserver
 #########################################
 
 add_executable(yb-tserver tablet_server_main.cc)
 target_link_libraries(yb-tserver
   tserver
+  yb-tserver_util
   yb-cql
   yb-redis
   yb_pgwrapper
-  master
   ${YB_BASE_LIBS})
 
 #########################################
@@ -276,6 +287,7 @@ set(YB_TEST_LINK_LIBS
   tserver
   tserver_test_util
   yb_client # yb::client::YBTableName
+  yb-tserver_util
   tablet_test_util
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test)

@@ -52,7 +52,7 @@
 #include "yb/yql/redis/redisserver/redis_server.h"
 
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/call_home.h"
+#include "yb/tserver/tserver_call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/server/skewed_clock.h"
@@ -96,6 +96,13 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
 
+DEFINE_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
+
+DEFINE_bool(enable_ysql, true,
+            "Enable YSQL on cluster. Whether to run a PostgreSQL server as a child process of the"
+                  " tablet server.");
+
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
 DECLARE_int32(webserver_port);
@@ -110,7 +117,6 @@ DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_bool(start_pgsql_proxy);
-DECLARE_bool(enable_ysql);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
@@ -208,8 +214,8 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
-  std::unique_ptr<CallHome> call_home;
-  call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
+  std::unique_ptr<TserverCallHome> call_home;
+  call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
 
   std::unique_ptr<PgSupervisor> pg_supervisor;
