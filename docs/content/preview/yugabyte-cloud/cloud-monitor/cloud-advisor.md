@@ -114,6 +114,12 @@ Any of these conditions can result in a hot spot.
 
 Review the sharding strategies for your primary and secondary indexes. Consistent hash sharding is better for scalability and preventing hot spots, while range sharding is better for range-based queries.
 
+## Limitations
+
+- At 80%+ CPU use, Index and Schema suggestions may not provide any results.
+- On clusters with more than 3 databases and multiple unused indexes, the Index suggestions may not provide optimal results.
+- For clusters running YugabyteDB 2.8 and earlier, the Connection skew may not offer any suggestions.
+
 ## Learn more
 
 - [Sharding data across nodes](../../../explore/linear-scalability/sharding-data/)
