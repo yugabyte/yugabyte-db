@@ -41,7 +41,23 @@ If the bug hasn’t been reported / addressed, or we’ve agreed on the enhancem
 1. [Fork](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo) this repository
 2. Clone this repository on your machine.
 3. Create a separate branch for your changes. If you work on a Jira issue, please include the issue number in the branch name so it reads as `<JIRAISSUE>-my_branch`. This makes it easier to track your contribution.
-4. Make your changes. Please follow the guidelines outlined in the [PostgreSQL Coding Standard](https://www.postgresql.org/docs/current/source.html)  to improve code readability.
+4. Make your changes. Please follow the guidelines outlined in the [PostgreSQL Coding Standard](https://www.postgresql.org/docs/current/source.html) to improve code readability.
+   <details>
+    <summary>.vimrc configuration example</summary> 
+
+    ```
+    set nocompatible                " choose no compatibility with legacy vi
+    syntax enableset 
+    tabstop=4set 
+    background=lightset 
+    textwidth=80set 
+    colorcolumn=80
+    let g:filestyle_ignore_patterns = ['^\t* \{1,3}\S']
+    highlight Normal ctermbg=15
+    highlight ColorColumn ctermbg=52 
+    ```
+  </details>
+
 5. Test your changes locally. See the [Running tests ](#running-tests) section for more information
 6. Update the documentation describing your changes. See the [Contributing to documentation](#contributing-to-documentation) section for details
 8. Commit the changes. Add the Jira issue number at the beginning of your message subject, so that is reads as `<JIRAISSUE> : My commit message`.  Follow this pattern for your commits:
