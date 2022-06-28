@@ -67,9 +67,11 @@ DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
 DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms, 0,
     "Inject delay between creation and dispatch of RPC ops for testing");
 
+// TODO(dmitry): Next flag is used for testing purpose to simulate tablet splitting.
+// It is better to rewrite tests and use real tablet splitting instead of the emulation.
+// Flag should be removed after this (#13079)
 DEFINE_test_flag(bool, index_read_multiple_partitions, false,
-      "Test flag used to set only one partiton to the variable table_partitions_ while testing"
-      "tablet splitting.");
+      "Test flag used to simulate tablet spliting by joining tables' partitions.");
 
 DEFINE_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "
