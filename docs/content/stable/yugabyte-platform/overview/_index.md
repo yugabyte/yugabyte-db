@@ -26,7 +26,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install/">
+    <a class="section-link icon-offset" href="install/public-cloud/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install</div>
@@ -38,7 +38,7 @@ Yugabyte Platform offers three levels of user accounts: Super Admin, Admin, and 
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="configure/">
+    <a class="section-link icon-offset" href="configure/aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">Configure</div>
