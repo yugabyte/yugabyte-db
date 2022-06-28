@@ -8,9 +8,7 @@ menu:
     name: Node.js
     identifier: nodejs-4
     weight: 551
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -38,7 +36,7 @@ showAsideToc: true
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
 {{< tip title="YugabyteDB Managed requires SSL" >}}
@@ -127,7 +125,7 @@ If you have a YugabyteDB Managed cluster, do the following:
     DATABASE_URL="postgresql://<user>:<password>@<host>:<port>/<db_name>?sslmode=require&sslcert=<cert_path>"
     ```
 
-## Apply the migrations 
+## Apply the migrations
 
 Create the tables in YugabyteDB by applying the migration for the data models in the file `prisma/schema.prisma`, and generate the Prisma client using the following command:
 
@@ -303,8 +301,8 @@ $ curl http://localhost:8080/orders
           "productId": 1,
           "quantity": 2
         },
-        { 
-          "productId": 2, 
+        {
+          "productId": 2,
           "quantity": 4
         }
       ]
@@ -323,7 +321,7 @@ $ curl http://localhost:8080/orders
   ]
 }
 ```
-### Use Prisma Studio 
+### Use Prisma Studio
 
 Start Prisma Studio using the following command:
 
