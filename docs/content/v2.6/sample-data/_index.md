@@ -5,9 +5,9 @@ description: Sample datasets
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.6:
-   identifier: sample-data
-   parent: reference
-   weight: 2950
+    identifier: sample-data
+    parent: reference
+    weight: 2950
 type: indexpage
 ---
 

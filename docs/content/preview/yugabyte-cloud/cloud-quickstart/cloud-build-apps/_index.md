@@ -9,7 +9,6 @@ aliases:
   - /preview/yugabyte-cloud/cloud-develop/
 menu:
   preview_yugabyte-cloud:
-    parent: yugabytedb-managed
     identifier: cloud-build-apps
     parent: cloud-quickstart
     weight: 500

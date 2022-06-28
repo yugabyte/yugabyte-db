@@ -10,7 +10,6 @@ aliases:
   - /preview/yugabyte-cloud/cloud-secure-clusters/cloud-vpcs/
 menu:
   preview_yugabyte-cloud:
-    parent: yugabytedb-managed
     identifier: cloud-vpcs
     parent: cloud-basics
     weight: 20
