@@ -52,7 +52,7 @@ To back up a single table with its indexes, use the [`create_snapshot`](../../..
 ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> create_snapshot my_keyspace my_table
 ```
 
-When you execute either of the preceding commands, a unique ID for the snapshot is return, as per the following output:
+When you execute either of the preceding commands, a unique ID for the snapshot is returned, as per the following output:
 
 ```output
 Started snapshot creation: a9442525-c7a2-42c8-8d2e-658060028f0e
@@ -122,7 +122,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
     * *<tablet_id>* - each table contains a list of tablets. Each tablet has a `<tablet_id>.snapshots` directory that you need to copy.
     * *<snapshot_id>* - there is a directory for each snapshot, since you can have multiple completed snapshots on each server.
 
-    This directory structure is specific to `yb-ctl`, which is a local testing tool. In practice, for each server, you would use the `--fs_data_dirs` flag, which is a comma-separated list of paths for the data. It is recommended to have different paths on separate disks. In the `yb-ctl` example, these are the full paths up to the `disk-x`.
+    This directory structure is specific to a local testing tool `yb-ctl`. In practice, for each server, you would use the `--fs_data_dirs` flag, which is a comma-separated list of paths for the data. It is recommended to have different paths on separate disks. In the `yb-ctl` example, these are the full paths up to the `disk-number`.
 
 To obtain a snapshot of a multi-node cluster, you would access each node and copy the folders of only the leader tablets on that node. Since each tablet replica has a copy of the same data, there is no need to keep a copy for each replica.
 
@@ -130,7 +130,7 @@ If you don't want to keep the in-cluster snapshot, you can safely [delete it](#d
 
 ## Restore a snapshot from external storage
 
-You can restore a snapshot that you have [moved to external storage](#move-a-snapshot-to-an-external-storage), as follows:
+You can restore a snapshot that you have [moved to external storage](#move-a-snapshot-to-external-storage), as follows:
 
 1. Retrieve the snapshot metadata file from the external storage and apply it by running the [`import_snapshot`](../../../admin/yb-admin/#import-snapshot) command, as follows:
 
@@ -158,7 +158,7 @@ You can restore a snapshot that you have [moved to external storage](#move-a-sna
     Snapshot         a9442525-c7a2-42c8-8d2e-658060028f0e   a9442525-c7a2-42c8-8d2e-658060028f0e
     ```
 
-1. Copy the tablet snapshots. Use the tablet mappings to copy the tablet snapshot files from the external location to appropriate location, such as `yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots`.<br>
+1. Copy the tablet snapshots. Use the tablet mappings to copy the tablet snapshot files from the external location to an appropriate location, such as `yb-data/tserver/data/rocksdb/table-<tableid>/tablet-<tabletid>.snapshots`.<br>
 
     Based on the preceding examples, you would execute the following commands:
 
