@@ -588,13 +588,13 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       " {set_master_addresses [comma_separated_list_of_producer_master_addresses] |"
       "  add_table [comma_separated_list_of_table_ids]"
       "            [comma_separated_list_of_producer_bootstrap_ids] |"
-      "  remove_table [comma_separated_list_of_table_ids] |"
+      "  remove_table [comma_separated_list_of_table_ids] [ignore-errors] |"
       "  rename_id <new_producer_universe_id>}",
       [client](const CLIArguments& args) -> Status {
         if (args.size() < 3 || args.size() > 4) {
           return ClusterAdminCli::kInvalidArguments;
         }
-        if (args.size() == 4 && args[1] != "add_table") {
+        if (args.size() == 4 && args[1] != "add_table" && args[1] != "remove_table") {
           return ClusterAdminCli::kInvalidArguments;
         }
 
@@ -604,6 +604,7 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
         vector<string> remove_tables;
         vector<string> bootstrap_ids_to_add;
         string new_producer_universe_id = "";
+        bool remove_table_ignore_errors = false;
 
         vector<string> newElem, *lst;
         if (args[1] == "set_master_addresses") {
@@ -612,6 +613,9 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
           lst = &add_tables;
         } else if (args[1] == "remove_table") {
           lst = &remove_tables;
+          if (args.size() == 4 && args[3] == "ignore-errors") {
+            remove_table_ignore_errors = true;
+          }
         } else if (args[1] == "rename_id") {
           lst = nullptr;
           new_producer_universe_id = args[2];
@@ -633,7 +637,8 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
                                                                add_tables,
                                                                remove_tables,
                                                                bootstrap_ids_to_add,
-                                                               new_producer_universe_id),
+                                                               new_producer_universe_id,
+                                                               remove_table_ignore_errors),
             Substitute("Unable to alter replication for universe $0", producer_uuid));
 
         return Status::OK();

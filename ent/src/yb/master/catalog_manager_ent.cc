@@ -2227,36 +2227,38 @@ void CatalogManager::CleanupHiddenTables(
       auto lock = table->LockForRead();
       // If the table is colocated and hidden then remove it from its colocated tablet if
       // it has expired.
-      if (lock->is_hidden() && !lock->started_deleting() && table->IsColocatedUserTable()) {
-        auto tablet_info = table->GetColocatedTablet();
-        auto tablet_lock = tablet_info->LockForRead();
-        bool cleanup = true;
-        auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+      if (lock->is_hidden() && !lock->started_deleting()) {
+        auto tablet_info = table->GetColocatedUserTablet();
+        if (tablet_info) {
+          auto tablet_lock = tablet_info->LockForRead();
+          bool cleanup = true;
+          auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
 
-        for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
-          auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-          auto it = schedule_min_restore_time.find(schedule_id);
-          // If schedule is not present in schedule_min_restore_time then it means that schedule
-          // was deleted, so it should not retain the tablet.
-          if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
-            VLOG_WITH_PREFIX(1)
-                << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
-                << hide_hybrid_time << ", because of schedule: " << schedule_id
-                << ", min restore time: " << it->second;
-            cleanup = false;
-            break;
+          for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
+            auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
+            auto it = schedule_min_restore_time.find(schedule_id);
+            // If schedule is not present in schedule_min_restore_time then it means that schedule
+            // was deleted, so it should not retain the tablet.
+            if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
+              VLOG_WITH_PREFIX(1)
+                  << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
+                  << hide_hybrid_time << ", because of schedule: " << schedule_id
+                  << ", min restore time: " << it->second;
+              cleanup = false;
+              break;
+            }
           }
-        }
 
-        if (!cleanup) {
-          return true;
+          if (!cleanup) {
+            return true;
+          }
+          LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
+          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+              master_, AsyncTaskPool(), tablet_info, table);
+          table->AddTask(call);
+          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+          table->ClearTabletMaps();
         }
-        LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
-        auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), tablet_info, table);
-        table->AddTask(call);
-        WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-        table->ClearTabletMaps();
       }
       if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
         return true;
@@ -5091,6 +5093,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
     // 'remove_table'
     auto it = req->producer_table_ids_to_remove();
     std::set<string> table_ids_to_remove(it.begin(), it.end());
+    std::set<string> consumer_table_ids_to_remove;
     // Filter out any tables that aren't in the existing replication config.
     {
       auto l = original_ri->LockForRead();
@@ -5119,6 +5122,8 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         for (auto& p : *stream_map) {
           if (table_ids_to_remove.count(p.second.producer_table_id()) > 0) {
             streams_to_remove.push_back(p.first);
+            // Also fetch the consumer table ids here so we can clean the in-memory maps after.
+            consumer_table_ids_to_remove.insert(p.second.consumer_table_id());
           }
         }
         if (streams_to_remove.size() == stream_map->size()) {
@@ -5141,6 +5146,7 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
 
       // 2. Remove from Master Configs on Producer and Consumer.
 
+      Status producer_status = Status::OK();
       if (!l->pb.table_streams().empty()) {
         // Delete Relevant Table->StreamID mappings on Consumer.
         auto table_streams = l.mutable_data()->pb.mutable_table_streams();
@@ -5158,32 +5164,64 @@ Status CatalogManager::AlterUniverseReplication(const AlterUniverseReplicationRe
         // Delete CDC stream config on the Producer.
         auto result = original_ri->GetOrCreateCDCRpcTasks(l->pb.producer_master_addresses());
         if (!result.ok()) {
-          LOG(WARNING) << "Unable to create cdc rpc task. CDC streams won't be deleted: " << result;
+          LOG(ERROR) << "Unable to create cdc rpc task. CDC streams won't be deleted: "
+                     << result;
+          producer_status = STATUS(InternalError, "Cannot create cdc rpc task.",
+                                   req->ShortDebugString(),
+                                   MasterError(MasterErrorPB::INTERNAL_ERROR));
         } else {
-          auto s = (*result)->client()->DeleteCDCStream(streams_to_remove,
-                                                        true /* force_delete */);
-          if (!s.ok()) {
+          producer_status = (*result)->client()->DeleteCDCStream(streams_to_remove,
+                                                                 true /* force_delete */,
+                                                                 req->remove_table_ignore_errors());
+          if (!producer_status.ok()) {
             std::stringstream os;
             std::copy(streams_to_remove.begin(), streams_to_remove.end(),
                       std::ostream_iterator<CDCStreamId>(os, ", "));
-            LOG(WARNING) << "Unable to delete CDC streams: " << os.str() << s;
+            LOG(ERROR) << "Unable to delete CDC streams: " << os.str()
+                        << " on producer due to error: " << producer_status
+                        << ". Try setting the ignore-errors option.";
           }
         }
+      }
+
+      // Currently, due to the sys_catalog write below, atomicity cannot be guaranteed for
+      // both producer and consumer deletion, and the atomicity of producer is compromised.
+      if (!producer_status.ok()) {
+        return SetupError(resp->mutable_error(), producer_status);
       }
 
       {
         // Need both these updates to be atomic.
         auto w = sys_catalog_->NewWriter(leader_ready_term());
-        RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
-                                original_ri.get(),
-                                cluster_config.get()));
-        RETURN_NOT_OK(CheckStatus(
-            sys_catalog_->SyncWrite(w.get()),
-            "Updating universe replication info and cluster config in sys-catalog"));
+        auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE,
+                           original_ri.get(),
+                           cluster_config.get());
+        if (s.ok()) {
+          s = sys_catalog_->SyncWrite(w.get());
+        }
+        if (!s.ok()) {
+          LOG(DFATAL) << "Updating universe replication info and cluster config in sys-catalog "
+                         "failed. However, the deletion of streams on the producer has been issued."
+                         " Please retry the command with the ignore-errors option to make sure that"
+                         " streams are deleted properly on the consumer.";
+          return SetupError(resp->mutable_error(), s);
+        }
       }
 
       l.Commit();
       cl.Commit();
+
+      // Also remove it from the in-memory map of consumer tables.
+      LockGuard lock(mutex_);
+      for (const auto& table : consumer_table_ids_to_remove) {
+        if (xcluster_consumer_tables_to_stream_map_[table].erase(req->producer_id()) < 1) {
+          LOG(WARNING) << "Failed to remove consumer table from mapping. "
+                       << "table_id: " << table << ": universe_id: " << req->producer_id();
+        }
+        if (xcluster_consumer_tables_to_stream_map_[table].empty()) {
+          xcluster_consumer_tables_to_stream_map_.erase(table);
+        }
+      }
     }
   } else if (req->producer_table_ids_to_add_size() > 0) {
     // 'add_table'

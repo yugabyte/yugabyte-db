@@ -12,7 +12,7 @@ menu:
     weight: 600
 ---
 
-Before you can add standard clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit activity, view your monthly invoices, and invite team members so that they can create, manage, authorize network access, and connect to clusters.
+Before you can add Dedicated clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit activity, view your monthly invoices, and invite team members so that they can create, manage, authorize network access, and connect to clusters.
 
 {{< note title="Note" >}}
 
@@ -30,6 +30,18 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
       </div>
       <div class="body">
         Invite other users to your account so that they can manage and connect to clusters.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="cloud-admin-apikeys/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
+        <div class="title">Manage API keys</div>
+      </div>
+      <div class="body">
+        Create and revoke API keys for accessing the YugabyteDB Managed API.
       </div>
     </a>
   </div>

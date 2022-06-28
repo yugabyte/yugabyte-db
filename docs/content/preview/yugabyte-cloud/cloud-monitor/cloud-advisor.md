@@ -1,6 +1,6 @@
 ---
-title: YSQL Performance Advisor
-linkTitle: YSQL Performance Advisor
+title: Performance Advisor
+linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use YSQL Performance Advisor to scan your cluster for potential optimizations.
+Use Performance Advisor to scan your cluster for potential optimizations.
 
 For meaningful results, run your workload for at least an hour before running the advisor.
 
@@ -85,7 +85,7 @@ Connections should be distributed equally across all the nodes in the cluster. U
 
 **Fix the problem**
 
-- If a load balancer is used to distribute connections among nodes of cluster, review the configuration of the load balancer. If you are using the YugabyteDB Managed load balancer, contact {{<support-cloud>}}.
+- If a load balancer is used to distribute connections among nodes of cluster, review the configuration of the load balancer. If you are using the YugabyteDB Managed load balancer, contact {{% support-cloud %}}.
 - If you are load balancing in your application or client, review your implementation.
 
 ### Query load skew
@@ -96,7 +96,7 @@ Queries should be distributed equally across all nodes in the cluster. Query loa
 
 **Fix the problem**
 
-If you see query load skew, contact {{<support-cloud>}}.
+If you see query load skew, contact {{% support-cloud %}}.
 
 ### CPU skew and CPU usage
 

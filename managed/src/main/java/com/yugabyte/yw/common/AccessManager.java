@@ -32,6 +32,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -552,10 +553,11 @@ public class AccessManager extends DevopsBase {
     }
   }
 
-  public void rotateAccessKey(
+  public Map<UUID, UUID> rotateAccessKey(
       UUID customerUUID, UUID providerUUID, List<UUID> universeUUIDs, String newKeyCode) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     AccessKey newAccessKey = AccessKey.getOrBadRequest(providerUUID, newKeyCode);
+    // request would fail if there is a universe which does not exist
     Set<Universe> universes =
         universeUUIDs
             .stream()
@@ -563,15 +565,11 @@ public class AccessManager extends DevopsBase {
             .collect(Collectors.toSet());
     Set<Universe> providerUniverses = customer.getUniversesForProvider(providerUUID);
 
-    // prechecks
-    if (universes.stream().anyMatch((universe) -> universe.getUniverseDetails().universePaused)) {
-      throw new RuntimeException("One of the universes in the list is paused");
-    } else if (universes.stream().anyMatch((universe) -> !universe.allNodesLive())) {
-      throw new RuntimeException("One of the universes has non-live nodes");
-    } else if (universes.stream().anyMatch((universe) -> !providerUniverses.contains(universe))) {
-      throw new RuntimeException("One of the universes does not belong to the provider mentioned");
+    // check if all universes belong to the provider
+    if (universes.stream().anyMatch((universe) -> !providerUniverses.contains(universe))) {
+      throw new RuntimeException("One of the universes does not belong to the provider");
     }
-
+    Map<UUID, UUID> taskUUIDs = new HashMap<UUID, UUID>();
     for (Universe universe : universes) {
       // create universe task params
       UUID universeUUID = universe.universeUUID;
@@ -579,7 +577,6 @@ public class AccessManager extends DevopsBase {
           new RotateAccessKeyParams(customerUUID, providerUUID, universeUUID, newAccessKey);
       // trigger universe task
       UUID taskUUID = commissioner.submit(TaskType.RotateAccessKey, taskParams);
-
       CustomerTask.create(
           customer,
           universeUUID,
@@ -587,17 +584,19 @@ public class AccessManager extends DevopsBase {
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.RotateAccessKey,
           universe.name);
+      taskUUIDs.put(universeUUID, taskUUID);
     }
+    return taskUUIDs;
   }
 
   public AccessKeyFormData setOrValidateRequestDataWithExistingKey(
       AccessKeyFormData formData, UUID providerUUID) {
-    List<AccessKey> accessKeys = AccessKey.getAll(providerUUID);
-    if (accessKeys.size() == 0) {
+    if (AccessKey.getAll(providerUUID).size() == 0) {
       return formData;
     }
-    AccessKey providerAccessKey = accessKeys.get(0);
-    AccessKey.KeyInfo keyInfo = providerAccessKey.getKeyInfo();
+    // fill missing access key params using latest created key
+    AccessKey latestAccessKey = AccessKey.getLatestKey(providerUUID);
+    AccessKey.KeyInfo keyInfo = latestAccessKey.getKeyInfo();
     formData.sshUser = setOrValidate(formData.sshUser, keyInfo.sshUser, "sshUser");
     formData.sshPort = setOrValidate(formData.sshPort, keyInfo.sshPort, "sshPort");
     formData.nodeExporterUser =

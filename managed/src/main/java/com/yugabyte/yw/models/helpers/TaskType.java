@@ -111,6 +111,8 @@ public enum TaskType {
 
   SetUniverseKey("SetUniverseKey"),
 
+  CreateAndRotateAccessKey("CreateAndRotateAccessKey"),
+
   @Deprecated
   SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
 
@@ -216,6 +218,8 @@ public enum TaskType {
   WaitForMasterLeader("subtasks.WaitForMasterLeader"),
 
   WaitForServer("subtasks.WaitForServer"),
+
+  WaitForYbcServer("subtasks.WaitForYbcServer"),
 
   WaitForTServerHeartBeats("subtasks.WaitForTServerHeartBeats"),
 

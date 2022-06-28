@@ -10,11 +10,13 @@ import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -81,7 +83,9 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testCreateWithNonS3StorageUUID() {
-    JsonNode formData = Json.parse("{\"name\": \"FILE\", \"type\": \"STORAGE\", \"data\": {}}");
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"NFS\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
     CustomerConfig customerConfig =
         CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
     UUID universeUUID = UUID.randomUUID();
@@ -98,6 +102,25 @@ public class BackupTest extends FakeDBApplication {
     assertThat(b.getBackupInfo().storageLocation, RegexMatcher.matchesRegex(storageRegex));
     assertEquals(customerConfig.configUUID, b.getBackupInfo().storageConfigUUID);
     assertEquals(InProgress, b.state);
+  }
+
+  @Test
+  public void testCreateWithInvalidConfigName() throws Exception {
+    JsonNode formData =
+        Json.parse(
+            "{\"name\": \"TEST\", \"configName\": \"Test\", \"type\": \"STORAGE\", \"data\": {}}");
+    CustomerConfig customerConfig =
+        CustomerConfig.createWithFormData(defaultCustomer.uuid, formData);
+    UUID universeUUID = UUID.randomUUID();
+    BackupTableParams params = new BackupTableParams();
+    params.storageConfigUUID = customerConfig.configUUID;
+    params.universeUUID = universeUUID;
+    params.setKeyspace("foo");
+    params.setTableName("bar");
+    assertThrows(
+        "Unknown data type in configuration data. Type STORAGE, name TEST.",
+        PlatformServiceException.class,
+        () -> Backup.create(defaultCustomer.uuid, params));
   }
 
   @Test

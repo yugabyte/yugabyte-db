@@ -70,7 +70,7 @@ include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
-  call_home.cc
+  master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
   catalog_manager_util.cc

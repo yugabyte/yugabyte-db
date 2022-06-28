@@ -156,6 +156,9 @@ DEFINE_int32(block_restart_interval, kDefaultDataBlockRestartInterval,
 DEFINE_int32(index_block_restart_interval, kDefaultIndexBlockRestartInterval,
              "Controls the number of data blocks to be indexed inside an index block.");
 
+DEFINE_bool(prioritize_tasks_by_disk, false,
+            "Consider disk load when considering compaction and flush priorities.");
+
 namespace yb {
 
 namespace {
@@ -533,7 +536,7 @@ void AddSupportedFilterPolicy(
 
 PriorityThreadPool* GetGlobalPriorityThreadPool() {
     static PriorityThreadPool priority_thread_pool_for_compactions_and_flushes(
-      GetGlobalRocksDBPriorityThreadPoolSize());
+      GetGlobalRocksDBPriorityThreadPoolSize(), FLAGS_prioritize_tasks_by_disk);
     return &priority_thread_pool_for_compactions_and_flushes;
 }
 

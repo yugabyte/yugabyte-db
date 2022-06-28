@@ -490,7 +490,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
           total_values += written_value[j];
         }
         bool failed = false;
-        session->SetReadPoint(client::Restart::kFalse);
+        session->RestartNonTxnReadPoint(client::Restart::kFalse);
         session->SetForceConsistentRead(ForceConsistentRead::kFalse);
 
         for (;;) {

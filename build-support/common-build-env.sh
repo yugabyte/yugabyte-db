@@ -2585,6 +2585,31 @@ is_apple_silicon() {
   return 1
 }
 
+validate_clangd_index_format() {
+  expect_num_args 1 "$@"
+  local format=$1
+  if [[ ! ${format} =~ ^(binary|yaml)$ ]]; then
+    fatal "Invalid Clangd index format specified: ${format} (expected 'binary' or 'yaml')"
+  fi
+}
+
+build_clangd_index() {
+  expect_num_args 1 "$@"
+  local format=$1
+  validate_clangd_index_format "${format}"
+  local clangd_index_path=${BUILD_ROOT}/clangd_index.${format}
+  log "Building Clangd index at ${clangd_index_path}"
+  (
+    set -x
+    time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
+        --executor=all-TUs \
+        "--format=${format}" \
+        "${BUILD_ROOT}/compile_commands.json" \
+        >"${clangd_index_path}"
+  )
+}
+
+
 # -------------------------------------------------------------------------------------------------
 # Initialization
 # -------------------------------------------------------------------------------------------------

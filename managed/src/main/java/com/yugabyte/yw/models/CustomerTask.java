@@ -242,7 +242,10 @@ public class CustomerTask extends Model {
     ThirdpartySoftwareUpgrade,
 
     @EnumValue("RotateAccessKey")
-    RotateAccessKey;
+    RotateAccessKey,
+
+    @EnumValue("CreateAndRotateAccessKey")
+    CreateAndRotateAccessKey;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -349,6 +352,10 @@ public class CustomerTask extends Model {
           return completed ? "Rotated Access Key" : "Rotating Access Key";
         case RebootUniverse:
           return completed ? "Rebooted " : "Rebooting ";
+        case CreateAndRotateAccessKey:
+          return completed
+              ? "Creating Access Key and Rotation Tasks"
+              : "Created New Access Key and Rotation Tasks";
         default:
           return null;
       }

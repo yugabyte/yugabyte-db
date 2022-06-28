@@ -18,6 +18,8 @@ import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.Storage.BlobListOption;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageGCSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
 import com.yugabyte.yw.models.helpers.CustomerConfigValidator;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -103,7 +105,7 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
   }
 
   @Override
-  public AmazonS3 createS3Client(JsonNode data) {
+  public AmazonS3 createS3Client(CustomerConfigStorageS3Data configData) {
     if (refuseKeys) {
       throw new AmazonS3Exception(
           "The AWS Access Key Id you provided does not exist in our records.");
@@ -112,7 +114,7 @@ public class StubbedCustomerConfigValidator extends CustomerConfigValidator
   }
 
   @Override
-  public Storage createGcpStorage(String gcpCredentials)
+  public Storage createGcpStorage(CustomerConfigStorageGCSData configData)
       throws UnsupportedEncodingException, IOException {
     if (refuseKeys) {
       throw new IOException("Invalid GCP Credential Json.");

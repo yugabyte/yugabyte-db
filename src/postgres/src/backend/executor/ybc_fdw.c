@@ -91,17 +91,25 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
 	/* Set the estimate for the total number of rows (tuples) in this table. */
-	if (baserel->tuples == 0)
-		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+	if (yb_enable_optimizer_statistics)
+	{
+		set_baserel_size_estimates(root, baserel);
+	}
+	else
+	{
+		if (baserel->tuples == 0)
+			baserel->tuples = YBC_DEFAULT_NUM_ROWS;
 
-	/*
-	 * Initialize the estimate for the number of rows returned by this query.
-	 * This does not yet take into account the restriction clauses, but it will
-	 * be updated later by ybcIndexCostEstimate once it inspects the clauses.
-	 */
-	baserel->rows = baserel->tuples;
+		/*
+		* Initialize the estimate for the number of rows returned by this query.
+		* This does not yet take into account the restriction clauses, but it will
+		* be updated later by ybcIndexCostEstimate once it inspects the clauses.
+		*/
+		baserel->rows = baserel->tuples;
+	}
 
 	baserel->fdw_private = ybc_plan;
+
 
 	/*
 	 * Test any indexes of rel for applicability also.
