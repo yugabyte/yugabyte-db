@@ -159,7 +159,7 @@ class RowPacker {
   RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
             size_t packed_size_limit);
 
-  RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair, size_t packed_size_limit)
+  RowPacker(const std::pair<SchemaVersion, const SchemaPacking&>& pair, ssize_t packed_size_limit)
       : RowPacker(pair.first, pair.second, packed_size_limit) {
   }
 
@@ -177,17 +177,19 @@ class RowPacker {
   Result<const ColumnPackingData&> NextColumnData() const;
 
   // Returns false when unable to add value due to packed size limit.
+  // tail_size is added to proposed encoded size, to make decision whether encoded value fits
+  // into bounds or not.
+  Result<bool> AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size);
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
-  Result<bool> AddValue(ColumnId column_id, const Slice& value, size_t tail_size);
 
   Result<Slice> Complete();
 
  private:
   template <class Value>
-  Result<bool> DoAddValue(ColumnId column_id, const Value& value, size_t tail_size);
+  Result<bool> DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size);
 
   const SchemaPacking& packing_;
-  const size_t packed_size_limit_;
+  const ssize_t packed_size_limit_;
   size_t idx_ = 0;
   size_t prefix_end_;
   ValueBuffer result_;

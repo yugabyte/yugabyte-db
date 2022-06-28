@@ -196,8 +196,8 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future, uint64_t used_read_time)
-    : holder_(PerformInfo{.future = std::move(future), .used_read_time = used_read_time}) {}
+PgDocResponse::PgDocResponse(PerformFuture future, uint64_t in_txn_limit)
+    : holder_(PerformInfo{.future = std::move(future), .in_txn_limit = in_txn_limit}) {}
 
 PgDocResponse::PgDocResponse(ProviderPtr provider)
     : holder_(std::move(provider)) {}
@@ -211,7 +211,7 @@ bool PgDocResponse::Valid() const {
 Result<PgDocResponse::Data> PgDocResponse::Get() {
   if (std::holds_alternative<PerformInfo>(holder_)) {
     auto& info = std::get<PerformInfo>(holder_);
-    return Data(VERIFY_RESULT(info.future.Get()), info.used_read_time);
+    return Data(VERIFY_RESULT(info.future.Get()), info.in_txn_limit);
   }
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
   ProviderPtr provider;
@@ -357,7 +357,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count,
-      *table_, GetReadTime(), force_non_bufferable));
+      *table_, GetInTxnLimit(), force_non_bufferable));
   return Status::OK();
 }
 
@@ -381,7 +381,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   }
   const auto& data = *response;
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
-  GetReadTime() = data.used_read_time;
+  GetInTxnLimit() = data.in_txn_limit;
   RETURN_NOT_OK(CompleteProcessResponse());
   return result;
 }
@@ -445,9 +445,9 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
   return result;
 }
 
-uint64_t& PgDocOp::GetReadTime() {
-  return (read_time_ || !exec_params_.statement_read_time)
-      ? read_time_ : *exec_params_.statement_read_time;
+uint64_t& PgDocOp::GetInTxnLimit() {
+  return exec_params_.statement_in_txn_limit ? *exec_params_.statement_in_txn_limit
+                                             : in_txn_limit_;
 }
 
 Status PgDocOp::CreateRequests() {
@@ -474,10 +474,10 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    uint64_t read_time, bool force_non_bufferable) {
+    uint64_t in_txn_limit, bool force_non_bufferable) {
   auto result = VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, &read_time, force_non_bufferable));
-  return PgDocResponse(std::move(result), read_time);
+      ops, ops_count, table, &in_txn_limit, force_non_bufferable));
+  return PgDocResponse(std::move(result), in_txn_limit);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -509,7 +509,7 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SetRequestPrefetchLimit();
   SetBackfillSpec();
   SetRowMark();
-  SetReadTime();
+  SetReadTimeForBackfill();
   return Status::OK();
 }
 
@@ -1032,10 +1032,12 @@ void PgDocReadOp::SetBackfillSpec() {
   }
 }
 
-void PgDocReadOp::SetReadTime() {
+void PgDocReadOp::SetReadTimeForBackfill() {
   if (exec_params_.is_index_backfill) {
     read_op_->read_request().set_is_for_backfill(true);
-    read_op_->set_read_time(ReadHybridTime::FromUint64(GetReadTime()));
+    // TODO: Change to RSTATUS_DCHECK
+    DCHECK(exec_params_.backfill_read_time);
+    read_op_->set_read_time(ReadHybridTime::FromUint64(exec_params_.backfill_read_time));
   }
 }
 
