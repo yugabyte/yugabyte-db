@@ -9,7 +9,7 @@
 
 ## Introduction
 
-This document describes the features, functions and configuration of the ``pg_stat_monitor`` extension and gives some usage examples. For how to install and set up ``pg_stat_monitor``, see [Installation in README](https://github.com/percona/pg_stat_monitor/blob/master/README.md#installation).
+This document describes the features, functions and configuration of the ``pg_stat_monitor`` extension and gives some usage examples. For how to install and set up ``pg_stat_monitor``, see [Setting up](setup.md).
 
 ## Features
 
@@ -34,6 +34,11 @@ The following are the key features of pg_stat_monitor:
 ### Time buckets
 
 Instead of supplying one set of ever-increasing counts, `pg_stat_monitor` computes stats for a configured number of time intervals; time buckets. This allows for much better data accuracy, especially in the case of high-resolution or unreliable networks. 
+
+Starting with release 1.1.0, buckets have fixed and consistent time windows. This enables external applications such as PMM to easily consume and chart the statistics data. To make this happen, the bucket start time is rounded down to the nearest bucket time size. 
+
+Note, however, that if you disable / enable the `pg_stat_monitor` at runtime, the first bucket may not contain all the data. For example, if `pg_stat_monitor` is enabled at 03:58:30, a 60-second bucket start time is set to 03:58:00 and this bucket may not contain the data for queries made between 03:58:00 and 03:58:30. To learn more about the bucket start time and size, see [pg_stat_monitor.pgsm_bucket_time](#pg_stat_monitorpgsm_bucket_time).
+
 
 ### Table and index access statistics per statement
 
@@ -245,9 +250,15 @@ Values:
 - Max: 2147483647
 - Default: 60
 
-This parameter is used to set the lifetime of the bucket. System switches between buckets on the basis of [pg_stat_monitor.pgsm_bucket_time](#pg-stat-monitorpgsm-bucket-time).
+This parameter sets the lifetime of the bucket. The system switches between buckets on the basis of [pg_stat_monitor.pgsm_bucket_time](#pg-stat-monitorpgsm-bucket-time).
 
-Requires the server restart.
+Starting with release 1.1.0, the behavior of setting the bucket start time has changed. Previously, the bucket start time was aligned with the time of the first query arrived to that bucket. Now the bucket start time is rounded down to the bucket time size.  To illustrate, if the first query arrives to a 60 second bucket at 03:01:15, the bucket start time is set to 03:01:00.
+
+With this new behavior, buckets have now consistent time windows so that external applications such as PMM can easily consume the data in buckets. 
+
+Note that if you disable / enable the `pg_stat_monitor` at runtime, the first bucket may not contain all the data. Thus, if `pg_stat_monitor` is enabled at 03:58:30, the bucket start time is set to 03:58:00 but it will not contain the data for queries made between 03:58:00 and 03:58:30.
+
+The parameter requires the server restart.
 
 ##### pg_stat_monitor.pgsm_histogram_min
 
