@@ -106,15 +106,13 @@ void SetKey(const Slice& value, PgsqlPartitionBound* bound) {
 template<class Req>
 Status InitHashPartitionKey(
     const Schema& schema, const PartitionSchema& partition_schema, Req* request) {
-  // Read partition key from read request.
-  const auto &ybctid = request->ybctid_column_value().value();
-
   // Seek a specific partition_key from read_request.
   // 1. Not specified hash condition - Full scan.
   // 2. paging_state -- Set by server to continue current request.
-  // 3. lower and upper bound -- Set by PgGate to query a specific set of hash values.
-  // 4. hash column values -- Given to scan ONE SET of specfic hash values.
-  // 5. range and regular condition - These are filter expression and will be processed by DocDB.
+  // 3. ybctid -- Given to fetch row(s) with specific ybctid(s).
+  // 4. lower and upper bound -- Set by PgGate to query a specific set of hash values.
+  // 5. hash column values -- Given to scan ONE SET of specific hash values.
+  // 6. range and regular condition - These are filter expression and will be processed by DocDB.
   //    Shouldn't we able to set RANGE boundary here?
 
   // If primary index lookup using ybctid requests are batched, there is a possibility that tablets
@@ -125,6 +123,8 @@ Status InitHashPartitionKey(
   // batched ybctids
   // In order to represent a single ybctid or a batch of ybctids, we leverage the lower bound and
   // upper bounds to set hash codes and max hash codes.
+
+  const auto& ybctid = request->ybctid_column_value().value();
   bool has_paging_state =
       request->has_paging_state() && request->paging_state().has_next_partition_key();
   if (has_paging_state) {
@@ -204,7 +204,7 @@ Status InitHashPartitionKey(
       request->set_max_hash_code(hash_code);
     }
 
-  } else if (!has_paging_state) {
+  } else {
     // Full scan. Default to empty key.
     request->clear_partition_key();
   }
@@ -247,24 +247,21 @@ Status SetRangePartitionBounds(const Schema& schema,
 template<class Req>
 Status InitRangePartitionKey(
     const Schema& schema, const std::string& last_partition, Req* request) {
-  // Set the range partition key.
-  const auto &ybctid = request->ybctid_column_value().value();
-
   // Seek a specific partition_key from read_request.
   // 1. Not specified range condition - Full scan.
-  // 2. ybctid -- Given to fetch one specific row.
-  // 3. paging_state -- Set by server to continue the same request.
+  // 2. paging_state -- Set by server to continue the same request.
+  // 3. ybctid -- Given to fetch row(s) with specific ybctid(s).
   // 4. upper and lower bound -- Set by PgGate to fetch rows within a boundary.
   // 5. range column values -- Given to fetch rows for one set of specific range values.
   // 6. condition expr -- Given to fetch rows that satisfy specific conditions.
-  if (!IsNull(ybctid)) {
-    SetPartitionKey(ybctid.binary_value(), request);
 
-  } else if (request->has_paging_state() &&
-             request->paging_state().has_next_partition_key()) {
+  const auto& ybctid = request->ybctid_column_value().value();
+  if (request->has_paging_state() &&
+      request->paging_state().has_next_partition_key()) {
     // If this is a subsequent query, use the partition key from the paging state.
     SetPartitionKey(request->paging_state().next_partition_key(), request);
-
+  } else if (!IsNull(ybctid)) {
+    SetPartitionKey(ybctid.binary_value(), request);
   } else if (request->has_lower_bound()) {
     // When PgGate optimizes RANGE expressions, it will set lower_bound and upper_bound by itself.
     // In that case, we use them without recompute them here.

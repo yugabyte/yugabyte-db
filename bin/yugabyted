@@ -19,6 +19,7 @@ import uuid
 import tempfile
 import tarfile
 import operator
+import string
 from datetime import datetime
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
@@ -29,11 +30,16 @@ if PY_VERSION < 3:
     import Queue as queue
     from urllib2 import Request, urlopen, URLError, HTTPError
     from urllib import urlencode
+    from random import SystemRandom
+    _sysrand = SystemRandom()
+    PASSWORD_GENNERATOR = _sysrand.choice
 else:
     import queue
     from urllib.request import Request, urlopen
     from urllib.error import URLError, HTTPError
     from urllib.parse import urlencode
+    import secrets
+    PASSWORD_GENNERATOR = secrets.choice
 
 """
 Run `yugabyted` to start a single-node YugabyteDB process. If no options are specified,
@@ -425,8 +431,12 @@ class ControlScript(object):
         if self.get_failed_node_processes():
             Output.log_error_and_exit(
                 "{} is not running. Cannot connect to YCQL.".format(SCRIPT_NAME))
+        if self.configs.saved_data.get("secure"):
+            self.setup_env_init.setup_cert_file_path(self.configs.
+                            saved_data.get("ca_cert_file_path"))
         ycql_proxy = YcqlProxy(ip=self.advertise_ip(),
-                        port=self.configs.saved_data.get("ycql_port"))
+                        port=self.configs.saved_data.get("ycql_port"),
+                        secure=self.configs.saved_data.get("secure"))
         ycql_proxy.connect()
 
     # Creates demo database and starts an interactive shell into it. Destroys the sample database
@@ -793,6 +803,7 @@ class ControlScript(object):
         if join_ip:
             master_addresses  = "{}:{},{}".format(join_ip, master_rpc_port, master_addresses)
         tserver_rpc_port = self.configs.saved_data.get("tserver_rpc_port")
+        certs_dir = self.configs.saved_data.get("certs_dir")
 
         common_gflags = [
             "--stop_on_parent_termination",
@@ -810,6 +821,11 @@ class ControlScript(object):
 
         if fault_tolerance == "region":
             common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
+
+        if self.configs.saved_data.get("secure"):
+            common_gflags.extend(["--certs_dir={}".format(certs_dir),
+            "--allow_insecure_connections=false",
+            "--use_node_to_node_encryption=true",])
 
         yb_master_cmd = [find_binary_location("yb-master")] + \
             common_gflags + \
@@ -861,6 +877,10 @@ class ControlScript(object):
                     self.configs.saved_data.get("tserver_flags").split(",")])
 
         # Add authentication flags in tserver
+        if self.configs.saved_data.get("secure"):
+            yb_tserver_cmd.extend(["--use_client_to_server_encryption=true",
+                "--certs_for_client_dir={}".format(certs_dir),])
+
         if self.configs.saved_data.get("ysql_enable_auth"):
             yb_tserver_cmd.extend(["--ysql_enable_auth=true"])
 
@@ -951,9 +971,26 @@ class ControlScript(object):
                         status=Output.ANIMATION_FAIL)
                     Output.log_error_and_exit(ret)
 
+                Output.update_animation("YugabyteDB Started")
+
+                if self.configs.saved_data.get("secure"):
+                    Output.init_animation("Enabling SSL Authentication...")
+                    if not join_ip:
+                        alphadigits = string.ascii_letters + string.digits
+                        new_password = ''.join(PASSWORD_GENNERATOR(alphadigits) for i in range(12))
+                        self.update_db_passwords(new_password)
+                        self.create_password_file()
+                    Output.update_animation("SSL Authentication enabled.")
+                    Output.print_and_log(Output.ANIMATION_SUCCESS +
+                            " User Authentication enabled.")
+                else:
+                    Output.print_and_log(Output.ANIMATION_FAIL +
+                            " User Authentication not enabled.")
+                    Output.print_and_log(Output.ANIMATION_FAIL +
+                            " SSL Authentication not enabled.")
+
                 # Persist the config after successful start
                 self.configs.save_configs()
-                Output.update_animation("YugabyteDB Started")
                 if join_ip:
                     Output.print_and_log(Output.ANIMATION_SUCCESS +
                             " Node joined a running cluster with UUID {}"
@@ -987,6 +1024,11 @@ class ControlScript(object):
                         Output.ROCKET, SCRIPT_NAME, Output.PARTY,
                         Output.make_underline(SLACK_LINK), Output.SHIRT,
                         Output.make_underline(COMMUNITY_REWARDS_LINK))
+
+                if self.configs.saved_data.get("secure") and not join_ip:
+                    status += "\n{} is stored at {}\n".format(Output.make_cyan("Credentials File"),
+                    os.path.join(self.configs.saved_data.get("data_dir"),
+                        "{}_credentials.txt".format(SCRIPT_NAME)))
 
                 if len(self.setup_env_init.get_ysql_password()) > 99:
                     status = status + Output.make_red(YSQL_PASSWORD_LENGTH_WARNING)
@@ -1366,14 +1408,6 @@ class ControlScript(object):
 
         return ft_location
 
-    # # Check if current placement of masters is valid or not
-    # def is_current_masters_valid(self, current_masters, master_locations):
-    #     current_positions = set()
-    #     for master in current_masters:
-    #         current_positions.add(self.get_ft_location(master_locations[master]))
-
-    #     return len(current_positions) == len(current_masters)
-
     # Get new valid master addresses that does not violate fault tolerance policy
     # if there are not any masters then raise error and output the same
     def get_new_valid_masters(self, current_masters, leader_master, master_locations):
@@ -1487,6 +1521,45 @@ class ControlScript(object):
 
         return is_valid
 
+    # Updating the database user passwords for postgres and cassandra
+    def update_db_passwords(self, new_password):
+        ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
+        Output.log("Attempting to update Postgres password.")
+        try:
+            retry_op_with_argument(ysql_proxy.try_update_password, new_password, timeout=60)
+        except RuntimeError:
+            Output.log_error_and_exit("Could not update Postgress user password." +
+                " Exception: {}".format(traceback.format_exc()))
+
+        self.setup_env_init.setup_cert_file_path(self.configs.saved_data.get("ca_cert_file_path"))
+        ycql_proxy = YcqlProxy(self.advertise_ip(), self.configs.saved_data.get("ycql_port"),
+                        secure=self.configs.saved_data.get("secure"))
+        Output.log("Attempting to update Cassandra password.")
+        try:
+            retry_op_with_argument(ycql_proxy.try_update_password, new_password, timeout=60)
+        except RuntimeError:
+            Output.log_error_and_exit("Could not update Cassandra user password." +
+                " Exception: {}".format(traceback.format_exc()))
+
+        self.setup_env_init.update_passwords(new_password)
+        self.configs.saved_data["database_password"] = new_password
+
+    # Create a new file in base directory and put Ysql login credentials in it.
+    def create_password_file(self):
+        password_file = os.path.join(self.configs.saved_data.get("data_dir"),
+                "{}_credentials.txt".format(SCRIPT_NAME))
+
+        ysql_username, ysql_password, ysql_db = self.setup_env_init.get_ysql_credentials()
+        ycql_username, ycql_password, ycql_keyspace = self.setup_env_init.get_ycql_credentials()
+
+        content = ""
+        content += "YSQL Credentials:\nUsername: {}\nPassword: {}\n" \
+            "Database: {}\n\n".format(ysql_username, ysql_password, ysql_db)
+        content += "YCQL Credentials:\nUsername: {}\nPassword: {}\n" \
+            "Keyspace: {}\n".format(ycql_username, ycql_password, ycql_keyspace)
+
+        with open(password_file, "w+") as f:
+            f.write(content)
 
     # Verify that the master is in the current list of masters.
     # If not, set it up appropriately.
@@ -1658,6 +1731,8 @@ class ControlScript(object):
                         ycql_username)
         if ycql_keyspace is not None:
             ycql_flags = ycql_flags + " -k {}".format(ycql_keyspace)
+        if self.configs.saved_data.get("secure"):
+            ycql_flags = ycql_flags + " --ssl"
 
         # TODO: Check if YW is disabled. This could be from saving --ui flag, checking PID,
         # or some other method. The first is not preferred because it would deviate from how the
@@ -1687,13 +1762,14 @@ class ControlScript(object):
             (Output.make_yellow("Log Dir"), self.configs.saved_data.get("log_dir")),
             (Output.make_yellow("Universe UUID"), self.configs.saved_data.get("universe_uuid"))
         ]
-        div_line = "+" + "-" * 98 + "+" + "\n"
+        div_line = "+" + "-" * 106 + "+" + "\n"
         status = "\n" + div_line
-        status += ("| {:^" + str(96 + extra_len) + "} |\n").format(title)
+        status += ("| {:^" + str(104
+         + extra_len) + "} |\n").format(title)
         status += div_line
         for k, v in status_info:
             extra_len = len(Output.make_yellow(""))
-            status += ("| {:" + str(20 + extra_len) + "}: {:<74} |\n").format(k, v)
+            status += ("| {:" + str(20 + extra_len) + "}: {:<82} |\n").format(k, v)
         status += div_line
         return status
 
@@ -1787,9 +1863,6 @@ class ControlScript(object):
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
-
-        # if args.parser == "configure":
-        #     self.configs.temp_data["placement_locations"] = args.set_placement_to
 
         if args.parser == "configure":
             if args.fault_tolerance is not None:
@@ -1886,6 +1959,35 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
+            if not args.secure and not args.insecure:
+                args.insecure = True
+
+            if args.secure:
+                if args.insecure:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --secure flag can't be used together with --insecure flag")
+                elif args.certs_dir is None:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --secure flag needs to be accompanied with the path " +
+                            "to the certificates using the --certs_dir")
+                elif not os.path.exists(args.certs_dir):
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": certs directory provided does not exist.")
+
+                args.ysql_enable_auth="true"
+                args.use_cassandra_authentication="true"
+                self.configs.saved_data["ca_cert_file_path"] = os.path.join(args.certs_dir,
+                                                                        "ca.crt")
+
+            if args.certs_dir is not None:
+                if not args.secure:
+                    has_errors = True
+                    Output.print_out(Output.make_red("ERROR") +
+                        ": --certs_dir flag needs to be accompanied with the --secure flag.")
+
             args.ui = self.parse_bool(args.ui)
             args.background = self.parse_bool(args.background)
             if args.callhome is not None:
@@ -1920,6 +2022,9 @@ class ControlScript(object):
             self.configs.temp_data["background"] = args.background
             self.configs.temp_data["ui"] = args.ui
             self.configs.temp_data["initial_scripts_dir"] = args.initial_scripts_dir
+
+        if self.configs.saved_data.get("database_password") is not None:
+            self.setup_env_init.update_passwords(self.configs.saved_data.get("database_password"))
 
         if has_errors:
             sys.exit(1)
@@ -2022,13 +2127,6 @@ class ControlScript(object):
                 "docker exec <container-id> bin/yugabyted collect_logs --stdout > yugabyted.tar.gz",
                 action="store_true", default=False)
 
-        # # Commands that can change muti-zone/multi-region configuration.
-        # for cmd in ("configure",):
-        #     cur_parser = all_parsers[cmd]
-        #     cur_parser.add_argument(
-        #         "--set_placement_to", help="Change the placement information of the nodes",
-        #         metavar="")
-
         # Commands that can change muti-zone/multi-region configuration.
         for cmd in ("configure",):
             cur_parser = all_parsers[cmd]
@@ -2071,6 +2169,13 @@ class ControlScript(object):
                 metavar="")
             cur_parser.add_argument(
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
+                metavar="")
+            cur_parser.add_argument(
+                "--secure", help="Start the cluster in a secure manner", action="store_true")
+            cur_parser.add_argument(
+                "--insecure", help="Start the cluster in an insecure manner", action="store_true")
+            cur_parser.add_argument(
+                "--certs_dir", help="Path to the certificates to be used for secure deployment.",
                 metavar="")
             cur_parser.add_argument(
                 "--daemon", choices=BOOL_CHOICES, help=argparse.SUPPRESS)
@@ -2131,7 +2236,8 @@ class ControlScript(object):
 
         # Initialize the binary path of ybadmin
         # TODO(Sanket): Clean up and refactor this file
-        YBAdminProxy.init(self.configs.saved_data.get("master_flags"))
+        YBAdminProxy.init(self.configs.saved_data.get("master_flags"), \
+            self.configs.saved_data.get("secure"), self.configs.saved_data.get("certs_dir"))
 
         try:
             args.func()
@@ -2230,6 +2336,11 @@ class Configs(object):
             "cloud_region": DEFAULT_CLOUD_REGION,
             "cloud_zone": DEFAULT_CLOUD_ZONE,
             "fault_tolerance": DEFAULT_START_FAULT_TOLERANCE,
+            "secure": False,
+            "insecure": True,
+            "certs_dir": "",
+            "ca_cert_file_path": "",
+            "database_password": None,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -2614,27 +2725,28 @@ class YBAdminProxy(object):
     cmd_args = []
 
     @staticmethod
-    def init(master_flags):
+    def init(master_flags, secure, certs_dir):
         YBAdminProxy.cmd_args.append(find_binary_location("yb-admin"))
 
         # If the user is attempting to use TLS, let's point yb-admin to
         # the same certs dir as the master
-        if not master_flags:
-            return
-        flags_list = master_flags.split(",")
-        if 'use_node_to_node_encryption=true' not in flags_list:
-            return
-        certs_dir_name = [y for y in
-            [re.match('certs_dir=(.*)', x) for x in flags_list]
-            if y is not None]
-        if not certs_dir_name[0]:
-            raise RuntimeError("use_node_to_node_encryption=true must "
-                               "be accompanied by a certs_dir setting")
-        YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
+        if secure:
+            YBAdminProxy.cmd_args.append("--certs_dir_name={}".format(certs_dir))
+        elif master_flags:
+            flags_list = master_flags.split(",")
+            if 'use_node_to_node_encryption=true' not in flags_list:
+                return
+            certs_dir_name = [y for y in
+                [re.match('certs_dir=(.*)', x) for x in flags_list]
+                if y is not None]
+            if not certs_dir_name[0]:
+                raise RuntimeError("use_node_to_node_encryption=true must "
+                                "be accompanied by a certs_dir setting")
+            YBAdminProxy.cmd_args.append('--certs_dir_name={}'.format(certs_dir_name[0].group(1)))
 
     @staticmethod
     def add_master(master_addrs, new_master_ip, timeout=10):
-        cmd = YBAdminProxy.cmd_args + [ "--init_master_addrs", master_addrs,
+        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs,
               "change_master_config", "ADD_SERVER", new_master_ip, "7100"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         return (0 == ret_code)
@@ -2656,7 +2768,7 @@ class YBAdminProxy(object):
     @staticmethod
     # Returns [ (uuid, ip:port, role) ] for each master
     def get_masters(master_addrs, timeout=10):
-        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "list_all_masters"]
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs, "list_all_masters"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return []
@@ -2666,8 +2778,8 @@ class YBAdminProxy(object):
     # Returns list[tserver uuid] reported by yb-master.
     @staticmethod
     def get_tservers(master_addrs, timeout=10):
-        cmd = YBAdminProxy.cmd_args + \
-                ["--init_master_addrs", master_addrs, "list_all_tablet_servers"]
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs,
+                "list_all_tablet_servers"]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
         if 0 != ret_code or len(out.splitlines()) <= 1:
             return None
@@ -2697,7 +2809,7 @@ class YBAdminProxy(object):
     # Returns the cluster config for this universe
     @staticmethod
     def get_cluster_config(master_addrs):
-        cmd = YBAdminProxy.cmd_args + ["--init_master_addrs", master_addrs, "get_universe_config"]
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs, "get_universe_config"]
         out, err, ret_code = run_process(cmd)
         if ret_code:
             return None
@@ -2737,10 +2849,12 @@ class YsqlProxy(object):
                     get_default_credentials=False):
         if path is None:
             path = find_binary_location(YUGABYTE_API_CLIENT_PROGRAMS["ysql"])
-        self.cmd = [path, "-h", str(ip), "-p", str(port)]
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.db = self.setup_env_init.get_ysql_credentials(
                                                     get_default_credentials)
+        self.cmd_with_password = [path, "postgresql://{}:{}@{}:{}/{}".format(self.username,
+                self.password, ip, port, self.db)]
+        self.cmd_without_password = [path, "-h", str(ip), "-p", str(port)]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
         env_var["PGPASSWORD"] = self.password
@@ -2752,7 +2866,7 @@ class YsqlProxy(object):
     def connect(self, db=None):
         if db is None:
             db = self.db
-        cmd = self.cmd + ["-d", db]
+        cmd = self.cmd_without_password + ["-d", db]
         env_var = os.environ.copy()
         env_var["PGUSER"] = self.username
         shell = subprocess.Popen(cmd, env=env_var)
@@ -2761,23 +2875,23 @@ class YsqlProxy(object):
     # Checks if db exists.
     # Note that this will return false if ysqlsh can't connect, even if db exists.
     def db_exists(self, db):
-        cmd = self.cmd + ["-q", "-c", "\\t", "-c",
+        cmd = self.cmd_with_password + ["-q", "-c", "\\t", "-c",
             "select datname from pg_catalog.pg_database where datname='{}'".format(db)]
         return run_process_checked(cmd=cmd, env_vars=self.env).strip() == db
 
     # Creates specified db.
     def create_db(self, db):
-        cmd = self.cmd + ["-c", "create database \"{}\"".format(db)]
+        cmd = self.cmd_with_password + ["-c", "create database \"{}\"".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Deletes specified db.
     def drop_db(self, db):
-        cmd = self.cmd + ["-c", "drop database {}".format(db)]
+        cmd = self.cmd_with_password + ["-c", "drop database {}".format(db)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Runs ysqlsh with specified files.
     def load_files(self, filepaths, db=None):
-        cmd = self.cmd
+        cmd = self.cmd_with_password
         env = self.env
         if db:
             env['PGDATABASE'] = db
@@ -2790,19 +2904,21 @@ class YsqlProxy(object):
     # Check user exists
     # Note that this will return false if ysqlsh can't connect, even if user exists.
     def user_exists(self, ysql_username):
-        cmd = self.cmd + ["-c", "select rolname from pg_catalog.pg_roles where rolname='{}'".
+        cmd = self.cmd_with_password + \
+                ["-c", "select rolname from pg_catalog.pg_roles where rolname='{}'".
                 format(ysql_username)]
         run_process_checked(cmd=cmd, env_vars=self.env).strip() == ysql_username
 
     # Create specified superuser
     def create_user(self, ysql_username, ysql_password):
-        cmd = self.cmd + ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
+        cmd = self.cmd_with_password + \
+                ["-c", "create role \"{}\" with LOGIN SUPERUSER password '{}';".
                 format(ysql_username, ysql_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
 
     # Delete specified user
     def delete_user(self, username, password, user_to_delete=DEFAULT_YSQL_USER):
-        cmd = self.cmd + ["-c", "drop role {};".format(user_to_delete)]
+        cmd = self.cmd_with_password + ["-c", "drop role {};".format(user_to_delete)]
         env = self.env
         env['PGUSER'] = username
         env['PGPASSWORD'] = password
@@ -2810,17 +2926,27 @@ class YsqlProxy(object):
 
     # Update specified user's password
     def update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
-        cmd = self.cmd + ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
+        cmd = self.cmd_with_password + \
+            ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
         run_process_checked(cmd=cmd, log_cmd=False, env_vars=self.env)
+
+    # Try to update specified user's password otherwise throw Retryable Error
+    def try_update_password(self, new_password, user_to_update=DEFAULT_YSQL_USER):
+        cmd = self.cmd_with_password + \
+            ["-c", "alter role {} password '{}';".format(user_to_update, new_password)]
+        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
+        if (retcode != 0):
+            raise RetryableError
 
     # Change specified DB's owner
     def db_owner(self, db, new_owner):
-        cmd = self.cmd + ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
+        cmd = self.cmd_with_password + \
+            ["-c", "alter database \"{}\" owner to \"{}\";".format(db, new_owner)]
         run_process_checked(cmd=cmd, env_vars=self.env)
 
     # Check YSQL is UP
     def is_ysql_up(self):
-        cmd = self.cmd + ["-c", "\\conninfo"]
+        cmd = self.cmd_with_password + ["-c", "\\conninfo"]
         out, err, _ = run_process(cmd=cmd, log_cmd=True, env_vars=self.env)
         if err:
             Output.log("Unable to connect using YSQL. Error: {}".format(err))
@@ -2832,19 +2958,22 @@ class YsqlProxy(object):
 # Proxy for ycqlsh commands.
 class YcqlProxy(object):
     def __init__(self, ip, port, path=None,
-                    get_default_credentials=False):
+                    get_default_credentials=False, secure=False):
         if path is None:
             path = find_binary_location(YUGABYTE_API_CLIENT_PROGRAMS["ycql"])
         self.cmd = [path, str(ip), str(port)]
         self.setup_env_init = EnvBasedCredentials()
         self.username, self.password, self.keyspace = self.setup_env_init.get_ycql_credentials(
                                                         get_default_credentials)
+        self.password_authentication=secure
+
+        if secure:
+            self.cmd.append("--ssl")
 
     # Starts interactive YCQL shell.
     def connect(self):
         cmd = self.cmd
-        if self.setup_env_init.is_exists('YCQL_USER') or \
-                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
+        if self.password_authentication:
             cmd.extend(["-u", self.username])
         if self.keyspace is not None:
             cmd.extend(["-k", self.keyspace])
@@ -2877,6 +3006,14 @@ class YcqlProxy(object):
                 "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
         run_process_checked(cmd, log_cmd=False)
 
+    # Try to update specified user's password otherwise throw Retryable Error
+    def try_update_password(self, new_password, user_to_update=DEFAULT_YCQL_USER):
+        cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
+                "ALTER ROLE {} WITH PASSWORD = '{}';".format(user_to_update, new_password)]
+        out, err, retcode = run_process(cmd=cmd, log_cmd=True, env_vars=os.environ.copy())
+        if (retcode != 0):
+            raise RetryableError
+
     # Check keyspace exists
     # Note that this will return false if ycqlsh can't connect, even if keyspace exists.
     def keyspace_exists(self, keyspace):
@@ -2897,9 +3034,7 @@ class YcqlProxy(object):
     # 2. If environment variables exists: bin/ycqlsh -u user -p password -f directory/b.ycql
     def load_files(self, filepaths):
         cmd = self.cmd
-        if self.setup_env_init.is_exists('YCQL_USER') or \
-                    self.setup_env_init.is_exists('YCQL_PASSWORD'):
-            cmd.extend(["-u", self.username, "-p", self.password])
+        cmd.extend(["-u", self.username, "-p", self.password])
         for path in filepaths:
             cmd.extend(["-f", path])
         run_process_checked(cmd=cmd, log_cmd=False)
@@ -3378,7 +3513,7 @@ def run_process(cmd, timeout=None, log_cmd=False, env_vars=None, shell=False):
         out, err = proc.communicate()
     (ret_out, ret_err, retcode) = (out.decode('utf-8'), err.decode('utf-8'), proc.returncode)
     if log_cmd:
-        Output.log("run_process returned {}: \nOUT >>\n{}\n<< ERR >>\n<<".format(
+        Output.log("run_process returned {}: \nOUT >>\n{}\n<< ERR >>\n{}\n<<".format(
             retcode, ret_out, ret_err))
     return (ret_out, ret_err, retcode)
 
@@ -3441,13 +3576,31 @@ def retry_op_with_argument(func, argument, timeout=180):
 
 
 class EnvBasedCredentials(object):
-    def __init__(self):
-        self.ysql_user = os.environ.get('YSQL_USER')
-        self.ysql_password = os.environ.get('YSQL_PASSWORD')
-        self.ysql_db = os.environ.get('YSQL_DB')
-        self.ycql_user = os.environ.get('YCQL_USER')
-        self.ycql_password = os.environ.get('YCQL_PASSWORD')
-        self.ycql_keyspace = os.environ.get('YCQL_KEYSPACE')
+    _ysql_user = os.environ.get('YSQL_USER')
+    _ysql_password = os.environ.get('YSQL_PASSWORD')
+    _ysql_db = os.environ.get('YSQL_DB')
+    _ycql_user = os.environ.get('YCQL_USER')
+    _ycql_password = os.environ.get('YCQL_PASSWORD')
+    _ycql_keyspace = os.environ.get('YCQL_KEYSPACE')
+    _cert_file_path = os.environ.get('SSL_CERTFILE')
+
+    def attrsetter(attr):
+        def set_any(self, value):
+            setattr(type(self), attr, value)
+        return set_any
+
+    def attrgetter(attr):
+        def get_any(self):
+            return getattr(self, attr)
+        return get_any
+
+    ysql_user = property(attrgetter('_ysql_user'), attrsetter('_ysql_user'))
+    ysql_password = property(attrgetter('_ysql_password'), attrsetter('_ysql_password'))
+    ysql_db = property(attrgetter('_ysql_db'), attrsetter('_ysql_db'))
+    ycql_user = property(attrgetter('_ycql_user'), attrsetter('_ycql_user'))
+    ycql_password = property(attrgetter('_ycql_password'), attrsetter('_ycql_password'))
+    ycql_keyspace = property(attrgetter('_ycql_keyspace'), attrsetter('_ycql_keyspace'))
+    cert_file_path = property(attrgetter('_cert_file_path'), attrsetter('_cert_file_path'))
 
     def get_ysql_user(self):
         return self.ysql_user or DEFAULT_YSQL_USER
@@ -3467,6 +3620,9 @@ class EnvBasedCredentials(object):
     def get_ycql_keyspace(self):
         return self.ycql_keyspace or (self.ycql_user or DEFAULT_YCQL_KEYSPACE)
 
+    def get_cert_file_path(self):
+        return self.cert_file_path
+
     def get_ysql_credentials(self, get_default_credentials=False):
         if get_default_credentials:
             return DEFAULT_YSQL_USER, DEFAULT_YSQL_PASSWORD, DEFAULT_YSQL_DB
@@ -3481,6 +3637,16 @@ class EnvBasedCredentials(object):
 
     def is_exists(self, var_to_check):
         return True if var_to_check in os.environ and os.environ.get(var_to_check) else False
+
+    def update_ysql_password(self, new_password):
+        self.ysql_password = new_password
+
+    def update_ycql_password(self, new_password):
+        self.ycql_password = new_password
+
+    def update_passwords(self, new_password):
+        self.update_ysql_password(new_password)
+        self.update_ycql_password(new_password)
 
     def setup_ysql_credentials(self, proxy_class):
 
@@ -3518,6 +3684,11 @@ class EnvBasedCredentials(object):
 
             # Note: Following lines will be commented till we can decide on default user deletion.
             #proxy_class.delete_user(self.get_ycql_user(), self.get_ycql_password())
+
+    def setup_cert_file_path(self, cert_file_path):
+        if self.get_cert_file_path() is None or self.get_cert_file_path != cert_file_path:
+            os.environ['SSL_CERTFILE'] = cert_file_path
+            self.cert_file_path = cert_file_path
 
 
 if __name__ == '__main__':
