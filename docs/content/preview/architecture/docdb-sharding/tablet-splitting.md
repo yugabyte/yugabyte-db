@@ -210,7 +210,7 @@ For details on the architecture design, see [Automatic re-sharding of data with 
 
 ### Enable automatic tablet splitting
 
-To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable_automatic_tablet_splitting) command and specify the associated flags to configure when tablets should split.
+To enable automatic tablet splitting, use the `yb-master` [`--enable_automatic_tablet_splitting`](../../../reference/configuration/yb-master/#enable-automatic-tablet-splitting) flag and specify the associated flags to configure when tablets should split.
 
 Tablet splitting happens in three phases, determined by the shard count per node. As the shard count increases, the threshold size for splitting a tablet also increases, as follows:
 
@@ -218,7 +218,7 @@ Tablet splitting happens in three phases, determined by the shard count per node
 
 * In the high phase, each node has fewer than [`tablet_split_high_phase_shard_count_per_node`](../../../reference/configuration/yb-master/#tablet-split-high-phase-shard-count-per-node) shards. In this phase, YugabyteDB splits tablets larger than [`tablet_split_high_phase_size_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-split-high-phase-size-threshold-bytes).
 
-* Once the shard count exceeds the high phase count, YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`].
+* Once the shard count exceeds the high phase count, YugabyteDB splits tablets larger than [`tablet_force_split_threshold_bytes`](../../../reference/configuration/yb-master/#tablet-force-split-threshold-bytes).
 
 When automatic tablet splitting is enabled, newly-created tables have one shard per T-Server by default.
 
