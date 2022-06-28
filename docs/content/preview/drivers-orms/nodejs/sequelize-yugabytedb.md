@@ -38,9 +38,11 @@ showAsideToc: true
 
 [Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It is a promise-based ORM for Node.js that enables JavaScript developers to work with relational databases, with support for features such as solid transaction support, relations, read replication, and more.
 
-Sequelize ORM supports PostgreSQL as a backend database. As YugabyteDB YSQL is a PostgreSQL-compatible API, Sequelize can be used for querying YugabyteDB. Currently, YugabyteDB doesn't support Sequelize ORM's `findorCreate()` API, and some other features, which may prevent you from successfully implementing Node.js applications.
+Since Sequelize ORM supports PostgreSQL as a backend database and YugabyteDB YSQL is a PostgreSQL-compatible API, Sequelize works with YugabyteDB out of the box. 
 
-There is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package. In the meantime, use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page describes how to get started with Sequelize ORM for connecting to YugabyteDB using the `sequelize-yugabytedb` package.
+To further improve the experience and address few limitations (for example, support for `findOrCreate()` API), there is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package.
+
+In the meantime, use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page uses the `sequelize-yugabytedb` package to describe how to get started with Sequelize ORM for connecting to YugabyteDB.
 
 ## Working with domain objects
 
