@@ -420,7 +420,7 @@ aside.td-sidebar {
             margin-left: 0;
           }
 
-          &:not(.open) > ul {
+          &:not(.open):not(.unlink-list) > ul {
             display: none;
           }
 
