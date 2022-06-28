@@ -2205,8 +2205,6 @@ typedef struct CreateTableGroupStmt
 typedef struct OptTableGroup
 {
 	NodeTag type;
-
-	bool	has_tablegroup;
 	char   *tablegroup_name;
 } OptTableGroup;
 

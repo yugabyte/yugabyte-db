@@ -331,15 +331,6 @@ typedef struct StdRdOptions
 	 ((StdRdOptions *) (relation)->rd_options)->parallel_workers : (defaultpw))
 
 /*
- * RelationGetTablegroupOid
- *		Returns the relation's tablegroup reloption setting.
- *		Note multiple eval of argument!
- */
-#define RelationGetTablegroupOid(relation) \
-	((relation)->rd_options ? \
-	 ((StdRdOptions *) (relation)->rd_options)->tablegroup_oid : 0)
-
-/*
  * RelationGetColocated
  *		Returns the relation's colocated reloption setting.
  *		Note multiple eval of argument!
