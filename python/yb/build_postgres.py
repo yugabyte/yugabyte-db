@@ -240,6 +240,7 @@ class PostgresBuilder(YbBuildToolBase):
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
+        self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
         self.should_make = self.args.step is None or self.args.step == 'make'
         self.thirdparty_dir = self.args.thirdparty_dir
@@ -709,7 +710,7 @@ class PostgresBuilder(YbBuildToolBase):
                             "Not running 'make install' in the %s directory since we are only "
                             "generating the compilation database", work_dir)
 
-                if self.export_compile_commands:
+                if self.export_compile_commands and not self.skip_pg_compile_commands:
                     logging.info("Generating the compilation database in directory '%s'", work_dir)
 
                     compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
@@ -826,7 +827,7 @@ class PostgresBuilder(YbBuildToolBase):
         logging.info("PostgreSQL build stamp:\n%s", initial_build_stamp)
 
         if initial_build_stamp == saved_build_stamp:
-            if self.export_compile_commands:
+            if self.export_compile_commands and not self.skip_pg_compile_commands:
                 logging.info(
                     "Even though PostgreSQL is already up-to-date in directory %s, we still need "
                     "to create compile_commands.json, so proceeding with %s",
