@@ -221,9 +221,11 @@ This parameter controls whether utility commands are tracked by the module. Util
 
 ##### pg_stat_monitor.pgsm_normalized_query
 
-Type: boolean. Default: 1
+Type: boolean. Default: 0
 
-By default, the query shows the actual parameter instead of the placeholder. It is quite useful when users want to use that query and try to run that query to check the abnormalities. But in most cases users like the queries with a placeholder. This parameter is used to toggle between the two said options.
+By default, the query shows the actual parameter instead of the placeholder. It is quite useful when users want to use that query and try to run that query to check the abnormalities. Users should be aware, however, that running queries with disabled normalization can expose some sensitive data. 
+
+But in most cases users like the queries with a placeholder. This parameter is used to toggle between the two said options.
 
 ##### pg_stat_monitor.pgsm_max_buckets
 
