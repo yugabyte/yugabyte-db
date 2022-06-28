@@ -123,8 +123,8 @@
 
     li:not(.active):hover {
       a {
-        background: #fff6f4;
-        color: $YB_ORANGE;
+        color: #fff;
+        background: var(--theme-color);
       }
 
       a::before,
