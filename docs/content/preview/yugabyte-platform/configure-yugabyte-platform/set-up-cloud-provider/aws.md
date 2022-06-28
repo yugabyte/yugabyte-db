@@ -127,7 +127,7 @@ You have an option to provide the following:
 
 - A custom classless inter-domain routing (CIDR) block for each regional VPC. If not provided, YugabyteDB Anywhere will choose defaults, aiming to not overlap across regions.
 
-- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS).<br>
+- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle Linux 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS) and [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support).<br>
 
   <br>
 
@@ -143,7 +143,7 @@ You can use your own custom VPCs. This allows you the highest level of customiza
 - A VPC ID to use for each region.
 - A Security Group ID to use for each region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
 - A mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
-- A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
+- A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
@@ -155,12 +155,12 @@ If you choose to provide your own VPC information, you will be responsible for h
 - If you deploy YugabyteDB Anywhere in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YugabyteDB Anywhere) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YugabyteDB Anywhere or its VPC).
 - When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Tutorial: Creating a VPC with Public and Private Subnets for Your Clusters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
 
-### Ubuntu 18 and Oracle 8 support
+### Ubuntu 18 and Oracle Linux 8 support
 
 In addition to CentOS, YugabyteDB Anywhere allows you to bring up universes on the following host nodes:
 
 - Ubuntu 18.04, which requires Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
-- Oracle 8, which requires the provider created with a custom AMI and custom SSH user, assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. YugabyteDB Anywhere support for Oracle 8 has the following limitations:
+- Oracle Linux 8, which requires the provider created with a custom AMI and custom SSH user, assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. YugabyteDB Anywhere support for Oracle Linux 8 has the following limitations:
   - Only Red Hat Linux-compatible kernel is supported to allow port changing. There is no support for Unbreakable Enterprise Kernel (UEK).
   - Systemd services are not supported.
 
