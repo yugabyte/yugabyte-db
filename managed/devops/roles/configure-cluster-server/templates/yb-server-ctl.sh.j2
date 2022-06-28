@@ -325,10 +325,12 @@ case "$command" in
       collect_postmaster_pids
 
       # If PG exited normally, stop immediately.
+{% raw %}
       if [[ ${#postmaster_pids[@]} -eq 0 ]]; then
         echo "Postmaster exited. Stopped."
         exit 0
       fi
+{% endraw %}
 
       print_err_out "Found postmaster PIDs: ${postmaster_pids[*]}"
 
