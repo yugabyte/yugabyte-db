@@ -41,7 +41,7 @@
 
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/master/call_home.h"
+#include "yb/master/master_call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -133,8 +133,8 @@ static int MasterMain(int argc, char** argv) {
 
   LOG(INFO) << "Master server successfully started.";
 
-  std::unique_ptr<CallHome> call_home;
-  call_home = std::make_unique<CallHome>(&server, ServerType::MASTER);
+  std::unique_ptr<MasterCallHome> call_home;
+  call_home = std::make_unique<MasterCallHome>(&server);
   call_home->ScheduleCallHome();
 
   auto total_mem_watcher = server::TotalMemWatcher::Create();

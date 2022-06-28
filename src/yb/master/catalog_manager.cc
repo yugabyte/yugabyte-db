@@ -489,6 +489,8 @@ DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
                  "Number of seconds to sleep before a sys catalog reload.");
 TAG_FLAG(TEST_delay_sys_catalog_reload_secs, runtime);
 
+DECLARE_bool(transaction_tables_use_preferred_zones);
+
 namespace yb {
 namespace master {
 
