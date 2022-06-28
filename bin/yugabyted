@@ -808,10 +808,6 @@ class ControlScript(object):
             "--placement_zone={}".format(self.configs.saved_data.get("cloud_zone")),
         ]
 
-        if not join_ip:
-            common_gflags.append("--cluster_uuid={}".format(
-                self.configs.saved_data.get("universe_uuid")))
-
         if fault_tolerance == "region":
             common_gflags.append("--leader_failure_max_missed_heartbeat_periods=10")
 
@@ -832,6 +828,8 @@ class ControlScript(object):
         # if a join ip is specified, bring up a shell mode master
         if not join_ip:
             yb_master_cmd.append("--master_addresses={}".format(master_addresses))
+            yb_master_cmd.append("--cluster_uuid={}".format(
+                self.configs.saved_data.get("universe_uuid")))
 
         if self.configs.saved_data.get("master_flags"):
             yb_master_cmd.extend(

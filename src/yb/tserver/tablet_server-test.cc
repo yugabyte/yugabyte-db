@@ -59,6 +59,8 @@
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_call_home.h"
+#include "yb/server/call_home-test-util.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/crc.h"
@@ -905,6 +907,21 @@ TEST_F(TabletServerTest, TestChecksumScan) {
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
   ASSERT_NE(total_crc, resp.checksum());
   ASSERT_EQ(first_crc, resp.checksum());
+}
+
+TEST_F(TabletServerTest, TestCallHome) {
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+  TestCallHome<TabletServer, TserverCallHome>(
+      webserver_dir, {} /*additional_collections*/, mini_server_->server());
+}
+
+// This tests whether the enabling/disabling of callhome is happening dynamically
+// during runtime.
+TEST_F(TabletServerTest, TestCallHomeFlag) {
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+  TestCallHomeFlag<TabletServer, TserverCallHome>(webserver_dir, mini_server_->server());
 }
 
 } // namespace tserver

@@ -2317,7 +2317,7 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
   ASSERT_OK(WaitForTablets(3, leader_idx));
   ASSERT_OK(WaitForTablets(3, healthy_follower_idx));
   ASSERT_OK(wait_for_same_tablet_metas(leader, healthy_follower));
-  ASSERT_OK(cluster_->SetFlag(leader, "unresponsive_ts_rpc_retry_limit", "100"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("unresponsive_ts_rpc_retry_limit", "100"));
   ASSERT_OK(cluster_->SetFlag(leader, "TEST_enable_remote_bootstrap", "true"));
 
   // Restart the faulted node. Ensure it waits a long time in ApplyTabletSplit to allow a remote
