@@ -86,6 +86,10 @@ YBCPgOid PgTableDesc::GetColocationId() const {
   return schema().has_colocation_id() ? schema().colocation_id() : kColocationIdNotSet;
 }
 
+const TablegroupId PgTableDesc::GetTablegroupId() const {
+  return resp_.has_tablegroup_id() ? resp_.tablegroup_id() : "";
+}
+
 bool PgTableDesc::IsHashPartitioned() const {
   return schema().num_hash_key_columns() > 0;
 }

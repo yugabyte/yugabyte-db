@@ -499,12 +499,21 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecTruncateTable(handle));
 }
 
-YBCStatus YBCPgGetSomeTableProperties(YBCPgTableDesc table_desc,
-                                      YbTableProperties properties) {
+YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
+                                  YbTableProperties properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
+  TablegroupId tablegroup_id = table_desc->GetTablegroupId();
+  YBCPgOid tablegroup_oid = 0;
+  if (!tablegroup_id.empty()) {
+    YBCStatus status =
+      ExtractValueFromResult(GetPgsqlTablegroupOid(tablegroup_id), &tablegroup_oid);
+    if (status) {
+      return status;
+    }
+  }
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
-  properties->tablegroup_oid = 0; /* Isn't set here. */
+  properties->tablegroup_oid = tablegroup_oid;
   properties->colocation_id = table_desc->GetColocationId();
   return YBCStatusOK();
 }
