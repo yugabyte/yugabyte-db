@@ -1,5 +1,5 @@
 ---
-title: ysql_dump - back up a YSQL database
+title: ysql_dump
 headerTitle: ysql_dump
 linkTitle: ysql_dump
 description: Back up a specified YSQL database into plain-text, SQL script file.

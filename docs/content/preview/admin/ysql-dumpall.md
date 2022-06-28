@@ -1,5 +1,5 @@
 ---
-title: ysql_dumpall - back up all YSQL databases
+title: ysql_dumpall
 headerTitle: ysql_dumpall
 linkTitle: ysql_dumpall
 description: ysql_dumpall

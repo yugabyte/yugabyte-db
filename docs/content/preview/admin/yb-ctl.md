@@ -9,7 +9,7 @@ menu:
     parent: admin
     weight: 2410
 aliases:
-  - admin/yb-ctl
+  - /admin/yb-ctl
 type: docs
 ---
 
