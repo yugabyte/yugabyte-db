@@ -8,7 +8,7 @@
     {{ end }}
     <div class="heading-content">
       <div>
-        <h1>{{ .Title }}</h1>
+        <h1>{{ if .Params.headerTitle }}{{ .Params.headerTitle }}{{ else }}{{ .Title }}{{ end }} {{ if .Draft }} (Draft){{ end }}{{ if .Params.beta }}<a class="tag-beta" href="{{ .Params.beta }}">Beta</a>{{ end }}</h1>
         {{ with .Params.headcontent }}<div class="lead">{{ . | markdownify }}</div>{{ end }}
       </div>
       {{ if .Site.Params.versions }}

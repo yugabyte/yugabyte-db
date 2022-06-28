@@ -61,6 +61,35 @@ ol.breadcrumb {
   }
 }
 
+h1 {
+  .tag-beta {
+    display: inline-block;
+    text-decoration: none;
+    border: none;
+    height: 30px;
+    width: 70px;
+    color: #f0f9ff;
+    background-color: #35a3ff;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    font-size: 16px;
+    line-height: 30px;
+    text-align: center;
+    vertical-align: middle;
+    margin-left: 20px;
+    margin-top: -6px;
+
+    &:hover,
+    &:focus,
+    &:active {
+      color: #fff;
+      opacity: 0.8;
+      border: none;
+    }
+  }
+}
+
 @media (min-width: 768px) {
   .td-main main {
     padding-top: 9.5rem;
