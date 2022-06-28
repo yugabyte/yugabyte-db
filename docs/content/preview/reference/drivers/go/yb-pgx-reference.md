@@ -40,6 +40,29 @@ showAsideToc: true
 
 [YugabyteDB PGX driver](https://github.com/yugabyte/pgjdbc) is a Go driver for [YSQL](/preview/api/ysql/) based on [PGX driver](https://github.com/jackc/pgx/).
 
+Although the upstream PGX driver works with YugabyteDB, the Yugabyte driver enhances YugabyteDB by eliminating the need for external load balancers.
+The driver has the following features:
+
+- It is **cluster-aware**, which eliminates the need for an external load balancer.
+
+  The driver package includes a class that uses one initial contact point for the YugabyteDB cluster as a means of discovering all the nodes and, if required, refreshing the list of live endpoints with every new connection attempt. The refresh is triggered if stale information (older than 5 minutes) is discovered.
+
+- It is **topology-aware**, which is essential for geographically-distributed applications.
+
+  The driver uses servers that are part of a set of geo-locations specified by topology keys.
+
+## Load balancing
+
+The YugabyteDB PGX driver has the following load balancing features:
+
+### Uniform load balancing
+
+In this mode, the driver makes the best effort to uniformly distribute the connections to each YugabyteDB server. For example, if a client application creates 100 connections to a YugabyteDB cluster consisting of 10 servers, then the driver creates 10 connections to each server. If the number of connections are not exactly divisible by the number of servers, then a few may have 1 less or 1 more connection than the others. This is the client view of the load, so the servers may not be well balanced if other client applications are not using the Yugabyte JDBC driver.
+
+### Topology-aware load balancing
+
+Because YugabyteDB clusters can have servers in different regions and availability zones, the YugabyteDB PGX driver is topology-aware, and can be configured to create connections only on servers that are in specific regions and zones. This is beneficial for client applications that need to connect to the geographically nearest regions and availability zone for lower latency; the driver tries to uniformly load only those servers that belong to the specified regions and zone.
+
 ## Quick start
 
 Learn how to establish a connection to YugabyteDB database and begin CRUD operations using the steps from [Build a Go application](../../../../quick-start/build-apps/go/ysql-yb-pgx/).
@@ -62,7 +85,7 @@ Optionally, you can choose to import the pgxpool package instead. Refer to [Usin
 
 Learn how to perform common tasks required for Go application development using the YugabyteDB PGX driver.
 
-### Connect to YugabyteDB database
+### Use the driver
 
 After setting up the driver, implement the Go client application that uses the driver to connect to your YugabyteDB cluster and run a query on the sample data.
 
@@ -70,13 +93,7 @@ The YugabyteDB PGX driver allows Go programmers to connect to YugabyteDB to exec
 
 Use the `pgx.Connect()` method or `pgxpool.Connect()` method to create a connection object for the YugabyteDB database. This can be used to perform DDLs and DMLs against the database.
 
-The driver has the following features:
-
-- It is **cluster-aware**, which eliminates the need for an external load balancer.
-
-Connections are distributed across all the [YB-Tservers](/preview/architecture/concepts/yb-tserver/) in the cluster, irrespective of their placements.
-
-The following table describes the connection parameters required to connect to the YugabyteDB database with **Uniform load balancing**.
+The following table describes the connection parameters required to connect to the YugabyteDB database:
 
 | Parameters | Description | Default |
 | :---------- | :---------- | :------ |
@@ -85,51 +102,35 @@ The following table describes the connection parameters required to connect to t
 | database | Database name | yugabyte
 | user | User connecting to the database | yugabyte
 | password | Password for the user | yugabyte
-| load_balance | enables uniform load balancing | true
 
-To enable the cluster-aware connection load balancing, provide the parameter `load_balance=true` in the connection string as follows:
+#### Load balancing connection properties
 
-```go
-"postgres://username:password@localhost:5433/database_name?load_balance=true"
-```
+The following connection properties need to be added to enable load balancing:
 
-- It is **topology-aware**, which is essential for geographically-distributed applications.
+- load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
+- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
 
-The following is a code snippet for connecting to YugabyteDB using the connection parameters.
+To use the driver, do the following:
 
-```go
-baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+- Pass new connection properties for load balancing in the connection URL or properties pool.
+
+  To enable uniform load balancing across all servers, you set the `load-balance` property to `true` in the URL, as per the following example:
+
+  ```go
+  baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
                     user, password, host, port, dbname)
-url := fmt.Sprintf("%s?load_balance=true", baseUrl)
-conn, err := pgx.Connect(context.Background(), url)
-```
+  url := fmt.Sprintf("%s?load_balance=true", baseUrl)
+  conn, err := pgx.Connect(context.Background(), url)
+  ```
 
-Connections are distributed equally with the [YB-Tservers](/preview/architecture/concepts/yb-tserver/) in specific zones by specifying these zones as `topology_keys` with values in the format `cloud-name.region-name.zone-name`. Multiple zones can be specified with comma separated values.
+  To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
-The following table describes the connection parameters required to connect to the YugabyteDB database with **Topology-aware load balancing**.
-
-| Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| user | user for connecting to the database | yugabyte
-| password | password for connecting to the database | yugabyte
-| host  | hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| dbname | database name | yugabyte
-| load_balance | enables load balancing | true
-| topology_keys | enables topology-aware load balancing | true
-
-```sh
-postgres://username:password@localhost:5433/database_name?load_balance=true&topology_keys=cloud1.region1.zone1,cloud1.region1.zone2
-```
-
-The following is a code snippet for connecting to YugabyteDB using the connection parameters.
-
-```go
-baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
+  ```go
+  baseUrl := fmt.Sprintf("postgres://%s:%s@%s:%d/%s",
                     user, password, host, port, dbname)
-url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
-conn, err := pgx.Connect(context.Background(), url)
-```
+  url = fmt.Sprintf("%s?load_balance=true&topology_keys=cloud1.datacenter1.rack1", baseUrl)
+  conn, err := pgx.Connect(context.Background(), url)
+  ```
 
 ### Create table
 
@@ -245,6 +246,25 @@ config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 }
 
 pool, err := pgxpool.ConnectConfig(context.Background(), config)
+```
+
+You can either `Acquire` a connection from pool and execute queries on it, or use Query API to directly execute SQLs on the pool.
+
+```go
+conn, err := pool.Acquire(context.Background())
+if err != nil {
+	fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+	os.Exit(1)
+}
+defer conn.Release()
+
+var createStmt = `CREATE TABLE employee (id int PRIMARY KEY,
+                  name varchar, age int, language varchar)`
+_, err = conn.Exec(context.Background(), createStmt)
+
+// ...
+
+rows, err := pool.Query(context.Background(), "SELECT name, age, language FROM employee WHERE id = 1")
 ```
 
 For more details, see the [pgxpool package](https://pkg.go.dev/github.com/jackc/pgx/v4/pgxpool) documentation.
