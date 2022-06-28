@@ -323,19 +323,28 @@ class UniverseForm extends Component {
   // For Async clusters, we need to fetch the universe name from the
   // primary cluster metadata
   getUniverseName = () => {
-    const { formValues, universe } = this.props;
-
     const {
-      currentUniverse: {
-        data: { universeDetails }
+      formValues,
+      universe: {
+        currentUniverse: {
+          data: { universeDetails }
+        }
       }
-    } = universe;
-    if (isNonEmptyObject(universeDetails)) {
-      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
-      return formValues['primary']?.universeName || primaryCluster?.userIntent?.universeName || '';
-    }
-    // We shouldn't get here!!!
-    return null;
+    } = this.props;
+
+    const primaryCluster = getPrimaryCluster(universeDetails?.clusters);
+    const readOnlyCluster = getReadOnlyCluster(universeDetails?.clusters);
+
+    // Universe name should be the same between primary and read only.
+    // Read only cluster fields being used as a fallback in case
+    // primary cluster doesn't have universeName.
+    return (
+      formValues['primary']?.universeName ||
+      formValues['async']?.universeName ||
+      primaryCluster?.userIntent?.universeName ||
+      readOnlyCluster?.userIntent?.universeName ||
+      ''
+    );
   };
 
   getYSQLstate = (clusterType) => {
