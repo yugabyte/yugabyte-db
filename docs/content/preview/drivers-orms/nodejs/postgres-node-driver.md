@@ -40,7 +40,7 @@ npm install pg
 
 After this, you can start using the driver in your code.
 
-### Step 2: Connect to your cluster
+### Step 2:  Set up the database connection
 
 Before connecting to the YugabyteDB cluster, first import the `pg` package.
 
@@ -61,8 +61,8 @@ client.connect()
 | host  | Hostname of the YugabyteDB instance | localhost
 | port |  Listen port for YSQL | 5433
 | database | Database name | yugabyte
-| user | User connecting to the database | yugabyte
-| password | User password | yugabyte
+| user | User for connecting to the database | yugabyte
+| password | Password for connecting to the database | yugabyte
 
 #### Use SSL
 
@@ -76,16 +76,18 @@ client.connect()
 
 For other ways to provide connection and SSL-related details, refer to the [node-postgres](https://node-postgres.com/) documentation.
 
-| JDBC Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| sslmode | SSL mode  | require
-| sslrootcert | path to the root certificate on your computer | ~/.postgresql/
+| node-postgres Parameter | Description |
+| :---------- | :---------- |
+| sslmode | SSL mode  |
+| sslrootcert | path to the root certificate on your computer |
 
-If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](/preview/yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+
+Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
 ### Step 3: Query the YugabyteDB cluster from your application
 
-Create a new JavaScript file called `QuickStartApp.js` in your project directory. Copy the following sample code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
+Create a new JavaScript file called `QuickStartApp.js` in your project directory. Copy the following code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
 
 ```javascript
 const pg = require('pg');

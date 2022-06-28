@@ -14,18 +14,10 @@ showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="/preview/drivers-orms/nodejs/sequelize/" class="nav-link">
       <i class="fab fa-node-js" aria-hidden="true"></i>
-      sequelize-core
-    </a>
-  </li>
-
-  <li >
-    <a href="/preview/drivers-orms/nodejs/sequelize-yugabytedb/" class="nav-link">
-      <i class="fab fa-node-js" aria-hidden="true"></i>
-      sequelize-yugabytedb
+      Sequelize
     </a>
   </li>
   <li>
@@ -104,7 +96,6 @@ npm install -g prisma
     npx prisma init
     ```
 
-    \
     This will create files named `prisma/schema.prisma` and `.env`.
 
     - `schema.prisma` consists of configurations and data models for the project.
@@ -234,8 +225,7 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
     $ node example.js
     ```
 
-    \
-    Expect output similar to the following:
+    Expect an output similar to the following:
 
     ```output
     Created 3 employees.
@@ -263,7 +253,7 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
     Ran the Prisma example successfully.
     ```
 
-### Use Prisma Studio to explore the data in the database
+### Step 5: Use Prisma Studio to explore the data in the database
 
 Run the following command to start Prisma Studio:
 

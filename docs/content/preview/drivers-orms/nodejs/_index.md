@@ -1,8 +1,8 @@
 ---
-title: NodeJS drivers and ORMs
-headerTitle: NodeJS
-linkTitle: NodeJS
-description: NodeJS Drivers and ORMs support for YugabyteDB.
+title: Node.js drivers and ORMs
+headerTitle: Node.js
+linkTitle: Node.js
+description: Node.js Drivers and ORMs support for YugabyteDB.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -23,8 +23,7 @@ The following projects are recommended for implementing Node applications using 
 
 | Project | Documentation and Guides | Example Apps |
 | :------ | :----------------------- | :----------- |
-| Sequelize | [Documentation](sequelize) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/sequelize) |
-| Sequelize YugabyteDB | [Documentation](sequelize-yugabytedb) | [Sequelize YugabyteDB ORM App](https://github.com/yugabyte/sequelize-yugabytedb)
+| Sequelize | [Documentation](sequelize) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-sequelize/) | [Sequelize ORM App](https://github.com/yugabyte/sequelize-yugabytedb) |
 | Prisma | [Documentation](prisma) <br /> [Hello World App](../../quick-start/build-apps/nodejs/ysql-prisma/) <br /> | [Prisma ORM App](https://github.com/yugabyte/orm-examples/tree/master/node/prisma)
 
 Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the **Hello World** examples.
