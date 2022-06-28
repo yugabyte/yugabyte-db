@@ -44,13 +44,14 @@ PG_FUNCTION_INFO_V1(pg_stat_monitor_reset_errors);
 
 static HTAB *pgsm_errors_ht = NULL;
 
-void psgm_errors_init(void)
+void
+psgm_errors_init(void)
 {
-	HASHCTL info;
+	HASHCTL		info;
 #if PG_VERSION_NUM >= 140000
-	int flags = HASH_ELEM | HASH_STRINGS;
+	int			flags = HASH_ELEM | HASH_STRINGS;
 #else
-	int flags = HASH_ELEM | HASH_BLOBS;
+	int			flags = HASH_ELEM | HASH_BLOBS;
 #endif
 
 
@@ -58,26 +59,28 @@ void psgm_errors_init(void)
 	info.keysize = ERROR_MSG_MAX_LEN;
 	info.entrysize = sizeof(ErrorEntry);
 	pgsm_errors_ht = ShmemInitHash("pg_stat_monitor: errors hashtable",
-									PSGM_ERRORS_MAX,  /* initial size */
-									PSGM_ERRORS_MAX,  /* maximum size */
-									&info,
-									flags);
+								   PSGM_ERRORS_MAX, /* initial size */
+								   PSGM_ERRORS_MAX, /* maximum size */
+								   &info,
+								   flags);
 }
 
-size_t pgsm_errors_size(void)
+size_t
+pgsm_errors_size(void)
 {
-    return hash_estimate_size(PSGM_ERRORS_MAX, sizeof(ErrorEntry));
+	return hash_estimate_size(PSGM_ERRORS_MAX, sizeof(ErrorEntry));
 }
 
-void pgsm_log(PgsmLogSeverity severity, const char *format, ...)
+void
+pgsm_log(PgsmLogSeverity severity, const char *format,...)
 {
-	char key[ERROR_MSG_MAX_LEN];
+	char		key[ERROR_MSG_MAX_LEN];
 	ErrorEntry *entry;
-	bool found = false;
-	va_list ap;
-	int n;
+	bool		found = false;
+	va_list		ap;
+	int			n;
 	struct timeval tv;
-	struct tm *lt;
+	struct tm  *lt;
 	pgssSharedState *pgss;
 
 	va_start(ap, format);
@@ -94,9 +97,10 @@ void pgsm_log(PgsmLogSeverity severity, const char *format, ...)
 	if (!entry)
 	{
 		LWLockRelease(pgss->errors_lock);
-		/* 
-		* We're out of memory, can't track this error message.
-		*/
+
+		/*
+		 * We're out of memory, can't track this error message.
+		 */
 		return;
 	}
 
@@ -110,13 +114,13 @@ void pgsm_log(PgsmLogSeverity severity, const char *format, ...)
 	gettimeofday(&tv, NULL);
 	lt = localtime(&tv.tv_sec);
 	snprintf(entry->time, sizeof(entry->time),
-			"%04d-%02d-%02d %02d:%02d:%02d",
-			lt->tm_year + 1900,
-			lt->tm_mon + 1,
-			lt->tm_mday,
-			lt->tm_hour,
-			lt->tm_min,
-			lt->tm_sec);
+			 "%04d-%02d-%02d %02d:%02d:%02d",
+			 lt->tm_year + 1900,
+			 lt->tm_mon + 1,
+			 lt->tm_mday,
+			 lt->tm_hour,
+			 lt->tm_min,
+			 lt->tm_sec);
 
 	entry->calls++;
 
@@ -129,15 +133,15 @@ void pgsm_log(PgsmLogSeverity severity, const char *format, ...)
 Datum
 pg_stat_monitor_reset_errors(PG_FUNCTION_ARGS)
 {
-	HASH_SEQ_STATUS 	hash_seq;
-	ErrorEntry         *entry;
-	pgssSharedState     *pgss = pgsm_get_ss();
+	HASH_SEQ_STATUS hash_seq;
+	ErrorEntry *entry;
+	pgssSharedState *pgss = pgsm_get_ss();
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
 		ereport(ERROR,
-			(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-			errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
 
 	LWLockAcquire(pgss->errors_lock, LW_EXCLUSIVE);
 
@@ -157,26 +161,26 @@ pg_stat_monitor_reset_errors(PG_FUNCTION_ARGS)
 Datum
 pg_stat_monitor_errors(PG_FUNCTION_ARGS)
 {
-	ReturnSetInfo		*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc			tupdesc;
-	Tuplestorestate		*tupstore;
-	MemoryContext		per_query_ctx;
-	MemoryContext		oldcontext;
-	HASH_SEQ_STATUS     hash_seq;
-	ErrorEntry          *error_entry;
-	pgssSharedState     *pgss = pgsm_get_ss();
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	HASH_SEQ_STATUS hash_seq;
+	ErrorEntry *error_entry;
+	pgssSharedState *pgss = pgsm_get_ss();
 
 	/* Safety check... */
 	if (!IsSystemInitialized())
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-					errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
+				 errmsg("pg_stat_monitor: must be loaded via shared_preload_libraries")));
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("pg_stat_monitor: set-valued function called in context that cannot accept a set")));
+				 errmsg("pg_stat_monitor: set-valued function called in context that cannot accept a set")));
 
 	/* Switch into long-lived context to construct returned data structures */
 	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
@@ -204,6 +208,7 @@ pg_stat_monitor_errors(PG_FUNCTION_ARGS)
 		Datum		values[4];
 		bool		nulls[4];
 		int			i = 0;
+
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
@@ -219,5 +224,5 @@ pg_stat_monitor_errors(PG_FUNCTION_ARGS)
 	/* clean up and return the tuplestore */
 	tuplestore_donestoring(tupstore);
 
-	return (Datum)0;
+	return (Datum) 0;
 }

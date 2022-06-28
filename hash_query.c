@@ -25,10 +25,11 @@ static HTAB *pgss_hash;
 static HTAB *pgss_query_hash;
 
 
-static HTAB*
+static HTAB *
 hash_init(const char *hash_name, int key_size, int entry_size, int hash_size)
 {
-	HASHCTL info;
+	HASHCTL		info;
+
 	memset(&info, 0, sizeof(info));
 	info.keysize = key_size;
 	info.entrysize = entry_size;
@@ -46,8 +47,8 @@ pgss_startup(void)
 	pgss_hash = NULL;
 
 	/*
-	* Create or attach to the shared memory state, including hash table
-	*/
+	 * Create or attach to the shared memory state, including hash table
+	 */
 	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
 
 	pgss = ShmemInitStruct("pg_stat_monitor", sizeof(pgssSharedState), &found);
@@ -63,7 +64,7 @@ pgss_startup(void)
 	init_hook_stats();
 #endif
 
-	set_qbuf((unsigned char *)ShmemAlloc(MAX_QUERY_BUF));
+	set_qbuf((unsigned char *) ShmemAlloc(MAX_QUERY_BUF));
 
 	pgss_hash = hash_init("pg_stat_monitor: bucket hashtable", sizeof(pgssHashKey), sizeof(pgssEntry), MAX_BUCKET_ENTRIES);
 	pgss_query_hash = hash_init("pg_stat_monitor: queryID hashtable", sizeof(uint64), sizeof(pgssQueryEntry), MAX_BUCKET_ENTRIES);
@@ -77,19 +78,19 @@ pgss_startup(void)
 	on_shmem_exit(pgss_shmem_shutdown, (Datum) 0);
 }
 
-pgssSharedState*
+pgssSharedState *
 pgsm_get_ss(void)
 {
 	return pgss;
 }
 
-HTAB*
+HTAB *
 pgsm_get_hash(void)
 {
 	return pgss_hash;
 }
 
-HTAB*
+HTAB *
 pgsm_get_query_hash(void)
 {
 	return pgss_query_hash;
@@ -117,7 +118,7 @@ pgss_shmem_shutdown(int code, Datum arg)
 Size
 hash_memsize(void)
 {
-	Size	size;
+	Size		size;
 
 	size = MAXALIGN(sizeof(pgssSharedState));
 	size += MAXALIGN(MAX_QUERY_BUF);
@@ -130,7 +131,7 @@ hash_memsize(void)
 pgssEntry *
 hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding)
 {
-	pgssEntry	*entry = NULL;
+	pgssEntry  *entry = NULL;
 	bool		found = false;
 
 	if (hash_get_num_entries(pgss_hash) >= MAX_BUCKET_ENTRIES)
@@ -164,7 +165,7 @@ hash_entry_alloc(pgssSharedState *pgss, pgssHashKey *key, int encoding)
  *      state is PGSS_FINISHED or PGSS_FINISHED).
  *    - Clear query buffer for new_bucket_id.
  *    - If old_bucket_id != -1, move all pending hash table entries in
- *      old_bucket_id to the new bucket id, also move pending queries from the 
+ *      old_bucket_id to the new bucket id, also move pending queries from the
  *      previous query buffer (query_buffer[old_bucket_id]) to the new one
  *      (query_buffer[new_bucket_id]).
  *
@@ -174,26 +175,30 @@ void
 hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_buffer)
 {
 	HASH_SEQ_STATUS hash_seq;
-	pgssEntry		*entry = NULL;
+	pgssEntry  *entry = NULL;
 
 	/* Store pending query ids from the previous bucket. */
-	List        *pending_entries = NIL;
-	ListCell    *pending_entry;
+	List	   *pending_entries = NIL;
+	ListCell   *pending_entry;
 
 	/* Iterate over the hash table. */
 	hash_seq_init(&hash_seq, pgss_hash);
 	while ((entry = hash_seq_search(&hash_seq)) != NULL)
 	{
 		/*
-		 * Remove all entries if new_bucket_id == -1.
-		 * Otherwise remove entry in new_bucket_id if it has finished already.
+		 * Remove all entries if new_bucket_id == -1. Otherwise remove entry
+		 * in new_bucket_id if it has finished already.
 		 */
 		if (new_bucket_id < 0 ||
 			(entry->key.bucket_id == new_bucket_id &&
-				 (entry->counters.state == PGSS_FINISHED || entry->counters.state == PGSS_ERROR)))
+			 (entry->counters.state == PGSS_FINISHED || entry->counters.state == PGSS_ERROR)))
 		{
-			if (new_bucket_id == -1) {
-				/* pg_stat_monitor_reset(), remove entry from query hash table too. */
+			if (new_bucket_id == -1)
+			{
+				/*
+				 * pg_stat_monitor_reset(), remove entry from query hash table
+				 * too.
+				 */
 				hash_search(pgss_query_hash, &(entry->key.queryid), HASH_REMOVE, NULL);
 			}
 
@@ -201,11 +206,10 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 		}
 
 		/*
-		 * If we detect a pending query residing in the previous bucket id,
-		 * we add it to a list of pending elements to be moved to the new
-		 * bucket id.
-		 * Can't update the hash table while iterating it inside this loop,
-		 * as this may introduce all sort of problems.
+		 * If we detect a pending query residing in the previous bucket id, we
+		 * add it to a list of pending elements to be moved to the new bucket
+		 * id. Can't update the hash table while iterating it inside this
+		 * loop, as this may introduce all sort of problems.
 		 */
 		if (old_bucket_id != -1 && entry->key.bucket_id == old_bucket_id)
 		{
@@ -213,19 +217,23 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 				entry->counters.state == PGSS_PLAN ||
 				entry->counters.state == PGSS_EXEC)
 			{
-				pgssEntry *bkp_entry = malloc(sizeof(pgssEntry));
+				pgssEntry  *bkp_entry = malloc(sizeof(pgssEntry));
+
 				if (!bkp_entry)
 				{
 					elog(DEBUG1, "hash_entry_dealloc: out of memory");
+
 					/*
-					 * No memory, If the entry has calls > 1 then we change the state to finished,
-					 * as the pending query will likely finish execution during the new bucket
-					 * time window. The pending query will vanish in this case, can't list it
+					 * No memory, If the entry has calls > 1 then we change
+					 * the state to finished, as the pending query will likely
+					 * finish execution during the new bucket time window. The
+					 * pending query will vanish in this case, can't list it
 					 * until it completes.
 					 *
-					 * If there is only one call to the query and it's pending, remove the
-					 * entry from the previous bucket and allow it to finish in the new bucket,
-					 * in order to avoid the query living in the old bucket forever.
+					 * If there is only one call to the query and it's
+					 * pending, remove the entry from the previous bucket and
+					 * allow it to finish in the new bucket, in order to avoid
+					 * the query living in the old bucket forever.
 					 */
 					if (entry->counters.calls.calls > 1)
 						entry->counters.state = PGSS_FINISHED;
@@ -244,14 +252,16 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 				pending_entries = lappend(pending_entries, bkp_entry);
 
 				/*
-				 * If the entry has calls > 1 then we change the state to finished in
-				 * the previous bucket, as the pending query will likely finish execution
-				 * during the new bucket time window. Can't remove it from the previous bucket
-				 * as it may have many calls and we would lose the query statistics.
+				 * If the entry has calls > 1 then we change the state to
+				 * finished in the previous bucket, as the pending query will
+				 * likely finish execution during the new bucket time window.
+				 * Can't remove it from the previous bucket as it may have
+				 * many calls and we would lose the query statistics.
 				 *
-				 * If there is only one call to the query and it's pending, remove the entry
-				 * from the previous bucket and allow it to finish in the new bucket,
-				 * in order to avoid the query living in the old bucket forever.
+				 * If there is only one call to the query and it's pending,
+				 * remove the entry from the previous bucket and allow it to
+				 * finish in the new bucket, in order to avoid the query
+				 * living in the old bucket forever.
 				 */
 				if (entry->counters.calls.calls > 1)
 					entry->counters.state = PGSS_FINISHED;
@@ -262,13 +272,14 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 	}
 
 	/*
-	 * Iterate over the list of pending queries in order
-	 * to add them back to the hash table with the updated bucket id.
+	 * Iterate over the list of pending queries in order to add them back to
+	 * the hash table with the updated bucket id.
 	 */
-	foreach (pending_entry, pending_entries) {
-		bool found = false;
-		pgssEntry	*new_entry;
-		pgssEntry	*old_entry = (pgssEntry *) lfirst(pending_entry);
+	foreach(pending_entry, pending_entries)
+	{
+		bool		found = false;
+		pgssEntry  *new_entry;
+		pgssEntry  *old_entry = (pgssEntry *) lfirst(pending_entry);
 
 		new_entry = (pgssEntry *) hash_search(pgss_hash, &old_entry->key, HASH_ENTER_NULL, &found);
 		if (new_entry == NULL)
@@ -294,9 +305,9 @@ hash_entry_dealloc(int new_bucket_id, int old_bucket_id, unsigned char *query_bu
 void
 hash_entry_reset()
 {
-	pgssSharedState *pgss   = pgsm_get_ss();
-	HASH_SEQ_STATUS		hash_seq;
-	pgssEntry			*entry;
+	pgssSharedState *pgss = pgsm_get_ss();
+	HASH_SEQ_STATUS hash_seq;
+	pgssEntry  *entry;
 
 	LWLockAcquire(pgss->lock, LW_EXCLUSIVE);
 
