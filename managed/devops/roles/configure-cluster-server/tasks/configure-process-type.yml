@@ -97,6 +97,14 @@
     shell:
       cmd: "sudo systemctl daemon-reload"
 
+  - name: Enable {{ yb_process_type }}
+    shell:
+      cmd: "sudo systemctl enable yb-{{ yb_process_type }}"
+
+  - name: Start {{ yb_process_type }}
+    shell:
+      cmd: "sudo systemctl start yb-{{ yb_process_type }}"
+
   tags:
     - override_gflags
     - systemd_upgrade
