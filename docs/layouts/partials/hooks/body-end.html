@@ -57,7 +57,7 @@
                 </div>\
                 <div class="search-text">' +
                 result.hits.map(hit => (
-                  '<p>' + hit.text + ' <a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '') + '">[more&hellip;]</a></p>'
+                  '<p>' + hit.text + ' <a href="' + hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/') + '">[more&hellip;]</a></p>'
                 )).join('') +
               '</div></div>'
             )).join(''));
