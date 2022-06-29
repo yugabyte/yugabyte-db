@@ -205,6 +205,8 @@ message GetTableSchemaResponsePB {
   // True if table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 13;
 
+  optional bytes tablegroup_id = 16;
+
   optional bool is_compatible_with_previous_version = 14 [default = false];
 
   optional uint32 wal_retention_secs = 15;

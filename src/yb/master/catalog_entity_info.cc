@@ -813,9 +813,12 @@ bool TableInfo::HasOutstandingSplits() const {
   return false;
 }
 
-TabletInfoPtr TableInfo::GetColocatedTablet() const {
+TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
+  if (!IsColocatedUserTable()) {
+    return nullptr;
+  }
   SharedLock<decltype(lock_)> l(lock_);
-  if (colocated() && !tablets_.empty()) {
+  if (!tablets_.empty()) {
     return tablets_.begin()->second;
   }
   LOG(INFO) << "Colocated Tablet not found for table " << name();

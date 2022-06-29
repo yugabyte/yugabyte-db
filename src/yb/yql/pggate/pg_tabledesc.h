@@ -91,6 +91,9 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   YBCPgOid GetColocationId() const;
 
+  // Empty if no tablegroup.
+  const TablegroupId GetTablegroupId() const;
+
   uint32_t schema_version() const;
 
  private:

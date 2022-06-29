@@ -429,5 +429,25 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddColumn)) {
   ASSERT_OK(conn2.Execute("INSERT INTO t (key, ival) VALUES (2, 2)"));
 }
 
+// Checks repacking of columns then would not fit into limit with new schema due to added columns.
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackOverflow)) {
+  constexpr int kRange = 32;
+
+  FLAGS_ysql_packed_row_size_limit = 128;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
+
+  for (auto key : Range(0, kRange + 1)) {
+    auto len = FLAGS_ysql_packed_row_size_limit - kRange / 2 + key;
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t VALUES ($0, '$1')", key, RandomHumanReadableString(len)));
+  }
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v2 TEXT"));
+
+  ASSERT_OK(cluster_->CompactTablets());
+}
+
 } // namespace pgwrapper
 } // namespace yb

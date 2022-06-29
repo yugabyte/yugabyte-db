@@ -3,9 +3,9 @@
 package com.yugabyte.yw.common;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyMap;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
 import static org.mockito.Mockito.when;
@@ -26,7 +26,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.asynchttpclient.util.Base64;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,7 +33,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -131,34 +130,10 @@ public class CallHomeManagerTest extends FakeDBApplication {
     u.update();
     u = Universe.getOrBadRequest(u.universeUUID);
 
-    defaultCustomer.addUniverseUUID(u.universeUUID);
-    // Need to save customer with the new universe or else Customer.getUniverses() won't find any.
-    defaultCustomer.save();
     JsonNode expectedPayload = callHomePayload(u);
     JsonNode actualPayload =
         callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
     assertEquals(expectedPayload, actualPayload);
-  }
-
-  @Test
-  public void testCollectDiagnosticsWithInvalidUniverses() {
-    when(configHelper.getConfig(ConfigHelper.ConfigType.YugawareMetadata))
-        .thenReturn(
-            ImmutableMap.of(
-                "yugaware_uuid", "0146179d-a623-4b2a-a095-bfb0062eae9f", "version", "0.0.1"));
-    when(clock.instant()).thenReturn(Instant.parse("2019-01-24T18:46:07.517Z"));
-    Universe u1 = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
-    UUID unknownUniverse = UUID.randomUUID();
-    defaultCustomer.addUniverseUUID(u1.universeUUID);
-    defaultCustomer.addUniverseUUID(unknownUniverse);
-
-    // Need to save customer with the new universe or else Customer.getUniverses() won't find any.
-    defaultCustomer.save();
-    ObjectNode expectedPayload = (ObjectNode) callHomePayload(u1);
-    expectedPayload.set("errors", Json.newArray().add("Cannot find universe " + unknownUniverse));
-    JsonNode actualPayload =
-        callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
-    assertEquals(expectedPayload.get("errors"), actualPayload.get("errors"));
   }
 
   @Test

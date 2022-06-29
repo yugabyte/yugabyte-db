@@ -88,16 +88,11 @@
 
   - name: User mode systemd
     block:
-    - name: Stop existing running master
+    - name: Stop existing running {{ yb_process_type }}
       systemd:
-        name: yb-master
+        name: yb-{{ yb_process_type }}
         state: stopped
-        scope: user
-
-    - name: Stop existing running tserver
-      systemd:
-        name: yb-tserver
-        state: stopped
+        enabled: no
         scope: user
 
     - name: Reload systemd user daemon
@@ -117,16 +112,9 @@
         enabled: yes
         scope: user
 
-    - name: Enabling and starting yb-master
+    - name: Enable and start {{ yb_process_type }}
       systemd:
-        name: yb-master
-        state: started
-        enabled: yes
-        scope: user
-
-    - name: Enabling and starting yb-tserver
-      systemd:
-        name: yb-tserver
+        name: yb-{{ yb_process_type }}
         state: started
         enabled: yes
         scope: user
@@ -134,37 +122,29 @@
 
   - name: System (RHEL7) systemd units
     block:
-    - name: Stop existing running master
+    - name: Stop existing running {{ yb_process_type }}
       shell:
-        cmd: "sudo systemctl stop yb-master"
+        cmd: "sudo systemctl stop yb-{{ yb_process_type }}"
 
-    - name: Stop existing running tserver
+    - name: Stop existing running {{ yb_process_type }}
       shell:
-        cmd: "sudo systemctl stop yb-tserver"
+        cmd: "sudo systemctl disable yb-{{ yb_process_type }}"
 
     # Systemd daemon-reload for yb-master and yb-tserver service files
     - name: Perform daemon-reload for the new services
       shell:
         cmd: "sudo systemctl daemon-reload"
 
-    # Enabling master and tserver using systemd services
-    - name: Run yb-master.service to start the master
+    - name: Enable {{ yb_process_type }}
       shell:
-        cmd: "sudo systemctl enable yb-master"
+        cmd: "sudo systemctl enable yb-{{ yb_process_type }}"
 
-    - name: Run yb-tserver.service to start the tserver
+    - name: Start {{ yb_process_type }}
       shell:
-        cmd: "sudo systemctl enable yb-tserver"
+        cmd: "sudo systemctl start yb-{{ yb_process_type }}"
 
-    # Starting master and tserver using systemd services
-    - name: Run yb-master.service to start the master
-      shell:
-        cmd: "sudo systemctl start yb-master"
-
-    - name: Run yb-tserver.service to start the tserver
-      shell:
-        cmd: "sudo systemctl start yb-tserver"
     when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
+
   tags:
     - override_gflags
     - systemd_upgrade

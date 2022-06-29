@@ -489,6 +489,13 @@ DEFINE_test_flag(uint64, delay_sys_catalog_reload_secs, 0,
                  "Number of seconds to sleep before a sys catalog reload.");
 TAG_FLAG(TEST_delay_sys_catalog_reload_secs, runtime);
 
+DECLARE_bool(transaction_tables_use_preferred_zones);
+
+DEFINE_bool(batch_ysql_system_tables_metadata, false,
+            "Whether change metadata operation for ysql system tables during "
+            "a create database is performed one by one or batched together");
+TAG_FLAG(batch_ysql_system_tables_metadata, runtime);
+
 namespace yb {
 namespace master {
 
@@ -2933,8 +2940,9 @@ Result<ColocationId> ConceiveColocationId(const CreateTableRequestPB& req,
 
 }  // namespace
 
-Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
-                                          CreateTableResponsePB* resp) {
+Status CatalogManager::CreateYsqlSysTable(
+    const CreateTableRequestPB* req, CreateTableResponsePB* resp,
+    tablet::ChangeMetadataRequestPB* change_meta_req) {
   LOG(INFO) << "CreateYsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
   TRACE("Looking up namespace");
@@ -3028,6 +3036,7 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
   TRACE("Inserted new table info into CatalogManager maps");
 
   // Update the on-disk table state to "running".
+  // TODO(Sanket) : Can batch upserts for all ysql system tables together.
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
   Status s = sys_catalog_->Upsert(leader_ready_term(), table);
   if (PREDICT_FALSE(!s.ok())) {
@@ -3050,22 +3059,34 @@ Status CatalogManager::CreateYsqlSysTable(const CreateTableRequestPB* req,
   }
 
   tablet::ChangeMetadataRequestPB change_req;
-  change_req.set_tablet_id(kSysCatalogTabletId);
-  auto& add_table = *change_req.mutable_add_table();
+  tablet::TableInfoPB* add_table;
+  bool batching = true;
+  if (!change_meta_req) {
+    change_meta_req = &change_req;
+    batching = false;
+  }
 
-  add_table.set_table_id(req->table_id());
-  add_table.set_table_type(TableType::PGSQL_TABLE_TYPE);
-  add_table.set_table_name(req->name());
-  SchemaToPB(schema, add_table.mutable_schema());
-  add_table.set_schema_version(0);
+  change_meta_req->set_tablet_id(kSysCatalogTabletId);
 
-  partition_schema.ToPB(add_table.mutable_partition_schema());
+  if (batching) {
+    add_table = change_meta_req->add_add_multiple_tables();
+  } else {
+    add_table = change_meta_req->mutable_add_table();
+  }
+  CatalogManagerUtil::FillTableInfoPB(
+      req->table_id(), req->name(), TableType::PGSQL_TABLE_TYPE, schema, /* schema_version */ 0,
+      partition_schema, add_table);
 
-  RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
-      &change_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+  // If not batched then perform change metadata operation now,
+  // otherwise the caller is responsible for doing it.
+  if (!batching) {
+    RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
+        change_meta_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+  }
 
+  // No batching for serializing to initdb.
   if (initial_snapshot_writer_) {
-    initial_snapshot_writer_->AddMetadataChange(change_req);
+    initial_snapshot_writer_->AddMetadataChange(*change_meta_req);
   }
   return Status::OK();
 }
@@ -3138,6 +3159,8 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
   const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
   vector<TableId> source_table_ids;
   vector<TableId> target_table_ids;
+  tablet::ChangeMetadataRequestPB change_meta_req;
+  bool batching = false;
   for (const auto& table : tables) {
     CreateTableRequestPB table_req;
     CreateTableResponsePB table_resp;
@@ -3178,7 +3201,17 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
       table_req.set_is_unique_index(PROTO_GET_IS_UNIQUE(l->pb));
     }
 
-    auto s = CreateYsqlSysTable(&table_req, &table_resp);
+    // When we pass change_meta_req, we are deferring metadata change for the entire batch
+    // together in one go.
+    Status s;
+    // No batching for initdb or if flag is not set.
+    if (initial_snapshot_writer_ || !FLAGS_batch_ysql_system_tables_metadata) {
+      s = CreateYsqlSysTable(&table_req, &table_resp, nullptr);
+      batching = false;
+    } else {
+      s = CreateYsqlSysTable(&table_req, &table_resp, &change_meta_req);
+      batching = true;
+    }
     if (!s.ok()) {
       return s.CloneAndPrepend(Substitute(
           "Failure when creating PGSQL System Tables: $0", table_resp.error().ShortDebugString()));
@@ -3187,6 +3220,13 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     source_table_ids.push_back(table->id());
     target_table_ids.push_back(table_id);
   }
+
+  if (batching) {
+    // Sync change metadata requests for the entire batch.
+    RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
+        &change_meta_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+  }
+
   RETURN_NOT_OK(
       sys_catalog_->CopyPgsqlTables(source_table_ids, target_table_ids, leader_ready_term()));
   return Status::OK();
@@ -3289,7 +3329,8 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   if (is_pg_catalog_table) {
-    return CreateYsqlSysTable(orig_req, resp);
+    // No batching for migration.
+    return CreateYsqlSysTable(orig_req, resp, nullptr);
   }
 
   Status s;
@@ -5284,30 +5325,30 @@ Status CatalogManager::DeleteTableInternal(
 
     // Send a DeleteTablet() request to each tablet replica in the table.
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table.info, table.retained_by_snapshot_schedules));
-    if (table.info->IsColocatedUserTable()) {
+    auto colocated_tablet = table.info->GetColocatedUserTablet();
+    if (colocated_tablet) {
       // Send a RemoveTableFromTablet() request to each
       // colocated parent tablet replica in the table.
       if (table.retained_by_snapshot_schedules.empty()) {
         RETURN_NOT_OK(TryRemoveFromTablegroup(table.info->id()));
         LOG(INFO) << "Notifying tablet with id "
-                  << table.info->GetColocatedTablet()->tablet_id()
+                  << colocated_tablet->tablet_id()
                   << " to remove this colocated table " << table.info->name()
                   << " from its metadata.";
         auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-            master_, AsyncTaskPool(), table.info->GetColocatedTablet(), table.info);
+            master_, AsyncTaskPool(), colocated_tablet, table.info);
         table.info->AddTask(call);
         WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
       } else {
         // Hide this table if it is covered by some schedule.
         {
-          auto tablet_info = table.info->GetColocatedTablet();
-          auto tablet_lock = tablet_info->LockForWrite();
+          auto tablet_lock = colocated_tablet->LockForWrite();
 
           *tablet_lock.mutable_data()->pb.mutable_retained_by_snapshot_schedules() =
               table.retained_by_snapshot_schedules;
 
           // Upsert to sys catalog and commit to memory.
-          RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), tablet_info));
+          RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), colocated_tablet));
           tablet_lock.Commit();
         }
         CheckTableDeleted(table.info);
@@ -6178,6 +6219,13 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
   resp->mutable_identifier()->mutable_namespace_()->set_name(ns->name());
 
   resp->set_colocated(table->colocated());
+
+  if (table->IsColocatedUserTable()) {
+    auto* tablegroup = tablegroup_manager_->FindByTable(table->id());
+    if (tablegroup) {
+      resp->set_tablegroup_id(tablegroup->id());
+    }
+  }
 
   VLOG(1) << "Serviced GetTableSchema request for " << req->ShortDebugString() << " with "
           << yb::ToString(*resp);

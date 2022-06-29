@@ -148,14 +148,19 @@ Build options:
     Show compiler command line.
   --export-compile-commands, --ccmds
     Export the C/C++ compilation database. Equivalent to setting YB_EXPORT_COMPILE_COMMANDS to 1.
+  --export-compile-commands-cxx-only, --ccmdscxx
+    Only export the compilation commands for C++ code. Compilation database generation for Postgres
+    C code can be time-consuming and this
   --linuxbrew, --no-linuxbrew
     Specify in order to do a Linuxbrew based build, or specifically prohibit doing so. This
     influences the choice of prebuilt third-party archive. This can also be specified using the
     YB_USE_LINUXBREW environment variable.
-  --cotire
-    Enable precompiled headers using cotire.
   --static-analyzer
     Enable Clang static analyzer
+  --clangd-index
+    Build a static Clangd index using clangd-indexer.
+  --clangd-index-format <format>
+    Clangd index format ("binary" or "yaml"). A YAML index can be moved to another directory.
 
 Test options:
 
@@ -669,6 +674,12 @@ set_clean_build() {
   remove_build_root_before_build=true
 }
 
+enable_clangd_index_build() {
+  should_build_clangd_index=true
+  # Compilation database is required before we can build the Clangd index.
+  export YB_EXPORT_COMPILE_COMMANDS=1
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -722,6 +733,9 @@ resolve_java_dependencies=false
 run_cmake_unit_tests=false
 
 run_shellcheck=false
+
+should_build_clangd_index=false
+clangd_index_format=binary
 
 export YB_DOWNLOAD_THIRDPARTY=${YB_DOWNLOAD_THIRDPARTY:-1}
 export YB_HOST_FOR_RUNNING_TESTS=${YB_HOST_FOR_RUNNING_TESTS:-}
@@ -798,6 +812,16 @@ while [[ $# -gt 0 ]]; do
     --compiler-type)
       YB_COMPILER_TYPE=$2
       shift
+    ;;
+    # --clangd-* options have to precede the catch-all --clang* option that specifies compiler type.
+    --clangd-index)
+      enable_clangd_index_build
+    ;;
+    --clangd-index-format)
+      clangd_index_format=$2
+      shift
+      validate_clangd_index_format "${clangd_index_format}"
+      enable_clangd_index_build
     ;;
     --gcc)
       YB_COMPILER_TYPE="gcc"
@@ -1005,10 +1029,6 @@ while [[ $# -gt 0 ]]; do
     --shellcheck)
       run_shellcheck=true
     ;;
-    --cotire)
-      export YB_USE_COTIRE=1
-      force_run_cmake=true
-    ;;
     --cmake-args)
       ensure_option_has_arg "$@"
       if [[ -n $cmake_extra_args ]]; then
@@ -1152,6 +1172,12 @@ while [[ $# -gt 0 ]]; do
     ;;
     --export-compile-commands|--ccmds)
       export YB_EXPORT_COMPILE_COMMANDS=1
+    ;;
+    --export-compile-commands-cxx-only|--ccmdscxx)
+      export YB_EXPORT_COMPILE_COMMANDS=1
+      # This will skip time-consuming compile database generation for Postgres code. See
+      # build_postgres.py for details.
+      export YB_SKIP_PG_COMPILE_COMMANDS=1
     ;;
     --arch)
       if [[ -n ${YB_TARGET_ARCH:-} && "${YB_TARGET_ARCH}" != "$2" ]]; then
@@ -1525,14 +1551,18 @@ if [[ $build_type == "compilecmds" ]]; then
   build_java=false
 fi
 
-if "$build_cxx" || "$force_run_cmake" || "$cmake_only"; then
+if [[ ${build_cxx} == "true" ||
+      ${force_run_cmake} == "true" ||
+      ${cmake_only} == "true" ||
+      ( "${YB_EXPORT_COMPILE_COMMANDS:-}" == "1" &&
+        ! -f "${BUILD_ROOT}/compile_commands.json" ) ]]; then
   run_cxx_build
 fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0
 
 # Check if the Java build is needed, and skip Java unit test runs if requested.
-if "$build_java"; then
+if [[ ${build_java} == "true" ]]; then
   # We'll need this for running Java tests.
   set_sanitizer_runtime_options
   set_mvn_parameters
@@ -1579,7 +1609,7 @@ fi
 
 run_tests_remotely
 
-if ! "$ran_tests_remotely"; then
+if [[ ${ran_tests_remotely} != "true" ]]; then
   if [[ -n $cxx_test_name ]]; then
     capture_sec_timestamp cxx_test_start
     run_cxx_test
@@ -1603,4 +1633,9 @@ if ! "$ran_tests_remotely"; then
   fi
 fi
 
-exit $global_exit_code
+if [[ ${should_build_clangd_index} == "true" ]]; then
+  build_clangd_index "${clangd_index_format}"
+fi
+
+# global_exit_code is declared with "-i" so it is always an integer.
+exit ${global_exit_code}

@@ -1607,8 +1607,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testExpandDiskSizeFailureInvalidSize() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
@@ -1626,8 +1624,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testExpandDiskSizeFailureInvalidStorage() {
     Universe u = createUniverse("Test universe", customer.getCustomerId(), Common.CloudType.gcp);
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.Scratch, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
@@ -1645,8 +1641,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testExpandDiskSizeFailureInvalidInstance() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "i3.xlarge", PublicCloudConstants.StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 
@@ -1667,8 +1661,6 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     setupDiskUpdateTest(100, "c4.xlarge", PublicCloudConstants.StorageType.GP2, u);
     u = Universe.getOrBadRequest(u.universeUUID);
 

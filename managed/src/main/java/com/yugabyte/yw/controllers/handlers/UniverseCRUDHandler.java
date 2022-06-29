@@ -418,16 +418,6 @@ public class UniverseCRUDHandler {
     Universe universe = Universe.create(taskParams, customer.getCustomerId());
     LOG.info("Created universe {} : {}.", universe.universeUUID, universe.name);
 
-    // Add an entry for the universe into the customer table.
-    customer.addUniverseUUID(universe.universeUUID);
-    customer.save();
-
-    LOG.info(
-        "Added universe {} : {} for customer [{}].",
-        universe.universeUUID,
-        universe.name,
-        customer.getCustomerId());
-
     if (taskParams.runtimeFlags != null) {
       // iterate through the flags and set via runtime config
       for (Map.Entry<String, String> entry : taskParams.runtimeFlags.entrySet()) {
