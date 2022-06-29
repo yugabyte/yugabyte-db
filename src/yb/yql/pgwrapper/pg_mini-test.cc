@@ -43,6 +43,7 @@
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/enums.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
@@ -2240,41 +2241,120 @@ TEST_F_EX(
 // Tablet Splitting Tests
 // ------------------------------------------------------------------------------------------------
 
+namespace {
+
+YB_DEFINE_ENUM(KeyColumnType, (kHash)(kAsc)(kDesc));
+
 class PgMiniTestAutoScanNextPartitions : public PgMiniTest {
- public:
+ protected:
   void SetUp() override {
     FLAGS_TEST_index_read_multiple_partitions = true;
     PgMiniTest::SetUp();
   }
-};
 
-TEST_F_EX(
-    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitions),
-    PgMiniTestAutoScanNextPartitions) {
-  auto conn = ASSERT_RESULT(Connect());
-  constexpr int numRows = 100;
-  ASSERT_OK(conn.Execute("CREATE TABLE t (k INT PRIMARY KEY, v1 INT, v2 INT) "
-                         "SPLIT INTO 6 TABLETS"));
-  ASSERT_OK(conn.Execute("CREATE INDEX ON t(v1, v2)"));
+  Status IndexScan(PGConn* conn, KeyColumnType table_key, KeyColumnType index_key) {
+    RETURN_NOT_OK(conn->Execute("DROP TABLE IF EXISTS t"));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "CREATE TABLE t (k INT, v1 INT, v2 INT, PRIMARY KEY (k $0)) $1",
+        ToPostgresKeyType(table_key), TableSplitOptions(table_key)));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "CREATE INDEX ON t(v1 $0, v2 $0)", ToPostgresKeyType(index_key)));
 
-  // Insert elements into the table
-  for (int i = 0; i < numRows; i++) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (k, v1, v2) VALUES ($0, $1, $2)", i, 1, i));
+    constexpr int kNumRows = 100;
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t SELECT s, 1, s FROM generate_series(1, $0) AS s", kNumRows));
+
+    // Secondary index read from the table
+    // While performing secondary index read on ybctids, the pggate layer batches requests belonging
+    // to the same tablet. However, if the tablet is split after batching, we need a mechanism to
+    // execute the batched request across both the sub-tablets. We create a scenario to test this
+    // phenomenon here.
+    //
+    // FLAGS_index_read_multiple_partitions is a test flag when set will create a scenario to check
+    // if index scans of ybctids span across multiple tablets. Specifically in this example, we try
+    // to scan the elements which contain value v1 = 1 and see if they match the expected number
+    // of rows.
+    constexpr auto kQuery = "SELECT k FROM t WHERE v1 = 1";
+    RETURN_NOT_OK(conn->HasIndexScan(kQuery));
+    auto res = VERIFY_RESULT(conn->Fetch(kQuery));
+    auto lines = PQntuples(res.get());
+    SCHECK_EQ(lines, kNumRows, IllegalState, "Unexpected rows count");
+    return Status::OK();
   }
 
-  // Secondary index read from the table
-  // While performing secondary index read on ybctids, the pggate layer batches requests belonging
-  // to the same tablet. However, if the tablet is split after batching, we need a mechanism to
-  // execute the batched request across both the sub-tablets. We create a scenario to test this
-  // phenomenon here.
-  //
-  // FLAGS_index_read_multiple_partitions is a test flag when set will create a scenario to check if
-  // index scans of ybctids span across multiple tablets. Specifically in this example, we try to
-  // scan the for elements that are present in tablets 0,1 which contain value v1=1 and see if they
-  // match the expected number of rows.
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT k FROM t WHERE v1 = 1"));
-  auto lines = PQntuples(res.get());
-  ASSERT_EQ(lines, numRows);
+  Status FKConstraint(PGConn* conn, KeyColumnType key_type) {
+    RETURN_NOT_OK(conn->Execute("DROP TABLE IF EXISTS ref_t, t1, t2"));
+    RETURN_NOT_OK(conn->ExecuteFormat("CREATE TABLE t1 (k INT, PRIMARY KEY(k $0)) $1",
+                                      ToPostgresKeyType(key_type),
+                                      TableSplitOptions(key_type)));
+    RETURN_NOT_OK(conn->ExecuteFormat("CREATE TABLE t2 (k INT, PRIMARY KEY(k $0)) $1",
+                                      ToPostgresKeyType(key_type),
+                                      TableSplitOptions(key_type)));
+    RETURN_NOT_OK(conn->Execute("CREATE TABLE ref_t (k INT,"
+                                "                    fk_1 INT REFERENCES t2(k),"
+                                "                    fk_2 INT REFERENCES t2(k))"));
+    constexpr int kNumRows = 100;
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t1 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO t2 SELECT s FROM generate_series(1, $0) AS s", kNumRows));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "INSERT INTO ref_t SELECT s, s, s FROM generate_series(1, $0) AS s", kNumRows));
+    return Status::OK();
+  }
+
+ private:
+  static std::string TableSplitOptions(KeyColumnType key_type) {
+    switch(key_type) {
+      case KeyColumnType::kHash:
+        return "SPLIT INTO 10 TABLETS";
+      case KeyColumnType::kAsc:
+        return "SPLIT AT VALUES ((12), (25), (37), (50), (62), (75), (87))";
+      case KeyColumnType::kDesc:
+        return "SPLIT AT VALUES ((87), (75), (62), (50), (37), (25), (12))";
+    }
+    FATAL_INVALID_ENUM_VALUE(KeyColumnType, key_type);
+  }
+
+  static std::string ToPostgresKeyType(KeyColumnType key_type) {
+    switch(key_type) {
+      case KeyColumnType::kHash: return "";
+      case KeyColumnType::kAsc: return "ASC";
+      case KeyColumnType::kDesc: return "DESC";
+    }
+    FATAL_INVALID_ENUM_VALUE(KeyColumnType, key_type);
+  }
+
+};
+
+} // namespace
+
+// The test checks all rows are returned in case of index scan with dynamic table splitting for
+// different table and index key column type combinations (hash, asc, desc)
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitionsIndexScan),
+    PgMiniTestAutoScanNextPartitions) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (auto table_key : kKeyColumnTypeArray) {
+    for (auto index_key : kKeyColumnTypeArray) {
+      ASSERT_OK_PREPEND(IndexScan(&conn, table_key, index_key),
+                        Format("Bad status in test with table_key=$0, index_key=$1",
+                               ToString(table_key),
+                               ToString(index_key)));
+    }
+  }
+}
+
+// The test checks foreign key constraint is not violated in case of referenced table dynamic
+// splitting for different key column types (hash, asc, desc).
+TEST_F_EX(
+    PgMiniTest, YB_DISABLE_TEST_IN_SANITIZERS(AutoScanNextPartitionsFKConstraint),
+    PgMiniTestAutoScanNextPartitions) {
+  auto conn = ASSERT_RESULT(Connect());
+  for (auto table_key : kKeyColumnTypeArray) {
+    ASSERT_OK_PREPEND(FKConstraint(&conn, table_key),
+                      Format("Bad status in test with table_key=$0", ToString(table_key)));
+  }
 }
 
 class PgMiniTabletSplitTest : public PgMiniTest {

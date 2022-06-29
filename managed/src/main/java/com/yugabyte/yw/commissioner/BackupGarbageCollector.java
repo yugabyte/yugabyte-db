@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
@@ -142,24 +143,14 @@ public class BackupGarbageCollector {
         backup.transitionState(BackupState.DeleteInProgress);
         try {
           switch (customerConfig.name) {
+              // for cases S3, NFS, GCS, we get Util from CloudUtil class
             case S3:
-              backupLocations = backupUtil.getBackupLocations(backup);
-              AWSUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              AWSUtil.deleteStorage(customerConfig.data, backupLocations);
-              backup.delete();
-              log.info("Backup {} is successfully deleted", backupUUID);
-              break;
             case GCS:
-              backupLocations = backupUtil.getBackupLocations(backup);
-              GCPUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              GCPUtil.deleteStorage(customerConfig.data, backupLocations);
-              backup.delete();
-              log.info("Backup {} is successfully deleted", backupUUID);
-              break;
             case AZ:
+              CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);
               backupLocations = backupUtil.getBackupLocations(backup);
-              AZUtil.deleteKeyIfExists(customerConfig.data, backupLocations.get(0));
-              AZUtil.deleteStorage(customerConfig.data, backupLocations);
+              cloudUtil.deleteKeyIfExists(customerConfig.getDataObject(), backupLocations.get(0));
+              cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
               backup.delete();
               log.info("Backup {} is successfully deleted", backupUUID);
               break;

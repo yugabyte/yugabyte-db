@@ -191,6 +191,10 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private UUID ownerUUID;
 
+  public UUID getOwnerUUID() {
+    return this.ownerUUID;
+  }
+
   @ApiModelProperty(value = "Time unit of frequency", accessMode = READ_WRITE)
   private TimeUnit frequencyTimeUnit;
 
@@ -400,6 +404,14 @@ public class Schedule extends Model {
         .eq("customer_uuid", customerUUID)
         .eq("status", "Active")
         .in("task_type", TaskType.BackupUniverse, TaskType.MultiTableBackup)
+        .findList();
+  }
+
+  public static List<Schedule> getAllByCustomerUUIDAndType(UUID customerUUID, TaskType taskType) {
+    return find.query()
+        .where()
+        .eq("customer_uuid", customerUUID)
+        .in("task_type", taskType)
         .findList();
   }
 

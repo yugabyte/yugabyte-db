@@ -1800,7 +1800,6 @@ static bool
 _equalOptTableGroup(const OptTableGroup *a, const OptTableGroup *b)
 {
 	COMPARE_STRING_FIELD(tablegroup_name);
-	COMPARE_SCALAR_FIELD(has_tablegroup);
 	return true;
 }
 

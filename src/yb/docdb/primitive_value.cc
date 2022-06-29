@@ -1088,10 +1088,8 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 }
 
 Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
-  if (rocksdb_slice.empty()) {
-    return STATUS(Corruption, "Cannot decode a value from an empty slice");
-  }
-  rocksdb::Slice slice(rocksdb_slice);
+  RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
+  Slice slice(rocksdb_slice);
   this->~PrimitiveValue();
   // Ensure we are not leaving the object in an invalid state in case e.g. an exception is thrown
   // due to inability to allocate memory.
@@ -1266,8 +1264,8 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     case ValueEntryType::kMaxByte:
       return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
   }
-  return STATUS_FORMAT(
-      Corruption, "Wrong value type $0 in $1", value_type, rocksdb_slice.ToDebugHexString());
+  RSTATUS_DCHECK(
+      false, Corruption, "Wrong value type $0 in $1", value_type, rocksdb_slice.ToDebugHexString());
 }
 
 POD_FACTORY(Double, double);

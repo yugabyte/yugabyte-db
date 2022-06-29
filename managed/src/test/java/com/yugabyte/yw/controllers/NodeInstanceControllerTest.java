@@ -350,8 +350,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     verify(mockCommissioner, times(0)).submit(any(), any());
     final Universe u = ModelFactory.createUniverse();
     Universe universe = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(universe.universeUUID);
-    customer.save();
     Result r =
         assertPlatformException(
             () ->
@@ -365,8 +363,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   public void testInvalidNodeAction() {
     for (NodeActionType nodeActionType : NodeActionType.values()) {
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
-      customer.addUniverseUUID(u.universeUUID);
-      customer.save();
       verify(mockCommissioner, times(0)).submit(any(), any());
       Result r =
           assertPlatformException(
@@ -391,8 +387,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
           .thenReturn(fakeTaskUUID);
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getCustomerId());
       u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-      customer.addUniverseUUID(u.universeUUID);
-      customer.save();
       Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1", nodeActionType, false);
       verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
       assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());
@@ -494,8 +488,6 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     u.getUniverseDetails().rootCA = UUID.randomUUID();
 
     u = Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     Result r = performNodeAction(customer.uuid, u.universeUUID, "host-n1", nodeActionType, false);
     verify(mockCommissioner, times(1)).submit(taskType.capture(), taskParams.capture());
     assertEquals(nodeActionType.getCommissionerTask(), taskType.getValue());

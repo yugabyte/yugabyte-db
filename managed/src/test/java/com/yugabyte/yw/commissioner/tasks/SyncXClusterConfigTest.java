@@ -423,8 +423,7 @@ public class SyncXClusterConfigTest extends CommissionerBaseTest {
     String taskErrMsg = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
-            "Failed to sync XClusterConfigs for Universe(%s): "
-                + "Failed to get cluster config: %s",
+            "Failed to getMasterClusterConfig from target universe (%s): %s",
             targetUniverseUUID, syncErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
 

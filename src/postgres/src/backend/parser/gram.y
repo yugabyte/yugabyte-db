@@ -4304,7 +4304,6 @@ OptTableGroup:
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
 					$$ = makeNode(OptTableGroup);
-					$$->has_tablegroup = true;
 					$$->tablegroup_name = $2;
 				}
 			| /*EMPTY*/

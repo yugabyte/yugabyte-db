@@ -261,7 +261,9 @@ class PackedRowData {
       column_value = Slice();
     }
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
-    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, /* tail_size= */ 0));
+    // Use min ssize_t value to be sure that packing always succeed.
+    constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
+    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, kUnlimitedTail));
     RSTATUS_DCHECK(result, Corruption, "Unable to pack old value for $0", column_id);
     return Status::OK();
   }
@@ -723,6 +725,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return ForwardToNextFeed(internal_key, value);
   }
 
+  Slice value_slice = value;
+  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+
   // Check for columns deleted from the schema. This is done regardless of whether this is a
   // major or minor compaction.
   //
@@ -759,7 +764,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
           return Status::OK();
         }
         // Return if column was processed by packed row.
-        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value, ht))) {
+        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value_slice, ht))) {
           return Status::OK();
         }
       }
@@ -768,8 +773,6 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   auto overwrite_ht = is_ttl_row ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
 
-  Slice value_slice = value;
-  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
   const auto value_type = static_cast<ValueEntryType>(
       value_slice.FirstByteOr(ValueEntryTypeAsChar::kInvalid));
 
@@ -864,7 +867,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
-  } else if (control_fields.intent_doc_ht.is_valid() && ht.hybrid_time() < history_cutoff) {
+  } else if (control_fields.intent_doc_ht.is_valid()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
     control_fields.intent_doc_ht = DocHybridTime::kInvalid;

@@ -24,6 +24,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashMap;
 import java.util.Map;
@@ -169,6 +170,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Start ybc process on all the nodes
+      if (CommonUtils.canConfigureYbc(universe)) {
+        createStartYbcProcessTasks(taskParams().nodeDetailsSet);
+      }
 
       createConfigureUniverseTasks(primaryCluster);
 

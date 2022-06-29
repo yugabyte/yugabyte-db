@@ -25,6 +25,8 @@ DEFINE_double(balancer_load_max_standard_deviation, 2.0,
     "is considered not balanced.");
 TAG_FLAG(balancer_load_max_standard_deviation, advanced);
 
+DECLARE_bool(transaction_tables_use_preferred_zones);
+
 namespace yb {
 namespace master {
 

@@ -276,12 +276,12 @@ Result<bool> RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
   return DoAddValue(column_id, value, 0);
 }
 
-Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, size_t tail_size) {
+Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size) {
   return DoAddValue(column_id, value, tail_size);
 }
 
 template <class Value>
-Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, size_t tail_size) {
+Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size) {
   RSTATUS_DCHECK(
       idx_ < packing_.columns(),
       InvalidArgument, "Add extra column $0, while already have $1 of $2 columns",
@@ -302,7 +302,7 @@ Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, size_
           "Missing value for non nullable column $0, while adding $1", column_data.id, column_id);
     } else if (!column_data.nullable || !IsNull(value)) {
       if (column_data.varlen() &&
-          prev_size + PackedValueSize(value) + tail_size > packed_size_limit_) {
+          make_signed(prev_size + PackedValueSize(value)) + tail_size > packed_size_limit_) {
         result = false;
       } else {
         PackValue(value, &result_);

@@ -89,17 +89,13 @@ DROP USER alice;              -- we dropped all of alice's entities, so we can r
 SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
 
 --
--- Usage of WITH tablegroup_oid for CREATE TABLE/INDEX. These all fail.
+-- Usage of WITH tablegroup_oid reloption, this legacy syntax no longer works.
 --
 
 CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup_oid=16385);
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=true);
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=false);
 CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup_oid=16385) TABLEGROUP tgroup1;
-CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup_oid=123);
 
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123, colocated=true);
 
 --
 -- Usage of SPLIT clause with TABLEGROUP should fail

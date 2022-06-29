@@ -311,6 +311,20 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Colocated)) {
   TestCompaction("WITH (colocated = true)");
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CompactAfterTransaction)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE test (key BIGSERIAL PRIMARY KEY, value TEXT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (1, 'one')"));
+  ASSERT_OK(conn.Execute("INSERT INTO test VALUES (2, 'two')"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 'odin' WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test SET value = 'dva' WHERE key = 2"));
+  ASSERT_OK(conn.CommitTransaction());
+  ASSERT_OK(cluster_->CompactTablets());
+  auto value = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test ORDER BY key"));
+  ASSERT_EQ(value, "1, odin; 2, dva");
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Serial)) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE sbtest1(id SERIAL, PRIMARY KEY (id))"));
@@ -413,6 +427,26 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddColumn)) {
   ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v1 INT"));
 
   ASSERT_OK(conn2.Execute("INSERT INTO t (key, ival) VALUES (2, 2)"));
+}
+
+// Checks repacking of columns then would not fit into limit with new schema due to added columns.
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackOverflow)) {
+  constexpr int kRange = 32;
+
+  FLAGS_ysql_packed_row_size_limit = 128;
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT) SPLIT INTO 1 TABLETS"));
+
+  for (auto key : Range(0, kRange + 1)) {
+    auto len = FLAGS_ysql_packed_row_size_limit - kRange / 2 + key;
+    ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO t VALUES ($0, '$1')", key, RandomHumanReadableString(len)));
+  }
+
+  ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v2 TEXT"));
+
+  ASSERT_OK(cluster_->CompactTablets());
 }
 
 } // namespace pgwrapper

@@ -1639,9 +1639,7 @@ YbLoadTablePropertiesIfNeeded(Relation rel, bool allow_missing)
 	rel->yb_table_properties = palloc0(sizeof(YbTablePropertiesData));
 
 	HandleYBStatus(YBCPgGetTableDesc(dbid, storage_relid, &desc));
-	HandleYBStatus(YBCPgGetSomeTableProperties(desc, rel->yb_table_properties));
-
-	rel->yb_table_properties->tablegroup_oid = RelationGetTablegroupOid(rel);
+	HandleYBStatus(YBCPgGetTableProperties(desc, rel->yb_table_properties));
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -1782,7 +1780,7 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		if (ncols >= 5)
 		{
 			values[3] =
-				OidIsValid(rel->yb_table_properties->colocation_id)
+				OidIsValid(rel->yb_table_properties->tablegroup_oid)
 					? ObjectIdGetDatum(rel->yb_table_properties->tablegroup_oid)
 					: (Datum) 0;
 			values[4] =

@@ -6,7 +6,9 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATIO
 import static play.mvc.Http.Status.CONFLICT;
 
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.models.BlobStorageException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.cloud.storage.Storage;
 import com.google.inject.Singleton;
@@ -42,11 +44,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.routines.DomainValidator;
 
 @Singleton
-public class CustomerConfigValidator {
+public class CustomerConfigValidator extends BaseBeanValidator {
 
   private static final String[] TLD_OVERRIDE = {"local"};
-
-  private final BeanValidator beanValidator;
 
   private final CloudClientsFactory factory;
 
@@ -59,7 +59,7 @@ public class CustomerConfigValidator {
 
   @Inject
   public CustomerConfigValidator(BeanValidator beanValidator) {
-    this.beanValidator = beanValidator;
+    super(beanValidator);
     this.factory = createCloudFactory();
 
     validators.put(
@@ -172,31 +172,25 @@ public class CustomerConfigValidator {
 
   private class CloudClientsFactoryImpl implements CloudClientsFactory {
     @Override
-    public Storage createGcpStorage(String gcpCredentials)
+    public Storage createGcpStorage(CustomerConfigStorageGCSData configData)
         throws IOException, UnsupportedEncodingException {
-      return GCPUtil.getStorageService(gcpCredentials);
+      return GCPUtil.getStorageService(configData);
     }
 
     @Override
     public BlobContainerClient createBlobContainerClient(
-        String azUrl, String azSasToken, String container) {
+        String azUrl, String azSasToken, String container) throws BlobStorageException {
       return AZUtil.createBlobContainerClient(azUrl, azSasToken, container);
     }
 
     @Override
-    public AmazonS3 createS3Client(JsonNode data) {
-      return AWSUtil.createS3Client(data);
+    public AmazonS3 createS3Client(CustomerConfigStorageS3Data configData)
+        throws AmazonS3Exception {
+      return AWSUtil.createS3Client(configData);
     }
   }
 
   protected CloudClientsFactory createCloudFactory() {
     return new CloudClientsFactoryImpl();
-  }
-
-  private void throwBeanValidatorError(String fieldName, String exceptionMsg) {
-    beanValidator
-        .error()
-        .forField(ConfigDataValidator.fieldFullName(fieldName), exceptionMsg)
-        .throwError();
   }
 }

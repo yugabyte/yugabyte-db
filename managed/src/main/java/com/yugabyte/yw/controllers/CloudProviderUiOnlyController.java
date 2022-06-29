@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -36,6 +37,8 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
   @Inject private CloudProviderHandler cloudProviderHandler;
 
+  @Inject private JsonFieldsValidator fieldsValidator;
+
   /**
    * POST UI Only endpoint for creating new providers
    *
@@ -46,6 +49,9 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     JsonNode reqBody = maybeMassageRequestConfig(request().body().asJson());
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
+    fieldsValidator.validateFields(
+        JsonFieldsValidator.createProviderKey(cloudProviderFormData.code),
+        cloudProviderFormData.config);
     Provider provider =
         cloudProviderHandler.createProvider(
             Customer.getOrBadRequest(customerUUID),
@@ -90,6 +96,8 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     JsonNode requestBody = request().body().asJson();
     KubernetesProviderFormData formData =
         formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
+    fieldsValidator.validateFields(
+        JsonFieldsValidator.createProviderKey(formData.code), formData.config);
 
     Provider provider =
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
@@ -117,7 +125,8 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     return PlatformResults.withData(cloudProviderHandler.suggestedKubernetesConfigs());
   }
 
-  /** @deprecated There is a bug here that */
+  /** Deprecated because uses GET for state mutating method and now getting audited. */
+  @Deprecated
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);

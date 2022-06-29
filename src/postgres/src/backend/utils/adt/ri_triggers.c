@@ -464,7 +464,7 @@ RI_FKey_check(TriggerData *trigdata)
 			break;
 	}
 
-	if (!trigdata->disable_fk_check && IsYBRelation(pk_rel))
+	if (IsYBRelation(pk_rel))
 	{
 		/*
 		 * Use fast path for FK check in case ybctid for row in source table can be build from
@@ -541,12 +541,11 @@ RI_FKey_check(TriggerData *trigdata)
 	/*
 	 * Now check that foreign key exists in PK table
 	 */
-	if (!trigdata->disable_fk_check)
-		ri_PerformCheck(riinfo, &qkey, qplan,
-						fk_rel, pk_rel,
-						NULL, new_row,
-						false,
-						SPI_OK_SELECT);
+	ri_PerformCheck(riinfo, &qkey, qplan,
+					fk_rel, pk_rel,
+					NULL, new_row,
+					false,
+					SPI_OK_SELECT);
 
 	if (SPI_finish() != SPI_OK_FINISH)
 	{

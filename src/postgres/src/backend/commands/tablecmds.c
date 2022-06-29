@@ -326,7 +326,6 @@ struct DropRelationCallbackState
 #define child_dependency_type(child_is_partition)	\
 	((child_is_partition) ? DEPENDENCY_AUTO : DEPENDENCY_NORMAL)
 
-static Oid GetTablegroupOidFromCreateStmt(CreateStmt *stmt);
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, char relpersistence,
 				bool is_partition, List **supconstr, int *supOidCount);
@@ -770,7 +769,25 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 	}
 
-	Oid tablegroupId = GetTablegroupOidFromCreateStmt(stmt);
+	Oid tablegroupId = stmt->tablegroup
+		? get_tablegroup_oid(stmt->tablegroup->tablegroup_name, false)
+		: InvalidOid;
+
+	/*
+	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
+	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
+	 */
+	if (OidIsValid(tablegroupId) && !pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
+	{
+		AclResult  aclresult;
+
+		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
+						   get_tablegroup_name(tablegroupId));
+	}
+
+
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
@@ -1194,53 +1211,6 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	relation_close(rel, NoLock);
 
 	return address;
-}
-
-/*
- * Select tablegroup to use. If not specified, InvalidOid.
- * Will produce an error if the pg_tablegroup system table has not been created.
- * Disallows creating a table within a tablegroup without the correct permissions.
- */
-static Oid
-GetTablegroupOidFromCreateStmt(CreateStmt *stmt)
-{
-	if (!stmt->tablegroup)
-		return InvalidOid;
-
-	if (!stmt->tablegroup->has_tablegroup)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("Cannot use NO TABLEGROUP in CREATE TABLE statement.")));
-
-	Oid tablegroupId = get_tablegroup_oid(stmt->tablegroup->tablegroup_name, false);
-
-	if (!OidIsValid(tablegroupId))
-		return InvalidOid;
-
-	/*
-	 * Check permissions for tablegroup. To create a table within a tablegroup, a user must
-	 * either be a superuser, the owner of the tablegroup, or have create perms on it.
-	 */
-	if (!pg_tablegroup_ownercheck(tablegroupId, GetUserId()))
-	{
-		AclResult  aclresult;
-
-		aclresult = pg_tablegroup_aclcheck(tablegroupId, GetUserId(), ACL_CREATE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
-						   get_tablegroup_name(tablegroupId));
-	}
-
-	/*
-	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid. We need
-	 * to do the preprocessing and RBAC checks first. This still happens before
-	 * transformReloptions so this option is included in the reloptions text array.
-	 */
-	stmt->options = lcons(makeDefElem("tablegroup_oid",
-									  (Node *) makeInteger(tablegroupId), -1),
-									  stmt->options);
-
-	return tablegroupId;
 }
 
 /*
@@ -7151,8 +7121,8 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 
 	attnum = targetatt->attnum;
 
-	/* 
-	 * In YB, a table cannot drop key columns. 
+	/*
+	 * In YB, a table cannot drop key columns.
 	 * This check makes sure a consistent state after attempting to drop
 	 * key columns by preventing dropping key columns on postgres side.
 	 */
@@ -7691,39 +7661,6 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
 }
 
 /*
- * Filter the DefElem list, removing all reloptions that should not be
- * carried over when cloning the relation.
- */
-static List *
-YBExcludeNonCopyableOptions(List *options)
-{
-	if (options)
-	{
-		ListCell   *prev = NULL;
-		ListCell   *next;
-
-		for (ListCell *curr = list_head(options); curr != NULL; curr = next)
-		{
-			next = lnext(curr);
-			DefElem *elem = lfirst_node(DefElem, curr);
-
-			/*
-			 * Tablegroup is stored as a reloption but should not be copied
-			 * as such, there's a separate mechanism for it.
-			 */
-			if (strcmp(elem->defname, "tablegroup_oid") == 0)
-			{
-				options = list_delete_cell(options, curr, prev);
-				break; /* since we only have one case so far, we can stop early. */
-			}
-			else
-				prev = curr;
-		}
-	}
-	return options;
-}
-
-/*
  * Primary key is an inherent part of a DocDB table, we can't literally "add"
  * a primary key to an existing table.
  * As a workaround, we create a new table with the desired schema and replace
@@ -7752,6 +7689,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 
 	MemoryContext oldcxt, per_tup_cxt;
 	ObjectAddress result = InvalidObjectAddress, address;
+
+	Assert(IsYBRelation(*mutable_rel));
 
 	old_relid = RelationGetRelid(*mutable_rel);
 
@@ -7860,13 +7799,10 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		create_stmt->options = untransformRelOptions(datum);
 	ReleaseSysCache(tuple);
 
-	create_stmt->options = YBExcludeNonCopyableOptions(create_stmt->options);
-
-	const Oid tablegroup_oid = RelationGetTablegroupOid(*mutable_rel);
+	const Oid tablegroup_oid = (*mutable_rel)->yb_table_properties->tablegroup_oid;
 	if (OidIsValid(tablegroup_oid))
 	{
 		create_stmt->tablegroup = makeNode(OptTableGroup);
-		create_stmt->tablegroup->has_tablegroup = true;
 		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_oid);
 		Assert(create_stmt->tablegroup->tablegroup_name);
 	}
@@ -8185,8 +8121,6 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		rename_stmt->newname  = pstrdup(idx_temp_old_name);
 		RenameRelation(rename_stmt);
 		CommandCounterIncrement();
-
-		idx_stmt->options = YBExcludeNonCopyableOptions(idx_stmt->options);
 
 		/* Create a new index taking up the freed name. */
 		idx_stmt->idxname = pstrdup(idx_orig_name);
@@ -10588,7 +10522,6 @@ validateForeignKeyConstraint(char *conname,
 		trigdata.tg_trigger = &trig;
 		trigdata.tg_trigtuplebuf = YbFKTriggerScanGetBuffer(fk_scan);
 		trigdata.tg_newtuplebuf = InvalidBuffer;
-		trigdata.disable_fk_check = false;
 
 		fcinfo.context = (Node *) &trigdata;
 

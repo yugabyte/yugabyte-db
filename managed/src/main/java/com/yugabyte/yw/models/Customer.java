@@ -9,7 +9,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Joiner;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import io.ebean.Finder;
@@ -18,7 +17,6 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -89,44 +87,14 @@ public class Customer extends Model {
   @ApiModelProperty(value = "UI_ONLY", hidden = true, accessMode = READ_ONLY)
   private JsonNode features;
 
-  @Column(columnDefinition = "TEXT", nullable = false)
-  @ApiModelProperty(
-      value = "Universe UUIDs",
-      accessMode = READ_ONLY,
-      example = "[c3595ca7-68a3-47f0-b1b2-1725886d5ed5, 9e0bb733-556c-4935-83dd-6b742a2c32e6]")
-  private String universeUUIDs = "";
-
-  public synchronized void addUniverseUUID(UUID universeUUID) {
-    Set<UUID> universes = getUniverseUUIDs();
-    universes.add(universeUUID);
-    universeUUIDs = Joiner.on(",").join(universes);
-    LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
-  }
-
-  public synchronized void removeUniverseUUID(UUID universeUUID) {
-    Set<UUID> universes = getUniverseUUIDs();
-    universes.remove(universeUUID);
-    universeUUIDs = Joiner.on(",").join(universes);
-    LOG.trace("New universe list for customer [" + name + "] : " + universeUUIDs);
-  }
-
-  public synchronized Set<UUID> getUniverseUUIDs() {
-    Set<UUID> uuids = new HashSet<UUID>();
-    if (!universeUUIDs.isEmpty()) {
-      String[] ids = universeUUIDs.split(",");
-      for (String id : ids) {
-        uuids.add(UUID.fromString(id));
-      }
-    }
-    return uuids;
+  @JsonIgnore
+  public Set<UUID> getUniverseUUIDs() {
+    return Universe.getUniverseUUIDsForCustomer(getCustomerId());
   }
 
   @JsonIgnore
   public Set<Universe> getUniverses() {
-    if (getUniverseUUIDs().isEmpty()) {
-      return new HashSet<>();
-    }
-    return Universe.getAllPresent(getUniverseUUIDs());
+    return Universe.getUniversesForCustomer(getCustomerId());
   }
 
   @JsonIgnore

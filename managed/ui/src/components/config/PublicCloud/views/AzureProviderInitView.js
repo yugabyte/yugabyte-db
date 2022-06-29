@@ -205,6 +205,8 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                       name="AZURE_CLIENT_SECRET"
                       placeholder="Client Secret"
                       component={YBFormInput}
+                      type="password"
+                      autocomplete="new-password"
                     />
                   </Col>
                   <Col lg={1} className="config-provider-tooltip">
@@ -280,7 +282,7 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                       )}
                     </Field>
                   </Col>
-                  <Col className="config-provider-tooltip">
+                  <Col lg={1} className="config-provider-tooltip">
                     <YBInfoTip
                       title="Air Gap Installation"
                       content="Would you like YugaWare to create instances in air gap mode for your universes?"

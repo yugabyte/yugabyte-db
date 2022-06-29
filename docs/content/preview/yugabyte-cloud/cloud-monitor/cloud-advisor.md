@@ -1,6 +1,6 @@
 ---
-title: YSQL Performance Advisor
-linkTitle: YSQL Performance Advisor
+title: Performance Advisor
+linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
@@ -13,7 +13,7 @@ isTocNested: true
 showAsideToc: true
 ---
 
-Use YSQL Performance Advisor to scan your cluster for potential optimizations.
+Use Performance Advisor to scan your cluster for potential optimizations.
 
 For meaningful results, run your workload for at least an hour before running the advisor.
 

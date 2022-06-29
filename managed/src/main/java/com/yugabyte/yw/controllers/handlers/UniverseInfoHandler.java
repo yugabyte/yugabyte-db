@@ -38,6 +38,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,12 +87,9 @@ public class UniverseInfoHandler {
   }
 
   public List<UniverseResourceDetails> universeListCost(Customer customer) {
-    Set<Universe> universeSet;
-    try {
-      universeSet = customer.getUniverses();
-    } catch (RuntimeException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "No universe found for customer with ID: " + customer.uuid);
+    Set<Universe> universeSet = customer.getUniverses();
+    if (CollectionUtils.isEmpty(universeSet)) {
+      return Collections.emptyList();
     }
     List<UniverseDefinitionTaskParams> taskParamsList =
         universeSet.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());

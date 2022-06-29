@@ -196,8 +196,8 @@ Status PgDocResult::ProcessSparseSystemColumns(std::string *reservoir) {
 
 //--------------------------------------------------------------------------------------------------
 
-PgDocResponse::PgDocResponse(PerformFuture future, uint64_t used_read_time)
-    : holder_(PerformInfo{.future = std::move(future), .used_read_time = used_read_time}) {}
+PgDocResponse::PgDocResponse(PerformFuture future, uint64_t in_txn_limit)
+    : holder_(PerformInfo{.future = std::move(future), .in_txn_limit = in_txn_limit}) {}
 
 PgDocResponse::PgDocResponse(ProviderPtr provider)
     : holder_(std::move(provider)) {}
@@ -211,7 +211,7 @@ bool PgDocResponse::Valid() const {
 Result<PgDocResponse::Data> PgDocResponse::Get() {
   if (std::holds_alternative<PerformInfo>(holder_)) {
     auto& info = std::get<PerformInfo>(holder_);
-    return Data(VERIFY_RESULT(info.future.Get()), info.used_read_time);
+    return Data(VERIFY_RESULT(info.future.Get()), info.in_txn_limit);
   }
   // Detach provider pointer after first usage to make PgDocResponse::Valid return false.
   ProviderPtr provider;
@@ -357,7 +357,7 @@ Status PgDocOp::SendRequestImpl(bool force_non_bufferable) {
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   response_ = VERIFY_RESULT(sender_(
       pg_session_.get(), pgsql_ops_.data(), send_count,
-      *table_, GetReadTime(), force_non_bufferable));
+      *table_, GetInTxnLimit(), force_non_bufferable));
   return Status::OK();
 }
 
@@ -381,7 +381,7 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   }
   const auto& data = *response;
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
-  GetReadTime() = data.used_read_time;
+  GetInTxnLimit() = data.in_txn_limit;
   RETURN_NOT_OK(CompleteProcessResponse());
   return result;
 }
@@ -445,9 +445,9 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessCallResponse(const rpc::CallRespo
   return result;
 }
 
-uint64_t& PgDocOp::GetReadTime() {
-  return (read_time_ || !exec_params_.statement_read_time)
-      ? read_time_ : *exec_params_.statement_read_time;
+uint64_t& PgDocOp::GetInTxnLimit() {
+  return exec_params_.statement_in_txn_limit ? *exec_params_.statement_in_txn_limit
+                                             : in_txn_limit_;
 }
 
 Status PgDocOp::CreateRequests() {
@@ -474,10 +474,10 @@ Status PgDocOp::CompleteRequests() {
 
 Result<PgDocResponse> PgDocOp::DefaultSender(
     PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-    uint64_t read_time, bool force_non_bufferable) {
+    uint64_t in_txn_limit, bool force_non_bufferable) {
   auto result = VERIFY_RESULT(session->RunAsync(
-      ops, ops_count, table, &read_time, force_non_bufferable));
-  return PgDocResponse(std::move(result), read_time);
+      ops, ops_count, table, &in_txn_limit, force_non_bufferable));
+  return PgDocResponse(std::move(result), in_txn_limit);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -509,7 +509,7 @@ Status PgDocReadOp::ExecuteInit(const PgExecParameters *exec_params) {
   SetRequestPrefetchLimit();
   SetBackfillSpec();
   SetRowMark();
-  SetReadTime();
+  SetReadTimeForBackfill();
   return Status::OK();
 }
 
@@ -568,7 +568,7 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   RETURN_NOT_OK(InitializeYbctidOperators());
   const auto& partition_keys = table_->GetPartitions();
-
+  std::vector<std::string> lowest_ybctid{partition_keys.size(), std::string()};
   // Begin a batch of ybctids.
   end_of_data_ = false;
   // Assign ybctid values.
@@ -580,41 +580,15 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
-    // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
-    // the following lines?
-    const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-    SCHECK(partition < table_->GetPartitionCount(), InternalError,
-           "Ybctid value is not within partition boundary");
-
-    // Assign ybctids to operators.
-    auto& read_req = GetReadReq(partition);
-    if (!read_req.has_ybctid_column_value()) {
-      // We must set "ybctid_column_value" in the request for two reasons.
-      // - "client::yb_op" uses it to set the hash_code.
-      // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
-      //   of ybctid-batching operation.
-      pgsql_ops_[partition]->set_active(true);
-      read_req.set_is_forward_scan(true);
-      read_req.mutable_ybctid_column_value()->mutable_value()->dup_binary_value(ybctid);
-
-      // For every read operation set partition boundary. In case a tablet is split between
-      // preparing requests and executing them, docDB will return a paging state for pggate to
-      // continue till the end of current tablet is reached.
-      std::string upper_bound;
-      if (partition < partition_keys.size() - 1) {
-        upper_bound = partition_keys[partition + 1];
-      }
-      RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
-                                            partition_keys[partition],
-                                            /* lower_bound_is_inclusive */ true,
-                                            upper_bound,
-                                            /* upper_bound_is_inclusive */ false));
+    const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
+    auto& lowest_ybctid_for_partition = lowest_ybctid[partition];
+    if (lowest_ybctid_for_partition.empty() || ybctid < Slice(lowest_ybctid_for_partition)) {
+      lowest_ybctid_for_partition = ybctid.ToBuffer();
     }
-
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
     // track of this order, each argument is assigned an order-number.
-    auto batch_arg = read_req.add_batch_arguments();
+    auto* batch_arg = GetReadReq(partition).add_batch_arguments();
     batch_arg->set_order(batch_row_ordering_counter_);
     batch_arg->mutable_ybctid()->mutable_value()->dup_binary_value(ybctid);
 
@@ -622,7 +596,37 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     batch_row_orders_[partition].push_back(batch_row_ordering_counter_);
 
     // Increment counter for the next row.
-    batch_row_ordering_counter_++;
+    ++batch_row_ordering_counter_;
+  }
+  // For each read request we must set "ybctid_column_value" for two reasons:
+  // - "client::yb_op" uses it to set the hash_code.
+  // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
+  //   of ybctid-batching operation.
+  // Note: lowest ybctid per partition must be used to correctly handle possible dynamic table
+  // splitting.
+  for (size_t partition = 0; partition < partition_keys.size(); ++partition) {
+    const auto& ybctid = lowest_ybctid[partition];
+    if (ybctid.empty()) {
+      // No ybctids were assigned for current partition, ignore it.
+      continue;
+    }
+    auto& read_req = GetReadReq(partition);
+    pgsql_ops_[partition]->set_active(true);
+    read_req.set_is_forward_scan(true);
+    read_req.mutable_ybctid_column_value()->mutable_value()->dup_binary_value(ybctid);
+
+    // For every read operation set partition boundary. In case a tablet is split between
+    // preparing requests and executing them, DocDB will return a paging state for pggate to
+    // continue till the end of current tablet is reached.
+    std::string upper_bound;
+    if (partition < partition_keys.size() - 1) {
+      upper_bound = partition_keys[partition + 1];
+    }
+    RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
+                                          partition_keys[partition],
+                                          /* lower_bound_is_inclusive */ true,
+                                          upper_bound,
+                                          /* upper_bound_is_inclusive */ false));
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
@@ -1032,10 +1036,12 @@ void PgDocReadOp::SetBackfillSpec() {
   }
 }
 
-void PgDocReadOp::SetReadTime() {
+void PgDocReadOp::SetReadTimeForBackfill() {
   if (exec_params_.is_index_backfill) {
     read_op_->read_request().set_is_for_backfill(true);
-    read_op_->set_read_time(ReadHybridTime::FromUint64(GetReadTime()));
+    // TODO: Change to RSTATUS_DCHECK
+    DCHECK(exec_params_.backfill_read_time);
+    read_op_->set_read_time(ReadHybridTime::FromUint64(exec_params_.backfill_read_time));
   }
 }
 

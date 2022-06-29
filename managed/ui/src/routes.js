@@ -121,7 +121,12 @@ axios.interceptors.response.use(
     const isAllowedUrl = /.+\/(login|register)$/i.test(error.request.responseURL);
     const isUnauthorised = error.response?.status === 403;
     if (isUnauthorised && !isAllowedUrl) {
-      browserHistory.push('/login');
+      //redirect to users current page
+      const searchParam = new URLSearchParams(window.location.search);
+      const location = searchParam.get('redirectUrl') || window.location.pathname;
+      browserHistory.push(
+        location && location !== '/' ? `/login?redirectUrl=${location}` : '/login'
+      );
     }
     return Promise.reject(error);
   }
