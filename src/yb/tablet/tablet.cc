@@ -1878,7 +1878,7 @@ Status Tablet::CreatePreparedChangeMetadata(
   return Status::OK();
 }
 
-Status Tablet::AddTable(const TableInfoPB& table_info) {
+Status Tablet::AddTableInMemory(const TableInfoPB& table_info) {
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(table_info.schema(), &schema));
 
@@ -1890,9 +1890,22 @@ Status Tablet::AddTable(const TableInfoPB& table_info) {
       table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
       table_info.schema_version());
 
-  RETURN_NOT_OK(metadata_->Flush());
-
   return Status::OK();
+}
+
+Status Tablet::AddTable(const TableInfoPB& table_info) {
+  RETURN_NOT_OK(AddTableInMemory(table_info));
+  return metadata_->Flush();
+}
+
+Status Tablet::AddMultipleTables(
+    const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos) {
+  // If nothing has changed then return.
+  RSTATUS_DCHECK_GT(table_infos.size(), 0, Ok, "No table to add to metadata");
+  for (const auto& table_info : table_infos) {
+    RETURN_NOT_OK(AddTableInMemory(table_info));
+  }
+  return metadata_->Flush();
 }
 
 Status Tablet::RemoveTable(const std::string& table_id) {
