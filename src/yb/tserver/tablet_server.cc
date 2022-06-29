@@ -147,9 +147,6 @@ DECLARE_int32(pgsql_proxy_webserver_port);
 
 DEFINE_int64(inbound_rpc_memory_limit, 0, "Inbound RPC memory limit");
 
-DEFINE_bool(start_pgsql_proxy, false,
-            "Whether to run a PostgreSQL server as a child process of the tablet server");
-
 DEFINE_bool(tserver_enable_metrics_snapshotter, false, "Should metrics snapshotter be enabled");
 DECLARE_int32(num_concurrent_backfills_allowed);
 DECLARE_int32(svc_queue_length_default);

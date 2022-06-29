@@ -220,10 +220,7 @@ public class ModelFactory {
     params.nodePrefix = universeName;
     params.rootCA = rootCA;
     params.upsertPrimaryCluster(userIntent, pi);
-    Universe u = Universe.create(params, customerId);
-    c.addUniverseUUID(u.universeUUID);
-    c.save();
-    return u;
+    return Universe.create(params, customerId);
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {

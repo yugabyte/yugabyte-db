@@ -379,17 +379,6 @@ static relopt_oid oidRelOpts[] =
 {
 	{
 		{
-			"tablegroup_oid",
-			"Tablegroup oid for this relation.",
-			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
-			AccessExclusiveLock
-		},
-		InvalidOid,
-		FirstNormalObjectId,
-		OID_MAX
-	},
-	{
-		{
 			"colocation_id",
 			"Colocation ID to distinguish a table within a colocation group. Used during backup/restore.",
 			RELOPT_KIND_HEAP | RELOPT_KIND_INDEX,
@@ -1593,7 +1582,6 @@ default_reloptions(Datum reloptions, bool validate, relopt_kind kind)
 		offsetof(StdRdOptions, vacuum_cleanup_index_scale_factor)},
 		{"colocated", RELOPT_TYPE_BOOL,
 		offsetof(StdRdOptions, colocated)},
-		{"tablegroup_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, tablegroup_oid)},
 		{"colocation_id", RELOPT_TYPE_OID, offsetof(StdRdOptions, colocation_id)},
 		{"table_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, table_oid)},
 		{"row_type_oid", RELOPT_TYPE_OID, offsetof(StdRdOptions, row_type_oid)},

@@ -514,6 +514,8 @@ class DependencyGraphTest(unittest.TestCase):
                 'yb-master'
             ], 'master_main.cc')
 
+        self.assert_unaffected_by(['yb-tserver'], 'master_main.cc')
+
     def test_tablet_server_main(self) -> None:
         self.assert_affected_by([
                 'libintegration-tests' + DYLIB_SUFFIX,
@@ -521,6 +523,16 @@ class DependencyGraphTest(unittest.TestCase):
             ], 'tablet_server_main.cc')
 
         self.assert_unaffected_by(['yb-master'], 'tablet_server_main.cc')
+
+    def test_call_home(self) -> None:
+        self.assert_affected_by(['yb-master'], 'master_call_home.cc')
+        self.assert_unaffected_by(['yb-tserver'], 'master_call_home.cc')
+        self.assert_affected_by(['yb-tserver'], 'tserver_call_home.cc')
+        self.assert_unaffected_by(['yb-master'], 'tserver_call_home.cc')
+
+    def test_catalog_manager(self) -> None:
+        self.assert_affected_by(['yb-master'], 'catalog_manager.cc')
+        self.assert_unaffected_by(['yb-tserver'], 'catalog_manager.cc')
 
     def test_bulk_load_tool(self) -> None:
         self.assert_affected_exactly_by([

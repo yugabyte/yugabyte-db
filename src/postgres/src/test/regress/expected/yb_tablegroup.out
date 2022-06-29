@@ -167,22 +167,16 @@ SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
 (0 rows)
 
 --
--- Usage of WITH tablegroup_oid for CREATE TABLE/INDEX. These all fail.
+-- Usage of WITH tablegroup_oid reloption, this legacy syntax no longer works.
 --
 CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup_oid=16385);
-ERROR:  cannot supply tablegroup_oid through WITH clause
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=true);
-ERROR:  cannot supply tablegroup_oid through WITH clause
-CREATE TABLE tgroup_with2 (col1 int, col2 int) WITH (tablegroup_oid=16385, colocated=false);
-ERROR:  cannot supply tablegroup_oid through WITH clause
+WARNING:  storage parameter tablegroup_oid is unsupported, ignoring
+ERROR:  unrecognized parameter "tablegroup_oid"
 CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup_oid=16385) TABLEGROUP tgroup1;
-ERROR:  cannot supply tablegroup_oid through WITH clause
-CREATE TABLE tgroup_with4 (col1 int, col2 int) WITH (tablegroup_oid=123);
-ERROR:  cannot supply tablegroup_oid through WITH clause
+WARNING:  storage parameter tablegroup_oid is unsupported, ignoring
+ERROR:  unrecognized parameter "tablegroup_oid"
 CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123);
-ERROR:  cannot supply tablegroup_oid through WITH clause
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123, colocated=true);
-ERROR:  cannot supply tablegroup_oid through WITH clause
+ERROR:  unrecognized parameter "tablegroup_oid"
 --
 -- Usage of SPLIT clause with TABLEGROUP should fail
 --

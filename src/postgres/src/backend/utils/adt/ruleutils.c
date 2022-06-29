@@ -1541,13 +1541,15 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			}
 
 			Relation indrel = heap_open(indrelid, AccessShareLock);
+			YbLoadTablePropertiesIfNeeded(indrel, false /* allow_missing */);
 
 			/*
 			 * If the indexed table's tablegroup mismatches that of an
 			 * index table, this is a leftover from beta days of tablegroup
 			 * feature. We cannot replicate this via DDL statement anymore.
 			 */
-			if (indexrel->yb_table_properties->tablegroup_oid != RelationGetTablegroupOid(indrel))
+			if (indexrel->yb_table_properties->tablegroup_oid !=
+				indrel->yb_table_properties->tablegroup_oid)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

@@ -387,12 +387,6 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("users cannot create system catalog tables")));
 		}
-		else if (strcmp(def->defname, "tablegroup_oid") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup_oid through WITH clause")));
-		}
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)
@@ -2855,21 +2849,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
-		if (strcmp(def->defname, "tablegroup_oid") == 0)
-		{
-			/*
-			 * We must ensure that no tablegroup option was supplied in the
-			 * WITH clause.
-			 * Tablegroups cannot be supplied directly for indexes. We check
-			 * here instead of ybccmds as we supply the reloption for the
-			 * tablegroup of the indexed table in DefineIndex(.)
-			 * if one exists.
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot supply tablegroup_oid through WITH clause")));
-		}
-		else if (strcmp(def->defname, "table_oid") == 0)
+		if (strcmp(def->defname, "table_oid") == 0)
 		{
 			if (!(yb_enable_create_with_table_oid || IsYsqlUpgrade))
 			{

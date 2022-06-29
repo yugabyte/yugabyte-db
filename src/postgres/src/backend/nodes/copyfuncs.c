@@ -3350,7 +3350,6 @@ _copyOptTableGroup(const OptTableGroup *from)
 {
 	OptTableGroup *newnode = makeNode(OptTableGroup);
 
-	COPY_SCALAR_FIELD(has_tablegroup);
 	COPY_STRING_FIELD(tablegroup_name);
 
 	return newnode;

@@ -15,7 +15,6 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.models.AlertConfiguration;
-import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 
@@ -37,9 +36,6 @@ public class RemoveUniverseEntry extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Customer customer = Customer.get(taskParams().customerUUID);
-    customer.removeUniverseUUID(taskParams().universeUUID);
-    customer.save();
     Universe.delete(taskParams().universeUUID);
 
     alertConfigurationService.handleSourceRemoval(

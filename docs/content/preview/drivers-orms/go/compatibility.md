@@ -1,4 +1,4 @@
----
+<!-- ---
 title: Supported versions
 linkTitle: Supported versions
 description: Supported versions for Go drivers and ORMs
@@ -32,4 +32,4 @@ type: docs
 | v1.10.2 |  2.8  | full |
 | v1.10.2 |  2.6  | full |
 
-[comment]: <> (| v1.10.2 | 2.6 | full)
+[comment]: <> (| v1.10.2 | 2.6 | full) -->

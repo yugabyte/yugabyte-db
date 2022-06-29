@@ -23,8 +23,6 @@
 #include "yb/master/master_fwd.h"
 #include "yb/master/ts_descriptor.h"
 
-DECLARE_bool(transaction_tables_use_preferred_zones);
-
 // Utility functions that can be shared between test and code for catalog manager.
 namespace yb {
 namespace master {
@@ -170,6 +168,11 @@ class CatalogManagerUtil {
     }
     return Status::OK();
   }
+
+  static void FillTableInfoPB(
+      const TableId& table_id, const std::string& table_name, const TableType& table_type,
+      const Schema& schema, uint32_t schema_version, const PartitionSchema& partition_schema,
+      tablet::TableInfoPB* pb);
 
  private:
   CatalogManagerUtil();
