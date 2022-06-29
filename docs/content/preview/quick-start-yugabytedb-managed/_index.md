@@ -274,11 +274,7 @@ try {
 
 ## Learn more
 
-[Yugabyte JDBC driver](../integrations/jdbc-driver/)
-
-[Explore more applications](../yugabyte-cloud/cloud-examples/)
-
-[Sample Java application demonstrating load balancing](../quick-start/build-apps/java/ysql-yb-jdbc/)
+[Explore more applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/)
 
 [Deploy clusters in YugabyteDB Managed](../yugabyte-cloud/cloud-basics/)
 
