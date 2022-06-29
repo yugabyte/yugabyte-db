@@ -167,7 +167,12 @@ class CatalogManager :
   void CompleteShutdown();
 
   // Create Postgres sys catalog table.
-  CHECKED_STATUS CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
+  // If a non-null value of change_meta_req is passed then it does not
+  // add the ysql sys table into the raft metadata but adds it in the request
+  // pb. The caller is then responsible for performing the ChangeMetadataOperation.
+  CHECKED_STATUS CreateYsqlSysTable(
+      const CreateTableRequestPB* req, CreateTableResponsePB* resp,
+      tablet::ChangeMetadataRequestPB* change_meta_req = nullptr);
 
   CHECKED_STATUS ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
