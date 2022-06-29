@@ -539,14 +539,14 @@ Status RemoteBootstrapSession::OpenLogSegment(
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS_FORMAT(NotFound, "Already sent active log segment, don't send $0", segment_seqno);
   }
-  scoped_refptr<ReadableLogSegment> log_segment;
   if (!log_segment_result.ok()) {
     *error_code = RemoteBootstrapErrorPB::WAL_SEGMENT_NOT_FOUND;
     return STATUS_FORMAT(
         NotFound, "Log segment $0 not found: $1", segment_seqno, log_segment_result.status());
   }
-  log_segment = *log_segment_result;
-  opened_log_segment_file_size_ = log_segment->readable_up_to() + log_segment->get_header_size();
+  const log::ReadableLogSegmentPtr log_segment = *log_segment_result;
+  opened_log_segment_file_size_ =
+      log_segment->get_encryption_header_size() + log_segment->readable_to_offset();
   opened_log_segment_seqno_ = segment_seqno;
   opened_log_segment_file_ = log_segment->readable_file_checkpoint();
   opened_log_segment_active_ = active_seqno == segment_seqno;

@@ -108,9 +108,12 @@ class LogReader {
   // all, then will read exactly one operation.
   //
   // Requires that a LogIndex was passed into LogReader::Open().
+  // Requires up_to operation index to be Raft-committed, otherwise might return NotFound error if
+  // Raft operation at up_to index will be rewritten (due to term change).
+  //
   // The parameters starting_op_segment_seq_num, modified_schema, schema_version are used to read
   // appropriate schema corresponding to the from_op_id in the segment header or from the segment
-  // itself if there is a DDL log
+  // itself if there is a DDL log.
   Status ReadReplicatesInRange(
       const int64_t starting_at,
       const int64_t up_to,
@@ -125,8 +128,10 @@ class LogReader {
 
   // Look up the OpId for the given operation index.
   // Returns a bad Status if the log index fails to load (eg. due to an IO error).
+  // Returns NotFound if there is no index entry for such op_index or if Raft operation at op_index
+  // will be rewritten due to term change.
   Result<yb::OpId> LookupOpId(int64_t op_index) const;
-  Result<int64_t> LookupHeader(int64_t op_index) const;
+  Result<int64_t> LookupOpWalSegmentNumber(int64_t op_index) const;
 
   // Returns the number of segments.
   size_t num_segments() const;
@@ -137,7 +142,7 @@ class LogReader {
     return log_prefix_;
   }
 
-  LogIndex* TEST_GetLogIndex() const { return log_index_.get(); }
+  Result<LogIndexEntry> TEST_GetIndexEntry(int64_t index) const;
 
  private:
   FRIEND_TEST(cdc::CDCServiceTestMaxRentionTime, TestLogRetentionByOpId_MaxRentionTime);
@@ -213,6 +218,10 @@ class LogReader {
   bool ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& segment,
                               int64_t *potential_reclaimed_space) const;
 
+  // Returns NotFound if there is no index entry for such op_index or if Raft operation at op_index
+  // will be rewritten due to term change.
+  Result<LogIndexEntry> GetIndexEntry(int64_t op_index) const;
+
   Env *env_;
 
   const scoped_refptr<LogIndex> log_index_;
@@ -223,13 +232,14 @@ class LogReader {
   scoped_refptr<Counter> entries_read_;
   scoped_refptr<Histogram> read_batch_latency_;
 
-  // The sequence of all current log segments in increasing sequence number
-  // order.
+  // The sequence of all current log segments in increasing sequence number order.
   SegmentSequence segments_;
 
   mutable simple_spinlock lock_;
 
   State state_;
+
+  mutable std::mutex load_index_mutex_;
 
   // Used for test only.
   mutable std::unique_ptr<std::vector<ReadableLogSegmentPtr>>
