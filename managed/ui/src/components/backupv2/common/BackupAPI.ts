@@ -142,10 +142,7 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
 
   const filteredTableList = values['tablesList'].filter((t: ITable) => t.tableType === backup_type);
 
-  if (values['db_to_backup'].value === null) {
-    // All database/ keyspace selected
-    dbMap = groupBy(filteredTableList, 'keySpace');
-  } else {
+  if (values['db_to_backup'].value !== null) {
     dbMap = {
       [values['db_to_backup'].value]: filteredTableList.filter(
         (t: ITable) => t.keySpace === values['db_to_backup'].value
@@ -168,8 +165,14 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     }
     return {
       keyspace,
-      tableNameList: dbMap[keyspace].map((t: ITable) => t.tableName),
-      tableUUIDList: dbMap[keyspace].map((t: ITable) => t.tableUUID)
+      tableNameList:
+        values['backup_tables'] === Backup_Options_Type.ALL
+          ? []
+          : dbMap[keyspace].map((t: ITable) => t.tableName),
+      tableUUIDList:
+        values['backup_tables'] === Backup_Options_Type.ALL
+          ? []
+          : dbMap[keyspace].map((t: ITable) => t.tableUUID)
     };
   });
 
