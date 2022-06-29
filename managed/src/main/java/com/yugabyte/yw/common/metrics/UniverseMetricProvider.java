@@ -17,9 +17,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.AccessKeyRotationUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKeyId;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
@@ -38,10 +41,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import com.google.inject.Inject;
 
 @Singleton
 @Slf4j
 public class UniverseMetricProvider implements MetricsProvider {
+
+  @Inject AccessKeyRotationUtil accessKeyRotationUtil;
 
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
@@ -50,7 +56,8 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_NODE_FUNCTION,
-          PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY);
+          PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
+          PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY);
 
   @Override
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
@@ -63,6 +70,7 @@ public class UniverseMetricProvider implements MetricsProvider {
         KmsConfig.listAllKMSConfigs()
             .stream()
             .collect(Collectors.toMap(config -> config.configUUID, Function.identity()));
+    Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     for (Customer customer : Customer.getAll()) {
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
         MetricSaveGroup.MetricSaveGroupBuilder universeGroup = MetricSaveGroup.builder();
@@ -96,6 +104,16 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
                   encryptionKeyExpiryDays));
+        }
+        Double sshKeyExpiryDays =
+            accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
+        if (sshKeyExpiryDays != null) {
+          universeGroup.metric(
+              createUniverseMetric(
+                  customer,
+                  universe,
+                  PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
+                  sshKeyExpiryDays));
         }
         universeGroup.metric(
             createUniverseMetric(

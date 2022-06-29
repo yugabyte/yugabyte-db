@@ -684,6 +684,23 @@ public enum AlertTemplate {
           .defaultThresholdCondition(Condition.LESS_THAN)
           .build()),
 
+  SSH_KEY_EXPIRY(
+      "SSH Key expiry",
+      "SSH Key expires soon",
+      "ybp_universe_ssh_key_expiry_day"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "SSH Key for universe '{{ $labels.source_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.ssh_key_config_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
+
   YSQL_OP_AVG_LATENCY(
       "YSQL average latency is high",
       "Average latency of YSQL operations is above threshold",
