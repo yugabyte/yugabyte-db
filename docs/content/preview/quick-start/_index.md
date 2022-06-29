@@ -24,11 +24,9 @@ type: docs
   </ul>
 </div>
 
-{{< note title="Note" >}}
+Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
-
-{{< /note >}}
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">

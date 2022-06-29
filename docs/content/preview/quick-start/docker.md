@@ -23,11 +23,9 @@ type: docs
   </ul>
 </div>
 
-{{< note title="Note" >}}
+Test YugabyteDB's APIs and core features by creating a local cluster on a single host.
 
-The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than stateless apps.
-
-{{< /note >}}
+The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../../deploy/).
 
 <div class="custom-tabs tabs-style-1">
   <ul class="tabs-name">
@@ -57,6 +55,12 @@ The Docker option to run local clusters is recommended only for advanced Docker 
     </li>
   </ul>
 </div>
+
+{{< note title="Note" >}}
+
+The Docker option to run local clusters is recommended only for advanced Docker users. This is because running stateful apps like YugabyteDB in Docker is more complex and error-prone than stateless apps.
+
+{{< /note >}}
 
 ## Install YugabyteDB
 
