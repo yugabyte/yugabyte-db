@@ -41,4 +41,7 @@ public class AccessKeyFormData {
   // True if it was created after, else it was created before.
   // This should be true so that all new providers are marked as true by default.
   public boolean showSetUpChrony = true;
+
+  // to be set by user explicitly from UI during key creation
+  public Integer expirationThresholdDays;
 }
