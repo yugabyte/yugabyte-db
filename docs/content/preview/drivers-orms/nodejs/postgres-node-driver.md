@@ -22,20 +22,26 @@ showAsideToc: true
 
 </ul>
 
-node-postgres is a collection of node.js modules for interfacing with your PostgreSQL database. It has support for callbacks, promises, async/await, connection pooling, prepared statements, cursors, streaming results, C/C++ bindings, rich type parsing, and more. YugabyteDB has full support for [node-postgres](https://node-postgres.com/).
+The [PostgreSQL node-postgres driver](https://node-postgres.com/) is the official Node.js driver for PostgreSQL which can be used to connect with YugabyteDB YSQL API. Because YugabyteDB YSQL API has is fully compatible with PostgreSQL node-postgres (pg) driver, it allows Node.js programmers to connect to the YugabyteDB database to execute DMLs and DDLs using the node-postgres APIs.
 
-## CRUD operations with node-postgres driver
+## CRUD operations
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Node.js application development using the PostgreSQL node-postgres driver.
 
-### Step 1: Download the driver dependency
+### Step 1: Install the driver dependency and async utility
 
 Download and install the node-postgres driver using the following command (you need to have Node.JS installed on your system):
 
 ```sh
 npm install pg
+```
+
+To install the async utility, run the following command:
+
+```sh
+$ npm install --save async
 ```
 
 After this, you can start using the driver in your code.
@@ -87,75 +93,65 @@ Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-refer
 
 ### Step 3: Query the YugabyteDB cluster from your application
 
-Create a new JavaScript file called `QuickStartApp.js` in your project directory. Copy the following code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
+Create a new JavaScript file called `yb-ysql-helloworld-ssl.js` in your project directory. Copy the following code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
 
-```javascript
-const pg = require('pg');
+```js
+var pg = require('pg');
+const async = require('async');
+const assert = require('assert');
 
-function createConnection(){
-    const yburl = "postgresql://yugabyte:yugabyte@localhost:5433/yugabyte";
-    const client = new pg.Client(yburl);
-    client.connect();
-    return client;
-}
+var connectionString = "postgres://postgres@localhost:5433/postgres";
+var client = new pg.Client(connectionString);
 
-async function createTableAndInsertData(client){
-    console.log("Connected to the YugabyteDB Cluster successfully.")
-    await client.query("DROP TABLE IF EXISTS employee").catch((err)=>{
-        console.log(err.stack);
-    })
-    await client.query("CREATE TABLE IF NOT EXISTS employee" +
-                "  (id int primary key, name varchar, age int, language text)").then(() => {
-                    console.log("Created table employee");
-                }).catch((err) => {
-                    console.log(err.stack);
-                })
-
-    var insert_emp1 = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')"
-    await client.query(insert_emp1).then(() => {
-        console.log("Inserted Employee 1");
-    }).catch((err)=>{
-        console.log(err.stack);
-    })
-    var insert_emp2 = "INSERT INTO employee VALUES (2, 'Sam', 37, 'JavaScript')"
-    await client.query(insert_emp2).then(() => {
-        console.log("Inserted Employee 2");
-    }).catch((err)=>{
-        console.log(err.stack);
-    })
-}
-
-async function fetchData(client){
-    try {
-        const res = await client.query("select * from employee")
-        console.log("Employees Information:")
-        for (let i = 0; i<res.rows.length; i++) {
-          console.log(`${i+1}. name = ${res.rows[i].name}, age = ${res.rows[i].age}, language = ${res.rows[i].language}`)
-        }
-      } catch (err) {
-        console.log(err.stack)
-      }
-}
-
-(async () => {
-    const client = createConnection();
-    if(client){
-        await createTableAndInsertData(client);
-        await fetchData(client);
-    }
-})();
+async.series([
+  function connect(next) {
+    client.connect(next);
+  },
+  function createTable(next) {
+    // The create table statement.
+    const create_table = 'CREATE TABLE employee (id int PRIMARY KEY, ' +
+                                                 'name varchar, ' +
+                                                 'age int, ' +
+                                                 'language varchar);';
+    // Create the table.
+    console.log('Creating table employee');
+    client.query(create_table, next);
+  },
+  function insert(next) {
+    // Create a variable with the insert statement.
+    const insert = "INSERT INTO employee (id, name, age, language) " +
+                                        "VALUES (1, 'John', 35, 'NodeJS');";
+    // Insert a row with the employee data.
+    console.log('Inserting row with: %s', insert)
+    client.query(insert, next);
+  },
+  function select(next) {
+    // Query the row for employee id 1 and print the results to the console.
+    const select = 'SELECT name, age, language FROM employee WHERE id = 1;';
+    client.query(select, function (err, result) {
+      if (err) return next(err);
+      var row = result.rows[0];
+      console.log('Query for id=1 returned: name=%s, age=%d, language=%s',
+                                            row.name, row.age, row.language);
+      next();
+    });
+  }
+], function (err) {
+  if (err) {
+    console.error('There was an error', err.message, err.stack);
+  }
+  console.log('Shutting down');
+  client.end();
+});
 ```
 
-When you run the application using the command `node QuickStartApp.js`, you should see output similar to the following:
+When you run the application using the command `node yb-ysql-helloworld-ssl.js`, you should see output similar to the following:
 
 ```output
-Connected to the YugabyteDB Cluster successfully.
-Created table employee
-Inserted Employee 1
-Inserted Employee 2
-Employees Information:
-1. name = John, age = 35, language = Java
-2. name = Sam, age = 37, language = JavaScript
+Creating table employee
+Inserting row with: INSERT INTO employee (id, name, age, language) VALUES (1, 'John', 35, 'NodeJS');
+Query for id=1 returned: name=John, age=35, language=NodeJS
+Shutting down
 ```
 
 If there is no output or you get an error, verify the parameters included in the connection string.
