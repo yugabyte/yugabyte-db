@@ -246,7 +246,7 @@ a.text-link::after {
   width: 15px;
   height: 8px;
   margin-left: 15px;
-  background: url(/images/homepage/get-started-arrow.png) no-repeat;
+  background: url(/images/homepage/arrow.svg) no-repeat;
   display: inline-block;
 }
 
