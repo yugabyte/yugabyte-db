@@ -1535,9 +1535,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param processType type of a processes for the installation - MASTER or TSERVER
    * @param softwareVersion software version to install, if null - takes version from the universe
    *     userIntent
+   * @param subTaskGroupType subtask group type for progress display
    */
   public void createSoftwareInstallTasks(
-      List<NodeDetails> nodes, ServerType processType, String softwareVersion) {
+      List<NodeDetails> nodes,
+      ServerType processType,
+      String softwareVersion,
+      SubTaskGroupType subTaskGroupType) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -1553,7 +1557,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           getAnsibleConfigureServerTask(
               node, processType, UpgradeTaskSubType.Install, softwareVersion));
     }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
