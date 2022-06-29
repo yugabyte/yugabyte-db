@@ -176,8 +176,12 @@ a.purple-btn:hover::after {
 }
 
 .box.border .image {
-  height: 150px;
+  height: 122px;
   overflow: hidden;
+}
+
+main.col-md-9 .box.border .image {
+  height: 160px;
 }
 
 .three-box-row h2 {
@@ -192,9 +196,13 @@ a.purple-btn:hover::after {
 
 .other-content {
   padding: 15px 15px 25px;
-  height: calc(100% - 150px);
+  height: calc(100% - 122px);
   display: flex;
   flex-flow: column;
+}
+
+main.col-md-9 .other-content {
+  height: calc(100% - 160px);
 }
 
 a.text-link {
@@ -248,6 +256,7 @@ a.text-link::after {
   margin-left: 15px;
   background: url(/images/homepage/arrow.svg) no-repeat;
   display: inline-block;
+  margin-top: 2px;
 }
 
 a.text-link:hover {
@@ -281,4 +290,46 @@ a.text-link:hover {
   object-fit: cover;
   height: 100%;
   object-position: center;
+}
+
+@media (max-width: 767px) {
+  .box.border .image {
+    height: 122px;
+  }
+
+  .box-top > span {
+    min-width: calc(100% - 90px);
+  }
+}
+
+@media (max-width: 767px) AND (min-width: 500px) {
+  .three-box-row div.col-12 {
+    max-width: 50%;
+    margin-bottom: 24px;
+  }
+
+  .three-box-row h2.col-12 {
+    min-width: 100%;
+  }
+}
+
+@media (max-width: 767px) AND (min-width: 499px) {
+  .two-side {
+    flex-flow: column;
+  }
+
+  .two-side .body {
+    width: 100%;
+  }
+
+  .two-side .image {
+    display: flex;
+    margin-left: auto;
+  }
+
+  .two-side .image img {
+    max-width: 100%;
+    height: auto;
+    margin-top: -49px !important;
+  }
 }
