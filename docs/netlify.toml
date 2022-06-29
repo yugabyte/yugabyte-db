@@ -43,10 +43,10 @@
 
 # Bypass the landing page
 
-[[redirects]]
-  from = "/"
-  to = "/preview/"
-  force = true
+# [[redirects]]
+#   from = "/"
+#   to = "/preview/"
+#   force = true
 
 # Catch-all for old links to /latest (now called /preview)
 
