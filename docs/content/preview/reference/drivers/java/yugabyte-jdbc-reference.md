@@ -116,7 +116,7 @@ The driver requires YugabyteDB version 2.7.2.0 or higher, and Java 8 or above.
 The following connection properties need to be added to enable load balancing:
 
 - load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
+- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
 
 ## Use the driver
 

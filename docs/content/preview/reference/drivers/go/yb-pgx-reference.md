@@ -108,7 +108,7 @@ The following table describes the connection parameters required to connect to t
 The following connection properties need to be added to enable load balancing:
 
 - load-balance - enable cluster-aware load balancing by setting this property to `true`; disabled by default.
-- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud:region:zone`.
+- topology-keys - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`.
 
 To use the driver, do the following:
 
