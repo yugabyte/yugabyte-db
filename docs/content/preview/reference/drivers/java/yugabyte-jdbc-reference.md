@@ -136,7 +136,7 @@ To use the driver, do the following:
   To specify topology keys, you set the `topology-keys` property to comma separated values, as per the following example:
 
   ```java
-  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1.region1:zone1,cloud1.region1.zone2";
+  String yburl = "jdbc:yugabytedb://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte&load-balance=true&topology-keys=cloud1.region1.zone1,cloud1.region1.zone2";
   DriverManager.getConnection(yburl);
   ```
 
