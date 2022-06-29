@@ -288,7 +288,6 @@ static void binary_upgrade_extension_member(PQExpBuffer upgrade_buffer,
 static const char *getAttrName(int attrnum, TableInfo *tblInfo);
 static const char *fmtCopyColumnList(const TableInfo *ti, PQExpBuffer buffer);
 static bool nonemptyReloptions(const char *reloptions);
-static bool YbHasReloptionsToInclude(const char *reloptions);
 static void YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 						const char *reloptions1, const char *reloptions1_prefix,
 						const char *reloptions2, const char *reloptions2_prefix,
@@ -18832,56 +18831,6 @@ nonemptyReloptions(const char *reloptions)
 	return (reloptions != NULL && strlen(reloptions) > 2);
 }
 
-/*
- * Check if a reloptions array is nonempty and has any options
- * except for the excluded ones.
- */
-static bool
-YbHasReloptionsToInclude(const char *reloptions)
-{
-	if (!nonemptyReloptions(reloptions))
-		return false;
-
-	char	  **options;
-	int			noptions;
-
-	if (!parsePGArray(reloptions, &options, &noptions))
-	{
-		if (options)
-			free(options);
-		return false;
-	}
-
-	bool has_included_values = false;
-
-	for (int i = 0; i < noptions && !has_included_values; i++)
-	{
-		char	   *option = options[i];
-
-		/*
-		 * Each array element should have the form name=value.  If the "=" is
-		 * missing for some reason, treat it like an empty value.
-		 */
-		char	   *name = option;
-		char	   *separator = strchr(option, '=');
-		if (separator)
-			*separator = '\0';
-
-		/*
-		 * We ignore the reloption for tablegroup_oid.
-		 * It is appended seperately as a TABLEGROUP clause.
-		 */
-		if (strcmp(name, "tablegroup_oid") != 0)
-			has_included_values = true;
-	}
-
-	if (options)
-		free(options);
-
-	return has_included_values;
-}
-
-
 static void
 YbAppendReloptions2(PQExpBuffer buffer, bool newline_before,
 				   const char *reloptions1, const char *reloptions1_prefix,
@@ -18907,14 +18856,14 @@ YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 
 	const char *with = newline_before ? "\nWITH (" : " WITH (";
 
-	if (YbHasReloptionsToInclude(reloptions1))
+	if (nonemptyReloptions(reloptions1))
 	{
 		appendPQExpBufferStr(buffer, with);
 		appendReloptionsArrayAH(buffer, reloptions1, reloptions1_prefix, fout);
 		addwith = false;
 		addcomma = true;
 	}
-	if (YbHasReloptionsToInclude(reloptions2))
+	if (nonemptyReloptions(reloptions2))
 	{
 		if (addwith)
 			appendPQExpBufferStr(buffer, with);
@@ -18924,7 +18873,7 @@ YbAppendReloptions3(PQExpBuffer buffer, bool newline_before,
 		addwith = false;
 		addcomma = true;
 	}
-	if (YbHasReloptionsToInclude(reloptions3))
+	if (nonemptyReloptions(reloptions3))
 	{
 		if (addwith)
 			appendPQExpBufferStr(buffer, with);

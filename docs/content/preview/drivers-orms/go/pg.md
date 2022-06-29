@@ -1,12 +1,11 @@
 ---
-title: Go ORMs
-linkTitle: Go ORMs
-description: Go ORMs for YSQL
-headcontent: Go ORMs for YSQL
+title: Use an ORM
+linkTitle: Use an ORM
+description: Go ORM support for YugabyteDB
+headcontent: Go ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go ORMs
     identifier: pg-orm
     parent: go-drivers
     weight: 400
@@ -34,13 +33,13 @@ showAsideToc: true
 
 [go-pg](https://github.com/go-pg/pg) is a Golang ORM for PostgreSQL.
 
-## CRUD Operations with PG ORM
+## CRUD operations with PG ORM
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick Start section.
+Learn how to establish a connection to a YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pg) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using go-pg.
 
-### Step 1: Import the driver package
+### Step 1: Import the ORM package
 
 Import the PG packages by adding the following import statement in your Go code.
 
@@ -51,13 +50,9 @@ import (
 )
 ```
 
-### Step 2: Connect to YugabyteDB database
-
-Go applications can connect to the YugabyteDB database using the `pg.Connect()` function.
+### Step 2: Set up the database connection
 
 Use the `pg.Connect()` function to establish a connection to the YugabyteDB database. This can then can be used to read and write data to the database.
-
-Code snippet for connecting to YugabyteDB:
 
 ```go
 url := fmt.Sprintf("postgres://%s:%s@%s:%d/%s%s",
@@ -104,7 +99,7 @@ Read more on designing [Database schemas and tables](../../../explore/ysql-langu
 
 ### Step 4: Read and write data
 
-To write data to YugabyteDB, use the `Insert()` functions.
+To write data to YugabyteDB, use the `Insert()` function.
 
 ```go
 // Insert into the table.
@@ -136,5 +131,5 @@ fmt.Println(emp)
 
 ## Next steps
 
-- Explore [Scaling Go Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Go applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).
+- Explore [Scaling Go Applications](../../../explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Go applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/).

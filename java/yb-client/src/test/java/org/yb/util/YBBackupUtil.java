@@ -114,7 +114,8 @@ public final class YBBackupUtil {
         "--storage_type", "nfs",
         "--nfs_storage_path", TestUtils.getBaseTmpDir(),
         "--no_ssh",
-        "--no_auto_name"));
+        "--no_auto_name",
+        "--TEST_never_fsync"));
 
     if (postgresContactPoint != null) {
       processCommand.add("--ysql_host=" + postgresContactPoint.getHostName());

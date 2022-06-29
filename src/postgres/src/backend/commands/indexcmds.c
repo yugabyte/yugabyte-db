@@ -650,8 +650,12 @@ DefineIndex(Oid relationId,
 	}
 
 	/* Use tablegroup of the indexed table, if any. */
-	Oid tablegroupId = YbTablegroupCatalogExists ?
-		get_tablegroup_oid_by_table_oid(relationId) : InvalidOid;
+	Oid tablegroupId = InvalidOid;
+	if (YbTablegroupCatalogExists && IsYBRelation(rel))
+	{
+		YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
+		tablegroupId = rel->yb_table_properties->tablegroup_oid;
+	}
 
 	if (OidIsValid(tablegroupId) && stmt->split_options)
 	{
@@ -693,19 +697,6 @@ DefineIndex(Oid relationId,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, OBJECT_YBTABLEGROUP,
 						   get_tablegroup_name(tablegroupId));
-	}
-
-	/*
-	 * Prepend to stmt->options to be parsed for reloptions if tablegroupId is valid.
-	 * We set this here instead of in parse_utilcmd since we need to do the above
-	 * preprocessing and RBAC checks first. This still happens before transformReloptions
-	 * so this option is included in the reloptions text array.
-	 */
-	if (OidIsValid(tablegroupId))
-	{
-		stmt->options = lcons(makeDefElem("tablegroup_oid",
-										  (Node *) makeInteger(tablegroupId), -1),
-										  stmt->options);
 	}
 
 	/*
@@ -1577,11 +1568,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		{
 			YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
 
-			is_colocated = rel->yb_table_properties->is_colocated;
-
-			if (YbTablegroupCatalogExists)
-				tablegroupId = get_tablegroup_oid_by_table_oid(relId);
-
+			is_colocated    = rel->yb_table_properties->is_colocated;
+			tablegroupId    = rel->yb_table_properties->tablegroup_oid;
 			use_yb_ordering = !IsSystemRelation(rel);
 		}
 		RelationClose(rel);

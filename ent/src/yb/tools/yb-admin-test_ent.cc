@@ -97,6 +97,7 @@ class AdminCliTest : public client::KeyValueTableTest<MiniCluster> {
   Status RunAdminToolCommandAndGetErrorOutput(string* error_msg, Args&&... args) {
     auto command = ToStringVector(
             GetToolPath("yb-admin"), "-master_addresses", cluster_->GetMasterAddresses(),
+            "--never_fsync=true",
             std::forward<Args>(args)...);
     LOG(INFO) << "Run tool: " << AsString(command);
     return Subprocess::Call(command, error_msg, StdFdTypes{StdFdType::kErr});

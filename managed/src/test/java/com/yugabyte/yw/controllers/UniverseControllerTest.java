@@ -121,9 +121,6 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
   @Test
   public void testUniverseListWithValidUUID() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
-
     Result result = listUniverses();
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
@@ -220,7 +217,12 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
 
-    assertTrue(customer.getUniverseUUIDs().isEmpty());
+    // TODO FIXME this assert is INVALID because it is on mockCommissioner
+    // which never removes the universe. It was working before because
+    // the customer in memory was never refreshed from the DB. Now that the
+    // universe UUID is not stored in the customer and the getUniverseUUIDs()
+    // makes a call to the DB, this starts failing.
+    // assertTrue(customer.getUniverseUUIDs().isEmpty());
     assertAuditEntry(1, customer.uuid);
   }
 
@@ -266,7 +268,12 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
     assertNotNull(CustomerTask.findByTaskUUID(randUUID).getCompletionTime());
 
-    assertTrue(customer.getUniverseUUIDs().isEmpty());
+    // TODO FIXME this assert is INVALID because it is on mockCommissioner
+    // which never removes the universe. It was working before because
+    // the customer in memory was never refreshed from the DB. Now that the
+    // universe UUID is not stored in the customer and the getUniverseUUIDs()
+    // makes a call to the DB, this starts failing.
+    // assertTrue(customer.getUniverseUUIDs().isEmpty());
     assertAuditEntry(1, customer.uuid);
   }
 

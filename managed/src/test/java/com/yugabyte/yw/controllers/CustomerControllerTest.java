@@ -737,9 +737,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -770,9 +767,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -807,9 +801,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -845,9 +836,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     // Create an xCluster config.
     XClusterConfigCreateFormData xClusterConfigCreateFormData = new XClusterConfigCreateFormData();
@@ -928,9 +916,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-a"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-b"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode params = Json.newObject();
     params.set("metrics", Json.toJson(ImmutableList.of("metric")));
@@ -967,9 +952,6 @@ public class CustomerControllerTest extends FakeDBApplication {
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
     Universe u2 = createUniverse("Foo-2", customer.getCustomerId());
     u2 = Universe.saveDetails(u2.universeUUID, ApiUtils.mockUniverseUpdater("host-2"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.addUniverseUUID(u2.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
@@ -1002,8 +984,6 @@ public class CustomerControllerTest extends FakeDBApplication {
 
     Universe u1 = createUniverse("Foo-1", customer.getCustomerId());
     u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater("host-1"));
-    customer.addUniverseUUID(u1.universeUUID);
-    customer.save();
 
     ObjectNode response = Json.newObject();
     response.put("foo", "bar");
