@@ -1685,7 +1685,7 @@ ExternalMaster* ExternalMiniCluster::GetLeaderMaster() {
 Result<int> ExternalMiniCluster::GetTabletLeaderIndex(const std::string& tablet_id) {
   for (int i = 0; i < num_tablet_servers(); ++i) {
     auto tserver = tablet_server(i);
-    if (tserver->IsProcessAlive()) {
+    if (tserver->IsProcessAlive() && !tserver->IsProcessPaused()) {
       auto tablets = VERIFY_RESULT(GetTablets(tserver));
       for (const auto& tablet : tablets) {
         if (tablet.tablet_id() == tablet_id && tablet.is_leader()) {
@@ -2182,13 +2182,17 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
 Status ExternalDaemon::Pause() {
   if (!process_) return Status::OK();
   VLOG(1) << "Pausing " << ProcessNameAndPidStr();
-  return process_->Kill(SIGSTOP);
+  RETURN_NOT_OK(process_->Kill(SIGSTOP));
+  is_paused_ = true;
+  return Status::OK();
 }
 
 Status ExternalDaemon::Resume() {
   if (!process_) return Status::OK();
   VLOG(1) << "Resuming " << ProcessNameAndPidStr();
-  return process_->Kill(SIGCONT);
+  RETURN_NOT_OK(process_->Kill(SIGCONT));
+  is_paused_ = false;
+  return Status::OK();
 }
 
 Status ExternalDaemon::Kill(int signal) {
@@ -2212,6 +2216,11 @@ bool ExternalDaemon::IsProcessAlive() const {
   // is running.
   return s.IsTimedOut();
 }
+
+bool ExternalDaemon::IsProcessPaused() const {
+  return is_paused_;
+}
+
 
 pid_t ExternalDaemon::pid() const {
   return process_->pid();
