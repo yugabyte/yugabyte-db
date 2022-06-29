@@ -1,15 +1,13 @@
 ---
-title: Go drivers
-linkTitle: Go drivers
+title: Connect an app
+linkTitle: Connect an app
 description: Go drivers for YSQL
-headcontent: Go drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
-    name: Go drivers
     identifier: pgx-driver
     parent: go-drivers
-    weight: 400
+    weight: 410
 isTocNested: true
 showAsideToc: true
 ---
@@ -17,6 +15,12 @@ showAsideToc: true
 For Go applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/preview/drivers-orms/go/yb-pgx/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YugabyteDB PGX Driver
+    </a>
+  </li>
 
   <li >
     <a href="/preview/drivers-orms/go/pgx/" class="nav-link active">
@@ -38,7 +42,7 @@ The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and a
 
 ## CRUD operations with PGX driver
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the Quick Start section.
+Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](../../../quick-start/build-apps/go/ysql-pgx) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Go application development using the PGX driver.
 
@@ -52,7 +56,7 @@ import (
 )
 ```
 
-### Step 2: Connect to YugabyteDB database
+### Step 2: Set up the database connection
 
 Go applications can connect to the YugabyteDB database using the `pgx.Connect()` function. The `pgx` package includes all the common functions or structs required for working with YugabyteDB.
 
@@ -60,7 +64,7 @@ Use the `pgx.Connect()` method to create a connection object for the YugabyteDB 
 
 The PGX connection URL is in the following format:
 
-```go
+```sh
 postgresql://username:password@hostname:port/database
 ```
 
@@ -82,7 +86,7 @@ conn, err := pgx.Connect(context.Background(), url)
 
 #### Use SSL
 
-For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side.
+For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related environment variables as below at the client side. SSL/TLS is enabled by default for client-side authentication. Refer to [OpenSSL](../../../quick-start/build-apps/go/ysql-pgx/#openssl) for the default and supported modes.
 
 ```sh
 $ export PGSSLMODE=verify-ca
@@ -92,7 +96,7 @@ $ export PGSSLROOTCERT=~/root.crt  # Here, the CA certificate file is downloaded
 | Environment Variable | Description |
 | :---------- | :---------- |
 | PGSSLMODE |  SSL mode used for the connection |
-| PGSSLROOTCERT | Server CA Certificate |
+| PGSSLROOTCERT | Path to the root certificate on your computer |
 
 ### Step 3: Create tables
 
@@ -119,7 +123,7 @@ The `conn.Exec()` function also returns an `error` object which, if not `nil`, n
 
 Read more on designing [Database schemas and tables](../../../explore/ysql-language-features/databases-schemas-tables/).
 
-### Step 4:  Read and write data
+### Step 4: Read and write data
 
 #### Insert data
 
@@ -185,4 +189,4 @@ if err != nil {
 ## Next steps
 
 - Learn how to build Go applications using [GORM](../gorm).
-- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/) of the PGX Driver.
+- Learn more about [fundamentals](../../../reference/drivers/go/pgx-reference/#fundamentals) of the PGX Driver.
