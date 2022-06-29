@@ -63,9 +63,14 @@ int64 get_stack_size(ListGraphId *stack)
     return stack->size;
 }
 
-/* return a reference to the head entry in the stack */
+/* return a reference to the head entry in the stack, or NULL if empty */
 GraphIdNode *peek_stack_head(ListGraphId *stack)
 {
+    if (stack == NULL)
+    {
+        return NULL;
+    }
+
     return stack->head;
 }
 
