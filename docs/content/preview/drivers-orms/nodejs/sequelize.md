@@ -33,7 +33,7 @@ showAsideToc: true
 Sequelize works with YugabyteDB because the Sequelize ORM supports PostgreSQL as a backend database, and YugabyteDB YSQL is a PostgreSQL-compatible API.
 To improve the experience and address few limitations (for example, support for `findOrCreate()` API), there is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package.
 
-Meanwhile, you can use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page uses the `sequelize-yugabytedb` package to describe how to get started with Sequelize ORM for connecting to YugabyteDB.
+Currently, you can use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page uses the `sequelize-yugabytedb` package to describe how to get started with Sequelize ORM for connecting to YugabyteDB.
 
 ## Working with domain objects
 
@@ -181,7 +181,7 @@ Employees Details:
 
 ## Specifying SSL configuration
 
-This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+This configuration can be used while connecting to a YugabyteDB Managed cluster or a local YB cluster with SSL enabled.
 
 1. Install the `fs` package to read the SSL certificate:
 
@@ -213,5 +213,5 @@ This configuration can be used while connecting to a YB Managed cluster or a loc
 
 ## Next steps
 
-- Explore [Scaling Node Applications](/preview/explore/linear-scalability) with YugabyteDB.
-- Learn how to [develop Node applications with YugabyteDB Managed](/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).
+- Explore [Scaling Node Applications](../../../../explore/linear-scalability) with YugabyteDB.
+- Learn how to [develop Node applications with YugabyteDB Managed](../../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/).

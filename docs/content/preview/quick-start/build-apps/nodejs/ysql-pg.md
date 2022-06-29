@@ -213,6 +213,8 @@ const config = {
 }
 ```
 
+If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
+
 ### Create a sample Node.js application with SSL
 
 Create a file `yb-ysql-helloworld-ssl.js` and copy the following content to it, replacing the values in the `config` object as appropriate for your cluster:

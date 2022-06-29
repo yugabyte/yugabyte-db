@@ -42,7 +42,7 @@ This section describes how to use data models (domain objects) to store and retr
 
 Prisma has a main file called `schema.prisma` in which the configurations and data models are defined. The data models are also called Prisma models which represent the entities of your application, and map to the tables in the database. Prisma models also form the basis of the queries available in the generated Prisma Client API.
 
-## CRUD operations with Prisma
+## CRUD operations
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps on the [Build an application](../../../quick-start/build-apps/nodejs/ysql-prisma/) page in the Quick start section.
 
