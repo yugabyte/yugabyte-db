@@ -9,12 +9,18 @@ menu:
     name: Go Drivers
     identifier: ref-pq-go-driver
     parent: drivers
-    weight: 600
+    weight: 620
 isTocNested: true
 showAsideToc: true
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="/preview/reference/drivers/go/yb-pgx-reference/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+       YugabyteDB PGX Driver
+    </a>
+  </li>
 
   <li >
     <a href="/preview/reference/drivers/go/pgx-reference/" class="nav-link">

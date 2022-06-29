@@ -59,7 +59,6 @@ In this tutorial, you'll create a small Go application that connects to a Yugaby
 
 The first example demonstrates connection load balancing using the `pgx.Connect()` API, while the second uses the `pgxpool.Connect()` API.
 
-
 ## Prerequisites
 
 This tutorial assumes that:
