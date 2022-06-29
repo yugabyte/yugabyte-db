@@ -352,7 +352,7 @@ typedef struct YbTablePropertiesData {
   uint64_t num_tablets;
   uint64_t num_hash_key_columns;
   bool is_colocated; /* via database or tablegroup, but not for system tables */
-  YBCPgOid tablegroup_oid; /* 0 if none */
+  YBCPgOid tablegroup_oid; /* InvalidOid if none */
   YBCPgOid colocation_id; /* 0 if not colocated */
 } YbTablePropertiesData;
 

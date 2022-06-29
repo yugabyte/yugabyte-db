@@ -779,13 +779,6 @@ appendReloptionsArray(PQExpBuffer buffer, const char *reloptions,
 		else
 			value = "";
 
-		/*
-		 * We ignore the reloption for tablegroup_oid.
-		 * It is appended seperately as a TABLEGROUP clause.
-		 */
-		if (strcmp(name, "tablegroup_oid") == 0)
-			continue;
-
 		if (appended)
 			appendPQExpBufferStr(buffer, ", ");
 		appendPQExpBuffer(buffer, "%s%s=", prefix, fmtId(name));

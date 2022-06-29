@@ -35,7 +35,7 @@ static bool describeOneTableDetails(const char *schemaname,
 static void add_tablespace_footer(printTableContent *const cont, char relkind,
 					  Oid tablespace, const bool newline);
 static void add_tablegroup_footer(printTableContent *const cont, char relkind,
-					  Oid tablegroup, const bool newline);
+					  const char* grpname, const bool newline);
 static void add_role_attribute(PQExpBuffer buf, const char *const str);
 static bool listTSParsersVerbose(const char *pattern);
 static bool describeOneTSParser(const char *oid, const char *nspname,
@@ -1490,7 +1490,8 @@ describeOneTableDetails(const char *schemaname,
 		char	   *reloftype;
 		char		relpersistence;
 		char		relreplident;
-		Oid			tablegroup;
+
+		char	   *yb_grpname;
 	}			tableinfo;
 	bool		show_column_details = false;
 
@@ -1653,18 +1654,20 @@ describeOneTableDetails(const char *schemaname,
 
 	/* Get information about tablegroup (if any) */
 	printfPQExpBuffer(&tablegroupbuf,
-					  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup_oid=(\\d*).*') AS tablegroup\n"
-					  "FROM pg_catalog.pg_class WHERE oid = '%s';",
+					  "SELECT grpname\n"
+					  "FROM pg_catalog.yb_table_properties(%s) p\n"
+					  "LEFT JOIN pg_catalog.pg_yb_tablegroup gr\n"
+					  "  ON gr.oid = p.tablegroup_oid;",
 					  oid);
 
 	tgres = PSQLexec(tablegroupbuf.data);
 
-	if (tgres && PQntuples(tgres) > 0)
+	if (tgres && PQntuples(tgres) > 0 && strcmp(PQgetvalue(tgres, 0, 0), "") != 0)
 	{
-		tableinfo.tablegroup = atooid(PQgetvalue(tgres, 0, 0));
+		tableinfo.yb_grpname = pg_strdup(PQgetvalue(tgres, 0, 0));
 	}
 	else
-		tableinfo.tablegroup = 0;
+		tableinfo.yb_grpname = NULL;
 
 	PQclear(tgres);
 	tgres = NULL;
@@ -2231,7 +2234,7 @@ describeOneTableDetails(const char *schemaname,
 			add_tablespace_footer(&cont, tableinfo.relkind,
 								  tableinfo.tablespace, true);
 			add_tablegroup_footer(&cont, tableinfo.relkind,
-								  tableinfo.tablegroup, true);
+								  tableinfo.yb_grpname, true);
 		}
 
 		PQclear(result);
@@ -2350,24 +2353,28 @@ describeOneTableDetails(const char *schemaname,
 
 					/* Get information about tablegroup (if any) */
 					printfPQExpBuffer(&tablegroupbuf,
-									  "SELECT SUBSTRING(unnest(reloptions) from '.*tablegroup_oid=(\\d*).*') AS tablegroup\n"
-									  "FROM pg_catalog.pg_class WHERE relname = '%s';",
+									  "SELECT tg.grpname\n"
+									  "FROM yb_table_properties('%s.%s'::regclass) props,\n"
+									  "   pg_yb_tablegroup tg\n"
+									  "WHERE tg.oid = props.tablegroup_oid;",
+									  schemaname,
 									  PQgetvalue(result, i, 0));
 
 					tgres = PSQLexec(tablegroupbuf.data);
-					Oid idx_tablegroup;
-					if (tgres && PQntuples(tgres) > 0)
+					char* idx_grpname;
+					if (tgres && PQntuples(tgres) > 0 &&
+						strcmp(PQgetvalue(tgres, 0, 0), "") != 0)
 					{
-						idx_tablegroup = atooid(PQgetvalue(tgres, 0, 0));
+						idx_grpname = pg_strdup(PQgetvalue(tgres, 0, 0));
 					}
 					else
-						idx_tablegroup = 0;
+						idx_grpname = NULL;
 
 					PQclear(tgres);
 					tgres = NULL;
 
 					/* Print tablegroup of the index on the same line */
-					add_tablegroup_footer(&cont, RELKIND_INDEX, idx_tablegroup, false);
+					add_tablegroup_footer(&cont, RELKIND_INDEX, idx_grpname, false);
 				}
 			}
 			PQclear(result);
@@ -3167,8 +3174,8 @@ describeOneTableDetails(const char *schemaname,
 		/* Tablespace info */
 		add_tablespace_footer(&cont, tableinfo.relkind, tableinfo.tablespace,
 							  true);
-		/* Tablespace info */
-		add_tablegroup_footer(&cont, tableinfo.relkind, tableinfo.tablegroup,
+		/* Tablegroup info */
+		add_tablegroup_footer(&cont, tableinfo.relkind, tableinfo.yb_grpname,
 							  true);
 	}
 
@@ -3276,55 +3283,38 @@ add_tablespace_footer(printTableContent *const cont, char relkind,
  */
 static void
 add_tablegroup_footer(printTableContent *const cont, char relkind,
-					  Oid tablegroup, const bool newline)
+					  const char* grpname, const bool newline)
 {
 	/* relkinds for which we support tablegroups */
-	if (relkind == RELKIND_RELATION ||
-		relkind == RELKIND_INDEX)
+	if ((relkind == RELKIND_RELATION ||
+		 relkind == RELKIND_INDEX ||
+		 relkind == RELKIND_PARTITIONED_TABLE ||
+		 relkind == RELKIND_PARTITIONED_INDEX) &&
+		grpname)
 	{
-		// Ignore InvalidOid
-		if (tablegroup != 0)
+		PQExpBufferData buf;
+		initPQExpBuffer(&buf);
+		if (newline)
 		{
-			PGresult   *result = NULL;
-			PQExpBufferData buf;
-
-			initPQExpBuffer(&buf);
-			printfPQExpBuffer(&buf,
-							  "SELECT grpname FROM pg_catalog.pg_yb_tablegroup\n"
-							  "WHERE oid = '%u';", tablegroup);
-			result = PSQLexec(buf.data);
-			if (!result)
-			{
-				termPQExpBuffer(&buf);
-				return;
-			}
-			/* Should always be the case, but.... */
-			if (PQntuples(result) > 0)
-			{
-				if (newline)
-				{
-					/* Add the tablegroup as a new footer */
-					printfPQExpBuffer(&buf, _("Tablegroup: \"%s\""),
-									  PQgetvalue(result, 0, 0));
-					printTableAddFooter(cont, buf.data);
-				}
-				else
-				{
-					/* Append the tablegroup to the latest footer */
-					printfPQExpBuffer(&buf, "%s", cont->footer->data);
-
-					/*
-					 translator: before this string there's an index description like
-					 '"foo_pkey" PRIMARY KEY, btree (a)'
-					 */
-					appendPQExpBuffer(&buf, _(", tablegroup \"%s\""),
-									  PQgetvalue(result, 0, 0));
-					printTableSetFooter(cont, buf.data);
-				}
-			}
-			PQclear(result);
-			termPQExpBuffer(&buf);
+			/* Add the tablegroup as a new footer */
+			printfPQExpBuffer(&buf, _("Tablegroup: \"%s\""),
+							  grpname);
+			printTableAddFooter(cont, buf.data);
 		}
+		else
+		{
+			/* Append the tablegroup to the latest footer */
+			printfPQExpBuffer(&buf, "%s", cont->footer->data);
+
+			/*
+			 translator: before this string there's an index description like
+			 '"foo_pkey" PRIMARY KEY, btree (a)'
+			 */
+			appendPQExpBuffer(&buf, _(", tablegroup \"%s\""),
+							  grpname);
+			printTableSetFooter(cont, buf.data);
+		}
+		termPQExpBuffer(&buf);
 	}
 }
 
@@ -4434,10 +4424,12 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 	if (showRelations)
 	{
 		appendPQExpBufferStr(&buf,
-							 "\nJOIN (SELECT oid, relname, relkind, relowner, unnest(pg_catalog.pg_class.reloptions) " \
-							 "AS relopt FROM pg_catalog.pg_class) c");
-		appendPQExpBufferStr(&buf,
-							 "\nON c.relopt LIKE CONCAT('%tablegroup_oid=%', CAST(g.oid AS TEXT), '%')\n");
+							 "INNER JOIN (\n"
+							 "  SELECT cl.oid, cl.relname, cl.relkind, cl.relowner,\n"
+							 "         props.tablegroup_oid\n"
+							 "  FROM pg_catalog.pg_class cl, yb_table_properties(cl.oid) props\n"
+							 ") c\n"
+							 "ON c.tablegroup_oid = g.oid\n");
 	}
 
 	processSQLNamePattern(pset.db, &buf, pattern, false, false,
