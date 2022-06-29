@@ -44,7 +44,7 @@ DEFINE_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
 DEFINE_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
-DEFINE_bool(yb_pg_terminate_child_backend, true,
+DEFINE_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
 DEFINE_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
