@@ -88,7 +88,9 @@ public enum PlatformMetrics {
   UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS, false),
   UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY(
       "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
-  UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true);
+  UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true),
+  UNIVERSE_SSH_KEY_EXPIRY_DAY(
+      "Remaining days to expiry for SSH key of the universe", Unit.DAY, false);
 
   private final String help;
   private final Unit unit;
