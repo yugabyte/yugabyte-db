@@ -1135,11 +1135,15 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
            : FLAGS_ysql_client_read_write_timeout_ms);
   // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
   // FLAGS(_ysql)?_client_read_write_timeout_ms}.
-  if (timeout_ms <= 0) {
+  // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
+  if (timeout_ms < 0) {
     // The timeout is not valid. Use the default GFLAG value.
     return;
+  } else if (timeout_ms == 0) {
+    timeout_ms = default_client_timeout_ms;
+  } else {
+    timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
   }
-  timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
 
   // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.
