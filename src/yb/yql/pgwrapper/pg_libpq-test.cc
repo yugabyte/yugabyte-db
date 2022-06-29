@@ -2468,8 +2468,6 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-        Format("--yb_pg_terminate_child_backend=false"));
-    options->extra_tserver_flags.push_back(
         Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
     options->extra_tserver_flags.push_back(
         Format("--yb_backend_oom_score_adj=" + expected_oom_score));
