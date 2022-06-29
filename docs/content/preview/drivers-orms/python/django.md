@@ -45,12 +45,10 @@ To download the Django Rest Framework to your project, run the following command
 pip3 install djangorestframework
 ```
 
-In addition, install the [YB backend for Django](https://github.com/yugabyte/yb-django) by following the steps in the README. This backend has specific changes with respect to features either not supported by YugabyteDB or supported differently than PostgreSQL. For more information on these features, visit this [GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/7764).
-
-Install the psycopg2 dependency by running the following command:
+In addition, install the [YB backend for Django](https://github.com/yugabyte/yb-django) by using the following command:
 
 ```sh
-pip3 install psycopg2
+pip3 install django-yugabytedb
 ```
 
 ### Implement ORM mapping for YugabyteDB
