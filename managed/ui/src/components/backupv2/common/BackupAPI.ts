@@ -85,10 +85,7 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
     parallelism: values['parallelThreads']
   };
   if (values['kmsConfigUUID']) {
-    payload['encryptionAtRestConfig'] = {
-      encryptionAtRestEnabled: true,
-      kmsConfigUUID: values['kmsConfigUUID'].value
-    };
+    payload['kmsConfigUUID'] = values['kmsConfigUUID'].value;
   }
   return axios.post(`${ROOT_URL}/customers/${cUUID}/restore`, payload);
 }
