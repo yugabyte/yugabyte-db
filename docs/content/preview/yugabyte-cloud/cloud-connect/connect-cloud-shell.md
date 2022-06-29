@@ -4,6 +4,8 @@ linkTitle: Cloud Shell
 description: Connect to YugabyteDB Managed clusters from any browser using Cloud Shell
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
+aliases:
+  - /preview/yugabyte-cloud/cloud-quickstart/qs-connect/
 menu:
   preview_yugabyte-cloud:
     identifier: connect-cloud-shell

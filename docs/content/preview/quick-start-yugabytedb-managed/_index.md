@@ -5,6 +5,8 @@ linkTitle: Quick start
 description: Get started using YugabyteDB Managed in less than five minutes.
 layout: single
 type: docs
+aliases:
+  - /preview/yugabyte-cloud/cloud-quickstart/
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -28,67 +30,53 @@ menu:
   </ul>
 </div>
 
-The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free cluster. Although not suitable for production workloads, the free cluster includes enough resources to learn and develop applications with YugabyteDB.
+The quickest way to get started with YugabyteDB is to [sign up for YugabyteDB Managed](http://cloud.yugabyte.com) and create a free Sandbox cluster.
 
-## Create a free cluster
+After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed.
 
-The free cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required. You can only have one free cluster.
+The first time you sign in, YugabyteDB Managed provides a welcome experience with a 15 minute **Get Started** tutorial. Follow the steps to learn how to do the following:
 
-{{< youtube id="KZSrl12x1ew" title="Create your first YugabyteDB Managed cluster" >}}
+- Create your Sandbox cluster
+- Use YugabyteDB to create a database, load sample data, and run queries
+- Explore a sample application that matches your use case
 
-After setting up your YugabyteDB Managed account, [log in](https://cloud.yugabyte.com/login) to access YugabyteDB Managed. YugabyteDB Managed has the following main sections, accessed via the left menu:
+If you aren't using the **Get Started** tutorial, use the following instructions to create your first cluster and connect to your database.
 
-- **Getting Started** - Create your free cluster and access documentation.
+## Create your Sandbox cluster
 
-- **Clusters** - Add, monitor, and manage clusters.
+The Sandbox cluster provides a fully functioning single node YugabyteDB cluster deployed to the region of your choice. The cluster is free forever and includes enough resources to explore the core features available for developing applications with YugabyteDB. No credit card information is required.
 
-- **Alerts** - Configure cluster and billing alerts, and view notifications.
+To create your Sandbox cluster:
 
-- **Network Access** - Set up VPC networks and authorize access to your clusters using IP allow lists.
+![Create a Sandbox cluster](/images/yb-cloud/cloud-add-free-cluster.gif)
 
-- **Admin** - Manage billing and payment methods, add users, and review account activity.
+1. Click **Create a Free cluster** on the welcome screen, or click **Add Cluster** on the **Clusters** page to open the **Create Cluster** wizard.
 
-### Create your free cluster
+1. Select Sandbox and click **Choose**.
 
-To create your free cluster:
+1. Enter a name for the cluster, and choose the cloud provider (AWS or GCP), then click **Next**.
 
-1. On the **Getting Started** page, click **Create a free cluster** to open the **Create Cluster** wizard.
-
-1. Select **YugabyteDB Managed Free** and click **Next**.
-
-1. Choose the cloud provider (AWS or GCP), enter a name for the cluster, and choose the region in which to deploy the cluster, then click **Next**.
+1. Choose the region in which to deploy the cluster, then click **Next**.
 
 1. Click **Download credentials**. The default credentials are for a database user named "admin". You'll use these credentials when connecting to your YugabyteDB database.
 
 1. Click **Create Cluster**.
 
-After you complete the wizard, YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes up to 15 minutes.
+YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
 When the cluster is ready, the cluster [Overview](../yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 
-{{< note title="Note" >}}
-
-YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The free cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/). To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
-
-{{< /note >}}
-
-#### Learn more
-
-[Differences between free and standard clusters](../yugabyte-cloud/cloud-faq/#what-are-the-differences-between-free-and-standard-clusters)
-
-[Deploy production clusters](../yugabyte-cloud/cloud-basics/)
-
-[Authorize access to your cluster](../yugabyte-cloud/cloud-secure-clusters/add-connections/)
+>**Sandbox cluster**
+>
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/). See [Differences between Sandbox and Dedicated clusters](../yugabyte-cloud/cloud-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>
+>To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 
 ## Connect to the cluster
 
-After [creating a free cluster](#create-a-free-cluster), the easiest way to connect to it is to use Cloud Shell.
+Use Cloud Shell to connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
 
-Using Cloud Shell, you can connect to your YugabyteDB Managed cluster from your browser, and interact with it using distributed SQL.
-
-The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
-
-### Connect to your cluster using Cloud Shell
+>The shell has a one hour connection limit. If your session is idle for more than 5 minutes, it may disconnect. If your session expires, close your browser tab and connect again.
 
 To connect to your cluster, do the following:
 
@@ -120,17 +108,11 @@ To connect to your cluster, do the following:
     yugabyte=>
     ```
 
-The command line interface (CLI) being used is called ysqlsh. ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible YSQL API.
+1. When you connect to your cluster using Cloud Shell with the [YSQL API](../api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
 
-Cloud Shell also supports ycqlsh, a CLI for the YCQL API.
-
-#### Learn more
-
-For more information on the ysqlsh and ycqlsh CLIs, refer to [ysqlsh](../admin/ysqlsh/) and [ycqlsh](../admin/ycqlsh/).
-
-For more information on the YSQL and YCQL APIs, refer to [YSQL API](../api/ysql/) and [YCQL API](../api/ycql/).
-
-For information on other ways to connect to your cluster, refer to [Connect to clusters](../yugabyte-cloud/cloud-connect).
+> The command line interface (CLI) being used is called [ysqlsh](../admin/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](../api/ysql/). Cloud Shell also supports [ycqlsh](../admin/ycqlsh/), a CLI for the [YCQL API](../api/ycql/).
+>
+> For information on other ways to connect to your cluster, refer to [Connect to clusters](../yugabyte-cloud/cloud-connect).
 
 ## Build a Java application
 
@@ -142,7 +124,7 @@ This tutorial requires the following.
 
 #### YugabyteDB Managed
 
-- You have a cluster deployed in YugabyteDB Managed. To get started, use the Quick start.
+- You have a cluster deployed in YugabyteDB Managed.
 - You downloaded the cluster CA certificate and added your computer to the cluster IP allow list. Refer to [Before you begin](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/).
 
 #### Other packages
