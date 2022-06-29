@@ -221,7 +221,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       is: (use_cron_expression) => isScheduledBackup && use_cron_expression,
       then: Yup.string().required('Required')
     }),
-    storage_config: Yup.object().required('Required'),
+    storage_config: Yup.object().nullable().required('Required'),
     db_to_backup: Yup.object().nullable().required('Required'),
     retention_interval: Yup.number().when('keep_indefinitely', {
       is: (keep_indefinitely) => !keep_indefinitely,
@@ -651,7 +651,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
   isEditMode
 }) => {
   const tablesInKeyspaces = tablesList
-    ?.filter((t) => t.tableType === values['api_type'].value)
+    ?.filter((t) => t.tableType === values['api_type'].value && !t.isIndexTable)
     .filter(
       (t) => values['db_to_backup']?.value === null || t.keySpace === values['db_to_backup']?.value
     );
