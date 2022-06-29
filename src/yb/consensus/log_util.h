@@ -49,7 +49,6 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/util/atomic.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
@@ -109,7 +108,7 @@ struct LogOptions {
 
   std::string peer_uuid;
 
-  uint64_t initial_active_segment_sequence_number = 0;
+  int64_t initial_active_segment_sequence_number = 0;
 
   LogOptions();
 };
@@ -156,6 +155,8 @@ struct FirstEntryMetadata {
   }
 };
 
+YB_DEFINE_ENUM(EntriesToRead, (kAll)(kReplicate));
+
 // A segment of the log can either be a ReadableLogSegment (for replay and
 // consensus catch-up) or a WritableLogSegment (where the Log actually stores
 // state). LogSegments have a maximum size defined in LogOptions (set from the
@@ -201,10 +202,17 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // In case of failure status field of result is not ok.
   //
   // Will stop after reading max_entries_to_read entries.
-  ReadEntriesResult ReadEntries(int64_t max_entries_to_read = std::numeric_limits<int64_t>::max());
+  ReadEntriesResult ReadEntries(
+      int64_t max_entries_to_read = std::numeric_limits<int64_t>::max(),
+      EntriesToRead entries_to_read = EntriesToRead::kAll);
 
   // Reads the metadata of the first entry in the segment
   Result<FirstEntryMetadata> ReadFirstEntryMetadata();
+
+  // Returns op id of the first replicate entry.
+  // - NotFound error if no replicate entries found.
+  // - Other errors if failed to read.
+  Result<OpId> ReadFirstReplicateEntryOpId();
 
   // Rebuilds this segment's footer by scanning its entries.
   // This is an expensive operation as it reads and parses the whole segment
@@ -212,10 +220,13 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // missing because we didn't have the time to write it out.
   Status RebuildFooterByScanning();
 
-  // Copies log segment up to up_to_op_id into dest_file at dest_path and updates
-  // log_index_to_rebuild.
-  Status CopyTo(const OpId& up_to_op_id, const std::string& dest_path,
-      const std::shared_ptr<WritableFile>& dest_file, LogIndex* log_index_to_rebuild);
+  // Copies log segment up to up_to_op_id into new segment at dest_path.
+  Status CopyTo(
+      Env* env, const WritableFileOptions& writable_file_options, const std::string& dest_path,
+      const OpId& up_to_op_id);
+
+  // Reads index block from file at specified offset into tmp_buf.
+  Result<LogIndexBlock> ReadIndexBlock(uint64_t* offset, faststring* tmp_buf);
 
   bool IsInitialized() const {
     return is_initialized_;
@@ -256,21 +267,20 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   }
 
   int64_t file_size() const {
-    return file_size_.Load();
+    return file_size_.load(std::memory_order_acquire);
   }
 
   int64_t first_entry_offset() const {
     return first_entry_offset_;
   }
 
-  int64_t get_header_size() const {
+  int64_t get_encryption_header_size() const {
     return readable_file_->GetEncryptionHeaderSize();
   }
 
-  // Returns the full size of the file, if the segment is closed and has
-  // a footer, or the offset where the last written, non corrupt entry
-  // ends.
-  int64_t readable_up_to() const;
+  int64_t readable_to_offset() const {
+    return readable_to_offset_.load(std::memory_order_acquire);
+  }
 
  private:
   friend class RefCountedThreadSafe<ReadableLogSegment>;
@@ -342,23 +352,21 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   void UpdateReadableToOffset(int64_t readable_to_offset);
 
-  int64_t GetOffsetReadUpTo();
+  int64_t ReadEntriesUpTo();
 
   const std::string path_;
 
   // The size of the readable file.
-  // This is set by Init(). In the case of a log being written to,
-  // this may be increased by UpdateReadableToOffset()
-  AtomicInt<int64_t> file_size_;
+  // This is set by Init(). In the case of a log being written to, this may be increased by
+  // UpdateReadableToOffset().
+  std::atomic<int64_t> file_size_;
 
   // The offset up to which we can read the file.
-  // For already written segments this is fixed and equal to the file size
-  // but for the segments currently written to this is the offset up to which
-  // we can read without the fear of reading garbage/zeros.
+  // Contains full size of the file, if the segment is closed and has a footer, or the offset where
+  // the last written, non corrupt entry ends.
   // This is atomic because the Log thread might be updating the segment's readable
   // offset while an async reader is reading the segment's entries.
-  // is reading it.
-  AtomicInt<int64_t> readable_to_offset_;
+  std::atomic<int64_t> readable_to_offset_;
 
   // a readable file for a log segment (used on replay)
   const std::shared_ptr<RandomAccessFile> readable_file_;
@@ -389,9 +397,9 @@ class WritableLogSegment {
   // Opens the segment by writing the header.
   Status WriteHeaderAndOpen(const LogSegmentHeaderPB& new_header);
 
-  // Closes the segment by writing the footer and then actually closing the
+  // Closes the segment by writing the index, the footer, and then actually closing the
   // underlying WritableFile.
-  Status WriteFooterAndClose(const LogSegmentFooterPB& footer);
+  Status WriteIndexWithFooterAndClose(LogIndex* log_index, LogSegmentFooterPB* footer);
 
   bool IsClosed() {
     return IsHeaderWritten() && IsFooterWritten();
@@ -447,6 +455,11 @@ class WritableLogSegment {
     return writable_file_;
   }
 
+  // Writes index stored inside log_index within specified range into the WAL segment file.
+  Status WriteIndex(LogIndex* log_index, int64_t start_index, int64_t end_index_inclusive);
+
+  Status WriteIndexBlock(const LogIndexBlock& index_block);
+
   // The path to the log file.
   const std::string path_;
 
@@ -466,6 +479,8 @@ class WritableLogSegment {
 
   // The offset where the last written entry ends.
   int64_t written_offset_;
+
+  faststring index_block_header_buffer_;
 
   DISALLOW_COPY_AND_ASSIGN(WritableLogSegment);
 };
