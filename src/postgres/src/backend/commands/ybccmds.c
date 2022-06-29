@@ -633,10 +633,11 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 void
 YBCDropTable(Oid relationId)
 {
-	YBCPgStatement handle = NULL;
-	Oid			databaseId = YBCGetDatabaseOidByRelid(relationId);
-	/* TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup */
-	bool		colocated = false;
+	YBCPgStatement  handle     = NULL;
+	Oid             databaseId = YBCGetDatabaseOidByRelid(relationId);
+	// TODO(alex): Rename to disambiguate colocation via DB vs via tablegroup
+	bool            colocated  = false;
+	Relation 		relation   = relation_open(relationId, AccessExclusiveLock);
 
 	/* Determine if table is colocated */
 	if (MyDatabaseColocated)
@@ -656,7 +657,7 @@ YBCDropTable(Oid relationId)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
-															   relationId,
+															   YbGetStorageRelid(relation),
 															   false,
 															   &handle),
 									 &not_found);
@@ -677,7 +678,6 @@ YBCDropTable(Oid relationId)
 	/* Drop the table */
 	{
 		bool not_found = false;
-		Relation relation = relation_open(relationId, AccessExclusiveLock);
 		HandleYBStatusIgnoreNotFound(YBCPgNewDropTable(databaseId,
 													   YbGetStorageRelid(relation),
 													   false, /* if_exists */

@@ -1,4 +1,3 @@
-
 -- create a table to use as a basis for views and materialized views in various combinations
 CREATE TABLE mvtest_t (id int NOT NULL PRIMARY KEY, type text NOT NULL, amt numeric NOT NULL);
 INSERT INTO mvtest_t VALUES
@@ -27,7 +26,7 @@ SELECT * FROM mvtest_tm ORDER BY type;
 EXPLAIN (costs off)
   CREATE MATERIALIZED VIEW mvtest_tvm AS SELECT * FROM mvtest_tv ORDER BY type;
 CREATE MATERIALIZED VIEW mvtest_tvm AS SELECT * FROM mvtest_tv ORDER BY type;
-SELECT * FROM mvtest_tvm ORDER BY TYPE;
+SELECT * FROM mvtest_tvm ORDER BY type;
 CREATE MATERIALIZED VIEW mvtest_tmm AS SELECT sum(totamt) AS grandtot FROM mvtest_tm;
 CREATE MATERIALIZED VIEW mvtest_tvmm AS SELECT sum(totamt) AS grandtot FROM mvtest_tvm;
 CREATE UNIQUE INDEX mvtest_tvmm_expr ON mvtest_tvmm ((grandtot > 0));
@@ -225,62 +224,16 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_mv_foo;
 DROP OWNED BY regress_user_mvtest CASCADE;
 DROP ROLE regress_user_mvtest;
 
-
--- YB specific tests
-CREATE TABLE test_yb (col int);
-INSERT INTO test_yb VALUES (null);
-CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb;
-CREATE UNIQUE INDEX ON mtest_yb(col);
-REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb; -- should fail
-CREATE TABLE pg_temp_foo (col int);
-INSERT INTO pg_temp_foo values (1);
-SELECT * FROM pg_temp_foo;
-CREATE TABLE pg_temp__123 (col int);
-INSERT INTO pg_temp__123 values (1);
-SELECT * from pg_temp__123;
-DROP TABLE test_yb CASCADE;
-
--- Test special characters in an attribute's name
-CREATE TABLE test_yb ("xyzID''\\b" int NOT NULL, "y" int);
-INSERT INTO test_yb VALUES (1);
-CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
-CREATE UNIQUE INDEX ON mtest_yb("xyzID''\\b");
-REFRESH MATERIALIZED VIEW mtest_yb;
-REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
-DROP TABLE test_yb CASCADE;
-
--- Test with special characters in the base relation's name
-CREATE TABLE "test_YB''\\b" ("xyzid" int NOT NULL);
-INSERT INTO "test_YB''\\b" VALUES (1);
-CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM "test_YB''\\b" WITH NO DATA;
-CREATE UNIQUE INDEX ON mtest_yb("xyzid");
-REFRESH MATERIALIZED VIEW mtest_yb;
-REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
-DROP TABLE "test_YB''\\b" CASCADE;
-
--- Test with special characters in the matview's name
-CREATE TABLE test_yb ("xyzid" int NOT NULL);
-INSERT INTO test_yb VALUES (1);
-CREATE MATERIALIZED VIEW "mtest_YB''\\b" AS SELECT * FROM test_yb WITH NO DATA;
-CREATE UNIQUE INDEX ON mtest_YB("xyzid");
-REFRESH MATERIALIZED VIEW mtest_YB;
-REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_YB;
-DROP TABLE test_yb CASCADE;
-
--- Test with special characters in the unique index's name
-CREATE TABLE test_yb ("xyzid" int NOT NULL);
-INSERT INTO test_yb VALUES (1);
-CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
-CREATE UNIQUE INDEX "unique_IDX''\\b" ON mtest_YB("xyzid");
-REFRESH MATERIALIZED VIEW mtest_yb;
-REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
-DROP TABLE test_yb CASCADE;
-
--- Test with unicode characters
-CREATE TABLE test_yb ("U&'\0022hi\0022'" int NOT NULL);
-INSERT INTO test_yb VALUES (1);
-CREATE MATERIALIZED VIEW mtest_yb AS SELECT * FROM test_yb WITH NO DATA;
-CREATE UNIQUE INDEX unique_IDX ON mtest_YB("U&'\0022hi\0022'");
-REFRESH MATERIALIZED VIEW mtest_yb;
-REFRESH MATERIALIZED VIEW CONCURRENTLY mtest_yb;
-DROP TABLE test_yb CASCADE;
+-- make sure that create WITH NO DATA works via SPI
+BEGIN;
+CREATE FUNCTION mvtest_func()
+  RETURNS void AS $$
+BEGIN
+  CREATE MATERIALIZED VIEW mvtest1 AS SELECT 1 AS x;
+  CREATE MATERIALIZED VIEW mvtest2 AS SELECT 1 AS x WITH NO DATA;
+END;
+$$ LANGUAGE plpgsql;
+SELECT mvtest_func();
+SELECT * FROM mvtest1;
+SELECT * FROM mvtest2;
+ROLLBACK;
