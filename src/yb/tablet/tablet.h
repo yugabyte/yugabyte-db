@@ -427,6 +427,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply replicated add table operation.
   Status AddTable(const TableInfoPB& table_info);
 
+  Status AddMultipleTables(const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos);
+
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id);
 
@@ -826,6 +828,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
     REQUIRES(operation_filters_mutex_);
 
   const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
+
+  Status AddTableInMemory(const TableInfoPB& table_info);
 
   std::unique_ptr<const Schema> key_schema_;
 
