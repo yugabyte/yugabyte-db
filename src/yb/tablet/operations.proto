@@ -88,6 +88,9 @@ message ChangeMetadataRequestPB {
 
   optional tablet.TableInfoPB add_table = 8;
 
+  // For batching multiple adds.
+  repeated tablet.TableInfoPB add_multiple_tables = 17;
+
   optional uint32 wal_retention_secs = 9;
 
   optional bytes remove_table_id = 10;

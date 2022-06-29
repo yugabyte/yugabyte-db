@@ -427,6 +427,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Apply replicated add table operation.
   CHECKED_STATUS AddTable(const TableInfoPB& table_info);
 
+  Status AddMultipleTables(const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos);
+
   // Apply replicated remove table operation.
   CHECKED_STATUS RemoveTable(const std::string& table_id);
 
@@ -820,6 +822,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void SyncRestoringOperationFilter(ResetSplit reset_split) EXCLUDES(operation_filters_mutex_);
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
+
+  Status AddTableInMemory(const TableInfoPB& table_info);
 
   std::unique_ptr<const Schema> key_schema_;
 
