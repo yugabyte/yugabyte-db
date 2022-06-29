@@ -255,6 +255,7 @@ a.text-link::after {
   height: 8px;
   margin-left: 15px;
   background: url(/images/homepage/arrow.svg) no-repeat;
+  background-position: -5px;
   display: inline-block;
   margin-top: 2px;
 }
