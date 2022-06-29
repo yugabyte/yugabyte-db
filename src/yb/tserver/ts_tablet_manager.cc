@@ -860,8 +860,6 @@ Status TSTabletManager::ApplyTabletSplit(
   MAYBE_FAULT(FLAGS_TEST_fault_crash_in_split_before_log_flushed);
   TEST_PAUSE_IF_FLAG(TEST_pause_apply_tablet_split);
 
-  RETURN_NOT_OK(raft_log->FlushIndex());
-
   auto& meta = *CHECK_NOTNULL(tablet->metadata());
 
   // TODO(tsplit): We can later implement better per-disk distribution during compaction of split

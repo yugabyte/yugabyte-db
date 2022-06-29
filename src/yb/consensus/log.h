@@ -168,9 +168,7 @@ class Log : public RefCountedThreadSafe<Log> {
   // 'entry'. If skip_wal_write is true, only update consensus metadata and LogIndex, skip write
   // to wal.
   // TODO get rid of this method, transition to the asynchronous API.
-  Status Append(LogEntryPB* entry,
-                        LogEntryMetadata entry_metadata,
-                        bool skip_wal_write = false);
+  Status Append(LogEntryPB* entry, LogEntryMetadata entry_metadata, bool skip_wal_write = false);
 
   // Append the given set of replicate messages, asynchronously.  This requires that the replicates
   // have already been assigned OpIds.
@@ -311,25 +309,11 @@ class Log : public RefCountedThreadSafe<Log> {
     return cdc_min_replicated_index_.load(std::memory_order_acquire);
   }
 
-  Status FlushIndex();
-
-  // Copies log to a new dir.
-  // If up_to_op_id is specified - only part of the log up to up_to_op_id is copied.
+  // Copies log to a new dir. Expects dest_wal_dir to be absent.
+  // If max_included_op_id is specified - only part of the log up to and including
+  // max_included_op_id is copied.
   // Flushes necessary files and uses hard links where it is safe.
-  //
-  // Until https://github.com/yugabyte/yugabyte-db/issues/10960 is fixed, destination LogIndex
-  // might point to an operation that we've not copied, but it rewrites some operation that we've
-  // copied and there is no way to fix it without full rebuild of LogIndex.
-  // But that should be OK, because:
-  // 1) That can only happen for indexes of operations that are not yet committed, so only
-  //    for indexes > last_commited_op.index.
-  // 2) We use CopyTo for tablet splitting and pass up_to_op_id = split_op_id that is committed.
-  // 3) We only use LogIndex for ops on leader that are in log Raft log, so
-  //    a) Either this is committed operation copied from parent tablet and log index is correct
-  //       for it.
-  //    b) Or this is operation added by the leader, so log index is also correct for it, because
-  //       we updated it as we added this operation to the Raft log.
-  Status CopyTo(const std::string& dest_wal_dir, OpId up_to_op_id = OpId());
+  Status CopyTo(const std::string& dest_wal_dir, OpId max_included_op_id = OpId());
 
   // Waits until all entries flushed, then reset last received op id to specified one.
   Status ResetLastSyncedEntryOpId(const OpId& op_id);
@@ -438,12 +422,21 @@ class Log : public RefCountedThreadSafe<Log> {
   WritableFileOptions GetNewSegmentWritableFileOptions();
 
   // See SegmentOpIdRelation comments.
+  // Returns SegmentOpIdRelation::kOpIdAfterSegment if op_id is not valid or empty.
+  // Note: this function can potentially read all entries from WAL segment that might a large amount
+  // of data.
   Result<SegmentOpIdRelation> GetSegmentOpIdRelation(
       ReadableLogSegment* segment, const OpId& op_id);
 
-  // Returns whether operation with up_to_op_id itself has been copied.
+  // Copies (can use hardlink as an optimization) log segment up to and including
+  // max_included_op_id.
+  // If max_included_op_id is not in this log segment - copies (using hardlink) the whole
+  // segment.
+  // Returns true if max_included_op_id is before or inside the segment and false otherwise.
+
   Result<bool> CopySegmentUpTo(
-      ReadableLogSegment* segment, const std::string& dest_wal_dir, const OpId& up_to_op_id);
+      ReadableLogSegment* segment, const std::string& dest_wal_dir,
+      const OpId& max_included_op_id);
 
   LogOptions options_;
 
