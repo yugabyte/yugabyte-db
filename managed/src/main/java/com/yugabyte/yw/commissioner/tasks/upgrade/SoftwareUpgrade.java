@@ -58,7 +58,8 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
           // Install software on nodes.
           createUpgradeTaskFlow(
               (nodes1, processTypes) ->
-                  createSoftwareInstallTasks(nodes1, getSingle(processTypes), newVersion),
+                  createSoftwareInstallTasks(
+                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
               nodes,
               SOFTWARE_UPGRADE_CONTEXT);
           // Run YSQL upgrade on the universe.

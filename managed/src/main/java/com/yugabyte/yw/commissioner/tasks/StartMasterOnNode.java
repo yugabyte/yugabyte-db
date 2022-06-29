@@ -112,7 +112,8 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
       createGFlagsOverrideTasks(nodeAsList, ServerType.MASTER, true /* isShell */);
 
       // Check that installed MASTER software version is consistent.
-      createSoftwareInstallTasks(nodeAsList, ServerType.MASTER, null);
+      createSoftwareInstallTasks(
+          nodeAsList, ServerType.MASTER, null, SubTaskGroupType.InstallingSoftware);
 
       // Update master configuration on the node.
       createConfigureServerTasks(
