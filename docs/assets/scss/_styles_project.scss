@@ -90,6 +90,11 @@ h1 {
   }
 }
 
+h4,
+.h4 {
+  font-size: 1.2rem;
+}
+
 @media (min-width: 768px) {
   .td-main main {
     padding-top: 9.5rem;
@@ -389,93 +394,38 @@ body:not(.td-home) .td-main main {
   }
 }
 
-.td-content h2:not(:first-child) {
-  margin-top: 3rem;
-}
-
-.td-content h3,
-.td-content h4,
-.td-content h5,
-.td-content h6 {
-  margin-bottom: 1rem;
-  margin-top: 2rem;
-}
-
-.td-content p a,
-.td-content li:not(.nav-item) a,
-.td-content .note a,
-.td-content td a {
-  color: #3176d9;
-
-  i {
-    color: var(--theme-color);
-    margin-left: 5px;
-    font-size: 12px;
-  }
-}
-
-.td-content p a:hover,
-.td-content li:not(.nav-item) a:hover,
-.td-content td a:hover {
-  text-decoration: underline;
-}
-
-/******* For Color Theme Switcher **********/
-
-.activity-timeline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: red;
-  font-size: 16px;
-  line-height: 19px;
-  margin-right: 15px;
-}
-
-.switcher {
-  background: #fff;
-  border-radius: 15px;
-  width: 60px;
-  height: 30px;
-  margin-left: 30px;
-  cursor: pointer;
-  position: relative;
-  border: 2px solid $secondary;
-}
-
-.switcher::before {
-  content: '';
-  width: 15px;
-  height: 15px;
-  position: absolute;
-  background: $secondary;
-  border-radius: 100%;
-  top: 5px;
-  left: 5px;
-  transition: all 0.2s linear;
-}
-
-.switcher.change::before {
-  left: calc(100% - 20px);
-  background: $primary;
-}
-
-.switcher.change {
-  border-color: $primary;
-}
-
-div#main_navbar {
-  display: flex;
-  flex-flow: row-reverse;
-}
-
-@media (max-width: 767px) {
-  body > header .navbar-expand #main_navbar {
-    flex-flow: row-reverse !important;
+.td-content {
+  h2:not(:first-child) {
+    margin-top: 3rem;
   }
 
-  .switcher {
-    margin-left: 0;
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin-bottom: 1rem;
+    margin-top: 2rem;
+  }
+
+  h4 {
+    margin-bottom: 0.25rem;
+  }
+
+  p a,
+  li:not(.nav-item) a,
+  .note a,
+  td a {
+    color: #3176d9;
+
+    i {
+      color: var(--theme-color);
+      margin-left: 5px;
+      font-size: 12px;
+    }
+
+    &:hover {
+      text-decoration: underline;
+    }
   }
 }
 
