@@ -27,7 +27,7 @@ showAsideToc: true
 
 node-postgres is a collection of node.js modules for interfacing with your PostgreSQL database. It has support for callbacks, promises, async/await, connection pooling, prepared statements, cursors, streaming results, C/C++ bindings, rich type parsing, and more. YugabyteDB has full support for [node-postgres](https://node-postgres.com/).
 
-## CRUD operations with node-postgres driver
+## CRUD operations
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](/preview/quick-start/build-apps/nodejs/ysql-pg/) in the Quick Start section.
 
@@ -111,7 +111,7 @@ async function createTableAndInsertData(client){
                 }).catch((err) => {
                     console.log(err.stack);
                 })
-    
+
     var insert_emp1 = "INSERT INTO employee VALUES (1, 'John', 35, 'Java')"
     await client.query(insert_emp1).then(() => {
         console.log("Inserted Employee 1");

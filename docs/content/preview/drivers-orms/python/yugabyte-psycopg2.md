@@ -30,15 +30,13 @@ showAsideToc: true
 
 </ul>
 
-The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](/preview/api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver is cluster- and topology-aware, and eliminates the need for external load balancers.
+The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a distributed Python driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2). Although the upstream PostgreSQL psycopg2 driver works with YugabyteDB, the Yugabyte driver is cluster- and topology-aware, and eliminates the need for external load balancers.
 
-## CRUD operations with YugabyteDB psycopg2 driver
+## CRUD operations
 
 Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in the [Build an application](/preview/quick-start/build-apps/python/ysql-psycopg2/) page under the Quick start section.
 
 The following sections break down the quick start example to demonstrate how to perform common tasks required for Python application development using the YugabyteDB Psycopg2 driver.
-
-After completing these steps, you should have a working Python application that uses Psycopg2 to connect to your cluster, set up tables, run queries, and print out results.
 
 ### Step 1: Add the YugabyteDB driver dependency
 
@@ -46,7 +44,7 @@ Building Psycopg requires a few prerequisites (a C compiler and some development
 
 The YugabyteDB Psycopg2 requires PostgreSQL version 11 or above (preferably 14).
 
-Once you've installed the prerequisites, you install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
+After you've installed the prerequisites, install psycopg2-yugabytedb like any other Python package, using pip to download it from [PyPI](https://pypi.org/project/psycopg2-yugabytedb/):
 
 ```sh
 $ pip install psycopg2-yugabytedb
@@ -61,13 +59,13 @@ $ sudo python setup.py install
 
 ### Step 2: Connect to your cluster
 
-First, import the psycopg2 package.
+Python applications can connect to and query the YugabyteDB database. First, import the psycopg2 package.
 
 ```python
 import psycopg2
 ```
 
-You can provide the connection details as a string, or as a dictionary.
+You can provide the connection details as follows:
 
 - Connection string:
 
@@ -81,7 +79,7 @@ You can provide the connection details as a string, or as a dictionary.
   user = 'username', password='xxx', host = 'hostname', port = 'port', dbname = 'database_name', load_balance='True'
   ```
 
-Here's a sample call to connect to YugabyteDB:
+The following is an example URL for connecting to YugabyteDB.
 
 ```python
 conn = psycopg2.connect(dbname='yugabyte',host='localhost',port='5433',user='yugabyte',password='yugabyte', load_balance='True')
@@ -115,16 +113,16 @@ If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/c
 
 1. Create a new Python file called `QuickStartApp.py` in the base package directory of your project.
 
-1. Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` with the cluster credentials and SSL certificate, if required.
+1. Copy the following sample code to set up tables and query the table contents. Replace the connection string `connString` with the cluster credentials and SSL certificate, if required.
 
 ```python
 import psycopg2
 
 # Create the database connection.
 
-yburl = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte load_balance=True"
+connString = "host=127.0.0.1 port=5433 dbname=yugabyte user=yugabyte password=yugabyte load_balance=True"
 
-conn = psycopg2.connect(yburl)
+conn = psycopg2.connect(connString)
 
 # Open a cursor to perform database operations.
 # The default mode for psycopg2 is "autocommit=false".
@@ -185,6 +183,6 @@ If there is no output or you get an error, verify the parameters included in the
 
 ## Next steps
 
-- Learn how to build Python applications using [Django](/preview/drivers-orms/python/django/)
-- Learn how to build Python applications using [SQLAlchemy](/preview/drivers-orms/python/sqlalchemy/)
-- Learn more about [fundamentals](../../../reference/drivers/python/yugabyte-psycopg2-reference/) of the YugabyteDB Psycopg2 Driver
+- Learn how to build Python applications using [Django](../../../drivers-orms/python/django/).
+- Learn how to build Python applications using [SQLAlchemy](../../../drivers-orms/python/sqlalchemy/).
+- Learn more about [fundamentals](../../../reference/drivers/python/yugabyte-psycopg2-reference/) of the YugabyteDB Psycopg2 driver.
