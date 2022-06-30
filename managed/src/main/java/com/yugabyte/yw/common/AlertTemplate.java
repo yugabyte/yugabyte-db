@@ -645,7 +645,7 @@ public enum AlertTemplate {
   ENCRYPTION_AT_REST_CONFIG_EXPIRY(
       "Encryption At Rest config expiry",
       "Encryption At Rest config expires soon",
-      "ybp_universe_encryption_key_expiry_days"
+      "ybp_universe_encryption_key_expiry_day"
           + "{universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }}",
       "Encryption At Rest config for universe '{{ $labels.source_name }}'"
