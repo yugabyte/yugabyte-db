@@ -7,6 +7,12 @@ pygmentsCodefences = true
 pygmentsStyle = 'pygments'
 resourceDir = 'docs/resources'
 
+[markup]
+  [markup.tableOfContents]
+    endLevel = 4
+    ordered = false
+    startLevel = 2
+
 [frontmatter]
   date = [ ':git', ':default' ]
 
