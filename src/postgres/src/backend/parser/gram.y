@@ -265,7 +265,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
 	OptSplit			*splitopt;
-	OptTableGroup		*grpopt;
+	char				*grpopt;
 	RowBounds			*rowbounds;
 }
 
@@ -3337,7 +3337,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $12;
 					n->if_not_exists = false;
 					n->split_options = $13;
-					n->tablegroup = $14;
+					n->tablegroupname = $14;
 					if ($13 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3377,7 +3377,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $15;
 					n->if_not_exists = true;
 					n->split_options = $16;
-					n->tablegroup = $17;
+					n->tablegroupname = $17;
 					if ($16 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3418,7 +3418,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $11;
 					n->if_not_exists = false;
 					n->split_options = $12;
-					n->tablegroup = $13;
+					n->tablegroupname = $13;
 					if ($12 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3459,7 +3459,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $14;
 					n->if_not_exists = true;
 					n->split_options = $15;
-					n->tablegroup = $16;
+					n->tablegroupname = $16;
 					if ($15 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3500,7 +3500,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $13;
 					n->if_not_exists = false;
 					n->split_options = $14;
-					n->tablegroup = $15;
+					n->tablegroupname = $15;
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -3541,7 +3541,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $16;
 					n->if_not_exists = true;
 					n->split_options = $17;
-					n->tablegroup = $18;
+					n->tablegroupname = $18;
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
 						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
@@ -4303,12 +4303,11 @@ OptTableGroup:
 			TABLEGROUP name
 				{
 					parser_ybc_beta_feature(@1, "tablegroup", true);
-					$$ = makeNode(OptTableGroup);
-					$$->tablegroup_name = $2;
+					$$ = $2;
 				}
 			| /*EMPTY*/
 				{
-					$$ = (OptTableGroup*) NULL;
+					$$ = NULL;
 				}
 		;
 
