@@ -649,9 +649,9 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 void
 YBCDropTable(Relation relation)
 {
-	YbLoadTablePropertiesIfNeeded(relation, true /* allow_missing */);
+	YbTableProperties yb_props = YbTryGetTableProperties(relation);
 
-	if (!relation->yb_table_properties)
+	if (!yb_props)
 	{
 		/* Table was not found on YB side, nothing to do */
 		return;
@@ -663,11 +663,9 @@ YBCDropTable(Relation relation)
 
 	YBCPgStatement handle = NULL;
 	Oid			databaseId = YBCGetDatabaseOid(relation);
-	/* Whether the table is colocated (via DB or tablegroup) */
-	bool		is_colocated = relation->yb_table_properties->is_colocated;
 
-	/* Create table-level tombstone for colocated/tablegroup tables */
-	if (is_colocated)
+	/* Create table-level tombstone for colocated (via DB or tablegroup) tables */
+	if (yb_props->is_colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,
@@ -713,17 +711,12 @@ YBCDropTable(Relation relation)
 void
 YbTruncate(Relation rel)
 {
-	YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
-
 	YBCPgStatement handle;
 	Oid			relationId = RelationGetRelid(rel);
 	Oid			databaseId = YBCGetDatabaseOid(rel);
 	bool		isRegionLocal = YBCIsRegionLocal(rel);
-	/* Whether the relation is colocated (via DB, tablegroup, or syscatalog) */
-	bool		is_colocated = rel->yb_table_properties->is_colocated ||
-							   IsSystemRelation(rel);
 
-	if (is_colocated)
+	if (IsSystemRelation(rel) || YbGetTableProperties(rel)->is_colocated)
 	{
 		/*
 		 * Create table-level tombstone for colocated/tablegroup/syscatalog
@@ -1219,9 +1212,9 @@ YBCRename(RenameStmt *stmt, Oid relationId)
 void
 YBCDropIndex(Relation index)
 {
-	YbLoadTablePropertiesIfNeeded(index, true /* allow_missing */);
+	YbTableProperties yb_props = YbTryGetTableProperties(index);
 
-	if (!index->yb_table_properties)
+	if (!yb_props)
 	{
 		/* Index was not found on YB side, nothing to do */
 		return;
@@ -1234,11 +1227,9 @@ YBCDropIndex(Relation index)
 	YBCPgStatement handle;
 	Oid			indexId      = RelationGetRelid(index);
 	Oid			databaseId   = YBCGetDatabaseOid(index);
-	/* Whether the index is colocated (via DB or tablegroup) */
-	bool		is_colocated = index->yb_table_properties->is_colocated;
 
-	/* Create table-level tombstone for colocated/tablegroup indexes */
-	if (is_colocated)
+	/* Create table-level tombstone for colocated (via DB or tablegroup) indexes */
+	if (yb_props->is_colocated)
 	{
 		bool not_found = false;
 		HandleYBStatusIgnoreNotFound(YBCPgNewTruncateColocated(databaseId,

@@ -650,12 +650,9 @@ DefineIndex(Oid relationId,
 	}
 
 	/* Use tablegroup of the indexed table, if any. */
-	Oid tablegroupId = InvalidOid;
-	if (YbTablegroupCatalogExists && IsYBRelation(rel))
-	{
-		YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
-		tablegroupId = rel->yb_table_properties->tablegroup_oid;
-	}
+	Oid tablegroupId = YbTablegroupCatalogExists && IsYBRelation(rel) ?
+		YbGetTableProperties(rel)->tablegroup_oid :
+		InvalidOid;
 
 	if (OidIsValid(tablegroupId) && stmt->split_options)
 	{
@@ -664,19 +661,16 @@ DefineIndex(Oid relationId,
 				 errmsg("Cannot use TABLEGROUP with SPLIT.")));
 	}
 
-	bool is_colocated = false;
 
 	/*
 	 * Get whether the indexed table is colocated
 	 * (either via database or a tablegroup).
 	 */
-	if (IsYBRelation(rel) &&
+	bool is_colocated =
+		IsYBRelation(rel) &&
 		!IsBootstrapProcessingMode() &&
-		!YBIsPreparingTemplates())
-	{
-		YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
-		is_colocated = rel->yb_table_properties->is_colocated;
-	}
+		!YBIsPreparingTemplates() &&
+		YbGetTableProperties(rel)->is_colocated;
 
 	Oid colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
@@ -1566,10 +1560,10 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 		Relation rel = RelationIdGetRelation(relId);
 		if (IsYBRelation(rel))
 		{
-			YbLoadTablePropertiesIfNeeded(rel, false /* allow_missing */);
+			YbTableProperties yb_props = YbGetTableProperties(rel);
 
-			is_colocated    = rel->yb_table_properties->is_colocated;
-			tablegroupId    = rel->yb_table_properties->tablegroup_oid;
+			is_colocated    = yb_props->is_colocated;
+			tablegroupId    = yb_props->tablegroup_oid;
 			use_yb_ordering = !IsSystemRelation(rel);
 		}
 		RelationClose(rel);
