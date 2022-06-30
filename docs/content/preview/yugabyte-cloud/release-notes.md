@@ -15,6 +15,14 @@ showAsideToc: true
 
 ## Releases
 
+### June 27, 2022
+
+#### Enhancements
+
+- Performance Optimizer for scanning clusters for optimizations (preview release). Provides recommendations on index and schema improvements, and detects connection, query, and CPU skew to identify potentially hot nodes.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- API key management for creating and managing bearer tokens for use with the YugabyteDB Managed REST API.
+
 ### June 22, 2022
 
 #### Enhancements
