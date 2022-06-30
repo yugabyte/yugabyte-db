@@ -451,7 +451,7 @@ aside.td-sidebar {
       }
 
       .current {
-        color: var(--theme-color);
+        color: $primary;
       }
 
       > li:not(.bottom-link):not(.arrow-menu) >,
@@ -633,10 +633,10 @@ aside.td-sidebar {
       > li:not(:last-child):hover >,
       > li:not(:last-child).open > {
         i {
-          border-color: var(--theme-color);
+          border-color: $primary;
 
           &::before {
-            background: var(--theme-color) !important;
+            background: $primary !important;
           }
         }
       }
