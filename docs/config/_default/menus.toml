@@ -34,8 +34,10 @@
 [[main]]
   name = "Docs Home"
   weight = 1
-  url = "/"
+  url = "/preview/"
   parent = "documentation"
+  [main.params]
+    excludeVersion = true
 
 [[main]]
   name = "Quick Start"
@@ -206,7 +208,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/preview/"
   [preview.params]
     showSection = true
 
@@ -324,7 +326,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/preview/"
   [preview_releases.params]
     classes = "back-arrow"
     showSection = true
@@ -343,7 +345,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/preview/"
   [preview_faq.params]
     classes = "back-arrow"
     showSection = true
@@ -362,7 +364,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/preview/"
   [preview_yugabyte-platform.params]
     classes = "back-arrow"
     showSection = true
@@ -381,7 +383,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/preview/"
   [preview_yugabyte-cloud.params]
     classes = "back-arrow"
     showSection = true
@@ -400,7 +402,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/stable/"
   [stable.params]
     showSection = true
 
@@ -535,7 +537,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/stable/"
   [stable_yugabyte-platform.params]
     classes = "back-arrow"
     showSection = true
@@ -554,7 +556,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/v2.8/"
   ["v2.8".params]
     showSection = true
 
@@ -690,7 +692,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/v2.8/"
   ["v2.8_yugabyte-platform".params]
     classes = "back-arrow"
     showSection = true
@@ -709,7 +711,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/v2.6/"
   ["v2.6".params]
     showSection = true
 
@@ -834,7 +836,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/v2.6/"
   ["v2.6_yugabyte-platform".params]
     classes = "back-arrow"
     showSection = true
@@ -853,7 +855,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/v2.4/"
   ["v2.4".params]
     showSection = true
 
@@ -970,7 +972,7 @@
   name = "Docs Home"
   weight = 1
   identifier = "home"
-  url = "/"
+  url = "/v2.4/"
   ["v2.4_yugabyte-platform".params]
     classes = "back-arrow"
     showSection = true
