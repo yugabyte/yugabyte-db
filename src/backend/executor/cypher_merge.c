@@ -434,7 +434,8 @@ static TupleTableSlot *exec_cypher_merge(CustomScanState *node)
              */
             css->found_a_path = true;
 
-            return node->ss.ps.lefttree->ps_ResultTupleSlot;
+            econtext->ecxt_scantuple = ExecProject(node->ss.ps.lefttree->ps_ProjInfo);
+            return ExecProject(node->ss.ps.ps_ProjInfo);
         }
         else if (TupIsNull(slot) && css->found_a_path)
         {

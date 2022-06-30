@@ -460,6 +460,16 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) OPTIONAL MATCH (n)-[:e]->(m) ME
 -- validate only 1 vertex exits
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (a agtype);
 
+--
+-- MERGE/SET test
+-- Node does exist, then set (github issue #235)
+SELECT * FROM cypher('cypher_merge', $$ CREATE (n:node {name: 'Jason'}) RETURN n $$) AS (n agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+SELECT * FROM cypher('cypher_merge', $$ MERGE (n:node {name: 'Jason'}) SET n.name = 'Lisa' RETURN n $$) AS (n agtype);
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+
+-- Node doesn't exist, is created, then set
+-- to be added -jrg
 
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);

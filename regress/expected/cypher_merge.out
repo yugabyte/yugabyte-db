@@ -808,6 +808,35 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) RETURN n$$) AS (a agtype);
  {"id": 281474976710702, "label": "", "properties": {}}::vertex
 (1 row)
 
+--
+-- MERGE/SET test
+-- Node does exist, then set (github issue #235)
+SELECT * FROM cypher('cypher_merge', $$ CREATE (n:node {name: 'Jason'}) RETURN n $$) AS (n agtype);
+                                         n                                          
+------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "node", "properties": {"name": "Jason"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+                                         n                                          
+------------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "node", "properties": {"name": "Jason"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE (n:node {name: 'Jason'}) SET n.name = 'Lisa' RETURN n $$) AS (n agtype);
+                                         n                                         
+-----------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "node", "properties": {"name": "Lisa"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+                                         n                                         
+-----------------------------------------------------------------------------------
+ {"id": 2533274790395905, "label": "node", "properties": {"name": "Lisa"}}::vertex
+(1 row)
+
+-- Node doesn't exist, is created, then set
+-- to be added -jrg
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
  a 
@@ -818,7 +847,7 @@ SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtyp
  * Clean up graph
  */
 SELECT drop_graph('cypher_merge', true);
-NOTICE:  drop cascades to 8 other objects
+NOTICE:  drop cascades to 9 other objects
 DETAIL:  drop cascades to table cypher_merge._ag_label_vertex
 drop cascades to table cypher_merge._ag_label_edge
 drop cascades to table cypher_merge.e
@@ -827,6 +856,7 @@ drop cascades to table cypher_merge.e_new
 drop cascades to table cypher_merge."Person"
 drop cascades to table cypher_merge."City"
 drop cascades to table cypher_merge."BORN_IN"
+drop cascades to table cypher_merge.node
 NOTICE:  graph "cypher_merge" has been dropped
  drop_graph 
 ------------
