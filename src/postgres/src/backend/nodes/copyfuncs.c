@@ -3345,17 +3345,6 @@ _copyOptSplit(const OptSplit *from)
 	return newnode;
 }
 
-static OptTableGroup *
-_copyOptTableGroup(const OptTableGroup *from)
-{
-	OptTableGroup *newnode = makeNode(OptTableGroup);
-
-	COPY_STRING_FIELD(tablegroup_name);
-
-	return newnode;
-}
-
-
 /*
  * CopyCreateStmtFields
  *
@@ -3375,7 +3364,7 @@ CopyCreateStmtFields(const CreateStmt *from, CreateStmt *newnode)
 	COPY_NODE_FIELD(options);
 	COPY_SCALAR_FIELD(oncommit);
 	COPY_STRING_FIELD(tablespacename);
-	COPY_NODE_FIELD(tablegroup);
+	COPY_STRING_FIELD(tablegroupname);
 	COPY_SCALAR_FIELD(if_not_exists);
 	COPY_NODE_FIELD(split_options);
 }
@@ -5752,9 +5741,6 @@ copyObjectImpl(const void *from)
 			break;
 		case T_OptSplit:
 			retval = _copyOptSplit(from);
-			break;
-		case T_OptTableGroup:
-			retval = _copyOptTableGroup(from);
 			break;
 
 			/*
