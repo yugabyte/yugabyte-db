@@ -86,7 +86,7 @@ public enum PlatformMetrics {
   UNIVERSE_BACKUP_IN_PROGRESS(
       "Flag, indicating that universe backup is in progress", Unit.STATUS, false),
   UNIVERSE_NODE_FUNCTION("Flag, indicating expected node functions", Unit.STATUS, false),
-  UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAYS(
+  UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY(
       "Remaining Encryption-at-Rest config validity in days", Unit.DAY, false),
   UNIVERSE_REPLICATION_FACTOR("Universe replication factor", Unit.COUNT, true);
 
