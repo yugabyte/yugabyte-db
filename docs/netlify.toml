@@ -58,17 +58,17 @@
 # Redirect old cloud docs to root of current
 
 [[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/"
+  from = "/:version/yugabyte-cloud/cloud-quickstart/"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 [[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/qs-add/"
+  from = "/:version/yugabyte-cloud/cloud-quickstart/qs-add/"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
 [[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/qs-connect/"
+  from = "/:version/yugabyte-cloud/cloud-quickstart/qs-connect/"
   to = "/preview/quick-start-yugabytedb-managed/"
   force = true
 
@@ -173,12 +173,12 @@
 
 [[redirects]]
   from = "/stable/quick-start/install/"
-  to = "/stable/quick-start/install/macos/"
+  to = "/preview/quick-start/#install-yugabytedb"
   force = true
 
 [[redirects]]
   from = "/stable/quick-start/create-local-cluster/"
-  to = "/stable/quick-start/create-local-cluster/macos/"
+  to = "/preview/quick-start/#create-a-local-cluster"
   force = true
 
 [[redirects]]
@@ -267,7 +267,7 @@
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy = "default-src 'self' 'unsafe-inline'; connect-src 'self' https://ka-f.fontawesome.com/releases/ https://www.google-analytics.com/ https://stats.g.doubleclick.net/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://raw.githubusercontent.com/; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdnjs.cloudflare.com https://maxcdn.bootstrapcdn.com https://cdn.jsdelivr.net https://www.googletagmanager.com/ https://kit.fontawesome.com/ https://www.google-analytics.com/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://code.jquery.com/jquery-3.6.0.min.js https://netlify-cdp-loader.netlify.app/; style-src 'self' 'unsafe-inline' https://maxcdn.bootstrapcdn.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://use.fontawesome.com https://docs.yugabyte.com https://ka-f.fontawesome.com/releases/ https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css; font-src 'self' https://docs.yugabyte.com/fonts/ https://cdnjs.cloudflare.com/ https://cdn.jsdelivr.net/ https://use.fontawesome.com https://fonts.gstatic.com https://ka-f.fontawesome.com/releases/; object-src 'none'; img-src 'self' https://docs.yugabyte.com/images/favicon.ico https://www.google-analytics.com/ https://raw.githubusercontent.com/ https://portal.azure.com/; child-src 'self' 'unsafe-inline' https://www.youtube.com/"
+    Content-Security-Policy = "default-src 'self' 'unsafe-inline'; connect-src 'self' https://ka-f.fontawesome.com/releases/ https://www.google-analytics.com/ https://stats.g.doubleclick.net/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://raw.githubusercontent.com/; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdnjs.cloudflare.com https://maxcdn.bootstrapcdn.com https://cdn.jsdelivr.net https://www.googletagmanager.com/ https://kit.fontawesome.com/ https://www.google-analytics.com/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://code.jquery.com/jquery-3.6.0.min.js https://netlify-cdp-loader.netlify.app/; style-src 'self' 'unsafe-inline' https://maxcdn.bootstrapcdn.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://use.fontawesome.com https://docs.yugabyte.com https://ka-f.fontawesome.com/releases/ https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css; font-src 'self' https://docs.yugabyte.com/fonts/ https://cdnjs.cloudflare.com/ https://cdn.jsdelivr.net/ https://use.fontawesome.com https://fonts.gstatic.com https://ka-f.fontawesome.com/releases/; object-src 'none'; img-src 'self' https://docs.yugabyte.com/images/favicon.ico https://www.google-analytics.com/ https://raw.githubusercontent.com/ https://portal.azure.com/; child-src 'self' 'unsafe-inline' https://www.youtube.com/ https://app.netlify.com/"
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin"
