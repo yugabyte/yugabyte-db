@@ -10,6 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/common/partition.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/master/catalog_manager_util.h"
 
@@ -502,6 +504,18 @@ Status CatalogManagerUtil::CheckValidLeaderAffinity(const ReplicationInfoPB& rep
   }
 
   return Status::OK();
+}
+
+void CatalogManagerUtil::FillTableInfoPB(
+    const TableId& table_id, const std::string& table_name, const TableType& table_type,
+    const Schema& schema, uint32_t schema_version, const PartitionSchema& partition_schema,
+    tablet::TableInfoPB* pb) {
+  pb->set_table_id(table_id);
+  pb->set_table_name(table_name);
+  pb->set_table_type(table_type);
+  SchemaToPB(schema, pb->mutable_schema());
+  pb->set_schema_version(schema_version);
+  partition_schema.ToPB(pb->mutable_partition_schema());
 }
 
 bool CMPerTableLoadState::CompareLoads(const TabletServerId &ts1, const TabletServerId &ts2) {

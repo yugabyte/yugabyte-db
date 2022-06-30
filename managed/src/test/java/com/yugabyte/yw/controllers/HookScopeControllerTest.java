@@ -168,10 +168,10 @@ public class HookScopeControllerTest extends WithApplication {
   public void testCreateUniverseHookScopeValid() {
     Result result =
         createHookScope(
-            TriggerType.PreNodeUpgrade, null, defaultUniverse.universeUUID, superAdminUser);
+            TriggerType.PostNodeProvision, null, defaultUniverse.universeUUID, superAdminUser);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
-    assertValue(json, "triggerType", "PreNodeUpgrade");
+    assertValue(json, "triggerType", "PostNodeProvision");
     assertValue(json, "universeUUID", defaultUniverse.universeUUID.toString());
     assertAuditEntry(1, defaultCustomer.uuid);
 
@@ -179,7 +179,7 @@ public class HookScopeControllerTest extends WithApplication {
     String hookScopeUUID = json.get("uuid").asText();
     HookScope hookScope =
         HookScope.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookScopeUUID));
-    assertTrue(hookScope.triggerType == TriggerType.PreNodeUpgrade);
+    assertTrue(hookScope.triggerType == TriggerType.PostNodeProvision);
     assertTrue(hookScope.providerUUID == null);
     assertTrue(hookScope.universeUUID.equals(defaultUniverse.universeUUID));
   }
@@ -189,7 +189,7 @@ public class HookScopeControllerTest extends WithApplication {
     UUID dummyUUID = UUID.randomUUID();
     Result result =
         assertPlatformException(
-            () -> createHookScope(TriggerType.PreNodeUpgrade, null, dummyUUID, superAdminUser));
+            () -> createHookScope(TriggerType.PostNodeProvision, null, dummyUUID, superAdminUser));
     assertBadRequest(result, "Cannot find universe " + dummyUUID.toString());
     assertAuditEntry(0, defaultCustomer.uuid);
   }

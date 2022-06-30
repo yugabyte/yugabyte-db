@@ -131,7 +131,10 @@ public class Audit extends Model {
     Hook,
 
     @EnumValue("Hook Scope")
-    HookScope
+    HookScope,
+
+    @EnumValue("NodeAgent")
+    NodeAgent
   }
 
   public enum ActionType {
@@ -424,7 +427,19 @@ public class Audit extends Model {
     RotateAccessKey,
 
     @EnumValue("Create And Rotate Access Key")
-    CreateAndRotateAccessKey;
+    CreateAndRotateAccessKey,
+
+    @EnumValue("Run Hook")
+    RunHook,
+
+    @EnumValue("Run API Triggered Tasks")
+    RunApiTriggeredHooks,
+
+    @EnumValue("Add Node Agent")
+    AddNodeAgent,
+
+    @EnumValue("Delete Node Agent")
+    DeleteNodeAgent
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

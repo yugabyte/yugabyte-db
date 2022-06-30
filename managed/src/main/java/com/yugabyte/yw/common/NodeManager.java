@@ -58,6 +58,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -140,7 +141,8 @@ public class NodeManager extends DevopsBase {
     Verify_Node_SSH_Access,
     Add_Authorized_Key,
     Remove_Authorized_Key,
-    Reboot
+    Reboot,
+    RunHooks
   }
 
   public enum CertRotateAction {
@@ -1763,6 +1765,29 @@ public class NodeManager extends DevopsBase {
           }
           RebootServer.Params taskParam = (RebootServer.Params) nodeTaskParam;
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
+          break;
+        }
+      case RunHooks:
+        {
+          if (!(nodeTaskParam instanceof RunHooks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not RunHooks.Params");
+          }
+          RunHooks.Params taskParam = (RunHooks.Params) nodeTaskParam;
+          commandArgs.add("--execution_lang");
+          commandArgs.add(taskParam.hook.executionLang.name());
+          commandArgs.add("--trigger");
+          commandArgs.add(taskParam.trigger.name());
+          commandArgs.add("--hook_path");
+          commandArgs.add(taskParam.hookPath);
+          commandArgs.add("--parent_task");
+          commandArgs.add(taskParam.parentTask);
+          if (taskParam.hook.useSudo) commandArgs.add("--use_sudo");
+          Map<String, String> runtimeArgs = taskParam.hook.runtimeArgs;
+          if (runtimeArgs != null && runtimeArgs.size() != 0) {
+            commandArgs.add("--runtime_args");
+            commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
           break;
         }
     }
