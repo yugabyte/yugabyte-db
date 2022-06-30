@@ -111,7 +111,7 @@ class UniverseDetail extends Component {
         this.props.getHealthCheck(uuid);
       }
     }
-    this.props.fetchRunTimeConfigs();
+    this.props.fetchRunTimeConfigs(this.props.uuid);
   }
 
   componentDidUpdate(prevProps) {
