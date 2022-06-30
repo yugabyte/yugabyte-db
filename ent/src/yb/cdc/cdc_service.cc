@@ -357,6 +357,7 @@ class CDCServiceImpl::Impl {
   bool UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                         const OpId& sent_op_id,
                         const OpId& commit_op_id) {
+    VLOG(1) << "Going to update the checkpoint with " << commit_op_id;
     auto now = CoarseMonoClock::Now();
 
     TabletCheckpoint sent_checkpoint = {
