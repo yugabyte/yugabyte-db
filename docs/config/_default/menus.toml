@@ -408,7 +408,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/stable/quick-start-yugabytedb-managed/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   [stable.params]
     showSection = true
     hideChildren = true
@@ -562,7 +562,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/v2.8/quick-start-yugabytedb-managed/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   ["v2.8".params]
     showSection = true
     hideChildren = true
@@ -717,7 +717,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/v2.6/quick-start-yugabytedb-managed/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   ["v2.6".params]
     showSection = true
     hideChildren = true
@@ -861,7 +861,7 @@
   name = "Quick Start"
   weight = 3
   identifier = "quick-start"
-  url = "/v2.4/quick-start-yugabytedb-managed/"
+  url = "/preview/quick-start-yugabytedb-managed/"
   ["v2.4".params]
     showSection = true
     hideChildren = true
