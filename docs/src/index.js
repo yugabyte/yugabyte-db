@@ -41,6 +41,44 @@ function yugabyteResizeHeaderMenu() {
   }
 }
 
+/**
+ * Active left navigation depending on the tabs.
+ *
+ * @param {object} element DOM element
+ */
+function activeLeftNav(element) {
+  const currentUrl = location.pathname;
+  const splittedUrl = currentUrl.split('/');
+  let leftNavLink = '';
+
+  $(element).each(function () {
+    const tabLink = $('a', this).attr('href');
+
+    if (tabLink.indexOf('/') === 0) {
+      leftNavLink = tabLink;
+    } else if (tabLink.indexOf('../') === 0) {
+      const backslashCount = splittedUrl.length - tabLink.match(/\.\.\//g).length - 1;
+      const basePath = `${splittedUrl.slice(0, backslashCount).join('/')}/`;
+
+      leftNavLink = basePath + tabLink.replace(/\.\.\//g, '');
+    } else if (tabLink.indexOf('./') === 0) {
+      leftNavLink = currentUrl + tabLink.replace('./', '/');
+    }
+
+    if (leftNavLink !== '') {
+      if (leftNavLink.charAt(leftNavLink.length - 1) !== '/') {
+        leftNavLink += '/';
+      }
+
+      if ($(`aside.td-sidebar nav>ul a[href="${leftNavLink}"]`).length > 0) {
+        $(`aside.td-sidebar nav>ul a[href="${leftNavLink}"]`).addClass('current');
+        $(`aside.td-sidebar nav>ul a[href="${leftNavLink}"]`).parents('li.submenu').addClass('open');
+        return false;
+      }
+    }
+  });
+}
+
 $(document).ready(() => {
   let searchValue = '';
 
@@ -106,26 +144,19 @@ $(document).ready(() => {
     }
   })(document);
 
-  // Open left navigation w.r.t tab
+  // Open left navigation w.r.t old tab
   if ($('.td-content .nav-tabs-yb .active').length > 0 && $('.td-content .nav-tabs-yb .active').attr('href') !== '') {
-    let pageUrl = location.pathname;
-    pageUrl = pageUrl.split('/');
-    pageUrl = pageUrl.filter(Boolean);
-    pageUrl = pageUrl.slice(0, -1);
-    pageUrl = `/${pageUrl.join('/')}/`;
+    activeLeftNav('.td-content .nav-tabs-yb li');
+  }
 
-    let tabLink = $('.td-content .nav-tabs-yb li:nth-child(1) a').attr('href');
-    let domain = tabLink.split('/');
-    domain = `${String(pageUrl) + domain[domain.length - 2]}/`;
+  // Open left navigation w.r.t new style2 tab
+  if ($('.td-content .tabs-style-2 .active').length > 0 && $('.td-content .tabs-style-2 .active').attr('href') !== '') {
+    activeLeftNav('.td-content .tabs-style-2 li');
+  }
 
-    if ($(`aside.td-sidebar nav>ul a[href="${domain}"]`).length < 1) {
-      tabLink = $('.td-content .nav-tabs-yb li:nth-child(2) a').attr('href');
-      domain = tabLink.split('/');
-      domain = `${String(pageUrl) + domain[domain.length - 2]}/`;
-    }
-
-    $(`aside.td-sidebar nav>ul a[href="${domain}"]`).addClass('current');
-    $(`aside.td-sidebar nav>ul a[href="${domain}"]`).parents('li.submenu').addClass('open');
+  // Open left navigation w.r.t new style1 tab
+  if ($('.td-content .tabs-style-1 .active').length > 0 && $('.td-content .tabs-style-1 .active').attr('href') !== '') {
+    activeLeftNav('.td-content .tabs-style-1 li');
   }
 
   // Change the version dropdown text with the selected version text.
