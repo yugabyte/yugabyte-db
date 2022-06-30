@@ -16,6 +16,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
+import java.io.File;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.InetAddress;
@@ -24,6 +25,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -568,5 +570,14 @@ public class Util {
   public static boolean isTimeExpired(Date date) {
     Date currentTime = new Date();
     return currentTime.compareTo(date) >= 0 ? true : false;
+  }
+
+  public static synchronized String getOrCreateDir(Path dirPath) {
+    // Parent of path ending with a path component separator is the path itself.
+    File dir = dirPath.toFile();
+    if (!dir.exists() && !dir.mkdirs() && !dir.exists()) {
+      throw new RuntimeException("Failed to create " + dirPath);
+    }
+    return dirPath.toString();
   }
 }

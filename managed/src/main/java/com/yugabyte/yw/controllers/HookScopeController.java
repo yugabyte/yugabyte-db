@@ -114,8 +114,7 @@ public class HookScopeController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     HookScope hookScope = HookScope.getOrBadRequest(customerUUID, hookScopeUUID);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
-    hook.hookScope = hookScope;
-    hook.update();
+    hookScope.addHook(hook);
     auditService()
         .createAuditEntryWithReqBody(
             ctx(), Audit.TargetType.HookScope, hookScopeUUID.toString(), Audit.ActionType.AddHook);

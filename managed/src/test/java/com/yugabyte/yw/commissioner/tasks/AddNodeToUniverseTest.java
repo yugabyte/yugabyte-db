@@ -151,6 +151,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     taskParams.nodeName = nodeName;
     taskParams.universeUUID = universe.universeUUID;
     taskParams.azUuid = AvailabilityZone.getByCode(provider, AZ_CODE).uuid;
+    taskParams.creatingUser = defaultUser;
     try {
       UUID taskUUID = commissioner.submit(TaskType.AddNodeToUniverse, taskParams);
       CustomerTask.create(
@@ -202,7 +203,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
           TaskType.SetNodeState,
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
+          TaskType.RunHooks,
           TaskType.AnsibleSetupServer,
+          TaskType.RunHooks,
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState,
           TaskType.AnsibleConfigureServers,
@@ -217,6 +220,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   private static final List<JsonNode> ADD_NODE_TASK_DECOMISSIONED_NODE_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of("state", "Adding")),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -360,7 +365,7 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
         submitTask(onPremUniverse.universeUUID, onPremProvider, DEFAULT_NODE_NAME, 4);
     assertEquals(Success, taskInfo.getTaskState());
 
-    verify(mockNodeManager, times(8)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(10)).nodeCommand(any(), any());
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
