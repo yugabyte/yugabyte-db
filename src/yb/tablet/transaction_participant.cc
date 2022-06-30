@@ -356,6 +356,9 @@ class TransactionParticipant::Impl
   void SetIntentRetainOpIdAndTime(const OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
+    VLOG(1) << "Setting RetainOpId: " << op_id
+            << ", previous cdc_sdk_min_checkpoint_op_id_: " << cdc_sdk_min_checkpoint_op_id_;
+
     cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseMonoClock::now() + cdc_sdk_op_id_expiration;
     cdc_sdk_min_checkpoint_op_id_ = op_id;
 
@@ -405,7 +408,8 @@ class TransactionParticipant::Impl
           break;
         }
         VLOG_WITH_PREFIX(2) << "Cleaning tx opid is: " << op_id.ToString()
-                            << " checkpoint opid is: " << checkpoint_op_id.ToString();
+                            << " checkpoint opid is: " << checkpoint_op_id.ToString()
+                            << " txn id: " << id;
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
@@ -485,6 +489,8 @@ class TransactionParticipant::Impl
 
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
+      LOG(ERROR) << "Could not decode transaction details, whose apply record OpId was: "
+                 << data.op_id;
       return id.status();
     }
 
@@ -1180,6 +1186,8 @@ class TransactionParticipant::Impl
       (**it).ScheduleRemoveIntents(*it);
       RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
+                          << " , apply record op_id: " << op_id
+                          << ", checkpoint_op_id: " << checkpoint_op_id
                           << ", left: " << transactions_.size();
       return true;
     }

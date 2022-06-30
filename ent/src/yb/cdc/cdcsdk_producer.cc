@@ -475,6 +475,8 @@ Status ProcessIntents(
 
   auto tablet = tablet_peer->shared_tablet();
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
+  VLOG(1) << "The size of intentKeyValues for transaction id: " << transaction_id
+          << ", with apply record op_id : " << op_id << ", is: " << (*keyValueIntents).size();
 
   for (auto& keyValue : *keyValueIntents) {
     docdb::SubDocKey sub_doc_key;
@@ -589,6 +591,7 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index,
     const CoarseTimePoint deadline) {
   OpId op_id{from_op_id.term(), from_op_id.index()};
+  VLOG(1) << "The from_op_id from GetChanges is  " << op_id;
   ScopedTrackedConsumption consumption;
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
@@ -759,6 +762,8 @@ Status GetChangesForCDCSDK(
 
             if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
               pending_intents = true;
+              VLOG(1) << "There are pending intents for the transaction id " << txn_id
+                      << " with apply record OpId: " << op_id;
             } else {
               last_streamed_op_id->term = msg->id().term();
               last_streamed_op_id->index = msg->id().index();
