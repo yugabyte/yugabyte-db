@@ -30,7 +30,21 @@ Before creating a universe, you need to configure a cloud provider, such as [Goo
 
 - Provide any other desired settings.
 
-- Click **Add Flags** and add the `leader_failure_max_missed_heartbeat_periods` flag with the value of `10` for Master and T-Server. Note that since the data is globally replicated, RPC latencies are higher; this flag is used for increasing the failure detection interval in a higher RPC latency deployment.<br><br>
+- Click **Add Flags** and add the following flags for Master:
+
+```
+leader_failure_max_missed_heartbeat_periods 5
+raft_heartbeat_interval_ms 1500
+leader_lease_duration_ms 6000
+```
+And for T-Server:
+```
+leader_failure_max_missed_heartbeat_periods 5
+raft_heartbeat_interval_ms 1500
+leader_lease_duration_ms 6000
+```
+
+Note that since the data is globally replicated, RPC latencies are higher; this flag is used for increasing the failure detection interval in a higher RPC latency deployment.<br><br>
 
   ![Create multi-region universe on GCP](/images/ee/multi-region-create-universe3.png)
 
