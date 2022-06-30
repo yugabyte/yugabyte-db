@@ -15,20 +15,20 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/drivers-orms/nodejs/sequelize/" class="nav-link active">
+    <a href="../sequelize/" class="nav-link active">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       sequelize-core
     </a>
   </li>
 
   <li >
-    <a href="/preview/drivers-orms/nodejs/sequelize-yugabytedb/" class="nav-link">
+    <a href="../sequelize-yugabytedb/" class="nav-link">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       sequelize-yugabytedb
     </a>
   </li>
   <li >
-    <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link ">
+    <a href="../prisma/" class="nav-link ">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Prisma
     </a>
@@ -197,16 +197,23 @@ Employees Details:
 ```
 
 ## Specifying SSL configuration
+
 This configuration can be used while connecting to a YB Managed cluster or a local YB cluster with SSL enabled.
+
 1. Install the `fs` package to read the SSL certificate:
+
     ```sh
     npm install fs
     ```
+
 1. Add the following line to use the `fs` module:
+
     ```js
     const fs = require('fs');
     ```
+
 1. Use the following configuration in the `models/index.js` file when you create the sequelize object:
+
     ```js
     const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {
         dialect: 'postgres',
