@@ -10,7 +10,9 @@ menu:
     parent: drivers-orms
     weight: 570
 type: indexpage
----The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
+---
+
+The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
 
 ## Supported Projects
 
