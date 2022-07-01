@@ -36,7 +36,8 @@ showAsideToc: true
   </li>
 </ul>
 
-Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB operator repository](https://github.com/yugabyte/yugabyte-operator/). See full list of configuration flags [here](#configuration-flags).
+Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. 
+The custom resource definition and other necessary specifications are available in [YugabyteDB operator repository](https://github.com/yugabyte/yugabyte-operator/). In addition, you may consult the full list of [configuration flags](#configuration-flags).
 
 ## Prerequisites
 
