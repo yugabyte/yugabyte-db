@@ -44,7 +44,7 @@ raft_heartbeat_interval_ms 1500
 leader_lease_duration_ms 6000
 ```
 
-Note that since the data is globally replicated, RPC latencies are higher; this flag is used for increasing the failure detection interval in a higher RPC latency deployment.<br><br>
+Note that since the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.<br><br>
 
   ![Create multi-region universe on GCP](/images/ee/multi-region-create-universe3.png)
 
