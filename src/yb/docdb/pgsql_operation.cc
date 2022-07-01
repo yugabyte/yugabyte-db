@@ -261,7 +261,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
   // Initialize operation inputs.
   response_ = response;
 
-  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_.schema, request_));
+  doc_key_ = VERIFY_RESULT(FetchDocKey(doc_read_context_->schema, request_));
   encoded_doc_key_ = doc_key_->EncodeAsRefCntPrefix();
 
   return Status::OK();
@@ -318,9 +318,9 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
-  DocPgsqlScanSpec spec(doc_read_context_.schema, request_.stmt_id(), *doc_key_);
-  DocRowwiseIterator iterator(doc_read_context_.schema,
-                              doc_read_context_,
+  DocPgsqlScanSpec spec(doc_read_context_->schema, request_.stmt_id(), *doc_key_);
+  DocRowwiseIterator iterator(doc_read_context_->schema,
+                              *doc_read_context_,
                               txn_op_context_,
                               data.doc_write_batch->doc_db(),
                               data.deadline,
@@ -448,7 +448,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
 
   bool pack_row = FLAGS_ysql_enable_packed_row;
   const SchemaPacking& schema_packing = VERIFY_RESULT(
-      doc_read_context_.schema_packing_storage.GetPacking(request_.schema_version()));
+      doc_read_context_->schema_packing_storage.GetPacking(request_.schema_version()));
   RowPacker row_packer(request_.schema_version(), schema_packing, FLAGS_ysql_packed_row_size_limit);
   IntraTxnWriteId packed_row_write_id;
 
@@ -470,7 +470,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
               "Illegal write instruction");
 
     const ColumnId column_id(column_value.column_id());
-    const ColumnSchema& column = VERIFY_RESULT(doc_read_context_.schema.column_by_id(column_id));
+    const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
 
     // Evaluate column value.
     QLExprResult expr_result;
@@ -517,7 +517,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   bool skipped = true;
 
   if (request_.has_ybctid_column_value()) {
-    DocPgExprExecutor expr_exec(&doc_read_context_.schema);
+    DocPgExprExecutor expr_exec(&doc_read_context_->schema);
     std::vector<QLExprResult> results;
     int num_exprs = 0;
     int cur_expr = 0;
@@ -543,7 +543,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         return STATUS(InternalError, "column id missing", column_value.DebugString());
       }
       const ColumnId column_id(column_value.column_id());
-      const ColumnSchema& column = VERIFY_RESULT(doc_read_context_.schema.column_by_id(column_id));
+      const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
       // Evaluate column value.
       QLExprResult expr_result;
 
@@ -556,7 +556,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
                "Unsupported DocDB Expression");
 
         RETURN_NOT_OK(EvalExpr(
-            column_value.expr(), table_row, expr_result.Writer(), &doc_read_context_.schema));
+            column_value.expr(), table_row, expr_result.Writer(), &doc_read_context_->schema));
       }
 
       // Update RETURNING values
@@ -592,7 +592,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
         }
         const ColumnId column_id(column_value.column_id());
         const ColumnSchema& column = VERIFY_RESULT(
-            doc_read_context_.schema.column_by_id(column_id));
+            doc_read_context_->schema.column_by_id(column_id));
 
         // Check column-write operator.
         CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
@@ -674,10 +674,10 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
   // Filter the columns using primary key.
   if (doc_key_) {
     Schema projection;
-    RETURN_NOT_OK(CreateProjection(doc_read_context_.schema, request_.column_refs(), &projection));
+    RETURN_NOT_OK(CreateProjection(doc_read_context_->schema, request_.column_refs(), &projection));
     DocPgsqlScanSpec spec(projection, request_.stmt_id(), *doc_key_);
     DocRowwiseIterator iterator(projection,
-                                doc_read_context_,
+                                *doc_read_context_,
                                 txn_op_context_,
                                 data.doc_write_batch->doc_db(),
                                 data.deadline,
