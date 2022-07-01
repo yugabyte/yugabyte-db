@@ -59,7 +59,7 @@ For information regarding the EXPLAIN statement, see:
 
 You can remove one or more existing indexes using the `DROP INDEX` statement in YSQL and YCQL with the following syntax:
 
-```ysql
+```sql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 

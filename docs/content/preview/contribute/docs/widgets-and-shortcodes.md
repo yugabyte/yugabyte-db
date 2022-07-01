@@ -17,12 +17,19 @@ There are a number of display widgets and shortcodes available. All the shortcod
 ## Admonition boxes
 
 Use the note, tip, and warning shortcodes to create admonition boxes.
+### tip
 
 {{< tip title="Tip" >}}
-
 A tip box gives a hint or other useful but optional piece of information.
-
 {{< /tip >}}
+
+#### tip source
+
+```md
+{{</* tip title="Tip" */>}}
+A tip box gives a hint or other useful but optional piece of information.
+{{</* /tip */>}}
+```
 
 {{< note title="Note" >}}
 
@@ -30,29 +37,17 @@ A note box gives some important information that is often not optional.
 
 {{< /note >}}
 
+```md
+{{</* note title="Note" */>}}
+This is a note with a [link](https://www.yugabyte.com).
+{{</* /note */>}}
+```
+
 {{< warning title="Warning" >}}
 
 A warning box informs the user about a potential issue or something to watch out for.
 
 {{< /warning >}}
-
-Create these boxes as follows:
-
-```md
-{{</* tip title="Tip" */>}}
-
-This is a tip with a [link](https://www.yugabyte.com).
-
-{{</* /tip */>}}
-```
-
-```md
-{{</* note title="Note" */>}}
-
-This is a note with a [link](https://www.yugabyte.com).
-
-{{</* /note */>}}
-```
 
 ```md
 {{</* warning title="Warning" */>}}

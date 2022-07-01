@@ -32,7 +32,7 @@ Indexing works by specifying the rows defined by a conditional expression(called
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 

@@ -24,7 +24,7 @@ Indexes are typically created based solely on the columns, but using an expressi
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name( (expression) );
 ```
 

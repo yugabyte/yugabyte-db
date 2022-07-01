@@ -36,7 +36,7 @@ Partial indexes can be `UNIQUE`. A UNIQUE partial index enforces the constraint 
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 

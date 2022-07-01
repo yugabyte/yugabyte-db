@@ -279,7 +279,7 @@ $(document).ready(() => {
 $(window).scroll(() => {
   // Right sidebar inpage link active on scroll.
   if ($('.td-toc #TableOfContents').length > 0) {
-    $('.td-content > h2,.td-content > h3').each((index, element) => {
+    $('.td-content > h2,.td-content > h3,.td-content > h4').each((index, element) => {
       const offsetTop = $(element).offset().top;
       const scrollTop = $(window).scrollTop();
       const headingId = $(element).attr('id');

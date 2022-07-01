@@ -112,7 +112,7 @@ For additional information and examples, see [Unique index with HASH column orde
 
 YSQL enables you to create an index based on an expression involving table columns, as per the following syntax:
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(expression);
 ```
 
@@ -147,7 +147,7 @@ Partial indexes allow you to improve the query performance by reducing the index
 
 You can define a partial index using the following syntax:
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 
@@ -157,7 +157,7 @@ For examples, see [Partial Indexes](/preview/api/ysql/the-sql-language/statement
 
 You can remove one or more existing indexes using the `DROP INDEX` statement that has the following syntax:
 
-```ysql
+```sql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 
