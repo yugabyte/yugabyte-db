@@ -41,7 +41,7 @@ YCQL authentication is based on roles. Roles can be created with superuser, non-
 
 ### Start local clusters
 
-To enable YSQL authentication in your local YugabyteDB clusters, add the [--use_cassandra_authentication](../../../reference/configuration/yugabyted/#start) flag with the `yugabyted start` command, as follows:
+To enable YCQL authentication in your local YugabyteDB clusters, add the [--use_cassandra_authentication](../../../reference/configuration/yugabyted/#start) flag with the `yugabyted start` command, as follows:
 
 ```sh
 $ ./bin/yugabyted start --use_cassandra_authentication=true
