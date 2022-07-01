@@ -159,10 +159,15 @@ class SysCatalogTable {
 
   Status Visit(VisitorBase* visitor);
 
-  // Read the ysql catalog version info from the pg_yb_catalog_version catalog table.
+  // Read the global ysql catalog version info from the pg_yb_catalog_version catalog table.
   Status ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
-                                        uint64_t* catalog_version,
-                                        uint64_t* last_breaking_version);
+                                uint64_t* catalog_version,
+                                uint64_t* last_breaking_version);
+  // Read the ysql catalog version info for all databases from the pg_yb_catalog_version
+  // catalog table.
+  Status ReadYsqlAllDBCatalogVersions(
+      TableId ysql_catalog_table_id,
+      DbOidToCatalogVersionMap* versions);
 
   // Read the pg_class catalog table. There is a separate pg_class table in each
   // YSQL database, read the information in the pg_class table for the database
@@ -262,6 +267,16 @@ class SysCatalogTable {
   // Initializes the RaftPeerPB for the local peer.
   // Crashes due to an invariant check if the rpc server is not running.
   void InitLocalRaftPeerPB();
+
+  // Read from pg_yb_catalog_version catalog table. If 'catalog_version/last_breaking_version'
+  // are set, we only read the global catalog version. If 'versions' is set we read all rows
+  // in the table. Either 'catalog_version/last_breaking_version' or 'version' should be set
+  // but not both.
+  Status ReadYsqlDBCatalogVersionImpl(
+      TableId ysql_catalog_table_id,
+      uint64_t* catalog_version,
+      uint64_t* last_breaking_version,
+      DbOidToCatalogVersionMap* versions);
 
   // Table schema, with IDs, used for the YQL write path.
   std::unique_ptr<docdb::DocReadContext> doc_read_context_;
