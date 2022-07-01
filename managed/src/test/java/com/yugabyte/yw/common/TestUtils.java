@@ -9,10 +9,12 @@
  */
 package com.yugabyte.yw.common;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import org.apache.commons.io.IOUtils;
+import play.libs.Json;
 
 public class TestUtils {
   public static String readResource(String path) {
@@ -22,6 +24,11 @@ public class TestUtils {
     } catch (IOException e) {
       throw new RuntimeException("Failed to read resource " + path, e);
     }
+  }
+
+  public static JsonNode readResourceAsJson(String path) {
+    String resourceStr = readResource(path);
+    return Json.parse(resourceStr);
   }
 
   public static UUID replaceFirstChar(UUID uuid, char firstChar) {
