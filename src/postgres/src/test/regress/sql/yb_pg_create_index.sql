@@ -57,3 +57,21 @@ COMMIT;
 BEGIN;
 CREATE INDEX std_index on concur_heap(f2);
 COMMIT;
+
+-- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
+-- YB note: VACUUM and REINDEX TABLE are not yet supported
+VACUUM FULL concur_heap;
+REINDEX TABLE concur_heap;
+
+--
+-- REINDEX (VERBOSE)
+--
+CREATE TABLE reindex_verbose(id integer primary key);
+\set VERBOSITY terse
+REINDEX (VERBOSE) TABLE reindex_verbose;
+DROP TABLE reindex_verbose;
+
+--
+-- REINDEX SCHEMA
+--
+REINDEX SCHEMA schema_to_reindex; -- failure, schema does not exist

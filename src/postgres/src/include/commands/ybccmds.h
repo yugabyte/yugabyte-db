@@ -61,7 +61,7 @@ extern void YBCCreateTable(CreateStmt *stmt,
 
 extern void YBCDropTable(Oid relationId);
 
-extern void YBCTruncateTable(Relation rel);
+extern void YbTruncate(Relation rel);
 
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,

@@ -1259,6 +1259,20 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			*is_breaking_catalog_change = false;
 			return castNode(VacuumStmt, parsetree)->options & VACOPT_ANALYZE;
 
+		case T_ReindexStmt:
+			/*
+			 * Does not need catalog version increment since only data changes,
+			 * not metadata--unless the data itself is metadata (system index).
+			 * It could be nice to force a cache refresh when fixing a system
+			 * index corruption, but just because a system index is REINDEXed
+			 * doesn't mean it had a corruption.  If there's a system index
+			 * corruption, manual intervention is already needed, so might as
+			 * well let the user deal with refreshing clients.
+			 */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			return true;
+
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;

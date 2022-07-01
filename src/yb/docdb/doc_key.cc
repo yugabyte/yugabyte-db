@@ -860,7 +860,8 @@ Status SubDocKey::DecodeDocKeyAndSubKeyEnds(
     SCHECK_GE(slice.size(), id_size + 1, Corruption,
               Format("Cannot have exclusively ID in key $0", slice.ToDebugHexString()));
     // Identify table tombstone.
-    if (slice[0] == ValueTypeAsChar::kPgTableOid && slice[id_size] == ValueTypeAsChar::kGroupEnd) {
+    if ((slice[0] == ValueTypeAsChar::kPgTableOid || slice[0] == ValueTypeAsChar::kTableId)
+        && slice[id_size] == ValueTypeAsChar::kGroupEnd) {
       SCHECK_GE(slice.size(), id_size + 2, Corruption,
                 Format("Space for kHybridTime expected in key $0", slice.ToDebugHexString()));
       SCHECK_EQ(slice[id_size + 1], ValueTypeAsChar::kHybridTime, Corruption,

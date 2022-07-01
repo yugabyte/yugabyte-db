@@ -1012,7 +1012,7 @@ stmt :
 			| RefreshMatViewStmt { parser_ybc_not_support(@1, "This statement"); }
 			| LoadStmt { parser_ybc_not_support(@1, "This statement"); }
 			| NotifyStmt { parser_ybc_warn_ignored(@1, "NOTIFY", 1872); }
-			| ReindexStmt { parser_ybc_not_support(@1, "This statement"); }
+			| ReindexStmt
 			| SecLabelStmt { parser_ybc_not_support(@1, "This statement"); }
 			| UnlistenStmt { parser_ybc_warn_ignored(@1, "UNLISTEN", 1872); }
 		;
@@ -9148,17 +9148,26 @@ DropTransformStmt: DROP TRANSFORM opt_if_exists FOR Typename LANGUAGE name opt_d
 ReindexStmt:
 			REINDEX reindex_target_type qualified_name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					if (!*YBCGetGFlags()->ysql_enable_reindex)
+						parser_ybc_not_support(@1, "REINDEX");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $2;
 					n->relation = $3;
 					n->name = NULL;
 					n->options = 0;
+
+					/* Only support INDEX target. */
+					if (n->kind != REINDEX_OBJECT_INDEX)
+					{
+						Assert(n->kind == REINDEX_OBJECT_TABLE);
+						parser_ybc_not_support(@2, "REINDEX TABLE");
+					}
+
 					$$ = (Node *)n;
 				}
 			| REINDEX reindex_target_multitable name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					parser_ybc_not_support(@1, "REINDEX SCHEMA/DATABASE/SYSTEM");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $2;
 					n->name = $3;
@@ -9168,17 +9177,29 @@ ReindexStmt:
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_type qualified_name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					if (!*YBCGetGFlags()->ysql_enable_reindex)
+						parser_ybc_not_support(@1, "REINDEX");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $5;
 					n->relation = $6;
 					n->name = NULL;
 					n->options = $3;
+
+					/* Only support INDEX target. */
+					if (n->kind != REINDEX_OBJECT_INDEX)
+					{
+						Assert(n->kind == REINDEX_OBJECT_TABLE);
+						parser_ybc_not_support(@5, "REINDEX TABLE");
+					}
+					/* Only support VERBOSE option. */
+					if (!(n->options & REINDEXOPT_VERBOSE))
+						parser_ybc_not_support(@3, "REINDEX");
+
 					$$ = (Node *)n;
 				}
 			| REINDEX '(' reindex_option_list ')' reindex_target_multitable name
 				{
-					parser_ybc_not_support(@1, "REINDEX");
+					parser_ybc_not_support(@1, "REINDEX SCHEMA/DATABASE/SYSTEM");
 					ReindexStmt *n = makeNode(ReindexStmt);
 					n->kind = $5;
 					n->name = $6;

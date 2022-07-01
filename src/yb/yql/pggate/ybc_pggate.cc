@@ -51,6 +51,11 @@ DECLARE_int32(delay_alter_sequence_sec);
 
 DECLARE_int32(client_read_write_timeout_ms);
 
+DEFINE_bool(ysql_enable_reindex, false,
+            "Enable REINDEX INDEX statement.");
+TAG_FLAG(ysql_enable_reindex, advanced);
+TAG_FLAG(ysql_enable_reindex, hidden);
+
 namespace yb {
 namespace pggate {
 
@@ -1016,6 +1021,7 @@ YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key) {
 const YBCPgGFlagsAccessor* YBCGetGFlags() {
   static YBCPgGFlagsAccessor accessor = {
       .ysql_disable_index_backfill             = &FLAGS_ysql_disable_index_backfill,
+      .ysql_enable_reindex                     = &FLAGS_ysql_enable_reindex,
       .ysql_max_read_restart_attempts          = &FLAGS_ysql_max_read_restart_attempts,
       .ysql_max_write_restart_attempts         = &FLAGS_ysql_max_write_restart_attempts,
       .ysql_output_buffer_size                 = &FLAGS_ysql_output_buffer_size,

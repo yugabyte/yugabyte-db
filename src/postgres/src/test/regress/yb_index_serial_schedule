@@ -12,4 +12,5 @@ test: yb_pg_create_table
 
 test: yb_create_index
 test: yb_index_scan
+test: yb_reindex
 test: yb_secondary_index_scan

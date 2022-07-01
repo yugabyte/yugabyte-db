@@ -1755,7 +1755,7 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 		if (IsYBRelation(rel))
 		{
 			// Call YugaByte API to truncate tables.
-			YBCTruncateTable(rel);
+			YbTruncate(rel);
 		}
 		else if (rel->rd_createSubid == mySubid ||
 				 rel->rd_newRelfilenodeSubid == mySubid)

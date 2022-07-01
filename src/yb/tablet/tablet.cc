@@ -1948,9 +1948,10 @@ CHECKED_STATUS Tablet::PreparePgsqlWriteOperations(WriteOperation* operation) {
   for (size_t i = 0; i < pgsql_write_batch->size(); i++) {
     PgsqlWriteRequestPB* req = pgsql_write_batch->Mutable(i);
     PgsqlResponsePB* resp = operation->response()->add_pgsql_response_batch();
-    // Table-level tombstones should not be requested for non-colocated tables.
+    // Table-level tombstones should not be requested for tables that aren't colocated via
+    // DB/tablegroup/syscatalog.
     if ((req->stmt_type() == PgsqlWriteRequestPB::PGSQL_TRUNCATE_COLOCATED) &&
-        !metadata_->colocated()) {
+        !(metadata_->colocated() || is_sys_catalog_)) {
       LOG(WARNING) << "cannot create table-level tombstone for a non-colocated table";
       resp->set_skipped(true);
       continue;

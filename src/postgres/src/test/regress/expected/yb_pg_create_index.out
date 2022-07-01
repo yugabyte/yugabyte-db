@@ -54,3 +54,25 @@ NOTICE:  making create index for table "concur_heap" nonconcurrent
 DETAIL:  Create index in transaction block cannot be concurrent.
 HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
 COMMIT;
+-- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
+-- YB note: VACUUM and REINDEX TABLE are not yet supported
+VACUUM FULL concur_heap;
+WARNING:  VACUUM will be ignored
+REINDEX TABLE concur_heap;
+ERROR:  REINDEX TABLE not supported yet
+LINE 1: REINDEX TABLE concur_heap;
+                ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+--
+-- REINDEX (VERBOSE)
+--
+CREATE TABLE reindex_verbose(id integer primary key);
+\set VERBOSITY terse
+REINDEX (VERBOSE) TABLE reindex_verbose;
+ERROR:  REINDEX TABLE not supported yet at character 19
+DROP TABLE reindex_verbose;
+--
+-- REINDEX SCHEMA
+--
+REINDEX SCHEMA schema_to_reindex; -- failure, schema does not exist
+ERROR:  REINDEX SCHEMA/DATABASE/SYSTEM not supported yet at character 1

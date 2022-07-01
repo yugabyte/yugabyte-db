@@ -66,6 +66,10 @@ DEFINE_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
+DEFINE_test_flag(bool, ysql_suppress_ybctid_corruption_details, false,
+                 "Whether to show less details on ybctid corruption error status message.  Useful "
+                 "during tests that require consistent output.");
+
 namespace yb {
 namespace docdb {
 
@@ -956,7 +960,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const common::YQLStorageIf& ql_
       if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
         DocKey doc_key;
         RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
-        return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
+        if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
+          return STATUS(Corruption, "ybctid not found in indexed table");
+        } else {
+          return STATUS_FORMAT(Corruption, "ybctid $0 not found in indexed table", doc_key);
+        }
       }
       row.Clear();
       RETURN_NOT_OK(table_iter_->NextRow(projection, &row));

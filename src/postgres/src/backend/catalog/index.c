@@ -3993,6 +3993,51 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 				 errmsg("cannot reindex temporary tables of other sessions")));
 
 	/*
+	 * YB pk indexes share the same storage as their tables, so it is not
+	 * possible to reindex them.
+	 */
+	if (iRel->rd_index->indisprimary && IsYBRelation(iRel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex nontemporary pk indexes"),
+				 errdetail("Primary key indexes share the same storage as their"
+						   " table for Yugabyte-backed relations.")));
+
+	/*
+	 * Supporting shared index could be complicated, so skip for now.
+	 */
+	if (iRel->rd_rel->relisshared)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex shared system indexes")));
+
+	/*
+	 * Since YB REINDEX currently doesn't take locks, it is not a safe
+	 * operation.  Chance of failure or corruption is relatively high.
+	 * Mitigate negative affects by making it a two-step process:
+	 * 1. run the reindex on nonpublic index
+	 * 2. make the index public
+	 * In case (1) fails (e.g. duplicate key violation), things can be fixed or
+	 * changed then reindexed again.  After manually checking the reindex has
+	 * no corruption (since the index build is not online), (2) can be done.
+	 *
+	 * Checking indisvalid helps catch reindex on public index, but it is not
+	 * foolproof.  For example, the index could be made public while the
+	 * reindex is happening.
+	 *
+	 * indisvalid and indisready should be true for best chance of avoiding
+	 * corruption.
+	 */
+	if (IndexIsValid(iRel->rd_index) && IsYBRelation(iRel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex public indexes"),
+				 errdetail("For safety, indexes should not be serving reads"
+						   " during REINDEX."),
+				 errhint("Run UPDATE pg_index SET indisvalid = false WHERE"
+						 " indexrelid = '<index_name>'::regclass.")));
+
+	/*
 	 * Also check for active uses of the index in the current transaction; we
 	 * don't want to reindex underneath an open indexscan.
 	 */
@@ -4023,9 +4068,14 @@ reindex_index(Oid indexId, bool skip_constraint_checks, char persistence,
 			indexInfo->ii_ExclusionStrats = NULL;
 		}
 
-		/* We'll build a new physical relation for the index */
-		RelationSetNewRelfilenode(iRel, persistence, InvalidTransactionId,
-								  InvalidMultiXactId);
+		if (IsYBRelation(heapRelation))
+			YbTruncate(iRel);
+		else
+		{
+			/* We'll build a new physical relation for the index */
+			RelationSetNewRelfilenode(iRel, persistence, InvalidTransactionId,
+									  InvalidMultiXactId);
+		}
 
 		/* Initialize the index and rebuild */
 		/* Note: we do not need to re-establish pkey setting */

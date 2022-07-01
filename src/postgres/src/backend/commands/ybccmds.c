@@ -675,7 +675,7 @@ YBCDropTable(Oid relationId)
 }
 
 void
-YBCTruncateTable(Relation rel)
+YbTruncate(Relation rel)
 {
 	YBCPgStatement handle;
 	Oid			relationId = RelationGetRelid(rel);
@@ -690,9 +690,12 @@ YBCTruncateTable(Relation rel)
 	Oid tablegroupId = InvalidOid;
 	if (TablegroupCatalogExists)
 		tablegroupId = get_tablegroup_oid_by_table_oid(relationId);
-	if (colocated || tablegroupId != InvalidOid)
+	if (colocated || tablegroupId != InvalidOid || IsSystemRelation(rel))
 	{
-		/* Create table-level tombstone for colocated/tablegroup tables */
+		/*
+		 * Create table-level tombstone for colocated/tablegroup/syscatalog
+		 * relations.
+		 */
 		HandleYBStatus(YBCPgNewTruncateColocated(databaseId,
 												 relationId,
 												 false,
@@ -703,7 +706,7 @@ YBCTruncateTable(Relation rel)
 	}
 	else
 	{
-		/* Send truncate table RPC to master for non-colocated tables */
+		/* Send truncate table RPC to master for non-colocated relations */
 		HandleYBStatus(YBCPgNewTruncateTable(databaseId,
 											 relationId,
 											 &handle));
@@ -729,7 +732,7 @@ YBCTruncateTable(Relation rel)
 		 * considered to not be transaction-safe, it doesn't really matter.
 		 */
 		Relation indexRel = index_open(indexId, AccessExclusiveLock);
-		YBCTruncateTable(indexRel);
+		YbTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
 
