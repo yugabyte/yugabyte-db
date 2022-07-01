@@ -2559,6 +2559,15 @@ class PgLibPqCatalogVersionTest : public PgLibPqTest {
     ASSERT_EQ(v1.current_version, v2.current_version);
     ASSERT_EQ(v1.last_breaking_version, v2.last_breaking_version);
   }
+
+  void WaitForCatalogVersionToPropagate() {
+    // This is an estimate that should exceed the tserver to master hearbeat interval.
+    // However because it is an estimate, this function may return before the catalog version is
+    // actually propagated.
+    constexpr int kSleepSeconds = 2;
+    LOG(INFO) << "Wait " << kSleepSeconds << " seconds for heartbeat to propagate catalog versions";
+    std::this_thread::sleep_for(kSleepSeconds * 1s);
+  }
 };
 
 TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
@@ -2608,6 +2617,13 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Create a new database";
   ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
 
+  // Wait for heartbeat to happen so that we can see from the test logs that the catalog version
+  // change caused by the last DDL is passed from master to tserver via heartbeat. Without the
+  // wait, if the next DDL is executed before the next heartbeat then last DDL's catalog version
+  // change will be overwritten and we will not see the effect of the last DDL from test logs.
+  // So the purpose of this wait is not for correctness but for us to see the catalog version
+  // propagation from the test logs. Same is true for all the following calls to do this wait.
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   map = GetCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
@@ -2630,6 +2646,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Create a table";
   ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // Should still have the same number of rows in pg_yb_catalog_version.
   map = GetCatalogVersionMap(&conn_yugabyte);
@@ -2647,6 +2664,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Drop the table from 'conn_test'";
   ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   map = GetCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
@@ -2665,6 +2683,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Execute a DDL statement that causes a breaking catalog change";
   ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   map = GetCatalogVersionMap(&conn_yugabyte);
   ASSERT_EQ(map.size(), initial_row_count + 1);
@@ -2687,6 +2706,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
   LOG(INFO) << "Drop the new database from 'conn_yugabyte'";
   ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
 
+  WaitForCatalogVersionToPropagate();
   LOG(INFO) << "Refresh the catalog version map";
   // The row for 'new_db_oid' should be deleted.
   map = GetCatalogVersionMap(&conn_yugabyte);
@@ -2700,7 +2720,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
     if (current_db_oid == yugabyte_db_oid) {
       AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
     } else if (current_db_oid == new_db_oid) {
-      ASSERT_TRUE(false) << "Failed to delete the row for " << new_db_oid;
+      FAIL() << "Failed to delete the row for " << new_db_oid;
     } else {
       AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
     }
