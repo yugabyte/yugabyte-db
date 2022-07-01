@@ -35,7 +35,6 @@ public class TestPgConnection extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("yb_pg_terminate_child_backend", "false");
     return flagMap;
   }
 

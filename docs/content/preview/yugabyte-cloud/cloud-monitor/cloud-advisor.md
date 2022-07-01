@@ -4,6 +4,7 @@ linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-advisor
@@ -112,6 +113,12 @@ Any of these conditions can result in a hot spot.
 **Fix the problem**
 
 Review the sharding strategies for your primary and secondary indexes. Consistent hash sharding is better for scalability and preventing hot spots, while range sharding is better for range-based queries.
+
+## Limitations
+
+- At 80%+ CPU use, [Index](#index-suggestions) and [Schema](#schema-suggestions) suggestions may not provide any results.
+- On clusters with more than 3 databases and multiple unused indexes, the Index suggestions may not provide optimal results.
+- For clusters running YugabyteDB 2.8 and earlier, the [Connection skew](#connection-skew) may not offer any suggestions.
 
 ## Learn more
 

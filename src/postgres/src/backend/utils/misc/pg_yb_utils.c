@@ -377,6 +377,18 @@ YBSavepointsEnabled()
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
 
+bool
+YBIsDBCatalogVersionMode()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault(
+			"FLAGS_TEST_enable_db_catalog_version_mode", false);
+	}
+	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -1027,7 +1039,8 @@ YBIncrementDdlNestingLevel()
 }
 
 void
-YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_catalog_change)
+YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
+						   bool is_breaking_catalog_change)
 {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
@@ -1035,7 +1048,17 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
-			YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
+			YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE;
+
+		if (increment_done)
+		{
+			if (YBIsDBCatalogVersionMode())
+				YbIncrementMasterDBCatalogVersionTableEntry(
+					MyDatabaseId, is_breaking_catalog_change);
+			else
+				YbIncrementMasterCatalogVersionTableEntry(
+					is_breaking_catalog_change);
+		}
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
