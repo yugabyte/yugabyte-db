@@ -577,12 +577,12 @@ uint64_t TabletServer::GetSharedMemoryPostgresAuthKey() {
   return shared_object().postgres_auth_key();
 }
 
-void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
+void TabletServer::SetYsqlCatalogVersion(uint64_t new_version, uint64_t new_breaking_version) {
   std::lock_guard<simple_spinlock> l(lock_);
 
   if (new_version > ysql_catalog_version_) {
     ysql_catalog_version_ = new_version;
-    shared_object().SetYSQLCatalogVersion(new_version);
+    shared_object().SetYsqlCatalogVersion(new_version);
     ysql_last_breaking_catalog_version_ = new_breaking_version;
     if (FLAGS_log_ysql_catalog_versions) {
       LOG_WITH_FUNC(INFO) << "set catalog version: " << new_version << ", breaking version: "
@@ -591,6 +591,54 @@ void TabletServer::SetYSQLCatalogVersion(uint64_t new_version, uint64_t new_brea
   } else if (new_version < ysql_catalog_version_) {
     LOG(DFATAL) << "Ignoring ysql catalog version update: new version too old. "
                  << "New: " << new_version << ", Old: " << ysql_catalog_version_;
+  }
+}
+
+void TabletServer::SetYsqlDBCatalogVersions(
+  const master::DBCatalogVersionDataPB& db_catalog_version_data) {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  std::unordered_set<uint32_t> db_oid_set;
+  for (int i = 0; i < db_catalog_version_data.db_catalog_versions_size(); i++) {
+    const auto& db_catalog_version = db_catalog_version_data.db_catalog_versions(i);
+    const uint32_t db_oid = db_catalog_version.db_oid();
+    const uint64_t new_version = db_catalog_version.current_version();
+    const uint64_t new_breaking_version = db_catalog_version.last_breaking_version();
+    if (!db_oid_set.insert(db_oid).second) {
+      LOG(DFATAL) << "Ignoring duplicate db oid " << db_oid;
+      continue;
+    }
+    const auto it = ysql_db_catalog_version_map_.insert(
+      std::make_pair(db_oid, std::make_pair(new_version, new_breaking_version)));
+    bool row_inserted = it.second;
+    bool row_updated = false;
+    if (!row_inserted) {
+      auto& existing_entry = it.first->second;
+      if (new_version > existing_entry.first) {
+        existing_entry.first = new_version;
+        existing_entry.second = new_breaking_version;
+        row_updated = true;
+      } else if (new_version < existing_entry.first) {
+        LOG(DFATAL) << "Ignoring ysql db " << db_oid
+                    << " catalog version update: new version too old. "
+                    << "New: " << new_version << ", Old: " << existing_entry.first;
+      }
+    }
+    if (FLAGS_log_ysql_catalog_versions && (row_inserted || row_updated)) {
+      LOG_WITH_FUNC(INFO) << "set db " << db_oid
+                          << " catalog version: " << new_version
+                          << ", breaking version: " << new_breaking_version;
+    }
+  }
+
+  // We only do full catalog report for now, remove entries that no longer exist.
+  for (auto it = ysql_db_catalog_version_map_.begin();
+       it != ysql_db_catalog_version_map_.end();) {
+    if (db_oid_set.count(it->first) == 0) {
+      it = ysql_db_catalog_version_map_.erase(it);
+    } else {
+      ++it;
+    }
   }
 }
 
