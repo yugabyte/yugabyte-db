@@ -74,7 +74,7 @@ chmod(0640 , $out_filename_with_path)
 ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_track';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -84,7 +84,7 @@ TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_track = 'all'\n");
 $node->restart();
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_track';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -95,7 +95,7 @@ TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_track = 'top'\n");
 $node->restart();
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_track';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 

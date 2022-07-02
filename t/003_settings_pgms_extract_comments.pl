@@ -74,7 +74,7 @@ chmod(0640 , $out_filename_with_path)
 ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_extract_comments';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -91,7 +91,7 @@ $node->restart();
 ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_extract_comments';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -117,4 +117,3 @@ is($compare,0,"Compare Files: $expected_filename_with_path and $out_filename_wit
 
 # Done testing for this testcase file.
 done_testing();
-

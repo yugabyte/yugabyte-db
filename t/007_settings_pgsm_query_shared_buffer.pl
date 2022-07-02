@@ -55,7 +55,9 @@ $node->init;
 # Update postgresql.conf to include/load pg_stat_monitor library
 open my $conf, '>>', "$pgdata/postgresql.conf";
 print $conf "shared_preload_libraries = 'pg_stat_monitor'\n";
+print $conf "pg_stat_monitor.pgsm_bucket_time = 300\n";
 print $conf "pg_stat_monitor.pgsm_query_shared_buffer = 1\n";
+print $conf "pg_stat_monitor.pgsm_normalized_query = 'yes'\n";
 close $conf;
 
 # Start server
@@ -74,7 +76,7 @@ chmod(0640 , $out_filename_with_path)
 ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_query_shared_buffer';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -87,7 +89,7 @@ TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 my $port = $node->port;
 print "port $port \n";
 
-my $out = system ("pgbench -i -s 10 -p $port example");
+my $out = system ("pgbench -i -s 100 -p $port example");
 print " out: $out \n" ;
 ok($cmdret == 0, "Perform pgbench init");
 
@@ -95,7 +97,7 @@ $out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
 print " out: $out \n" ;
 ok($cmdret == 0, "Run pgbench");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'select datname, substr(query,0,150) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 print "cmdret $cmdret\n";
 ok($cmdret == 0, "Select XXX from pg_stat_monitor");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
@@ -107,8 +109,21 @@ $node->restart();
 ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_query_shared_buffer';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
+TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+
+$out = system ("pgbench -i -s 100 -p $port example");
+print " out: $out \n" ;
+ok($cmdret == 0, "Perform pgbench init");
+
+$out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
+print " out: $out \n" ;
+ok($cmdret == 0, "Run pgbench");
+
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'select datname, substr(query,0,150) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+print "cmdret $cmdret\n";
+ok($cmdret == 0, "Select XXX from pg_stat_monitor");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
 $node->append_conf('postgresql.conf', "pg_stat_monitor.pgsm_query_shared_buffer = 20\n");
@@ -118,8 +133,21 @@ $node->restart();
 ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name='pg_stat_monitor.pgsm_query_shared_buffer';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
+TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
+
+$out = system ("pgbench -i -s 100 -p $port example");
+print " out: $out \n" ;
+ok($cmdret == 0, "Perform pgbench init");
+
+$out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
+print " out: $out \n" ;
+ok($cmdret == 0, "Run pgbench");
+
+($cmdret, $stdout, $stderr) = $node->psql('postgres', 'select datname, substr(query,0,150) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+print "cmdret $cmdret\n";
+ok($cmdret == 0, "Select XXX from pg_stat_monitor");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
 # Drop extension

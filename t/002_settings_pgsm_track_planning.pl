@@ -76,11 +76,11 @@ chmod(0640 , $out_filename_with_path)
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
 # Run 'SELECT * from pg_stat_monitor_settings;' two times and dump output to out file 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_track_planning';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_track_planning';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -142,11 +142,11 @@ ok($cmdret == 0, "Reset PGSM Extension");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
 # Run 'SELECT * from pg_stat_monitor_settings;' two times and dump output to out file 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_track_planning';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'SELECT * from pg_stat_monitor_settings;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
+($cmdret, $stdout, $stderr) = $node->psql('postgres', "SELECT * from pg_stat_monitor_settings where name = 'pg_stat_monitor.pgsm_track_planning';", extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
@@ -195,12 +195,6 @@ TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
 # Stop the server
 $node->stop;
-
-# compare the expected and out file
-#my $compare = compare($expected_filename_with_path, $out_filename_with_path);
-
-# Test/check if expected and result/out file match. If Yes, test passes.
-#is($compare,0,"Compare Files: $expected_filename_with_path and $out_filename_with_path match.");
 
 # Done testing for this testcase file.
 done_testing();

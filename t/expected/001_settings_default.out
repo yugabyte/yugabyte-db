@@ -25,31 +25,13 @@ SELECT * from pg_stat_monitor_settings;
  pg_stat_monitor.pgsm_track_planning      | no     | no            | Selects whether planning statistics are tracked.                                                         |         |            | yes, no        | no
 (15 rows)
 
-CREATE database example;
 select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;
- datname |                                                query                                                | calls 
----------+-----------------------------------------------------------------------------------------------------+-------
- example | BEGIN                                                                                               | 10000
- example | END                                                                                                 | 10000
- example | INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (18, 4, 559735, 3884, CURRENT_TIME | 10000
- example | SELECT abalance FROM pgbench_accounts WHERE aid = 302191                                            | 10000
- example | UPDATE pgbench_accounts SET abalance = abalance + 850 WHERE aid = 142401                            | 10000
- example | UPDATE pgbench_branches SET bbalance = bbalance + 3884 WHERE bid = 4                                | 10000
- example | UPDATE pgbench_tellers SET tbalance = tbalance + 3884 WHERE tid = 18                                | 10000
- example | alter table pgbench_accounts add primary key (aid)                                                  |     1
- example | alter table pgbench_branches add primary key (bid)                                                  |     1
- example | alter table pgbench_tellers add primary key (tid)                                                   |     1
- example | begin                                                                                               |     1
- example | commit                                                                                              |     1
- example | copy pgbench_accounts from stdin                                                                    |     1
- example | create table pgbench_accounts(aid    int not null,bid int,abalance int,filler char(84)) with (fillf |     1
- example | create table pgbench_branches(bid int not null,bbalance int,filler char(88)) with (fillfactor=100)  |     1
- example | create table pgbench_history(tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22))  |     1
- example | create table pgbench_tellers(tid int not null,bid int,tbalance int,filler char(84)) with (fillfacto |     1
- example | drop table if exists pgbench_accounts, pgbench_branches, pgbench_history, pgbench_tellers           |     1
- example | insert into pgbench_branches(bid,bbalance) values(1,0)                                              |    10
- example | insert into pgbench_tellers(tid,bid,tbalance) values (1,1,0)                                        |   100
-(20 rows)
+ datname  |                                                query                                                | calls 
+----------+-----------------------------------------------------------------------------------------------------+-------
+ postgres | SELECT * from pg_stat_monitor_settings                                                              |     1
+ postgres | SELECT pg_stat_monitor_reset()                                                                      |     1
+ postgres | select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, c |     1
+(3 rows)
 
 SELECT * from pg_stat_monitor_settings;
                    name                   | value  | default_value |                                               description                                                | minimum |  maximum   |    options     | restart 
