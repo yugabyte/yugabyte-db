@@ -24,6 +24,7 @@ aside.td-sidebar {
   position: relative;
   z-index: 3;
   transition: width 0.5s linear, max-width 0.5s linear;
+  background: rgb(246, 246, 248);
 
   .left-sidebar-wrap.parent-active-remove::before {
     content: "";
