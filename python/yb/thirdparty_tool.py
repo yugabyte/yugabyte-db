@@ -70,6 +70,8 @@ ARCH_REGEX_STR = '|'.join(['x86_64', 'aarch64', 'arm64'])
 # These were incorrectly used without the "clang" prefix to indicate various versions of Clang.
 NUMBER_ONLY_VERSIONS_OF_CLANG = [str(i) for i in [12, 13, 14]]
 
+SKIPPED_TAGS = ['v20220615172857-62ed7bc00f-macos-arm64']
+
 
 def get_arch_regex(index: int) -> str:
     """
@@ -152,6 +154,11 @@ class ThirdPartyReleaseBase:
             (self.KEY_FIELDS_WITH_TAG if include_tag else self.KEY_FIELDS_NO_TAG))
 
 
+class SkipThirdPartyReleaseException(Exception):
+    def __init__(self, msg: str) -> None:
+        super().__init__(msg)
+
+
 class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
     github_release: GitRelease
 
@@ -173,9 +180,11 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
 
         sha_prefix = tag_match.group('sha_prefix')
         if not self.sha.startswith(sha_prefix):
-            raise ValueError(
-                f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
-                f"SHA corresponding to the release/tag: {self.sha}.")
+            msg = (f"SHA prefix {sha_prefix} extracted from tag {tag} is not a prefix of the "
+                   f"SHA corresponding to the release/tag: {self.sha}.")
+            if tag in SKIPPED_TAGS:
+                raise SkipThirdPartyReleaseException(msg)
+            raise ValueError(msg)
 
         self.timestamp = group_dict['timestamp']
         self.os_type = adjust_os_type(group_dict['os'])
@@ -194,6 +203,7 @@ class GitHubThirdPartyRelease(ThirdPartyReleaseBase):
         if compiler_type is None and self.is_linuxbrew:
             compiler_type = 'gcc'
         if compiler_type in NUMBER_ONLY_VERSIONS_OF_CLANG:
+            assert isinstance(compiler_type, str)
             compiler_type == 'clang' + compiler_type
 
         if compiler_type is None:
@@ -451,7 +461,12 @@ class MetadataUpdater:
                 logging.info(f'Skipping tag {tag_name}, does not match the filter')
                 continue
 
-            yb_dep_release = GitHubThirdPartyRelease(release, target_commitish=sha)
+            try:
+                yb_dep_release = GitHubThirdPartyRelease(release, target_commitish=sha)
+            except SkipThirdPartyReleaseException as ex:
+                logging.warning("Skipping release: %s", ex)
+                continue
+
             if not yb_dep_release.is_consistent_with_yb_version(yb_version):
                 logging.debug(
                     f"Skipping release tag: {tag_name} (does not match version {yb_version}")
