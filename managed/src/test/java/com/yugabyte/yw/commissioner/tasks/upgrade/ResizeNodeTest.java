@@ -107,6 +107,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
               userIntent.deviceInfo.numVolumes = 1;
               userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
               userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
+              universe
+                  .getNodes()
+                  .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE);
             });
     InstanceType.upsert(
         defaultProvider.uuid, NEW_INSTANCE_TYPE, 2.0, 8.0, new InstanceType.InstanceTypeDetails());
@@ -265,6 +268,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
+
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters =
         Collections.singletonList(defaultUniverse.getUniverseDetails().getPrimaryCluster());
@@ -303,6 +314,14 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
     List<UniverseDefinitionTaskParams.Cluster> copyPrimaryCluster =
@@ -349,6 +368,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         Universe.saveDetails(
             defaultUniverse.universeUUID,
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+    defaultUniverse =
+        Universe.saveDetails(
+            defaultUniverse.universeUUID,
+            universe ->
+                universe
+                    .getNodes()
+                    .forEach(node -> node.cloudInfo.instance_type = DEFAULT_INSTANCE_TYPE));
 
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters =
@@ -405,21 +431,32 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     int volumeSize = increaseVolume ? NEW_VOLUME_SIZE : DEFAULT_VOLUME_SIZE;
     String instanceType = changeInstance ? NEW_INSTANCE_TYPE : DEFAULT_INSTANCE_TYPE;
     Universe universe = Universe.getOrBadRequest(defaultUniverse.universeUUID);
-    UniverseDefinitionTaskParams.UserIntent newIntent =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    UniverseDefinitionTaskParams.Cluster primaryCluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    UniverseDefinitionTaskParams.UserIntent newIntent = primaryCluster.userIntent;
     if (primaryChanged) {
       assertEquals(volumeSize, newIntent.deviceInfo.volumeSize.intValue());
       assertEquals(instanceType, newIntent.instanceType);
+      for (NodeDetails nodeDetails : universe.getNodesInCluster(primaryCluster.uuid)) {
+        assertEquals(instanceType, nodeDetails.cloudInfo.instance_type);
+      }
     }
     if (!universe.getUniverseDetails().getReadOnlyClusters().isEmpty()) {
-      UniverseDefinitionTaskParams.UserIntent readonlyIntent =
-          universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent;
+      UniverseDefinitionTaskParams.Cluster readonlyCluster =
+          universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      UniverseDefinitionTaskParams.UserIntent readonlyIntent = readonlyCluster.userIntent;
       if (readonlyChanged) {
         assertEquals(volumeSize, readonlyIntent.deviceInfo.volumeSize.intValue());
         assertEquals(instanceType, readonlyIntent.instanceType);
+        for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
+          assertEquals(instanceType, nodeDetails.cloudInfo.instance_type);
+        }
       } else {
         assertEquals(DEFAULT_VOLUME_SIZE, readonlyIntent.deviceInfo.volumeSize.intValue());
         assertEquals(DEFAULT_INSTANCE_TYPE, readonlyIntent.instanceType);
+        for (NodeDetails nodeDetails : universe.getNodesInCluster(readonlyCluster.uuid)) {
+          assertEquals(DEFAULT_INSTANCE_TYPE, nodeDetails.cloudInfo.instance_type);
+        }
       }
     }
   }
@@ -554,7 +591,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       nodeUpgradeTasks.addAll(RESIZE_VOLUME_SEQ);
     }
     if (changeInstance) {
-      nodeUpgradeTasks.addAll(UPDATE_INSTANCE_TYPE_SEQ);
+      nodeUpgradeTasks.add(TaskType.ChangeInstanceType);
     }
     List<UniverseDefinitionTaskBase.ServerType> processTypes =
         onlyTserver ? ImmutableList.of(TSERVER) : ImmutableList.of(MASTER, TSERVER);
@@ -601,6 +638,9 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     index = isRf1 ? index + 1 : index + 2;
     for (ServerType processType : processTypes) {
       taskTypesSequence.add(index++, TaskType.WaitForFollowerLag);
+    }
+    if (changeInstance) {
+      taskTypesSequence.add(index++, TaskType.UpdateNodeDetails);
     }
   }
 
