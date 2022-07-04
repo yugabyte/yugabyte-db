@@ -33,12 +33,6 @@ showAsideToc: true
       Operator Hub
     </a>
   </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
-    </a>
-  </li>
 </ul>
 
 ## Introduction
