@@ -145,11 +145,5 @@ TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 # Stop the server
 $node->stop;
 
-# compare the expected and out file
-#my $compare = compare($expected_filename_with_path, $out_filename_with_path);
-
-# Test/check if expected and result/out file match. If Yes, test passes.
-#is($compare,0,"Compare Files: $expected_filename_with_path and $out_filename_with_path match.");
-
 # Done testing for this testcase file.
 done_testing();

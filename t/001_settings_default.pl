@@ -81,19 +81,6 @@ TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 ok($cmdret == 0, "Print PGSM Extension Settings");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
 
-# Create example database and run pgbench init
-($cmdret, $stdout, $stderr) = $node->psql('postgres', 'CREATE database example;', extra_params => ['-a']);
-ok($cmdret == 0, "Create Database example");
-TestLib::append_to_file($out_filename_with_path, $stdout . "\n");
-
-my $port = $node->port;
-
-my $out = system ("pgbench -i -s 10 -p $port example");
-ok($cmdret == 0, "Perform pgbench init");
-
-$out = system ("pgbench -c 10 -j 2 -t 1000 -p $port example");
-ok($cmdret == 0, "Run pgbench");
-
 ($cmdret, $stdout, $stderr) = $node->psql('postgres', 'select datname, substr(query,0,100) as query, calls from pg_stat_monitor order by datname, query, calls desc Limit 20;', extra_params => ['-a', '-Pformat=aligned','-Ptuples_only=off']);
 ok($cmdret == 0, "Select XXX from pg_stat_monitor");
 TestLib::append_to_file($out_filename_with_path, $stdout . "\n");

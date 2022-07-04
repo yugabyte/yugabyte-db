@@ -20,7 +20,7 @@ SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLA
                                              query                                             | elevel | sqlcode |                            message                            
 -----------------------------------------------------------------------------------------------+--------+---------+---------------------------------------------------------------
  Drop Table if exists Company                                                                  |      0 |         | 
- INSERT  INTO Company(ID, Name) VALUES ($1, $2)                                                |      0 |         | 
+ INSERT  INTO Company(ID, Name) VALUES (1, 'Percona')                                          |      0 |         | 
  INSERT  INTO Company(ID, Name) VALUES (1, 'Percona');                                         |     20 | 23505   | duplicate key value violates unique constraint "company_pkey"
  SELECT pg_stat_monitor_reset()                                                                |      0 |         | 
  SELECT query, elevel, sqlcode, message FROM pg_stat_monitor ORDER BY query COLLATE "C",elevel |      0 |         | 
