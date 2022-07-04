@@ -1170,6 +1170,11 @@ class YBBackup:
         if self.args.verbose:
             logging.info("Parsed arguments: {}".format(vars(self.args)))
 
+        if self.is_k8s():
+            self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
+            if self.k8s_namespace_to_cfg is None:
+                raise BackupException("Couldn't load k8s configs")
+
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
             with terminating(ThreadPool(self.args.parallelism)) as pool:
@@ -1246,11 +1251,6 @@ class YBBackup:
 
         if self.args.ip_to_ssh_key_path is not None:
             self.ip_to_ssh_key_map = json.loads(self.args.ip_to_ssh_key_path)
-
-        if self.is_k8s():
-            self.k8s_namespace_to_cfg = json.loads(self.args.k8s_config)
-            if self.k8s_namespace_to_cfg is None:
-                raise BackupException("Couldn't load k8s configs")
 
         self.args.local_ysql_dumpall_binary = replace_last_substring(
             self.args.local_ysql_dump_binary, "ysql_dump", "ysql_dumpall")
