@@ -80,8 +80,7 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	/* Initialize non-yb gin scan opaque fields. */
 	ginrescan(scan, scankey, nscankeys, orderbys, norderbys);
 
-	YbLoadTablePropertiesIfNeeded(scan->heapRelation, false /* allow_missing */);
-	bool is_colocated = scan->heapRelation->yb_table_properties->is_colocated;
+	bool is_colocated = YbGetTableProperties(scan->heapRelation)->is_colocated;
 
 	/* Initialize ybgin scan opaque handle. */
 	YBCPgPrepareParameters prepare_params = {

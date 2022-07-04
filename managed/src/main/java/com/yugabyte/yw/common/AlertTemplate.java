@@ -670,7 +670,7 @@ public enum AlertTemplate {
   ENCRYPTION_AT_REST_CONFIG_EXPIRY(
       "Encryption At Rest config expiry",
       "Encryption At Rest config expires soon",
-      "ybp_universe_encryption_key_expiry_days"
+      "ybp_universe_encryption_key_expiry_day"
           + "{universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }}",
       "Encryption At Rest config for universe '{{ $labels.source_name }}'"
@@ -680,6 +680,23 @@ public enum AlertTemplate {
       TargetType.UNIVERSE,
       ThresholdSettings.builder()
           .defaultThreshold(SEVERE, "yb.alert.max_enc_at_rest_config_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
+
+  SSH_KEY_EXPIRY(
+      "SSH Key expiry",
+      "SSH Key expires soon",
+      "ybp_universe_ssh_key_expiry_day"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "SSH Key for universe '{{ $labels.source_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.ssh_key_config_expiry_days_severe")
           .defaultThresholdUnit(DAY)
           .defaultThresholdCondition(Condition.LESS_THAN)
           .build()),

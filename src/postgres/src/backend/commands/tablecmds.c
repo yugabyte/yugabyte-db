@@ -769,8 +769,8 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		}
 	}
 
-	Oid tablegroupId = stmt->tablegroup
-		? get_tablegroup_oid(stmt->tablegroup->tablegroup_name, false)
+	Oid tablegroupId = stmt->tablegroupname
+		? get_tablegroup_oid(stmt->tablegroupname, false)
 		: InvalidOid;
 
 	/*
@@ -7722,7 +7722,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 		elog(ERROR, "adding primary key to a table having children tables "
 		            "is not yet implemented");
 
-	YbLoadTablePropertiesIfNeeded(*mutable_rel, false /* allow_missing */);
+	YbGetTableProperties(*mutable_rel); /* Force lazy loading */
 
 	/*
 	 * At this point we're already sure that the table has no explicit PK -
@@ -7775,7 +7775,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	 * Previous calls to CommandCounterIncrement have discarded
 	 * yb_table_properties, so we fetch it again.
 	 */
-	YbLoadTablePropertiesIfNeeded(*mutable_rel, false /* allow_missing */);
+	YbGetTableProperties(*mutable_rel);
 
 	create_stmt = makeNode(CreateStmt);
 	create_stmt->relation      = makeRangeVar(pstrdup(namespace_name),
@@ -7785,7 +7785,7 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	        ? makeTypeNameFromOid((*mutable_rel)->rd_rel->reloftype, -1 /* typmod */)
 	        : NULL);
 	create_stmt->tablespacename = get_tablespace_name((*mutable_rel)->rd_rel->reltablespace);
-	create_stmt->tablegroup     = NULL;
+	create_stmt->tablegroupname = NULL;
 
 	/*
 	 * Initialize reloptions.
@@ -7802,9 +7802,8 @@ YBCloneRelationSetPrimaryKey(Relation* mutable_rel, IndexStmt* stmt)
 	const Oid tablegroup_oid = (*mutable_rel)->yb_table_properties->tablegroup_oid;
 	if (OidIsValid(tablegroup_oid))
 	{
-		create_stmt->tablegroup = makeNode(OptTableGroup);
-		create_stmt->tablegroup->tablegroup_name = get_tablegroup_name(tablegroup_oid);
-		Assert(create_stmt->tablegroup->tablegroup_name);
+		create_stmt->tablegroupname = get_tablegroup_name(tablegroup_oid);
+		Assert(create_stmt->tablegroupname);
 	}
 
 	/* The only constraint we care about here is the PK constraint needed for YB. */

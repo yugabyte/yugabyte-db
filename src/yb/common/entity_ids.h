@@ -39,6 +39,8 @@ static const uint32_t kPgAttributeTableOid = 1249;    // Hardcoded for pg_attrib
                                                       // (in pg_attribute.h)
 static const uint32_t kPgEnumTableOid = 3501;         // Hardcoded for pg_enum (in pg_enum.h).
 static const uint32_t kPgTypeTableOid = 1247;         // Hardcoded for pg_type (in pg_type.h)
+static const uint32_t kTemplate1Oid = 1;              // Hardcoded for template1. (in initdb.c)
+
 extern const TableId kPgProcTableId;
 extern const TableId kPgYbCatalogVersionTableId;
 extern const TableId kPgTablespaceTableId;

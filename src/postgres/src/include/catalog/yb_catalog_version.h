@@ -36,10 +36,24 @@ extern YbCatalogVersionType yb_catalog_version_type;
 /* Get the latest catalog version from the master leader. */
 extern uint64_t YbGetMasterCatalogVersion();
 
-/* Send a request to increment the master catalog version. */
-extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
+/* Send a request to increment the master global catalog version. */
+extern void YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
+
+/* Send a request to increment the master catalog version for the given database. */
+extern void YbIncrementMasterDBCatalogVersionTableEntry(Oid db_oid,
+														bool is_breaking_change);
+
+/* Send a request to create the master catalog version for the given database. */
+extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);
+
+/* Send a request to delete the master catalog version for the given database. */
+extern void YbDeleteMasterDBCatalogVersionTableEntry(Oid db_oid);
 
 /* Annotate an DML request if it changes the catalog data (if needed). */
-bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt, Relation rel);
+bool YbMarkStatementIfCatalogVersionIncrement(YBCPgStatement ybc_stmt,
+											  Relation rel);
+
+/* Return the catalog version type. */
+YbCatalogVersionType YbGetCatalogVersionType();
 
 #endif							/* YB_CATALOG_VERSION_H */

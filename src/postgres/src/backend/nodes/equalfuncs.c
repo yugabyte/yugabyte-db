@@ -1239,7 +1239,7 @@ _equalCreateStmt(const CreateStmt *a, const CreateStmt *b)
 	COMPARE_NODE_FIELD(options);
 	COMPARE_SCALAR_FIELD(oncommit);
 	COMPARE_STRING_FIELD(tablespacename);
-	COMPARE_NODE_FIELD(tablegroup);
+	COMPARE_STRING_FIELD(tablegroupname);
 	COMPARE_SCALAR_FIELD(if_not_exists);
 	COMPARE_NODE_FIELD(split_options);
 
@@ -1793,13 +1793,6 @@ _equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroup
 	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_NODE_FIELD(owner);
 	COMPARE_NODE_FIELD(options);
-	return true;
-}
-
-static bool
-_equalOptTableGroup(const OptTableGroup *a, const OptTableGroup *b)
-{
-	COMPARE_STRING_FIELD(tablegroup_name);
 	return true;
 }
 
@@ -3764,9 +3757,6 @@ equal(const void *a, const void *b)
 			break;
 		case T_PartitionCmd:
 			retval = _equalPartitionCmd(a, b);
-			break;
-		case T_OptTableGroup:
-			retval = _equalOptTableGroup(a, b);
 			break;
 		case T_BackfillIndexStmt:
 			retval = _equalBackfillIndexStmt(a, b);

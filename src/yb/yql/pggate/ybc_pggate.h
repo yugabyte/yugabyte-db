@@ -230,7 +230,7 @@ YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
                              int16_t attr_number,
                              YBCPgColumnInfo *column_info);
 
-// Callers should probably use YbLoadTablePropertiesIfNeeded instead.
+// Callers should probably use YbGetTableProperties instead.
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YbTableProperties properties);
 

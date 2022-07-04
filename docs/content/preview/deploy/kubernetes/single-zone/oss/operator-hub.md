@@ -36,12 +36,6 @@ showAsideToc: true
       Operator Hub
     </a>
   </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
-    </a>
-  </li>
 </ul>
 
 This is an alternative to deploying YugabyteDB manually using [Yugabyte Operator](../yugabyte-operator/). The Yugabyte operator is available on Red Hat's [OperatorHub.io](https://operatorhub.io/operator/yugabyte-operator) and hence YugabyteDB can be also be deployed using [Operator Lifecycle Manager](https://github.com/operator-framework/operator-lifecycle-manager). As the name suggests, OLM is a tool to help deploy and manage Operators on your cluster.
