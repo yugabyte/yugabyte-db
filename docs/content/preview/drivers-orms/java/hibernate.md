@@ -8,11 +8,28 @@ menu:
   preview:
     identifier: java-orm
     parent: java-drivers
-    weight: 600
+    weight: 601
 isTocNested: true
 showAsideToc: true
 ---
 
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li >
+    <a href="/preview/drivers-orms/java/ebean/" class="nav-link ">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Ebean ORM
+    </a>
+  </li>
+
+  <li >
+    <a href="/preview/drivers-orms/java/hibernate" class="nav-link active">
+      <i class="icon-java-bold" aria-hidden="true"></i>
+      Hibernate ORM
+    </a>
+  </li>
+
+</ul>
 [Hibernate ORM](https://hibernate.org/orm/) is an Object/Relational Mapping (ORM) framework for Java applications. Hibernate ORM is concerned with data persistence of relational databases, and enables developers to write applications whose data outlives the application lifetime.
 
 YugabyteDB YSQL API has full compatibility with Hibernate ORM for Data persistence in Java applications. This page provides details for getting started with Hibernate ORM for connecting to YugabyteDB.
