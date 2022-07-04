@@ -12,6 +12,7 @@ menu:
 aliases:
   - /preview/api/ysql/datatypes/type_json
 type: indexpage
+showRightNav: true
 ---
 
 ## Synopsis
@@ -24,7 +25,7 @@ JSON was invented as a data interchange format, initially to allow an arbitrary 
 
 ## Description
 
-```
+```ebnf
 type_specification ::= { json | jsonb }
 ```
 

@@ -40,17 +40,17 @@ showRightNav: true
 | :--------- | :---------- |
 | `title` | Title text to display in browser tab and search engine results |
 | `headerTitle` | Title text to appear as the page title |
-| `linkTitle` | Title text to display in the navigation bar |
-| `description` | Description text to display in search engine results |
-| `headcontent` | Subtitle text below the headerTitle (Index pages only) |
+| `linkTitle` | Title text to display in the navigation bar and breadcrumbs |
+| `description` | Description text to display in search results |
+| `headcontent` | Subtitle text below the headerTitle (index pages only) |
 | `type` | Must be `docs` or `indexpage`. See [types of pages](#types-of-pages). |
 
 ### Optional frontmatter attributes
 
 | Field name | Default | Description |
 | :--------: | :-----: | :---------- |
-| `image` | N/A | Optional icon displayed next to the title |
-| `showRightNav` | (depends) | Should the TOC on the right be enabled? For pages of `type: docs`, default is true. For pages of `type: indexpage`, default is false. |
+| `image` | N/A | Optional icon displayed next to the title (index pages only) |
+| `showRightNav` | (depends) | Controls display of the TOC on the right. For pages of `type: docs`, default is true. For pages of `type: indexpage`, default is false. |
 
 ## Types of pages
 

@@ -53,7 +53,7 @@ select t from list_paths('unq_containing_paths');
 
 This is the result:
 
-```
+```output
  path #   cardinality   path
  ------   -----------   ----
       1             4   n01 > n02 > n03 > n04
@@ -74,9 +74,10 @@ call restrict_to_longest_paths('temp_paths', 'unq_containing_paths');
 select t from list_paths('unq_containing_paths');
 \t off
 ```
+
 This is the result:
 
-```
+```output
  path #   cardinality   path
  ------   -----------   ----
       1             6   n01 > n02 > n03 > n04 > n05 > n09
