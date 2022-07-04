@@ -4659,7 +4659,6 @@ Status CatalogManager::InitCDCConsumer(
     const std::string& producer_universe_uuid,
     std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
 
-  std::unordered_set<HostPort, HostPortHash> tserver_addrs;
   // Get the tablets in the consumer table.
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
@@ -4669,7 +4668,7 @@ Status CatalogManager::InitCDCConsumer(
     // Get producer tablets and map them to the consumer tablets
     RETURN_NOT_OK(InitCDCStream(
         stream_info.producer_table_id, stream_info.consumer_table_id, consumer_tablet_keys,
-        &tserver_addrs, &stream_entry, cdc_rpc_tasks));
+        &stream_entry, cdc_rpc_tasks));
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 
@@ -4679,11 +4678,6 @@ Status CatalogManager::InitCDCConsumer(
   for (const auto& addr : master_addrs_list) {
     auto hp = VERIFY_RESULT(HostPort::FromString(addr, 0));
     HostPortToPB(hp, producer_entry.add_master_addrs());
-  }
-
-  producer_entry.mutable_tserver_addrs()->Reserve(narrow_cast<int>(tserver_addrs.size()));
-  for (const auto& addr : tserver_addrs) {
-    HostPortToPB(addr, producer_entry.add_tserver_addrs());
   }
 
   auto cluster_config = ClusterConfig();
