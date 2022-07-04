@@ -11,8 +11,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.test.Helpers.contentAsString;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
@@ -22,6 +24,7 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.typesafe.config.Config;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
@@ -33,6 +36,8 @@ import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +60,7 @@ import play.test.WithApplication;
 public class HookControllerTest extends WithApplication {
 
   @Mock Config mockConfig;
+  @Mock Commissioner mockCommissioner;
 
   String baseRoute;
   Customer defaultCustomer;
@@ -65,11 +71,13 @@ public class HookControllerTest extends WithApplication {
   protected Application provideApplication() {
     when(mockConfig.getBoolean(HookController.ENABLE_CUSTOM_HOOKS_PATH)).thenReturn(true);
     when(mockConfig.getBoolean(HookController.ENABLE_SUDO_PATH)).thenReturn(true);
+    when(mockConfig.getBoolean(HookController.ENABLE_API_HOOK_RUN_PATH)).thenReturn(true);
     return new GuiceApplicationBuilder()
         .configure(testDatabase())
         .overrides(
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
+        .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
         .build();
   }
@@ -339,6 +347,50 @@ public class HookControllerTest extends WithApplication {
                     "PUT", uri, defaultUser.createAuthToken(), bodyData, mat));
     assertUnauthorized(updateResult, "Only Super Admins can perform this operation.");
     assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testRunApiTriggeredHooks() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = ModelFactory.createUniverse();
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/run_hooks";
+    Result result =
+        FakeApiHelper.doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    CustomerTask customerTask =
+        CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(customerTask);
+    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.uuid));
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testRunApiTriggeredHooksWhenDisabled() {
+    when(mockConfig.getBoolean(HookController.ENABLE_API_HOOK_RUN_PATH)).thenReturn(false);
+    Universe universe = ModelFactory.createUniverse();
+    String uri =
+        "/api/customers/"
+            + defaultCustomer.uuid
+            + "/universes/"
+            + universe.universeUUID
+            + "/run_hooks";
+    Result result =
+        assertPlatformException(
+            () ->
+                FakeApiHelper.doRequestWithAuthToken(
+                    "POST", uri, superAdminUser.createAuthToken()));
+    assertUnauthorized(
+        result,
+        "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
+    assertAuditEntry(0, defaultCustomer.uuid);
   }
 
   @Test

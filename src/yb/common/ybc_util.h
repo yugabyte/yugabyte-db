@@ -73,7 +73,7 @@ extern bool yb_binary_restore;
 
 typedef struct YBCStatusStruct* YBCStatus;
 
-extern YBCStatus YBCStatusOK;
+extern YBCStatus YBCStatusOKValue;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);

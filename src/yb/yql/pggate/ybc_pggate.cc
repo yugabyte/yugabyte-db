@@ -502,18 +502,9 @@ YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle) {
 YBCStatus YBCPgGetTableProperties(YBCPgTableDesc table_desc,
                                   YbTableProperties properties) {
   CHECK_NOTNULL(properties)->num_tablets = table_desc->GetPartitionCount();
-  TablegroupId tablegroup_id = table_desc->GetTablegroupId();
-  YBCPgOid tablegroup_oid = 0;
-  if (!tablegroup_id.empty()) {
-    YBCStatus status =
-      ExtractValueFromResult(GetPgsqlTablegroupOid(tablegroup_id), &tablegroup_oid);
-    if (status) {
-      return status;
-    }
-  }
   properties->num_hash_key_columns = table_desc->num_hash_key_columns();
   properties->is_colocated = table_desc->IsColocated();
-  properties->tablegroup_oid = tablegroup_oid;
+  properties->tablegroup_oid = table_desc->GetTablegroupOid();
   properties->colocation_id = table_desc->GetColocationId();
   return YBCStatusOK();
 }
@@ -1145,11 +1136,15 @@ void YBCSetTimeout(int timeout_ms, void* extra) {
            : FLAGS_ysql_client_read_write_timeout_ms);
   // We set the rpc timeouts as a min{STATEMENT_TIMEOUT,
   // FLAGS(_ysql)?_client_read_write_timeout_ms}.
-  if (timeout_ms <= 0) {
+  // Note that 0 is a valid value of timeout_ms, meaning no timeout in Postgres.
+  if (timeout_ms < 0) {
     // The timeout is not valid. Use the default GFLAG value.
     return;
+  } else if (timeout_ms == 0) {
+    timeout_ms = default_client_timeout_ms;
+  } else {
+    timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
   }
-  timeout_ms = std::min(timeout_ms, default_client_timeout_ms);
 
   // The statement timeout is lesser than default_client_timeout, hence the rpcs would
   // need to use a shorter timeout.

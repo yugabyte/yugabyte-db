@@ -1750,6 +1750,7 @@ YBPreloadRelCache()
 	YbRegisterSysTableForPrefetching(AttrDefaultRelationId);           // pg_attrdef
 	YbRegisterSysTableForPrefetching(ConstraintRelationId);            // pg_constraint
 	YbRegisterSysTableForPrefetching(PartitionedRelationId);           // pg_partitioned_table
+	YbRegisterSysTableForPrefetching(TypeRelationId);                  // pg_type
 
 	if (!YBIsDBConnectionValid())
 		ereport(FATAL,
@@ -1780,6 +1781,7 @@ YBPreloadRelCache()
 	YBPreloadCatalogCache(RULERELNAME, -1);      // pg_rewrite
 	YBPreloadCatalogCache(CONSTROID, -1);        // pg_constraint
 	YBPreloadCatalogCache(PARTRELID, -1);        // pg_partitioned_table
+	YBPreloadCatalogCache(TYPEOID, TYPENAMENSP); // pg_type
 
 	YBLoadRelationsResult relations_result = YBLoadRelations();
 
@@ -1801,7 +1803,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YbRegisterSysTableForPrefetching(TypeRelationId);      // pg_type
 		YbRegisterSysTableForPrefetching(ProcedureRelationId); // pg_proc
 		YbRegisterSysTableForPrefetching(InheritsRelationId);  // pg_inherits
 	}
@@ -1811,7 +1812,6 @@ YBPreloadRelCache()
 
 	if (relations_result.has_partitioned_tables)
 	{
-		YBPreloadCatalogCache(TYPEOID, TYPENAMENSP);     // pg_type
 		YBPreloadCatalogCache(PROCOID, PROCNAMEARGSNSP); // pg_proc
 		YBPreloadCatalogCache(INHERITSRELID, -1);        // pg_inherits
 	}

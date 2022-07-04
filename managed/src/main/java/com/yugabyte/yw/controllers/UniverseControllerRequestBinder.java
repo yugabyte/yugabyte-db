@@ -20,6 +20,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -35,7 +37,7 @@ import play.mvc.Http;
 public class UniverseControllerRequestBinder {
 
   static <T extends UniverseDefinitionTaskParams> T bindFormDataToTaskParams(
-      Http.Request request, Class<T> paramType) {
+      Http.Context ctx, Http.Request request, Class<T> paramType) {
     ObjectMapper mapper = Json.mapper();
     // Notes about code deleted from here:
     // 1 communicationPorts and expectedUniverseVersion - See UniverseTaskParams.BaseConverter
@@ -48,6 +50,7 @@ public class UniverseControllerRequestBinder {
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, true);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
+      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(
@@ -56,12 +59,13 @@ public class UniverseControllerRequestBinder {
   }
 
   static <T extends UpgradeTaskParams> T bindFormDataToUpgradeTaskParams(
-      Http.Request request, Class<T> paramType) {
+      Http.Context ctx, Http.Request request, Class<T> paramType) {
     try {
       ObjectNode formData = (ObjectNode) request.body().asJson();
       List<UniverseDefinitionTaskParams.Cluster> clusters = mapClustersInParams(formData, false);
       T taskParams = Json.mapper().treeToValue(formData, paramType);
       taskParams.clusters = clusters;
+      taskParams.creatingUser = CommonUtils.getUserFromContext(ctx);
       return taskParams;
     } catch (JsonProcessingException exception) {
       throw new PlatformServiceException(

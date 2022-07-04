@@ -91,6 +91,7 @@ public class AccessKeyController extends AuthenticatedController {
     boolean installNodeExporter = formData.installNodeExporter;
     Integer nodeExporterPort = formData.nodeExporterPort;
     String nodeExporterUser = formData.nodeExporterUser;
+    Integer expirationThresholdDays = formData.expirationThresholdDays;
     AccessKey accessKey;
 
     LOG.info(
@@ -183,6 +184,11 @@ public class AccessKeyController extends AuthenticatedController {
           setUpChrony,
           ntpServers);
     }
+
+    if (expirationThresholdDays != null) {
+      accessKey.updateExpirationDate(expirationThresholdDays);
+    }
+
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),

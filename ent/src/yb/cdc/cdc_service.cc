@@ -134,6 +134,9 @@ DEFINE_bool(parallelize_bootstrap_producer, true,
             "When this is true, use the version of BootstrapProducer with batched and "
             "parallelized rpc calls. This is recommended for large input sizes");
 
+DEFINE_test_flag(uint64, cdc_log_init_failure_timeout_seconds, 0,
+    "Timeout in seconds for CDCServiceImpl::SetCDCCheckpoint to return log init failure");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -156,6 +159,8 @@ using client::internal::RemoteTabletServer;
 constexpr int kMaxDurationForTabletLookup = 50;
 const client::YBTableName kCdcStateTableName(
     YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+
+MonoTime test_expire_time_cdc_log_init_failure = MonoTime::kUninitialized;
 
 namespace {
 
@@ -357,6 +362,7 @@ class CDCServiceImpl::Impl {
   bool UpdateCheckpoint(const ProducerTabletInfo& producer_tablet,
                         const OpId& sent_op_id,
                         const OpId& commit_op_id) {
+    VLOG(1) << "Going to update the checkpoint with " << commit_op_id;
     auto now = CoarseMonoClock::Now();
 
     TabletCheckpoint sent_checkpoint = {
@@ -1039,6 +1045,30 @@ Result<SetCDCCheckpointResponsePB> CDCServiceImpl::SetCDCCheckpoint(
   bool set_latest_entry = req.bootstrap();
 
   if (set_latest_entry) {
+    const string err_message = strings::Substitute(
+        "Unable to get the latest entry op id from "
+        "peer $0 and tablet $1 because its log object hasn't been initialized",
+        tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
+
+    // CDC will keep sending log init failure until FLAGS_TEST_cdc_log_init_failure_timeout_seconds
+    // is expired.
+    auto cdc_log_init_failure_timeout_seconds =
+        GetAtomicFlag(&FLAGS_TEST_cdc_log_init_failure_timeout_seconds);
+    if (cdc_log_init_failure_timeout_seconds > 0) {
+      if (test_expire_time_cdc_log_init_failure == MonoTime::kUninitialized) {
+        test_expire_time_cdc_log_init_failure =
+            MonoTime::Now() + MonoDelta::FromSeconds(cdc_log_init_failure_timeout_seconds);
+      }
+      if (MonoTime::Now() < test_expire_time_cdc_log_init_failure) {
+        RETURN_NOT_OK_SET_CODE(
+            STATUS(ServiceUnavailable, err_message), CDCError(CDCErrorPB::LEADER_NOT_READY));
+      }
+    }
+
+    if (!tablet_peer->log_available()) {
+      RETURN_NOT_OK_SET_CODE(
+          STATUS(ServiceUnavailable, err_message), CDCError(CDCErrorPB::LEADER_NOT_READY));
+    }
     checkpoint = tablet_peer->log()->GetLatestEntryOpId();
   } else {
     checkpoint = OpId::FromPB(req.checkpoint().op_id());

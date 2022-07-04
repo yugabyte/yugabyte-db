@@ -58,6 +58,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -140,7 +141,8 @@ public class NodeManager extends DevopsBase {
     Verify_Node_SSH_Access,
     Add_Authorized_Key,
     Remove_Authorized_Key,
-    Reboot
+    Reboot,
+    RunHooks
   }
 
   public enum CertRotateAction {
@@ -697,24 +699,13 @@ public class NodeManager extends DevopsBase {
     subcommand.add(Integer.toString(node.redisServerRpcPort));
 
     // Custom cluster creation flow with prebuilt AMI for cloud
-    if (config.getBoolean("yb.cloud.enabled")
-        && taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
-      if ((userIntent.providerType.equals(Common.CloudType.aws)
-          || userIntent.providerType.equals(Common.CloudType.gcp))) {
-        if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
-          if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
-            subcommand.add("--skip_tags");
-            subcommand.add("yb-prebuilt-ami");
-          }
-        } else if (universe
-                .getConfig()
-                .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
-                .equals("true")
-            && !taskParam.ignoreUseCustomImageConfig) {
-          subcommand.add("--skip_tags");
-          subcommand.add("yb-prebuilt-ami");
-        }
-      }
+    if (taskParam.type != UpgradeTaskParams.UpgradeTaskType.Software) {
+      maybeAddVMImageCommandArgs(
+          universe,
+          userIntent.providerType,
+          taskParam.vmUpgradeTaskType,
+          !taskParam.ignoreUseCustomImageConfig,
+          subcommand);
     }
 
     boolean useHostname =
@@ -1380,25 +1371,12 @@ public class NodeManager extends DevopsBase {
             }
           }
 
-          // Custom cluster creation flow with prebuilt AMI for cloud
-          if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
-            if ((cloudType.equals(Common.CloudType.aws)
-                || cloudType.equals(Common.CloudType.gcp))) {
-              if (taskParam.vmUpgradeTaskType != VmUpgradeTaskType.None) {
-                if (taskParam.vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
-                  commandArgs.add("--skip_tags");
-                  commandArgs.add("yb-prebuilt-ami");
-                }
-              } else if (universe
-                      .getConfig()
-                      .getOrDefault(Universe.USE_CUSTOM_IMAGE, "false")
-                      .equals("true")
-                  && !taskParam.ignoreUseCustomImageConfig) {
-                commandArgs.add("--skip_tags");
-                commandArgs.add("yb-prebuilt-ami");
-              }
-            }
-          }
+          maybeAddVMImageCommandArgs(
+              universe,
+              cloudType,
+              taskParam.vmUpgradeTaskType,
+              !taskParam.ignoreUseCustomImageConfig,
+              commandArgs);
 
           if (taskParam.isSystemdUpgrade) {
             // Cron to Systemd Upgrade
@@ -1765,6 +1743,29 @@ public class NodeManager extends DevopsBase {
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           break;
         }
+      case RunHooks:
+        {
+          if (!(nodeTaskParam instanceof RunHooks.Params)) {
+            throw new RuntimeException("NodeTaskParams is not RunHooks.Params");
+          }
+          RunHooks.Params taskParam = (RunHooks.Params) nodeTaskParam;
+          commandArgs.add("--execution_lang");
+          commandArgs.add(taskParam.hook.executionLang.name());
+          commandArgs.add("--trigger");
+          commandArgs.add(taskParam.trigger.name());
+          commandArgs.add("--hook_path");
+          commandArgs.add(taskParam.hookPath);
+          commandArgs.add("--parent_task");
+          commandArgs.add(taskParam.parentTask);
+          if (taskParam.hook.useSudo) commandArgs.add("--use_sudo");
+          Map<String, String> runtimeArgs = taskParam.hook.runtimeArgs;
+          if (runtimeArgs != null && runtimeArgs.size() != 0) {
+            commandArgs.add("--runtime_args");
+            commandArgs.add(Json.stringify(Json.toJson(runtimeArgs)));
+          }
+          commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
+          break;
+        }
     }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
@@ -1911,6 +1912,32 @@ public class NodeManager extends DevopsBase {
       }
     }
     return data;
+  }
+
+  private void maybeAddVMImageCommandArgs(
+      Universe universe,
+      Common.CloudType cloudType,
+      VmUpgradeTaskType vmUpgradeTaskType,
+      boolean useCustomImageByDefault,
+      List<String> commandArgs) {
+    if (!cloudType.equals(Common.CloudType.aws) && !cloudType.equals(Common.CloudType.gcp)) {
+      return;
+    }
+    boolean skipTags = false;
+    if (vmUpgradeTaskType == VmUpgradeTaskType.None
+        && useCustomImageByDefault
+        && universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+      // Default image is custom image.
+      skipTags = true;
+    } else if (vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages) {
+      // This is set only if VMUpgrade is invoked.
+      // This can also happen for platform only if yb.upgrade.vmImage is true.
+      skipTags = true;
+    }
+    if (skipTags) {
+      commandArgs.add("--skip_tags");
+      commandArgs.add("yb-prebuilt-ami");
+    }
   }
 
   public List<String> getNodeSSHCommand(NodeAccessTaskParams params) {

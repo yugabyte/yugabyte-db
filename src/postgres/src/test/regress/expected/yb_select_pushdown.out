@@ -166,17 +166,19 @@ SELECT * FROM pushdown_test WHERE CASE WHEN i1 % 2 = 0 THEN ts1 < '2021-11-12' W
 EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test;
            QUERY PLAN
 ---------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Seq Scan on pushdown_test
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
 EXPLAIN (COSTS FALSE) SELECT count(*) FROM pushdown_test WHERE i1 = 1;
            QUERY PLAN
 ---------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Seq Scan on pushdown_test
          Remote Filter: (i1 = 1)
-(3 rows)
+         Partial Aggregate: true
+(4 rows)
 
 SELECT count(*) FROM pushdown_test;
  count
