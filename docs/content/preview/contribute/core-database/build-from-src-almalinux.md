@@ -1,14 +1,14 @@
 ---
-title: Build from source code on CentOS
+title: Build from source code on AlmaLinux
 headerTitle: Build the source code
 linkTitle: Build the source
-description: Build YugabyteDB from source code on CentOS.
+description: Build YugabyteDB from source code on AlmaLinux.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
 type: page
 menu:
   preview:
-    identifier: build-from-src-2-centos
+    identifier: build-from-src-2-almalinux
     parent: core-database
     weight: 2912
 isTocNested: true
@@ -25,9 +25,9 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link active">
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link active">
       <i class="fab fa-linux" aria-hidden="true"></i>
-      CentOS
+      AlmaLinux
     </a>
   </li>
 
@@ -42,7 +42,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development and production platform for YugabyteDB.
 
 {{< /note >}}
 
@@ -53,24 +53,12 @@ Update packages on your system, install development tools and additional package
 ```sh
 sudo yum update
 sudo yum groupinstall -y 'Development Tools'
-sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python-devel python3 python3-pip python3-devel which
-sudo yum install -y cmake3 ctest3 ninja-build
+sudo yum install -y ruby perl-Digest epel-release ccache git python2-pip python3-devel python3 python3-pip python3-devel which cmake3 libatomic rsync maven
 ```
-
-## Prepare build tools
-
-Make sure `cmake`/`ctest` binaries are at least version 3. On CentOS, one way to achieve this is to symlink them into `/usr/local/bin`.
-
-```sh
-sudo ln -s /usr/bin/cmake3 /usr/local/bin/cmake
-sudo ln -s /usr/bin/ctest3 /usr/local/bin/ctest
-```
-
-You could also symlink them into another directory that is on your `PATH`.
 
 {{< note title="Note" >}}
 
-We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on CentOS.
+We also use [Linuxbrew](https://github.com/linuxbrew/brew) to provide some of the third-party dependencies on AlmaLinux.
 Linuxbrew allows us to create a portable package that contains its own copy of glibc and can be installed on most Linux distributions.
 However, we are transitioning away from using Linuxbrew and towards native toolchains on various platforms.
 

@@ -4,7 +4,7 @@ headerTitle: Build the source code
 linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
-headcontent: Build the source code on macOS, CentOS, and Ubuntu.
+headcontent: Build the source code on macOS, AlmaLinux, and Ubuntu.
 type: page
 aliases:
   - /preview/contribute/core-database/build-from-src
@@ -27,9 +27,9 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
-      CentOS
+      AlmaLinux
     </a>
   </li>
 
@@ -44,7 +44,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux distribution for development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux distribution for development and production platform for YugabyteDB.
 
 {{< /note >}}
 

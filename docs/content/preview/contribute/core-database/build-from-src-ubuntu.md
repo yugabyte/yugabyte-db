@@ -25,9 +25,9 @@ showAsideToc: true
   </li>
 
   <li >
-    <a href="{{< relref "./build-from-src-centos.md" >}}" class="nav-link">
+    <a href="{{< relref "./build-from-src-almalinux.md" >}}" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
-      CentOS
+      AlmaLinux
     </a>
   </li>
 
@@ -42,7 +42,7 @@ showAsideToc: true
 
 {{< note title="Note" >}}
 
-CentOS 7 is the recommended Linux development and production platform for YugabyteDB.
+AlmaLinux 8 is the recommended Linux development and production platform for YugabyteDB.
 
 {{< /note >}}
 
@@ -102,14 +102,12 @@ YugabyteDB core is written in C++, but the repository contains Java code needed 
 * JDK 8
 * [Apache Maven](https://maven.apache.org/).
 
-Also make sure Maven's bin directory is added to your `PATH` (for example, by adding to your `~/.bashrc`). See the example below (if you've installed Maven into `~/tools/apache-maven-3.6.3`)
+For building YugabyteDB Java code, you'll need to install Java and Apache Maven:
 
 ```sh
-export PATH=$HOME/tools/apache-maven-3.6.3/bin:$PATH
+sudo yum install -y maven
 ```
-
-For building YugabyteDB Java code, you'll need to install Java and Apache Maven.
 
 ## Build release package
 
-Currently a release package can only be built in [CentOS](../build-from-src-centos) & [MacOS](../build-from-src-macos).
+Currently a release package can only be built in [AlmaLinux](../build-from-src-almalinux) & [MacOS](../build-from-src-macos).
