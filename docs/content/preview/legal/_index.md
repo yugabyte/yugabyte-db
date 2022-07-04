@@ -11,6 +11,7 @@ menu:
     parent: misc
     weight: 3000
 type: indexpage
+showRightNav: true
 ---
 
 ## Licenses

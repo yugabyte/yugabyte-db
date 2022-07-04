@@ -460,6 +460,7 @@ prepends
 prepopulated
 Prettifier
 Prisma
+Prisma
 Pritaly
 Priyanka
 profiler
@@ -571,6 +572,7 @@ scrollable
 Semgrep
 Sendmail
 Sentry
+Sequelize
 serializable
 serializer
 serializers
