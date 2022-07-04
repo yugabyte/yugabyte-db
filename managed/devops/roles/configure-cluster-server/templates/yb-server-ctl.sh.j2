@@ -170,6 +170,9 @@ collect_postmaster_pids() {
 # Given the collected postmaster_pids, send SIGKILL to all of the postgres processed
 # including postmaster and all of its child processes.
 hard_kill_postgres() {
+{% raw %}
+  [[ ${#postmaster_pids[@]} -eq 0 ]] && return
+{% endraw %}
   for postmaster_pid in "${postmaster_pids[@]}";
   do
     if [[ ${postmaster_pid} =~ ^[0-9]+$ ]]; then
