@@ -43,7 +43,7 @@ public class GFlagsUtil {
   public static final String USE_CASSANDRA_AUTHENTICATION = "use_cassandra_authentication";
   public static final String USE_NODE_TO_NODE_ENCRYPTION = "use_node_to_node_encryption";
   public static final String USE_CLIENT_TO_SERVER_ENCRYPTION = "use_client_to_server_encryption";
-  public static final String YBC_LOG_SUBDIR = "/yb-controller/logs";
+  public static final String YBC_LOG_SUBDIR = "/controller/logs";
   public static final String START_REDIS_PROXY = "start_redis_proxy";
 
   private static final Map<String, StringIntentAccessor> GFLAG_TO_INTENT_ACCESSOR =

@@ -73,7 +73,7 @@ class ControlInstanceCommand(AbstractPerCloudCommand):
         self.commands_per_server_type = {
             "master": self.MASTER_COMMANDS,
             "tserver": self.BASE_COMMANDS,
-            "yb-controller": self.BASE_COMMANDS
+            "controller": self.BASE_COMMANDS
             }
 
     def add_subcommands(self):

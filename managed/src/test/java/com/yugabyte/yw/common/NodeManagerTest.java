@@ -828,7 +828,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ybcFlags.put("server_address", nodeIp);
           ybcFlags.put("server_port", "18018");
           ybcFlags.put("yb_tserver_address", nodeIp);
-          ybcFlags.put("log_dir", "/home/yugabyte/yb-controller/logs");
+          ybcFlags.put("log_dir", "/home/yugabyte/controller/logs");
           ybcFlags.put("yb_master_address", nodeIp);
         }
 
