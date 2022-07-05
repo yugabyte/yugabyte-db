@@ -170,7 +170,7 @@
     argv:
       - "mv"
       - "/tmp/{{ ybc_package_name | extract_archive_folder_name }}"
-      - "{{ yb_home_dir }}/yb-controller"
+      - "{{ yb_home_dir }}/controller"
   tags: yb-prebuilt-ami
   when: configure_ybc
 
