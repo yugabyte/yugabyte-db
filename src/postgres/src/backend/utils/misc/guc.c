@@ -569,6 +569,7 @@ static int	wal_block_size;
 static bool data_checksums;
 static bool integer_datetimes;
 static bool assert_enabled;
+static char *yb_effective_transaction_isolation_level_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -4044,6 +4045,17 @@ static struct config_string ConfigureNamesString[] =
 		&XactIsoLevel_string,
 		"default",
 		check_XactIsoLevel, assign_XactIsoLevel, show_XactIsoLevel
+	},
+	{
+		{"yb_effective_transaction_isolation_level", PGC_INTERNAL, CLIENT_CONN_STATEMENT,
+			gettext_noop("Shows the effective YugabyteDB transaction isolation level used by the current "
+									 "active transaction in the session."),
+			NULL,
+			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&yb_effective_transaction_isolation_level_string,
+		"default",
+		NULL, NULL, show_yb_effective_transaction_isolation_level
 	},
 
 	{
