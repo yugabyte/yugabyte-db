@@ -118,6 +118,7 @@ message DisableTabletSplittingResponsePB {
 }
 
 message IsTabletSplittingCompleteRequestPB {
+  optional bool wait_for_parent_deletion = 1;
 }
 
 message IsTabletSplittingCompleteResponsePB {

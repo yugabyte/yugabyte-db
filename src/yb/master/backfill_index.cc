@@ -863,7 +863,8 @@ Status BackfillTable::WaitForTabletSplitting() {
   tablet_split_manager->DisableSplittingForBackfillingTable(indexed_table_->id());
   CoarseTimePoint deadline = CoarseMonoClock::Now() +
                              FLAGS_index_backfill_tablet_split_completion_timeout_sec * 1s;
-  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_)) {
+  while (!tablet_split_manager->IsTabletSplittingComplete(*indexed_table_,
+                                                          false /* wait_for_parent_deletion */)) {
     if (CoarseMonoClock::Now() > deadline) {
       return STATUS(TimedOut, "Tablet splitting did not complete after being disabled; cannot "
                               "safely backfill the index.");
