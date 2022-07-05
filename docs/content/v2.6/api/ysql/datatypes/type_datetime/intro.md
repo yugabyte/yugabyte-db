@@ -8,8 +8,7 @@ menu:
     identifier: intro
     parent: api-ysql-datatypes-datetime
     weight: 5
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 <p id="download">&nbsp;</p>
 

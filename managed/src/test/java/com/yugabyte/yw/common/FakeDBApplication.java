@@ -13,10 +13,12 @@ import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.scheduler.Scheduler;
 import java.util.HashMap;
 import java.util.Map;
@@ -61,6 +63,11 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
   public NodeManager mockNodeManager = mock(NodeManager.class);
   public BackupUtil mockBackupUtil = mock(BackupUtil.class);
+  public AWSUtil mockAWSUtil = mock(AWSUtil.class);
+  public GCPUtil mockGCPUtil = mock(GCPUtil.class);
+  public AZUtil mockAZUtil = mock(AZUtil.class);
+  public JsonFieldsValidator mockJsonFieldValidator = mock(JsonFieldsValidator.class);
+  public NFSUtil mockNfsUtil = mock(NFSUtil.class);
 
   public MetricService metricService;
   public AlertService alertService;
@@ -110,7 +117,12 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(TableManagerYb.class).toInstance(mockTableManagerYb))
                 .overrides(bind(TaskInfoManager.class).toInstance(mockTaskManager))
                 .overrides(bind(GFlagsValidation.class).toInstance(mockGFlagsValidation))
-                .overrides(bind(NodeManager.class).toInstance(mockNodeManager)))
+                .overrides(bind(AWSUtil.class).toInstance(mockAWSUtil))
+                .overrides(bind(GCPUtil.class).toInstance(mockGCPUtil))
+                .overrides(bind(AZUtil.class).toInstance(mockAZUtil))
+                .overrides(bind(NFSUtil.class).toInstance(mockNfsUtil))
+                .overrides(bind(NodeManager.class).toInstance(mockNodeManager))
+                .overrides(bind(JsonFieldsValidator.class).toInstance(mockJsonFieldValidator)))
         .build();
   }
 

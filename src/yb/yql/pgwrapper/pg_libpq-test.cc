@@ -2468,8 +2468,6 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
  public:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     options->extra_tserver_flags.push_back(
-        Format("--yb_pg_terminate_child_backend=false"));
-    options->extra_tserver_flags.push_back(
         Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
     options->extra_tserver_flags.push_back(
         Format("--yb_backend_oom_score_adj=" + expected_oom_score));
@@ -2504,6 +2502,214 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(oom_score_adj, expected_oom_score);
 }
 #endif
+
+class PgLibPqCatalogVersionTest : public PgLibPqTest {
+ public:
+  struct YsqlCatalogVersion {
+    uint32 db_oid;
+    uint64 current_version;
+    uint64 last_breaking_version;
+    std::string ToString() const {
+      return Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
+    }
+  };
+  typedef std::unordered_map<uint32, YsqlCatalogVersion> CatalogVersionMap;
+
+  // Return a CatalogVersionMap by making a query of the pg_yb_catalog_version table.
+  CatalogVersionMap GetCatalogVersionMap(PGConn* conn) {
+    CatalogVersionMap catalog_version_map;
+    auto res = CHECK_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
+    auto lines = PQntuples(res.get());
+    CHECK_GT(lines, 0);
+    auto columns = PQnfields(res.get());
+    CHECK_EQ(columns, 3);
+    for (int i = 0; i != lines; ++i) {
+      uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), i, 0)));
+      uint64 current_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 1)));
+      uint64 last_breaking_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 2)));
+      catalog_version_map.emplace(
+          db_oid, YsqlCatalogVersion{db_oid, current_version, last_breaking_version});
+    }
+
+    // Log the latest catalog version map we just fetched.
+    std::string output;
+    for (const auto& it : catalog_version_map) {
+      if (!output.empty()) {
+        output += ", ";
+      }
+      output += it.second.ToString();
+    }
+    LOG(INFO) << "Catalog version map: " << output;
+    return catalog_version_map;
+  }
+
+  uint32 GetDatabaseOid(PGConn* conn, const string& db_name) {
+    auto res = CHECK_RESULT(conn->FetchFormat(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
+    auto lines = PQntuples(res.get());
+    CHECK_EQ(lines, 1) << db_name;
+    auto columns = PQnfields(res.get());
+    CHECK_EQ(columns, 1) << db_name;
+    uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), 0, 0)));
+    return db_oid;
+  }
+
+  void AssertSameCatalogVersion(const YsqlCatalogVersion& v1, const YsqlCatalogVersion& v2) {
+    ASSERT_EQ(v1.db_oid, v2.db_oid);
+    ASSERT_EQ(v1.current_version, v2.current_version);
+    ASSERT_EQ(v1.last_breaking_version, v2.last_breaking_version);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
+          PgLibPqCatalogVersionTest) {
+  const string kYugabyteDatabase = "yugabyte";
+  const string kTestDatabase = "test_db";
+
+  // Prepare the table pg_yb_catalog_version to have one row per database.
+  // The pg_yb_catalog_version row for a database is inserted at CREATE DATABATE time
+  // when the gflag --TEST_enable_db_catalog_version_mode is true. It is expected for
+  // users to add the rows for existing databases manually. If we change to always
+  // insert a row into pg_yb_catalog_version at CREATE DATABATE time regardless of
+  // the value of --TEST_enable_db_catalog_version_mode, then a new YSQL upgrade
+  // migration will take care of adding rows for existing databases.
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
+                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1"));
+
+  LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_enable_db_catalog_version_mode=true");
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        "--TEST_enable_db_catalog_version_mode=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  // Get the initial catalog version map.
+  auto map = GetCatalogVersionMap(&conn_yugabyte);
+  int initial_row_count = static_cast<int>(map.size());
+  ASSERT_GT(initial_row_count, 0);
+
+  // The initial version for every database is (1, 1).
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Create a new database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // There should be a new row in pg_yb_catalog_version for the newly created database.
+  const uint32 new_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
+  auto it = map.find(new_db_oid);
+  ASSERT_NE(it, map.end());
+
+  // The initial version for the new database is (1, 1). All others also remain (1, 1).
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+
+  LOG(INFO) << "Create a table";
+  ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  // Should still have the same number of rows in pg_yb_catalog_version.
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // The above create table statement does not cause catalog version to change.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Read the table from 'conn_test'";
+  ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
+
+  LOG(INFO) << "Drop the table from 'conn_test'";
+  ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == new_db_oid) {
+      // We should have incremented the row for 'new_db_oid'.
+      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  LOG(INFO) << "Execute a DDL statement that causes a breaking catalog change";
+  ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == new_db_oid) {
+      // We should have incremented the row for 'new_db_oid', including both the current version
+      // and the last breaking version because REVOKE is a DDL statement that causes a breaking
+      // catalog change.
+      AssertSameCatalogVersion(it.second, {current_db_oid, 3, 3});
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  // Even though 'conn_test' is still accessing 'test_db' through node at index 1, we
+  // can still drop it from 'conn_yugabyte'.
+  LOG(INFO) << "Drop the new database from 'conn_yugabyte'";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  // The row for 'new_db_oid' should be deleted.
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count);
+
+  // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
+  // was performed from 'conn_yugabyte'.
+  const uint32 yugabyte_db_oid = GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase);
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == yugabyte_db_oid) {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
+    } else if (current_db_oid == new_db_oid) {
+      ASSERT_TRUE(false) << "Failed to delete the row for " << new_db_oid;
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  // After the test database is dropped, 'conn_test' should no longer succeed.
+  LOG(INFO) << "Read the table from 'conn_test'";
+  ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
+}
 
 } // namespace pgwrapper
 } // namespace yb

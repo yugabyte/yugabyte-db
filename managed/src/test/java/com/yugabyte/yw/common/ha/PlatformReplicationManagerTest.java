@@ -22,8 +22,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import akka.actor.ActorSystem;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
@@ -42,15 +42,12 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import scala.concurrent.ExecutionContext;
 
 @RunWith(JUnitParamsRunner.class)
 public class PlatformReplicationManagerTest extends TestCase {
   @Mock Config mockConfig;
 
-  @Mock ActorSystem actorSystem;
-
-  @Mock ExecutionContext executionContext;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock ShellProcessHandler shellProcessHandler;
 
@@ -145,7 +142,7 @@ public class PlatformReplicationManagerTest extends TestCase {
         .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
     setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
     PlatformReplicationManager backupManager =
-        new PlatformReplicationManager(actorSystem, executionContext, mockReplicationUtil);
+        new PlatformReplicationManager(mockPlatformScheduler, mockReplicationUtil);
 
     List<String> expectedCommandArgs =
         getExpectedPlatformBackupCommandArgs(
@@ -190,7 +187,7 @@ public class PlatformReplicationManagerTest extends TestCase {
       doCallRealMethod().when(mockReplicationUtil).cleanupReceivedBackups(any(URL.class), anyInt());
       doCallRealMethod().when(mockReplicationUtil).listBackups(any(URL.class));
       PlatformReplicationManager backupManager =
-          spy(new PlatformReplicationManager(actorSystem, executionContext, mockReplicationUtil));
+          spy(new PlatformReplicationManager(mockPlatformScheduler, mockReplicationUtil));
 
       List<File> backups = backupManager.listBackups(testUrl);
       assertEquals(3, backups.size());

@@ -4,17 +4,16 @@ linkTitle: Connect to clusters
 description: Connect to clusters in YugabyteDB Managed.
 headcontent: Connect to your cluster using Cloud Shell, a client shell, and from applications.
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 aliases:
   - /preview/deploy/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/connect-to-clusters/
   - /preview/yugabyte-cloud/cloud-basics/connect-to-clusters/
 menu:
-  preview:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: cloud-connect
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Connect to clusters in YugabyteDB Managed in the following ways:

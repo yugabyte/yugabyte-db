@@ -4,12 +4,11 @@ headerTitle: Create a multi-region universe
 linkTitle: Multi-region universe
 description: Create a YugabyteDB universe that spans multiple geographic regions using Yugabyte Platform.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: create-universe-multi-region
     parent: create-deployments
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section will describe how to create a universe spanning multiple geographic regions. In this example, we are first going to deploy a universe across Oregon (US-West), Northern Virginia (US-East) and Tokyo (Asia-Pacific). Once ready, we are going to connect to each node and perform the following:

@@ -8,8 +8,7 @@ menu:
     identifier: superset
     parent: tools
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Apache Superset](https://superset.apache.org/) is an open-source data exploration and visualization tool that helps you query data stored in YugabyteDB and visualize it using basic line charts to highly detailed geospatial charts.

@@ -4,12 +4,11 @@ headerTitle: Prerequisites
 linkTitle: Prerequisites
 description: Prerequisites for installing YugabyteDB Anywhere.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Anywhere first needs to be installed on a host computer, and then you configure YugabyteDB Anywhere to work in your on-premises private cloud or in a public cloud environment. In a public cloud environment, YugabyteDB Anywhere spawns instances for starting a YugabyteDB universe. In a private cloud environment, you use YugabyteDB Anywhere to add nodes in which you want to be in the YugabyteDB universe. To manage these nodes, YugabyteDB Anywhere requires SSH access to each of the nodes.

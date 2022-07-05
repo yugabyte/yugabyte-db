@@ -10,8 +10,7 @@ menu:
     identifier: rbac-model-ycql
     parent: authorization
     weight: 716
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

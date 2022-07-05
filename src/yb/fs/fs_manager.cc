@@ -151,8 +151,7 @@ FsManager::FsManager(Env* env, const string& root_path, const std::string& serve
       wal_fs_roots_({ root_path }),
       data_fs_roots_({ root_path }),
       server_type_(server_type),
-      metric_registry_(nullptr),
-      initted_(false) {
+      metric_registry_(nullptr) {
 }
 
 FsManager::FsManager(Env* env,
@@ -163,8 +162,7 @@ FsManager::FsManager(Env* env,
       data_fs_roots_(opts.data_paths),
       server_type_(opts.server_type),
       metric_registry_(opts.metric_registry),
-      parent_mem_tracker_(opts.parent_mem_tracker),
-      initted_(false) {
+      parent_mem_tracker_(opts.parent_mem_tracker) {
 }
 
 FsManager::~FsManager() {
@@ -271,6 +269,7 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
                    << " Write Result: " << write_result;
       canonicalized_wal_fs_roots_.erase(root);
       canonicalized_data_fs_roots_.erase(root);
+      has_faulty_drive_ = true;
       CreateAndSetFaultDriveMetric(root);
       continue;
     }
@@ -566,7 +565,9 @@ void FsManager::CreateAndSetFaultDriveMetric(const std::string& path) {
   auto metric_entity = METRIC_ENTITY_drive.Instantiate(metric_registry_,
                                                        kPrefixMetricId + path,
                                                        attrs);
-  METRIC_drive_fault.Instantiate(metric_entity)->Increment();
+  auto counter = METRIC_drive_fault.Instantiate(metric_entity);
+  counter->Increment();
+  counters_.emplace_back(std::move(counter));
 }
 
 Status FsManager::CreateDirIfMissing(const string& path, bool* created) {

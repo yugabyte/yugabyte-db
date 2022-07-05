@@ -67,7 +67,8 @@ TAG_FLAG(ysql_wait_until_index_permissions_timeout_ms, advanced);
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
 
 DEFINE_bool(ysql_log_failed_docdb_requests, false, "Log failed docdb requests.");
-
+DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
+                 "Don't fill YSQL's internal cache for FK check to force read row from a table");
 namespace yb {
 namespace pggate {
 
@@ -200,7 +201,7 @@ class PgSession::RunHelper {
 
   Status Apply(const PgTableDesc& table,
                        const PgsqlOpPtr& op,
-                       uint64_t* read_time,
+                       uint64_t* in_txn_limit,
                        bool force_non_bufferable) {
     auto& buffer = pg_session_.buffer_;
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -221,11 +222,11 @@ class PgSession::RunHelper {
             IllegalState,
             "Buffered operations must be flushed before applying first non-bufferable operation");
       // Buffered operations can't be combined within single RPC with non bufferable operation
-      // in case non bufferable operation has preset read_time.
+      // in case non bufferable operation has preset in_txn_limit.
       // Buffered operations must be flushed independently in this case.
       // Also operations for catalog session can be combined with buffered operations
       // as catalog session is used for read-only operations.
-      if ((IsTransactional() && read_time && *read_time) || IsCatalog()) {
+      if ((IsTransactional() && in_txn_limit && *in_txn_limit) || IsCatalog()) {
         RETURN_NOT_OK(buffer.Flush());
       } else {
         operations_ = VERIFY_RESULT(buffer.FlushTake(table, *op, IsTransactional()));
@@ -251,7 +252,7 @@ class PgSession::RunHelper {
     read_only = read_only && !IsValidRowMarkType(row_mark_type);
 
     return pg_session_.pg_txn_manager_->CalculateIsolation(
-        read_only, txn_priority_requirement, read_time);
+        read_only, txn_priority_requirement, in_txn_limit);
   }
 
   Result<PerformFuture> Flush() {
@@ -594,7 +595,7 @@ Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& 
   // If the reader fails to get the result, we fail the whole operation (and transaction).
   // Hence it's ok to extract (erase) the keys from intent before calling reader.
   auto node = fk_reference_intent_.extract(it);
-  ybctids.emplace_back(key.table_id, std::move(node.value().ybctid));
+  ybctids.push_back(std::move(node.value()));
 
   // Read up to session max batch size keys.
   for (auto it = fk_reference_intent_.begin();
@@ -625,7 +626,8 @@ void PgSession::AddForeignKeyReferenceIntent(
 }
 
 void PgSession::AddForeignKeyReference(const LightweightTableYbctid& key) {
-  if (fk_reference_cache_.find(key) == fk_reference_cache_.end()) {
+  if (fk_reference_cache_.find(key) == fk_reference_cache_.end() &&
+      PREDICT_TRUE(!FLAGS_TEST_ysql_ignore_add_fk_reference)) {
     fk_reference_cache_.emplace(key.table_id, std::string(key.ybctid));
   }
 }
@@ -694,13 +696,15 @@ Status PgSession::SetActiveSubTransaction(SubTransactionId id) {
   return pg_client_.SetActiveSubTransaction(id, options_ptr);
 }
 
-Status PgSession::RollbackSubTransaction(SubTransactionId id) {
-  // TODO(savepoints) -- send async RPC to transaction status tablet, or rely on heartbeater to
-  // eventually send this metadata.
+Status PgSession::RollbackToSubTransaction(SubTransactionId id) {
   // See comment in SetActiveSubTransaction -- we must flush buffered operations before updating any
   // SubTransactionMetadata.
+  // TODO(read committed): performance improvement -
+  // don't wait for ops which have already been sent ahead by pg_session i.e., to the batcher, then
+  // rpc layer and beyond. For such ops, rely on aborted sub txn list in status tablet to invalidate
+  // writes which will be asynchronously written to txn participants.
   RETURN_NOT_OK(FlushBufferedOperations());
-  return pg_client_.RollbackSubTransaction(id);
+  return pg_client_.RollbackToSubTransaction(id);
 }
 
 void PgSession::ResetHasWriteOperationsInDdlMode() {
@@ -740,7 +744,7 @@ Status PgSession::ValidatePlacement(const string& placement_info) {
 }
 
 Result<PerformFuture> PgSession::RunAsync(
-  const OperationGenerator& generator, uint64_t* read_time, bool force_non_bufferable) {
+  const OperationGenerator& generator, uint64_t* in_txn_limit, bool force_non_bufferable) {
   auto table_op = generator();
   SCHECK(table_op.operation, IllegalState, "Operation list must not be empty");
   const auto* table = table_op.table;
@@ -759,7 +763,7 @@ Result<PerformFuture> PgSession::RunAsync(
               IllegalState,
               "Operations on different sessions can't be mixed");
     has_write_ops_in_ddl_mode_ = has_write_ops_in_ddl_mode_ || (ddl_mode && !IsReadOnly(**op));
-    RETURN_NOT_OK(runner.Apply(*table, *op, read_time, force_non_bufferable));
+    RETURN_NOT_OK(runner.Apply(*table, *op, in_txn_limit, force_non_bufferable));
   }
   return runner.Flush();
 }

@@ -139,6 +139,9 @@ public class CustomerTask extends Model {
     @EnumValue("SystemdUpgrade")
     SystemdUpgrade,
 
+    @EnumValue("RebootUniverse")
+    RebootUniverse,
+
     @Deprecated
     @EnumValue("UpgradeSoftware")
     UpgradeSoftware,
@@ -239,7 +242,13 @@ public class CustomerTask extends Model {
     ThirdpartySoftwareUpgrade,
 
     @EnumValue("RotateAccessKey")
-    RotateAccessKey;
+    RotateAccessKey,
+
+    @EnumValue("CreateAndRotateAccessKey")
+    CreateAndRotateAccessKey,
+
+    @EnumValue("RunApiTriggeredHooks")
+    RunApiTriggeredHooks;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -344,6 +353,14 @@ public class CustomerTask extends Model {
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         case RotateAccessKey:
           return completed ? "Rotated Access Key" : "Rotating Access Key";
+        case RebootUniverse:
+          return completed ? "Rebooted " : "Rebooting ";
+        case CreateAndRotateAccessKey:
+          return completed
+              ? "Creating Access Key and Rotation Tasks"
+              : "Created New Access Key and Rotation Tasks";
+        case RunApiTriggeredHooks:
+          return completed ? "Ran API Triggered Hooks" : "Running API Triggered Hooks";
         default:
           return null;
       }
@@ -369,6 +386,10 @@ public class CustomerTask extends Model {
           return "Start Master Process on";
         case PrecheckNode:
           return "Precheck";
+        case RebootUniverse:
+          return "Reboot";
+        case RestartUniverse:
+          return "Restart";
         default:
           return toFriendlyTypeName();
       }

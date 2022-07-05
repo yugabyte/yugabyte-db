@@ -5,13 +5,18 @@ import './DateRangePicker.scss';
 
 
 export const CustomDateRangePicker = ({ onRangeChange }) => {
-  const [localStartDate, setLocalStartDate] = useState(new Date());
+  const yesterday = new Date();
+  yesterday.setDate(new Date().getDate() - 1);
+  const [localStartDate, setLocalStartDate] = useState(yesterday);
+  const [localEndDate, setLocalEndDate] = useState(new Date());
 
   const handleStartDateTimeChange = (timestamp) => {
     setLocalStartDate(timestamp);
+    onRangeChange({ start:localEndDate, end: timestamp});
   };
 
   const handleEndDateTimeChange = (timestamp) => {
+    setLocalEndDate(timestamp)
     onRangeChange({ start:localStartDate, end: timestamp});
   };
 
@@ -19,7 +24,7 @@ export const CustomDateRangePicker = ({ onRangeChange }) => {
     <span className="support-bundle-custom-date-range">
       <DatePicker
         placeholder="yyyy-MM-DD"
-        defaultValue={new Date()}
+        defaultValue={yesterday}
         onChange={handleStartDateTimeChange}
         max={new Date()}
       />

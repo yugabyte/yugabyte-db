@@ -1264,6 +1264,11 @@ class YBBackup:
         parser.add_argument(
             '--TEST_yb_admin_unsupported_commands', required=False, action='store_true',
             default=False, help=argparse.SUPPRESS)
+
+        # Do not fsync for unit tests.
+        parser.add_argument(
+            '--TEST_never_fsync', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1583,6 +1588,7 @@ class YBBackup:
 
         # Convert to list, since some callers like SequencedParallelCmd will send in tuples.
         cmd_line_args = list(cmd_line_args)
+        cmd_line_args.extend(["--never_fsync=" + str(self.args.TEST_never_fsync).lower()])
         # Specify cert file in case TLS is enabled.
         cert_flag = []
         if self.args.certs_dir:
@@ -1678,16 +1684,25 @@ class YBBackup:
         :param snapshot_bucket: the bucket directory under which data directories were uploaded
         :return: backup size in bytes
         """
-        snapshot_filepath = self.snapshot_location(snapshot_bucket)
+        # List of unique file paths on which backup was uploaded.
+        filepath_list = {self.snapshot_location(snapshot_bucket)}
+        if self.per_region_backup():
+            for region in self.args.region:
+                regional_filepath = self.snapshot_location(snapshot_bucket, region)
+                filepath_list.add(regional_filepath)
+
+        # Calculating backup size in bytes on both default and regional backup location.
         backup_size = 0
-        backup_size_cmd = self.storage.backup_obj_size_cmd(snapshot_filepath)
-        try:
-            resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
-            backup_size = int(resp.strip().split()[0])
-            logging.info('Backup size in bytes: {}'.format(backup_size))
-        except Exception as ex:
-            logging.error(
-                'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
+        for filepath in filepath_list:
+            backup_size_cmd = self.storage.backup_obj_size_cmd(filepath)
+            try:
+                resp = self.run_ssh_cmd(backup_size_cmd, self.get_main_host_ip())
+                backup_size += int(resp.strip().split()[0])
+            except Exception as ex:
+                logging.error(
+                    'Failed to get backup size, cmd: {}, exception: {}'.format(backup_size_cmd, ex))
+
+        logging.info('Backup size in bytes: {}'.format(backup_size))
         return backup_size
 
     def create_snapshot(self):

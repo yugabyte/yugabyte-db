@@ -3,12 +3,11 @@ headerTitle: Configure backup storage
 linkTitle: Configure backup storage
 description: Configure backup storage
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: configure-backup-storage
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
@@ -132,7 +131,6 @@ You can configure Azure as your backup target, as follows:
     * Click **Create AZ Backup** to access the configuration form shown in the following illustration:<br><br><br>
 
     ![Azure Configuration](/images/yp/cloud-provider-configuration-backup-azure.png)<br><br>
-    
+
     * Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
     * Enter values for the **Container URL** and **SAS Token** fields, and then click **Save**.
-    

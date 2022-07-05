@@ -12,8 +12,7 @@ menu:
     identifier: build-apps-cpp-1-ysql
     parent: build-apps
     weight: 556
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

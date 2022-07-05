@@ -4,12 +4,11 @@ headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
@@ -28,7 +27,7 @@ Deploying your cluster in a VPC network has the following advantages:
 
 ## Pricing
 
-There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for free clusters.
+There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
 
 ## Limitations
 
@@ -37,9 +36,9 @@ There's no additional charge for using a VPC. In most cases, using a VPC will re
 - You can't peer VPCs with overlapping ranges with the same application VPC.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
-- VPCs are not supported on free clusters.
+- VPCs are not supported on Sandbox clusters.
 
-If you need additional VPCs, contact {{<support-cloud>}}.
+If you need additional VPCs, contact {{% support-cloud %}}.
 
 ## Prerequisites
 

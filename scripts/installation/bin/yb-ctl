@@ -798,15 +798,13 @@ class ClusterOptions:
         return binary_path
 
     def get_binary_path(self, binary_name):
-        # If the user specified a custom path, do not default back to anything else.
-        if self.custom_binary_dir:
-            binary_dirs = [self.custom_binary_dir]
-            logging.info("Using custom binaries path: {}".format(self.custom_binary_dir))
-        else:
-            binary_dirs = [
-                os.path.join(self.installation_dir, 'bin'),
-                os.path.join(self.installation_dir, 'postgres', 'bin')
-            ]
+        base_dir = self.custom_binary_dir if self.custom_binary_dir else self.installation_dir
+        binary_dirs = [
+            os.path.join(base_dir, 'bin'),
+            os.path.join(base_dir, 'postgres', 'bin')
+        ]
+
+        logging.info("Using binaries path: {}".format(base_dir))
 
         for binary_dir in binary_dirs:
             path = os.path.join(binary_dir, binary_name)
@@ -1711,6 +1709,9 @@ class ClusterControl:
         return True
 
     def wait_for_node_or_raise(self, daemon_id):
+        if daemon_id.daemon_type == DAEMON_TYPE_MASTER:
+            self.wait_for_cluster_or_raise()
+            return
         print("Waiting for node to be ready.")
         if not self.wait_for_node(daemon_id):
             raise RuntimeError("Timed out waiting for tserver!")

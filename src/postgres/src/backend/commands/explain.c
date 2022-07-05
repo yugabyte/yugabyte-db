@@ -55,6 +55,8 @@ explain_get_index_name_hook_type explain_get_index_name_hook = NULL;
 #define X_CLOSE_IMMEDIATE 2
 #define X_NOWHITESPACE 4
 
+#define CEILING_K(s) ((s + 1023) / 1024)
+
 static void ExplainOneQuery(Query *query, int cursorOptions,
 				IntoClause *into, ExplainState *es,
 				const char *queryString, ParamListInfo params,
@@ -133,7 +135,7 @@ static void ExplainXMLTag(const char *tagname, int flags, ExplainState *es);
 static void ExplainJSONLineEnding(ExplainState *es);
 static void ExplainYAMLLineStarting(ExplainState *es);
 static void escape_yaml(StringInfo buf, const char *str);
-
+static void appendPgMemInfo(ExplainState *es, const Size peakMem);
 
 
 /*
@@ -521,6 +523,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
+	int64 peakMem = 0;
+
 	/* Execute the plan for statistics if asked for */
 	if (es->analyze)
 	{
@@ -534,6 +538,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 
 		/* run the plan */
 		ExecutorRun(queryDesc, dir, 0L, true);
+
+		/* take a snapshot on the max PG memory consumption */
+		peakMem = PgMemTracker.stmt_max_mem_bytes;
 
 		/* run cleanup too */
 		ExecutorFinish(queryDesc);
@@ -592,8 +599,13 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 	 * the output).  By default, ANALYZE sets SUMMARY to true.
 	 */
 	if (es->summary && es->analyze)
+	{
 		ExplainPropertyFloat("Execution Time", "ms", 1000.0 * totaltime, 3,
 							 es);
+
+		if (IsYugaByteEnabled())
+			appendPgMemInfo(es, peakMem);
+	}
 
 	ExplainCloseGroup("Query", NULL, true, es);
 }
@@ -1182,7 +1194,8 @@ ExplainNode(PlanState *planstate, List *ancestors,
 					partialmode = "Partial";
 					pname = psprintf("%s %s", partialmode, pname);
 				}
-				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit))
+				else if (DO_AGGSPLIT_COMBINE(agg->aggsplit) ||
+						 ((AggState*) planstate)->yb_pushdown_supported)
 				{
 					partialmode = "Finalize";
 					pname = psprintf("%s %s", partialmode, pname);
@@ -3863,4 +3876,15 @@ static void
 escape_yaml(StringInfo buf, const char *str)
 {
 	escape_json(buf, str);
+}
+
+/*
+ * Append YbPgMemTracker related info to EXPLAIN output,
+ * currently only the max memory info.
+ */
+static void
+appendPgMemInfo(ExplainState *es, const Size peakMem)
+{
+	Size peakMemKb = CEILING_K(peakMem);
+	ExplainPropertyInteger("Peak Memory Usage", "kB", peakMemKb, es);
 }

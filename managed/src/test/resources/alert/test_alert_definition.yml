@@ -13,6 +13,7 @@ groups:
           customer_uuid: <customer_uuid>
           severity: SEVERE
           threshold: 1
+          alert_expression: query > 1
           universe_uuid: <universe_uuid>
           source_uuid: <universe_uuid>
           source_type: universe

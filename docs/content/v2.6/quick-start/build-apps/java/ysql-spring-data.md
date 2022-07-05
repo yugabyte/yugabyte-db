@@ -9,9 +9,7 @@ menu:
     name: Java
     identifier: java-3
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -206,7 +204,7 @@ yugabyte=# SELECT * FROM orderline;
 ```
 
 ```output
- order_id                             | product_id | units 
+ order_id                             | product_id | units
 --------------------------------------+------------+-------
  45659918-bbfd-4a75-a202-6feff13e186b |          1 |     2
  f19b64ec-359a-47c2-9014-3c324510c52c |          1 |     2
@@ -239,7 +237,7 @@ $ curl http://localhost:8080/users
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -263,7 +261,7 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
@@ -301,7 +299,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

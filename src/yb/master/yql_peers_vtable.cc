@@ -79,7 +79,7 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
   struct Entry {
     size_t index;
     TSInformationPB ts_info;
-    util::PublicPrivateIPFutures ts_ips;
+    util::PublicPrivateIPFutures ts_ips{};
   };
 
   std::vector<Entry> entries;

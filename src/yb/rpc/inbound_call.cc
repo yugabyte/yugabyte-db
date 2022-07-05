@@ -77,7 +77,7 @@ namespace rpc {
 
 InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
                          CallProcessedListener* call_processed_listener)
-    : trace_(new Trace),
+    : trace_(Trace::NewTrace()),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
       call_processed_listener_(call_processed_listener) {
@@ -88,8 +88,10 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
 
 InboundCall::~InboundCall() {
   TRACE_TO(trace_, "Destroying InboundCall");
-  YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
-      << "Tracing op: \n " << trace_->DumpToString(true);
+  if (trace_) {
+    YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
+        << "Tracing op: \n " << trace_->DumpToString(true);
+  }
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
@@ -102,6 +104,20 @@ void InboundCall::NotifyTransferred(const Status& status, Connection* conn) {
   }
   if (call_processed_listener_) {
     call_processed_listener_->CallProcessed(this);
+  }
+}
+
+void InboundCall::EnsureTraceCreated() {
+  if (!trace_) {
+    trace_ = new Trace;
+    if (timing_.time_received.Initialized()) {
+      TRACE_TO_WITH_TIME(trace_, ToCoarse(timing_.time_received), "Created InboundCall");
+    }
+    if (timing_.time_handled.Initialized()) {
+      TRACE_TO_WITH_TIME(trace_, ToCoarse(timing_.time_handled), "Handling the call");
+    }
+    DCHECK(!timing_.time_completed.Initialized());
+    TRACE_TO(trace_, "Trace Created");
   }
 }
 

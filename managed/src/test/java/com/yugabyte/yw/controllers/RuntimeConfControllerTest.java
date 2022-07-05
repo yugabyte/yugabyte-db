@@ -46,6 +46,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -279,7 +280,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         internal_getConfig_universe_inherited(
             scopeType, presetIntervalValue, scopeUUID, EXT_SCRIPT_KEY);
     final Config configObj = ConfigFactory.parseString(actualObjValue);
-    compareToExpectedValue(expectedIntervalValue, configObj.getValue("schedule").render(), "\"\"");
+    String expectedValue = null;
+    if (configObj.hasPath("schedule")) {
+      expectedValue = configObj.getValue("schedule").render();
+    }
+    compareToExpectedValue(expectedIntervalValue, expectedValue, null);
   }
 
   private String internal_getConfig_universe_inherited(
@@ -311,7 +316,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   private void compareToExpectedValue(
       String presetIntervalValue, String value, String defaultValue) {
-    if (presetIntervalValue.isEmpty()) {
+    if (StringUtils.isEmpty(presetIntervalValue)) {
       assertEquals(defaultValue, value);
     } else {
       assertEquals(presetIntervalValue, value);
@@ -351,10 +356,10 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   public Object[] scopeAndPresetParamsObj() {
     return new Object[] {
-      new Object[] {ScopeType.GLOBAL, "", ""},
-      new Object[] {ScopeType.CUSTOMER, "", ""},
-      new Object[] {ScopeType.PROVIDER, "", ""},
-      new Object[] {ScopeType.UNIVERSE, "", ""},
+      new Object[] {ScopeType.GLOBAL, "", null},
+      new Object[] {ScopeType.CUSTOMER, "", null},
+      new Object[] {ScopeType.PROVIDER, "", null},
+      new Object[] {ScopeType.UNIVERSE, "", null},
       new Object[] {ScopeType.GLOBAL, "\"33 days\"", "\"33 days\""},
       new Object[] {ScopeType.CUSTOMER, "\"44 seconds\"", "\"44 seconds\""},
       new Object[] {ScopeType.PROVIDER, "\"22 hours\"", "\"22 hours\""},

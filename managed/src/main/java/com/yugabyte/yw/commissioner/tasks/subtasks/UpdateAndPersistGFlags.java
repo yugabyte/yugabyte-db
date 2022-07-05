@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -67,41 +68,14 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
               UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
               userIntent.masterGFlags = taskParams().masterGFlags;
               userIntent.tserverGFlags = taskParams().tserverGFlags;
-              if (userIntent.tserverGFlags.containsKey("ysql_enable_auth")) {
-                if (userIntent.tserverGFlags.get("ysql_enable_auth").equals("true")) {
-                  userIntent.enableYSQLAuth = true;
-                } else {
-                  userIntent.enableYSQLAuth = false;
-                }
-              }
-              if (userIntent.tserverGFlags.containsKey("use_cassandra_authentication")) {
-                if (userIntent.tserverGFlags.get("use_cassandra_authentication").equals("true")) {
-                  userIntent.enableYCQLAuth = true;
-                } else {
-                  userIntent.enableYCQLAuth = false;
-                }
-              }
+              GFlagsUtil.syncGflagsToIntent(userIntent.tserverGFlags, userIntent);
+              GFlagsUtil.syncGflagsToIntent(userIntent.masterGFlags, userIntent);
+
               for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
                 cluster.userIntent.masterGFlags = taskParams().masterGFlags;
                 cluster.userIntent.tserverGFlags = taskParams().tserverGFlags;
-                if (cluster.userIntent.tserverGFlags.containsKey("ysql_enable_auth")) {
-                  if (cluster.userIntent.tserverGFlags.get("ysql_enable_auth").equals("true")) {
-                    cluster.userIntent.enableYSQLAuth = true;
-                  } else {
-                    cluster.userIntent.enableYSQLAuth = false;
-                  }
-                }
-                if (cluster.userIntent.tserverGFlags.containsKey("use_cassandra_authentication")) {
-                  if (cluster
-                      .userIntent
-                      .tserverGFlags
-                      .get("use_cassandra_authentication")
-                      .equals("true")) {
-                    cluster.userIntent.enableYCQLAuth = true;
-                  } else {
-                    cluster.userIntent.enableYCQLAuth = false;
-                  }
-                }
+                GFlagsUtil.syncGflagsToIntent(cluster.userIntent.tserverGFlags, cluster.userIntent);
+                GFlagsUtil.syncGflagsToIntent(cluster.userIntent.masterGFlags, cluster.userIntent);
               }
 
               universe.setUniverseDetails(universeDetails);

@@ -10,7 +10,8 @@ export const nodeInClusterStates = [
   NodeState.Stopping,
   NodeState.Stopped,
   NodeState.Starting,
-  NodeState.Unreachable
+  NodeState.Unreachable,
+  NodeState.MetricsUnavailable
 ];
 
 export function isNodeRemovable(nodeState) {
@@ -137,7 +138,7 @@ export function isKubernetesUniverse(currentUniverse) {
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
     getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType ===
-      'kubernetes'
+    'kubernetes'
   );
 }
 
@@ -164,7 +165,7 @@ export const isOnpremUniverse = (universe) => {
 };
 
 export const isPausableUniverse = (universe) => {
-  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp');
+  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp') || isUniverseType(universe, 'azu');
 };
 
 // Reads file and passes content into Promise.resolve

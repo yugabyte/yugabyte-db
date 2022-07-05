@@ -11,9 +11,7 @@ menu:
     identifier: enable-authentication
     parent: secure
     weight: 715
-type: page
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Enabling user authentication in YSQL and YCQL requires setting the appropriate flags on server startup:

@@ -5,12 +5,11 @@ description: Connect to YugabyteDB Managed clusters from your desktop using a cl
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-client-shell
     parent: cloud-connect
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Connect to your YugabyteDB cluster from your desktop using the YugabyteDB [ysqlsh](../../../admin/ysqlsh/) and [ycqlsh](../../../admin/ycqlsh) client shells installed on your computer. Because YugabyteDB is compatible with PostgreSQL and Cassandra, you can also use [psql](https://www.postgresql.org/docs/current/app-psql.html) and third-party tools to connect.
@@ -48,10 +47,10 @@ Use the ysqlsh and ycqlsh shells to connect to and interact with YuagbyteDB usin
 
 <div class="tab-content">
   <div id="ysqlsh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="ysqlsh-tab">
-    {{% includeMarkdown "connect/ysql.md" /%}}
+  {{% includeMarkdown "connect/ysql.md" %}}
   </div>
   <div id="ycqlsh" class="tab-pane fade" role="tabpanel" aria-labelledby="ycqlsh-tab">
-    {{% includeMarkdown "connect/ycql.md" /%}}
+  {{% includeMarkdown "connect/ycql.md" %}}
   </div>
 </div>
 

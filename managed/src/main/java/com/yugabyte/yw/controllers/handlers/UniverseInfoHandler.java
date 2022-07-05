@@ -14,19 +14,22 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.NodeUniverseManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
@@ -35,12 +38,17 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.yb.client.YBClient;
+import play.libs.Json;
 import play.mvc.Http;
 
 @Slf4j
@@ -79,12 +87,9 @@ public class UniverseInfoHandler {
   }
 
   public List<UniverseResourceDetails> universeListCost(Customer customer) {
-    Set<Universe> universeSet;
-    try {
-      universeSet = customer.getUniverses();
-    } catch (RuntimeException e) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "No universe found for customer with ID: " + customer.uuid);
+    Set<Universe> universeSet = customer.getUniverses();
+    if (CollectionUtils.isEmpty(universeSet)) {
+      return Collections.emptyList();
     }
     List<UniverseDefinitionTaskParams> taskParamsList =
         universeSet.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
@@ -104,7 +109,8 @@ public class UniverseInfoHandler {
   public JsonNode status(Universe universe) {
     JsonNode result;
     try {
-      result = PlacementInfoUtil.getUniverseAliveStatus(universe, metricQueryHelper);
+
+      result = getUniverseAliveStatus(universe, metricQueryHelper);
     } catch (RuntimeException e) {
       // TODO(API) dig deeper and find root cause of RuntimeException
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -166,10 +172,10 @@ public class UniverseInfoHandler {
     return resultNode;
   }
 
-  public JsonNode getSlowQueries(Universe universe, String username, String password) {
+  public JsonNode getSlowQueries(Universe universe) {
     JsonNode resultNode;
     try {
-      resultNode = queryHelper.slowQueries(universe, username, password);
+      resultNode = queryHelper.slowQueries(universe);
     } catch (IllegalArgumentException e) {
       log.error(e.getMessage(), e);
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -215,5 +221,102 @@ public class UniverseInfoHandler {
       throw new PlatformServiceException(Http.Status.INTERNAL_SERVER_ERROR, response.message);
     }
     return targetFile;
+  }
+
+  private JsonNode getUniverseAliveStatus(Universe universe, MetricQueryHelper metricQueryHelper) {
+    List<MetricQueryResponse.Entry> values = new ArrayList<>();
+    boolean queryError = false;
+    try {
+      values =
+          metricQueryHelper.queryDirect(
+              "max_over_time(up{node_prefix=\""
+                  + universe.getUniverseDetails().nodePrefix
+                  + "\"}[30s])");
+    } catch (RuntimeException re) {
+      queryError = true;
+      log.debug(
+          "Error fetching node status from prometheus for universe {} ", universe.universeUUID, re);
+    }
+
+    // convert prom query results to Map<hostname -> Map<port -> liveness>>
+    Map<String, Map<Integer, Boolean>> nodePortStatus = processNodeUpMetricValues(values);
+
+    // build JSON result node for master/tserver/node liveness
+    JsonNode result = convertToNodeStatus(universe, queryError, nodePortStatus);
+
+    return result;
+  }
+
+  // Convert map { ip -> port -> boolean alive} to a JSON object that contains
+  // node, master, tserver liveness
+  private static JsonNode convertToNodeStatus(
+      Universe universe, boolean queryError, Map<String, Map<Integer, Boolean>> nodePortStatus) {
+
+    ObjectNode result = Json.newObject();
+    result.put("universe_uuid", universe.universeUUID.toString());
+    for (final NodeDetails nodeDetails : universe.getNodes()) {
+
+      Map<Integer, Boolean> portStatus =
+          nodePortStatus.getOrDefault(nodeDetails.cloudInfo.private_ip, new HashMap<>());
+      boolean masterStatus = portStatus.getOrDefault(nodeDetails.masterHttpPort, false);
+      boolean tserverStatus = portStatus.getOrDefault(nodeDetails.tserverHttpPort, false);
+      boolean nodeStatus = false;
+      // check if k8s explicitly
+      if (universe.getNodeDeploymentMode(nodeDetails).equals(CloudType.kubernetes)) {
+        // in k8s, the master/tserver running means the pod is running
+        nodeStatus =
+            (nodeDetails.isMaster && masterStatus) || (nodeDetails.isTserver && tserverStatus);
+      } else {
+        nodeStatus = portStatus.getOrDefault(nodeDetails.nodeExporterPort, false);
+      }
+      nodeDetails.state =
+          !nodeStatus
+              ? (queryError
+                  ? NodeDetails.NodeState.MetricsUnavailable
+                  : NodeDetails.NodeState.Unreachable)
+              : nodeDetails.state;
+
+      ObjectNode nodeJson =
+          Json.newObject()
+              .put("tserver_alive", tserverStatus)
+              .put("master_alive", masterStatus)
+              .put("node_status", nodeDetails.state.toString());
+      result.set(nodeDetails.nodeName, nodeJson);
+    }
+    return result;
+  }
+
+  // Convert 'up' metric results that look like up{instance="ip:port"} = 0/1
+  // to a map { ip -> port -> boolean }
+  private static Map<String, Map<Integer, Boolean>> processNodeUpMetricValues(
+      List<MetricQueryResponse.Entry> values) {
+    Map<String, Map<Integer, Boolean>> nodePortStatus = new HashMap<>();
+
+    values
+        .stream()
+        .filter(entry -> entry.labels != null && entry.labels.containsKey("instance"))
+        .filter(entry -> CollectionUtils.isNotEmpty(entry.values))
+        .forEach(
+            entry -> {
+              try {
+                String[] hostPort = entry.labels.get("instance").split(":", 2);
+                String host = hostPort[0];
+                int port = Integer.parseInt(hostPort[1]);
+                boolean isAlive = Util.doubleEquals(entry.values.get(0).getRight(), 1);
+
+                nodePortStatus
+                    .computeIfAbsent(host, h -> new HashMap<Integer, Boolean>())
+                    .put(port, isAlive);
+
+              } catch (Exception ex) {
+                log.debug(
+                    "error processing up prometheus metric entry for alive status {} : {}",
+                    entry,
+                    ex);
+                // ignore exceptions
+              }
+            });
+
+    return nodePortStatus;
   }
 }

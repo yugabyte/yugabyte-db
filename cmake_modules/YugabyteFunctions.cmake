@@ -374,8 +374,6 @@ macro(YB_SETUP_CLANG)
 
     if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "12.0.0")
       ADD_LINKER_FLAGS("-fuse-ld=lld")
-    endif()
-    if ("${COMPILER_VERSION}" VERSION_GREATER_EQUAL "13.0.0")
       ADD_LINKER_FLAGS("-lunwind")
     endif()
   endif()

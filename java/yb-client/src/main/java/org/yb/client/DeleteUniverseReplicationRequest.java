@@ -13,7 +13,9 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.List;
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.yb.WireProtocol;
 import org.yb.master.MasterReplicationOuterClass;
 import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
@@ -21,10 +23,14 @@ import org.yb.util.Pair;
 public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplicationResponse> {
 
   private final String replicationGroupName;
+  // Default value is false.
+  private final boolean ignoreErrors;
 
-  DeleteUniverseReplicationRequest(YBTable table, String replicationGroupName) {
+  DeleteUniverseReplicationRequest(
+      YBTable table, String replicationGroupName, boolean ignoreErrors) {
     super(table);
     this.replicationGroupName = replicationGroupName;
+    this.ignoreErrors = ignoreErrors;
   }
 
   @Override
@@ -32,8 +38,9 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
     assert header.isInitialized();
 
     final MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.Builder builder =
-      MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.newBuilder().setProducerId(
-          replicationGroupName);
+        MasterReplicationOuterClass.DeleteUniverseReplicationRequestPB.newBuilder()
+            .setProducerId(replicationGroupName)
+            .setIgnoreErrors(ignoreErrors);
 
     return toChannelBuffer(header, builder.build());
   }
@@ -57,10 +64,11 @@ public class DeleteUniverseReplicationRequest extends YRpc<DeleteUniverseReplica
     readProtobuf(callResponse.getPBMessage(), builder);
 
     final MasterTypes.MasterErrorPB error = builder.hasError() ? builder.getError() : null;
+    final List<WireProtocol.AppStatusPB> warnings = builder.getWarningsList();
 
     DeleteUniverseReplicationResponse response =
       new DeleteUniverseReplicationResponse(deadlineTracker.getElapsedMillis(),
-        tsUUID, error);
+        tsUUID, error, warnings);
 
     return new Pair<>(response, error);
   }

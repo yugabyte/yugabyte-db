@@ -27,21 +27,46 @@
 #include "yb/util/status.h"
 #include "yb/util/tostring.h"
 
+DECLARE_int64(db_block_size_bytes);
+
 namespace yb {
 namespace docdb {
 
 namespace {
 
+// Used to mark column as skipped by packer. For instance in case of collection column.
+constexpr int64_t kSkippedColumnIdx = -1;
+
 bool IsVarlenColumn(const ColumnSchema& column_schema) {
   return column_schema.is_nullable() || column_schema.type_info()->var_length();
 }
 
-size_t EncodedValueSize(const ColumnSchema& column_schema) {
+size_t EncodedColumnSize(const ColumnSchema& column_schema) {
   if (column_schema.type_info()->type == DataType::BOOL) {
     // Boolean values are encoded as value type only.
     return 1;
   }
   return 1 + column_schema.type_info()->size;
+}
+
+bool IsNull(const Slice& slice) {
+  return slice.empty();
+}
+
+void PackValue(const QLValuePB& value, ValueBuffer* result) {
+  AppendEncodedValue(value, result);
+}
+
+size_t PackedValueSize(const QLValuePB& value) {
+  return EncodedValueSize(value);
+}
+
+void PackValue(const Slice& value, ValueBuffer* result) {
+  result->Append(value);
+}
+
+size_t PackedValueSize(const Slice& value) {
+  return value.size();
 }
 
 } // namespace
@@ -75,13 +100,18 @@ SchemaPacking::SchemaPacking(const Schema& schema) {
   columns_.reserve(schema.num_columns() - schema.num_key_columns());
   for (auto i = schema.num_key_columns(); i != schema.num_columns(); ++i) {
     const auto& column_schema = schema.column(i);
-    column_to_idx_.emplace(schema.column_id(i), columns_.size());
+    auto column_id = schema.column_id(i);
+    if (column_schema.is_collection()) {
+      column_to_idx_.emplace(column_id, kSkippedColumnIdx);
+      continue;
+    }
+    column_to_idx_.emplace(column_id, columns_.size());
     bool varlen = IsVarlenColumn(column_schema);
     columns_.emplace_back(ColumnPackingData {
       .id = schema.column_id(i),
       .num_varlen_columns_before = varlen_columns_count_,
       .offset_after_prev_varlen_column = offset_after_prev_varlen_column,
-      .size = varlen ? 0 : EncodedValueSize(column_schema),
+      .size = varlen ? 0 : EncodedColumnSize(column_schema),
       .nullable = column_schema.is_nullable(),
     });
 
@@ -89,7 +119,7 @@ SchemaPacking::SchemaPacking(const Schema& schema) {
       ++varlen_columns_count_;
       offset_after_prev_varlen_column = 0;
     } else {
-      offset_after_prev_varlen_column += EncodedValueSize(column_schema);
+      offset_after_prev_varlen_column += EncodedColumnSize(column_schema);
     }
   }
 }
@@ -103,10 +133,18 @@ SchemaPacking::SchemaPacking(const SchemaPackingPB& pb) : varlen_columns_count_(
       ++varlen_columns_count_;
     }
   }
+  for (auto skipped_column_id : pb.skipped_column_ids()) {
+    column_to_idx_.emplace(skipped_column_id, kSkippedColumnIdx);
+  }
 }
 
 size_t LoadEnd(size_t idx, const Slice& packed) {
   return LittleEndian::Load32(packed.data() + idx * sizeof(uint32_t));
+}
+
+bool SchemaPacking::SkippedColumn(ColumnId column_id) const {
+  auto it = column_to_idx_.find(column_id);
+  return it != column_to_idx_.end() && it->second == kSkippedColumnIdx;
 }
 
 Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
@@ -120,10 +158,10 @@ Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
   return Slice(packed.data() + offset, packed.data() + end);
 }
 
-boost::optional<Slice> SchemaPacking::GetValue(ColumnId column, const Slice& packed) const {
-  auto it = column_to_idx_.find(column);
-  if (it == column_to_idx_.end()) {
-    return boost::none;
+std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, const Slice& packed) const {
+  auto it = column_to_idx_.find(column_id);
+  if (it == column_to_idx_.end() || it->second == kSkippedColumnIdx) {
+    return {};
   }
   return GetValue(it->second, packed);
 }
@@ -135,6 +173,11 @@ std::string SchemaPacking::ToString() const {
 void SchemaPacking::ToPB(SchemaPackingPB* out) const {
   for (const auto& column : columns_) {
     column.ToPB(out->add_columns());
+  }
+  for (const auto& [column_id, column_idx] : column_to_idx_) {
+    if (column_idx == kSkippedColumnIdx) {
+      out->add_skipped_column_ids(column_id);
+    }
   }
 }
 
@@ -207,8 +250,11 @@ bool SchemaPackingStorage::HasVersionBelow(SchemaVersion version) const {
   return false;
 }
 
-RowPacker::RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing)
-    : packing_(packing) {
+RowPacker::RowPacker(
+    SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
+    size_t packed_size_limit)
+    : packing_(packing),
+      packed_size_limit_(packed_size_limit ? packed_size_limit : FLAGS_db_block_size_bytes) {
   size_t prefix_len = packing_.prefix_len();
   result_.Reserve(1 + kMaxVarint32Length + prefix_len);
   result_.PushBack(ValueEntryTypeAsChar::kPackedRow);
@@ -226,70 +272,68 @@ void RowPacker::Restart() {
   result_.Truncate(prefix_end_);
 }
 
-Status RowPacker::AddValue(ColumnId column, const QLValuePB& value) {
-  return DoAddValue(column, value);
+Result<bool> RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
+  return DoAddValue(column_id, value, 0);
 }
 
-Status RowPacker::AddValue(ColumnId column, const Slice& value) {
-  return DoAddValue(column, value);
+Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size) {
+  return DoAddValue(column_id, value, tail_size);
 }
-
-namespace {
-
-bool IsNull(const Slice& slice) {
-  return slice.empty();
-}
-
-void PackValue(const QLValuePB& value, ValueBuffer* result) {
-  AppendEncodedValue(value, CheckIsCollate::kTrue, result);
-}
-
-void PackValue(const Slice& value, ValueBuffer* result) {
-  result->Append(value);
-}
-
-} // namespace
 
 template <class Value>
-Status RowPacker::DoAddValue(ColumnId column, const Value& value) {
-  if (idx_ >= packing_.columns()) {
-    return STATUS_FORMAT(InvalidArgument, "Add value for unknown column: $0, idx: $1",
-                         column, idx_);
-  }
-  const auto& column_data = packing_.column_packing_data(idx_);
-  if (column_data.id != column) {
-    return STATUS_FORMAT(InvalidArgument, "Add value for unknown column: $0 vs $1",
-                         column, column_data.id);
+Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size) {
+  RSTATUS_DCHECK(
+      idx_ < packing_.columns(),
+      InvalidArgument, "Add extra column $0, while already have $1 of $2 columns",
+      column_id, idx_, packing_.columns());
+
+  bool result = true;
+  for (;;) {
+    const auto& column_data = packing_.column_packing_data(idx_);
+    RSTATUS_DCHECK(
+        column_data.id <= column_id, InvalidArgument,
+        "Add unexpected column $0, while $1 is expected", column_id, column_data.id);
+
+    ++idx_;
+    size_t prev_size = result_.size();
+    if (column_data.id < column_id) {
+      RSTATUS_DCHECK(
+          column_data.nullable, InvalidArgument,
+          "Missing value for non nullable column $0, while adding $1", column_data.id, column_id);
+    } else if (!column_data.nullable || !IsNull(value)) {
+      if (column_data.varlen() &&
+          make_signed(prev_size + PackedValueSize(value)) + tail_size > packed_size_limit_) {
+        result = false;
+      } else {
+        PackValue(value, &result_);
+      }
+    }
+    if (column_data.varlen()) {
+      LittleEndian::Store32(result_.mutable_data() + varlen_write_pos_,
+                            narrow_cast<uint32_t>(result_.size() - prefix_end_));
+      varlen_write_pos_ += sizeof(uint32_t);
+    } else {
+      RSTATUS_DCHECK(
+          prev_size + column_data.size == result_.size(), Corruption,
+          "Wrong encoded size: $0 vs $1", result_.size() - prev_size, column_data.size);
+    }
+
+    if (column_data.id == column_id) {
+      break;
+    }
   }
 
-  ++idx_;
-  size_t prev_size = result_.size();
-  if (!column_data.nullable || !IsNull(value)) {
-    PackValue(value, &result_);
-  }
-  if (column_data.varlen()) {
-    LittleEndian::Store32(result_.mutable_data() + varlen_write_pos_,
-                          narrow_cast<uint32_t>(result_.size() - prefix_end_));
-    varlen_write_pos_ += sizeof(uint32_t);
-  } else if (prev_size + column_data.size != result_.size()) {
-    return STATUS_FORMAT(Corruption, "Wrong encoded size: $0 vs $1",
-                         result_.size() - prev_size, column_data.size);
-  }
-
-  return Status::OK();
+  return result;
 }
 
 Result<Slice> RowPacker::Complete() {
-  if (idx_ != packing_.columns()) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Not all columns packed: $0 vs $1",
-        idx_, packing_.columns());
+  // In case of concurrent schema change YSQL does not send recently added columns.
+  // Fill them with NULLs to keep the same behaviour like we have w/o packed row.
+  while (idx_ < packing_.columns()) {
+    RETURN_NOT_OK(AddValue(packing_.column_packing_data(idx_).id, Slice(), 0));
   }
-  if (varlen_write_pos_ != prefix_end_) {
-    return STATUS_FORMAT(
-        InvalidArgument, "Not all varlen columns packed: $0 vs $1",
-        varlen_write_pos_, prefix_end_);
-  }
+  RSTATUS_DCHECK_EQ(
+      varlen_write_pos_, prefix_end_, InvalidArgument, "Not all varlen columns packed");
   return result_.AsSlice();
 }
 
@@ -298,9 +342,8 @@ ColumnId RowPacker::NextColumnId() const {
 }
 
 Result<const ColumnPackingData&> RowPacker::NextColumnData() const {
-  if (idx_ >= packing_.columns()) {
-    return STATUS(IllegalState, "All columns already packed");
-  }
+  RSTATUS_DCHECK(
+      idx_ < packing_.columns(), IllegalState, "All columns already packed");
   return packing_.column_packing_data(idx_);
 }
 

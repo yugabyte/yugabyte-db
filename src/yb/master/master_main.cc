@@ -41,7 +41,7 @@
 
 #include "yb/gutil/sysinfo.h"
 
-#include "yb/master/call_home.h"
+#include "yb/master/master_call_home.h"
 #include "yb/master/master.h"
 #include "yb/master/sys_catalog_initialization.h"
 
@@ -71,6 +71,8 @@ DECLARE_int32(stderrthreshold);
 DECLARE_string(metric_node_name);
 DECLARE_int32(remote_bootstrap_max_chunk_size);
 DECLARE_bool(use_docdb_aware_bloom_filter);
+DECLARE_int32(follower_unavailable_considered_failed_sec);
+DECLARE_int32(log_min_seconds_to_retain);
 
 using namespace std::literals;
 
@@ -105,8 +107,11 @@ static int MasterMain(int argc, char** argv) {
   // the desired replication factor. (It's not turtles all the way down!)
   FLAGS_evict_failed_followers = false;
 
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
-      MasterOptions::kServerType, &argc, &argv));
+  FLAGS_follower_unavailable_considered_failed_sec = 2 * MonoTime::kSecondsPerHour;
+  FLAGS_log_min_seconds_to_retain = 2 * MonoTime::kSecondsPerHour;
+
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(
+      MasterTServerParseFlagsAndInit(MasterOptions::kServerType, &argc, &argv));
 
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
@@ -128,8 +133,8 @@ static int MasterMain(int argc, char** argv) {
 
   LOG(INFO) << "Master server successfully started.";
 
-  std::unique_ptr<CallHome> call_home;
-  call_home = std::make_unique<CallHome>(&server, ServerType::MASTER);
+  std::unique_ptr<MasterCallHome> call_home;
+  call_home = std::make_unique<MasterCallHome>(&server);
   call_home->ScheduleCallHome();
 
   auto total_mem_watcher = server::TotalMemWatcher::Create();

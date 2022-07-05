@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: array-position
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 These functions require that the to-be-searched array is one-dimensional. They return the index values of the specified to-be-searched-for value in the specified to-be-searched array.
 
@@ -52,7 +51,7 @@ select array_position(
 This is the result:
 
 ```
- position 
+ position
 ----------
         8
 ```
@@ -65,7 +64,7 @@ This is the result:
 
 ```
 input value:       anyarray, anyelement
-return value:      integer[] 
+return value:      integer[]
 ```
 **Example:**
 ```plpgsql
@@ -78,7 +77,7 @@ select array_positions(
 This is the result:
 
 ```
- positions 
+ positions
 -----------
  {2,8}
 ```

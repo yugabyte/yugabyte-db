@@ -45,6 +45,8 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 DEFINE_uint64(pg_client_heartbeat_interval_ms, 10000, "Pg client heartbeat interval in ms.");
 
+DECLARE_bool(TEST_index_read_multiple_partitions);
+
 using namespace std::literals;
 
 namespace yb {
@@ -186,7 +188,20 @@ class PgClient::Impl {
 
     auto partitions = std::make_shared<client::VersionedTablePartitionList>();
     partitions->version = resp.partitions().version();
-    partitions->keys.assign(resp.partitions().keys().begin(), resp.partitions().keys().end());
+    const auto& keys = resp.partitions().keys();
+    if (PREDICT_FALSE(FLAGS_TEST_index_read_multiple_partitions && keys.size() > 1)) {
+      // It is required to simulate tablet splitting. This is done by reducing number of partitions.
+      // Only middle element is used to split table into 2 partitions.
+      // DocDB partition schema like [, 12, 25, 37, 50, 62, 75, 87] will be interpret by YSQL
+      // as [, 50].
+      partitions->keys = {PartitionKey(), keys[keys.size() / 2]};
+      static auto key_printer = [](const auto& key) { return Slice(key).ToDebugHexString(); };
+      LOG(INFO) << "Partitions for " << table_id << " are joined."
+                << " source: " << ToString(keys, key_printer)
+                << " result: " << ToString(partitions->keys, key_printer);
+    } else {
+      partitions->keys.assign(keys.begin(), keys.end());
+    }
 
     auto result = make_scoped_refptr<PgTableDesc>(
         table_id, resp.info(), std::move(partitions));
@@ -231,14 +246,14 @@ class PgClient::Impl {
     return ResponseStatus(resp);
   }
 
-  Status RollbackSubTransaction(SubTransactionId id) {
-    tserver::PgRollbackSubTransactionRequestPB req;
+  Status RollbackToSubTransaction(SubTransactionId id) {
+    tserver::PgRollbackToSubTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_sub_transaction_id(id);
 
-    tserver::PgRollbackSubTransactionResponsePB resp;
+    tserver::PgRollbackToSubTransactionResponsePB resp;
 
-    RETURN_NOT_OK(proxy_->RollbackSubTransaction(req, &resp, PrepareController()));
+    RETURN_NOT_OK(proxy_->RollbackToSubTransaction(req, &resp, PrepareController()));
     return ResponseStatus(resp);
   }
 
@@ -618,8 +633,8 @@ Status PgClient::SetActiveSubTransaction(
   return impl_->SetActiveSubTransaction(id, options);
 }
 
-Status PgClient::RollbackSubTransaction(SubTransactionId id) {
-  return impl_->RollbackSubTransaction(id);
+Status PgClient::RollbackToSubTransaction(SubTransactionId id) {
+  return impl_->RollbackToSubTransaction(id);
 }
 
 Status PgClient::ValidatePlacement(const tserver::PgValidatePlacementRequestPB* req) {

@@ -9,8 +9,7 @@ menu:
   preview:
     identifier: client-drivers-yedis-python
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Install the Python driver

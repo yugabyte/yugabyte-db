@@ -8,12 +8,11 @@ aliases:
   - /preview/manage/enterprise-edition/schedule-data-backup/
   - /preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: schedule-data-backups-1-ysql
     parent: back-up-restore-universes
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -48,8 +47,8 @@ Before scheduling a backup of your universe YSQL data, create a policy, as follo
 
 3. Select the **Tables** tab and click **Actions** to verify that backups are enabled. If disabled, click **Enable Backup**.
 
-4. Select the **Backups** tab and then select **Scheduled Backup Policies**. 
-   
+4. Select the **Backups** tab and then select **Scheduled Backup Policies**.
+
 5. Click **Create Scheduled Backup Policy** to open the dialog shown in the following illustration:
     <br><br>
 
@@ -78,7 +77,7 @@ You can disable all backups, including scheduled ones, as follows:
 1. Navigate to the universe's **Tables** tab.
 2. Click **Actions > Disable Backup**.
 
-<!--  
+<!--
 
 ## Delete a scheduled backup
 

@@ -23,6 +23,7 @@
  */
 
 #include "postgres.h"
+#include "pgstat.h"
 
 #include "miscadmin.h"
 #include "access/nbtree.h"
@@ -362,7 +363,11 @@ ybcincostestimate(struct PlannerInfo *root, struct IndexPath *path, double loop_
 				  Cost *indexStartupCost, Cost *indexTotalCost, Selectivity *indexSelectivity,
 				  double *indexCorrelation, double *indexPages)
 {
-	ybcIndexCostEstimate(path, indexSelectivity, indexStartupCost, indexTotalCost);
+	ybcIndexCostEstimate(root,
+						 path,
+						 indexSelectivity,
+						 indexStartupCost,
+						 indexTotalCost);
 }
 
 bytea *
@@ -397,7 +402,7 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 	/* get the scan */
 	scan = RelationGetIndexScan(rel, nkeys, norderbys);
 	scan->opaque = NULL;
-
+	pgstat_count_index_scan(rel);
 	return scan;
 }
 

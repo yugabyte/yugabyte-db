@@ -9,8 +9,7 @@ menu:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;<br>
@@ -44,7 +43,7 @@ cume_dist() =
   "no of rows with a value <= the current row's value" /
   "no. of rows in window"
 ```
-The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified. 
+The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified.
 
 However, the answer "Yes" to the question "is there any difference between the result produced by  each of the three functions?" is a qualified "Yes" because when certain conditions hold, there is no difference.
 
@@ -100,10 +99,10 @@ from show_t4();
 ```
 Because of the pseudorandom behavior, the actual values of the mean and standard deviation will change with each successive re-population of _"t4"_. These results are typical:
 ```
-   Some useful overall measures of t4.    
+   Some useful overall measures of t4.
 ------------------------------------------
  count(*)                          100000
- 
+
  avg(%score)                         52.4
  stddev(%score)                      11.6
 ```
@@ -122,7 +121,7 @@ select * from pr_cd_equality_report(0.01);
 ```
 Here is a summary of the results:
 ```
- count(*) | max_score | max_ratio 
+ count(*) | max_score | max_ratio
 ----------+-----------+-----------
       199 |   19.19   |   99.50
       990 |   25.53   |   99.90
@@ -139,7 +138,7 @@ In other words, the two measures give remarkably similar answers over most of th
 Now repeat the measurement for the values in the _"t4.int_score"_ column—where each possible value as about _1,000_ duplicates. Use [`cr_int_views.sql`](./cr-int-views/) to do this. And then repeat the five function executions. Now the results are very different:
 
 ```
- count(*) | max_score | max_ratio 
+ count(*) | max_score | max_ratio
 ----------+-----------+-----------
     97717 |   75.00   |   99.46
     99541 |   82.00   |   99.86

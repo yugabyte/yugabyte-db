@@ -525,14 +525,15 @@ Status PgClientSession::DropTablegroup(
   return status;
 }
 
-Status PgClientSession::RollbackSubTransaction(
-    const PgRollbackSubTransactionRequestPB& req, PgRollbackSubTransactionResponsePB* resp,
+Status PgClientSession::RollbackToSubTransaction(
+    const PgRollbackToSubTransactionRequestPB& req, PgRollbackToSubTransactionResponsePB* resp,
     rpc::RpcContext* context) {
   VLOG_WITH_PREFIX_AND_FUNC(2) << req.ShortDebugString();
   SCHECK(Transaction(PgClientSessionKind::kPlain), IllegalState,
          Format("Rollback sub transaction $0, when not transaction is running",
                 req.sub_transaction_id()));
-  return Transaction(PgClientSessionKind::kPlain)->RollbackSubTransaction(req.sub_transaction_id());
+  return Transaction(PgClientSessionKind::kPlain)->RollbackToSubTransaction(
+      req.sub_transaction_id(), context->GetClientDeadline());
 }
 
 Status PgClientSession::SetActiveSubTransaction(
@@ -796,7 +797,7 @@ Result<client::YBTransactionPtr> PgClientSession::RestartTransaction(
            "Attempted to restart when session does not require restart");
 
     const auto old_read_time = session->read_point()->GetReadTime();
-    session->SetReadPoint(client::Restart::kTrue);
+    session->RestartNonTxnReadPoint(client::Restart::kTrue);
     const auto new_read_time = session->read_point()->GetReadTime();
     VLOG_WITH_PREFIX(3) << "Restarted read: " << old_read_time << " => " << new_read_time;
     LOG_IF_WITH_PREFIX(DFATAL, old_read_time == new_read_time)

@@ -91,6 +91,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   YBCPgOid GetColocationId() const;
 
+  YBCPgOid GetTablegroupOid() const;
+
   uint32_t schema_version() const;
 
  private:
@@ -104,6 +106,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   // Attr number to column index map.
   std::unordered_map<int, size_t> attr_num_map_;
+  YBCPgOid tablegroup_oid_{kInvalidOid};
 };
 
 }  // namespace pggate

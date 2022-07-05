@@ -259,6 +259,7 @@ DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
+DECLARE_int64(cdc_intent_retention_ms);
 
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
                  "Sleep before applying intents to docdb after transaction commit");
@@ -493,6 +494,7 @@ Tablet::Tablet(const TabletInitData& data)
     transaction_participant_->IgnoreAllTransactionsStartedBefore(restoration_hybrid_time);
   }
   SyncRestoringOperationFilter(ResetSplit::kFalse);
+  external_txn_intents_state_ = std::make_unique<docdb::ExternalTxnIntentsState>();
 }
 
 Tablet::~Tablet() {
@@ -775,6 +777,11 @@ Status Tablet::OpenKeyValueTablet() {
 
   ql_storage_.reset(new docdb::QLRocksDBStorage(doc_db()));
   if (transaction_participant_) {
+    // We need to set the "cdc_sdk_min_checkpoint_op_id" so that intents don't get
+    // garbage collected after transactions are loaded.
+    transaction_participant_->SetIntentRetainOpIdAndTime(
+        metadata_->cdc_sdk_min_checkpoint_op_id(),
+        MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     transaction_participant_->SetDB(doc_db(), &key_bounds_, &pending_non_abortable_op_counter_);
   }
 
@@ -1275,8 +1282,9 @@ Status Tablet::ApplyKeyValueRowOperations(
 
     // See comments for PrepareExternalWriteBatch.
     rocksdb::WriteBatch intents_write_batch;
-    bool has_non_exteranl_records = PrepareExternalWriteBatch(
-        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch);
+    bool has_non_external_records = PrepareExternalWriteBatch(
+        put_batch, hybrid_time, intents_db_.get(), regular_write_batch_ptr, &intents_write_batch,
+        external_txn_intents_state_.get());
 
     if (intents_write_batch.Count() != 0) {
       if (!metadata_->is_under_twodc_replication()) {
@@ -1286,7 +1294,7 @@ Status Tablet::ApplyKeyValueRowOperations(
     }
 
     docdb::NonTransactionalWriter writer(put_batch, hybrid_time);
-    if (!already_applied_to_regular_db && has_non_exteranl_records) {
+    if (!already_applied_to_regular_db && has_non_external_records) {
       regular_write_batch.SetDirectWriter(&writer);
     }
     if (regular_write_batch.Count() != 0 || regular_write_batch.HasDirectWriter()) {
@@ -1870,7 +1878,7 @@ Status Tablet::CreatePreparedChangeMetadata(
   return Status::OK();
 }
 
-Status Tablet::AddTable(const TableInfoPB& table_info) {
+Status Tablet::AddTableInMemory(const TableInfoPB& table_info) {
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(table_info.schema(), &schema));
 
@@ -1882,9 +1890,22 @@ Status Tablet::AddTable(const TableInfoPB& table_info) {
       table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
       table_info.schema_version());
 
-  RETURN_NOT_OK(metadata_->Flush());
-
   return Status::OK();
+}
+
+Status Tablet::AddTable(const TableInfoPB& table_info) {
+  RETURN_NOT_OK(AddTableInMemory(table_info));
+  return metadata_->Flush();
+}
+
+Status Tablet::AddMultipleTables(
+    const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos) {
+  // If nothing has changed then return.
+  RSTATUS_DCHECK_GT(table_infos.size(), 0, Ok, "No table to add to metadata");
+  for (const auto& table_info : table_infos) {
+    RETURN_NOT_OK(AddTableInMemory(table_info));
+  }
+  return metadata_->Flush();
 }
 
 Status Tablet::RemoveTable(const std::string& table_id) {
@@ -2309,7 +2330,7 @@ Status Tablet::BackfillIndexes(
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
   QLTableRow row;
-  std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>> index_requests;
+  docdb::IndexRequests index_requests;
 
   BackfillParams backfill_params{deadline};
   constexpr auto kProgressInterval = 1000;
@@ -2389,7 +2410,7 @@ Status Tablet::UpdateIndexInBatches(
     const std::vector<IndexInfo>& indexes,
     const HybridTime write_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
   QLExprExecutor expr_executor;
@@ -2422,7 +2443,7 @@ Result<std::shared_ptr<YBSession>> Tablet::GetSessionForVerifyOrBackfill(
 Status Tablet::FlushWriteIndexBatchIfRequired(
     const HybridTime write_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (index_requests->size() < FLAGS_backfill_index_write_batch_size) {
     return Status::OK();
@@ -2433,7 +2454,7 @@ Status Tablet::FlushWriteIndexBatchIfRequired(
 Status Tablet::FlushWriteIndexBatch(
     const HybridTime write_time,
     const CoarseTimePoint deadline,
-    std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+    docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   if (!client_future_.valid()) {
     return STATUS_FORMAT(IllegalState, "Client future is not set up for $0", tablet_id());
@@ -3579,6 +3600,7 @@ Status Tablet::TriggerPostSplitCompactionIfNeeded(
 
 void Tablet::TriggerPostSplitCompactionSync() {
   TEST_PAUSE_IF_FLAG(TEST_pause_before_post_split_compaction);
+  LOG_WITH_PREFIX(INFO) << "Beginning post-split compaction on this tablet";
   WARN_WITH_PREFIX_NOT_OK(
       ForceFullRocksDBCompact(), LogPrefix() + "Failed to compact post-split tablet.");
 }
@@ -3784,6 +3806,12 @@ Schema Tablet::GetKeySchema(const std::string& table_id) const {
 }
 
 HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
+  auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    // Prevent markers from being deleted when we cannot calculate retention time during shutdown.
+    return HybridTime::kMin;
+  }
+
   // Query order is important. Since it is not atomic, we should be sure that write would not sneak
   // our queries. So we follow write record travel order.
 

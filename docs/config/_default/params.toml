@@ -1,0 +1,83 @@
+author = "Team Yugabyte"
+description = "YugabyteDB, the transactional, high-performance database for building internet-scale, globally-distributed apps."
+copyright = "Yugabyte, Inc."
+privacy_policy = "https://www.yugabyte.com/privacy-policy/"
+algolia_docsearch = true
+version_menu = "Releases"
+
+[algolia]
+  index = "yugabyte"
+  appID = "UMBCUJCBE8"
+  apiKey = "a879f0ab89b677264d0c6e087b714fd8"
+
+[path_base_for_github_subdir]
+  from = "content/en/(.*?)/"
+  to = "content/$1/"
+
+[[links.developer]]
+  name = "GitHub"
+  url = "https://github.com/yugabyte/yugabyte-db"
+  icon = "fab fa-github"
+
+[[links.developer]]
+  name = "Slack"
+  url = "https://communityinviter.com/apps/yugabyte-db/register"
+  icon = "fab fa-slack"
+
+[[links.developer]]
+  name = "Twitter"
+  url = "https://twitter.com/yugabyte"
+  icon = "fab fa-twitter"
+
+[[links.developer]]
+  name = "LinkedIn"
+  url = "https://www.linkedin.com/company/yugabyte"
+  icon = "fab fa-linkedin"
+
+[[links.developer]]
+  name = "YouTube"
+  url = "https://www.youtube.com/channel/UCL9BhSLRowqQ1TyBndhiCEw"
+  icon = "fab fa-youtube"
+
+[ui]
+  sidebar_cache_limit = 15000
+  navbar_logo = true
+  sidebar_menu_compact = true
+  sidebar_menu_foldable = true
+  sidebar_search_disable = true
+  ul_show = 1
+
+[[versions]]
+  url = "/preview/"
+  version = "v2.15 (Preview)"
+[[versions]]
+  url = "/stable/"
+  version = "v2.12 (Stable)"
+[[versions]]
+  url = "/v2.8/"
+  version = "v2.8"
+[[versions]]
+  url = "/v2.6/"
+  version = "v2.6"
+[[versions]]
+  url = "/v2.4/"
+  version = "v2.4"
+[[versions]]
+  url = "https://docs-archive.yugabyte.com"
+  version = "Unsupported versions"
+
+# Custom params, regardless of theme
+[yb]
+  terms_of_service = "https://www.yugabyte.com/terms-of-service/"
+
+# Header logo link
+[yb.navbar_logo]
+  url = "https://www.yugabyte.com/"
+  title = "Yugabyte"
+  newTab = true
+# Footer logo link
+[yb.footer_logo]
+  path = "/images/ybdocs-white.png"
+  url = "https://www.yugabyte.com/"
+  title = "Yugabyte"
+  newTab = true

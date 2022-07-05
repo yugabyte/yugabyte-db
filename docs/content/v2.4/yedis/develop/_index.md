@@ -2,7 +2,7 @@
 title: Develop
 linkTitle: Develop
 description: Develop applications on YEDIS
-headcontent: 
+headcontent:
 image: /images/section_icons/index/develop.png
 menu:
   v2.4:
@@ -10,6 +10,7 @@ menu:
     parent: yedis
     weight: 2900
 
+type: indexpage
 ---
 
 <div class="row">

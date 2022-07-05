@@ -7,8 +7,7 @@ menu:
     identifier: join-the-staged-data
     parent: ingest-the-covidcast-data
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The section [Inspect the COVIDcast .csv files](../inspect-the-csv-files/) concluded by showing that the three staging tables, one for each `.csv` file, have the same primary key whose columns have the meaning _"(survey_date, state)"_. This means that the data in all of the tables can be joined using this primary key into a single table. It showed, further, that the three "payload" columns in each of the staging tables, which there have the same names—_"value"_, _"stderr"_, and _"sample_size"_—can be carried over by the join into columns whose names reflect their origin and therefore their ultimate meaning, thus:
@@ -109,5 +108,3 @@ $body$;
 ```
 
 Notice that if [_"assert_assumptions_ok()"_](../ingest-scripts/cr-assert-assumptions-ok-sql) aborts with an assert failure, then _"cr_covidcast_fb_survey_results()"_ will not be called.
-
-

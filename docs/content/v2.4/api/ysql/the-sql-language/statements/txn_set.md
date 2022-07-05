@@ -8,8 +8,7 @@ menu:
   v2.4:
     identifier: txn_set
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -33,12 +32,12 @@ Use the `SET TRANSACTION` statement to set the current transaction isolation lev
   </li>
 </ul>
 
-<div class="tab-content"> 
+<div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_transaction,transaction_mode,isolation_level,read_write_mode,deferrable_mode.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_transaction,transaction_mode,isolation_level,read_write_mode,deferrable_mode.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_transaction,transaction_mode,isolation_level,read_write_mode,deferrable_mode.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/set_transaction,transaction_mode,isolation_level,read_write_mode,deferrable_mode.diagram.md" %}}
   </div>
 </div>
 

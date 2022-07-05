@@ -10,6 +10,7 @@ menu:
     identifier: deploy-kubernetes
     parent: deploy
     weight: 620
+type: indexpage
 ---
 
 <div class="row">

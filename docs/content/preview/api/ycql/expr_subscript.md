@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/expr_subscript
   - /preview/api/ycql/expr_subscript
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use subscripted expressions to access elements in a multi-element value, such as a map collection by using operator `[]`. Subscripted column expressions can be used when writing the same way as a [column expression](../expr_simple##Column). For example, if `ids` refers to a column of type `LIST`, `ids[7]` refers to the third element of the list `ids`, which can be set in an [UPDATE](../dml_update/) statement.

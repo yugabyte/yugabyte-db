@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/cmd_copy/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -36,10 +35,10 @@ Use the `COPY` statement to transfer data between tables and files. `COPY TO` co
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/copy_from,copy_to,copy_option.diagram.md" %}}
   </div>
 </div>
 
@@ -138,7 +137,7 @@ yugabyte=# COPY users FROM '/home/yuga/Desktop/users.txt.sql' DELIMITER ',' CSV 
 ```
 
 
-### Import a large table using smaller transactions
+### Performance tips for large tables
 
 When importing a very large table, Yugabyte recommends using many smaller transactions (rather than one large transaction).
 This can be achieved natively by using the `ROWS_PER_TRANSACTION` option.
@@ -152,3 +151,8 @@ yugabyte=# COPY large_table FROM '/home/yuga/Desktop/large_table.csv'
 - If the table does not exist, errors are raised.
 - `COPY TO` can only be used with regular tables.
 - `COPY FROM` can be used with tables, foreign tables, and views.
+
+Additionally, the following copy options may help to speed up copying, or allow for faster recovery from a partial state:
+* `DISABLE_FK_CHECK` skips the foreign key check when copying new rows to the table.
+* `REPLACE` replaces the existing row in the table if the new row's primary/unique key conflicts with that of the existing row.
+* `SKIP n` skips the first `n` rows of the file. `n` must be a nonnegative integer.

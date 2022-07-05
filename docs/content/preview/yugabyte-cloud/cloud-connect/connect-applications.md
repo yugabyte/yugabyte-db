@@ -5,12 +5,11 @@ description: Connect applications to YugabyteDB Managed clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-applications
     parent: cloud-connect
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver.

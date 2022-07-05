@@ -24,10 +24,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -38,11 +40,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class TableManagerYb extends DevopsBase {
 
   public enum CommandSubType {
@@ -162,19 +167,20 @@ public class TableManagerYb extends DevopsBase {
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
 
         if (!customerConfig.name.toLowerCase().equals("nfs")) {
-          List<RegionLocations> regionLocations =
-              backupUtil.getRegionLocationsList(customerConfig.getData());
-
-          for (RegionLocations regionLocation : regionLocations) {
-            if (StringUtils.isNotBlank(regionLocation.REGION)
-                && StringUtils.isNotBlank(regionLocation.LOCATION)) {
-              commandArgs.add("--region");
-              commandArgs.add(regionLocation.REGION);
-              commandArgs.add("--region_location");
-              commandArgs.add(
-                  BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.LOCATION));
+          CustomerConfigStorageWithRegionsData regionsData =
+              (CustomerConfigStorageWithRegionsData) customerConfig.getDataObject();
+          if (CollectionUtils.isNotEmpty(regionsData.regionLocations))
+            for (CustomerConfigStorageWithRegionsData.RegionLocation regionLocation :
+                regionsData.regionLocations) {
+              if (StringUtils.isNotBlank(regionLocation.region)
+                  && StringUtils.isNotBlank(regionLocation.location)) {
+                commandArgs.add("--region");
+                commandArgs.add(regionLocation.region);
+                commandArgs.add("--region_location");
+                commandArgs.add(
+                    BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.location));
+              }
             }
-          }
         }
 
         backupKeysFile =
@@ -196,7 +202,7 @@ public class TableManagerYb extends DevopsBase {
         commandArgs.add("create");
         extraVars.putAll(customerConfig.dataAsMap());
 
-        LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+        log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
         return shellProcessHandler.run(commandArgs, extraVars, backupTableParams.backupUuid);
 
       case BULK_IMPORT:
@@ -238,7 +244,7 @@ public class TableManagerYb extends DevopsBase {
         backupTableParams = (BackupTableParams) taskParams;
         customer = Customer.find.query().where().idEq(universe.customerId).findOne();
         customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
-        LOG.info("Deleting backup at location {}", backupTableParams.storageLocation);
+        log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
             accessKey,
@@ -254,7 +260,7 @@ public class TableManagerYb extends DevopsBase {
         break;
     }
 
-    LOG.info("Command to run: [" + String.join(" ", commandArgs) + "]");
+    log.info("Command to run: [" + String.join(" ", commandArgs) + "]");
     return shellProcessHandler.run(commandArgs, extraVars);
   }
 
@@ -293,7 +299,8 @@ public class TableManagerYb extends DevopsBase {
     commandArgs.add(customerConfig.name.toLowerCase());
     if (customerConfig.name.toLowerCase().equals("nfs")) {
       commandArgs.add("--nfs_storage_path");
-      commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
+      commandArgs.add(
+          ((CustomerConfigStorageNFSData) customerConfig.getDataObject()).backupLocation);
     }
     if (nodeToNodeTlsEnabled) {
       commandArgs.add("--certs_dir");

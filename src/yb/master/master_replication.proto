@@ -131,6 +131,25 @@ message IsBootstrapRequiredResponsePB {
   repeated TableResult results = 2;
 }
 
+message GetUDTypeMetadataRequestPB {
+  // The table namespace (if empty - uses default namespace).
+ optional NamespaceIdentifierPB namespace = 1;
+ optional bool pg_enum_info = 2 [default = false];
+}
+
+message PgEnumInfoPB {
+  // PG enum Oid.
+ required uint32 oid = 1;
+ // PG enum label.
+ required string label = 2;
+}
+
+message GetUDTypeMetadataResponsePB {
+ // The error, if an error occurred with this request.
+ optional MasterErrorPB error = 1;
+ repeated PgEnumInfoPB enums = 2;
+}
+
 message SetupUniverseReplicationRequestPB {
   optional string producer_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
@@ -165,6 +184,8 @@ message AlterUniverseReplicationRequestPB {
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
+
+  optional bool remove_table_ignore_errors = 8 [default = false];
 }
 
 message AlterUniverseReplicationResponsePB {
@@ -238,6 +259,7 @@ service MasterReplication {
   rpc GetCDCDBStreamInfo(GetCDCDBStreamInfoRequestPB) returns (GetCDCDBStreamInfoResponsePB);
   rpc UpdateCDCStream (UpdateCDCStreamRequestPB) returns (UpdateCDCStreamResponsePB);
   rpc IsBootstrapRequired (IsBootstrapRequiredRequestPB) returns (IsBootstrapRequiredResponsePB);
+  rpc GetUDTypeMetadata(GetUDTypeMetadataRequestPB) returns (GetUDTypeMetadataResponsePB);
 
   // Cluster-level Replication.
   rpc SetupUniverseReplication(SetupUniverseReplicationRequestPB)

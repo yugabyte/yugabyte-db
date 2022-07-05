@@ -288,6 +288,8 @@ class YBClient {
   Status GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
                                 PartitionSchema* partition_schema);
+  Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
+                        StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);
 
   Status GetTableSchemaById(const TableId& table_id, std::shared_ptr<YBTableInfo> info,
@@ -586,6 +588,8 @@ class YBClient {
   //
   // 'tables' is appended to only on success.
   Result<std::vector<YBTableName>> ListUserTables(const NamespaceId& ns_id = "");
+
+  Result<std::unordered_map<uint32_t, string>> GetPgEnumOidLabelMap(const NamespaceName& ns_name);
 
   // List all running tablets' uuids for this table.
   // 'tablets' is appended to only on success.

@@ -1,10 +1,13 @@
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+
 import java.util.Collection;
 import java.util.UUID;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.NodeAccessTaskParams;
@@ -16,18 +19,22 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey;
 import com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlatformMetrics;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Retryable
 public class RotateAccessKey extends UniverseTaskBase {
 
   @Inject NodeManager nodeManager;
+  @Inject MetricService metricService;
 
   @Inject
   protected RotateAccessKey(BaseTaskDependencies baseTaskDependencies) {
@@ -48,6 +55,7 @@ public class RotateAccessKey extends UniverseTaskBase {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     String customSSHUser = Util.DEFAULT_YB_SSH_USER;
     Universe universe = Universe.getOrBadRequest(universeUUID);
+    checkPausedOrNonLiveNodes(universe, newAccessKey);
     try {
       lockUniverse(-1);
       // create check connection with current keys and create add key task
@@ -72,21 +80,17 @@ public class RotateAccessKey extends UniverseTaskBase {
                 "VerifyNodeSSHAccess",
                 customSSHUser)
             .setSubTaskGroupType(subtaskGroupType);
-        boolean manuallyProvisioned = isManuallyProvisioned(clusterAccessKey);
-        if (!manuallyProvisioned) {
-          checkSudoUserAllowed(newAccessKey);
-          // verify conenction to sudo user
-          createNodeAccessTasks(
-                  clusterNodes,
-                  clusterAccessKey,
-                  customerUUID,
-                  providerUUID,
-                  universeUUID,
-                  newAccessKey,
-                  "VerifyNodeSSHAccess",
-                  sudoSSHUser)
-              .setSubTaskGroupType(subtaskGroupType);
-        }
+        // verify conenction to sudo user
+        createNodeAccessTasks(
+                clusterNodes,
+                clusterAccessKey,
+                customerUUID,
+                providerUUID,
+                universeUUID,
+                newAccessKey,
+                "VerifyNodeSSHAccess",
+                sudoSSHUser)
+            .setSubTaskGroupType(subtaskGroupType);
         // add key to yugabyte user
         createNodeAccessTasks(
                 clusterNodes,
@@ -98,30 +102,28 @@ public class RotateAccessKey extends UniverseTaskBase {
                 "AddAuthorizedKey",
                 customSSHUser)
             .setSubTaskGroupType(subtaskGroupType);
-        if (!manuallyProvisioned) {
-          // add key to sudo user
-          createNodeAccessTasks(
-                  clusterNodes,
-                  clusterAccessKey,
-                  customerUUID,
-                  providerUUID,
-                  universeUUID,
-                  newAccessKey,
-                  "AddAuthorizedKey",
-                  sudoSSHUser)
-              .setSubTaskGroupType(subtaskGroupType);
-          // remove key from sudo user
-          createNodeAccessTasks(
-                  clusterNodes,
-                  newAccessKey,
-                  customerUUID,
-                  providerUUID,
-                  universeUUID,
-                  clusterAccessKey,
-                  "RemoveAuthorizedKey",
-                  sudoSSHUser)
-              .setSubTaskGroupType(subtaskGroupType);
-        }
+        // add key to sudo user
+        createNodeAccessTasks(
+                clusterNodes,
+                clusterAccessKey,
+                customerUUID,
+                providerUUID,
+                universeUUID,
+                newAccessKey,
+                "AddAuthorizedKey",
+                sudoSSHUser)
+            .setSubTaskGroupType(subtaskGroupType);
+        // remove key from sudo user
+        createNodeAccessTasks(
+                clusterNodes,
+                newAccessKey,
+                customerUUID,
+                providerUUID,
+                universeUUID,
+                clusterAccessKey,
+                "RemoveAuthorizedKey",
+                sudoSSHUser)
+            .setSubTaskGroupType(subtaskGroupType);
         // remove key from yugabte user
         createNodeAccessTasks(
                 clusterNodes,
@@ -133,11 +135,18 @@ public class RotateAccessKey extends UniverseTaskBase {
                 "RemoveAuthorizedKey",
                 customSSHUser)
             .setSubTaskGroupType(subtaskGroupType);
+        createUpdateUniverseAccessKeyTask(universeUUID, cluster.uuid, newAccessKey.getKeyCode())
+            .setSubTaskGroupType(subtaskGroupType);
       }
-      createUpdateUniverseAccessKeyTask(universeUUID, newAccessKey.getKeyCode())
-          .setSubTaskGroupType(subtaskGroupType);
       getRunnableTask().runSubTasks();
+      metricService.setOkStatusMetric(
+          buildMetricTemplate(PlatformMetrics.SSH_KEY_ROTATION_STATUS, universe));
     } catch (Exception e) {
+      log.error(
+          "Access Key Rotation failed for universe: {} with uuid {}",
+          universe.name,
+          universe.universeUUID);
+      setSSHKeyRotationFailureMetric(universe);
       throw new RuntimeException(e);
     } finally {
       unlockUniverseForUpdate();
@@ -179,13 +188,14 @@ public class RotateAccessKey extends UniverseTaskBase {
   }
 
   public SubTaskGroup createUpdateUniverseAccessKeyTask(
-      UUID universeUUID, String newAccessKeyCode) {
+      UUID universeUUID, UUID clusterUUID, String newAccessKeyCode) {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("UpdateUniverseAccessKey", executor);
 
     UpdateUniverseAccessKey.Params params = new UpdateUniverseAccessKey.Params();
     params.newAccessKeyCode = newAccessKeyCode;
     params.universeUUID = universeUUID;
+    params.clusterUUID = clusterUUID;
     UpdateUniverseAccessKey task = createTask(UpdateUniverseAccessKey.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
@@ -194,14 +204,30 @@ public class RotateAccessKey extends UniverseTaskBase {
     return subTaskGroup;
   }
 
-  private boolean isManuallyProvisioned(AccessKey accessKey) {
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-    return keyInfo.skipProvisioning && keyInfo.sshUser != null;
+  private void checkPausedOrNonLiveNodes(Universe universe, AccessKey newAccessKey) {
+    if (universe.getUniverseDetails().universePaused) {
+      setSSHKeyRotationFailureMetric(universe);
+      throw new RuntimeException(
+          "The universe "
+              + universe.name
+              + " is paused,"
+              + " cannot run access key rotation. Retry with access key "
+              + newAccessKey.getKeyCode()
+              + " after resuming it!");
+    } else if (!universe.allNodesLive()) {
+      setSSHKeyRotationFailureMetric(universe);
+      throw new RuntimeException(
+          "The universe "
+              + universe.name
+              + " has non-live nodes,"
+              + " cannot run access key rotation. Retry with access key "
+              + newAccessKey.getKeyCode()
+              + " after fixing node status!");
+    }
   }
 
-  private void checkSudoUserAllowed(AccessKey accessKey) {
-    if (accessKey.getKeyInfo().skipProvisioning) {
-      throw new RuntimeException("Expected new access key to have skip provisioning to be false!");
-    }
+  private void setSSHKeyRotationFailureMetric(Universe universe) {
+    metricService.setFailureStatusMetric(
+        buildMetricTemplate(PlatformMetrics.SSH_KEY_ROTATION_STATUS, universe));
   }
 }

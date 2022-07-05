@@ -72,6 +72,7 @@
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
 #include "yb/master/xcluster_split_driver.h"
+#include "yb/master/sys_catalog.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -100,6 +101,12 @@ template<class T>
 class AtomicGauge;
 
 #define CALL_GTEST_TEST_CLASS_NAME_(...) GTEST_TEST_CLASS_NAME_(__VA_ARGS__)
+
+#define VERIFY_NAMESPACE_FOUND(expr, resp) \
+  RESULT_CHECKER_HELPER( \
+      expr, \
+      if (!__result.ok()) { return SetupError((resp)->mutable_error(), __result.status()); });
+
 namespace pgwrapper {
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBMarkDeleted));
 class CALL_GTEST_TEST_CLASS_NAME_(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(DropDBUpdateSysTablet));
@@ -170,7 +177,12 @@ class CatalogManager :
   void CompleteShutdown();
 
   // Create Postgres sys catalog table.
-  Status CreateYsqlSysTable(const CreateTableRequestPB* req, CreateTableResponsePB* resp);
+  // If a non-null value of change_meta_req is passed then it does not
+  // add the ysql sys table into the raft metadata but adds it in the request
+  // pb. The caller is then responsible for performing the ChangeMetadataOperation.
+  Status CreateYsqlSysTable(
+      const CreateTableRequestPB* req, CreateTableResponsePB* resp,
+      tablet::ChangeMetadataRequestPB* change_meta_req = nullptr);
 
   Status ReplicatePgMetadataChange(const tablet::ChangeMetadataRequestPB* req);
 
@@ -493,6 +505,11 @@ class CatalogManager :
   virtual Status DeleteCDCStreamsForTables(const vector<TableId>& table_ids)
       EXCLUDES(mutex_);
 
+  // Delete CDC streams metadata for a table.
+  virtual Status DeleteCDCStreamsMetadataForTable(const TableId& table_id) EXCLUDES(mutex_);
+  virtual Status DeleteCDCStreamsMetadataForTables(const vector<TableId>& table_ids)
+      EXCLUDES(mutex_);
+
   virtual Status ChangeEncryptionInfo(const ChangeEncryptionInfoRequestPB* req,
                                               ChangeEncryptionInfoResponsePB* resp);
 
@@ -787,6 +804,13 @@ class CatalogManager :
       const TableInfoPtr& table_info, bool succeed_if_create_in_progress);
 
   Result<std::string> GetPgSchemaName(const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<std::string, uint32_t>> GetPgAttNameTypidMap(
+      const TableInfoPtr& table_info) REQUIRES_SHARED(mutex_);
+
+  Result<std::unordered_map<uint32_t, PgTypeInfo>> GetPgTypeInfo(
+      const scoped_refptr<NamespaceInfo>& namespace_info, vector<uint32_t>* type_oids)
+      REQUIRES_SHARED(mutex_);
 
   void AssertLeaderLockAcquiredForReading() const override {
     leader_lock_.AssertAcquiredForReading();
@@ -1406,6 +1430,11 @@ class CatalogManager :
     return false;
   }
 
+  virtual bool IsTablePartOfBootstrappingCdcStream(const TableInfo& table_info) const override {
+    // Default value.
+    return false;
+  }
+
   virtual bool IsTableCdcProducer(const TableInfo& table_info) const REQUIRES_SHARED(mutex_) {
     // Default value.
     return false;
@@ -1464,6 +1493,23 @@ class CatalogManager :
 
   // Tablets that was hidden instead of deleting, used to cleanup such tablets when time comes.
   std::vector<TabletInfoPtr> hidden_tablets_ GUARDED_BY(mutex_);
+
+  // Split parent tablets that are now hidden and still being replicated by some CDC stream. Keep
+  // track of these tablets until their children tablets start being polled, at which point they
+  // can be deleted and cdc_state metadata can also be cleaned up. retained_by_xcluster_ is a
+  // subset of hidden_tablets_.
+  struct HiddenReplicationParentTabletInfo {
+    TableId table_id_;
+    std::string parent_tablet_id_;
+    std::array<TabletId, kNumSplitParts> split_tablets_;
+  };
+  std::unordered_map<TabletId, HiddenReplicationParentTabletInfo> retained_by_xcluster_
+      GUARDED_BY(mutex_);
+
+  // TODO(jhe) Cleanup how we use ScheduledTaskTracker, move is_running and util functions to class.
+  // Background task for deleting parent split tablets retained by xCluster streams.
+  rpc::ScheduledTaskTracker xcluster_parent_tablet_deletion_task_;
+  std::atomic<bool> xcluster_parent_tablet_deletion_task_running_{false};
 
   // Namespace maps: namespace-id -> NamespaceInfo and namespace-name -> NamespaceInfo
   NamespaceInfoMap namespace_ids_map_ GUARDED_BY(mutex_);

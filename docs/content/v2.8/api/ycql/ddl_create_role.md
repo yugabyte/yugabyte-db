@@ -7,8 +7,7 @@ menu:
   v2.8:
     parent: api-cassandra
     weight: 1235
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

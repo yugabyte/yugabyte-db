@@ -25,7 +25,7 @@ const stepsObj = {
   firstStep: 'firstStep',
   secondStep: 'secondStep',
   thirdStep: 'thirdStep'
-}
+};
 
 const POLLING_INTERVAL = 3000; // ten seconds
 
@@ -87,24 +87,24 @@ export const UniverseSupportBundle = (props) => {
 
   const handleStepChange = (step) => {
     setSteps(step);
-  }
+  };
 
   const handleDeleteBundle = (universeUUID, bundleUUID) => {
     dispatch(deleteBundleByBundleUUID(universeUUID, bundleUUID)).then(() => {
-      listSupportBundle(universeUUID)
-    })
-  }
+      listSupportBundle(universeUUID);
+    });
+  };
 
   const handleDownloadBundle = (universeUUID, bundleUUID) => {
     downloadSupportBundle(universeUUID, bundleUUID);
-  }
+  };
 
   const isSubmitDisabled = () => {
     if(steps === stepsObj.secondStep) {
       return payload && payload.components && payload.components.length === 0;
     }
     return false;
-  }
+  };
 
   return (
     <Fragment>
@@ -143,7 +143,11 @@ export const UniverseSupportBundle = (props) => {
         {steps === stepsObj.secondStep && (
           <SecondStep
             onOptionsChange={(selectedOptions) => {
-              setPayload(selectedOptions);
+              if(selectedOptions) {
+                setPayload(selectedOptions);
+              } else {
+                setPayload(defaultOptions)
+              }
             }}
           />
         )}
@@ -166,21 +170,21 @@ export function getSupportBundle(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle`;
   const request = axios.get(endpoint);
-  return listSupportBundle(request)
+  return listSupportBundle(request);
 }
 
 export function crateSupportBundle(universeUUID, supportBundle) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle`;
   const request = axios.post(endpoint, supportBundle);
-  return createSupportBundle(request)
+  return createSupportBundle(request);
 }
 
 export function deleteBundleByBundleUUID(universeUUID, supportBundleUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/support_bundle/${supportBundleUUID}`;
   const request = axios.delete(endpoint);
-  return createSupportBundle(request)
+  return createSupportBundle(request);
 }
 
 export function downloadSupportBundle(universeUUID, supportBundleUUID) {

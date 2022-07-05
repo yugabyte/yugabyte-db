@@ -19,10 +19,9 @@
 
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/doc_scanspec_util.h"
 #include "yb/docdb/value_type.h"
-
-#include "yb/rocksdb/db/compaction.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -186,12 +185,17 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   return result;
 }
 
-std::vector<KeyEntryValue> DocQLScanSpec::range_components(const bool lower_bound) const {
-  return GetRangeKeyScanSpec(
-      schema_, nullptr /* prefixed_range_components */,
-      range_bounds_.get(), lower_bound, include_static_columns_);
+std::vector<KeyEntryValue> DocQLScanSpec::range_components(const bool lower_bound,
+                                                           std::vector<bool> *inclusivities,
+                                                           bool use_strictness) const {
+  return GetRangeKeyScanSpec(schema_,
+                             nullptr /* prefixed_range_components */,
+                             range_bounds_.get(),
+                             inclusivities,
+                             lower_bound,
+                             include_static_columns_,
+                             use_strictness);
 }
-
 namespace {
 
 template <class Predicate>
@@ -276,65 +280,21 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
   return result;
 }
 
-rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
-
-namespace {
-
-std::vector<KeyBytes> EncodePrimitiveValues(
-    const std::vector<KeyEntryValue>& source, size_t min_size) {
-  size_t size = source.size();
-  std::vector<KeyBytes> result(std::max(min_size, size));
-  for (size_t i = 0; i != size; ++i) {
-    source[i].AppendToKey(&result[i]);
-  }
-  return result;
-}
-
-Slice ValueOrEmpty(const Slice* slice) { return slice ? *slice : Slice(); }
-
-// Checks that lhs >= rhs, empty values means positive and negative infinity appropriately.
-bool GreaterOrEquals(const Slice& lhs, const Slice& rhs) {
-  if (lhs.empty() || rhs.empty()) {
-    return true;
-  }
-  return lhs.compare(rhs) >= 0;
-}
-
-class RangeBasedFileFilter : public rocksdb::ReadFileFilter {
- public:
-  RangeBasedFileFilter(const std::vector<KeyEntryValue>& lower_bounds,
-                       const std::vector<KeyEntryValue>& upper_bounds)
-      : lower_bounds_(EncodePrimitiveValues(lower_bounds, upper_bounds.size())),
-        upper_bounds_(EncodePrimitiveValues(upper_bounds, lower_bounds.size())) {
-  }
-
-  bool Filter(const rocksdb::FdWithBoundaries& file) const override {
-    for (size_t i = 0; i != lower_bounds_.size(); ++i) {
-      auto lower_bound = lower_bounds_[i].AsSlice();
-      auto upper_bound = upper_bounds_[i].AsSlice();
-      rocksdb::UserBoundaryTag tag = TagForRangeComponent(i);
-      auto smallest = ValueOrEmpty(file.smallest.user_value_with_tag(tag));
-      auto largest = ValueOrEmpty(file.largest.user_value_with_tag(tag));
-      if (!GreaterOrEquals(upper_bound, smallest) || !GreaterOrEquals(largest, lower_bound)) {
-        return false;
-      }
-    }
-    return true;
-  }
- private:
-  std::vector<KeyBytes> lower_bounds_;
-  std::vector<KeyBytes> upper_bounds_;
-};
-
-} // namespace
-
 std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const {
-  auto lower_bound = range_components(true);
-  auto upper_bound = range_components(false);
+  std::vector<bool> lower_bound_incl;
+  auto lower_bound = range_components(true, &lower_bound_incl, false);
+  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
+
+  std::vector<bool> upper_bound_incl;
+  auto upper_bound = range_components(false, &upper_bound_incl, false);
+  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
   if (lower_bound.empty() && upper_bound.empty()) {
     return std::shared_ptr<rocksdb::ReadFileFilter>();
   } else {
-    return std::make_shared<RangeBasedFileFilter>(std::move(lower_bound), std::move(upper_bound));
+    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
+                                                    std::move(lower_bound_incl),
+                                                    std::move(upper_bound),
+                                                    std::move(upper_bound_incl));
   }
 }
 

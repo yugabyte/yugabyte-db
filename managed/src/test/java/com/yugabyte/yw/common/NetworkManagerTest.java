@@ -49,7 +49,7 @@ public class NetworkManagerTest extends FakeDBApplication {
       UUID regionUUID, UUID providerUUID, String customPayload, boolean mimicError) {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
     } else {
       response.code = 0;
@@ -62,7 +62,7 @@ public class NetworkManagerTest extends FakeDBApplication {
   private JsonNode runCommand(UUID regionUUID, String commandType, boolean mimicError) {
     ShellResponse response = new ShellResponse();
     if (mimicError) {
-      response.message = "{\"error\": \"Unknown Error\"}";
+      response.message = "Unknown error occurred";
       response.code = 99;
     } else {
       response.code = 0;
@@ -98,7 +98,9 @@ public class NetworkManagerTest extends FakeDBApplication {
           } catch (RuntimeException re) {
             assertEquals(
                 re.getMessage(),
-                "YBCloud command network (" + commandType + ") failed to execute.");
+                "YBCloud command network ("
+                    + commandType
+                    + ") failed to execute. Unknown error occurred");
           }
         });
   }

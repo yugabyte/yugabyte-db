@@ -677,7 +677,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 	OIDNewHeap = heap_create_with_catalog(NewHeapName,
 										  namespaceid,
 										  NewTableSpace,
-										  InvalidOid, /* tablegroup */
+										  InvalidOid, /* reltablegroup */
 										  InvalidOid,
 										  InvalidOid,
 										  InvalidOid,
@@ -1605,6 +1605,13 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_UNLOGGED;
 	else if (newrelpersistence == RELPERSISTENCE_PERMANENT)
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_PERMANENT;
+
+	/*
+	 * For YB materialized views, we need to drop and create the index instead
+	 * of reindexing the same index.
+	 */
+	if (IsYBRelationById(OIDOldHeap))
+		reindex_flags |= REINDEX_REL_YB_DROP_AND_CREATE;
 
 	reindex_relation(OIDOldHeap, reindex_flags, 0);
 

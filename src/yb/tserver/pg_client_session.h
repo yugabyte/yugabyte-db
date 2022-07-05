@@ -59,7 +59,7 @@ namespace tserver {
     (FinishTransaction) \
     (InsertSequenceTuple) \
     (ReadSequenceTuple) \
-    (RollbackSubTransaction) \
+    (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TruncateTable) \
     (UpdateSequenceTuple) \

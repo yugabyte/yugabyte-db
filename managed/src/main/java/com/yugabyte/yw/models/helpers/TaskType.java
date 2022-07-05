@@ -5,8 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseAccessKey;
-
 /** These are the various types of user tasks and internal tasks. */
 public enum TaskType {
 
@@ -20,6 +18,8 @@ public enum TaskType {
   CreateUniverse("CreateUniverse"),
 
   ReadOnlyClusterCreate("ReadOnlyClusterCreate"),
+
+  ReadOnlyKubernetesClusterDelete("ReadOnlyKubernetesClusterDelete"),
 
   ReadOnlyClusterDelete("ReadOnlyClusterDelete"),
 
@@ -56,6 +56,8 @@ public enum TaskType {
 
   ImportIntoTable("ImportIntoTable"),
 
+  RunApiTriggeredHooks("RunApiTriggeredHooks"),
+
   // TODO: Mark it as deprecated once UpgradeUniverse related APIs are removed
   UpgradeUniverse("UpgradeUniverse"),
 
@@ -78,6 +80,8 @@ public enum TaskType {
   VMImageUpgrade("upgrade.VMImageUpgrade"),
 
   SystemdUpgrade("upgrade.SystemdUpgrade"),
+
+  RebootUniverse("upgrade.RebootUniverse"),
 
   CreateRootVolumes("subtasks.CreateRootVolumes"),
 
@@ -108,6 +112,8 @@ public enum TaskType {
   RotateAccessKey("RotateAccessKey"),
 
   SetUniverseKey("SetUniverseKey"),
+
+  CreateAndRotateAccessKey("CreateAndRotateAccessKey"),
 
   @Deprecated
   SetKubernetesUniverseKey("SetKubernetesUniverseKey"),
@@ -177,6 +183,8 @@ public enum TaskType {
 
   DeleteTableFromUniverse("subtasks.DeleteTableFromUniverse"),
 
+  DeleteTablesFromUniverse("subtasks.DeleteTablesFromUniverse"),
+
   LoadBalancerStateChange("subtasks.LoadBalancerStateChange"),
 
   ModifyBlackList("subtasks.ModifyBlackList"),
@@ -213,6 +221,8 @@ public enum TaskType {
 
   WaitForServer("subtasks.WaitForServer"),
 
+  WaitForYbcServer("subtasks.WaitForYbcServer"),
+
   WaitForTServerHeartBeats("subtasks.WaitForTServerHeartBeats"),
 
   DeleteClusterFromUniverse("subtasks.DeleteClusterFromUniverse"),
@@ -228,6 +238,18 @@ public enum TaskType {
   UpdateUniverseAccessKey("subtasks.UpdateUniverseAccessKey"),
 
   // Tasks belonging to subtasks.xcluster classpath
+  BootstrapProducer("subtasks.xcluster.BootstrapProducer"),
+
+  CheckBootstrapRequired("subtasks.xcluster.CheckBootstrapRequired"),
+
+  DeleteBootstrapIds("subtasks.xcluster.DeleteBootstrapIds"),
+
+  DeleteReplication("subtasks.xcluster.DeleteReplication"),
+
+  DeleteXClusterConfigFromDb("subtasks.xcluster.DeleteXClusterConfigFromDb"),
+
+  SetRestoreTime("subtasks.xcluster.SetRestoreTime"),
+
   XClusterConfigSetup("subtasks.xcluster.XClusterConfigSetup"),
 
   XClusterConfigSetStatus("subtasks.xcluster.XClusterConfigSetStatus"),
@@ -235,8 +257,6 @@ public enum TaskType {
   XClusterConfigModifyTables("subtasks.xcluster.XClusterConfigModifyTables"),
 
   XClusterConfigRename("subtasks.xcluster.XClusterConfigRename"),
-
-  XClusterConfigDelete("subtasks.xcluster.XClusterConfigDelete"),
 
   XClusterConfigSync("subtasks.xcluster.XClusterConfigSync"),
 
@@ -260,6 +280,8 @@ public enum TaskType {
   BackupTable("subtasks.BackupTable"),
 
   BackupTableYb("subtasks.BackupTableYb"),
+
+  BackupTableYbc("subtasks.BackupTableYbc"),
 
   BackupUniverseKeys("subtasks.BackupUniverseKeys"),
 
@@ -332,7 +354,13 @@ public enum TaskType {
 
   CreateTableSpaces("subtasks.CreateTableSpaces"),
 
-  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade");
+  ThirdpartySoftwareUpgrade("upgrade.ThirdpartySoftwareUpgrade"),
+
+  MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload"),
+
+  RebootServer("subtasks.RebootServer"),
+
+  RunHooks("subtasks.RunHooks");
 
   private String relativeClassPath;
 

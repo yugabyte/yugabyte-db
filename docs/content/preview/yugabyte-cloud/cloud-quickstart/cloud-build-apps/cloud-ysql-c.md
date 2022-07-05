@@ -3,14 +3,12 @@ title: Build a C application that uses YSQL
 headerTitle: Build a C application
 description: Build a small C application using the libpq driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: C
     identifier: cloud-c
     weight: 500
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [C application](https://github.com/yugabyte/yugabyte-simple-c-app) that connects to a YugabyteDB cluster using the [libpq driver](../../../../reference/drivers/ysql-client-drivers/#libpq) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in C.

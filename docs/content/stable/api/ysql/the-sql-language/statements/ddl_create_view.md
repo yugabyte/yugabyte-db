@@ -2,18 +2,17 @@
 title: CREATE VIEW statement [YSQL]
 headerTitle: CREATE VIEW
 linkTitle: CREATE VIEW
-description: Use the CREATE VIEW statement to create a view in a database. 
+description: Use the CREATE VIEW statement to create a view in a database.
 menu:
   stable:
     identifier: ddl_create_view
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
-Use the `CREATE VIEW` statement to create a view in a database. It defines the view name and the (select) statement defining it.  
+Use the `CREATE VIEW` statement to create a view in a database. It defines the view name and the (select) statement defining it.
 
 ## Syntax
 
@@ -34,10 +33,10 @@ Use the `CREATE VIEW` statement to create a view in a database. It defines the v
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_view.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_view.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_view.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_view.diagram.md" %}}
   </div>
 </div>
 

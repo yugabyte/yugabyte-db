@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.HookInserter;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -13,11 +14,11 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PrecheckNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
-import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -33,12 +34,13 @@ import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskType;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
@@ -379,6 +381,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       int iter = 0;
       boolean isYSQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL;
       boolean isYCQL = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYCQL;
+      boolean isYEDIS = universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYEDIS;
       for (NodeDetails node : nodesInCluster) {
         if (node.state == NodeDetails.NodeState.ToBeAdded) {
           if (node.nodeName != null) {
@@ -397,6 +400,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         node.isYsqlServer = isYSQL;
         node.isYqlServer = isYCQL;
+        node.isRedisServer = isYEDIS;
       }
     }
 
@@ -555,7 +559,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleConfigureServersGFlags", executor);
     Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
-    Map<String, String> gflags = getPrimaryClusterGFlags(taskType, universe);
+
+    // Read gflags from taskPrams primary cluster. If it is null, read it from the universe.
+    Map<String, String> gflags;
+    Cluster primaryClusterInTaskParams = taskParams().getPrimaryCluster();
+    if (primaryClusterInTaskParams != null) {
+      UserIntent userIntent = primaryClusterInTaskParams.userIntent;
+      gflags =
+          taskType.equals(ServerType.MASTER) ? userIntent.masterGFlags : userIntent.tserverGFlags;
+      log.debug(
+          "gflags in taskParams: {}, gflags in universeDetails: {}",
+          gflags,
+          getPrimaryClusterGFlags(taskType, universe));
+    } else {
+      gflags = getPrimaryClusterGFlags(taskType, universe);
+      log.debug("gflags gathered from the UniverseDetails : {}", gflags);
+    }
+
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
@@ -722,6 +742,41 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return subTaskGroup;
   }
 
+  /**
+   * Creates a task list to start the yb-controller on the set of passed in nodes and adds it to the
+   * task queue.
+   *
+   * @param nodes : a collection of nodes that need to be created
+   */
+  public SubTaskGroup createStartYbcTasks(Collection<NodeDetails> nodes) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("AnsibleClusterServerCtl", executor);
+    for (NodeDetails node : nodes) {
+      AnsibleClusterServerCtl.Params params = new AnsibleClusterServerCtl.Params();
+      UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
+      // Add the node name.
+      params.nodeName = node.nodeName;
+      // Add the universe uuid.
+      params.universeUUID = taskParams().universeUUID;
+      // Add the az uuid.
+      params.azUuid = node.azUuid;
+      // The service and the command we want to run.
+      params.process = "controller";
+      params.command = "start";
+      params.placementUuid = node.placementUuid;
+      // Set the InstanceType
+      params.instanceType = node.cloudInfo.instance_type;
+      params.useSystemd = userIntent.useSystemd;
+      // Create the Ansible task to get the server info.
+      AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
+      task.initialize(params);
+      // Add it to the task list.
+      subTaskGroup.addSubTask(task);
+    }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   @Override
   public SubTaskGroup createWaitForMasterLeaderTask() {
     SubTaskGroup subTaskGroup =
@@ -825,6 +880,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public SubTaskGroup createSetupServerTasks(
       Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
+    // Create preprovision hooks
+    HookInserter.addHookTrigger(TriggerType.PreNodeProvision, this, taskParams(), nodes);
+
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("AnsibleSetupServer", executor);
     for (NodeDetails node : nodes) {
@@ -841,6 +899,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       subTaskGroup.addSubTask(ansibleSetupServer);
     }
     getRunnableTask().addSubTaskGroup(subTaskGroup);
+
+    // Create postprovision hooks
+    HookInserter.addHookTrigger(TriggerType.PostNodeProvision, this, taskParams(), nodes);
+
     return subTaskGroup;
   }
 
@@ -905,6 +967,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
+      params.ybcPackagePath = userIntent.ybcPackagePath;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1471,6 +1534,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates subtasks to start yb-controller processes on the nodes.
+   *
+   * @param nodesToBeStarted nodes on which yb-controller processes are to be started.
+   */
+  public void createStartYbcProcessTasks(Set<NodeDetails> nodesToBeStarted) {
+    // Create Start yb-controller tasks for non-systemd only
+    if (!taskParams().getPrimaryCluster().userIntent.useSystemd) {
+      createStartYbcTasks(nodesToBeStarted).setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Wait for yb-controller to be responsive on each node.
+    createWaitForYbcServerTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+  }
+
+  /**
    * Updates a master node with master addresses. It can happen before the master process is started
    * or later.
    *
@@ -1506,15 +1584,41 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
+   * Creates a task to delete a read only cluster info from the universe and adds the task to the
+   * task queue.
+   *
+   * @param clusterUUID uuid of the read-only cluster to be removed.
+   */
+  public SubTaskGroup createDeleteClusterFromUniverseTask(UUID clusterUUID) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup("DeleteClusterFromUniverse", executor);
+    DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
+    // Add the universe uuid.
+    params.universeUUID = taskParams().universeUUID;
+    params.clusterUUID = clusterUUID;
+    // Create the task to delete cluster ifo.
+    DeleteClusterFromUniverse task = createTask(DeleteClusterFromUniverse.class);
+    task.initialize(params);
+    // Add it to the task list.
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /**
    * Installs software for the specified type of processes on a set of nodes.
    *
    * @param nodes a collection of nodes to be processed.
    * @param processType type of a processes for the installation - MASTER or TSERVER
    * @param softwareVersion software version to install, if null - takes version from the universe
    *     userIntent
+   * @param subTaskGroupType subtask group type for progress display
    */
   public void createSoftwareInstallTasks(
-      List<NodeDetails> nodes, ServerType processType, String softwareVersion) {
+      List<NodeDetails> nodes,
+      ServerType processType,
+      String softwareVersion,
+      SubTaskGroupType subTaskGroupType) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -1530,7 +1634,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           getAnsibleConfigureServerTask(
               node, processType, UpgradeTaskSubType.Install, softwareVersion));
     }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+    subTaskGroup.setSubTaskGroupType(subTaskGroupType);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
@@ -1559,9 +1663,21 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       ServerType processType,
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
+    return getAnsibleConfigureServerParams(
+        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        node,
+        processType,
+        type,
+        taskSubType);
+  }
+
+  public AnsibleConfigureServers.Params getAnsibleConfigureServerParams(
+      UserIntent userIntent,
+      NodeDetails node,
+      ServerType processType,
+      UpgradeTaskType type,
+      UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    UserIntent userIntent =
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     Map<String, String> gflags = getPrimaryClusterGFlags(processType, getUniverse());
     // Set the device information (numVolumes, volumeSize, etc.)
     params.deviceInfo = userIntent.deviceInfo;

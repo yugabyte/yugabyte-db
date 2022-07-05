@@ -8,8 +8,7 @@ menu:
     identifier: window-functions-aggregate-functions-syntax-semantics
     parent: window-functions
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< note title="The rules described in this section also govern the invocation of aggregate functions." >}}
@@ -52,10 +51,10 @@ The following three diagrams, [`select_start`](../../../syntax_resources/grammar
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/select_start,window_clause,fn_over_window.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/select_start,window_clause,fn_over_window.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/select_start,window_clause,fn_over_window.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/select_start,window_clause,fn_over_window.diagram.md" %}}
   </div>
 </div>
 
@@ -82,10 +81,10 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/window_definition.diagram.md" %}}
   </div>
 </div>
 
@@ -108,10 +107,10 @@ A [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-defin
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_start,frame_end,frame_bound,frame_exclusion.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_start,frame_end,frame_bound,frame_exclusion.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_start,frame_end,frame_bound,frame_exclusion.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_start,frame_end,frame_bound,frame_exclusion.diagram.md" %}}
   </div>
 </div>
 

@@ -66,8 +66,6 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
   @Test
   public void testUniverseBackupFlagSuccess() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     String url =
         "/api/customers/"
             + customer.uuid
@@ -85,8 +83,6 @@ public class UniverseActionsControllerTest extends UniverseControllerTestBase {
   @Test
   public void testUniverseBackupFlagFailure() {
     Universe u = createUniverse(customer.getCustomerId());
-    customer.addUniverseUUID(u.universeUUID);
-    customer.save();
     String url =
         "/api/customers/" + customer.uuid + "/universes/" + u.universeUUID + "/update_backup_state";
     Result result = doRequestWithAuthToken("PUT", url, authToken);

@@ -2,15 +2,14 @@
 title: YugabyteDB JDBC driver
 linkTitle: YugabyteDB JDBC driver
 description: YugabyteDB JDBC driver for YSQL
-section: INTEGRATIONS
 aliases:
   - /preview/integrations/smart-driver/
 menu:
   preview:
     identifier: jdbc-driver
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Yugabyte JDBC driver](https://github.com/yugabyte/pgjdbc) is a distributed JDBC driver for [YSQL](/preview/api/ysql/) built on the [PostgreSQL JDBC driver](https://github.com/pgjdbc/pgjdbc).

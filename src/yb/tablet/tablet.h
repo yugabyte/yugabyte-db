@@ -246,7 +246,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const std::vector<IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   Result<std::shared_ptr<client::YBSession>> GetSessionForVerifyOrBackfill(
@@ -255,12 +255,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status FlushWriteIndexBatchIfRequired(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
   Status FlushWriteIndexBatch(
       const HybridTime write_time,
       const CoarseTimePoint deadline,
-      std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>* index_requests,
+      docdb::IndexRequests* index_requests,
       std::unordered_set<TableId>* failed_indexes);
 
   template <typename SomeYBqlOp>
@@ -426,6 +426,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // Apply replicated add table operation.
   Status AddTable(const TableInfoPB& table_info);
+
+  Status AddMultipleTables(const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos);
 
   // Apply replicated remove table operation.
   Status RemoveTable(const std::string& table_id);
@@ -827,6 +829,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   const docdb::SchemaPackingStorage& PrimarySchemaPackingStorage();
 
+  Status AddTableInMemory(const TableInfoPB& table_info);
+
   std::unique_ptr<const Schema> key_schema_;
 
   RaftGroupMetadataPtr metadata_;
@@ -951,6 +955,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   std::atomic<int64_t> last_committed_write_index_{0};
 
   HybridTimeLeaseProvider ht_lease_provider_;
+
+  std::unique_ptr<docdb::ExternalTxnIntentsState> external_txn_intents_state_;
 
   Result<HybridTime> DoGetSafeTime(
       RequireLease require_lease, HybridTime min_allowed, CoarseTimePoint deadline) const override;

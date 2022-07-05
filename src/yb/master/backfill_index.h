@@ -109,7 +109,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
                 std::vector<IndexInfoPB> indexes,
                 const scoped_refptr<NamespaceInfo> &ns_info);
 
-  void Launch();
+  Status Launch();
 
   Status UpdateSafeTime(const Status& s, HybridTime ht);
 
@@ -155,8 +155,11 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
 
  private:
-  void LaunchComputeSafeTimeForRead();
   void LaunchBackfill();
+  Status WaitForTabletSplitting();
+  Status DoLaunchBackfill();
+  Status LaunchComputeSafeTimeForRead();
+  Status DoBackfill();
 
   Status MarkAllIndexesAsFailed();
   Status MarkAllIndexesAsSuccess();
@@ -170,6 +173,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   Status AlterTableStateToAbort();
   Status AlterTableStateToSuccess();
 
+  Status Abort();
   void CheckIfDone();
   Status UpdateIndexPermissionsForIndexes();
   Status ClearCheckpointStateInTablets();
@@ -322,7 +326,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
     deadline_ = MonoTime::Max();  // Never time out.
   }
 
-  void Launch();
+  Status Launch();
 
   Type type() const override { return ASYNC_GET_SAFE_TIME; }
 

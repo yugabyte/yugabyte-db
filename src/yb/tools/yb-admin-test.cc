@@ -591,21 +591,27 @@ TEST_F(AdminCliTest, TestFollowersTableList) {
     ASSERT_OK(reader.ExtractObject(entry, "leader", &leader));
     string lhp;
     string luuid;
+    string role;
     ASSERT_OK(reader.ExtractString(leader, "endpoint", &lhp));
     ASSERT_OK(reader.ExtractString(leader, "uuid", &luuid));
+    ASSERT_OK(reader.ExtractString(leader, "role", &role));
     ASSERT_STR_EQ(lhp, leader_host_port);
     ASSERT_STR_EQ(luuid, leader_uuid);
+    ASSERT_STR_EQ(role, PeerRole_Name(PeerRole::LEADER));
 
     vector<const rapidjson::Value *> follower_json;
     ASSERT_OK(reader.ExtractObjectArray(entry, "followers", &follower_json));
     for (const rapidjson::Value *f : follower_json) {
       string fhp;
       string fuuid;
+      string frole;
       ASSERT_OK(reader.ExtractString(f, "endpoint", &fhp));
       ASSERT_OK(reader.ExtractString(f, "uuid", &fuuid));
+      ASSERT_OK(reader.ExtractString(f, "role", &frole));
       auto got = follower_hp_to_uuid_map.find(fhp);
       ASSERT_TRUE(got != follower_hp_to_uuid_map.end());
       ASSERT_STR_EQ(got->second, fuuid);
+      ASSERT_STR_EQ(frole, PeerRole_Name(PeerRole::FOLLOWER));
     }
   }
 }

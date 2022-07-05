@@ -51,7 +51,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
       "violates foreign key constraint";
   private static final String BATCH_TXN_SESSION_VARIABLE_NAME =
       "yb_default_copy_from_rows_per_transaction";
-  private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 1000;
+  private static final int BATCH_TXN_SESSION_VARIABLE_DEFAULT_ROWS = 20000;
   private static final String DISABLE_TXN_WRITES_SESSION_VARIABLE_NAME =
       "yb_disable_transactional_writes";
   private static final String YB_ENABLE_UPSERT_MODE_VARIABLE_NAME =
@@ -85,11 +85,28 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     writer.close();
   }
 
-  private void appendInvalidEntries(String absFilePath, int totalLines) throws IOException {
+  private void appendInvalidLines(String absFilePath, int totalLines) throws IOException {
     FileWriter fileWriter = new FileWriter(absFilePath,true);
     BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
     for (int i = 0; i < totalLines; i++) {
       bufferedWriter.write("#,#,#,#\n");
+    }
+    bufferedWriter.close();
+  }
+
+  private void appendValidLines(String absFilePath, int totalLines, int offset)
+      throws IOException {
+    FileWriter fileWriter = new FileWriter(absFilePath,true);
+    BufferedWriter bufferedWriter = new BufferedWriter(fileWriter);
+
+    int startValue = offset * 4;
+    int endValue = startValue + totalLines * 4;
+    for (int i = startValue; i < endValue; i++) {
+      if ((i + 1) % 4 == 0) {
+        bufferedWriter.write("\n");
+      } else {
+        bufferedWriter.write(i+",");
+      }
     }
     bufferedWriter.close();
   }
@@ -102,7 +119,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int totalInvalidLines = 500;
 
     createFileInTmpDir(absFilePath, totalValidLines);
-    appendInvalidEntries(absFilePath, totalInvalidLines);
+    appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
       // With batch size of 0, it will attempt to copy all rows in a single transaction.
@@ -240,7 +257,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int batchSize = 1;
 
     createFileInTmpDir(absFilePath, totalValidLines);
-    appendInvalidEntries(absFilePath, totalInvalidLines);
+    appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
@@ -397,7 +414,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int batchSize = 1;
 
     createFileInTmpDir(absFilePath, totalValidLines);
-    appendInvalidEntries(absFilePath, totalInvalidLines);
+    appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format("CREATE TABLE %s (a int, b int, c int, d text)", tableName));
@@ -468,7 +485,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int expectedCopiedLines = batchSessionSize * 3;
 
     createFileInTmpDir(absFilePath, totalValidLines);
-    appendInvalidEntries(absFilePath, totalInvalidLines);
+    appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
       // set session variable
@@ -730,7 +747,7 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
     int expectedCopiedLines = batchOptionSize;
 
     createFileInTmpDir(absFilePath, totalValidLines);
-    appendInvalidEntries(absFilePath, totalInvalidLines);
+    appendInvalidLines(absFilePath, totalInvalidLines);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute("SET " + BATCH_TXN_SESSION_VARIABLE_NAME + "=" + batchSessionSize);
@@ -1007,29 +1024,39 @@ public class TestBatchCopyFrom extends BasePgSQLTest {
 
   @Test
   public void testBatchCopyInvalidLinesAmongSkipped() throws Exception {
-    // If invalid lines appear among the rows being skipped, we still throw an error.
+    // If invalid lines appear among the rows being skipped, we should skip them.
     String absFilePath = getAbsFilePath("skip-rows-invalid-lines-among-skipped.txt");
     String tableName = "skiprow_invalid_lines";
-    int totalValidLines = 5;
     int totalInvalidLines = 10;
-    int skippedLines = totalValidLines + totalInvalidLines;
+    int totalValidLines = 5;
+    int skippedLines = totalInvalidLines;
 
-    createFileInTmpDir(absFilePath, totalValidLines);
-    appendInvalidEntries(absFilePath, totalInvalidLines);
+    createFileInTmpDir(absFilePath, 0);
+    appendInvalidLines(absFilePath, totalInvalidLines);
+    appendValidLines(absFilePath, totalValidLines, 0);
 
     try (Statement statement = connection.createStatement()) {
       statement.execute(String.format(
           "CREATE TABLE %s (a Integer, b serial, c varchar, d int)", tableName));
-      // Copy will fail upon processing invalid lines.
+
+      // If we don't skip invalid lines, error will be thrown upon reading through such lines.
       runInvalidQuery(statement,
           String.format(
-              "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+              "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER)",
               tableName, absFilePath, skippedLines),
           INVALID_COPY_INPUT_ERROR_MSG);
-
       // No rows will be copied.
       assertOneRow(statement,
                    String.format("SELECT COUNT(*) FROM %s", tableName), 0);
+
+      // If we skip through the invalid lines, the copy will succeed.
+      statement.execute(String.format(
+        "COPY %s FROM \'%s\' WITH (FORMAT CSV, HEADER, SKIP %s)",
+        tableName, absFilePath, skippedLines));
+
+      // Only the valid lines will be copied.
+      assertOneRow(statement,
+                   String.format("SELECT COUNT(*) FROM %s", tableName), totalValidLines);
     }
   }
 

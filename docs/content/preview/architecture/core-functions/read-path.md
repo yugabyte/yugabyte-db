@@ -10,8 +10,7 @@ menu:
     weight: 1188
 aliases:
   - /architecture/core-functions/read-path/
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 Let us take the case of a single key read.

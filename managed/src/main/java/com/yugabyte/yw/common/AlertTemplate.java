@@ -561,11 +561,36 @@ public enum AlertTemplate {
           .thresholdConditionReadOnly(true)
           .build()),
 
+  DB_DRIVE_FAILURE(
+      "DB drive failure",
+      "TServer detected drive failure",
+      "count by (node_prefix) (drive_fault{node_prefix=\"__nodePrefix__\","
+          + " export_type=\"tserver_export\"}) "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "DB detected {{ $value | printf \\\"%.0f\\\" }} drive failure(s)"
+          + " for universe '{{ $labels.source_name }}':\n\\n"
+          + "{{ range query \\\"drive_fault{node_prefix='{{ $labels.node_prefix }}',"
+          + " export_type='tserver_export'}\\\" }}\n"
+          + "  {{ .Labels.exported_instance }}:{{ .Labels.drive_path }}\\n"
+          + "{{ end }}",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, 0D)
+          .defaultThresholdUnit(COUNT)
+          .thresholdUnitName("drive(s)")
+          .thresholdConditionReadOnly(true)
+          .thresholdReadOnly(true)
+          .build()),
+
   DB_WRITE_READ_TEST_ERROR(
       "DB write/read test error",
       "Failed to perform test write/read YSQL operation",
       "count by (node_prefix) "
-          + "(yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"}"
+          + "((yb_node_ysql_write_read{node_prefix=\"__nodePrefix__\"} and on (node_prefix) "
+          + "(max_over_time(ybp_universe_update_in_progress"
+          + "{node_prefix=\"__nodePrefix__\"}[5m]) == 0))"
           + " {{ query_condition }} {{ query_threshold }})",
       "Test YSQL write/read operation failed on "
           + "{{ $value | printf \\\"%.0f\\\" }} nodes(s) for universe '{{ $labels.source_name }}'.",
@@ -645,7 +670,7 @@ public enum AlertTemplate {
   ENCRYPTION_AT_REST_CONFIG_EXPIRY(
       "Encryption At Rest config expiry",
       "Encryption At Rest config expires soon",
-      "ybp_universe_encryption_key_expiry_days"
+      "ybp_universe_encryption_key_expiry_day"
           + "{universe_uuid=\"__universeUuid__\"} "
           + "{{ query_condition }} {{ query_threshold }}",
       "Encryption At Rest config for universe '{{ $labels.source_name }}'"
@@ -658,6 +683,35 @@ public enum AlertTemplate {
           .defaultThresholdUnit(DAY)
           .defaultThresholdCondition(Condition.LESS_THAN)
           .build()),
+
+  SSH_KEY_EXPIRY(
+      "SSH Key expiry",
+      "SSH Key expires soon",
+      "ybp_universe_ssh_key_expiry_day"
+          + "{universe_uuid=\"__universeUuid__\"} "
+          + "{{ query_condition }} {{ query_threshold }}",
+      "SSH Key for universe '{{ $labels.source_name }}'"
+          + " will expire in {{ $value | printf \\\"%.0f\\\" }} days.",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder()
+          .defaultThreshold(SEVERE, "yb.alert.ssh_key_config_expiry_days_severe")
+          .defaultThresholdUnit(DAY)
+          .defaultThresholdCondition(Condition.LESS_THAN)
+          .build()),
+
+  SSH_KEY_ROTATION_FAILURE(
+      "SSH Key Rotation Failure",
+      "Last SSH Key Rotation task failed for universe",
+      "last_over_time(ybp_ssh_key_rotation_status{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Last SSH Key Rotation task for universe '{{ $labels.source_name }}' failed"
+          + " - check SSH Key Rotation task result for more details and retry",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
 
   YSQL_OP_AVG_LATENCY(
       "YSQL average latency is high",
@@ -873,7 +927,7 @@ public enum AlertTemplate {
 
   UNDER_REPLICATED_TABLETS(
       "Under-replicated tablets",
-      "Some tablet(s) remain under-replicated for longer that configured threshold",
+      "Some tablet(s) remain under-replicated for longer than configured threshold",
       "max by (node_prefix)"
           + " (min_over_time(yb_node_underreplicated_tablet_count{node_prefix=\"__nodePrefix__\"}"
           + "[{{ query_threshold }}s]) > 0)",

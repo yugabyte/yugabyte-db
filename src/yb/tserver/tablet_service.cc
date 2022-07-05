@@ -218,6 +218,10 @@ DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
                  "Inject delay to slowdown handling of updates in transaction status location.");
 
+METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
+                           yb::MetricUnit::kOperations,
+                           "Number of split operations added to the leader's Raft log.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -463,7 +467,9 @@ TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
 }
 
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
-    : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {}
+    : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {
+  ts_split_op_added_ = METRIC_ts_split_op_added.Instantiate(server->MetricEnt(), 0);
+}
 
 void TabletServiceAdminImpl::BackfillDone(
     const tablet::ChangeMetadataRequestPB* req, ChangeMetadataResponsePB* resp,
@@ -1601,6 +1607,10 @@ void TabletServiceAdminImpl::SplitTablet(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
 
   leader_tablet_peer.peer->Submit(std::move(operation), leader_tablet_peer.leader_term);
+  ts_split_op_added_->Increment();
+  LOG(INFO) << leader_tablet_peer.peer->LogPrefix() << "RPC for split tablet successful. "
+      << "Submitting request to " << leader_tablet_peer.peer->tablet_id()
+      << " term " << leader_tablet_peer.leader_term;
 }
 
 void TabletServiceAdminImpl::UpgradeYsql(
@@ -1638,6 +1648,10 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     context.RespondSuccess();
     return;
   }
+  if (req->include_trace()) {
+    context.EnsureTraceCreated();
+  }
+  ADOPT_TRACE(context.trace());
   TRACE("Start Write");
   TRACE_EVENT1("tserver", "TabletServiceImpl::Write",
                "tablet_id", req->tablet_id());

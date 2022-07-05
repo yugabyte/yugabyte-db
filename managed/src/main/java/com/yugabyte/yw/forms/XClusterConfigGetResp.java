@@ -9,7 +9,8 @@ import play.data.validation.Constraints.Required;
 @ApiModel(description = "xcluster get response")
 public class XClusterConfigGetResp {
 
-  @JsonUnwrapped public XClusterConfig xClusterConfig;
+  //  @JsonUnwrapped public XClusterConfig xClusterConfig;
+  @JsonUnwrapped public XClusterConfig xclusterConfig;
 
   @Required
   @ApiModelProperty(value = "Lag metric data", required = true)

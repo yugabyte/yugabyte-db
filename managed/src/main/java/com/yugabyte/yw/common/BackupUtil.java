@@ -16,8 +16,13 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
-import com.yugabyte.yw.models.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.data.CustomerConfigData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.io.IOException;
@@ -76,9 +81,14 @@ public class BackupUtil {
   public static final String REGION_NAME = "REGION";
   public static final String SNAPSHOT_URL_FIELD = "snapshot_url";
 
+  /**
+   * Use for cases apart from customer configs. Currently used in backup listing API, and fetching
+   * list of locations for backup deletion.
+   */
   public static class RegionLocations {
     public String REGION;
     public String LOCATION;
+    public String HOST_BASE;
   }
 
   public static void validateBackupCronExpression(String cronExpression)
@@ -194,47 +204,6 @@ public class BackupUtil {
     return builder.build();
   }
 
-  public List<String> getStorageLocationList(JsonNode data) throws PlatformServiceException {
-    List<String> locations = new ArrayList<>();
-    List<RegionLocations> regionsList = null;
-    if (data.has(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME)
-        && StringUtils.isNotBlank(
-            data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText())) {
-      locations.add(data.get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME).asText());
-    } else {
-      throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
-    }
-    regionsList = getRegionLocationsList(data);
-    if (CollectionUtils.isNotEmpty(regionsList)) {
-      locations.addAll(
-          regionsList
-              .parallelStream()
-              .filter(r -> StringUtils.isNotBlank(r.REGION) && StringUtils.isNotBlank(r.LOCATION))
-              .map(r -> r.LOCATION)
-              .collect(Collectors.toList()));
-    }
-    return locations;
-  }
-
-  public List<RegionLocations> getRegionLocationsList(JsonNode data)
-      throws PlatformServiceException {
-    List<RegionLocations> regionLocationsList = new ArrayList<>();
-    try {
-      if (data.has(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME)) {
-        ObjectMapper mapper = new ObjectMapper();
-        String jsonLocations =
-            mapper.writeValueAsString(data.get(CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME));
-        regionLocationsList =
-            Arrays.asList(mapper.readValue(jsonLocations, RegionLocations[].class));
-      }
-    } catch (IOException ex) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Not able to parse region location from the storage config data");
-    }
-
-    return regionLocationsList;
-  }
-
   // For creating new backup we would set the storage location based on
   // universe UUID and backup UUID.
   // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
@@ -294,18 +263,26 @@ public class BackupUtil {
     return regionLocations;
   }
 
-  public static void updateDefaultStorageLocation(BackupTableParams params, UUID customerUUID) {
+  public static void updateDefaultStorageLocation(
+      BackupTableParams params, UUID customerUUID, BackupCategory category) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     params.storageLocation = formatStorageLocation(params);
     if (customerConfig != null) {
-      // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
-      JsonNode storageNode =
-          customerConfig.getData().get(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME);
-      if (storageNode != null) {
-        String storagePath = storageNode.asText();
-        if (storagePath != null && !storagePath.isEmpty()) {
-          params.storageLocation = String.format("%s/%s", storagePath, params.storageLocation);
-        }
+      String backupLocation = null;
+      if (customerConfig.name.equals(Util.NFS)) {
+        CustomerConfigStorageNFSData configData =
+            (CustomerConfigStorageNFSData) customerConfig.getDataObject();
+        backupLocation = configData.backupLocation;
+        if (category.equals(BackupCategory.YB_CONTROLLER))
+          backupLocation =
+              String.format("%s/%s", backupLocation, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET);
+      } else {
+        CustomerConfigStorageData configData =
+            (CustomerConfigStorageData) customerConfig.getDataObject();
+        backupLocation = configData.backupLocation;
+      }
+      if (StringUtils.isNotBlank(backupLocation)) {
+        params.storageLocation = String.format("%s/%s", backupLocation, params.storageLocation);
       }
     }
   }
@@ -315,13 +292,10 @@ public class BackupUtil {
     boolean isValid = true;
     switch (config.name) {
       case Util.AZ:
-        isValid = AZUtil.canCredentialListObjects(config.data, locations);
-        break;
       case Util.GCS:
-        isValid = GCPUtil.canCredentialListObjects(config.data, locations);
-        break;
       case Util.S3:
-        isValid = AWSUtil.canCredentialListObjects(config.data, locations);
+        CloudUtil cloudUtil = CloudUtil.getCloudUtil(config.name);
+        isValid = cloudUtil.canCredentialListObjects(config.getDataObject(), locations);
         break;
       case Util.NFS:
         isValid = true;
@@ -338,16 +312,43 @@ public class BackupUtil {
   }
 
   public void validateStorageConfig(CustomerConfig config) throws PlatformServiceException {
-    List<String> locations = null;
-    locations = getStorageLocationList(config.getData());
+    List<String> locations = new ArrayList<>();
+    if (config.name.equals(Util.NFS)) {
+      return;
+    }
+    CustomerConfigStorageWithRegionsData configWithRegions =
+        (CustomerConfigStorageWithRegionsData) config.getDataObject();
+    if (StringUtils.isBlank(configWithRegions.backupLocation)) {
+      throw new PlatformServiceException(BAD_REQUEST, "Default backup location cannot be empty");
+    }
+    locations.add(configWithRegions.backupLocation);
+    if (CollectionUtils.isNotEmpty(configWithRegions.regionLocations)) {
+      configWithRegions.regionLocations.forEach(
+          rL -> {
+            if (StringUtils.isNotBlank(rL.region) && StringUtils.isNotBlank(rL.location)) {
+              locations.add(rL.location);
+            }
+          });
+    }
     validateStorageConfigOnLocations(config, locations);
   }
 
   public static String getExactRegionLocation(
       BackupTableParams backupTableParams, String regionLocation) {
-    String locationSuffix = formatStorageLocation(backupTableParams);
-    String location = String.format("%s/%s", regionLocation, locationSuffix);
+    String backupIdentifier =
+        getBackupIdentifier(backupTableParams.universeUUID, backupTableParams.storageLocation);
+    String location = String.format("%s/%s", regionLocation, backupIdentifier);
     return location;
+  }
+
+  // returns the /univ-<>/backup-<>-<>/some_identifier extracted from the default backup location.
+  public static String getBackupIdentifier(UUID universeUUID, String defaultBackupLocation) {
+    String universeString = String.format("univ-%s", universeUUID);
+    String backupIdentifier =
+        String.format(
+            "%s%s",
+            universeString, StringUtils.substringAfterLast(defaultBackupLocation, universeString));
+    return backupIdentifier;
   }
 
   public void validateRestoreOverwrites(

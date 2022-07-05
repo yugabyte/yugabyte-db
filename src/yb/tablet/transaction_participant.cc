@@ -353,14 +353,13 @@ class TransactionParticipant::Impl
   }
 
   // Cleans the intents those are consumed by consumers.
-  void SetRetainOpId(const OpId& op_id) {
+  void SetIntentRetainOpIdAndTime(const OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
-    if (cdc_sdk_min_checkpoint_op_id_ != op_id) {
-      cdc_sdk_min_checkpoint_op_id_expiration_ =
-          CoarseMonoClock::now() +
-          MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
-    }
+    VLOG(1) << "Setting RetainOpId: " << op_id
+            << ", previous cdc_sdk_min_checkpoint_op_id_: " << cdc_sdk_min_checkpoint_op_id_;
+
+    cdc_sdk_min_checkpoint_op_id_expiration_ = CoarseMonoClock::now() + cdc_sdk_op_id_expiration;
     cdc_sdk_min_checkpoint_op_id_ = op_id;
 
     // If new op_id same as  cdc_sdk_min_checkpoint_op_id_ it means already intent before it are
@@ -401,7 +400,7 @@ class TransactionParticipant::Impl
       auto it = transactions_.find(id);
 
       if (it != transactions_.end() && !(**it).ProcessingApply()) {
-        OpId op_id = (**it).GetOpId();
+        OpId op_id = (**it).GetApplyOpId();
 
         // If transaction op_id is greater than the CDCSDK checkpoint op_id.
         // don't clean the intent as well as intent after this.
@@ -409,7 +408,8 @@ class TransactionParticipant::Impl
           break;
         }
         VLOG_WITH_PREFIX(2) << "Cleaning tx opid is: " << op_id.ToString()
-                            << " checkpoint opid is: " << checkpoint_op_id.ToString();
+                            << " checkpoint opid is: " << checkpoint_op_id.ToString()
+                            << " txn id: " << id;
         (**it).ScheduleRemoveIntents(*it);
         RemoveTransaction(it, front.reason, min_running_notifier);
       }
@@ -489,6 +489,8 @@ class TransactionParticipant::Impl
 
     auto id = FullyDecodeTransactionId(data.state.transaction_id());
     if (!id.ok()) {
+      LOG(ERROR) << "Could not decode transaction details, whose apply record OpId was: "
+                 << data.op_id;
       return id.status();
     }
 
@@ -506,6 +508,35 @@ class TransactionParticipant::Impl
   }
 
   void Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPoint();
+
+      if (cdcsdk_checkpoint_op_id != OpId::Max()) {
+        for (auto t_iter = set.begin(); t_iter != set.end();) {
+          const TransactionId& transaction_id = *t_iter;
+          loader_.WaitLoaded(transaction_id);
+          auto iter = transactions_.find(transaction_id);
+          if (iter == transactions_.end()) {
+            ++t_iter;
+            continue;
+          }
+
+          const OpId& apply_record_op_id = (**iter).GetApplyOpId();
+          if (apply_record_op_id > cdcsdk_checkpoint_op_id) {
+            t_iter = set.erase(t_iter);
+            VLOG_WITH_PREFIX(2)
+                << "Transaction not yet reported to CDCSDK client, should not cleanup."
+                << "TransactionId: " << transaction_id
+                << ", apply record opId: " << apply_record_op_id
+                << ", cdcsdk checkpoint opId: " << cdcsdk_checkpoint_op_id;
+          } else {
+            ++t_iter;
+          }
+        }
+      }
+    }
+
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
@@ -584,7 +615,7 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = LockAndFind(
         data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
     if (lock_and_iterator.found()) {
-      lock_and_iterator.transaction().SetOpId(data.op_id);
+      lock_and_iterator.transaction().SetApplyOpId(data.op_id);
       if (!apply_state.active()) {
         RemoveUnlocked(lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else {
@@ -642,10 +673,14 @@ class TransactionParticipant::Impl
         cleanup_cache_.Insert(data.transaction_id);
         return Status::OK();
       }
-    } else if ((**it).ProcessingApply()) {
-      VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
-                          << data.transaction_id;
-      return Status::OK();
+    } else {
+      transactions_.modify(it, [&data](auto& txn) { txn->SetApplyOpId(data.op_id); });
+
+      if ((**it).ProcessingApply()) {
+        VLOG_WITH_PREFIX(2) << "Don't cleanup transaction because it is applying intents: "
+                            << data.transaction_id;
+        return Status::OK();
+      }
     }
 
     if (cleanup_type == CleanupType::kGraceful) {
@@ -1174,13 +1209,14 @@ class TransactionParticipant::Impl
       MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
     TransactionId txn_id = (**it).id();
     OpId checkpoint_op_id = GetLatestCheckPoint();
-    auto itr = transactions_.find(txn_id);
-    OpId op_id = (**itr).GetOpId();
+    OpId op_id = (**it).GetApplyOpId();
 
     if (running_requests_.empty() && op_id < checkpoint_op_id) {
       (**it).ScheduleRemoveIntents(*it);
       RemoveTransaction(it, reason, min_running_notifier);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
+                          << " , apply record op_id: " << op_id
+                          << ", checkpoint_op_id: " << checkpoint_op_id
                           << ", left: " << transactions_.size();
       return true;
     }
@@ -1435,7 +1471,9 @@ class TransactionParticipant::Impl
         .transaction_id = id,
         .isolation = IsolationLevel::NON_TRANSACTIONAL,
         .status_tablet = TabletId(),
-        .priority = 0
+        .priority = 0,
+        .start_time = {},
+        .old_status_tablet = {},
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(
           metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, this)).first;
@@ -1790,13 +1828,14 @@ HybridTime TransactionParticipantContext::Now() {
   return clock_ptr()->Now();
 }
 
-void TransactionParticipant::SetRetainOpId(const yb::OpId& op_id) const {
-  impl_->SetRetainOpId(op_id);
+void TransactionParticipant::SetIntentRetainOpIdAndTime(
+    const yb::OpId& op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
+  impl_->SetIntentRetainOpIdAndTime(op_id, cdc_sdk_op_id_expiration);
 }
 
 OpId TransactionParticipant::GetRetainOpId() const {
   return impl_->GetRetainOpId();
 }
 
-} // namespace tablet
-} // namespace yb
+}  // namespace tablet
+}  // namespace yb

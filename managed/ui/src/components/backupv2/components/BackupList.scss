@@ -120,7 +120,6 @@
     color: $YB_ERROR_ICON_COLOR !important;
   }
 
-
   .no-padding {
     padding: 0;
   }
@@ -166,15 +165,6 @@
 .select__value-container {
   max-height: 48px;
   overflow-y: auto !important;
-}
-
-// for content-title
-#backups-v2-title {
-  display: flex;
-
-  .yb-tag {
-    margin-top: 4px;
-  }
 }
 
 .backup-modal {

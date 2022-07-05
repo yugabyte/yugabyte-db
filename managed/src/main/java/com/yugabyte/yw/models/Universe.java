@@ -484,6 +484,26 @@ public class Universe extends Model {
   }
 
   /**
+   * Return the list of live TServers in the primary cluster. TODO: junit tests for this
+   * functionality (UniverseTest.java)
+   *
+   * @return a list of TServer nodes
+   */
+  public List<NodeDetails> getLiveTServersInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers
+            .stream()
+            .filter(nodeDetails -> nodeDetails.state.equals(NodeDetails.NodeState.Live))
+            .collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+    }
+    return filteredServers;
+  }
+
+  /**
    * Return the list of YQL servers for this universe.
    *
    * @return a list of YQL server nodes
@@ -606,6 +626,16 @@ public class Universe extends Model {
    */
   public String getTserverHTTPAddresses() {
     return getHostPortsString(getTServers(), ServerType.TSERVER, PortType.HTTP);
+  }
+
+  /**
+   * It returns a comma separated list of <privateIp:tserverHTTPPort> for all tservers in the
+   * primary cluster of this universe.
+   *
+   * @return A comma separated string of 'host:port'
+   */
+  public String getTserverAddresses() {
+    return getHostPortsString(getTServersInPrimaryCluster(), ServerType.TSERVER, PortType.RPC);
   }
 
   /**
@@ -905,6 +935,27 @@ public class Universe extends Model {
 
   public static boolean existsRelease(String version) {
     return universeDetailsIfReleaseExists(version).size() != 0;
+  }
+
+  static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
+    return find.query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
+        .stream()
+        .map(Universe::getUniverseUUID)
+        .collect(Collectors.toSet());
+  }
+
+  static Set<Universe> getUniversesForCustomer(Long customerId) {
+    return find.query()
+        .where()
+        .eq("customer_id", customerId)
+        .findSet()
+        .stream()
+        .peek(Universe::fillUniverseDetails)
+        .collect(Collectors.toSet());
   }
 
   static boolean isUniversePaused(UUID uuid) {

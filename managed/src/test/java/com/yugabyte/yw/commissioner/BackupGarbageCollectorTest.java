@@ -5,35 +5,35 @@ package com.yugabyte.yw.commissioner;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
 import com.yugabyte.yw.common.AWSUtil;
-import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Backup.BackupState;
-import com.yugabyte.yw.models.CustomerConfig.ConfigState;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -42,24 +42,14 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
-import scala.concurrent.ExecutionContext;
 
+@Slf4j
 @RunWith(MockitoJUnitRunner.class)
 public class BackupGarbageCollectorTest extends FakeDBApplication {
 
-  @Mock ActorSystem mockActorSystem;
-
-  @Mock ExecutionContext mockExecutionContext;
-
-  @Mock Scheduler mockScheduler;
+  @Mock PlatformScheduler mockPlatformScheduler;
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
-
-  MockedStatic<AWSUtil> mockAWSUtil;
-
-  MockedStatic<GCPUtil> mockGCPUtil;
-
-  MockedStatic<AZUtil> mockAZUtil;
 
   private Customer defaultCustomer;
   private Universe defaultUniverse;
@@ -74,25 +64,14 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
     customerConfigService = app.injector().instanceOf(CustomerConfigService.class);
     tableManagerYb = app.injector().instanceOf(TableManagerYb.class);
-    mockAWSUtil = Mockito.mockStatic(AWSUtil.class);
-    mockGCPUtil = Mockito.mockStatic(GCPUtil.class);
-    mockAZUtil = Mockito.mockStatic(AZUtil.class);
     mockBackupUtil = mock(BackupUtil.class);
     backupGC =
         new BackupGarbageCollector(
-            mockExecutionContext,
-            mockActorSystem,
+            mockPlatformScheduler,
             customerConfigService,
             mockRuntimeConfigFactory,
             tableManagerYb,
             mockBackupUtil);
-  }
-
-  @After
-  public void tearDown() {
-    mockAWSUtil.close();
-    mockGCPUtil.close();
-    mockAZUtil.close();
   }
 
   @Test
@@ -213,16 +192,17 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
   }
 
   @Test
-  public void testDeleteCloudBackupFailure() {
+  public void testDeleteCloudBackupFailure() throws Exception {
     CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST8");
     BackupTableParams bp = new BackupTableParams();
     bp.storageConfigUUID = customerConfig.configUUID;
     bp.universeUUID = defaultUniverse.universeUUID;
     Backup backup = Backup.create(defaultCustomer.uuid, bp);
     backup.transitionState(BackupState.QueuedForDeletion);
-    mockAWSUtil
-        .when(() -> AWSUtil.deleteKeyIfExists(any(), any()))
-        .thenThrow(new RuntimeException());
+    List<String> backupLocations = new ArrayList<>();
+    backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockBackupUtil.getBackupLocations(backup)).thenReturn(backupLocations);
+    doThrow(new RuntimeException()).when(mockAWSUtil).deleteKeyIfExists(any(), any());
     backupGC.scheduleRunner();
     backup = Backup.getOrBadRequest(defaultCustomer.uuid, backup.backupUUID);
     assertEquals(BackupState.FailedToDelete, backup.state);
@@ -297,21 +277,5 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             customerConfigService.getOrBadRequest(defaultCustomer.uuid, customerConfig.configUUID));
     backup.refresh();
     assertEquals(BackupState.FailedToDelete, backup.state);
-  }
-
-  @Test
-  public void testAlreadyRunningBackupGC() {
-    backupGC.setRunningState(true);
-    CustomerConfig customerConfig = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST12");
-    BackupTableParams bp = new BackupTableParams();
-    bp.storageConfigUUID = customerConfig.configUUID;
-    bp.universeUUID = defaultUniverse.universeUUID;
-    Backup backup = Backup.create(defaultCustomer.uuid, bp);
-    backup.transitionState(BackupState.Completed);
-    customerConfig.setState(ConfigState.QueuedForDeletion);
-    backupGC.scheduleRunner();
-    backup.refresh();
-    assertEquals(BackupState.Completed, backup.state);
-    backupGC.setRunningState(false);
   }
 }

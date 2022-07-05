@@ -97,34 +97,34 @@
       ansible.builtin.package:
         name: python3-distutils
         state: present
-      when: py_version.stdout is match("Python 3.") and ansible_architecture != 'aarch64'
+      when: py_version.stdout is match("Python 3.") and ansible_os_family == "Debian"
 
     - name: s3cmd | Install setuptools
-      command: "chdir={{ setuptools_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ setuptools_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Install python magic
-      command: "chdir={{ python_magic_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ python_magic_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Install setuptools_scm
-      command: "chdir={{ setuptools_scm_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ setuptools_scm_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Build dateutil
-      command: "chdir={{ python_dateutil_package_path }}
-                      {{ python_interpreter }} setup.py build"
+      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py build"
 
     - name: s3cmd | Install dateutil
-      command: "chdir={{ python_dateutil_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
       environment:
         PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
                       {{ setuptools_scm_package_path }}"
 
     - name: s3cmd | Install s3cmd
-      command: "chdir={{ s3cmd_package_path }}
-                      {{ python_interpreter }} setup.py install {{ prefix }}"
+      raw: "cd {{ s3cmd_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
       environment:
         PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
                      {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"

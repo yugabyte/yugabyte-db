@@ -4,12 +4,11 @@ headerTitle:
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere.
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: install-upgrade-yp-issues
     parent: troubleshoot-yp
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You might encounter issues during installation and upgrade of YugabyteDB Anywhere.
@@ -40,9 +39,9 @@ sudo firewall-cmd --zone=public --add-port=9874-9879/tcp
 You can create mount paths on the nodes with private IP addresses `10.1.13.150`, `10.1.13.151`, and `10.1.13.152` by executing the following command:
 
 ```sh
-for IP in 10.1.12.103 10.1.12.104 10.1.12.105; 
-do 
-  ssh $IP mkdir -p /mnt/data0; 
+for IP in 10.1.12.103 10.1.12.104 10.1.12.105;
+do
+  ssh $IP mkdir -p /mnt/data0;
 done
 ```
 
@@ -69,7 +68,7 @@ done
 
 You might experience the following issues related to your load balancer configuration:
 
-- If there are issues with accessing YugabyteDB Anywhere through a load balancer, you can define the Cross-Origin Resource Sharing (CORS) domain configuration by setting the [additionAllowedCorsOrigins](https://github.com/yugabyte/charts/blob/master/stable/yugaware/values.yaml#L66) value to the new domain involved. For example, you would add the following to the appropriate Helm command: 
+- If there are issues with accessing YugabyteDB Anywhere through a load balancer, you can define the Cross-Origin Resource Sharing (CORS) domain configuration by setting the [additionAllowedCorsOrigins](https://github.com/yugabyte/charts/blob/master/stable/yugaware/values.yaml#L66) value to the new domain involved. For example, you would add the following to the appropriate Helm command:
 
   ```properties
    --set additionAllowedCorsOrigins:'https://mylbdomain'
@@ -90,7 +89,7 @@ You might experience the following issues related to your load balancer configur
 
 
 
-<!-- 
+<!--
 
 For YugabyteDB Anywhere HTTPS configuration, you should set your own key or certificate. If you do provide this setting, the default public key is used, creating a potential security risk.
 

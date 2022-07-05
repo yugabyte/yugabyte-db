@@ -80,15 +80,14 @@ ybginrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,
 	/* Initialize non-yb gin scan opaque fields. */
 	ginrescan(scan, scankey, nscankeys, orderbys, norderbys);
 
-	bool colocated =
-		YbIsUserTableColocated(MyDatabaseId, RelationGetRelid(scan->heapRelation));
+	bool is_colocated = YbGetTableProperties(scan->heapRelation)->is_colocated;
 
 	/* Initialize ybgin scan opaque handle. */
 	YBCPgPrepareParameters prepare_params = {
 		.index_oid = RelationGetRelid(scan->indexRelation),
 		.index_only_scan = scan->xs_want_itup,
 		.use_secondary_index = true,	/* can't have ybgin primary index */
-		.querying_colocated_table = colocated,
+		.querying_colocated_table = is_colocated,
 	};
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(scan->heapRelation),
 								  YbGetStorageRelid(scan->heapRelation),

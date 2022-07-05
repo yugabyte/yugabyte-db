@@ -295,7 +295,7 @@ public class TestYbBackup extends BasePgSQLTest {
   public void testColocatedWithColocationIdAlreadySet() throws Exception {
     String ybTablePropsSql = "SELECT c.relname, props.colocation_id"
         + " FROM pg_class c, yb_table_properties(c.oid) props"
-        + " WHERE c.oid >= 16384"
+        + " WHERE c.oid >= " + FIRST_NORMAL_OID
         + " ORDER BY c.relname";
     String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
     try (Statement stmt = connection.createStatement()) {
@@ -387,7 +387,7 @@ public class TestYbBackup extends BasePgSQLTest {
     String ybTablePropsSql = "SELECT c.relname, tg.grpname, props.colocation_id"
         + " FROM pg_class c, yb_table_properties(c.oid) props"
         + " LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid"
-        + " WHERE c.oid >= 16384"
+        + " WHERE c.oid >= " + FIRST_NORMAL_OID
         + " ORDER BY c.relname";
     String uniqueIndexOnlySql = "SELECT b FROM test_tbl WHERE b = 3.14";
     try (Statement stmt = connection.createStatement()) {

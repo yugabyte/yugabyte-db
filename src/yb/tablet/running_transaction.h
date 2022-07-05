@@ -109,10 +109,10 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
                     const TransactionApplyData* data = nullptr,
                     ScopedRWOperation* operation = nullptr);
 
-  void SetOpId(const OpId& id);
+  void SetApplyOpId(const OpId& id);
 
-  OpId GetOpId() {
-    return opId;
+  const OpId& GetApplyOpId() {
+    return apply_record_op_id_;
   }
 
   // Whether this transactions is currently applying intents.
@@ -175,7 +175,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   std::vector<TransactionStatusCallback> abort_waiters_;
 
   TransactionApplyData apply_data_;
-  OpId opId;
+  OpId apply_record_op_id_;
   docdb::ApplyTransactionState apply_state_;
   // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
   std::atomic<bool> processing_apply_{false};

@@ -7,8 +7,7 @@ menu:
   preview:
     parent: troubleshoot-nodes
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Host resource usage

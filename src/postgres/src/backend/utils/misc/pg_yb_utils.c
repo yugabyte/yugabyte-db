@@ -321,22 +321,6 @@ YbIsDatabaseColocated(Oid dbid)
 }
 
 bool
-YbIsUserTableColocated(Oid dbid, Oid relid)
-{
-	if (!MyDatabaseColocated && !YbTablegroupCatalogExists)
-		return false;
-
-	bool colocated = false;
-	bool not_found = false;
-
-	HandleYBStatusIgnoreNotFound(YbPgIsUserTableColocated(dbid,
-														  relid,
-														  &colocated),
-								 &not_found);
-	return colocated;
-}
-
-bool
 YBRelHasSecondaryIndices(Relation relation)
 {
 	if (!relation->rd_rel->relhasindex)
@@ -389,6 +373,18 @@ YBSavepointsEnabled()
 	if (cached_value == -1)
 	{
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_pg_savepoints", true);
+	}
+	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
+}
+
+bool
+YBIsDBCatalogVersionMode()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault(
+			"FLAGS_TEST_enable_db_catalog_version_mode", false);
 	}
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
@@ -531,6 +527,7 @@ YBInitPostgresBackend(
 		callbacks.GetCurrentYbMemctx = &GetCurrentYbMemctx;
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
+		callbacks.YbPgMemUpdateMax = &YbPgMemUpdateMax;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -593,10 +590,10 @@ YBCSetActiveSubTransaction(SubTransactionId id)
 }
 
 void
-YBCRollbackSubTransaction(SubTransactionId id)
+YBCRollbackToSubTransaction(SubTransactionId id)
 {
 	if (YBSavepointsEnabled())
-		HandleYBStatus(YBCPgRollbackSubTransaction(id));
+		HandleYBStatus(YBCPgRollbackToSubTransaction(id));
 }
 
 bool
@@ -949,6 +946,7 @@ PowerWithUpperLimit(double base, int exp, double upper_limit)
 bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = false;
+bool yb_enable_optimizer_statistics = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1041,7 +1039,8 @@ YBIncrementDdlNestingLevel()
 }
 
 void
-YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_catalog_change)
+YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
+						   bool is_breaking_catalog_change)
 {
 	ddl_nesting_level--;
 	if (ddl_nesting_level == 0)
@@ -1049,7 +1048,17 @@ YBDecrementDdlNestingLevel(bool is_catalog_version_increment, bool is_breaking_c
 		const bool increment_done =
 			is_catalog_version_increment &&
 			YBCPgHasWriteOperationsInDdlTxnMode() &&
-			YbIncrementMasterCatalogVersionTableEntry(is_breaking_catalog_change);
+			YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE;
+
+		if (increment_done)
+		{
+			if (YBIsDBCatalogVersionMode())
+				YbIncrementMasterDBCatalogVersionTableEntry(
+					MyDatabaseId, is_breaking_catalog_change);
+			else
+				YbIncrementMasterCatalogVersionTableEntry(
+					is_breaking_catalog_change);
+		}
 
 		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
 
@@ -1401,6 +1410,20 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_RefreshMatViewStmt:
 			break;
 
+		case T_ReindexStmt:
+			/*
+			 * Does not need catalog version increment since only data changes,
+			 * not metadata--unless the data itself is metadata (system index).
+			 * It could be nice to force a cache refresh when fixing a system
+			 * index corruption, but just because a system index is REINDEXed
+			 * doesn't mean it had a corruption.  If there's a system index
+			 * corruption, manual intervention is already needed, so might as
+			 * well let the user deal with refreshing clients.
+			 */
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
+
 		default:
 			/* Not a DDL operation. */
 			*is_catalog_version_increment = false;
@@ -1609,29 +1632,47 @@ bool YBIsSupportedLibcLocale(const char *localebuf) {
 		   strcasecmp(localebuf, "en_US.UTF-8") == 0;
 }
 
-void
-YbGetTableDescAndProps(Oid table_oid,
-					   bool allow_missing,
-					   YBCPgTableDesc *desc,
-					   YBCPgTableProperties *props)
+static YBCStatus
+YbGetTablePropertiesCommon(Relation rel)
 {
-	if (allow_missing)
+	if (rel->yb_table_properties)
 	{
-		bool exists_in_yb = false;
-		HandleYBStatus(YBCPgTableExists(MyDatabaseId, table_oid, &exists_in_yb));
-		if (!exists_in_yb)
-		{
-			*desc = NULL;
-			return;
-		}
+		/* Already loaded, nothing to do */
+		return YBCStatusOKValue;
 	}
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, table_oid, desc));
-	HandleYBStatus(YBCPgGetSomeTableProperties(*desc, props));
+	Oid dbid          = YBCGetDatabaseOid(rel);
+	Oid storage_relid = YbGetStorageRelid(rel);
 
-	Relation rel = relation_open(table_oid, AccessShareLock);
-	props->tablegroup_oid = RelationGetTablegroupOid(rel);
-	relation_close(rel, AccessShareLock);
+	YBCPgTableDesc desc = NULL;
+	YBCStatus status = YBCPgGetTableDesc(dbid, storage_relid, &desc);
+	if (!YBCStatusIsOK(status))
+	{
+		return status;
+	}
+
+	/* Relcache entry data must live in CacheMemoryContext */
+	rel->yb_table_properties =
+		MemoryContextAllocZero(CacheMemoryContext, sizeof(YbTablePropertiesData));
+
+	HandleYBStatus(YBCPgGetTableProperties(desc, rel->yb_table_properties));
+
+	return YBCStatusOKValue;
+}
+
+YbTableProperties
+YbGetTableProperties(Relation rel)
+{
+	HandleYBStatus(YbGetTablePropertiesCommon(rel));
+	return rel->yb_table_properties;
+}
+
+YbTableProperties
+YbTryGetTableProperties(Relation rel)
+{
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(YbGetTablePropertiesCommon(rel), &not_found);
+	return not_found ? NULL : rel->yb_table_properties;
 }
 
 Datum
@@ -1741,10 +1782,10 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 	Datum		values[ncols];
 	bool		nulls[ncols];
-	YBCPgTableDesc yb_tabledesc = NULL;
-	YBCPgTableProperties yb_table_properties;
 
-	YbGetTableDescAndProps(relid, true, &yb_tabledesc, &yb_table_properties);
+	Relation	rel = relation_open(relid, AccessShareLock);
+
+	YbTableProperties yb_props = YbTryGetTableProperties(rel);
 
 	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -1762,28 +1803,28 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	}
 	BlessTupleDesc(tupdesc);
 
-	if (yb_tabledesc)
+	if (yb_props)
 	{
-		values[0] = Int64GetDatum(yb_table_properties.num_tablets);
-		values[1] = Int64GetDatum(yb_table_properties.num_hash_key_columns);
-		values[2] = BoolGetDatum(yb_table_properties.is_colocated);
+		values[0] = Int64GetDatum(yb_props->num_tablets);
+		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
+		values[2] = BoolGetDatum(yb_props->is_colocated);
 		if (ncols >= 5)
 		{
 			values[3] =
-				OidIsValid(yb_table_properties.colocation_id)
-					? ObjectIdGetDatum(yb_table_properties.tablegroup_oid)
+				OidIsValid(yb_props->tablegroup_oid)
+					? ObjectIdGetDatum(yb_props->tablegroup_oid)
 					: (Datum) 0;
 			values[4] =
-				OidIsValid(yb_table_properties.colocation_id)
-					? ObjectIdGetDatum(yb_table_properties.colocation_id)
+				OidIsValid(yb_props->colocation_id)
+					? ObjectIdGetDatum(yb_props->colocation_id)
 					: (Datum) 0;
 		}
 
 		memset(nulls, 0, sizeof(nulls));
 		if (ncols >= 5)
 		{
-			nulls[3] = !OidIsValid(yb_table_properties.tablegroup_oid);
-			nulls[4] = !OidIsValid(yb_table_properties.colocation_id);
+			nulls[3] = !OidIsValid(yb_props->tablegroup_oid);
+			nulls[4] = !OidIsValid(yb_props->colocation_id);
 		}
 	}
 	else
@@ -1791,6 +1832,8 @@ yb_table_properties(PG_FUNCTION_ARGS)
 		/* Table does not exist in YB, set nulls for all columns. */
 		memset(nulls, 1, sizeof(nulls));
 	}
+
+	relation_close(rel, AccessShareLock);
 
 	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, nulls));
 }
@@ -2208,6 +2251,10 @@ Oid YbGetStorageRelid(Relation relation) {
 
 bool IsYbDbAdminUser(Oid member) {
 	return IsYugaByteEnabled() && has_privs_of_role(member, DEFAULT_ROLE_YB_DB_ADMIN);
+}
+
+bool IsYbDbAdminUserNosuper(Oid member) {
+	return IsYugaByteEnabled() && is_member_of_role_nosuper(member, DEFAULT_ROLE_YB_DB_ADMIN);
 }
 
 void YbCheckUnsupportedSystemColumns(Var *var, const char *colname, RangeTblEntry *rte) {

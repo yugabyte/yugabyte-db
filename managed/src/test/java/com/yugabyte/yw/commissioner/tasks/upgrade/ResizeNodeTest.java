@@ -213,6 +213,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
+    userIntent.providerType = curIntent.providerType;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
@@ -250,6 +251,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
+    userIntent.providerType = curIntent.providerType;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);
@@ -294,6 +296,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.numVolumes = 1;
     userIntent.deviceInfo.volumeSize = DEFAULT_VOLUME_SIZE;
     userIntent.instanceType = DEFAULT_INSTANCE_TYPE;
+    userIntent.providerType = curIntent.providerType;
     PlacementInfo pi = new PlacementInfo();
     PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
     PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, false);

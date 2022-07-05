@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/dcl_alter_policy/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -37,10 +36,10 @@ change the roles that the policy applies to and the `USING` and `CHECK` expressi
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_policy,alter_policy_rename.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_policy,alter_policy_rename.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_policy,alter_policy_rename.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_policy,alter_policy_rename.diagram.md" %}}
   </div>
 </div>
 

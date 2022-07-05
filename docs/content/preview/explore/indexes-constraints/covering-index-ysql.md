@@ -8,8 +8,7 @@ menu:
     identifier: covering-index-ysql
     parent: explore-indexes-constraints
     weight: 255
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -21,12 +20,11 @@ showAsideToc: true
   </li>
 </ul>
 
-A covering index is an index that includes all the columns required by a query, including columns that would typically not be a part of an index. This is done by using the INCLUDE keyword to list the columns you want to include.
-A covering index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans, where you don't need to scan the table, just the index, to satisfy the query.
+A covering index is an index that includes all the columns required by a query, including columns that would typically not be a part of an index. This is done by using the INCLUDE keyword to list the columns you want to include. A covering index is an efficient way to perform [index-only](https://wiki.postgresql.org/wiki/Index-only_scans) scans, where you don't need to scan the table, just the index, to satisfy the query.
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE (columnC);
 ```
 
@@ -34,7 +32,7 @@ CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE 
 
 The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
 
-- Create a cluster [locally](/preview/quick-start/) or in [YugabyteDB Managed](/preview/yugabyte-cloud/cloud-basics/create-clusters-free/).
+- Create a cluster [locally](/preview/quick-start/) or in [YugabyteDB Managed](/preview/quick-start-yugabytedb-managed/).
 
 - Connect to the cluster using the [YSQL shell](/preview/admin/ysqlsh/) for local clusters, or [using cloud shell](/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
@@ -42,9 +40,7 @@ The following exercise demonstrates how to perform an index-only scan on an [exp
 
 ```sql
 CREATE TABLE IF NOT EXISTS demo (id bigint, username text);
-```
 
-```sql
 INSERT INTO demo SELECT n,'Number'||to_hex(n) from generate_series(1,1000) n;
 ```
 

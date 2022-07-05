@@ -16,7 +16,7 @@ from ybops.cloud.common.method import CreateInstancesMethod, ProvisionInstancesM
     UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, AccessDeleteKeyMethod, \
     CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
     UpdateMountedDisksMethod, DeleteRootVolumesMethod, TransferXClusterCerts, VerifySSHConnection, \
-    AddAuthorizedKey, RemoveAuthorizedKey
+    AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks
 
 
 class InstanceCommand(AbstractPerCloudCommand):
@@ -48,6 +48,8 @@ class InstanceCommand(AbstractPerCloudCommand):
         self.add_method(VerifySSHConnection(self))
         self.add_method(AddAuthorizedKey(self))
         self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(RebootInstancesMethod(self))
+        self.add_method(RunHooks(self))
 
 
 class NetworkCommand(AbstractPerCloudCommand):
@@ -70,7 +72,8 @@ class ControlInstanceCommand(AbstractPerCloudCommand):
         super(ControlInstanceCommand, self).__init__("control")
         self.commands_per_server_type = {
             "master": self.MASTER_COMMANDS,
-            "tserver": self.BASE_COMMANDS
+            "tserver": self.BASE_COMMANDS,
+            "controller": self.BASE_COMMANDS
             }
 
     def add_subcommands(self):

@@ -21,10 +21,10 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -253,8 +253,6 @@ public class TableManagerYbTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
-    testCustomer.addUniverseUUID(testUniverse.universeUUID);
-    testCustomer.save();
     when(mockruntimeConfigFactory.forUniverse(any())).thenReturn(mockConfigUniverseScope);
     when(mockConfigUniverseScope.getBoolean("yb.backup.pg_based")).thenReturn(false);
   }

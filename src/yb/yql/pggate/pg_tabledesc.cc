@@ -47,6 +47,9 @@ Status PgTableDesc::Init() {
   for (const auto& column : schema().columns()) {
     attr_num_map_.emplace(column.order(), idx++);
   }
+  if (resp_.has_tablegroup_id()) {
+    tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
+  }
   return PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
 
@@ -84,6 +87,10 @@ bool PgTableDesc::IsColocated() const {
 
 YBCPgOid PgTableDesc::GetColocationId() const {
   return schema().has_colocation_id() ? schema().colocation_id() : kColocationIdNotSet;
+}
+
+YBCPgOid PgTableDesc::GetTablegroupOid() const {
+  return tablegroup_oid_;
 }
 
 bool PgTableDesc::IsHashPartitioned() const {

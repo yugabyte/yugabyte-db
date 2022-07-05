@@ -9,12 +9,11 @@ aliases:
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
   - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -111,8 +110,8 @@ You can customize your network, including the virtual network. YugabyteDB Anywhe
 
 You can customize the Network Time Protocol server, as follows:
 
-- Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/). 
-- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers. 
+- Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
+- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
 - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image. Note that **Use AWS Time Sync** must be disabled during the universe creation; otherwise **Don’t set up NTP** will be overridden.
 
 ## Global deployment
@@ -121,15 +120,20 @@ For deployment, YugabyteDB Anywhere aims to provide you with easy access to the 
 
 ### YugabyteDB Anywhere-managed configuration
 
-If you choose to use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which YugabyteDB Anywhere was deployed, using [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries.
+If you choose to use YugabyteDB Anywhere to configure, own, and manage a full cross-region deployment of Virtual Private Cloud (VPC), YugabyteDB Anywhere will generate a YugabyteDB-specific VPC in each selected region, then interconnect them, as well as the VPC in which YugabyteDB Anywhere was deployed, using [VPC peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html). This mode also sets up all other relevant subcomponents in all regions, such as Subnets, Security Groups, and Routing Table entries.
 
 You have an option to provide the following:
 
 - A custom classless inter-domain routing (CIDR) block for each regional VPC. If not provided, YugabyteDB Anywhere will choose defaults, aiming to not overlap across regions.
 
-- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.<br><br>
+- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see Ubuntu 18 and Oracle Linux 8 support. If you do not provide any values, a recent x86 CentOS image is used. For additional information, see [CentOS on AWS](https://wiki.centos.org/Cloud/AWS) and [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support).<br>
 
-  ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
+  <br>
+
+  ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)<br><br><br>
+
+  \
+  To use automatic provisioning to bring up a universe on [AWS Graviton](https://aws.amazon.com/ec2/graviton/), you need to pass in the Arch AMI ID of AlmaLinux or Ubuntu. Note that this requires a YugabyteDB release for Linux ARM, which is available through one of the release pages (for example, the [current preview release](/preview/releases/release-notes/preview-release/)) by clicking **Downloads > Linux ARM**. YugabyteDB Anywhere enables you to import releases via an S3 or HTTP, as described in [Upgrade the YugabyteDB software](../../../manage-deployments/upgrade-software/).
 
 ### Self-managed configuration
 
@@ -138,7 +142,7 @@ You can use your own custom VPCs. This allows you the highest level of customiza
 - A VPC ID to use for each region.
 - A Security Group ID to use for each region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
 - A mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
-- A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
+- A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 
@@ -150,12 +154,12 @@ If you choose to provide your own VPC information, you will be responsible for h
 - If you deploy YugabyteDB Anywhere in a different VPC than the ones in which you intend to deploy YugabyteDB nodes, then its own VPC must also be part of this cross-region VPC mesh, as well as setting up routing table entries in the source VPC (YugabyteDB Anywhere) and allowing one further CIDR block (or public IP) ingress rule on the security groups for the YugabyteDB nodes (to allow traffic from YugabyteDB Anywhere or its VPC).
 - When a public IP address is not enabled on a universe, a network address translation (NAT) gateway or device is required. You must configure the NAT gateway before creating the VPC that you add to the YugabyteDB Anywhere UI. For more information, see [NAT](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat.html) and [Tutorial: Creating a VPC with Public and Private Subnets for Your Clusters](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-public-private-vpc.html) in the AWS documentation.
 
-### Ubuntu 18 and Oracle 8 support
+### Ubuntu 18 and Oracle Linux 8 support
 
 In addition to CentOS, YugabyteDB Anywhere allows you to bring up universes on the following host nodes:
 
 - Ubuntu 18.04, which requires Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
-- Oracle 8, which requires the provider created with a custom AMI and custom SSH user, assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. YugabyteDB Anywhere support for Oracle 8 has the following limitations:
+- Oracle Linux 8, which requires the provider created with a custom AMI and custom SSH user, assumes that gtar or gunzip is present on the host AMI, and uses the firewall-cmd client to set default target `ACCEPT`. YugabyteDB Anywhere support for Oracle Linux 8 has the following limitations:
   - Only Red Hat Linux-compatible kernel is supported to allow port changing. There is no support for Unbreakable Enterprise Kernel (UEK).
   - Systemd services are not supported.
 

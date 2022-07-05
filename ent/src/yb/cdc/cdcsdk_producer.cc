@@ -21,12 +21,15 @@
 #include "yb/docdb/doc_key.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 
 DEFINE_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
 TAG_FLAG(cdc_snapshot_batch_size, runtime);
 
 DEFINE_bool(stream_truncate_record, false, "Enable streaming of TRUNCATE record");
 TAG_FLAG(stream_truncate_record, runtime);
+
+DECLARE_int64(cdc_intent_retention_ms);
 
 namespace yb {
 namespace cdc {
@@ -60,13 +63,15 @@ void AddColumnToMap(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const ColumnSchema& col_schema,
     const Value& col,
+    const EnumOidLabelMap& enum_oid_label_map,
     DatumMessagePB* cdc_datum_message) {
   cdc_datum_message->set_column_name(col_schema.name());
   QLValuePB ql_value;
   if (tablet_peer->tablet()->table_type() == PGSQL_TABLE_TYPE) {
     col.ToQLValuePB(col_schema.type(), &ql_value);
     if (!IsNull(ql_value) && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
-      docdb::SetValueFromQLBinaryWrapper(ql_value, col_schema.pg_type_oid(), cdc_datum_message);
+      docdb::SetValueFromQLBinaryWrapper(
+          ql_value, col_schema.pg_type_oid(), enum_oid_label_map, cdc_datum_message);
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
     }
@@ -91,21 +96,20 @@ DatumMessagePB* AddTuple(RowMessage* row_message) {
 
 void AddPrimaryKey(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const docdb::SubDocKey& decoded_key,
-    const Schema& tablet_schema, RowMessage* row_message) {
+    const Schema& tablet_schema, const EnumOidLabelMap& enum_oid_label_map,
+    RowMessage* row_message) {
   size_t i = 0;
   for (const auto& col : decoded_key.doc_key().hashed_group()) {
     DatumMessagePB* tuple = AddTuple(row_message);
 
-    AddColumnToMap(
-        tablet_peer, tablet_schema.column(i), col, tuple);
+    AddColumnToMap(tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, tuple);
     i++;
   }
 
   for (const auto& col : decoded_key.doc_key().range_group()) {
     DatumMessagePB* tuple = AddTuple(row_message);
 
-    AddColumnToMap(
-        tablet_peer, tablet_schema.column(i), col, tuple);
+    AddColumnToMap(tablet_peer, tablet_schema.column(i), col, enum_oid_label_map, tuple);
     i++;
   }
 }
@@ -173,6 +177,7 @@ Status PopulateCDCSDKIntentRecord(
     const std::vector<docdb::IntentKeyValueForCDC>& intents,
     const StreamMetadata& metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const EnumOidLabelMap& enum_oid_label_map,
     GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption,
     IntraTxnWriteId* write_id,
@@ -242,7 +247,7 @@ Status PopulateCDCSDKIntentRecord(
 
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       row_message->set_transaction_id(transaction_id.ToString());
-      AddPrimaryKey(tablet_peer, decoded_key, schema, row_message);
+      AddPrimaryKey(tablet_peer, decoded_key, schema, enum_oid_label_map, row_message);
     }
 
     if (IsInsertOperation(*row_message)) {
@@ -255,7 +260,8 @@ Status PopulateCDCSDKIntentRecord(
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id_opt->GetColumnId()));
 
         AddColumnToMap(
-            tablet_peer, col, decoded_value.primitive_value(), row_message->add_new_tuple());
+            tablet_peer, col, decoded_value.primitive_value(), enum_oid_label_map,
+            row_message->add_new_tuple());
         row_message->add_old_tuple();
 
       } else if (
@@ -279,6 +285,7 @@ Status PopulateCDCSDKWriteRecord(
     const ReplicateMsgPtr& msg,
     const StreamMetadata& metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const EnumOidLabelMap& enum_oid_label_map,
     GetChangesResponsePB* resp,
     const Schema& schema) {
   const auto& batch = msg->write().write_batch();
@@ -333,7 +340,7 @@ Status PopulateCDCSDKWriteRecord(
         }
       }
 
-      AddPrimaryKey(tablet_peer, decoded_key, schema, row_message);
+      AddPrimaryKey(tablet_peer, decoded_key, schema, enum_oid_label_map, row_message);
 
       // Process intent records.
       row_message->set_commit_time(msg->hybrid_time());
@@ -349,7 +356,8 @@ Status PopulateCDCSDKWriteRecord(
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
 
         AddColumnToMap(
-            tablet_peer, col, decoded_value.primitive_value(), row_message->add_new_tuple());
+            tablet_peer, col, decoded_value.primitive_value(), enum_oid_label_map,
+            row_message->add_new_tuple());
         row_message->add_old_tuple();
 
       } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
@@ -450,6 +458,7 @@ Status ProcessIntents(
     const OpId& op_id,
     const TransactionId& transaction_id,
     const StreamMetadata& metadata,
+    const EnumOidLabelMap& enum_oid_label_map,
     GetChangesResponsePB* resp,
     ScopedTrackedConsumption* consumption,
     CDCSDKCheckpointPB* checkpoint,
@@ -467,6 +476,8 @@ Status ProcessIntents(
 
   auto tablet = tablet_peer->shared_tablet();
   RETURN_NOT_OK(tablet->GetIntents(transaction_id, keyValueIntents, stream_state));
+  VLOG(1) << "The size of intentKeyValues for transaction id: " << transaction_id
+          << ", with apply record op_id : " << op_id << ", is: " << (*keyValueIntents).size();
 
   for (auto& keyValue : *keyValueIntents) {
     docdb::SubDocKey sub_doc_key;
@@ -481,8 +492,8 @@ Status ProcessIntents(
 
   // Need to populate the CDCSDKRecords
   RETURN_NOT_OK(PopulateCDCSDKIntentRecord(
-      op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, resp, consumption, &write_id,
-      &reverse_index_key, schema));
+      op_id, transaction_id, *keyValueIntents, metadata, tablet_peer, enum_oid_label_map, resp,
+      consumption, &write_id, &reverse_index_key, schema));
 
   SetTermIndex(op_id.term, op_id.index, checkpoint);
 
@@ -509,7 +520,8 @@ Status PopulateCDCSDKSnapshotRecord(
     const QLTableRow* row,
     const Schema& schema,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-    ReadHybridTime time) {
+    ReadHybridTime time,
+    const EnumOidLabelMap& enum_oid_label_map) {
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
   string table_name = tablet_peer->tablet()->metadata()->table_name();
@@ -533,7 +545,8 @@ Status PopulateCDCSDKSnapshotRecord(
 
     if (value && value->value_case() != QLValuePB::VALUE_NOT_SET
         && col_schema.pg_type_oid() != 0 /*kInvalidOid*/) {
-      docdb::SetValueFromQLBinaryWrapper(*value, col_schema.pg_type_oid(), cdc_datum_message);
+      docdb::SetValueFromQLBinaryWrapper(
+          *value, col_schema.pg_type_oid(), enum_oid_label_map, cdc_datum_message);
     } else {
       cdc_datum_message->set_column_type(col_schema.pg_type_oid());
     }
@@ -564,12 +577,13 @@ void FillDDLInfo(RowMessage* row_message, const SchemaPB& schema, const uint32_t
 // to read intents from WAL.
 
 Status GetChangesForCDCSDK(
-    const std::string& stream_id,
-    const std::string& tablet_id,
+    const CDCStreamId& stream_id,
+    const TabletId& tablet_id,
     const CDCSDKCheckpointPB& from_op_id,
     const StreamMetadata& stream_metadata,
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const MemTrackerPtr& mem_tracker,
+    const EnumOidLabelMap& enum_oid_label_map,
     consensus::ReplicateMsgsHolder* msgs_holder,
     GetChangesResponsePB* resp,
     std::string* commit_timestamp,
@@ -578,6 +592,7 @@ Status GetChangesForCDCSDK(
     int64_t* last_readable_opid_index,
     const CoarseTimePoint deadline) {
   OpId op_id{from_op_id.term(), from_op_id.index()};
+  VLOG(1) << "The from_op_id from GetChanges is  " << op_id;
   ScopedTrackedConsumption consumption;
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
@@ -608,7 +623,8 @@ Status GetChangesForCDCSDK(
         return STATUS_SUBSTITUTE(
             Corruption, "Cannot read data as the transaction participant context is null");
       }
-      txn_participant->SetRetainOpId(data.op_id);
+      txn_participant->SetIntentRetainOpIdAndTime(
+          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
       RETURN_NOT_OK(txn_participant->context()->GetLastReplicatedData(&data));
       time = ReadHybridTime::SingleTime(data.log_ht);
 
@@ -644,7 +660,8 @@ Status GetChangesForCDCSDK(
 
       while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
         RETURN_NOT_OK(iter->NextRow(&row));
-        RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(resp, &row, schema, tablet_peer, time));
+        RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
+            resp, &row, schema, tablet_peer, time, enum_oid_label_map));
         fetched++;
       }
       docdb::SubDocKey sub_doc_key;
@@ -678,8 +695,8 @@ Status GetChangesForCDCSDK(
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
     RETURN_NOT_OK(ProcessIntents(
-        op_id, transaction_id, stream_metadata, resp, &consumption, &checkpoint, tablet_peer,
-        &keyValueIntents, &stream_state, nullptr));
+        op_id, transaction_id, stream_metadata, enum_oid_label_map, resp, &consumption, &checkpoint,
+        tablet_peer, &keyValueIntents, &stream_state, nullptr));
 
     if (checkpoint.write_id() == 0 && checkpoint.key().empty()) {
       last_streamed_op_id->term = checkpoint.term();
@@ -688,131 +705,159 @@ Status GetChangesForCDCSDK(
     checkpoint_updated = true;
   } else {
     RequestScope request_scope;
+    OpId last_seen_op_id = op_id;
 
-    auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
-        op_id, last_readable_opid_index, deadline));
+    // It's possible that a batch of messages in read_ops after fetching from
+    // 'ReadReplicatedMessagesForCDC' , will not have any actionable messages. In which case we
+    // keep retrying by fetching the next batch, until either we get an actionable message or reach
+    // the 'last_readable_opid_index'.
+    consensus::ReadOpsResult read_ops;
+    do {
+      read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
+          last_seen_op_id, last_readable_opid_index, deadline));
 
-    if (read_ops.read_from_disk_size && mem_tracker) {
-      consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
-    }
-
-    auto txn_participant = tablet_peer->tablet()->transaction_participant();
-    if (txn_participant) {
-      request_scope = RequestScope(txn_participant);
-    }
-
-    Schema current_schema;
-    bool pending_intents = false;
-    bool schema_streamed = false;
-
-    for (const auto& msg : read_ops.messages) {
-      if (!schema_streamed && !(**cached_schema).initialized()) {
-        current_schema.CopyFrom(*tablet_peer->tablet()->schema().get());
-        string table_name = tablet_peer->tablet()->metadata()->table_name();
-        schema_streamed = true;
-
-        proto_record = resp->add_cdc_sdk_proto_records();
-        row_message = proto_record->mutable_row_message();
-        row_message->set_op(RowMessage_Op_DDL);
-        row_message->set_table(table_name);
-
-        *cached_schema = std::make_shared<Schema>(std::move(current_schema));
-        SchemaPB current_schema_pb;
-        SchemaToPB(**cached_schema, &current_schema_pb);
-        FillDDLInfo(row_message,
-                    current_schema_pb,
-                    tablet_peer->tablet()->metadata()->schema_version());
-      } else {
-        current_schema = **cached_schema;
+      if (read_ops.read_from_disk_size && mem_tracker) {
+        consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
       }
 
-      switch (msg->op_type()) {
-        case consensus::OperationType::UPDATE_TRANSACTION_OP:
-          // Ignore intents.
-          // Read from IntentDB after they have been applied.
-          if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
-            auto txn_id =
-                VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
-            auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
-            std::vector<docdb::IntentKeyValueForCDC> intents;
-            docdb::ApplyTransactionState new_stream_state;
+      auto txn_participant = tablet_peer->tablet()->transaction_participant();
+      if (txn_participant) {
+        request_scope = RequestScope(txn_participant);
+      }
 
-            *commit_timestamp = msg->transaction_state().commit_hybrid_time();
-            op_id.term = msg->id().term();
-            op_id.index = msg->id().index();
-            RETURN_NOT_OK(ProcessIntents(
-                op_id, txn_id, stream_metadata, resp, &consumption, &checkpoint, tablet_peer,
-                &intents, &new_stream_state, &current_schema));
+      Schema current_schema;
+      bool pending_intents = false;
+      bool schema_streamed = false;
 
-            if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
-              pending_intents = true;
-            } else {
-              last_streamed_op_id->term = msg->id().term();
-              last_streamed_op_id->index = msg->id().index();
+      if (read_ops.messages.empty()) {
+        VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
+                          << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
+                          << *last_readable_opid_index;
+        break;
+      }
+
+      for (const auto& msg : read_ops.messages) {
+        last_seen_op_id.term = msg->id().term();
+        last_seen_op_id.index = msg->id().index();
+
+        if (!schema_streamed && !(**cached_schema).initialized()) {
+          current_schema.CopyFrom(*tablet_peer->tablet()->schema().get());
+          string table_name = tablet_peer->tablet()->metadata()->table_name();
+          schema_streamed = true;
+
+          proto_record = resp->add_cdc_sdk_proto_records();
+          row_message = proto_record->mutable_row_message();
+          row_message->set_op(RowMessage_Op_DDL);
+          row_message->set_table(table_name);
+
+          *cached_schema = std::make_shared<Schema>(std::move(current_schema));
+          SchemaPB current_schema_pb;
+          SchemaToPB(**cached_schema, &current_schema_pb);
+          FillDDLInfo(
+              row_message, current_schema_pb, tablet_peer->tablet()->metadata()->schema_version());
+        } else {
+          current_schema = **cached_schema;
+        }
+
+        switch (msg->op_type()) {
+          case consensus::OperationType::UPDATE_TRANSACTION_OP:
+            // Ignore intents.
+            // Read from IntentDB after they have been applied.
+            if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
+              auto txn_id = VERIFY_RESULT(
+                  FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
+              auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
+              std::vector<docdb::IntentKeyValueForCDC> intents;
+              docdb::ApplyTransactionState new_stream_state;
+
+              *commit_timestamp = msg->transaction_state().commit_hybrid_time();
+              op_id.term = msg->id().term();
+              op_id.index = msg->id().index();
+              RETURN_NOT_OK(ProcessIntents(
+                  op_id, txn_id, stream_metadata, enum_oid_label_map, resp, &consumption,
+                  &checkpoint, tablet_peer, &intents, &new_stream_state, &current_schema));
+
+              if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
+                pending_intents = true;
+                VLOG(1) << "There are pending intents for the transaction id " << txn_id
+                        << " with apply record OpId: " << op_id;
+              } else {
+                last_streamed_op_id->term = msg->id().term();
+                last_streamed_op_id->index = msg->id().index();
+              }
+            }
+            checkpoint_updated = true;
+            break;
+
+          case consensus::OperationType::WRITE_OP: {
+            const auto& batch = msg->write().write_batch();
+
+            if (!batch.has_transaction()) {
+              RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
+                  msg, stream_metadata, tablet_peer, enum_oid_label_map, resp, current_schema));
+
+              SetCheckpoint(
+                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+              checkpoint_updated = true;
             }
           }
-          checkpoint_updated = true;
           break;
 
-        case consensus::OperationType::WRITE_OP: {
-          const auto& batch = msg->write().write_batch();
-
-          if (!batch.has_transaction()) {
-                RETURN_NOT_OK(
-                PopulateCDCSDKWriteRecord(msg, stream_metadata, tablet_peer, resp, current_schema));
-
-            SetCheckpoint(
-                msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-            checkpoint_updated = true;
-          }
-        }
-        break;
-
-        case consensus::OperationType::CHANGE_METADATA_OP: {
-          RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
-          string table_name = tablet_peer->tablet()->metadata()->table_name();
-          *cached_schema = std::make_shared<Schema>(std::move(current_schema));
-          if ((resp->cdc_sdk_proto_records_size() > 0 &&
-               resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+          case consensus::OperationType::CHANGE_METADATA_OP: {
+            RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
+            string table_name = tablet_peer->tablet()->metadata()->table_name();
+            *cached_schema = std::make_shared<Schema>(std::move(current_schema));
+            if ((resp->cdc_sdk_proto_records_size() > 0 &&
+                 resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+                         .row_message()
+                         .op() == RowMessage_Op_DDL)) {
+              if ((resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
                        .row_message()
-                       .op() == RowMessage_Op_DDL)) {
-            if ((resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
-                     .row_message()
-                     .schema_version() != msg->change_metadata_request().schema_version())) {
+                       .schema_version() != msg->change_metadata_request().schema_version())) {
+                RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
+                    msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
+              }
+            } else {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
                   msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
             }
-          } else {
-            RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
-          }
-          SetCheckpoint(
-              msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-          checkpoint_updated = true;
-        }
-        break;
-
-        case consensus::OperationType::TRUNCATE_OP: {
-          if (FLAGS_stream_truncate_record) {
-            RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
-                msg, resp->add_cdc_sdk_proto_records(), current_schema));
             SetCheckpoint(
                 msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
             checkpoint_updated = true;
           }
-        }
-        break;
-
-        default:
-          // Nothing to do for other operation types.
           break;
+
+          case consensus::OperationType::TRUNCATE_OP: {
+            if (FLAGS_stream_truncate_record) {
+              RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
+                  msg, resp->add_cdc_sdk_proto_records(), current_schema));
+              SetCheckpoint(
+                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+              checkpoint_updated = true;
+            }
+          }
+          break;
+
+          default:
+            // Nothing to do for other operation types.
+            break;
+        }
+
+        if (pending_intents) break;
+      }
+      if (read_ops.messages.size() > 0) {
+        *msgs_holder = consensus::ReplicateMsgsHolder(
+            nullptr, std::move(read_ops.messages), std::move(consumption));
       }
 
-      if (pending_intents) break;
-    }
-    if (read_ops.messages.size() > 0)
-      *msgs_holder = consensus::ReplicateMsgsHolder(
-          nullptr, std::move(read_ops.messages), std::move(consumption));
+      if (!checkpoint_updated) {
+        LOG_WITH_FUNC(INFO)
+            << "The last batch of 'read_ops' had no actionable message. last_see_op_id: "
+            << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
+            << ". Will retry and get another batch";
+      }
+    } while (!checkpoint_updated && last_readable_opid_index &&
+             last_seen_op_id.index < *last_readable_opid_index);
   }
 
   if (consumption) {

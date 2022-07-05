@@ -3,14 +3,12 @@ title: Kafka Connect YugabyteDB
 headerTitle: Kafka Connect YugabyteDB
 linkTitle: Kafka Connect YugabyteDB
 description: Use Kafka Connect YugabyteDB to stream YugabyteDB table updates to Kafka topics.
-section: REFERENCE
 menu:
   preview:
     identifier: kafka-connect-yugabytedb
     parent: connectors
     weight: 2930
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are two approaches of integrating [YugabyteDB](https://github.com/yugabyte/yugabyte-db) with Apache Kafka. Kafka provides [Kafka Connect](https://docs.confluent.io/3.0.0/connect/intro.html), a connector SDK for building such integrations.

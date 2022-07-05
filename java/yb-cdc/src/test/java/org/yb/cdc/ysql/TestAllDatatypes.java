@@ -92,6 +92,8 @@ public class TestAllDatatypes extends CDCBaseClass {
     statement.execute("create table testtsrange (a int primary key, b tsrange);");
     statement.execute("create table testtstzrange (a int primary key, b tstzrange);");
     statement.execute("create table testdaterange (a int primary key, b daterange);");
+    statement.execute("CREATE TYPE coupon_discount_type AS ENUM ('FIXED','PERCENTAGE');");
+    statement.execute("create table testdiscount (a int primary key, b coupon_discount_type);");
   }
 
   @Before
@@ -172,6 +174,8 @@ public class TestAllDatatypes extends CDCBaseClass {
       tstzrangeSub.createStream("proto");
       CDCSubscriber daterangeSub = new CDCSubscriber("testdaterange", getMasterAddresses());
       daterangeSub.createStream("proto");
+      CDCSubscriber udtSub = new CDCSubscriber("testdiscount", getMasterAddresses());
+      udtSub.createStream("proto");
 
       TestUtils.runSqlScript(connection, "sql_datatype_script/complete_datatype_test.sql");
 
@@ -520,6 +524,11 @@ public class TestAllDatatypes extends CDCBaseClass {
         new ExpectedRecordYSQL<>(-1, "", Op.COMMIT)
       };
       assertRecordsOnly(expectedRecordsDateRange, daterangeSub);
+
+      ExpectedRecordYSQL<?>[] expectedRecordsUDT = new ExpectedRecordYSQL[] {
+        new ExpectedRecordYSQL<>(1, "FIXED", Op.INSERT),
+      };
+      assertRecordsOnly(expectedRecordsUDT, udtSub);
     } catch (Exception e) {
       LOG.error("Failed to test all datatypes", e);
       fail();

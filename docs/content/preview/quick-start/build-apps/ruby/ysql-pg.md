@@ -14,9 +14,7 @@ menu:
     name: Ruby
     identifier: ruby-1
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

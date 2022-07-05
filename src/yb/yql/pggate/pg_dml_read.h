@@ -72,7 +72,10 @@ class PgDmlRead : public PgDml {
   void SetForwardScan(const bool is_forward_scan);
 
   // Bind a range column with a BETWEEN condition.
-  Status BindColumnCondBetween(int attr_num, PgExpr *attr_value, PgExpr *attr_value_end);
+  Status BindColumnCondBetween(int attr_num, PgExpr *attr_value,
+                               bool start_inclusive,
+                               PgExpr *attr_value_end,
+                               bool end_inclusive);
 
   // Bind a column with an IN condition.
   Status BindColumnCondIn(int attnum, int n_attr_values, PgExpr **attr_values);

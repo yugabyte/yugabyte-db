@@ -105,7 +105,7 @@ class UniverseForm extends Component {
    * By default, we should redirect the user to the details page of the
    * universe they performed the operation against.
    * Fallback is to redirect to the `/universes` page.
-   * 
+   *
    * @param {String} uid Universe UUID that can be passed into function
    */
   transitionToDefaultRoute = (uid) => {
@@ -137,7 +137,7 @@ class UniverseForm extends Component {
 
   handleSubmitButtonClick = () => {
     const { type } = this.props;
-    this.setState({ isSubmitting: true });    
+    this.setState({ isSubmitting: true });
     if (type === 'Create') {
       this.createUniverse().then((response) => {
         const { universeUUID, name } = response.payload.data;
@@ -184,6 +184,7 @@ class UniverseForm extends Component {
         regionList: formValues[clusterType].regionList.map((a) => a.value),
         instanceType: formValues[clusterType].instanceType,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
+        ybcPackagePath: formValues[clusterType].ybcPackagePath,
         replicationFactor: formValues[clusterType].replicationFactor,
         useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
@@ -322,23 +323,28 @@ class UniverseForm extends Component {
   // For Async clusters, we need to fetch the universe name from the
   // primary cluster metadata
   getUniverseName = () => {
-    const { formValues, universe } = this.props;
-
-    if (isNonEmptyObject(formValues['primary'])) {
-      return formValues['primary'].universeName;
-    }
-
     const {
-      currentUniverse: {
-        data: { universeDetails }
+      formValues,
+      universe: {
+        currentUniverse: {
+          data: { universeDetails }
+        }
       }
-    } = universe;
-    if (isNonEmptyObject(universeDetails)) {
-      const primaryCluster = getPrimaryCluster(universeDetails.clusters);
-      return primaryCluster.userIntent.universeName;
-    }
-    // We shouldn't get here!!!
-    return null;
+    } = this.props;
+
+    const primaryCluster = getPrimaryCluster(universeDetails?.clusters);
+    const readOnlyCluster = getReadOnlyCluster(universeDetails?.clusters);
+
+    // Universe name should be the same between primary and read only.
+    // Read only cluster fields being used as a fallback in case
+    // primary cluster doesn't have universeName.
+    return (
+      formValues['primary']?.universeName ||
+      formValues['async']?.universeName ||
+      primaryCluster?.userIntent?.universeName ||
+      readOnlyCluster?.userIntent?.universeName ||
+      ''
+    );
   };
 
   getYSQLstate = (clusterType) => {
@@ -446,6 +452,7 @@ class UniverseForm extends Component {
         accessKeyCode: formValues[clusterType].accessKeyCode,
         replicationFactor: formValues[clusterType].replicationFactor,
         ybSoftwareVersion: formValues[clusterType].ybSoftwareVersion,
+        ybcPackagePath: formValues[clusterType].ybcPackagePath,
         useSystemd: formValues[clusterType].useSystemd,
         deviceInfo: {
           volumeSize: formValues[clusterType].volumeSize,
@@ -1041,7 +1048,9 @@ class UniverseForm extends Component {
               }
             >
               This operation will migrate this universe and all its data to a completely new set of
-              nodes. Or alternatively you could try smart resize.
+              nodes. Or alternatively you could try smart resize (This will change VM image{' '}
+              {oldConfig.volumeSize !== newConfig.volumeSize ? 'and volume size' : ''} for existing
+              nodes).
               <div className={'full-move-config'}>
                 <div className={'text-lightgray full-move-config--general'}>
                   <h5>Current:</h5>

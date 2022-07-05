@@ -5,12 +5,11 @@ description: Monitor activity in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-activity
     parent: cloud-secure-clusters
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Audit your account activity using the **Activity** tab on the **Admin** page, which lists the source, activity, user, and time of the activity.
@@ -37,7 +36,8 @@ The following table lists the activity that is logged.
 | Maintenance | Edit Maintenance Window<br>Edit Maintenance Exclusion<br>Schedule Maintenance Event |
 | Billing | Add Billing<br>Edit Billing |
 | Payment | Add Payment<br>Edit Payment<br>Delete Payment |
-| Users | Add User<br>Edit User<br>Remove User<!-- <br>Activate user -->|
+| Account | Add User<br>Edit User<br>Remove User<!-- <br>Activate user -->|
 | Backup Schedule | Add Backup Schedule<br>Edit Backup Schedule<br>Delete Backup Schedule |
 | VPC | Create VPC<br>Delete VPC |
 | VPC Peering | Create VPC Peering<br>Delete VPC Peering |
+| API Key | Create API Key<br>Expire API Key<br>Revoke API Key |

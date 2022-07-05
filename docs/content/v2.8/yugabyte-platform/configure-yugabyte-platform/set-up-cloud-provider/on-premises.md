@@ -4,12 +4,11 @@ headerTitle: Configure the on-premises cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the on-premises cloud provider.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -453,7 +452,7 @@ Note that the instructions here are for the 0.13.0 version. The same instruction
 
       User=prometheus
       Group=prometheus
-    
+
       ExecStart=/opt/prometheus/node_exporter-0.13.0.linux-amd64/node_exporter  --web.listen-address=:9300 --collector.textfile.directory=/tmp/yugabyte/metrics
       ```
 
@@ -612,11 +611,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    After=network.target network-online.target multi-user.target
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/master/bin/yb-master
    PathExists=/home/yugabyte/master/conf/server.conf
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
@@ -637,7 +636,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    LimitCORE=infinity
    LimitNOFILE=1048576
    LimitNPROC=12000
-   
+
    [Install]
    WantedBy=default.target
    ```
@@ -653,11 +652,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    After=network.target network-online.target multi-user.target
    StartLimitInterval=100
    StartLimitBurst=10
-   
+
    [Path]
    PathExists=/home/yugabyte/tserver/bin/yb-tserver
    PathExists=/home/yugabyte/tserver/conf/server.conf
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
@@ -678,7 +677,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    LimitCORE=infinity
    LimitNOFILE=1048576
    LimitNPROC=12000
-   
+
    [Install]
    WantedBy=default.target
    ```
@@ -689,14 +688,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte logs
    Wants=yb-zip_purge_yb_logs.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/sh /home/yugabyte/bin/zip_purge_yb_logs.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -709,14 +708,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte logs
    Requires=yb-zip_purge_yb_logs.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-zip_purge_yb_logs.service
    # Run hourly at minute 0 (beginning) of every hour
    OnCalendar=00/1:00
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -729,14 +728,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte clean cores
    Wants=yb-clean_cores.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/sh /home/yugabyte/bin/clean_cores.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -749,14 +748,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte clean cores
    Requires=yb-clean_cores.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-clean_cores.service
    # Run every 10 minutes offset by 5 (5, 15, 25...)
    OnCalendar=*:0/10:30
-   
+
    [Install]
    WantedBy=timers.target
    ```
@@ -769,14 +768,14 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte collect metrics
    Wants=yb-collect_metrics.timer
-   
+
    [Service]
    User=yugabyte
    Group=yugabyte
    Type=oneshot
    WorkingDirectory=/home/yugabyte/bin
    ExecStart=/bin/bash /home/yugabyte/bin/collect_metrics_wrapper.sh
-   
+
    [Install]
    WantedBy=multi-user.target
    ```
@@ -789,16 +788,16 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Unit]
    Description=Yugabyte collect metrics
    Requires=yb-collect_metrics.service
-   
+
    [Timer]
    User=yugabyte
    Group=yugabyte
    Unit=yb-collect_metrics.service
    # Run every 1 minute
    OnCalendar=*:0/1:0
-   
+
    [Install]
    WantedBy=timers.target
    ```
 
-## 
+##

@@ -10,8 +10,7 @@ menu:
     identifier: explore-transactions-sharding-data-1-ysql
     parent: explore-scalability
     weight: 210
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <!--

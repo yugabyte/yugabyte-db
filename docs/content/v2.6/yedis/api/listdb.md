@@ -6,8 +6,7 @@ menu:
   v2.6:
     parent: api-yedis
     weight: 2036
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -18,7 +17,7 @@ A client can issue the `LISTDB` command through the redis-cli.
 
 ## Return value
 
-Returns an array of string values, with the yedis database names. 
+Returns an array of string values, with the yedis database names.
 
 ## Examples
 

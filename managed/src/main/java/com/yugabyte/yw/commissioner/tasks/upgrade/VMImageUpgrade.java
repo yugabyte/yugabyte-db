@@ -75,6 +75,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                     taskParams().ybSoftwareVersion, true /*isSoftwareUpdateViaVm*/)
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
+
+          createMarkUniverseForHealthScriptReUploadTask();
         });
   }
 
@@ -137,9 +139,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       node.machineImage = machineImage;
       node.ybPrebuiltAmi =
-          (taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages)
-              ? true
-              : false;
+          taskParams().vmUpgradeTaskType == VmUpgradeTaskType.VmUpgradeWithCustomImages;
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(getTaskSubGroupType());
     }

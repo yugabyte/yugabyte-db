@@ -8,8 +8,7 @@ menu:
     identifier: unique-index-ycql
     parent: explore-indexes-constraints
     weight: 231
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -37,7 +36,7 @@ If a table has a primary key or a `UNIQUE` constraint defined, a corresponding `
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list);
 ```
 

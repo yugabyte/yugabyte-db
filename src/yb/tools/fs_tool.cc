@@ -282,6 +282,10 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
     .transaction_coordinator_context = nullptr,
     .txns_enabled = tablet::TransactionsEnabled::kTrue,
     .is_sys_catalog = tablet::IsSysCatalogTablet(tablet_id == master::kSysCatalogTabletId),
+    .snapshot_coordinator = nullptr,
+    .tablet_splitter = nullptr,
+    .allowed_history_cutoff_provider = {},
+    .transaction_manager_provider = nullptr,
   };
   Tablet t(tablet_init_data);
   RETURN_NOT_OK_PREPEND(t.Open(), "Couldn't open tablet");

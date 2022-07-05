@@ -211,23 +211,35 @@ class PgDocResult {
 // No memory allocations is required in case of using PerformFuture.
 class PgDocResponse {
  public:
+  struct Data {
+    Data(const rpc::CallResponsePtr& response_, uint64_t in_txn_limit_)
+        : response(response_), in_txn_limit(in_txn_limit_) {
+    }
+    rpc::CallResponsePtr response;
+    uint64_t in_txn_limit;
+  };
+
   class Provider {
    public:
     virtual ~Provider() = default;
-    virtual Result<rpc::CallResponsePtr> Get() = 0;
+    virtual Result<Data> Get() = 0;
   };
 
   using ProviderPtr = std::unique_ptr<Provider>;
 
   PgDocResponse() = default;
-  explicit PgDocResponse(PerformFuture future);
+  PgDocResponse(PerformFuture future, uint64_t in_txn_limit);
   explicit PgDocResponse(ProviderPtr provider);
 
   bool Valid() const;
-  Result<rpc::CallResponsePtr> Get();
+  Result<Data> Get();
 
  private:
-  std::variant<PerformFuture, ProviderPtr> holder_;
+  struct PerformInfo {
+    PerformFuture future;
+    uint64_t in_txn_limit;
+  };
+  std::variant<PerformInfo, ProviderPtr> holder_;
 };
 
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
@@ -240,7 +252,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
   using Sender = std::function<Result<PgDocResponse>(
-      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t*, bool)>;
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
 
   // Constructors & Destructors.
   PgDocOp(
@@ -295,7 +307,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   const PgTable& table() const { return table_; }
 
  protected:
-  uint64_t& GetReadTime();
+  uint64_t& GetInTxnLimit();
 
   // Populate Protobuf requests using the collected information for this DocDB operator.
   virtual Result<bool> DoCreateRequests() = 0;
@@ -325,36 +337,41 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Clone READ or WRITE "template_op_" into new operators.
   virtual PgsqlOpPtr CloneFromTemplate() = 0;
 
-  // Process the result set in server response.
-  Result<std::list<PgDocResult>> ProcessResponseResult(const rpc::CallResponsePtr& response);
-
-  void SetReadTime();
-
  private:
   Status SendRequest(bool force_non_bufferable);
 
   Status SendRequestImpl(bool force_non_bufferable);
 
-  Result<std::list<PgDocResult>> ProcessResponse(
-      const Result<rpc::CallResponsePtr>& response);
+  Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
-  virtual Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) = 0;
+  Result<std::list<PgDocResult>> ProcessResponseImpl(const Result<PgDocResponse::Data>& data);
+
+  Result<std::list<PgDocResult>> ProcessCallResponse(const rpc::CallResponse& response);
+
+  virtual Status CompleteProcessResponse() = 0;
 
   Status CompleteRequests();
 
   static Result<PgDocResponse> DefaultSender(
       PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
-      uint64_t* read_time, bool force_non_bufferable);
+      uint64_t in_txn_limit, bool force_non_bufferable);
 
   //----------------------------------- Data Members -----------------------------------------------
  protected:
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
-  // Operation time. This time is set at the start and must stay the same for the lifetime of the
-  // operation to ensure that it is operating on one snapshot.
-  uint64_t read_time_ = 0;
+  // This time is set at the start (i.e., before sending the first batch of PgsqlOp ops) and must
+  // stay the same for the lifetime of the PgDocOp.
+  //
+  // Each query must only see data written by earlier queries in the same transaction, not data
+  // written by itself. Setting it at the start ensures that future operations of the PgDocOp only
+  // see data written by previous queries.
+  //
+  // NOTE: Each query might result in many PgDocOps. So using 1 in_txn_limit_ per PgDocOp is not
+  // enough. The same should be used across all PgDocOps in the query. This is ensured by the use
+  // of statement_in_txn_limit in yb_exec_params of EState.
+  uint64_t in_txn_limit_ = 0;
 
   // Target table.
   PgTable& table_;
@@ -458,7 +475,6 @@ class PgDocReadOp : public PgDocOp {
   typedef std::unique_ptr<PgDocReadOp> UniPtr;
   typedef std::unique_ptr<const PgDocReadOp> UniPtrConst;
 
-  // Constructors & Destructors.
   PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
   PgDocReadOp(
       const PgSession::ScopedRefPtr& pg_session, PgTable* table,
@@ -506,9 +522,7 @@ class PgDocReadOp : public PgDocOp {
   // Set partition boundaries to a given partition.
   Status SetScanPartitionBoundary();
 
-  // Process response from DocDB.
-  Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) override;
+  Status CompleteProcessResponse() override;
 
   // Process response read state from DocDB.
   Status ProcessResponseReadStates();
@@ -525,8 +539,8 @@ class PgDocReadOp : public PgDocOp {
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
 
-  // Set the read_time for our read request based on our exec control parameter.
-  void SetReadTime();
+  // Set the read_time for our backfill's read request based on our exec control parameter.
+  void SetReadTimeForBackfill();
 
   // Clone the template into actual requests to be sent to server.
   PgsqlOpPtr CloneFromTemplate() override {
@@ -595,9 +609,7 @@ class PgDocWriteOp : public PgDocOp {
   }
 
  private:
-  // Process response implementation.
-  Result<std::list<PgDocResult>> ProcessResponseImpl(
-      const rpc::CallResponsePtr& response) override;
+  Status CompleteProcessResponse() override;
 
   // Create protobuf requests using template_op (write_op).
   Result<bool> DoCreateRequests() override;

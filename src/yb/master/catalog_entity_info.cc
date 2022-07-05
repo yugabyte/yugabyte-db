@@ -333,6 +333,23 @@ const Status TableInfo::GetSchema(Schema* schema) const {
   return SchemaFromPB(LockForRead()->schema(), schema);
 }
 
+bool TableInfo::has_pgschema_name() const {
+  return LockForRead()->schema().has_pgschema_name();
+}
+
+const string& TableInfo::pgschema_name() const {
+  return LockForRead()->schema().pgschema_name();
+}
+
+bool TableInfo::has_pg_type_oid() const {
+  for (const auto& col : LockForRead()->schema().columns()) {
+    if (!col.has_pg_type_oid()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool TableInfo::colocated() const {
   return LockForRead()->pb.colocated();
 }
@@ -564,6 +581,20 @@ bool TableInfo::AreAllTabletsDeleted() const {
   return true;
 }
 
+Status TableInfo::CheckAllActiveTabletsRunning() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  for (const auto& tablet_it : partitions_) {
+    const auto& tablet = tablet_it.second;
+    if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
+      return STATUS_EC_FORMAT(IllegalState,
+                              MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
+                              "Found tablet that is not running, table_id: $0, tablet_id: $1",
+                              id(), tablet->tablet_id());
+    }
+  }
+  return Status::OK();
+}
+
 bool TableInfo::IsCreateInProgress() const {
   SharedLock<decltype(lock_)> l(lock_);
   for (const auto& e : partitions_) {
@@ -583,15 +614,6 @@ Status TableInfo::SetIsBackfilling() {
                   MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS));
   }
 
-  for (const auto& tablet_it : partitions_) {
-    const auto& tablet = tablet_it.second;
-    if (tablet->LockForRead()->pb.state() != SysTabletsEntryPB::RUNNING) {
-      return STATUS_EC_FORMAT(IllegalState,
-                              MasterError(MasterErrorPB::SPLIT_OR_BACKFILL_IN_PROGRESS),
-                              "Some tablets are not running, table_id: $0 tablet_id: $1",
-                              id(), tablet->tablet_id());
-    }
-  }
   is_backfilling_ = true;
   return Status::OK();
 }
@@ -720,7 +742,7 @@ void TableInfo::WaitTasksCompletion() {
   }
 }
 
-std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() {
+std::unordered_set<std::shared_ptr<server::MonitoredTask>> TableInfo::GetTasks() const {
   SharedLock<decltype(lock_)> l(lock_);
   return pending_tasks_;
 }
@@ -763,6 +785,7 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
 
 bool TableInfo::HasOutstandingSplits() const {
   SharedLock<decltype(lock_)> l(lock_);
+  DCHECK(!colocated());
   std::unordered_set<TabletId> partitions_tablets;
   for (const auto& p : partitions_) {
     auto tablet_lock = p.second->LockForRead();
@@ -790,9 +813,12 @@ bool TableInfo::HasOutstandingSplits() const {
   return false;
 }
 
-TabletInfoPtr TableInfo::GetColocatedTablet() const {
+TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
+  if (!IsColocatedUserTable()) {
+    return nullptr;
+  }
   SharedLock<decltype(lock_)> l(lock_);
-  if (colocated() && !tablets_.empty()) {
+  if (!tablets_.empty()) {
     return tablets_.begin()->second;
   }
   LOG(INFO) << "Colocated Tablet not found for table " << name();

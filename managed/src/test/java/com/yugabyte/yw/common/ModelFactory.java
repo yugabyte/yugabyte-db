@@ -40,7 +40,6 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.MaintenanceWindow;
 import com.yugabyte.yw.models.Provider;
@@ -52,6 +51,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
@@ -220,10 +220,7 @@ public class ModelFactory {
     params.nodePrefix = universeName;
     params.rootCA = rootCA;
     params.upsertPrimaryCluster(userIntent, pi);
-    Universe u = Universe.create(params, customerId);
-    c.addUniverseUUID(u.universeUUID);
-    c.save();
-    return u;
+    return Universe.create(params, customerId);
   }
 
   public static CustomerConfig createS3StorageConfig(Customer customer, String configName) {
@@ -233,7 +230,7 @@ public class ModelFactory {
                 + configName
                 + "\", \"name\": \"S3\","
                 + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"s3://foo\","
-                + " \"ACCESS_KEY\": \"A-KEY\", \"ACCESS_SECRET\": \"A-SECRET\"}}");
+                + " \"AWS_ACCESS_KEY_ID\": \"A-KEY\", \"AWS_SECRET_ACCESS_KEY\": \"A-SECRET\"}}");
     return CustomerConfig.createWithFormData(customer.uuid, formData);
   }
 
@@ -340,7 +337,9 @@ public class ModelFactory {
     data.alertingEmail = alertingEmail;
     data.reportOnlyErrors = reportOnlyErrors;
 
-    return CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
+    CustomerConfig config = CustomerConfig.createAlertConfig(customer.uuid, Json.toJson(data));
+    config.save();
+    return config;
   }
 
   public static AlertConfiguration createAlertConfiguration(

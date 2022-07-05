@@ -4,11 +4,14 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
-import com.yugabyte.yw.cloud.AWSInitializer;
-import com.yugabyte.yw.cloud.GCPInitializer;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.aws.AWSInitializer;
+import com.yugabyte.yw.cloud.gcp.GCPInitializer;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -61,8 +64,13 @@ import play.modules.swagger.SwaggerModule;
 
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
   private static final int MAX_RETRY_COUNT = 2000;
+  protected static final String ENABLE_CUSTOM_HOOKS_PATH =
+      "yb.security.custom_hooks.enable_custom_hooks";
+  protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
+
   protected AccessManager mockAccessManager;
   protected NetworkManager mockNetworkManager;
+  protected Config mockConfig;
   protected ConfigHelper mockConfigHelper;
   protected AWSInitializer mockAWSInitializer;
   protected GCPInitializer mockGCPInitializer;
@@ -101,6 +109,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   @Before
   public void setUp() {
+    mockConfig = spy(app.config());
     commissioner = app.injector().instanceOf(Commissioner.class);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
@@ -113,8 +122,11 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
 
+    // Enable custom hooks in tests
+    lenient().when(mockConfig.getBoolean(ENABLE_CUSTOM_HOOKS_PATH)).thenReturn(true);
+    lenient().when(mockConfig.getBoolean(ENABLE_SUDO_PATH)).thenReturn(true);
     when(mockBaseTaskDependencies.getApplication()).thenReturn(app);
-    when(mockBaseTaskDependencies.getConfig()).thenReturn(app.config());
+    when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
     when(mockBaseTaskDependencies.getConfigHelper()).thenReturn(mockConfigHelper);
     when(mockBaseTaskDependencies.getEnvironment())
         .thenReturn(app.injector().instanceOf(Environment.class));

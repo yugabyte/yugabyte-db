@@ -26,6 +26,7 @@
 
 #include "yb/rocksdb/compaction_filter.h"
 
+#include "yb/util/memory/arena.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -38,7 +39,11 @@ using std::unique_ptr;
 using std::unordered_set;
 using rocksdb::VectorToString;
 
-DECLARE_int32(max_packed_row_columns);
+DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_uint64(ycql_packed_row_size_limit);
+DECLARE_uint64(ysql_packed_row_size_limit);
 
 namespace yb {
 namespace docdb {
@@ -126,7 +131,7 @@ class PackedRowData {
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_ = row_control_fields;
-    ht_ = row_doc_ht;
+    doc_ht_ = row_doc_ht;
 
     old_value_.Assign(value);
     old_value_slice_ = old_value_.AsSlice();
@@ -139,12 +144,13 @@ class PackedRowData {
   }
 
   void StartPacking(
-      const Slice& internal_key, size_t doc_key_size, size_t new_doc_key_serial) {
+      const Slice& internal_key, size_t doc_key_size, const DocHybridTime& doc_ht,
+      size_t new_doc_key_serial) {
     UsedSchemaVersion(new_packing_.schema_version);
 
     InitKey(internal_key, doc_key_size, new_doc_key_serial);
     control_fields_ = ValueControlFields();
-    ht_ = DocHybridTime::kMin;
+    doc_ht_ = doc_ht;
     old_value_slice_ = Slice();
     InitPacker();
   }
@@ -158,7 +164,9 @@ class PackedRowData {
         sizeof(last_internal_component_));
   }
 
-  Status ProcessColumn(ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht) {
+  // Returns true if column was processed.
+  Result<bool> ProcessColumn(
+      ColumnId column_id, const Slice& value, const DocHybridTime& column_doc_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -169,17 +177,28 @@ class PackedRowData {
       next_column_id = packer_->NextColumnId();
     }
     if (next_column_id > column_id) {
+      if (new_packing_.schema_packing->SkippedColumn(column_id)) {
+        VLOG(4) << "Collection column: " << column_id;
+        return false;
+      }
+
       VLOG(4) << "Deleted column from schema: " << next_column_id << ", " << column_id;
       // Column was deleted.
-      return Status::OK();
+      return true;
     }
+
+    size_t tail_size = 0; // As usual, when not specified size is in bytes.
+    if (!old_value_slice_.empty()) {
+      auto old_value = old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
+      if (old_value) {
+        tail_size = old_value_slice_.end() - old_value->end();
+      }
+    }
+
     // TODO(packed_row) update control fields
-    VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString();
-    RETURN_NOT_OK(packer_->AddValue(column_id, value));
-    if (column_doc_ht > ht_) {
-      ht_ = column_doc_ht;
-    }
-    return Status::OK();
+    VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
+            << tail_size;
+    return packer_->AddValue(column_id, value, tail_size);
   }
 
   Status StartRepacking() {
@@ -194,7 +213,8 @@ class PackedRowData {
   void InitPacker() {
     packing_started_ = true;
     if (!packer_) {
-      packer_.emplace(new_packing_.schema_version, *new_packing_.schema_packing);
+      packer_.emplace(
+          new_packing_.schema_version, *new_packing_.schema_packing, new_packing_.pack_limit());
     } else {
       packer_->Restart();
     }
@@ -205,7 +225,7 @@ class PackedRowData {
       return Status::OK();
     }
     key_.PushBack(KeyEntryTypeAsChar::kHybridTime);
-    ht_.AppendEncodedInDocDbFormat(&key_);
+    doc_ht_.AppendEncodedInDocDbFormat(&key_);
     key_.Append(last_internal_component_, sizeof(last_internal_component_));
 
     Slice value_slice;
@@ -231,7 +251,8 @@ class PackedRowData {
 
   Status PackOldValue(ColumnId column_id) {
     auto column_value = old_value_slice_.empty()
-        ? boost::none : old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
+        ? std::optional<Slice>()
+        : old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
     if (!column_value) {
       const ColumnPackingData& column_data = VERIFY_RESULT(packer_->NextColumnData());
       RSTATUS_DCHECK(column_data.varlen(), Corruption, Format(
@@ -240,7 +261,11 @@ class PackedRowData {
       column_value = Slice();
     }
     VLOG(4) << "Keep value for column " << column_id << ": " << column_value->ToDebugHexString();
-    return packer_->AddValue(column_id, *column_value);
+    // Use min ssize_t value to be sure that packing always succeed.
+    constexpr auto kUnlimitedTail = std::numeric_limits<ssize_t>::min();
+    auto result = VERIFY_RESULT(packer_->AddValue(column_id, *column_value, kUnlimitedTail));
+    RSTATUS_DCHECK(result, Corruption, "Unable to pack old value for $0", column_id);
+    return Status::OK();
   }
 
   void UsedSchemaVersion(SchemaVersion version) {
@@ -280,8 +305,7 @@ class PackedRowData {
     active_coprefix_ = coprefix;
     active_coprefix_dropped_ = false;
     new_packing_ = *packing;
-    can_start_packing_ =
-        make_signed(new_packing_.schema_packing->columns()) <= FLAGS_max_packed_row_columns;
+    can_start_packing_ = packing->enabled();
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
   }
@@ -313,7 +337,7 @@ class PackedRowData {
   ValueControlFields control_fields_;
   size_t doc_key_serial_ = std::numeric_limits<size_t>::max();
   KeyBuffer key_;
-  DocHybridTime ht_;
+  DocHybridTime doc_ht_;
   char last_internal_component_[rocksdb::kLastInternalComponentSize];
 
   // All old_ fields are releated to original row packing.
@@ -380,16 +404,53 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   }
 
   Status ForwardToNextFeed(const Slice& key, const Slice& value) {
-    RETURN_NOT_OK(packed_row_.Flush());
-    return PassToNextFeed(key, value, doc_key_serial_);
+    if (!packed_row_.active()) {
+      return PassToNextFeed(key, value, doc_key_serial_);
+    }
+
+    auto* pending_row = static_cast<PendingEntry*>(pending_rows_arena_.AllocateBytesAligned(
+        sizeof(PendingEntry) + key.size() + value.size(), alignof(PendingEntry)));
+    pending_row->next = nullptr;
+    pending_row->doc_key_serial = doc_key_serial_;
+    pending_row->key_size = key.size();
+    pending_row->value_size = value.size();
+    *last_pending_row_next_ = pending_row;
+    last_pending_row_next_ = &pending_row->next;
+    char* data = pointer_cast<char*>(pending_row) + sizeof(PendingEntry);
+    memcpy(data, key.data(), key.size());
+    data += key.size();
+    memcpy(data, value.data(), value.size());
+    return Status::OK();
   }
 
   Status FeedPackedRow(const Slice& key, const Slice& value, size_t doc_key_serial) override {
-    return PassToNextFeed(key, value, doc_key_serial);
+    RETURN_NOT_OK(PassToNextFeed(key, value, doc_key_serial));
+
+    auto* pending_row = first_pending_row_;
+    if (!pending_row) {
+      return Status::OK();
+    }
+
+    while (pending_row) {
+      char* data = pointer_cast<char*>(pending_row) + sizeof(PendingEntry);
+      Slice pending_key(data, pending_row->key_size);
+      data += pending_row->key_size;
+      Slice pending_value(data, pending_row->value_size);
+      RETURN_NOT_OK(PassToNextFeed(pending_key, pending_value, pending_row->doc_key_serial));
+      pending_row = pending_row->next;
+    }
+
+    pending_rows_arena_.Reset();
+    first_pending_row_ = nullptr;
+    last_pending_row_next_ = &first_pending_row_;
+    return Status::OK();
   }
 
   Status Flush() override {
     RETURN_NOT_OK(packed_row_.Flush());
+    if (first_pending_row_) {
+      return STATUS(IllegalState, "Have pending rows after packed row flush");
+    }
     return next_feed_.Flush();
   }
 
@@ -487,6 +548,17 @@ class DocDBCompactionFeed : public rocksdb::CompactionFeed, public PackedRowFeed
   bool within_merge_block_ = false;
 
   PackedRowData packed_row_;
+  Arena pending_rows_arena_;
+
+  struct PendingEntry {
+    PendingEntry* next;
+    size_t doc_key_serial; // Serial number of stored doc key.
+    size_t key_size;
+    size_t value_size;
+  };
+
+  PendingEntry* first_pending_row_ = nullptr;
+  PendingEntry** last_pending_row_next_ = &first_pending_row_;
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -502,9 +574,11 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     feed_usage_logged_ = true;
   }
 
-  VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << " => " << value.ToDebugHexString();
-
   auto key = internal_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
+
+  VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << "/"
+          << SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
+
   if (!IsWithinBounds(key_bounds_, key) &&
       DecodeKeyEntryType(key) != KeyEntryType::kTransactionApplyState) {
     // If we reach this point, then we're processing a record which should have been excluded by
@@ -651,6 +725,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return ForwardToNextFeed(internal_key, value);
   }
 
+  Slice value_slice = value;
+  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+
   // Check for columns deleted from the schema. This is done regardless of whether this is a
   // major or minor compaction.
   //
@@ -678,7 +755,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
       // TODO(packed_row) remove control fields from value
       if (!packed_row_.active() && packed_row_.can_start_packing() &&
           !CanHaveOtherDataBefore(ht.hybrid_time())) {
-        packed_row_.StartPacking(internal_key, doc_key_size, doc_key_serial_);
+        packed_row_.StartPacking(internal_key, doc_key_size, ht, doc_key_serial_);
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
       if (packed_row_.active()) {
@@ -686,15 +763,16 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
             column_id == KeyEntryValue::kLivenessColumn.GetColumnId()) {
           return Status::OK();
         }
-        return packed_row_.ProcessColumn(column_id, value, ht);
+        // Return if column was processed by packed row.
+        if (VERIFY_RESULT(packed_row_.ProcessColumn(column_id, value_slice, ht))) {
+          return Status::OK();
+        }
       }
     }
   }
 
   auto overwrite_ht = is_ttl_row ? prev_overwrite_ht : std::max(prev_overwrite_ht, ht);
 
-  Slice value_slice = value;
-  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
   const auto value_type = static_cast<ValueEntryType>(
       value_slice.FirstByteOr(ValueEntryTypeAsChar::kInvalid));
 
@@ -789,7 +867,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
-  } else if (control_fields.intent_doc_ht.is_valid() && ht.hybrid_time() < history_cutoff) {
+  } else if (control_fields.intent_doc_ht.is_valid()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
     control_fields.intent_doc_ht = DocHybridTime::kInvalid;
@@ -910,6 +988,32 @@ HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
 }
 
 } // namespace
+
+bool CompactionSchemaInfo::enabled() const {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return FLAGS_ycql_enable_packed_row;
+    case TableType::PGSQL_TABLE_TYPE:
+      return FLAGS_ysql_enable_packed_row;
+    case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
+
+size_t CompactionSchemaInfo::pack_limit() const {
+  switch (table_type) {
+    case TableType::YQL_TABLE_TYPE:
+      return FLAGS_ycql_packed_row_size_limit;
+    case TableType::PGSQL_TABLE_TYPE:
+      return FLAGS_ysql_packed_row_size_limit;
+    case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
+    case TableType::TRANSACTION_STATUS_TABLE_TYPE:
+      return false;
+  }
+  FATAL_INVALID_ENUM_VALUE(TableType, table_type);
+}
 
 // ------------------------------------------------------------------------------------------------
 

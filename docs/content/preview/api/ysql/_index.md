@@ -13,8 +13,7 @@ menu:
 aliases:
   - /preview/api/ysql/
   - /preview/api/postgresql/
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Introduction

@@ -1,15 +1,14 @@
 ---
 title: Troubleshoot install and upgrade issues
-headerTitle: 
+headerTitle:
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading Yugabyte Platform.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: install-upgrade-yp-issues
     parent: troubleshoot-yp
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Here are some common issues encountered during installing or upgrading Yugabyte Platform. If you don't find an answer, contact Yugabyte Support.

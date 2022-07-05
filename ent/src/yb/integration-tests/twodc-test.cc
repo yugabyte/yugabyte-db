@@ -37,6 +37,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/transaction.h"
+#include "yb/client/transaction_rpc.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/gutil/stl_util.h"
@@ -60,6 +61,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/util/atomic.h"
@@ -89,7 +91,8 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(TEST_exit_unfinished_deleting);
 DECLARE_bool(TEST_exit_unfinished_merging);
-
+DECLARE_int32(transaction_table_num_tablets);
+DECLARE_bool(enable_replicate_transaction_status_table);
 namespace yb {
 
 using client::YBClient;
@@ -121,6 +124,7 @@ class TwoDCTest : public TwoDCTestBase, public testing::WithParamInterface<TwoDC
       uint32_t num_masters = 1,
       uint32_t num_tservers = 1) {
     FLAGS_enable_ysql = false;
+    FLAGS_transaction_table_num_tablets = 1;
     TwoDCTestBase::SetUp();
     FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
     FLAGS_cdc_enable_replicate_intents = GetParam().enable_replicate_intents;
@@ -1144,6 +1148,45 @@ INSTANTIATE_TEST_CASE_P(
     TwoDCTestParams, TwoDCTestWithEnableIntentsReplication,
     ::testing::Values(TwoDCTestParams(0, true, true), TwoDCTestParams(1, true, true)));
 
+TEST_P(TwoDCTestWithEnableIntentsReplication, TransactionStatusTable) {
+  FLAGS_enable_replicate_transaction_status_table = true;
+  constexpr int kNumTablets = 1;
+  uint32_t replication_factor = NonTsanVsTsan(3, 1);
+  auto tables = ASSERT_RESULT(SetUpWithParams(
+      {kNumTablets, kNumTablets}, {kNumTablets, kNumTablets}, replication_factor));
+
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables_1 = {tables[0]};
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables_2 = {tables[2]};
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, producer_tables_1));
+  static const string kUniverseId2 = "test_universe_2";
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId2, producer_tables_2));
+
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), FLAGS_transaction_table_num_tablets +
+                                                           kNumTablets * 2));
+
+  // After setting up replication, ensure that the transaction status table is in the mapping
+  // in a new system replication bucket.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    master::SysClusterConfigEntryPB cluster_info;
+    auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
+    RETURN_NOT_OK(cm.GetClusterConfig(&cluster_info));
+    if (!cluster_info.has_consumer_registry()) {
+      return false;
+    }
+    return cluster_info.consumer_registry().producer_map().count("system") == 1;
+  }, MonoDelta::FromSeconds(30), "Cluster config has system replication id."));
+
+  // Delete one replication id and ensure we poll for one stream and the transaction status table.
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), FLAGS_transaction_table_num_tablets +
+                                                           kNumTablets));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId2));
+  // Delete the second replication id and ensure we poll for nothing.
+  ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), 0));
+}
+
 TEST_P(TwoDCTestWithEnableIntentsReplication, UpdateWithinTransaction) {
   constexpr int kNumTablets = 1;
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
@@ -2093,6 +2136,38 @@ TEST_P(TwoDCTest, TestFailedAlterUniverseOnRestart) {
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
+}
+
+TEST_P(TwoDCTest, TestAlterUniverseRemoveTableAndDrop) {
+  // Create 2 tables and start replication.
+  auto tables = ASSERT_RESULT(SetUpWithParams({1, 1}, {1, 1}, 1));
+  std::vector<std::shared_ptr<client::YBTable>> producer_tables{tables[0], tables[2]};
+  std::vector<std::shared_ptr<client::YBTable>> consumer_tables{tables[1], tables[3]};
+  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
+      kUniverseId, producer_tables));
+
+  // Verify everything is setup correctly.
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(VerifyUniverseReplication(consumer_cluster(), consumer_client(), kUniverseId, &resp));
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+    &consumer_client()->proxy_cache(),
+    ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  // Remove one table via alteruniversereplication.
+  master::AlterUniverseReplicationRequestPB alter_req;
+  master::AlterUniverseReplicationResponsePB alter_resp;
+  rpc::RpcController rpc;
+  alter_req.set_producer_id(kUniverseId);
+  alter_req.add_producer_table_ids_to_remove(producer_tables[0]->id());
+
+  ASSERT_OK(master_proxy->AlterUniverseReplication(alter_req, &alter_resp, &rpc));
+
+  // Now attempt to drop the table on both sides.
+  ASSERT_OK(producer_client()->DeleteTable(producer_tables[0]->name()));
+  ASSERT_OK(consumer_client()->DeleteTable(consumer_tables[0]->name()));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
 TEST_P(TwoDCTest, TestNonZeroLagMetricsWithoutGetChange) {

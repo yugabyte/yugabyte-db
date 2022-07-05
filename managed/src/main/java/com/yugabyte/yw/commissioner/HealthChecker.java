@@ -18,17 +18,13 @@ import static com.yugabyte.yw.commissioner.HealthCheckMetrics.OPENED_FILE_DESCRI
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.UPTIME_CHECK;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getCountMetricByCheckName;
 import static com.yugabyte.yw.commissioner.HealthCheckMetrics.getNodeMetrics;
-import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 import static com.yugabyte.yw.common.metrics.MetricService.STATUS_OK;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import akka.Done;
-import akka.actor.ActorSystem;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -36,6 +32,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -47,7 +45,6 @@ import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
@@ -57,6 +54,7 @@ import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricSourceKey;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -68,6 +66,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -85,10 +84,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.mail.MessagingException;
 import lombok.AllArgsConstructor;
@@ -103,8 +100,6 @@ import play.Configuration;
 import play.Environment;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
 
 @Singleton
 @Slf4j
@@ -122,7 +117,7 @@ public class HealthChecker {
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
 
-  private static final long NODE_CHECK_TIMEOUT_SEC = TimeUnit.MINUTES.toSeconds(3);
+  private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
 
   private final Environment environment;
 
@@ -134,11 +129,7 @@ public class HealthChecker {
   // Last time we actually ran the health check script per customer.
   private final Map<UUID, Long> lastCheckTimeMap = new HashMap<>();
 
-  private final AtomicBoolean running = new AtomicBoolean(false);
-
-  private final ActorSystem actorSystem;
-
-  private final ExecutionContext executionContext;
+  private final PlatformScheduler platformScheduler;
 
   private final HealthCheckerReport healthCheckerReport;
 
@@ -168,14 +159,12 @@ public class HealthChecker {
 
   private final NodeUniverseManager nodeUniverseManager;
 
-  private volatile boolean shutdown;
-
   @Inject
   public HealthChecker(
       Environment environment,
-      ActorSystem actorSystem,
       Configuration config,
-      ExecutionContext executionContext,
+      PlatformExecutorFactory platformExecutorFactory,
+      PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
       MetricService metricService,
@@ -185,9 +174,8 @@ public class HealthChecker {
       HealthCheckMetrics healthMetrics) {
     this(
         environment,
-        actorSystem,
         config,
-        executionContext,
+        platformScheduler,
         healthCheckerReport,
         emailHelper,
         metricService,
@@ -195,15 +183,14 @@ public class HealthChecker {
         lifecycle,
         healthMetrics,
         nodeUniverseManager,
-        createUniverseExecutor(runtimeConfigFactory.globalRuntimeConf()),
-        createNodeExecutor(runtimeConfigFactory.globalRuntimeConf()));
+        createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
+        createNodeExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()));
   }
 
   HealthChecker(
       Environment environment,
-      ActorSystem actorSystem,
       Configuration config,
-      ExecutionContext executionContext,
+      PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
       MetricService metricService,
@@ -214,9 +201,8 @@ public class HealthChecker {
       ExecutorService universeExecutor,
       ExecutorService nodeExecutor) {
     this.environment = environment;
-    this.actorSystem = actorSystem;
     this.config = config;
-    this.executionContext = executionContext;
+    this.platformScheduler = platformScheduler;
     this.healthCheckerReport = healthCheckerReport;
     this.emailHelper = emailHelper;
     this.metricService = metricService;
@@ -229,19 +215,12 @@ public class HealthChecker {
   }
 
   public void initialize() {
-    log.info("Scheduling health checker every " + this.healthCheckIntervalMs() + " ms");
-    this.actorSystem
-        .scheduler()
-        .schedule(
-            Duration.create(0, TimeUnit.MILLISECONDS), // initialDelay
-            Duration.create(this.healthCheckIntervalMs(), TimeUnit.MILLISECONDS), // interval
-            this::scheduleRunner,
-            this.executionContext);
-
-    // Add shutdown hook to kill the task pool
-    if (this.lifecycle != null) {
-      this.lifecycle.addStopHook(this::shutdownThreadpool);
-    }
+    log.info("Scheduling health checker every {} ms", healthCheckIntervalMs());
+    platformScheduler.schedule(
+        getClass().getSimpleName(),
+        Duration.ZERO /* initialDelay */,
+        Duration.ofMillis(healthCheckIntervalMs()) /* interval */,
+        this::scheduleRunner);
   }
 
   // The interval at which the checker will run.
@@ -413,11 +392,6 @@ public class HealthChecker {
 
   @VisibleForTesting
   void scheduleRunner() {
-    if (!running.compareAndSet(false, true)) {
-      log.info("Previous run of health check scheduler is still underway");
-      return;
-    }
-
     try {
       if (HighAvailabilityConfig.isFollower()) {
         log.debug("Skipping health check scheduler for follower platform");
@@ -433,8 +407,6 @@ public class HealthChecker {
       }
     } catch (Exception e) {
       log.error("Error running health check scheduler", e);
-    } finally {
-      running.set(false);
     }
   }
 
@@ -536,6 +508,16 @@ public class HealthChecker {
     lastCheckForUUID.cancel(true);
   }
 
+  public void markUniverseForReUpload(UUID universeUUID) {
+    List<Pair<UUID, String>> universeNodeInfos =
+        uploadedNodeInfo
+            .keySet()
+            .stream()
+            .filter(key -> key.getFirst().equals(universeUUID))
+            .collect(Collectors.toList());
+    universeNodeInfos.forEach(uploadedNodeInfo::remove);
+  }
+
   public void handleUniverseRemoval(UUID universeUUID) {
     cancelHealthCheck(universeUUID);
     runningHealthChecks.remove(universeUUID);
@@ -548,23 +530,12 @@ public class HealthChecker {
     universeNodeInfos.forEach(uploadedNodeInfo::remove);
   }
 
-  private CompletableFuture<Done> shutdownThreadpool() {
-    shutdown = true;
-    if (this.universeExecutor != null) {
-      log.info("Shutting down Health Check thread pool");
-      MoreExecutors.shutdownAndAwaitTermination(
-          universeExecutor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-    }
-    if (this.nodeExecutor != null) {
-      log.info("Shutting down Health Check Node thread pool");
-      MoreExecutors.shutdownAndAwaitTermination(
-          nodeExecutor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
-    }
-
-    return CompletableFuture.completedFuture(Done.done());
+  private boolean isShutdown() {
+    return universeExecutor.isShutdown() || nodeExecutor.isShutdown();
   }
 
-  private static ExecutorService createUniverseExecutor(Config runtimeConfig) {
+  private static ExecutorService createUniverseExecutor(
+      PlatformExecutorFactory executorFactory, Config runtimeConfig) {
     // TODO: use YBThreadPoolExecutorFactory
     int numParallelism = getThreadpoolParallelism(runtimeConfig);
 
@@ -573,21 +544,20 @@ public class HealthChecker {
         new ThreadFactoryBuilder().setNameFormat("Health-Check-Pool-%d").build();
     // Create an task pool which can handle an unbounded number of tasks, while using an initial
     // set of threads that get spawned up to TASK_THREADS limit.
-    ExecutorService newExecutor = Executors.newFixedThreadPool(numParallelism, namedThreadFactory);
-
-    log.info("Created Health Check thread pool");
-
-    return newExecutor;
+    return executorFactory.createFixedExecutor(
+        "Health-Check-Pool", numParallelism, namedThreadFactory);
   }
 
-  private static ExecutorService createNodeExecutor(Config runtimeConfig) {
+  private static ExecutorService createNodeExecutor(
+      PlatformExecutorFactory executorFactory, Config runtimeConfig) {
     int numParallelism = runtimeConfig.getInt(HealthChecker.MAX_NUM_THREADS_NODE_CHECK_KEY);
 
     // Initialize the health check thread pool.
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("Health-Check-Node-Pool-%d").build();
 
-    return Executors.newFixedThreadPool(numParallelism, namedThreadFactory);
+    return executorFactory.createFixedExecutor(
+        "Health-Check-Node-Pool", numParallelism, namedThreadFactory);
   }
 
   public CompletableFuture<Void> runHealthCheck(
@@ -769,7 +739,7 @@ public class HealthChecker {
 
     // Exit without calling script if the universe is in the "updating" state.
     // Doing the check before the Python script is executed.
-    if (!canHealthCheckUniverse(params.universe.universeUUID) || shutdown) {
+    if (!canHealthCheckUniverse(params.universe.universeUUID) || isShutdown()) {
       return;
     }
 
@@ -787,7 +757,7 @@ public class HealthChecker {
     // Checking the interruption necessity after the Python script finished.
     // It is not needed to analyze results if the universe has the "update in
     // progress" state.
-    if (!canHealthCheckUniverse(params.universe.universeUUID) || shutdown) {
+    if (!canHealthCheckUniverse(params.universe.universeUUID) || isShutdown()) {
       return;
     }
 
@@ -828,12 +798,16 @@ public class HealthChecker {
     // Check if it should log the output of the command.
     boolean shouldLogOutput =
         runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.logOutput");
+    int nodeCheckTimeoutSec =
+        runtimeConfigFactory.forUniverse(universe).getInt("yb.health.nodeCheckTimeoutSec");
+
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
       nodeChecks.put(
           nodeInfo.getNodeName(),
           CompletableFuture.supplyAsync(
-              () -> checkNode(universe, nodeInfo, shouldLogOutput), nodeExecutor));
+              () -> checkNode(universe, nodeInfo, shouldLogOutput, nodeCheckTimeoutSec),
+              nodeExecutor));
     }
 
     List<NodeData> result = new ArrayList<>();
@@ -864,7 +838,7 @@ public class HealthChecker {
                 .setNode(nodeInfo.nodeHost)
                 .setNodeName(nodeInfo.nodeName)
                 .setMessage("Node")
-                .setDetails(Collections.singletonList("Error: " + message))
+                .setDetails(Collections.singletonList("Node check failed: " + message))
                 .setTimestamp(new Date())
                 .setHasError(true));
       }
@@ -873,39 +847,48 @@ public class HealthChecker {
     return result;
   }
 
-  private Details checkNode(Universe universe, NodeInfo nodeInfo, boolean logOutput) {
+  private Details checkNode(
+      Universe universe, NodeInfo nodeInfo, boolean logOutput, int timeoutSec) {
     Pair<UUID, String> nodeKey = new Pair<>(universe.universeUUID, nodeInfo.getNodeName());
     NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
     ShellProcessContext context =
         ShellProcessContext.builder()
             .logCmdOutput(logOutput)
-            .timeoutSecs(NODE_CHECK_TIMEOUT_SEC)
+            .traceLogging(true)
+            .timeoutSecs(timeoutSec)
             .build();
-    if (uploadedInfo == null) {
-      // Only upload iut once for new node, as it only depends on yb home dir
+    if (uploadedInfo == null && !nodeInfo.isK8s()) {
+      // Only upload it once for new node, as it only depends on yb home dir.
+      // Also skip upload for k8s as no one will call it on k8s pod.
       String generatedScriptPath = generateCollectMetricsScript(universe.universeUUID, nodeInfo);
 
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
-      nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
-          generatedScriptPath,
-          scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
+      nodeUniverseManager
+          .uploadFileToNode(
+              nodeInfo.nodeDetails,
+              universe,
+              generatedScriptPath,
+              scriptPath,
+              SCRIPT_PERMISSIONS,
+              context)
+          .processErrors();
     }
-    String scriptPath = nodeInfo.getYbHomeDir() + "/bin/node_health.py";
+
+    String scriptPath =
+        (nodeInfo.isK8s() ? K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()) + "/bin/node_health.py";
     if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
       String generatedScriptPath = generateNodeCheckScript(universe.universeUUID, nodeInfo);
 
-      nodeUniverseManager.uploadFileToNode(
-          nodeInfo.nodeDetails,
-          universe,
-          generatedScriptPath,
-          scriptPath,
-          SCRIPT_PERMISSIONS,
-          context);
+      nodeUniverseManager
+          .uploadFileToNode(
+              nodeInfo.nodeDetails,
+              universe,
+              generatedScriptPath,
+              scriptPath,
+              SCRIPT_PERMISSIONS,
+              context)
+          .processErrors();
     }
     uploadedNodeInfo.put(nodeKey, nodeInfo);
 

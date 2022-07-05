@@ -48,7 +48,6 @@ import { SecurityMenu } from '../SecurityModal/SecurityMenu';
 import Replication from '../../xcluster/Replication';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
-import { YBTag } from '../../common/YBTag';
 
 import './UniverseDetail.scss';
 
@@ -99,7 +98,11 @@ class UniverseDetail extends Component {
       if (typeof this.props.universeSelectionId !== 'undefined') {
         uuid = this.props.universeUUID;
       }
-      this.props.getUniverseInfo(uuid);
+      this.props.getUniverseInfo(uuid).then((response) => {
+        const primaryCluster = getPrimaryCluster(response.payload.data?.universeDetails?.clusters);
+        const providerUUID = primaryCluster?.userIntent?.provider;
+        this.props.fetchSupportedReleases(providerUUID);
+      });
 
       if (isDisabled(currentCustomer.data.features, 'universes.details.health')) {
         // Get alerts instead of Health
@@ -108,7 +111,7 @@ class UniverseDetail extends Component {
         this.props.getHealthCheck(uuid);
       }
     }
-    this.props.fetchRunTimeConfigs();
+    this.props.fetchRunTimeConfigs(this.props.uuid);
   }
 
   componentDidUpdate(prevProps) {
@@ -210,7 +213,7 @@ class UniverseDetail extends Component {
       modal: { showModal, visibleModal },
       universe,
       tasks,
-      universe: { currentUniverse },
+      universe: { currentUniverse, supportedReleases },
       location: { query, pathname },
       showSoftwareUpgradesModal,
       showVMImageUpgradeModal,
@@ -273,7 +276,12 @@ class UniverseDetail extends Component {
       return <UniverseFormContainer type="Create" />;
     }
 
-    if (getPromiseState(currentUniverse).isLoading() || getPromiseState(currentUniverse).isInit()) {
+    if (
+      getPromiseState(currentUniverse).isLoading() ||
+      getPromiseState(currentUniverse).isInit() ||
+      getPromiseState(supportedReleases).isLoading() ||
+      getPromiseState(supportedReleases).isInit()
+    ) {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
@@ -453,9 +461,6 @@ class UniverseDetail extends Component {
                 tabtitle={
                   <>
                     Backups
-                    {(featureFlags.test['backupv2'] || featureFlags.released['backupv2']) && (
-                      <YBTag>Beta</YBTag>
-                    )}
                   </>
                 }
                 key="backups-tab"
@@ -529,7 +534,8 @@ class UniverseDetail extends Component {
     };
 
     const enableThirdpartyUpgrade =
-        featureFlags.test['enableThirdpartyUpgrade'] || featureFlags.released['enableThirdpartyUpgrade'];
+      featureFlags.test['enableThirdpartyUpgrade'] ||
+      featureFlags.released['enableThirdpartyUpgrade'];
 
     return (
       <Grid id="page-wrapper" fluid={true} className={`universe-details universe-details-new`}>
@@ -611,20 +617,19 @@ class UniverseDetail extends Component {
                           </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
-                      {!universePaused &&
-                       enableThirdpartyUpgrade && (
+                      {!universePaused && enableThirdpartyUpgrade && (
                         <YBMenuItem
                           disabled={updateInProgress}
                           onClick={showThirdpartyUpgradeModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
-                              'universes.details.overview.thirdpartyUpgrade'
-                            )}
-                          >
-                            <YBLabelWithIcon icon="fa fa-wrench fa-fw">
-                              Upgrade 3rd-party Software
-                            </YBLabelWithIcon>
-                          </YBMenuItem>
+                            'universes.details.overview.thirdpartyUpgrade'
+                          )}
+                        >
+                          <YBLabelWithIcon icon="fa fa-wrench fa-fw">
+                            Upgrade 3rd-party Software
+                          </YBLabelWithIcon>
+                        </YBMenuItem>
                       )}
                       {!isReadOnlyUniverse &&
                         !universePaused &&
@@ -735,7 +740,7 @@ class UniverseDetail extends Component {
                                   onClick={showSupportBundleModal}
                                 >
                                   <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                    Support Bundles <YBTag>Beta</YBTag>
+                                    Support Bundles
                                   </YBLabelWithIcon>
                                 </YBMenuItem>
                               }
@@ -772,9 +777,10 @@ class UniverseDetail extends Component {
                       <MenuItem divider />
 
                       {/* TODO:
-                      1. For now, we're enabling the Pause Universe for providerType==='aws'
-                      only. This functionality needs to be enabled for all the cloud
-                      providers and once that's done this condition needs to be removed.
+                      1. For now, we're enabling the Pause Universe for providerType one of
+                      'aws', 'gcp' or 'azu' only. This functionality needs to be enabled for
+                      all the cloud providers and once that's done this condition needs
+                      to be removed.
                       2. One more condition needs to be added which specifies the
                       current status of the universe. */}
 

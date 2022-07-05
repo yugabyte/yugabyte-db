@@ -11,8 +11,7 @@ menu:
 aliases:
   - /preview/admin/yb-master
   - /preview/deploy/reference/configuration/yb-master
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master/) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
@@ -86,6 +85,8 @@ Specifies a comma-separated list of mount directories, where `yb-master` will ad
 
 Required.
 
+Changing the value of this flag after the cluster has already been created is not supported.
+
 ##### --fs_wal_dirs
 
 Specifies a comma-separated list of directories, where `yb-master` will store write-ahead (WAL) logs. This can be the same as one of the directories listed in `--fs_data_dirs`, but not a subdirectory of a data directory.
@@ -155,6 +156,24 @@ Default: `7000`
 Monitoring web server home.
 
 Default: The `www` directory in the YugabyteDB home directory.
+
+##### --webserver_certificate_file
+
+Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
+
+Default: `""`
+
+##### --webserver_authentication_domain
+
+Domain used for .htpasswd authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+
+Default: `""`
+
+##### --webserver_password_file
+
+Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
+
+Default: `""`
 
 ---
 

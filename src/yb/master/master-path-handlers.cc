@@ -1053,8 +1053,9 @@ void MasterPathHandlers::HandleCatalogManager(
         has_colocated_tables[table_cat] = true;
       }
 
-      if (table->IsColocatedUserTable()) {
-        const auto parent_table = table->GetColocatedTablet()->table();
+      auto colocated_tablet = table->GetColocatedUserTablet();
+      if (colocated_tablet) {
+        const auto parent_table = colocated_tablet->table();
         table_row[kParentOid] = GetParentTableOid(parent_table);
         has_tablegroups[table_cat] = true;
       }

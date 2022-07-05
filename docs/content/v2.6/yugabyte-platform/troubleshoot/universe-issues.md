@@ -4,12 +4,11 @@ headerTitle: Troubleshoot universe issues
 linkTitle: Universe issues
 description: Troubleshoot universe issues
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: universe-issues
     parent: troubleshoot-yp
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Metrics Page
@@ -62,4 +61,3 @@ CPUs: 88
 Mem: 251G
 Disk: /dev/sda2       208G  5.1G  203G   3% /
 ```
-

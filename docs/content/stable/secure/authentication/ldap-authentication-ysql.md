@@ -8,8 +8,7 @@ menu:
     identifier: ldap-authentication-1-ysql
     parent: authentication
     weight: 732
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -27,9 +26,9 @@ showAsideToc: true
   </li>
 </ul>
 
-The LDAP authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions). 
+The LDAP authentication method is similar to the password method, except that it uses LDAP to verify the password. Therefore, before LDAP can be used for authentication, the user must already exist in the database (and have appropriate permissions).
 
-LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag. YugabyteDB supports two modes for LDAP authentication: 
+LDAP Authentication can be enabled in the YugabyteDB cluster by setting the LDAP configuration with the <code>[--ysql_hba_conf_csv](../../../reference/configuration/yb-tserver/#ysql-hba-conf-csv)</code> flag. YugabyteDB supports two modes for LDAP authentication:
 
 * **simple-bind** mode
 * **search+bind** mode
@@ -100,7 +99,7 @@ To use LDAP password authentication on a new YugabyteDB cluster, follow these st
 In the above sample configuration, we are using an [online LDAP test server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) for setting up the LDAP authentication with YugabyteDB.
     {{< /note >}}
 
-    For convenience we use two host based authentication (HBA) rules. 
+    For convenience we use two host based authentication (HBA) rules.
 
     * The first HBA rule `host all yugabyte 127.0.0.1/0 password` allows access from the localhost (127.0.0.1) to the admin user (yugabyte) with password authentication. This allows the administrator to log in with the yugabyte user for setting up the roles (and permissions) for the LDAP users.
     * The second HBA rule configures LDAP authentication for all other user/host pairs. We use simple bind with a uid-based username (ldapprefix) and a suffix defining the domain component (dc).
@@ -145,7 +144,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
 
 1. Configure database role(s) for the LDAP user(s).
 
-    We are creating a `ROLE` for username riemann supported by the test LDAP server. 
+    We are creating a `ROLE` for username riemann supported by the test LDAP server.
 
     ```sql
     yugabyte=# CREATE ROLE riemann WITH LOGIN;
@@ -154,7 +153,7 @@ In the above sample configuration, we are using an [online LDAP test server](htt
 
 1. Connect using LDAP authentication.
 
-    Connect ysqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page. 
+    Connect ysqlsh using the `riemann` LDAP user and password specified in the [Online LDAP Test Server](https://www.forumsys.com/tutorials/integration-how-to/ldap/online-ldap-test-server/) page.
 
     ```sh
     $ ./ysqlsh -U riemann -W

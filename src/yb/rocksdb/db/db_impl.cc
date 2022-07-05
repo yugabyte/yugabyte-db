@@ -149,13 +149,12 @@ DEFINE_int32(compaction_priority_step_size, 5,
 DEFINE_int32(small_compaction_extra_priority, 1,
              "Small compaction will get small_compaction_extra_priority extra priority.");
 
-DEFINE_bool(task_ignore_disk_priority, false,
-            "Ignore disk priority when considering compaction and flush priorities.");
-
 DEFINE_int32(automatic_compaction_extra_priority, 50,
-             "Assigns automatic compactions extra priority. This deprioritizes manual "
-             "compactions including those induced by the tserver (e.g. post-split compactions). "
-             "Suggested value between 0 and 50.");
+             "Assigns automatic compactions extra priority when automatic tablet splits are "
+             "enabled. This deprioritizes manual compactions including those induced by the "
+             "tserver (e.g. post-split compactions). Suggested value between 0 and 50.");
+
+DECLARE_bool(enable_automatic_tablet_splitting);
 
 DEFINE_bool(rocksdb_use_logging_iterator, false,
             "Wrap newly created RocksDB iterators in a logging wrapper");
@@ -403,9 +402,6 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    if (FLAGS_task_ignore_disk_priority) {
-      return kNoDiskPriority;
-    }
     return kTopDiskCompactionPriority - active_tasks;
   }
 
@@ -434,7 +430,7 @@ class DBImpl::CompactionTask : public ThreadPoolTask {
     // Adding extra priority to automatic compactions can have a large positive impact on
     // performance for situations with many manual major compactions (e.g. insert-heavy workloads
     // with tablet splitting enabled).
-    if (!compaction_->is_manual_compaction()) {
+    if (FLAGS_enable_automatic_tablet_splitting && !compaction_->is_manual_compaction()) {
       result += FLAGS_automatic_compaction_extra_priority;
     }
 
@@ -514,9 +510,6 @@ class DBImpl::FlushTask : public ThreadPoolTask {
   }
 
   int CalculateGroupNoPriority(int active_tasks) const override {
-    if (FLAGS_task_ignore_disk_priority) {
-      return kNoDiskPriority;
-    }
     return kTopDiskFlushPriority - active_tasks;
   }
 
@@ -5833,6 +5826,11 @@ bool DBImpl::NeedsDelay() {
 Result<std::string> DBImpl::GetMiddleKey() {
   InstrumentedMutexLock lock(&mutex_);
   return default_cf_handle_->cfd()->current()->GetMiddleKey();
+}
+
+yb::Result<TableReader*> DBImpl::TEST_GetLargestSstTableReader() {
+  InstrumentedMutexLock lock(&mutex_);
+  return default_cf_handle_->cfd()->current()->TEST_GetLargestSstTableReader();
 }
 
 void DBImpl::TEST_SwitchMemtable() {

@@ -91,6 +91,8 @@ void SnapshotScheduleState::PrepareOperations(
         .type = SnapshotScheduleOperationType::kCleanup,
         .schedule_id = id_,
         .snapshot_id = TxnSnapshotId::Nil(),
+        .filter = {},
+        .previous_snapshot_hybrid_time = {},
       });
     }
     return;

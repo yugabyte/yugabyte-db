@@ -169,6 +169,8 @@ libraryDependencies ++= Seq(
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
   "commons-io" % "commons-io" % "2.8.0",
   "commons-codec" % "commons-codec" % "1.15",
+  "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
+  "com.google.cloud" % "google-cloud-compute" % "1.9.1",
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "org.projectlombok" % "lombok" % "1.18.20",
   "com.squareup.okhttp3" % "okhttp" % "4.9.2",
@@ -180,7 +182,10 @@ libraryDependencies ++= Seq(
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
   "io.fabric8" % "kubernetes-client" % "5.10.2",
-  "org.apache.commons" % "commons-text" % "1.9"
+  "org.apache.commons" % "commons-text" % "1.9",
+  "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
+  "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
+  "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5"
 )
 // Clear default resolvers.
 appResolvers := None
@@ -231,12 +236,8 @@ lazy val ybPublicSnapshotResolverDescription =
     "Public snapshot resolver for yb-client jar"
 
 lazy val ybPublicSnapshotResolver = {
-  if (mavenLocal) {
-    Seq()
-  } else {
-    val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
-    Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
-  }
+  val ybPublicSnapshotUrl = "https://repository.yugabyte.com/maven/"
+  Seq("Yugabyte Public Maven Snapshots" at ybPublicSnapshotUrl)
 }
 
 // Custom remote maven repository to retrieve library dependencies from.
@@ -376,7 +377,8 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.17-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "0.0.1"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:

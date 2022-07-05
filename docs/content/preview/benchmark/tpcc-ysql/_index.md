@@ -13,10 +13,9 @@ menu:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4
-showAsideToc: true
-isTocNested: true
+type: indexpage
+showRightNav: true
 ---
-
 ## Overview
 Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
 
@@ -108,16 +107,15 @@ Other options like username, password, port, etc. can be changed using the confi
 
 <div class="tab-content">
   <div id="10-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="10-wh-tab">
-    {{% includeMarkdown "10-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "10-wh/tpcc-ysql.md" %}}
   </div>
   <div id="100-wh" class="tab-pane fade show active" role="tabpanel" aria-labelledby="100-wh-tab">
-    {{% includeMarkdown "100-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "100-wh/tpcc-ysql.md" %}}
   </div>
   <div id="1000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="1000-wh-tab">
-    {{% includeMarkdown "1000-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "1000-wh/tpcc-ysql.md" %}}
   </div>
   <div id="10000-wh" class="tab-pane fade" role="tabpanel" aria-labelledby="10000-wh-tab">
-    {{% includeMarkdown "10000-wh/tpcc-ysql.md" /%}}
+  {{% includeMarkdown "10000-wh/tpcc-ysql.md" %}}
   </div>
 </div>
-

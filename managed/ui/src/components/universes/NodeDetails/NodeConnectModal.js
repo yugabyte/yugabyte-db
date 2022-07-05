@@ -56,7 +56,16 @@ class NodeConnectModal extends Component {
       accessTitle = 'Access your pod';
       const podNamespace = currentRow.privateIP.split(".")[2];
       const podName = currentRow.privateIP.split(".")[0];
-      accessCommand = `kubectl exec -it -n ${podNamespace} ${podName} -- sh`;
+      var container_name_selector = '';
+
+      if (currentRow.isMaster === 'Details') {
+        container_name_selector = '-c yb-master'
+      } else if (currentRow.isTServer === 'Details') {
+        container_name_selector = '-c yb-tserver'
+      }
+      
+      accessCommand = `kubectl exec -it -n ${podNamespace} ${podName} ${container_name_selector} -- sh`;
+      
     } else {
       accessTitle = 'Access your node';
       const accessKey = accessKeys.data.filter((key) => key.idKey.providerUUID === providerUUID)[0];

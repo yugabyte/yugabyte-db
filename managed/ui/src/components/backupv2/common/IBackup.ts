@@ -77,6 +77,7 @@ export interface IUniverse {
   name: string;
   universeDetails: {
     universePaused: boolean;
+    [key: string]: any;
   };
 }
 
@@ -113,6 +114,7 @@ export interface ITable {
   keySpace: string;
   tableUUID: string;
   tableType: BACKUP_API_TYPES;
+  isIndexTable: boolean;
 }
 
 export enum Backup_Options_Type {

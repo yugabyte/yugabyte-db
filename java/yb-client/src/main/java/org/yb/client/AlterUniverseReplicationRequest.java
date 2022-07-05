@@ -13,6 +13,10 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.yb.CommonNet;
@@ -24,22 +28,22 @@ import org.yb.util.Pair;
 public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicationResponse> {
 
   private final String replicationGroupName;
-  private final Set<String> sourceTableIDsToAdd;
-  private final Set<String> sourceTableIDsToRemove;
+  private final Map<String, String> sourceTableIdsToAddBootstrapIdMap;
+  private final Set<String> sourceTableIdsToRemove;
   private final Set<HostPortPB> sourceMasterAddresses;
   private final String newReplicationGroupName;
 
   AlterUniverseReplicationRequest(
     YBTable table,
     String replicationGroupName,
-    Set<String> sourceTableIDsToAdd,
-    Set<String> sourceTableIDsToRemove,
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap,
+    Set<String> sourceTableIdsToRemove,
     Set<CommonNet.HostPortPB> sourceMasterAddresses,
     String newReplicationGroupName) {
     super(table);
     this.replicationGroupName = replicationGroupName;
-    this.sourceTableIDsToAdd = sourceTableIDsToAdd;
-    this.sourceTableIDsToRemove = sourceTableIDsToRemove;
+    this.sourceTableIdsToAddBootstrapIdMap = sourceTableIdsToAddBootstrapIdMap;
+    this.sourceTableIdsToRemove = sourceTableIdsToRemove;
     this.sourceMasterAddresses = sourceMasterAddresses;
     this.newReplicationGroupName = newReplicationGroupName;
   }
@@ -48,15 +52,27 @@ public class AlterUniverseReplicationRequest extends YRpc<AlterUniverseReplicati
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
 
+    // Add table IDs and bootstrap IDs.
+    List<String> sourceTableIdsToAdd = new ArrayList<>();
+    List<String> sourceBootstrapIdstoAdd = new ArrayList<>();
+    sourceTableIdsToAddBootstrapIdMap.forEach((tableId, bootstrapId) -> {
+      sourceTableIdsToAdd.add(tableId);
+      sourceBootstrapIdstoAdd.add(bootstrapId);
+    });
+
     final MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.Builder builder =
       MasterReplicationOuterClass.AlterUniverseReplicationRequestPB.newBuilder()
         .setProducerId(replicationGroupName)
-        .addAllProducerTableIdsToAdd(sourceTableIDsToAdd)
-        .addAllProducerTableIdsToRemove(sourceTableIDsToRemove)
-        .addAllProducerMasterAddresses(sourceMasterAddresses);
-
+        .addAllProducerMasterAddresses(sourceMasterAddresses)
+        .addAllProducerTableIdsToAdd(sourceTableIdsToAdd)
+        .addAllProducerTableIdsToRemove(sourceTableIdsToRemove);
     if (newReplicationGroupName != null) {
       builder.setNewProducerUniverseId(newReplicationGroupName);
+    }
+
+    // If all bootstrap IDs are null, it is not required.
+    if (sourceBootstrapIdstoAdd.stream().anyMatch(Objects::nonNull)){
+      builder.addAllProducerBootstrapIdsToAdd(sourceBootstrapIdstoAdd);
     }
 
     return toChannelBuffer(header, builder.build());

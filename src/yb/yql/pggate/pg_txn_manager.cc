@@ -84,6 +84,19 @@ uint64_t ConvertHighPriorityTxnBound(double value) {
   return ConvertBound(value, yb::kHighPriTxnLowerBound, yb::kHighPriTxnUpperBound);
 }
 
+// Convert uint64_t value in range [minValue, maxValue] to double value in range 0..1
+double ToTxnPriority(uint64_t value, uint64_t minValue, uint64_t maxValue) {
+  if (value <= minValue) {
+    return 0.0;
+  }
+
+  if (value >= maxValue) {
+    return 1.0;
+  }
+
+  return static_cast<double>(value - minValue) / (maxValue - minValue);
+}
+
 } // namespace
 
 extern "C" {
@@ -320,6 +333,8 @@ Status PgTxnManager::RestartTransaction() {
 /* This is called at the start of each statement in READ COMMITTED isolation level */
 Status PgTxnManager::ResetTransactionReadPoint() {
   read_time_manipulation_ = tserver::ReadTimeManipulation::RESET;
+  read_time_for_follower_reads_ = HybridTime();
+  RETURN_NOT_OK(UpdateReadTimeForFollowerReadsIfRequired());
   return Status::OK();
 }
 
@@ -434,6 +449,28 @@ void PgTxnManager::SetupPerformOptions(tserver::PgPerformOptionsPB* options) {
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());
   }
+}
+
+double PgTxnManager::GetTransactionPriority() const {
+  if (priority_ <= yb::kRegularTxnUpperBound) {
+    return ToTxnPriority(priority_,
+                         yb::kRegularTxnLowerBound,
+                         yb::kRegularTxnUpperBound);
+  }
+
+  return ToTxnPriority(priority_,
+                       yb::kHighPriTxnLowerBound,
+                       yb::kHighPriTxnUpperBound);
+}
+
+TxnPriorityRequirement PgTxnManager::GetTransactionPriorityType() const {
+  if (priority_ <= yb::kRegularTxnUpperBound) {
+    return kLowerPriorityRange;
+  }
+  if (priority_ < yb::kHighPriTxnUpperBound) {
+    return kHigherPriorityRange;
+  }
+  return kHighestPriority;
 }
 
 }  // namespace pggate

@@ -10,6 +10,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
@@ -201,7 +202,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   // Returns a SubTaskGroup to which subtasks can be added.
   protected SubTaskGroup createSubTaskGroup(String name) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name);
+    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+  }
+
+  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, false);
     subTaskGroup.setSubTaskExecutor(executor);
     return subTaskGroup;
   }

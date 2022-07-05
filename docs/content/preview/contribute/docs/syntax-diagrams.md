@@ -5,14 +5,12 @@ linkTitle: Syntax diagrams
 description: Edit syntax diagrams
 image: /images/section_icons/index/quick_start.png
 headcontent: How to edit syntax diagrams
-type: page
 menu:
   preview:
     identifier: docs-syntax-diagrams
     parent: docs-edit
     weight: 3000
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In this kind of work, the nature of your documentation change means that you'll need to modify existing [_syntax diagrams_](#syntax-diagram) or add new ones.
@@ -55,8 +53,6 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/dml_select/
-isTocNested: true
-showAsideToc: true
 ```
 
 The `aliases` page property allows a list of many URLs. Notice that these are _relative_ to the [_content directory_](#content-directory). The `.md` file in this example used to be here:
@@ -308,10 +304,10 @@ You must include this boilerplate text in `wants-to-include.md` at the location 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" /*/%}}
+  {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.grammar.md" */%}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" /*/%}}
+  {{%/* includeMarkdown "../../../syntax_resources/dir_1/dir_2/dir_3/<rule set X>.diagram.md" */%}}
   </div>
 </div>
 ```

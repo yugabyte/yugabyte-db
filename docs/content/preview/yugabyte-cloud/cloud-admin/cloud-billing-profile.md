@@ -5,12 +5,11 @@ description: Manage your YugabyteDB Managed billing profile and payment methods 
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-billing-profile
     parent: cloud-admin
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Review your charges and manage your billing profile and payment methods using the **Billing** tab.
@@ -35,9 +34,9 @@ The **Billing** tab has the following sections: **Profile and Payment Methods**,
 
 Use this section to manage your contact information and payment method. You can pay using a credit card, or other payment methods such as debit, ACH, and invoicing.
 
-Credit cards are self service. For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{<support-cloud>}} to set up payment.
+Credit cards are self service. For other payment methods, create your billing profile and set the **Billing Options** to **Other**; after you create your profile, contact {{% support-cloud %}} to set up payment.
 
-If you want to switch from paying by credit card to another method, contact {{<support-cloud>}}.
+If you want to switch from paying by credit card to another method, contact {{% support-cloud %}}.
 
 ### Add or edit your Billing Profile
 

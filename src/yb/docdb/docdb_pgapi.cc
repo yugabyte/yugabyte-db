@@ -25,6 +25,7 @@
 
 
 #include "yb/util/result.h"
+#include "yb/util/logging.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
@@ -88,7 +89,7 @@ class DocPgTypeAnalyzer {
     if (iter != type_map_.end()) {
       return iter->second;
     }
-    LOG(FATAL) << "Could not find type entity for oid " << type_oid;
+    LOG(INFO) << "Could not find type entity for oid " << type_oid;
     return nullptr;
   }
 
@@ -198,15 +199,14 @@ Status DocPgEvalExpr(YbgPreparedExpr expr,
   return Status::OK();
 }
 
-Status SetValueFromQLBinary(const QLValuePB ql_value,
-                            const int pg_data_type,
-                            DatumMessagePB* cdc_datum_message) {
+Status SetValueFromQLBinary(
+    const QLValuePB ql_value, const int pg_data_type,
+    const std::unordered_map<uint32_t, string> &enum_oid_label_map,
+    DatumMessagePB *cdc_datum_message) {
   PG_RETURN_NOT_OK(YbgPrepareMemoryContext());
 
-  RETURN_NOT_OK(SetValueFromQLBinaryHelper(
-    ql_value,
-    pg_data_type,
-    cdc_datum_message));
+  RETURN_NOT_OK(
+      SetValueFromQLBinaryHelper(ql_value, pg_data_type, enum_oid_label_map, cdc_datum_message));
   PG_RETURN_NOT_OK(YbgResetMemoryContext());
   return Status::OK();
 }
@@ -598,7 +598,9 @@ void set_range_array_string_value(
 // This function expects that YbgPrepareMemoryContext was called
 // by the caller of this function.
 Status SetValueFromQLBinaryHelper(
-    const QLValuePB ql_value, const int pg_data_type, DatumMessagePB *cdc_datum_message) {
+    const QLValuePB ql_value, const int pg_data_type,
+    const std::unordered_map<uint32_t, string> &enum_oid_label_map,
+    DatumMessagePB *cdc_datum_message) {
   uint64_t size;
   char* val;
   const char* timezone = "GMT";
@@ -610,8 +612,7 @@ Status SetValueFromQLBinaryHelper(
   YBCPgTypeAttrs type_attrs{-1 /* typmod */};
 
   cdc_datum_message->set_column_type(pg_data_type);
-
-  switch (arg_type->type_oid) {
+  switch (pg_data_type) {
     case BOOLOID: {
       func_name = "boolout";
       bool bool_val = ql_value.bool_value();
@@ -1237,12 +1238,18 @@ Status SetValueFromQLBinaryHelper(
       break;
     }
     case ANYENUMOID: {
-      func_name = "anyenum_out";
-      int64_t anyenum_val = ql_value.int64_value();
+      int64_t yb_enum_oid = ql_value.int64_value();
       size = arg_type->datum_fixed_size;
-      uint64_t datum =
-          arg_type->yb_to_datum(reinterpret_cast<int64 *>(&anyenum_val), size, &type_attrs);
-      set_string_value(datum, func_name, cdc_datum_message);
+      uint64_t enum_oid =
+          arg_type->yb_to_datum(reinterpret_cast<int64 *>(&yb_enum_oid), size, &type_attrs);
+      string label = "";
+      if (enum_oid_label_map.find((uint32_t)enum_oid) != enum_oid_label_map.end()) {
+        label = enum_oid_label_map.at((uint32_t)enum_oid);
+        VLOG(1) << "For enum oid: " << enum_oid << " found label" << label;
+      } else {
+        LOG(DFATAL) << "For enum oid: " << enum_oid << " no label found in cache";
+      }
+      cdc_datum_message->set_datum_string(label.c_str(), strlen(label.c_str()));
       break;
     }
     case FDW_HANDLEROID: {
@@ -1799,7 +1806,12 @@ Status SetValueFromQLBinaryHelper(
     }
 
     default:
-      LOG(INFO) << "Unknown type in SetValueFromQLBinaryHelper: " << arg_type->type_oid;
+      YB_LOG_EVERY_N_SECS(WARNING, 5)
+          << Format(
+                 "For column: $0 unsuppported pg_type_oid: $1 found in SetValueFromQLBinaryHelper",
+                 cdc_datum_message->column_name(), pg_data_type)
+          << THROTTLE_MSG;
+      cdc_datum_message->set_datum_string("");
       break;
   }
 

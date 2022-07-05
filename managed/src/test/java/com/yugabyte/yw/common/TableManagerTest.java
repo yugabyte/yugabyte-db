@@ -25,10 +25,10 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -305,8 +305,6 @@ public class TableManagerTest extends FakeDBApplication {
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
     testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
-    testCustomer.addUniverseUUID(testUniverse.universeUUID);
-    testCustomer.save();
     ReleaseManager.ReleaseMetadata metadata = new ReleaseManager.ReleaseMetadata();
     metadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(metadata);

@@ -307,6 +307,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, ListCDCStreams);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateCDCStream);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, IsBootstrapRequired);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 
 YBClient::Data::Data()
@@ -1872,6 +1873,20 @@ Status YBClient::Data::GetTableSchema(YBClient* client,
       deadline,
       resp);
   return sync.Wait();
+}
+
+Status YBClient::Data::GetTableSchema(YBClient* client,
+                                      const YBTableName& table_name,
+                                      CoarseTimePoint deadline,
+                                      std::shared_ptr<YBTableInfo> info,
+                                      StatusCallback callback) {
+  auto rpc = StartRpc<GetTableSchemaRpc>(
+      client,
+      callback,
+      table_name,
+      info.get(),
+      deadline);
+  return Status::OK();
 }
 
 Status YBClient::Data::GetTableSchemaById(YBClient* client,

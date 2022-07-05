@@ -32,7 +32,7 @@ SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
 WHERE t1.h = 2 and t2.r = 3;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  4 |  5 |  6
 (1 row)
@@ -41,7 +41,7 @@ EXPLAIN SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
-                                QUERY PLAN                                
+                                QUERY PLAN
 --------------------------------------------------------------------------
  Nested Loop  (cost=0.00..46.31 rows=5 width=40)
    ->  Index Scan using t1_pkey on t1  (cost=0.00..5.17 rows=10 width=20)
@@ -54,7 +54,7 @@ SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h and t1.r = t2.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  4 |  5 |  6
 (1 row)
@@ -77,7 +77,7 @@ SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h
 WHERE t1.h = 2 and t2.r = 3;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  4 |  5 |  6
 (1 row)
@@ -86,7 +86,7 @@ EXPLAIN SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h
 WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
-                                QUERY PLAN                                
+                                QUERY PLAN
 --------------------------------------------------------------------------
  Nested Loop  (cost=0.00..6.68 rows=500 width=40)
    ->  Index Scan using t1_pkey on t1  (cost=0.00..5.15 rows=10 width=20)
@@ -99,7 +99,7 @@ SELECT *
 FROM t1
      JOIN t2 on t1.h = t2.h
 WHERE yb_hash_code(t1.h) = yb_hash_code(2) and t2.r = 3;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  4 |  5 |  6
 (1 row)
@@ -122,7 +122,7 @@ SELECT *
 FROM t1 as a
      JOIN t1 as b on a.h = b.v1
 WHERE a.h = 2 and a.r = 3;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  2 |  4 |  6
 (1 row)
@@ -131,7 +131,7 @@ EXPLAIN SELECT *
 FROM t1 as a
      JOIN t1 as b on yb_hash_code(a.h) = yb_hash_code(b.v1)
 WHERE yb_hash_code(a.h) = yb_hash_code(2) and a.r = 3;
-                                      QUERY PLAN                                       
+                                      QUERY PLAN
 ---------------------------------------------------------------------------------------
  Nested Loop  (cost=0.00..11.70 rows=100 width=40)
    ->  Index Scan using t1_pkey on t1 a  (cost=0.00..5.17 rows=10 width=20)
@@ -145,7 +145,7 @@ SELECT *
 FROM t1 as a
      JOIN t1 as b on yb_hash_code(a.h) = yb_hash_code(b.v1)
 WHERE yb_hash_code(a.h) = yb_hash_code(2) and a.r = 3;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----
  2 | 3 |  2 |  4 |  6 | 2 | 3 |  2 |  4 |  6
 (1 row)
@@ -177,7 +177,7 @@ FROM t1
      JOIN t3 on t2.h = t3.h and t1.r = t3.r
 WHERE t1.h = 1 and t3.r = 2
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 1 | 2 |  4 |  3 |  4 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -188,7 +188,7 @@ FROM t1
      JOIN t3 on t2.h = t3.h and t1.r = t3.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.r = 2
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN                                         
+                                         QUERY PLAN
 --------------------------------------------------------------------------------------------
  Sort  (cost=21.08..21.09 rows=2 width=64)
    Sort Key: t3.v3 DESC
@@ -212,7 +212,7 @@ FROM t1
      JOIN t3 on t2.h = t3.h and t1.r = t3.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.r = 2
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 1 | 2 |  4 |  3 |  4 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -223,7 +223,7 @@ FROM t1
      JOIN t3 on t2.h = t3.h and t1.r = t3.r
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.r = 2
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 1 | 2 |  4 |  3 |  4 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -254,7 +254,7 @@ FROM t1
      JOIN t3 on t2.v3 = t3.v3
 WHERE t1.h = 1 and t3.v3 = 2
 ORDER BY t3.v3 ASC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 4 | 3 |  7 |  3 |  2
 (1 row)
@@ -265,7 +265,7 @@ FROM t1
      JOIN t3 on t2.v3 = t3.v3
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.v3 = 2
 ORDER BY t3.v3 ASC;
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  Nested Loop  (cost=0.00..13.53 rows=1 width=64)
    ->  Nested Loop  (cost=0.00..9.40 rows=1 width=40)
@@ -284,7 +284,7 @@ FROM t1
      JOIN t3 on t2.v3 = t3.v3
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.v3 = 2
 ORDER BY t3.v3 ASC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 4 | 3 |  7 |  3 |  2
 (1 row)
@@ -316,7 +316,7 @@ FROM t1
      JOIN t3 on t2.v3 = t3.v3
 WHERE t1.h = 1 and t3.v3 = 2 and t3.v1 > 5
 ORDER BY t3.v3 ASC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 4 | 3 |  7 |  3 |  2
 (1 row)
@@ -327,7 +327,7 @@ FROM t1
      JOIN t3 on t2.v3 = t3.v3
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.v3 = 2 and t3.v1 > 5
 ORDER BY t3.v3 ASC;
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  Nested Loop  (cost=0.00..13.54 rows=1 width=64)
    ->  Nested Loop  (cost=0.00..9.40 rows=1 width=40)
@@ -347,7 +347,7 @@ FROM t1
      JOIN t3 on t2.v3 = t3.v3
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t3.v3 = 2 and t3.v1 > 5
 ORDER BY t3.v3 ASC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 4 | 3 |  7 |  3 |  2
 (1 row)
@@ -379,7 +379,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE t1.h = 1 and t1.r = 2
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -390,7 +390,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN                                         
+                                         QUERY PLAN
 --------------------------------------------------------------------------------------------
  Sort  (cost=63.39..63.40 rows=1 width=64)
    Sort Key: t3.v3 DESC
@@ -410,7 +410,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -443,7 +443,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE t1.h = 1 and t1.r = 2 and t2.r IN (3,4,5)
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -454,7 +454,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t2.r IN (3,4,5)
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN                                        
+                                         QUERY PLAN
 --------------------------------------------------------------------------------------------
  Sort  (cost=63.47..63.47 rows=1 width=64)
    Sort Key: t3.v3 DESC
@@ -475,7 +475,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t2.r IN (3,4,5)
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -507,7 +507,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE t1.h = 1 and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)
@@ -518,7 +518,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
-                                         QUERY PLAN                                          
+                                         QUERY PLAN
 ---------------------------------------------------------------------------------------------
  Sort  (cost=26.08..26.08 rows=1 width=64)
    Sort Key: t3.v3 DESC
@@ -540,7 +540,7 @@ FROM t1
      FULL JOIN t3 on t1.v1 = t3.v1 and t3.v1 = t1.v1
 WHERE yb_hash_code(t1.h) = yb_hash_code(1) and t1.r = 2 and t3.v2 IN (3,4,5)
 ORDER BY t3.v3 DESC;
- h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 
+ h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3 | h | r | v1 | v2 | v3
 ---+---+----+----+----+---+---+----+----+----+---+---+----+----+----
  1 | 2 |  4 |  9 |  2 | 5 | 5 |  4 |  9 |  2 | 1 | 2 |  4 |  5 |  7
 (1 row)

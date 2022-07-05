@@ -8,8 +8,7 @@ menu:
     identifier: manipulating-date-time-values
     parent: date-time-functions
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## function date_trunc() returns plain timestamp \| timestamptz \| interval

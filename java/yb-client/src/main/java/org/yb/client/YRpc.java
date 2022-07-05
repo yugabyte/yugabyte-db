@@ -250,8 +250,13 @@ public abstract class YRpc<R> {
     }
     buf.append(", attempt=").append(attempt);
     buf.append(", maxAttempts=").append(maxAttempts);
-    buf.append(", ").append(deadlineTracker);
-    buf.append(", ").append(deferred);
+    if (LOG.isTraceEnabled()) {
+      buf.append(", ").append(deadlineTracker);
+      buf.append(", ").append(deferred);
+    } else {
+      buf.append(", maxTimeoutMs=").append(deadlineTracker.getDeadline());
+      buf.append(", elapsedTimeMs=").append(deadlineTracker.getElapsedMillis());
+    }
     buf.append(')');
     return buf.toString();
   }

@@ -11,10 +11,8 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.utils.Pair;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -41,11 +39,6 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
     super(baseTaskDependencies);
   }
 
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-  }
-
   public static class Params extends XClusterConfigTaskParams {
     // The target universe UUID must be stored in universeUUID field.
     // Source universe UUID.
@@ -60,11 +53,8 @@ public class XClusterConfigUpdateMasterAddresses extends XClusterConfigTaskBase 
   @Override
   public String getName() {
     return String.format(
-        "%s %s(targetUniverse=%s, sourceUniverse=%s)",
-        super.getName(),
-        this.getClass().getSimpleName(),
-        taskParams().universeUUID,
-        taskParams().sourceUniverseUuid);
+        "%s (targetUniverse=%s, sourceUniverse=%s)",
+        super.getName(), taskParams().universeUUID, taskParams().sourceUniverseUuid);
   }
 
   @Override

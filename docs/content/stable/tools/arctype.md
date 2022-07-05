@@ -8,8 +8,7 @@ menu:
     identifier: arctype
     parent: tools
     weight: 2710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to query and visualize data in YugabyteDB using [Arctype](https://arctype.com/), a user-friendly collaborative SQL client.

@@ -8,8 +8,7 @@ menu:
     identifier: build-apps-csharp-3-ysql
     parent: build-apps
     weight: 556
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -49,7 +48,7 @@ The tutorial assumes that you have:
 
 - YugabyteDB up and running. If you are new to YugabyteDB, follow the steps in [Quick start](../../../../quick-start/) to have YugabyteDB up and running in minutes.
 
-- [.NET framework](https://dotnet.microsoft.com/en-us/download) installed.
+- [.NET SDK 6.0](https://dotnet.microsoft.com/en-us/download) or later.
 
 ## Clone the "orm-examples" repository
 

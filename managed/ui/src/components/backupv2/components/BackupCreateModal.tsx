@@ -38,6 +38,7 @@ import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
 
 import Close from '../../universes/images/close.svg';
 
+import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
 import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
@@ -58,11 +59,6 @@ const TABLES_NOT_PRESENT_MSG = (api: string) => (
     <i className="fa fa-warning" /> There are no {api} databases in this universe to backup.
   </span>
 );
-
-const PARALLEL_THREADS_RANGE = {
-  MIN: 1,
-  MAX: 100
-};
 
 const DURATION_OPTIONS = DURATIONS.map((t: string) => {
   return {
@@ -109,7 +105,8 @@ const initialValues = {
   selected_ycql_tables: [],
   keep_indefinitely: false,
   search_text: '',
-  parallel_threads: PARALLEL_THREADS_RANGE.MIN
+  parallel_threads: PARALLEL_THREADS_RANGE.MIN,
+  storage_config: null as any
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -188,6 +185,12 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   });
 
   const groupedStorageConfigs = useMemo(() => {
+    // if user has only one storage config, select it by default
+    if (storageConfigs.data.length === 1) {
+      const { configUUID, configName, name } = storageConfigs.data[0];
+      initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
+    }
+
     const configs = storageConfigs.data
       .filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {
@@ -215,15 +218,17 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         if (this.parent.use_cron_expression || !isScheduledBackup) {
           return true;
         }
-        return value * MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()] >=
-            MILLISECONDS_IN['HOURS']
+        return (
+          value * MILLISECONDS_IN[this.parent.policy_interval_type.value.toUpperCase()] >=
+          MILLISECONDS_IN['HOURS']
+        );
       }
     }),
     cron_expression: Yup.string().when('use_cron_expression', {
-      is: use_cron_expression => isScheduledBackup && use_cron_expression,
+      is: (use_cron_expression) => isScheduledBackup && use_cron_expression,
       then: Yup.string().required('Required')
     }),
-    storage_config: Yup.object().required('Required'),
+    storage_config: Yup.object().nullable().required('Required'),
     db_to_backup: Yup.object().nullable().required('Required'),
     retention_interval: Yup.number().when('keep_indefinitely', {
       is: (keep_indefinitely) => !keep_indefinitely,
@@ -346,6 +351,15 @@ function BackupConfigurationForm({
   const isTableAvailableForBackup = tablesInUniverse?.some(
     (t: ITable) => t.tableType === values['api_type'].value
   );
+
+  const tablesByAPI = tablesInUniverse.filter((t: any) => t.tableType === values['api_type'].value);
+
+  const uniqueKeyspaces = uniqBy(tablesByAPI, 'keySpace').map((t: any) => {
+    return {
+      label: t.keySpace,
+      value: t.keySpace
+    };
+  });
 
   return (
     <div className="backup-configuration-form">
@@ -472,17 +486,7 @@ function BackupConfigurationForm({
             name="db_to_backup"
             component={YBFormSelect}
             label="Select the Database you want to backup"
-            options={[
-              ALL_DB_OPTION,
-              ...uniqBy(tablesInUniverse, 'keySpace')
-                .filter((t: any) => t.tableType === values['api_type'].value)
-                .map((t: any) => {
-                  return {
-                    label: t.keySpace,
-                    value: t.keySpace
-                  };
-                })
-            ]}
+            options={[ALL_DB_OPTION, ...uniqueKeyspaces]}
             onChange={(_: any, val: any) => {
               setFieldValue('db_to_backup', val);
               if (
@@ -654,7 +658,7 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
   isEditMode
 }) => {
   const tablesInKeyspaces = tablesList
-    ?.filter((t) => t.tableType === values['api_type'].value)
+    ?.filter((t) => t.tableType === values['api_type'].value && !t.isIndexTable)
     .filter(
       (t) => values['db_to_backup']?.value === null || t.keySpace === values['db_to_backup']?.value
     );

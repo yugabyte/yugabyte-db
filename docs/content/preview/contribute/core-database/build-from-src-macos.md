@@ -5,7 +5,6 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on macOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code on macOS, CentOS, and Ubuntu.
-type: page
 aliases:
   - /preview/contribute/core-database/build-from-src
 menu:
@@ -13,8 +12,7 @@ menu:
     identifier: build-from-src-1-macos
     parent: core-database
     weight: 2912
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -177,28 +177,6 @@ void DumpStackTraceAndExit() {
   abort();
 }
 
-void CustomGlogFailureWriter(const char* data, int size) {
-  if (size == 0) {
-    return;
-  }
-
-  std::smatch match;
-  string line = string(data, size);
-  if (std::regex_match(line, match, kStackTraceLineFormatRe)) {
-    size_t pos;
-    uintptr_t addr = std::stoul(match[1], &pos, 16);
-    string symbolized_line = SymbolizeAddress(reinterpret_cast<void*>(addr));
-    if (symbolized_line.find(':') != string::npos) {
-      // Only replace the output line if we failed to find the line number.
-      line = symbolized_line;
-    }
-  }
-
-  if (write(STDERR_FILENO, line.data(), line.size()) < 0) {
-    // Ignore errors.
-  }
-}
-
 #ifndef NDEBUG
 void ReportRefCountedDebugEvent(
     const char* type_name,
@@ -222,13 +200,6 @@ void ApplyFlagsInternal() {
 } // anonymous namespace
 
 void InitializeGoogleLogging(const char *arg) {
-  // TODO: re-enable this when we make stack trace symbolization async-safe, which means we have
-  // to get rid of memory allocations there. We also need to make sure that libbacktrace is
-  // async-safe.
-  static constexpr bool kUseCustomFailureWriter = false;
-  if (kUseCustomFailureWriter) {
-    google::InstallFailureWriter(CustomGlogFailureWriter);
-  }
   google::InitGoogleLogging(arg);
 
   google::InstallFailureFunction(DumpStackTraceAndExit);
@@ -240,7 +211,6 @@ void InitGoogleLoggingSafe(const char* arg) {
   SpinLockHolder l(&logging_mutex);
   if (logging_initialized) return;
 
-  google::InstallFailureWriter(CustomGlogFailureWriter);
   google::InstallFailureSignalHandler();
 
   // Set the logbuflevel to -1 so that all logs are printed out in unbuffered.

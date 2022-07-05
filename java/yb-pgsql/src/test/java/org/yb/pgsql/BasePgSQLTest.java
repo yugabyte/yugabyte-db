@@ -12,48 +12,40 @@
 //
 package org.yb.pgsql;
 
-import static com.google.common.base.Preconditions.*;
-import static org.yb.AssertionWrappers.*;
+import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkNotNull;
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.assertFalse;
+import static org.yb.AssertionWrappers.assertLessThan;
+import static org.yb.AssertionWrappers.assertNotEquals;
+import static org.yb.AssertionWrappers.assertTrue;
+import static org.yb.AssertionWrappers.fail;
 import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
-
-import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.junit.After;
-import org.junit.AfterClass;
-import org.junit.Before;
-import com.yugabyte.core.TransactionState;
-import com.yugabyte.jdbc.PgArray;
-import com.yugabyte.jdbc.PgConnection;
-import com.yugabyte.util.PGobject;
-import com.yugabyte.util.PSQLException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.TestUtils;
-import org.yb.minicluster.*;
-import org.yb.minicluster.Metrics.YSQLStat;
-import org.yb.util.EnvAndSysPropertyUtil;
-import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.BuildTypeUtil;
-import org.yb.util.YBBackupUtil;
-import org.yb.util.YBBackupException;
-import org.yb.master.MasterDdlOuterClass;
 
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLWarning;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -61,8 +53,53 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.IsInitDbDoneResponse;
+import org.yb.client.TestUtils;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.minicluster.BaseMiniClusterTest;
+import org.yb.minicluster.Metrics;
+import org.yb.minicluster.Metrics.YSQLStat;
+import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
+import org.yb.minicluster.MiniYBDaemon;
+import org.yb.minicluster.RocksDBMetrics;
+import org.yb.minicluster.YsqlSnapshotVersion;
+import org.yb.util.BuildTypeUtil;
+import org.yb.util.EnvAndSysPropertyUtil;
+import org.yb.util.MiscUtil.ThrowingCallable;
+import org.yb.util.YBBackupException;
+import org.yb.util.YBBackupUtil;
+
+import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.yugabyte.core.TransactionState;
+import com.yugabyte.jdbc.PgArray;
+import com.yugabyte.jdbc.PgConnection;
+import com.yugabyte.util.PGobject;
+import com.yugabyte.util.PSQLException;
+
 public class BasePgSQLTest extends BaseMiniClusterTest {
   private static final Logger LOG = LoggerFactory.getLogger(BasePgSQLTest.class);
+
+  /** Corresponds to the original value of YB_MIN_UNUSED_OID. */
+  protected final long FIRST_YB_OID = 8000;
+
+  /** Matches Postgres' FirstBootstrapObjectId */
+  protected final long FIRST_BOOTSTRAP_OID = 10000;
+
+  /** Matches Postgres' FirstNormalObjectId */
+  protected final long FIRST_NORMAL_OID = 16384;
 
   // Postgres settings.
   protected static final String DEFAULT_PG_DATABASE = "yugabyte";
@@ -88,8 +125,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String COMMIT_STMT_METRIC = METRIC_PREFIX + "CommitStmt";
   protected static final String ROLLBACK_STMT_METRIC = METRIC_PREFIX + "RollbackStmt";
   protected static final String OTHER_STMT_METRIC = METRIC_PREFIX + "OtherStmts";
+  protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED = METRIC_PREFIX
+      + "Single_Shard_Transactions";
   protected static final String SINGLE_SHARD_TRANSACTIONS_METRIC =
-      METRIC_PREFIX + "Single_Shard_Transactions";
+      METRIC_PREFIX + "SingleShardTransactions";
   protected static final String TRANSACTIONS_METRIC = METRIC_PREFIX + "Transactions";
   protected static final String AGGREGATE_PUSHDOWNS_METRIC = METRIC_PREFIX + "AggregatePushdowns";
   protected static final String CATALOG_CACHE_MISSES_METRICS = METRIC_PREFIX + "CatalogCacheMisses";
@@ -210,6 +249,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     flagMap.put("ysql_beta_features", "true");
     flagMap.put("ysql_sleep_before_retry_on_txn_conflict", "false");
     flagMap.put("ysql_max_write_restart_attempts", "2");
+    flagMap.put("ysql_enable_reindex", "true");
 
     return flagMap;
   }
@@ -798,18 +838,24 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     Statement statement, String query, String metricName, int queryMetricDelta,
     int singleShardTxnMetricDelta, int txnMetricDelta, boolean validStmt) throws Exception {
     return verifyQuery(
-      statement, query, validStmt,
-      new MetricCountChecker(
-          SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta),
-      new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta),
-      new MetricCountChecker(metricName, this::getMetric, queryMetricDelta));
+        statement, query, validStmt,
+        new MetricCountChecker(
+            SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED, this::getMetric,
+            singleShardTxnMetricDelta),
+        new MetricCountChecker(
+            SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta),
+        new MetricCountChecker(TRANSACTIONS_METRIC, this::getMetric, txnMetricDelta),
+        new MetricCountChecker(metricName, this::getMetric, queryMetricDelta));
   }
 
   protected void verifyStatementTxnMetric(
     Statement statement, String query, int singleShardTxnMetricDelta) throws Exception {
     verifyQuery(
       statement, query,true,
-      new MetricCountChecker(
+        new MetricCountChecker(
+            SINGLE_SHARD_TRANSACTIONS_METRIC_DEPRECATED, this::getMetric,
+            singleShardTxnMetricDelta),
+        new MetricCountChecker(
           SINGLE_SHARD_TRANSACTIONS_METRIC, this::getMetric, singleShardTxnMetricDelta));
   }
 

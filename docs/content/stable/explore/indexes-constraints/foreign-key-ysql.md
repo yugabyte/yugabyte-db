@@ -8,8 +8,7 @@ menu:
     identifier: foreign-key-ysql
     parent: explore-indexes-constraints
     weight: 210
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

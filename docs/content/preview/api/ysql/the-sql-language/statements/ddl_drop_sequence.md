@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/ddl_drop_sequence/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -36,10 +35,10 @@ Use the `DROP SEQUENCE` statement to delete a sequence in the current schema.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_sequence.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_sequence.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_sequence.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/drop_sequence.diagram.md" %}}
   </div>
 </div>
 
@@ -126,4 +125,4 @@ DROP SEQUENCE
 - [`lastval()`](../../../exprs/func_lastval)
 - [`nextval()`](../../../exprs/func_nextval)
 - [`setval()`](../../../exprs/func_setval)
-- 
+-

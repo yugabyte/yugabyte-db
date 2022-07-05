@@ -70,7 +70,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
 
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
-  
+
   const storageConfigsMap = useMemo(() => keyBy(storageConfigs?.data ?? [], 'configUUID'), [
     storageConfigs
   ]);
@@ -121,7 +121,10 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
           onActionButtonClick={() => {
             setShowCreateModal(true);
           }}
-          disabled={tablesInUniverse?.data.length === 0 || currentUniverse.data?.universeConfig?.takeBackups === 'false'}
+          disabled={
+            tablesInUniverse?.data.length === 0 ||
+            currentUniverse.data?.universeConfig?.takeBackups === 'false'
+          }
         />
         <BackupCreateModal
           visible={showCreateModal}
@@ -297,7 +300,7 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">DATABASE NAME</div>
               <div className="info-val">
-                {schedule.backupInfo?.keyspaceList[0]?.keyspace ?? '-'}
+                {wrapTableName(schedule.backupInfo?.keyspaceList.map((k) => k.keyspace))}
               </div>
             </Col>
             <Col lg={3}>

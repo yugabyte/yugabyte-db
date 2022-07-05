@@ -4,14 +4,12 @@ headerTitle: Widgets and shortcodes
 linkTitle: Widgets and shortcodes
 description: Widgets and shortcodes
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: widgets-and-shortcodes
     parent: docs-edit
     weight: 2915
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/).
@@ -19,12 +17,19 @@ There are a number of display widgets and shortcodes available. All the shortcod
 ## Admonition boxes
 
 Use the note, tip, and warning shortcodes to create admonition boxes.
+### tip
 
 {{< tip title="Tip" >}}
-
 A tip box gives a hint or other useful but optional piece of information.
-
 {{< /tip >}}
+
+#### tip source
+
+```md
+{{</* tip title="Tip" */>}}
+A tip box gives a hint or other useful but optional piece of information.
+{{</* /tip */>}}
+```
 
 {{< note title="Note" >}}
 
@@ -32,29 +37,17 @@ A note box gives some important information that is often not optional.
 
 {{< /note >}}
 
+```md
+{{</* note title="Note" */>}}
+This is a note with a [link](https://www.yugabyte.com).
+{{</* /note */>}}
+```
+
 {{< warning title="Warning" >}}
 
 A warning box informs the user about a potential issue or something to watch out for.
 
 {{< /warning >}}
-
-Create these boxes as follows:
-
-```md
-{{</* tip title="Tip" */>}}
-
-This is a tip with a [link](https://www.yugabyte.com).
-
-{{</* /tip */>}}
-```
-
-```md
-{{</* note title="Note" */>}}
-
-This is a note with a [link](https://www.yugabyte.com).
-
-{{</* /note */>}}
-```
 
 ```md
 {{</* warning title="Warning" */>}}
@@ -106,16 +99,16 @@ The corresponding code for this widget is shown below. Note that the actual cont
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{%/* includeMarkdown "binary/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "binary/explore-ysql.md" */%}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{%/* includeMarkdown "binary/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "binary/explore-ysql.md" */%}}
   </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{%/* includeMarkdown "docker/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "docker/explore-ysql.md" */%}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{%/* includeMarkdown "kubernetes/explore-ysql.md" /*/%}}
+  {{%/* includeMarkdown "kubernetes/explore-ysql.md" */%}}
   </div>
 </div>
 ```

@@ -4,22 +4,26 @@ package com.yugabyte.yw.models;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
-
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.yugabyte.yw.common.PlatformServiceException;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.time.DateUtils;
 
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
+import lombok.Getter;
 
 import java.io.File;
 import java.nio.charset.Charset;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import javax.persistence.Column;
@@ -64,6 +68,22 @@ public class AccessKey extends Model {
     return String.format(
         "yb-%s-%s_%s-key",
         Customer.get(provider.customerUUID).code, sanitizedProviderName, provider.uuid);
+  }
+
+  // scheduled access key rotation task uses this
+  // since the granularity for that is days,
+  // we can safely use a timestamp with second granularity
+  public static String getNewKeyCode(Provider provider) {
+    String sanitizedProviderName = provider.name.replaceAll("\\s+", "-").toLowerCase();
+    String timestamp = generateKeyCodeTimestamp();
+    return String.format(
+        "yb-%s-%s-key-%s",
+        Customer.get(provider.customerUUID).code, sanitizedProviderName, timestamp);
+  }
+
+  public static String generateKeyCodeTimestamp() {
+    SimpleDateFormat sdf1 = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss");
+    return sdf1.format(new Date());
   }
 
   @ApiModelProperty(required = false, hidden = true)
@@ -112,10 +132,44 @@ public class AccessKey extends Model {
     return this.keyInfo;
   }
 
+  // Post expiration, keys cannot be rotated into any universe and
+  // will be unavailable for new universes as well
+  @Column(nullable = true)
+  @ApiModelProperty(
+      value = "Expiration date of key",
+      required = false,
+      accessMode = AccessMode.READ_WRITE)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @Getter
+  public Date expirationDate;
+
+  public void setExpirationDate(int expirationThresholdDays) {
+    this.expirationDate = DateUtils.addDays(this.creationDate, expirationThresholdDays);
+  }
+
+  public void updateExpirationDate(int expirationThresholdDays) {
+    this.setExpirationDate(expirationThresholdDays);
+    this.save();
+  }
+
+  @Column(nullable = false)
+  @ApiModelProperty(
+      value = "Creation date of key",
+      required = false,
+      accessMode = AccessMode.READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+  @Getter
+  public Date creationDate;
+
+  public void setCreationDate() {
+    this.creationDate = new Date();
+  }
+
   public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
     AccessKey accessKey = new AccessKey();
     accessKey.idKey = AccessKeyId.create(providerUUID, keyCode);
     accessKey.setKeyInfo(keyInfo);
+    accessKey.setCreationDate();
     accessKey.save();
     return accessKey;
   }
@@ -153,5 +207,34 @@ public class AccessKey extends Model {
 
   public static List<AccessKey> getAll() {
     return find.query().findList();
+  }
+
+  public static List<AccessKey> getAllActive(UUID providerUUID) {
+    Date currentDate = new Date();
+    return find.query()
+        .where()
+        .eq("provider_uuid", providerUUID)
+        .gt("expiration_date", currentDate)
+        .findList();
+  }
+
+  public static List<AccessKey> getAllExpired(UUID providerUUID) {
+    Date currentDate = new Date();
+    return find.query()
+        .where()
+        .eq("provider_uuid", providerUUID)
+        .lt("expiration_date", currentDate)
+        .findList();
+  }
+
+  // returns the most recently created access key
+  // this can be used to set the params during creating another key
+  public static AccessKey getLatestKey(UUID providerUUID) {
+    return find.query()
+        .where()
+        .eq("provider_uuid", providerUUID)
+        .orderBy("creation_date DESC")
+        .findList()
+        .get(0);
   }
 }

@@ -9,7 +9,9 @@ import {
   getHealthCheck,
   getHealthCheckResponse,
   updateBackupState,
-  updateBackupStateResponse
+  updateBackupStateResponse,
+  fetchReleasesByProvider,
+  fetchReleasesResponse
 } from '../../../actions/universe';
 import {
   abortTask,
@@ -42,8 +44,8 @@ import { toast } from 'react-toastify';
 const mapDispatchToProps = (dispatch) => {
   return {
     getUniverseInfo: (uuid) => {
-      dispatch(fetchUniverseInfo(uuid)).then((response) => {
-        dispatch(fetchUniverseInfoResponse(response.payload));
+      return dispatch(fetchUniverseInfo(uuid)).then((response) => {
+        return dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
 
@@ -54,6 +56,12 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchUniverseTablesSuccess(response.payload));
         }
+      });
+    },
+
+    fetchSupportedReleases: (pUUID) => {
+      dispatch(fetchReleasesByProvider(pUUID)).then((response) => {
+        dispatch(fetchReleasesResponse(response.payload));
       });
     },
 
@@ -158,10 +166,10 @@ const mapDispatchToProps = (dispatch) => {
     showTaskAbortModal: () => {
       dispatch(openDialog('confirmAbortTask'));
     },
-    fetchRunTimeConfigs: () => {
-      return dispatch(
-        fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000', true)
-      ).then((response) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+    fetchRunTimeConfigs: (universeUUID) => {
+      return dispatch(fetchRunTimeConfigs(universeUUID, true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
     }
   };
 };

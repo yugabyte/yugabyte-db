@@ -18,15 +18,13 @@ public class SyncXClusterConfig extends XClusterConfigTaskBase {
   public void run() {
     log.info("Running {}", getName());
 
+    lockUniverseForUpdate(getUniverse().version);
     try {
-      lockUniverseForUpdate(getUniverse().version);
-
       createXClusterConfigSyncTask()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
       getRunnableTask().runSubTasks();
-
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

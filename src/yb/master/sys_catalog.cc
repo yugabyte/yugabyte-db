@@ -341,6 +341,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
     .raft_group_id = kSysCatalogTabletId,
     .partition = partitions[0],
     .tablet_data_state = tablet::TABLET_DATA_READY,
+    .snapshot_schedules = {},
   }, data_root_dir));
 
   RaftConfigPB config;
@@ -599,6 +600,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = nullptr,
+      .transaction_manager_provider = nullptr,
   };
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -1272,6 +1275,206 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   }
 
   return name;
+}
+
+Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttributeInfo(
+    const uint32_t database_oid, const uint32_t table_oid) {
+  TRACE_EVENT0("master", "ReadPgAttributeInfo");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgAttributeTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema();
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames(
+      {"attrelid", "attnum", "attname", "atttypid"}, &projection, schema.num_key_columns()));
+  const auto attrelid_col_id = VERIFY_RESULT(projection.ColumnIdByName("attrelid")).rep();
+  const auto attnum_col_id = VERIFY_RESULT(projection.ColumnIdByName("attnum")).rep();
+  const auto attname_col_id = VERIFY_RESULT(projection.ColumnIdByName("attname")).rep();
+  const auto atttypid_col_id = VERIFY_RESULT(projection.ColumnIdByName("atttypid")).rep();
+
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(attrelid_col_id);
+    cond.set_op(QL_OP_EQUAL);
+    cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  std::unordered_map<string, uint32_t> type_oid_map;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    const auto& attnum_col = row.GetValue(attnum_col_id);
+
+    if (!attnum_col) {
+      return STATUS_FORMAT(
+          Corruption, "Could not read attnum column from pg_attribute for attrelid $0:", table_oid);
+    }
+
+    if (attnum_col->int16_value() < 0) {
+      // Ignore system columns.
+      VLOG(1) << "Ignoring system column (attnum = " << attnum_col->int16_value()
+              << ") for attrelid $0:" << table_oid;
+      continue;
+    }
+
+    const auto& attname_col = row.GetValue(attname_col_id);
+    const auto& atttypid_col = row.GetValue(atttypid_col_id);
+
+    if (!attname_col || !atttypid_col) {
+      std::string corrupted_col = !attname_col ? "attname" : "atttypid";
+      return STATUS_FORMAT(
+          Corruption,
+          "Could not read $0 column from pg_attribute for attrelid: $1 database_oid: $2",
+          corrupted_col, table_oid, database_oid);
+    }
+    string attname = attname_col->string_value();
+    uint32_t atttypid = atttypid_col->uint32_value();
+
+    if (atttypid == 0) {
+      // Ignore dropped columns.
+      VLOG(1) << "Ignoring dropped column " << attname << " (atttypid = 0)"
+              << " for attrelid $0:" << table_oid;
+      continue;
+    }
+
+    type_oid_map[attname] = atttypid;
+    VLOG(1) << "attrelid: " << table_oid << " attname: " << attname << " atttypid: " << atttypid;
+  }
+  return type_oid_map;
+}
+
+Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
+    const uint32_t database_oid) {
+  TRACE_EVENT0("master", "ReadPgEnum");
+
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgEnumTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema();
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames(
+      {"oid", "enumlabel"}, &projection, schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto enumlabel_col_id = VERIFY_RESULT(projection.ColumnIdByName("enumlabel")).rep();
+
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
+        nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  std::unordered_map<uint32_t, string> enumlabel_map;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    const auto& oid_col = row.GetValue(oid_col_id);
+    const auto& enumlabel_col = row.GetValue(enumlabel_col_id);
+
+    if (!oid_col || !enumlabel_col) {
+      std::string corrupted_col = !oid_col ? "oid" : "enumlabel";
+      return STATUS_FORMAT(
+          Corruption, "Could not read $0 column from pg_enum for database id $1:", corrupted_col,
+          database_oid);
+    }
+    uint32_t oid = oid_col->uint32_value();
+    string enumlabel = enumlabel_col->string_value();
+
+    enumlabel_map[oid] = enumlabel;
+    VLOG(1) << "Database oid: " << database_oid << " enum oid: " << oid
+            << " enumlabel: " << enumlabel;
+  }
+  return enumlabel_map;
+}
+
+Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo(
+    const uint32_t database_oid, vector<uint32_t>* type_oids) {
+  TRACE_EVENT0("master", "ReadPgTypeInfo");
+  const tablet::TabletPtr tablet = tablet_peer()->shared_tablet();
+
+  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgTypeTableOid);
+  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
+  const Schema& schema = table_info->schema();
+
+  Schema projection;
+  RETURN_NOT_OK(schema.CreateProjectionByNames(
+      {"oid", "typtype", "typbasetype"}, &projection, schema.num_key_columns()));
+  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
+  const auto typtype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typtype")).rep();
+  const auto typbasetype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typbasetype")).rep();
+
+  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  {
+    auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+    PgsqlConditionPB cond;
+    cond.add_operands()->set_column_id(oid_col_id);
+    cond.set_op(QL_OP_IN);
+    std::sort(type_oids->begin(), type_oids->end());
+    auto seq_value = cond.add_operands()->mutable_value()->mutable_list_value();
+    for (auto const type_oid : *type_oids) {
+      seq_value->add_elems()->set_uint32_value(type_oid);
+    }
+
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    docdb::DocPgsqlScanSpec spec(
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+        boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
+    RETURN_NOT_OK(doc_iter->Init(spec));
+  }
+
+  std::unordered_map<uint32_t, PgTypeInfo> type_oid_info_map;
+  while (VERIFY_RESULT(iter->HasNext())) {
+    QLTableRow row;
+    RETURN_NOT_OK(iter->NextRow(&row));
+
+    const auto& oid_col = row.GetValue(oid_col_id);
+    const auto& typtype_col = row.GetValue(typtype_col_id);
+    const auto& typbasetype_col = row.GetValue(typbasetype_col_id);
+
+    if (!oid_col || !typtype_col || !typbasetype_col) {
+      std::string corrupted_col;
+      if (!oid_col) {
+        corrupted_col = "oid";
+      } else if (!typtype_col) {
+        corrupted_col = "typtype";
+      } else {
+        corrupted_col = "typbasetype";
+      }
+      return STATUS_FORMAT(
+          Corruption,
+          "Could not read $0 column from pg_attribute for databaseoid: $1:", corrupted_col,
+          database_oid);
+    }
+
+    const uint32_t oid = oid_col->uint32_value();
+    const char typtype = typtype_col->int8_value();
+    const uint32_t typbasetype = typbasetype_col->uint32_value();
+
+    type_oid_info_map.insert({oid, PgTypeInfo(typtype, typbasetype)});
+
+    VLOG(1) << "oid: " << oid << " typtype: " << typtype << " typbasetype: " << typbasetype;
+  }
+  return type_oid_info_map;
 }
 
 Status SysCatalogTable::CopyPgsqlTables(

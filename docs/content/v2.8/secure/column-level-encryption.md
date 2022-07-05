@@ -11,8 +11,7 @@ menu:
     identifier: column-level-encryption
     parent: secure
     weight: 745
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -261,4 +260,3 @@ yugabyte=# select PGP_PUB_DECRYPT(account_number::bytea,dearmor('-----BEGIN PGP 
  AC-77051
 (3 rows)
 ```
-

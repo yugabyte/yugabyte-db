@@ -9,12 +9,11 @@ aliases:
   - /preview/yugabyte-cloud/cloud-network/
   - /preview/yugabyte-cloud/cloud-network/ip-whitelists/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: add-connections
     parent: cloud-secure-clusters
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To secure your cluster from distributed denial-of-service (DDoS) and brute force password attacks, access to your clusters is restricted to IP addresses that you specify in IP allow lists. An IP allow list is a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses; all other connections are ignored.
@@ -46,18 +45,18 @@ The IP allow lists assigned to a cluster are listed under **Network Access** on 
 To add IP allow lists to a cluster:
 
 1. On the **Clusters** page, select the cluster, and select the **Settings** tab.
-1. Under **Network Access**, click **Add List** to display the **Add IP Allow List** sheet.
+1. Under **IP Allow Lists**, click **Edit List** to display the **Add IP Allow List** sheet.
     \
     The sheet lists all IP allow lists that have been created for your account.
 
-1. Select the box for the IP allow lists you want to assign to the cluster.
+1. Select the box for the IP allow lists you want to add to the cluster.
 1. If you do not have any IP allow lists or want to create a new one, click **Create New List and Add to Cluster** and do the following:
     - Enter a name and description for the list.
     - Enter one or more IP addresses or CIDR ranges; delimit entries using commas or new lines.
     - Click **Detect and add my IP to this list** to add your own IP address.
 1. Click **Save** when done.
 
-The allow list takes up to 30 seconds to become active
+The allow list takes up to 30 seconds to become active.
 
 ## Manage IP allow lists
 
