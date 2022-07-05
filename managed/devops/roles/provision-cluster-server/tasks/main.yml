@@ -216,12 +216,11 @@
  # Adding systemd service files for yb-controller
   - name: Add yb-controller.service
     template:
-      src: yb-controller.service
+      src: "yb-controller.service"
       dest: "{{ systemd_dir }}/yb-controller.service"
       owner: "{{ user_name }}"
       group: "{{ user_name }}"
       mode: 0644
-    when: configure_ybc
 
   # Adding systemd service and timer files for zip_purge_yb_logs
   - name: Add yb-zip_purge_yb_logs.service

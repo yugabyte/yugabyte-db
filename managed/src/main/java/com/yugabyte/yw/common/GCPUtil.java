@@ -12,6 +12,7 @@ import com.google.cloud.storage.StorageBatch;
 import com.google.cloud.storage.StorageBatchResult;
 import com.google.cloud.storage.StorageException;
 import com.google.cloud.storage.StorageOptions;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
@@ -20,10 +21,14 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+import org.yb.ybc.CloudStoreSpec;
 
 @Singleton
 @Slf4j
@@ -32,6 +37,9 @@ public class GCPUtil implements CloudUtil {
   public static final String GCS_CREDENTIALS_JSON_FIELDNAME = "GCS_CREDENTIALS_JSON";
   private static final String GS_PROTOCOL_PREFIX = "gs://";
   private static final String HTTPS_PROTOCOL_PREFIX = "https://storage.googleapis.com/";
+
+  public static final String YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME =
+      "GOOGLE_APPLICATION_CREDENTIALS";
 
   public static String[] getSplitLocationValue(String location) {
     int prefixLength =
@@ -145,5 +153,26 @@ public class GCPUtil implements CloudUtil {
         throw e;
       }
     }
+  }
+
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      String backupLocation, String commonDir, CustomerConfigData configData) {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    String[] splitValues = getSplitLocationValue(backupLocation);
+    String bucket = splitValues[0];
+    String cloudDir =
+        splitValues.length > 1
+            ? String.format("%s/%s/", splitValues[1], commonDir)
+            : commonDir + "/";
+    Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, gcsCredsMap, Util.GCS);
+  }
+
+  private Map<String, String> createCredsMapYbc(CustomerConfigData configData) {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    Map<String, String> gcsCredsMap = new HashMap<>();
+    gcsCredsMap.put(YBC_GOOGLE_APPLICATION_CREDENTIALS_FIELDNAME, gcsData.gcsCredentialsJson);
+    return gcsCredsMap;
   }
 }

@@ -508,6 +508,35 @@ class TransactionParticipant::Impl
   }
 
   void Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPoint();
+
+      if (cdcsdk_checkpoint_op_id != OpId::Max()) {
+        for (auto t_iter = set.begin(); t_iter != set.end();) {
+          const TransactionId& transaction_id = *t_iter;
+          loader_.WaitLoaded(transaction_id);
+          auto iter = transactions_.find(transaction_id);
+          if (iter == transactions_.end()) {
+            ++t_iter;
+            continue;
+          }
+
+          const OpId& apply_record_op_id = (**iter).GetApplyOpId();
+          if (apply_record_op_id > cdcsdk_checkpoint_op_id) {
+            t_iter = set.erase(t_iter);
+            VLOG_WITH_PREFIX(2)
+                << "Transaction not yet reported to CDCSDK client, should not cleanup."
+                << "TransactionId: " << transaction_id
+                << ", apply record opId: " << apply_record_op_id
+                << ", cdcsdk checkpoint opId: " << cdcsdk_checkpoint_op_id;
+          } else {
+            ++t_iter;
+          }
+        }
+      }
+    }
+
     auto cleanup_aborts_task = std::make_shared<CleanupAbortsTask>(
         &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);

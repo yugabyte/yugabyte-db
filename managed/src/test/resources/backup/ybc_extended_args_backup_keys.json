@@ -1,0 +1,8 @@
+{
+    "universe_keys": [
+      {
+        "key_ref": "foo",
+        "key_provider": "AWS"
+      }
+    ]
+  }

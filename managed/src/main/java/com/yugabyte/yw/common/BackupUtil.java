@@ -22,6 +22,7 @@ import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.io.IOException;
@@ -87,6 +88,7 @@ public class BackupUtil {
   public static class RegionLocations {
     public String REGION;
     public String LOCATION;
+    public String HOST_BASE;
   }
 
   public static void validateBackupCronExpression(String cronExpression)
@@ -261,7 +263,8 @@ public class BackupUtil {
     return regionLocations;
   }
 
-  public static void updateDefaultStorageLocation(BackupTableParams params, UUID customerUUID) {
+  public static void updateDefaultStorageLocation(
+      BackupTableParams params, UUID customerUUID, BackupCategory category) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     params.storageLocation = formatStorageLocation(params);
     if (customerConfig != null) {
@@ -270,6 +273,9 @@ public class BackupUtil {
         CustomerConfigStorageNFSData configData =
             (CustomerConfigStorageNFSData) customerConfig.getDataObject();
         backupLocation = configData.backupLocation;
+        if (category.equals(BackupCategory.YB_CONTROLLER))
+          backupLocation =
+              String.format("%s/%s", backupLocation, NFSUtil.DEFAULT_YUGABYTE_NFS_BUCKET);
       } else {
         CustomerConfigStorageData configData =
             (CustomerConfigStorageData) customerConfig.getDataObject();
@@ -329,9 +335,20 @@ public class BackupUtil {
 
   public static String getExactRegionLocation(
       BackupTableParams backupTableParams, String regionLocation) {
-    String locationSuffix = formatStorageLocation(backupTableParams);
-    String location = String.format("%s/%s", regionLocation, locationSuffix);
+    String backupIdentifier =
+        getBackupIdentifier(backupTableParams.universeUUID, backupTableParams.storageLocation);
+    String location = String.format("%s/%s", regionLocation, backupIdentifier);
     return location;
+  }
+
+  // returns the /univ-<>/backup-<>-<>/some_identifier extracted from the default backup location.
+  public static String getBackupIdentifier(UUID universeUUID, String defaultBackupLocation) {
+    String universeString = String.format("univ-%s", universeUUID);
+    String backupIdentifier =
+        String.format(
+            "%s%s",
+            universeString, StringUtils.substringAfterLast(defaultBackupLocation, universeString));
+    return backupIdentifier;
   }
 
   public void validateRestoreOverwrites(

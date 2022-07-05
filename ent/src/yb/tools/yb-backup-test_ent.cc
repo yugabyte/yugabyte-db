@@ -25,6 +25,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_info.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/yb_op.h"
 
@@ -49,8 +50,21 @@ using namespace std::literals;
 using std::unique_ptr;
 using std::vector;
 using std::string;
-using strings::Split;
 
+DECLARE_int32(TEST_partitioning_version);
+
+namespace {
+
+const auto kDefaultTimeout = 30s;
+
+template <size_t N>
+  std::string bytes_to_str(const char (&bytes)[N]) {
+    // Correctly instantiates std::string if an array conains a zero char and handles the case with
+    // null-terminated string ignoring the last element.
+    return std::string(bytes, N - (bytes[N - 1] == '\0' ? 1 : 0));
+  }
+
+}  // anonymous namespace
 
 namespace yb {
 namespace tools {
@@ -118,7 +132,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     SetDbName(db); // Connecting to the recreated 'yugabyte' DB from the moment.
   }
 
-  Result<string> GetTableId(
+  Result<client::YBTableName> GetTableName(
       const string& table_name, const string& log_prefix, const string& ns = string()) {
     LOG(INFO) << log_prefix << ": get table";
     vector<client::YBTableName> tables = VERIFY_RESULT(client_->ListTables(table_name));
@@ -140,6 +154,12 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     const client::YBTableName name = tables.front();
     LOG(INFO) << log_prefix << ": found table: " << name.namespace_name()
               << "." << name.table_name() << " : " << name.table_id();
+    return name;
+  }
+
+  Result<string> GetTableId(
+      const string& table_name, const string& log_prefix, const string& ns = string()) {
+    const client::YBTableName name = VERIFY_RESULT(GetTableName(table_name, log_prefix, ns));
     return name.table_id();
   }
 
@@ -151,6 +171,36 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
     google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB> tablets;
     RETURN_NOT_OK(client_->GetTabletsFromTableId(table_id, -1, &tablets));
     return tablets;
+  }
+
+  bool CheckPartitions(
+      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
+      const vector<string>& expected_splits) {
+    if (implicit_cast<size_t>(tablets.size()) != expected_splits.size() + 1) {
+      return false;
+    }
+
+    static const string empty;
+    for (int i = 0; i < tablets.size(); i++) {
+      const string& expected_start = (i == 0 ? empty : expected_splits[i-1]);
+      const string& expected_end = (i == tablets.size() - 1 ? empty : expected_splits[i]);
+
+      if (tablets[i].partition().partition_key_start() != expected_start) {
+        LOG(WARNING) << "actual partition start "
+                     << b2a_hex(tablets[i].partition().partition_key_start())
+                     << " not equal to expected start "
+                     << b2a_hex(expected_start);
+        return false;
+      }
+      if (tablets[i].partition().partition_key_end() != expected_end) {
+        LOG(WARNING) << "actual partition end "
+                     << b2a_hex(tablets[i].partition().partition_key_end())
+                     << " not equal to expected end "
+                     << b2a_hex(expected_end);
+        return false;
+      }
+    }
+    return true;
   }
 
   void DoTestYEDISBackup(helpers::TableOp tableOp);
@@ -1015,36 +1065,6 @@ class YBBackupTestNumTablets : public YBBackupTest {
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
   }
-
- protected:
-  Result<bool> CheckPartitions(
-      const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets,
-      const vector<string>& expected_splits) {
-    SCHECK_EQ(
-        implicit_cast<size_t>(tablets.size()), expected_splits.size() + 1, InvalidArgument, "");
-
-    static const string empty;
-    for (int i = 0; i < tablets.size(); i++) {
-      const string& expected_start = (i == 0 ? empty : expected_splits[i-1]);
-      const string& expected_end = (i == tablets.size() - 1 ? empty : expected_splits[i]);
-
-      if (tablets[i].partition().partition_key_start() != expected_start) {
-        LOG(WARNING) << "actual partition start "
-                     << b2a_hex(tablets[i].partition().partition_key_start())
-                     << " not equal to expected start "
-                     << b2a_hex(expected_start);
-        return false;
-      }
-      if (tablets[i].partition().partition_key_end() != expected_end) {
-        LOG(WARNING) << "actual partition end "
-                     << b2a_hex(tablets[i].partition().partition_key_end())
-                     << " not equal to expected end "
-                     << b2a_hex(expected_end);
-        return false;
-      }
-    }
-    return true;
-  }
 };
 
 // Test backup/restore on table with UNIQUE constraint when default number of tablets differs. When
@@ -1167,7 +1187,7 @@ TEST_F_EX(YBBackupTest,
     }
   }
   ASSERT_EQ(tablets.size(), 3);
-  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\xaa\xaa"})));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xaa\xaa"}));
 
   // Choose the middle tablet among
   // -       -0x5555
@@ -1216,7 +1236,7 @@ TEST_F_EX(YBBackupTest,
     }
   }
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"})));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"}));
 
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
@@ -1239,7 +1259,7 @@ TEST_F_EX(YBBackupTest,
       Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
   tablets = ASSERT_RESULT(GetTablets(table_name, "mock-restore"));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x3f\xff", "\x7f\xfe", "\xbf\xfd"})));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x3f\xff", "\x7f\xfe", "\xbf\xfd"}));
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the table it creates from ysql_dump file has different partition
@@ -1250,7 +1270,7 @@ TEST_F_EX(YBBackupTest,
   // Validate.
   tablets = ASSERT_RESULT(GetTablets(table_name, "post-restore"));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(ASSERT_RESULT(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"})));
+  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\x9c\x76", "\xaa\xaa"}));
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -1426,6 +1446,175 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLBackupWithLear
         (1 row)
       )#"
   ));
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+class YBBackupPartitioningVersionTest : public YBBackupTest {
+ protected:
+  Result<uint32_t> GetTablePartitioningVersion(const client::YBTableName& yb_table_name) {
+    const auto table_info = VERIFY_RESULT(client_->GetYBTableInfo(yb_table_name));
+    return table_info.schema.table_properties().partitioning_version();
+  }
+
+  Result<uint32_t> GetTablePartitioningVersion(const std::string& table_name,
+      const std::string& log_prefix, const std::string& ns = std::string()) {
+    const auto yb_table_name = VERIFY_RESULT(GetTableName(table_name, log_prefix, ns));
+    return GetTablePartitioningVersion(yb_table_name);
+  }
+
+  Status ForceSetPartitioningVersion(const int32_t version) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_partitioning_version) = version;
+    for (auto ms : cluster_->master_daemons()) {
+      ms->Shutdown();
+      ms->mutable_flags()->push_back(Format("--TEST_partitioning_version=$0", version));
+      RETURN_NOT_OK(ms->Restart());
+    }
+    for (auto ts : cluster_->tserver_daemons()) {
+      ts->Shutdown();
+      ts->mutable_flags()->push_back(Format("--TEST_partitioning_version=$0", version));
+      RETURN_NOT_OK(ts->Restart());
+    }
+    return cluster_->WaitForTabletServerCount(GetNumTabletServers(), kDefaultTimeout);
+  }
+};
+
+TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYCQLPartitioningVersion),
+    YBBackupPartitioningVersionTest) {
+  // The test checks that partitioning_version is restored correctly for the tables backuped before
+  // the next increment of the partitioning_version.
+  constexpr auto kKeyspace0 = "keyspace0";
+  constexpr auto kKeyspace1 = "keyspace1";
+
+  // 1) Create a table with partitioning_version == 0.
+  ASSERT_OK(ForceSetPartitioningVersion(0));
+  const client::YBTableName kTableNameV0(YQL_DATABASE_CQL, kKeyspace0, "mytbl0");
+  client::TableHandle table_0;
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_0, kTableNameV0);
+  auto partitioning_version = ASSERT_RESULT(GetTablePartitioningVersion(kTableNameV0));
+  ASSERT_EQ(0, partitioning_version);
+
+  // 2) Force backuping.
+  const string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", kKeyspace0, "create"}));
+
+  // 3) Simulate cluster upgrade with new partitioning_version and restore.
+  ASSERT_OK(ForceSetPartitioningVersion(1));
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", kKeyspace1, "restore"}));
+
+  // 4) Make sure new table is created with a new patitioninig version.
+  const client::YBTableName kTableNameV1(YQL_DATABASE_CQL, kKeyspace1, "mytbl1");
+  client::TableHandle table_1;
+  client::kv_table_test::CreateTable(
+      client::Transactional::kFalse, CalcNumTablets(3), client_.get(), &table_1, kTableNameV1);
+  partitioning_version = ASSERT_RESULT(GetTablePartitioningVersion(kTableNameV1));
+  ASSERT_EQ(1, partitioning_version);
+
+  // 5) Make sure old table has been restored with the old patitioninig version.
+  const client::YBTableName kTableNameV0_Restored(YQL_DATABASE_CQL, kKeyspace1, "mytbl0");
+  partitioning_version = ASSERT_RESULT(GetTablePartitioningVersion(kTableNameV0_Restored));
+  ASSERT_EQ(0, partitioning_version);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F_EX(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(TestYSQLPartitioningVersion),
+    YBBackupPartitioningVersionTest) {
+  // The test checks that range partitions are restored correctly depending on partitioning_version.
+
+  // 1) Create a table with partitioning_version == 0.
+  ASSERT_OK(ForceSetPartitioningVersion(0));
+  const std::vector<std::string> expected_splits_tblv0 = {
+      bytes_to_str("\x48\x80\x00\x00\x64\x21"), /* 100 */
+      bytes_to_str("\x48\x80\x00\x00\xc8\x21")  /* 200 */};
+  const std::vector<std::string> expected_splits_idx1v0 = {
+      bytes_to_str("\x61\x86\xff\xff\x21"), /* 'y' */
+      bytes_to_str("\x61\x8f\xff\xff\x21"), /* 'p' */
+      bytes_to_str("\x61\x9a\xff\xff\x21")  /* 'e' */};
+  const std::vector<std::string> expected_splits_idx2v0 ={
+      bytes_to_str("\x53\x78\x79\x7a\x00\x00\x21") /* 'xyz' */};
+
+  // 1.1) Create regular tablets and check partitoning verison and structure.
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE tblr0 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblr0", "pre-backup")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("tblr0", "pre-backup")), {}));
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE tblv0 (k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((100), (200))")));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblv0", "pre-backup")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("tblv0", "pre-backup")), expected_splits_tblv0));
+
+  // 1.2) Create indexes and check partitoning verison and structure.
+  ASSERT_NO_FATALS(CreateIndex(Format(
+      "CREATE INDEX idx1v0 ON tblv0 (v DESC) SPLIT AT VALUES (('y'), ('p'), ('e'))")));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx1v0", "pre-backup")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("idx1v0", "pre-backup")), expected_splits_idx1v0));
+  ASSERT_NO_FATALS(CreateIndex(Format(
+      "CREATE UNIQUE INDEX idx2v0 ON tblv0 (v ASC) SPLIT AT VALUES (('xyz'))")));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx2v0", "pre-backup")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("idx2v0", "pre-backup")), expected_splits_idx2v0));
+
+  // 2) Force backuping.
+  const std::string backup_dir = GetTempDir("backup");
+  ASSERT_OK(RunBackupCommand(
+      {"--backup_location", backup_dir, "--keyspace", "ysql.yugabyte", "create"}));
+
+  // 3) Drop table to be able to restore in the same keyspace.
+  ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE tblv0"), "DROP TABLE"));
+
+  // 4) Simulate cluster upgrade with new partitioning_version and restore. Index tables with
+  //    partitioning version above 0 should contain additional `null` value for a hidden columns
+  //    `ybuniqueidxkeysuffix` or `ybidxbasectid`.
+  ASSERT_OK(ForceSetPartitioningVersion(1));
+  ASSERT_OK(RunBackupCommand({"--backup_location", backup_dir, "restore"}));
+
+  // 5) Make sure new tables are created with a new patitioning version.
+  // 5.1) Create regular tablet and check partitioning verison and structure.
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE tblr1 (k INT, v TEXT, PRIMARY KEY (k ASC))")));
+  ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("tblr1", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("tblr1", "post-restore")), {}));
+  ASSERT_NO_FATALS(CreateTable(Format(
+      "CREATE TABLE tblv1 (k INT, v TEXT, PRIMARY KEY (k ASC)) SPLIT AT VALUES ((10))")));
+  ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("tblv1", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(ASSERT_RESULT(GetTablets("tblv1", "post-restore")), {
+      bytes_to_str("\x48\x80\x00\x00\x0a\x21"), /* 10 */}));
+
+  // 5.2) Create indexes and check partitoning verison and structure.
+  ASSERT_NO_FATALS(CreateIndex(Format(
+      "CREATE INDEX idx1v1 ON tblv1 (v ASC) SPLIT AT VALUES (('de'), ('op'))")));
+  ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("idx1v1", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(ASSERT_RESULT(GetTablets("idx1v1", "post-restore")), {
+      bytes_to_str("\x53\x64\x65\x00\x00\x00\x21"), /* 'de', -Inf */
+      bytes_to_str("\x53\x6f\x70\x00\x00\x00\x21"), /* 'op', -Inf */}));
+  ASSERT_NO_FATALS(CreateIndex(Format(
+      "CREATE UNIQUE INDEX idx2v1 ON tblv1 (v DESC) SPLIT AT VALUES (('pp'), ('cc'))")));
+  ASSERT_EQ(1, ASSERT_RESULT(GetTablePartitioningVersion("idx2v1", "post-restore")));
+  ASSERT_TRUE(CheckPartitions( ASSERT_RESULT(GetTablets("idx2v1", "post-restore")), {
+      bytes_to_str("\x61\x8f\x8f\xff\xff\x00\x21"), /* 'pp', -Inf */
+      bytes_to_str("\x61\x9c\x9c\xff\xff\x00\x21"), /* 'cc', -Inf */}));
+
+  // 6) Make sure old tables have been restored with the old patitioning version and structure
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblr0", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("tblr0", "post-restore")), {}));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("tblv0", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("tblv0", "post-restore")), expected_splits_tblv0));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx1v0", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("idx1v0", "post-restore")), expected_splits_idx1v0));
+  ASSERT_EQ(0, ASSERT_RESULT(GetTablePartitioningVersion("idx2v0", "post-restore")));
+  ASSERT_TRUE(CheckPartitions(
+      ASSERT_RESULT(GetTablets("idx2v0", "post-restore")), expected_splits_idx2v0));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
