@@ -54,7 +54,7 @@ type: docs
 
 #### Database
 
-- [Preview release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.13.1. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.13.1. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 - Stable release updated to version 2.12.3 for Dedicated clusters. New Dedicated clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 #### Fixes
@@ -79,7 +79,7 @@ type: docs
 
 #### New features
 
-- Ability to select the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating Dedicated clusters](../cloud-basics/create-clusters/).
+- Ability to select the [version](../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB to install on a cluster when [creating Dedicated clusters](../cloud-basics/create-clusters/).
 - Automated notifications of upcoming database maintenance. The notification email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. Start an upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**.
 
 #### Infrastructure
@@ -89,7 +89,7 @@ type: docs
 
 #### Database
 
-- [Preview release](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.11.1. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- [Preview release](../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.11.1. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
 - Stable release updated to version 2.8.1 for Dedicated clusters. New Dedicated clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
 ### January 27, 2022
@@ -97,8 +97,8 @@ type: docs
 #### New features
 
 - Support for [alerts](../cloud-monitor/cloud-alerts/) to notify you and your team members when cluster and database resource usage exceeds predefined limits, or of potential billing issues. Configure alerts and view notifications on the **Alerts** page. When an alert triggers, YugabyteDB Managed sends an email notification and displays a notification on the **Notifications** tab. When the alert condition resolves, the notification dismisses automatically. Alerts are enabled for all clusters in your account.
-- Sandbox clusters are now [paused](../cloud-faq/#why-is-my-sandbox-cluster-paused) after 21 days of inactivity. YugabyteDB Managed sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../cloud-faq/#what-qualifies-as-activity-on-a-cluster) Sandbox clusters are deleted after 30 days of inactivity.
-- Ability to see the [version](../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
+- Sandbox clusters are now [paused](../../faq/yugabyte-managed-faq/#why-is-my-sandbox-cluster-paused) after 21 days of inactivity. YugabyteDB Managed sends a notification when your cluster is paused. To keep a cluster from being paused, perform an action as described in [What qualifies as activity on a cluster?](../../faq/yugabyte-managed-faq/#what-qualifies-as-activity-on-a-cluster) Sandbox clusters are deleted after 30 days of inactivity.
+- Ability to see the [version](../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB that your cluster is running on.
 
 #### Fixes
 

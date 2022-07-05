@@ -43,6 +43,6 @@ To begin using YugabyteDB Managed, go to [Quick start](../cloud-quickstart/).
 | **Reference** | |
 | [What's new](../release-notes/) | See what's new in YugabyteDB Managed, what regions are supported, and known issues. |
 | [Troubleshooting](../cloud-troubleshoot/) | Get solutions to common problems. To check YugabyteDB Managed status, go to [status](https://status.yugabyte.cloud/). |
-| [FAQ](../cloud-faq/) | Get answers to frequently asked questions. |
+| [FAQ](../../faq/yugabyte-managed-faq/) | Get answers to frequently asked questions. |
 | [Security architecture](../cloud-security/) | Review YugabyteDB Managed's security architecture and shared responsibility model. |
 | [Cluster costs](../cloud-admin/cloud-billing-costs/) | Review how YugabyteDB Managed charges for clusters. |

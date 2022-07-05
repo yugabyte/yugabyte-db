@@ -27,8 +27,6 @@ Single-region dedicated clusters include the following features:
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking support.
 - Automated and on-demand backups.
-- Create as many as you need.
-- Provisioned with a [stable release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB. You can choose to provision with a preview release. Before deploying a production cluster on a preview release, contact {{% support-cloud %}}.
 - Available in all [regions](../../../release-notes#cloud-provider-regions).
 - Enterprise support.
 
@@ -55,7 +53,7 @@ Set the following options:
 
 - **Cluster Name**: Enter a name for the cluster.
 - **Provider**: Choose a cloud provider - AWS or GCP.
-- **[Database Version](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **[Database Version](../../../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 ### Cluster Setup
 

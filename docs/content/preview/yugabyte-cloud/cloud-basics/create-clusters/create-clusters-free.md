@@ -22,7 +22,7 @@ Your Sandbox cluster includes the following:
 
 - Single node.
 - Up to 2 vCPUs, 4 GB memory, and 10 GB of storage, depending on the cloud provider.
-- A [preview release](../../../cloud-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
+- A [preview release](../../../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) of YugabyteDB, which provides early access to new features.
 - Available in all [regions](../../../release-notes#cloud-provider-regions).
 
 Share your feedback, questions, and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).

@@ -4,11 +4,13 @@ linkTitle: YugabyteDB Managed FAQ
 description: YugabyteDB Managed frequently asked questions.
 headcontent:
 image: /images/section_icons/index/quick_start.png
+aliases:
+  - /preview/preview/yugabyte-cloud/cloud-faq/
 menu:
-  preview_yugabyte-cloud:
-    identifier: cloud-faq
-    parent: yugabytedb-managed
-    weight: 900
+  preview_faq:
+    identifier: yugabyte-managed-faq
+    parent: faq
+    weight: 2775
 type: docs
 ---
 
