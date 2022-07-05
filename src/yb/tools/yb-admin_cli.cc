@@ -873,9 +873,17 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClientClass* client) {
       });
 
   Register(
-      "is_tablet_splitting_complete", "",
-      [client](const CLIArguments&) -> Status {
-        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(),
+      "is_tablet_splitting_complete", " [wait_for_parent_deletion] (default false)",
+      [client](const CLIArguments& args) -> Status {
+        bool wait_for_parent_deletion = false;
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "wait_for_parent_deletion")) {
+            wait_for_parent_deletion = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+        RETURN_NOT_OK_PREPEND(client->IsTabletSplittingComplete(wait_for_parent_deletion),
                               "Unable to check if tablet splitting is complete");
         return Status::OK();
       });
