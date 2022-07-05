@@ -1,5 +1,5 @@
 ---
-title: Deploy on OSS Kubernetes using Helm Chart 
+title: Deploy on OSS Kubernetes using Helm Chart
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy a YugabyteDB cluster on OSS Kubernetes using Helm Chart.
@@ -9,9 +9,7 @@ menu:
     name: Open Source
     identifier: k8s-oss-1
     weight: 621
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -32,12 +30,6 @@ showAsideToc: true
     <a href="{{< relref "./operator-hub.md" >}}" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
     </a>
   </li>
 </ul>
@@ -104,7 +96,7 @@ yugabytedb/yugabyte	2.1.4        	2.1.4.0-b5 	YugabyteDB is the high-performance
 
 ### Install YugabyteDB
 
-Install YugabyteDB in the Kubernetes cluster using the commands below. 
+Install YugabyteDB in the Kubernetes cluster using the commands below.
 
 #### On multi-node Kubernetes
 
@@ -139,7 +131,7 @@ enableLoadBalancer=False --namespace yb-demo
 
 {{< note title="Important" >}}
 
-On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 5GB memory so 
+On some environments like macOS, minikube may run inside a virtual machine. Make sure to configure the vm with at least 4 cpus and 5GB memory so
 the cluster has room to startup. Example command:
 ```
 minikube start --cpus 4 --memory 5120

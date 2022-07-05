@@ -3,14 +3,12 @@ title: Build a C# application that uses YSQL
 headerTitle: Build a C# application
 description: Build a small C# application using the Npgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: C#
     identifier: cloud-csharp
     weight: 600
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [C# application](https://github.com/yugabyte/yugabyte-simple-csharp-app) that connects to a YugabyteDB cluster using the [Npgsql driver](../../../../reference/drivers/ysql-client-drivers/#npgsql) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in C#.

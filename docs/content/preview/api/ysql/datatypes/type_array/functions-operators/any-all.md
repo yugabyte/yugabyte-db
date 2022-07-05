@@ -8,8 +8,7 @@ menu:
     identifier: any-all
     parent: array-functions-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview

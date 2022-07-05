@@ -8,8 +8,7 @@ menu:
     identifier: stage-the-csv-files
     parent: ingest-the-covidcast-data
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## First, create a dedicated ordinary user for the project
@@ -53,7 +52,7 @@ This invocation is included in [`ingest-the-data.sql`](../ingest-scripts/ingest-
 Now take an inventory of your tables with the `\d` metacommand. You should see something like this, with the names of the user and schema that you created in place of _"u1"_:
 
 ```
- Schema |      Name       | Type  | Owner 
+ Schema |      Name       | Type  | Owner
 --------+-----------------+-------+-------
  u1     | cmnty_symptoms  | table | u1
  u1     | covidcast_names | table | u1
@@ -95,25 +94,25 @@ This is another case where a procedure that reads the names from the _"covidcast
 
    ```plpgsql
    \t on
-   
+
    \o copy_from_csv.sql
    select cr_copy_from_scripts(1);
    \o
    \i copy_from_csv.sql
-   
+
    \o copy_from_csv.sql
    select cr_copy_from_scripts(2);
    \o
    \i copy_from_csv.sql
-   
+
    \o copy_from_csv.sql
    select cr_copy_from_scripts(3);
    \o
    \i copy_from_csv.sql
-   
+
    \t off
    ```
-   
+
    This code is included directly in [`ingest-the-data.sql`](../ingest-scripts/ingest-the-data-sql) so you don't need to save it to a file.
 
 This pattern—using a PL/pgSQL function to create a `sql` script whose details reflect the present content of database tables and then executing it from `ysqlsh` is a useful generic technique.
@@ -130,7 +129,7 @@ select
 This is the result:
 
 ```
- mask_wearers count | symptoms count | cmnty_symptoms count 
+ mask_wearers count | symptoms count | cmnty_symptoms count
 --------------------+----------------+----------------------
                2550 |           2550 |                 2550
 ```

@@ -3,14 +3,12 @@ title: Build a Rust application that uses YSQL
 headerTitle: Build a Rust application
 description: Build a small Rust application using the Rust-Postgres driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Rust
     identifier: cloud-rust
     weight: 800
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [Rust application](https://github.com/yugabyte/yugabyte-simple-rust-app) that connects to a YugabyteDB cluster using the [Rust-Postgres driver](../../../../reference/drivers/ysql-client-drivers/#rust-postgres) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Rust.

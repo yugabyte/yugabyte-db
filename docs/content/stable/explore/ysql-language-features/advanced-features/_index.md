@@ -9,6 +9,7 @@ menu:
     identifier: advanced-features
     parent: explore-ysql-language-features
     weight: 320
+type: indexpage
 ---
 
 <div class="row">

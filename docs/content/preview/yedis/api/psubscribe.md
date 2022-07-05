@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/psubscribe
   - /preview/api/yedis/psubscribe
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -2033,7 +2033,8 @@ typedef struct CreateStmt
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
 	bool		if_not_exists;	/* just do nothing if it already exists? */
-	struct OptTableGroup *tablegroup; /* Tablegroup node - NULL if not provided */
+
+	char	   *tablegroupname; /* tablegroup to use, or NULL */
 	struct OptSplit *split_options; /* SPLIT statement options */
 } CreateStmt;
 
@@ -2196,17 +2197,6 @@ typedef struct CreateTableGroupStmt
 	List 	   *options;
 	char 	   *tablespacename;
 } CreateTableGroupStmt;
-
-/* ----------------------
- * YugaByte Tablegroup options
- * ----------------------
-*/
-
-typedef struct OptTableGroup
-{
-	NodeTag type;
-	char   *tablegroup_name;
-} OptTableGroup;
 
 /* ----------------------
  *		Create/Drop Table Space Statements

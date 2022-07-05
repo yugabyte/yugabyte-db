@@ -4,12 +4,11 @@ headerTitle: Start and stop processes
 linkTitle: Start and stop processes
 description: Use Yugabyte Platform to start and stop processes.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: start-stop-processes
     parent: manage-deployments
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Start a process

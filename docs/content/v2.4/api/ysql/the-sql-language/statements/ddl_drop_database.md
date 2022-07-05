@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: ddl_drop_database
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

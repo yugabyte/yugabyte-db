@@ -4,15 +4,14 @@ headerTitle: Eliminate an unresponsive node
 linkTitle: Eliminate an unresponsive node
 description: Use Yugabyte Platform to eliminate an unresponsive node.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: remove-nodes
     parent: manage-deployments
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the Yugabyte Platform UI as an unreachable node, as per the following illustration: 
+If a virtual machine or a physical server in a universe reaches its end of life and has unrecoverable hardware or other system issues, such as problems with its operating system, disk, and so on, it is detected and displayed in the Yugabyte Platform UI as an unreachable node, as per the following illustration:
 
 ![Unreachable Node Actions](/images/ee/node-actions-unreachable.png)
 
@@ -81,7 +80,7 @@ The action to delete a node is available from the following internal states of t
 - Adding
 - Decommissioned
 
-Taking this action completely eliminates the node, as follows: 
+Taking this action completely eliminates the node, as follows:
 
 1. Removes the node record from the universe metadata.
 2. Updates metadata in the database only.

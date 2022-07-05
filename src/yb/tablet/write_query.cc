@@ -381,7 +381,7 @@ Result<bool> WriteQuery::PgsqlPrepareExecute() {
     }
     auto write_op = std::make_unique<docdb::PgsqlWriteOperation>(
         req,
-        *table_info->doc_read_context,
+        rpc::SharedField(table_info, table_info->doc_read_context.get()),
         txn_op_ctx);
     RETURN_NOT_OK(write_op->Init(resp));
     doc_ops_.emplace_back(std::move(write_op));

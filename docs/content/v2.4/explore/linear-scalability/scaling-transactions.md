@@ -10,8 +10,7 @@ menu:
     identifier: explore-transactions-scaling-transactions-1-ysql
     parent: explore-scalability
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

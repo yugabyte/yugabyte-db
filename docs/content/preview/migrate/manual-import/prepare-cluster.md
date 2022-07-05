@@ -10,8 +10,7 @@ menu:
     weight: 204
 aliases:
   - /preview/migrate/migrate-from-postgresql/prepare-cluster/
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This section outlines some of the important considerations before loading data into the cluster.
@@ -55,4 +54,3 @@ This recommendation is subject to change in the near future with the introductio
 ## Disable constraints and triggers temporarily
 
 While loading data that is exported from another RDBMS, the source data set may not necessarily need to be checked for relational integrity since this was already performed when inserting into the source database. In such cases, disable checks such as FOREIGN KEY constraints, as well as triggers if possible. This would reduce the number of steps the database needs to perform while inserting data, which would speed up data loading.
-

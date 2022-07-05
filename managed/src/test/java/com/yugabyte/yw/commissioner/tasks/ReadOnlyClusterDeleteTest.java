@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -98,6 +99,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = defaultUniverse.universeUUID;
     taskParams.currentClusterType = ClusterType.ASYNC;
+    taskParams.creatingUser = ModelFactory.testUser(defaultCustomer);
     userIntent = new UserIntent();
     region = Region.create(defaultProvider, "region-2", "Region 2", "yb-image-1");
     AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
@@ -108,6 +110,7 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.uuid);
     userIntent.universeName = defaultUniverse.name;
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
+    userIntent.provider = defaultProvider.uuid.toString();
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     readOnlyCluster = new Cluster(ClusterType.ASYNC, userIntent);
     taskParams.clusters.add(readOnlyCluster);

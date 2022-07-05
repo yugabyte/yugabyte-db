@@ -4,12 +4,11 @@ headerTitle: Configure the VMware Tanzu provider
 linkTitle: Configure the cloud provider
 description: Configure the VMware Tanzu provider
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: set-up-cloud-provider-4-vmware-tanzu
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -283,4 +282,3 @@ To override the YugabyteDB software version to be used, include `yb_version` wit
  "yb_version": "1.1.6.0-b4"
 }
 ```
-

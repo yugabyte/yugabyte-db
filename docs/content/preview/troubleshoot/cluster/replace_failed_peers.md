@@ -6,8 +6,7 @@ menu:
   preview:
     parent: troubleshoot-cluster
     weight: 835
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 When a RAFT peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones.
@@ -79,4 +78,3 @@ For the snapshot files:
 ```
 
 {{< /note >}}
-

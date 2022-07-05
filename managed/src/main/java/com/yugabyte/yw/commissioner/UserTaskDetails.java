@@ -188,7 +188,10 @@ public class UserTaskDetails {
     ToggleTls,
 
     // Rebooting the node.
-    RebootingNode;
+    RebootingNode,
+
+    // Running custom hooks
+    RunningHooks;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -437,6 +440,10 @@ public class UserTaskDetails {
       case RebootingNode:
         title = "Rebooting Node";
         description = "Rebooting node";
+        break;
+      case RunningHooks:
+        title = "Running Hooks";
+        description = "Run custom hooks";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

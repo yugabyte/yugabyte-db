@@ -8,8 +8,7 @@ menu:
     identifier: deploy-in-azure-3-terraform
     parent: public-clouds
     weight: 650
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

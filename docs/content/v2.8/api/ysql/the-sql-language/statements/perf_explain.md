@@ -7,8 +7,7 @@ menu:
   v2.8:
     identifier: perf_explain
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

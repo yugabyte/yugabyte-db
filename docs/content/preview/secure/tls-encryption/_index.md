@@ -12,6 +12,7 @@ menu:
     identifier: tls-encryption
     parent: secure
     weight: 725
+type: indexpage
 ---
 
 YugabyteDB can be configured to protect data in transit using the following:

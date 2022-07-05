@@ -10,6 +10,7 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.controllers.HAAuthenticator;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
 import java.util.List;
@@ -44,7 +45,13 @@ public class FakeApiHelper {
 
   public static Result doRequestWithAuthToken(String method, String url, String authToken) {
     Http.RequestBuilder request =
-        Helpers.fakeRequest(method, url).header("X-AUTH-TOKEN", authToken);
+        Helpers.fakeRequest(method, url).header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken);
+    return route(request);
+  }
+
+  public static Result doRequestWithJWT(String method, String url, String authToken) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url).header(TokenAuthenticator.API_JWT_HEADER, authToken);
     return route(request);
   }
 
@@ -80,7 +87,18 @@ public class FakeApiHelper {
   public static Result doRequestWithAuthTokenAndBody(
       String method, String url, String authToken, JsonNode body) {
     Http.RequestBuilder request =
-        Helpers.fakeRequest(method, url).header("X-AUTH-TOKEN", authToken).bodyJson(body);
+        Helpers.fakeRequest(method, url)
+            .header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken)
+            .bodyJson(body);
+    return route(request);
+  }
+
+  public static Result doRequestWithJWTAndBody(
+      String method, String url, String authToken, JsonNode body) {
+    Http.RequestBuilder request =
+        Helpers.fakeRequest(method, url)
+            .header(TokenAuthenticator.API_JWT_HEADER, authToken)
+            .bodyJson(body);
     return route(request);
   }
 
@@ -100,7 +118,7 @@ public class FakeApiHelper {
       Materializer mat) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url)
-            .header("X-AUTH-TOKEN", authToken)
+            .header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken)
             .bodyMultipart(data, Files.singletonTemporaryFileCreator(), mat);
     return route(request);
   }

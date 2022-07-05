@@ -4,16 +4,23 @@ linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-release
+    parent: yugabytedb-managed
     weight: 950
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Releases
+
+### June 27, 2022
+
+#### Enhancements
+
+- Performance Optimizer for scanning clusters for optimizations (preview release). Provides recommendations on index and schema improvements, and detects connection, query, and CPU skew to identify potentially hot nodes.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- API key management for creating and managing bearer tokens for use with the YugabyteDB Managed REST API.
 
 ### June 22, 2022
 
@@ -204,6 +211,7 @@ The following **AWS regions** are available:
 
 ## Known issues
 
+- **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
 - **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).

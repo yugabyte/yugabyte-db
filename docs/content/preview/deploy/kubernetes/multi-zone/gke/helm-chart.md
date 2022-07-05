@@ -11,9 +11,7 @@ menu:
     weight: 628
 aliases:
   - /preview/deploy/kubernetes/multi-zone/gke
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

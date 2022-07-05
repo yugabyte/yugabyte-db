@@ -697,7 +697,8 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
     return 1, None, None  # treat this as a non-zero return code
 
 
-def scp_to_tmp(filepath, host, user, port, private_key, retries=3):
+def scp_to_tmp(filepath, host, user, port, private_key,
+               retries=3, retry_delay=SSH_RETRY_DELAY):
     dest_path = os.path.join("/tmp", os.path.basename(filepath))
     logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
@@ -737,6 +738,7 @@ def scp_to_tmp(filepath, host, user, port, private_key, retries=3):
                 shutil.move(name, f"{basename}.out")
 
             retries -= 1
+            time.sleep(retry_delay)
         else:
             # Cleanup the temp files now that they are clearly not needed.
             os.remove(out_name)

@@ -43,6 +43,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   private static final List<TaskType> TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
+          TaskType.RunHooks,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl, // stop master
@@ -61,6 +62,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.ModifyBlackList,
           TaskType.WaitForFollowerLag,
           TaskType.WaitForFollowerLag,
+          TaskType.RunHooks,
           TaskType.SetNodeState);
 
   private int expectedUniverseVersion = 2;
@@ -71,6 +73,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    attachHooks("ThirdpartySoftwareUpgrade");
     thirdpartySoftwareUpgrade.setUserTaskUUID(UUID.randomUUID());
   }
 
@@ -161,19 +164,26 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
 
     int nodeCnt = getRollingUpgradeNodeOrder(MASTER).size();
-    verify(mockNodeManager, times(9 * nodeCnt)).nodeCommand(any(), any());
+    verify(mockNodeManager, times(13 * nodeCnt)).nodeCommand(any(), any());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+
+    // Assert that the first task is the pre-upgrade hooks
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
+
     if (nodeCnt > 0) {
       assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList, position);
       position = assertSequence(subTasksByPosition, position);
     }
+    // Assert that the first task is the pre-upgrade hooks
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList, position);
+
     assertEquals(subTasksByPosition.size(), position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());

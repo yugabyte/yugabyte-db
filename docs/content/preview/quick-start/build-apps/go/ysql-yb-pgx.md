@@ -9,9 +9,7 @@ menu:
     name: Go
     identifier: go-1
     weight: 552
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -73,7 +71,7 @@ The YugabyteDB PGX driver SSL/TLS configuration is the same as for the [YSQL PGX
 
 ### Go YugabyteDB driver
 
-The current release of the [Go YugabyteDB driver package (`pgx`)](https://pkg.go.dev/github.com/yugabyte/pgx) is v4, and requires Go modules.
+The current release of the [Go YugabyteDB driver package (`pgx`)](https://pkg.go.dev/github.com/yugabyte/pgx/v4) is v4, and requires Go modules.
 
 To install the package locally, run the following commands:
 

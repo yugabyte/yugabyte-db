@@ -8,8 +8,7 @@ menu:
     identifier: jsonb_build_array-each
     parent: json-functions-operators
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 

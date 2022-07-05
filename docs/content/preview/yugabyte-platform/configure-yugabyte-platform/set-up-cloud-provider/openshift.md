@@ -6,12 +6,11 @@ description: Configure the OpenShift cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/openshift
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-5-openshift
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: cmd_call
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -203,4 +202,3 @@ You cannot create a procedure with `OUT` formal parameters. The attempt causes t
 ```
 0A000: procedures cannot have OUT arguments
 ```
-

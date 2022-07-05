@@ -8,8 +8,7 @@ menu:
     identifier: json-literals
     parent: api-ysql-datatypes-json
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 This section shows that the literal for both a `jsonb` value and a `json` value, as these are used both in SQL statements and in PL/pgSQL code, is the enquoted and appropriately typecast RFC 7159-compliant `text` value that represents the JSON value.
 
@@ -27,7 +26,7 @@ declare
   v3 constant boolean := true;
   v4 constant text[]  := array['x', 'y', 'z'];
 
-  v5 constant t := (v1, v2, v3, v4); 
+  v5 constant t := (v1, v2, v3, v4);
 
   original   constant jsonb  not null := to_jsonb(v5);
   text_cast  constant text   not null := original::text;
@@ -60,7 +59,7 @@ declare
   v3 constant boolean := true;
   v4 constant text[]  := array['x', 'y', 'z'];
 
-  v5 constant t := (v1, v2, v3, v4); 
+  v5 constant t := (v1, v2, v3, v4);
 
   original   constant json  not null := to_json(v5)::jsonb;
   text_cast  constant text  not null := original::text;

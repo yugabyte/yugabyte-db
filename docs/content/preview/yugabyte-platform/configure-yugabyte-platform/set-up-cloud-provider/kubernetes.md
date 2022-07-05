@@ -6,12 +6,11 @@ description: Configure the Kubernetes cloud provider
 aliases:
   - /preview/deploy/enterprise-edition/configure-cloud-providers/kubernetes
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-5-kubernetes
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -121,7 +120,7 @@ The following command can be used to validate the service account:
 ```sh
 kubectl auth can-i \
 --as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
-{get|create|delete|list} \ 
+{get|create|delete|list} \
 {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
@@ -138,9 +137,9 @@ If you have multiple target namespaces, then you have to apply the YAML in all o
 The following command can be used to validate the service account:
 
 ```sh
-kubectl auth can-i \ 
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \ 
-{get|create|delete|list|patch} \ 
+kubectl auth can-i \
+--as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
+{get|create|delete|list|patch} \
 {namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
 ```
 
@@ -342,9 +341,9 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
           tcp-yedis-port: "6379"
           tcp-ysql-port: "5433"
     ```
-    
+
   - Overrides to run YugabyteDB as a non-root user:
-  
+
     ```yml
     podSecurityContext:
       enabled: true
@@ -354,7 +353,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsUser: 10001
       runAsGroup: 10001
     ```
-  
+
     <br>Note that you cannot change users during the Helm upgrades.
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:

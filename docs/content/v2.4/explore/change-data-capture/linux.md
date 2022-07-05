@@ -9,8 +9,7 @@ menu:
     identifier: change-data-capture-2-linux
     parent: explore
     weight: 249
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -169,4 +168,3 @@ changes {
   }
 }
 ```
-

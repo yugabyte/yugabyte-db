@@ -7,9 +7,7 @@ menu:
     identifier: ysql-column-level-security
     parent: authorization
     weight: 755
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

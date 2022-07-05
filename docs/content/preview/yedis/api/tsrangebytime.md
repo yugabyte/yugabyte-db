@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/tsrangebytime
   - /preview/api/yedis/tsrangebytime
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

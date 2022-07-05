@@ -7,11 +7,12 @@ headcontent: Drivers and ORMs for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /drivers-orms/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: drivers-orms
+    parent: develop
     weight: 570
+type: indexpage
 ---
 
 The [Yugabyte Structured Query Language (YSQL) API](../../../api/ysql/) builds upon and extends a fork of the query layer from PostgreSQL, with the intent of supporting most PostgreSQL functionality. Client applications can use the [PostgreSQL drivers](https://www.postgresql.org/download/products/2-drivers-and-interfaces/) to read and write data into YugabyteDB databases. YSQL-compatible PostgreSQL drivers are listed in the compatibility matrix below.

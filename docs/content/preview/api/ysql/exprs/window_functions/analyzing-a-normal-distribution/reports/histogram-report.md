@@ -8,8 +8,7 @@ menu:
     identifier: histogram-report
     parent: normal-distribution-analysis-reports
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```

@@ -2,13 +2,12 @@
 title: Entity Framework
 linkTitle: Entity Framework
 description: Entity Framework
-section: INTEGRATIONS
 menu:
   preview:
     identifier: entity-framework
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [Entity Framework Core](https://docs.microsoft.com/en-us/ef/core/), an ORM library for C# with YugabyteDB.

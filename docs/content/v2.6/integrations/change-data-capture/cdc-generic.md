@@ -10,8 +10,7 @@ menu:
     identifier: change-data-capture-1-cdc-generic
     parent: integrations
     weight: 610
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 -->
 

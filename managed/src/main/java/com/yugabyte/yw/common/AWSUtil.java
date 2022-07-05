@@ -16,20 +16,29 @@ import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
+import com.amazonaws.services.s3.model.GetBucketLocationRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageS3Data;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageWithRegionsData;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.ybc.CloudStoreConfig;
+import org.yb.ybc.CloudStoreSpec;
+import org.yb.ybc.CloudType;
 
 @Singleton
 @Slf4j
@@ -37,8 +46,19 @@ public class AWSUtil implements CloudUtil {
 
   public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
   public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  private static final String AWS_REGION_SPECIFIC_HOST_BASE_FORMAT = "s3.%s.amazonaws.com";
+  private static final String AWS_STANDARD_HOST_BASE_PATTERN = "s3([.](.+)|)[.]amazonaws[.]com";
   public static final String AWS_DEFAULT_REGION = "us-east-1";
   public static final String AWS_DEFAULT_ENDPOINT = "s3.amazonaws.com";
+
+  public static final String YBC_AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
+  public static final String YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
+  public static final String YBC_AWS_PATH_STYLE_ACCESS = "PATH_STYLE_ACCESS";
+  public static final String YBC_AWS_ENDPOINT_FIELDNAME = "AWS_ENDPOINT";
+  public static final String YBC_AWS_DEFAULT_REGION_FIELDNAME = "AWS_DEFAULT_REGION";
+
+  private static final Pattern standardHostBaseCompiled =
+      Pattern.compile(AWS_STANDARD_HOST_BASE_PATTERN);
 
   // This method is a way to check if given S3 config can extract objects.
   public boolean canCredentialListObjects(CustomerConfigData configData, List<String> locations) {
@@ -98,7 +118,7 @@ public class AWSUtil implements CloudUtil {
     }
   }
 
-  private static String[] getSplitLocationValue(String location) {
+  public static String[] getSplitLocationValue(String location) {
     location = location.substring(5);
     String[] split = location.split("/", 2);
     return split;
@@ -133,6 +153,44 @@ public class AWSUtil implements CloudUtil {
       s3ClientBuilder.withEndpointConfiguration(endpointConfiguration);
     }
     return s3ClientBuilder.build();
+  }
+
+  public String getBucketRegion(String bucketName, CustomerConfigStorageS3Data s3Data)
+      throws AmazonS3Exception {
+    String bucketRegion = null;
+    try {
+      AmazonS3 client = createS3Client(s3Data);
+      GetBucketLocationRequest locationRequest = new GetBucketLocationRequest(bucketName);
+      bucketRegion = client.getBucketLocation(locationRequest);
+      if (bucketRegion.equals("US")) {
+        bucketRegion = AWS_DEFAULT_REGION;
+      }
+    } catch (AmazonS3Exception e) {
+      log.error(
+          String.format("Fetching bucket region for %s failed", bucketName), e.getErrorMessage());
+      throw e;
+    }
+
+    return bucketRegion;
+  }
+
+  public String createBucketRegionSpecificHostBase(String bucketName, String bucketRegion) {
+    String regionSpecificHostBase =
+        String.format(AWS_REGION_SPECIFIC_HOST_BASE_FORMAT, bucketRegion);
+    return regionSpecificHostBase;
+  }
+
+  public boolean isHostBaseS3Standard(String hostBase) {
+    return standardHostBaseCompiled.matcher(hostBase).matches();
+  }
+
+  public String getOrCreateHostBase(
+      CustomerConfigStorageS3Data s3Data, String bucketName, String bucketRegion) {
+    String hostBase = s3Data.awsHostBase;
+    if (StringUtils.isEmpty(hostBase) || hostBase.equals(AWS_DEFAULT_ENDPOINT)) {
+      hostBase = createBucketRegionSpecificHostBase(bucketName, bucketRegion);
+    }
+    return hostBase;
   }
 
   @Override
@@ -177,5 +235,34 @@ public class AWSUtil implements CloudUtil {
     DeleteObjectsRequest deleteRequest =
         new DeleteObjectsRequest(bucketName).withKeys(objectKeys).withQuiet(false);
     s3Client.deleteObjects(deleteRequest);
+  }
+
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      String backupLocation, String commonDir, CustomerConfigData configData) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    String[] splitValues = getSplitLocationValue(backupLocation);
+    String bucket = splitValues[0];
+    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
+    if (StringUtils.isNotBlank(cloudDir)) {
+      cloudDir = String.format("%s/%s/", splitValues[1], commonDir);
+    } else {
+      cloudDir = commonDir.concat("/");
+    }
+    Map<String, String> s3CredsMap = createCredsMapYbc(s3Data, commonDir, bucket);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, s3CredsMap, Util.S3);
+  }
+
+  private Map<String, String> createCredsMapYbc(
+      CustomerConfigData configData, String commonDir, String bucket) {
+    CustomerConfigStorageS3Data s3Data = (CustomerConfigStorageS3Data) configData;
+    Map<String, String> s3CredsMap = new HashMap<>();
+    s3CredsMap.put(YBC_AWS_ACCESS_KEY_ID_FIELDNAME, s3Data.awsAccessKeyId);
+    s3CredsMap.put(YBC_AWS_SECRET_ACCESS_KEY_FIELDNAME, s3Data.awsSecretAccessKey);
+    String bucketRegion = getBucketRegion(bucket, s3Data);
+    String hostBase = getOrCreateHostBase(s3Data, bucket, bucketRegion);
+    s3CredsMap.put(YBC_AWS_ENDPOINT_FIELDNAME, hostBase);
+    s3CredsMap.put(YBC_AWS_DEFAULT_REGION_FIELDNAME, bucketRegion);
+    return s3CredsMap;
   }
 }

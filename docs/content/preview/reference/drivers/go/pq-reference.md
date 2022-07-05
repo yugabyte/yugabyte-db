@@ -10,8 +10,7 @@ menu:
     identifier: ref-pq-go-driver
     parent: drivers
     weight: 620
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

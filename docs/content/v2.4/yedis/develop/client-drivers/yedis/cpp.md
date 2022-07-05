@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: client-drivers-yedis-cpp
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Prerequisites
@@ -24,7 +23,7 @@ The tutorial assumes that you have:
 We use the [`cpp_redis`](https://redis.io/clients#c--) driver. To install the library do the following:
 
 - Clone the `cpp_redis` repository
-  
+
 ```sh
 $ git clone https://github.com/Cylix/cpp_redis.git
 ```

@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: perf_deallocate
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

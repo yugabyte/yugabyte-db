@@ -9,8 +9,7 @@ menu:
     identifier: traversing-general-graphs
     parent: with-clause
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 **On this page**<br>

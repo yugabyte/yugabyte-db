@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-partitions
     parent: explore-ysql-language-features
     weight: 315
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to partition tables in YugabyteDB using YSQL.

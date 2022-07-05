@@ -9,8 +9,7 @@ menu:
     identifier: architecture-read-committed
     parent: architecture-acid-transactions
     weight: 1153
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that clients don't need retry logic for serialization errors (40001) in applications when using this isolation level.

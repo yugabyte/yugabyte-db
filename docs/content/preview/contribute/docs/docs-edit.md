@@ -4,14 +4,12 @@ headerTitle: Edit the docs
 linkTitle: Edit the docs
 description: Get set up and edit the YugabyteDB docs locally
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: docs-edit
     parent: docs
     weight: 2914
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 After you've gotten the docs site [running locally](../docs-build/), make your changes. If you're going to be doing this a lot, read some [tips on setting up your text editor](../docs-editor-setup/).

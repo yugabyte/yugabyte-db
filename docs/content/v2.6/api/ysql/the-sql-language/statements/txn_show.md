@@ -8,8 +8,7 @@ menu:
   v2.6:
     identifier: txn_show
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

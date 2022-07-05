@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: cmd_copy
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

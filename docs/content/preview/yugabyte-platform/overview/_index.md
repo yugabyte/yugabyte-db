@@ -5,14 +5,14 @@ linkTitle: Overview
 description: Overview of YugabyteDB Anywhere and its architecture.
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Overview of YugabyteDB Anywhere and architecture.
-type: page
-section: YUGABYTEDB ANYWHERE
 aliases:
   - /preview/yugabyte-platform/
 menu:
-  preview:
+  preview_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: overview-yp
     weight: 10
+type: indexpage
 ---
 
 YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.

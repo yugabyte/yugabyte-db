@@ -9,9 +9,7 @@ menu:
     name: Open Source
     identifier: k8s-oss-2
     weight: 621
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -34,15 +32,9 @@ showAsideToc: true
       Operator Hub
     </a>
   </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
-    </a>
-  </li>
 </ul>
 
-Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB operator repository](https://github.com/yugabyte/yugabyte-operator/). This operator currently provides more configuration flags as compared to the Rook operator. The Rook operator, in near future, will get these flags too. See full list of configuration flags [here](#configuration-flags).
+Create and manage a YugabyteDB cluster with a Kubernetes native custom resource `ybcluster.yugabyte.com`. The custom resource definition and other necessary specifications can be found in [YugabyteDB operator repository](https://github.com/yugabyte/yugabyte-operator/). See full list of configuration flags [here](#configuration-flags).
 
 ## Prerequisites
 

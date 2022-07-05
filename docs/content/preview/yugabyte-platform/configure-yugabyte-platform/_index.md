@@ -5,12 +5,12 @@ linkTitle: Configure
 description: Configure YugabyteDB Anywhere.
 image: /images/section_icons/deploy/manual-deployment.png
 headcontent: Configure YugabyteDB Anywhere.
-type: page
-section: YUGABYTEDB ANYWHERE
 menu:
-  preview:
+  preview_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: configure-yugabyte-platform
     weight: 642
+type: indexpage
 ---
 
 <div class="row">

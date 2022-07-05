@@ -5,11 +5,7 @@ linkTitle: Secure
 description: Secure your deployment of YugabyteDB.
 headcontent: Secure your deployment of YugabyteDB.
 image: /images/section_icons/index/secure.png
-section: YUGABYTEDB CORE
-menu:
-  v2.4:
-    identifier: secure
-    weight: 700
+type: indexpage
 ---
 
 <div class="row">

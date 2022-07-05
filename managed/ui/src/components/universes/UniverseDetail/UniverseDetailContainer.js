@@ -166,10 +166,10 @@ const mapDispatchToProps = (dispatch) => {
     showTaskAbortModal: () => {
       dispatch(openDialog('confirmAbortTask'));
     },
-    fetchRunTimeConfigs: () => {
-      return dispatch(
-        fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000', true)
-      ).then((response) => dispatch(fetchRunTimeConfigsResponse(response.payload)));
+    fetchRunTimeConfigs: (universeUUID) => {
+      return dispatch(fetchRunTimeConfigs(universeUUID, true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
     }
   };
 };

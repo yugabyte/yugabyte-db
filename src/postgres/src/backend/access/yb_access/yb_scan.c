@@ -444,15 +444,8 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 */
 
 	ybScan->prepare_params.querying_colocated_table =
-		IsSystemRelation(relation);
-
-	if (!ybScan->prepare_params.querying_colocated_table)
-	{
-		YbLoadTablePropertiesIfNeeded(relation, false /* allow_missing */);
-
-		ybScan->prepare_params.querying_colocated_table |=
-			relation->yb_table_properties->is_colocated;
-	}
+		IsSystemRelation(relation) ||
+		YbGetTableProperties(relation)->is_colocated;
 
 	if (index)
 	{

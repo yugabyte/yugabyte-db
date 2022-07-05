@@ -8,8 +8,7 @@ menu:
     identifier: cr-show-t4
     parent: analyzing-a-normal-distribution
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_show_t4.sql`.
 ```plpgsql

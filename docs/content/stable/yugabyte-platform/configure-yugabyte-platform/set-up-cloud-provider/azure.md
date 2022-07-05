@@ -4,12 +4,11 @@ headerTitle: Configure the Microsoft Azure cloud provider
 linkTitle: Configure the cloud provider
 description: Configure the Microsoft Azure cloud provider
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: set-up-cloud-provider-3-azure
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -189,4 +188,3 @@ You set up a shared gallery image on Azure as follows:
 1. To use the image in Platform, put the image version's resource ID into the Marketplace Image URN/Shared Gallery Image ID field of the Region Info popup.
 
     <br>The gallery image ID could be defined by a full URL containing a subscription ID, a resource group name, and the resource name itself. If the subscription ID or the resource group is different from the default values, Yugabyte Platform will use them instead.
-
