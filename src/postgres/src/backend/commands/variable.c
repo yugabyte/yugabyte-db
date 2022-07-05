@@ -624,6 +624,26 @@ show_XactIsoLevel(void)
 	}
 }
 
+const char *
+show_yb_effective_transaction_isolation_level(void)
+{
+	switch (XactIsoLevel)
+	{
+		case XACT_READ_UNCOMMITTED:
+			switch_fallthrough();
+		case XACT_READ_COMMITTED:
+			if (IsYBReadCommitted())
+				return "read committed";
+			switch_fallthrough();
+		case XACT_REPEATABLE_READ:
+			return "repeatable read";
+		case XACT_SERIALIZABLE:
+			return "serializable";
+		default:
+			return "bogus";
+	}
+}
+
 bool is_staleness_acceptable(int32_t staleness_ms) {
 	int32_t max_clock_skew_usec = YBGetMaxClockSkewUsec();
 	const int kMargin = 2;
