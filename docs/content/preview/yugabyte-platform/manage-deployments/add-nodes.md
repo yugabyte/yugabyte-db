@@ -6,12 +6,11 @@ description: Use YugabyteDB Anywhere to recover a decommissioned node.
 aliases:
   - /preview/manage/enterprise-edition/create-universe-multi-region
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: add-nodes
     parent: manage-deployments
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In some cases, depending on the node's status, YugabyteDB Anywhere allows you to recover a removed node on a new backing instance, as follows:

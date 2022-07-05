@@ -8,9 +8,8 @@ menu:
   preview:
     identifier: java-orm
     parent: java-drivers
-    weight: 601
-isTocNested: true
-showAsideToc: true
+    weight: 600
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: txn_end
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

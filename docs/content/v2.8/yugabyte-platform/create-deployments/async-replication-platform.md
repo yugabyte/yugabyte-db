@@ -4,13 +4,11 @@ headerTitle: Asynchronous Replication
 linkTitle: Asynchronous replication
 description: Enable deployment using asynchronous replication between two data centers.
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: create-deployments
     identifier: async-replication-platform
     weight: 633
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte Platform allows you to use its UI or API to manage asynchronous replication between independent YugabyteDB clusters. You can perform deployment via unidirectional (master-follower) or [bidirectional](#setting-up-bidirectional-replication) (multi-master) asynchronous replication between two data centers.

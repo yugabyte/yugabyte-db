@@ -10,8 +10,7 @@ menu:
     identifier: fault-tolerance-4-kubernetes
     parent: explore
     weight: 215
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

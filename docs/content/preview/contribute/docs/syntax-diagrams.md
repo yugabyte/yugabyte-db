@@ -5,14 +5,12 @@ linkTitle: Syntax diagrams
 description: Edit syntax diagrams
 image: /images/section_icons/index/quick_start.png
 headcontent: How to edit syntax diagrams
-type: page
 menu:
   preview:
     identifier: docs-syntax-diagrams
     parent: docs-edit
     weight: 3000
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In this kind of work, the nature of your documentation change means that you'll need to modify existing [_syntax diagrams_](#syntax-diagram) or add new ones.
@@ -55,8 +53,6 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/dml_select/
-isTocNested: true
-showAsideToc: true
 ```
 
 The `aliases` page property allows a list of many URLs. Notice that these are _relative_ to the [_content directory_](#content-directory). The `.md` file in this example used to be here:

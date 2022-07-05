@@ -6,11 +6,10 @@ description: Compare Amazon DynamoDB with YugabyteDB.
 aliases:
   - /comparisons/amazon-dynamodb/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1105
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 ## Astronomical AWS bills and slow releases

@@ -5,12 +5,11 @@ description: View live queries running on your cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-queries-live
     parent: cloud-monitor
     weight: 200
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Evaluate the performance of running queries on your cluster using the **Live Queries** on the cluster **Performance** tab. You can use this data to:

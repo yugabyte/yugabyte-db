@@ -9,9 +9,7 @@ menu:
     parent: cdc
     identifier: cdc-to-kafka
     weight: 692
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Follow the steps below to connect a YugabyteDB cluster to use the Change Data Capture (CDC) API to send data changes to Apache Kafka. To learn about the change data capture (CDC) architecture, see [Change data capture (CDC)](../../../architecture/cdc-architecture).

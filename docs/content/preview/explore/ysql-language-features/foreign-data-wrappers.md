@@ -8,13 +8,12 @@ menu:
     identifier: explore-ysql-language-features-foreign-data-wrappers
     parent: explore-ysql-language-features
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A foreign data wrapper is a library that you can use to access and interact with an external data (foreign data) source. They allow you to query foreign objects from remote servers as if they were local objects.
 
-To access foreign data, you first create a foreign data _wrapper_. Then, you create a foreign _server_, which specifies how to connect to the external data source. You may also need to create a user mapping to map a specific user to authorization credentials in the foreign server. Finally, you create foreign _tables_, which represent the structure of the data on the external source. 
+To access foreign data, you first create a foreign data _wrapper_. Then, you create a foreign _server_, which specifies how to connect to the external data source. You may also need to create a user mapping to map a specific user to authorization credentials in the foreign server. Finally, you create foreign _tables_, which represent the structure of the data on the external source.
 
 ## Create a foreign data wrapper
 

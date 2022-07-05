@@ -5,14 +5,12 @@ linkTitle: Build the source
 description: Build YugabyteDB from source code on CentOS.
 image: /images/section_icons/index/quick_start.png
 headcontent: Build the source code.
-type: page
 menu:
   preview:
     identifier: build-from-src-2-centos
     parent: core-database
     weight: 2912
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -4,13 +4,12 @@ linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-troubleshoot
+    parent: yugabytedb-managed
     weight: 850
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If you are unable to reach YugabyteDB Managed or having issues, first check the [status](https://status.yugabyte.cloud/).

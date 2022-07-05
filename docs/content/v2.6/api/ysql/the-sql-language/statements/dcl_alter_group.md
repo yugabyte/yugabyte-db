@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: dcl_alter_group
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

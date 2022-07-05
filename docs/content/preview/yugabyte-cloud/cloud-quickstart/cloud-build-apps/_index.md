@@ -8,10 +8,11 @@ image: /images/section_icons/develop/api-icon.png
 aliases:
   - /preview/yugabyte-cloud/cloud-develop/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-build-apps
     parent: cloud-quickstart
     weight: 500
+type: indexpage
 ---
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using available drivers and ORMs.

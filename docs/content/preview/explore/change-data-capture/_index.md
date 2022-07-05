@@ -10,25 +10,10 @@ menu:
     parent: explore
     identifier: change-data-capture
     weight: 299
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
-
 Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
-
-### On this page
-
-* [Prerequisites](#prerequisites)
-* [Process architecture](#process-architecture)
-* [Debezium connector for YugabyteDB](#debezium-connector-for-yugabytedb)
-* [Java console client](#java-cdc-console-client)
-* [TServer configuration](#tserver-configuration)
-* [Consistency semantics](#consistency-semantics)
-* [Performance impact](#performance-impact)
-* [yb-admin commands](#yb-admin-commands)
-* [DDL command support](#ddl-command-support)
-* [Snapshot support](#snapshot-support)
-* [Limitations](#limitations)
 
 ## Prerequisites
 

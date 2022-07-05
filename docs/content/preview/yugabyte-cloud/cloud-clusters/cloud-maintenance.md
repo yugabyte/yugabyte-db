@@ -5,12 +5,11 @@ description: Manage maintenance windows for clusters in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/manage/backup.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-maintenance
     parent: cloud-clusters
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte occasionally performs maintenance on clusters. This can include infrastructure and database upgrades. Depending on the type of maintenance, your cluster may be restarted, which disrupts service briefly. Yugabyte notifies you in advance of any upcoming maintenance via email. One week before a scheduled maintenance, an **Upcoming Maintenance** badge is displayed on the cluster.

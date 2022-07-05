@@ -8,8 +8,7 @@ menu:
     identifier: helper-functions
     parent: name-res-rules
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page presents two helper functions. They are useful in substantiating [Rule 2](../rule-2/), [Rule 3](../rule-3/), and [Rule 4](../rule-4/)—explained in this page's peer pages:

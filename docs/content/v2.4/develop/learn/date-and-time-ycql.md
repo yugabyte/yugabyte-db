@@ -9,11 +9,7 @@ menu:
     name: 7. Date and time
     identifier: date-and-time-2-ycql
     weight: 569
-type: page
-isTocNested: true
-showAsideToc: true
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

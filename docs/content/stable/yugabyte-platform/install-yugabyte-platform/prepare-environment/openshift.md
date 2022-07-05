@@ -4,12 +4,11 @@ headerTitle: Prepare the OpenShift environment
 linkTitle: Prepare the environment
 description: Prepare the OpenShift environment for Yugabyte Platform
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: prepare-environment-4-OpenShift
     parent: install-yugabyte-platform
     weight: 55
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

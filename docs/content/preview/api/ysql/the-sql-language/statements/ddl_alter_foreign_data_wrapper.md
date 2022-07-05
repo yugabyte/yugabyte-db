@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_alter_foreign_data_wrapper
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

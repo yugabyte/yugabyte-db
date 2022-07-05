@@ -9,8 +9,7 @@ menu:
     identifier: csharp-orm
     parent: csharp-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -8,8 +8,7 @@ menu:
     identifier: yb-pgx-driver
     parent: go-drivers
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 For Go applications, most drivers provide database connectivity through the standard `database/sql` API. YugabyteDB supports the [PGX Driver](https://github.com/jackc/pgx) and the [PQ Driver](https://github.com/lib/pq).

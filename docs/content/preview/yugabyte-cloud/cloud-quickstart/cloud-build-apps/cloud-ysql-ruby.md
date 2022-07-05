@@ -3,14 +3,12 @@ title: Build a Ruby application that uses YSQL
 headerTitle: Build a Ruby application
 description: Build a small Ruby application using the Ruby Pg driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Ruby
     identifier: cloud-ruby
     weight: 700
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [Ruby application](https://github.com/yugabyte/yugabyte-simple-ruby-app) that connects to a YugabyteDB cluster using the [Ruby Pg driver](../../../../reference/drivers/ysql-client-drivers/#pg) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Ruby.

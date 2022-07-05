@@ -5,12 +5,11 @@ description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB M
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: connect-application
     parent: cloud-examples
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The example on this page shows how you can connect a Spring application to YugabyteDB Managed, using a version of the Spring PetClinic sample application that has been updated with a domain and persistence layer built with [Spring Data YugabyteDB](https://github.com/yugabyte/spring-data-yugabytedb).

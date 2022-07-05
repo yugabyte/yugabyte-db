@@ -4,10 +4,11 @@ headerTitle: Customize ports
 linkTitle: Customize ports
 description: Customize ports
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: security
     identifier: customize-ports
     weight: 15
+type: docs
 ---
 
 Follow the steps below to customize your YugabyteDB ports for security purposes.

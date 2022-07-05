@@ -8,8 +8,7 @@ menu:
     identifier: cr-bucket-dedicated-code
     parent: analyzing-a-normal-distribution
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_bucket_dedicated_code.sql`.
 ```plpgsql

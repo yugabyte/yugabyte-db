@@ -13,10 +13,9 @@ menu:
     identifier: tpcc-ysql
     parent: benchmark
     weight: 4
-showAsideToc: true
-isTocNested: true
+type: indexpage
+showRightNav: true
 ---
-
 ## Overview
 Follow the steps below to run the [TPC-C workload](https://github.com/yugabyte/tpcc) against YugabyteDB YSQL. [TPC-C](http://www.tpc.org/tpcc/) is a popular online transaction processing benchmark that provides metrics you can use to evaluate the performance of YugabyteDB for concurrent transactions of different types and complexity that are either executed online or queued for deferred execution.
 
@@ -120,4 +119,3 @@ Other options like username, password, port, etc. can be changed using the confi
   {{% includeMarkdown "10000-wh/tpcc-ysql.md" %}}
   </div>
 </div>
-

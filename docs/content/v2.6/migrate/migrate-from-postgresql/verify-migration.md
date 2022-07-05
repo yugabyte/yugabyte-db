@@ -8,8 +8,7 @@ menu:
     identifier: migrate-postgresql-verify
     parent: migrate-from-postgresql
     weight: 780
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -27,7 +26,7 @@ For tables with 1 million rows or less, run a `COUNT(*)` command to verify that 
 **Step 1.** First create the following function to print out the number of rows in a single table.
 
 ```sql
-create function 
+create function
 cnt_rows(schema text, tablename text) returns integer
 as
 $body$
@@ -48,7 +47,7 @@ language plpgsql;
 ```sql
 SELECT cnt_rows(table_schema, table_name)
     FROM information_schema.tables
-    WHERE table_schema NOT IN ('pg_catalog', 'information_schema') 
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
     AND table_type='BASE TABLE'
     ORDER BY 3 DESC;
 ```
@@ -64,7 +63,7 @@ Below is an example illustrating the output of running the above on the Northwin
 ```
 example=# SELECT cnt_rows(table_schema, table_name)
     FROM information_schema.tables
-    WHERE table_schema NOT IN ('pg_catalog', 'information_schema') 
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
     AND table_type='BASE TABLE'
     ORDER BY 3 DESC;
 
@@ -86,5 +85,3 @@ example=# SELECT cnt_rows(table_schema, table_name)
  public       | customer_demographics  |        0
 (14 rows)
 ```
-
-

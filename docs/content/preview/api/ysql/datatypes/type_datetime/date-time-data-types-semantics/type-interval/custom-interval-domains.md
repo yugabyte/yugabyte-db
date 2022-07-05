@@ -8,8 +8,7 @@ menu:
     identifier: custom-interval-domains
     parent: type-interval
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download the kit to create the custom interval domains." >}}

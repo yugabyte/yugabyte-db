@@ -7,8 +7,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1440
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -23,7 +22,7 @@ type_specification ::= TEXT | VARCHAR
 text_literal ::= "'" [ letter ...] "'"
 ```
 
-Where 
+Where
 
 - `TEXT` and `VARCHAR` are aliases.
 - `letter` is any character except for single quote (`[^']`)

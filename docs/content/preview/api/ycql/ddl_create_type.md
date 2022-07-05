@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/ddl_create_type
   - /preview/api/ycql/ddl_create_type
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

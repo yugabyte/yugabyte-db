@@ -5,12 +5,11 @@ linkTitle: Configure
 description: Configuring YugabyteDB Anywhere on-premises
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: configure-5-onprem
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 For overview of how to configure database nodes, select one of the following cloud providers:
@@ -65,6 +64,3 @@ For overview of how to configure database nodes, select one of the following clo
     <area target="_blank" alt="configure on prem provider-1" title="configure on prem provider-1" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="204,1230,425,1331" shape="rect">
     <area target="_blank" alt="configure on prem provider-2" title="configure on prem provider-2" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#step-1-configure-the-on-premises-provider" coords="474,1230,695,1328" shape="rect">
 </map>
-
-
-

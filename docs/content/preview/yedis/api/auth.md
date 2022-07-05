@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/auth
   - /preview/api/yedis/auth
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 `AUTH` authenticates a client connection to Yugabyte YEDIS API.
 

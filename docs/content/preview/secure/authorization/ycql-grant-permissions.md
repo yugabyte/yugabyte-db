@@ -9,8 +9,7 @@ menu:
     identifier: ycql-grant-permissions
     parent: authorization
     weight: 736
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

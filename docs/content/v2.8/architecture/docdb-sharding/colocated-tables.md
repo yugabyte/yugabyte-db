@@ -8,8 +8,7 @@ menu:
     identifier: docdb-colocated-tables
     parent: architecture-docdb-sharding
     weight: 1144
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 In workloads that need lower throughput and have a small data set, the bottleneck shifts from CPU/disk/network to the number of tablets that should be hosted per node. Since each table by default requires at least one tablet per node, a YugabyteDB cluster with 5000 relations (which includes tables and indexes) will result in 5000 tablets per node. There are practical limitations to the number of tablets that YugabyteDB can handle per node since each tablet adds some CPU, disk, and network overhead. If most or all of the tables in YugabyteDB cluster are small tables, then having separate tablets for each table unnecessarily adds pressure on CPU, network and disk.

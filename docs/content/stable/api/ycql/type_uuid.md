@@ -8,8 +8,7 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1460
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -47,18 +46,18 @@ ycqlsh:example> CREATE TABLE devices(id UUID PRIMARY KEY, ordered_id TIMEUUID);
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO devices (id, ordered_id) 
+ycqlsh:example> INSERT INTO devices (id, ordered_id)
                VALUES (123e4567-e89b-12d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO devices (id, ordered_id) 
+ycqlsh:example> INSERT INTO devices (id, ordered_id)
                VALUES (123e4567-e89b-42d3-a456-426655440000, 123e4567-e89b-12d3-a456-426655440000);
 ```
 
 ```sql
 ycqlsh:example> UPDATE devices SET ordered_id = 00000000-0000-1000-0000-000000000000
-               WHERE id = 123e4567-e89b-42d3-a456-426655440000; 
+               WHERE id = 123e4567-e89b-42d3-a456-426655440000;
 ```
 
 ```sql

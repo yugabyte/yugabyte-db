@@ -4,12 +4,11 @@ headerTitle: Schedule universe YSQL data backups
 linkTitle: Schedule data backups
 description: Use Yugabyte Platform to create scheduled backups of universe YSQL data.
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: schedule-data-backups-1-ysql
     parent: back-up-restore-universes
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -68,7 +67,6 @@ To temporarily disable all scheduled backups:
 
 To permanently remove a scheduled backup:
 
-1. Go to the **Backups** tab for the universe. 
+1. Go to the **Backups** tab for the universe.
 2. Find the scheduled backup and click **Options**.
 3. Click **Delete schedule**. The scheduled backup is deleted.
-

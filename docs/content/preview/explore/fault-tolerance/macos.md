@@ -14,8 +14,7 @@ menu:
     identifier: fault-tolerance-1-macos
     parent: explore
     weight: 215
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

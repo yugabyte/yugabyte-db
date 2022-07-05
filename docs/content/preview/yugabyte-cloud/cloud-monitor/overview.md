@@ -5,12 +5,11 @@ description: View time series charts of cluster metrics.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: overview-clusters
     parent: cloud-monitor
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Monitor performance metrics for your cluster to ensure the cluster configuration matches its performance requirements using the cluster **Overview** and **Performance Metrics** tabs.

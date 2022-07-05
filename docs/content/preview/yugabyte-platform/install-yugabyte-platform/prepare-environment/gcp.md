@@ -4,12 +4,11 @@ headerTitle: Prepare the Google Cloud Platform (GCP) environment
 linkTitle: Prepare the environment
 description: Prepare the Google Cloud Platform (GCP) environment
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-2-gcp
     weight: 55
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -155,4 +154,3 @@ $ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
 
 Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.
-

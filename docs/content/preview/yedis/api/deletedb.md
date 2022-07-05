@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/deletedb
   - /preview/api/yedis/deletedb
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

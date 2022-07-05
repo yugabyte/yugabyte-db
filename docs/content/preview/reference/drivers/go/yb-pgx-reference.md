@@ -10,8 +10,7 @@ menu:
     identifier: ref-yb-pgx-go-driver
     parent: drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -276,6 +275,7 @@ you need the root certificate (`ca.crt`) of the YugabyteDB Cluster.
 To generate these certificates and install them while launching the cluster, follow the instructions in
 [Create server certificates](../../../../secure/tls-encryption/server-certificates/).
 
+Because a YugabyteDB Managed cluster is always configured with SSL/TLS, you don't have to generate any certificate but only set the client-side SSL configuration. To fetch your root certificate, refer to [CA certificate](../../../../quick-start/build-apps/go/ysql-pgx/#ca-certificate).
 For a YugabyteDB Managed cluster, or a YugabyteDB cluster with SSL/TLS enabled, set the SSL-related
 environment variables as below at the client side.
 

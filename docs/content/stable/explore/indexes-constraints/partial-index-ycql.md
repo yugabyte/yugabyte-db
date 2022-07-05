@@ -8,8 +8,7 @@ menu:
     identifier: partial-index-ycql
     parent: explore-indexes-constraints
     weight: 251
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -34,7 +33,7 @@ Partial indexes can be `UNIQUE`. A UNIQUE partial index enforces the constraint 
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 

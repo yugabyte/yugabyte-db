@@ -8,8 +8,7 @@ menu:
     identifier: declaring-intervals
     parent: type-interval
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 There are over one hundred different spellings of the declaration of an _interval_. This might seem daunting. However, when you understand the degrees of freedom that the variations exploit, the mental model will seem straightforward. By analogy, when you consider the optional annotations of a bare _numeric_ declaration to specify the _scale_ and _precision_, you realize that multiplying the numbers of possible spellings for these two annotations gives a vast number of distinct possible spellings. But you need only to understand the _concepts_ of _scale_ and _precision_. The syntax variants for _interval_ declarations express analogous concepts. This section explains it all. And it also points out that the variations in the syntax spellings can be grouped to reflect the fact that, within each group, the variants all express the same semantics.
@@ -299,7 +298,7 @@ declare
   i_hour   constant interval hour   not null := i_bare;
   i_minute constant interval minute not null := i_bare;
   i_second constant interval second not null := i_bare;
-begin  
+begin
   return
     case mode
       when 'bare'   then i_bare

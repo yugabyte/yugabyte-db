@@ -4,14 +4,12 @@ headerTitle: Docs style guide
 linkTitle: Style guide
 description: YugabyteDB documentation style guide
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: docs-style
     parent: docs
     weight: 2950
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YugabyteDB documentation style is based on the [Microsoft style guide](https://docs.microsoft.com/en-us/style-guide/welcome/), with some input from [Apple's style guide](https://help.apple.com/applestyleguide/#/). We aim to automate as much as possible through Vale.
@@ -53,6 +51,12 @@ Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown'
 #### YSQL and YCQL code blocks
 
 Tag YSQL code blocks as `sql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.
+
+### Admonitions
+
+Use admonitions sparingly. They lose their effectiveness if they appear too often. Avoid multiple admonitions in a row, and in most cases don't place them immediately after a heading.
+
+To insert an admonition (a tip, note, or warning box), see [Widgets and shortcodes](../widgets-and-shortcodes/#admonition-boxes)
 
 ## Markdown linting
 

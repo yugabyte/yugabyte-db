@@ -4,13 +4,12 @@ linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
 headcontent:
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-release
+    parent: yugabytedb-managed
     weight: 950
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Releases

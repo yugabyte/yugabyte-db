@@ -5,12 +5,7 @@ linkTitle: Migrate
 description: Migrate your data to YugabyteDB
 image: /images/section_icons/explore/high_performance.png
 headcontent: Migrate your data to YugabyteDB
-section: YUGABYTEDB CORE
-menu:
-  preview:
-    identifier: migrate
-    weight: 625
-
+type: indexpage
 ---
 
 Migrate the current data and schemas of your existing databases to YugabyteDB to allow for a secure and faster management of your databases. Migrating to YugabyteDB allows databases to adapt to new schema changes without any loss of data.

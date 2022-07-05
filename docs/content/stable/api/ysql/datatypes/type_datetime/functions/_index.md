@@ -9,8 +9,7 @@ menu:
     identifier: date-time-functions
     parent: api-ysql-datatypes-datetime
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 This page lists all of the general-purpose _date-time_ functions. They are classified into groups according to the purpose.

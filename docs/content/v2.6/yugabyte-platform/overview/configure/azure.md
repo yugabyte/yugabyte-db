@@ -5,12 +5,11 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on Azure
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     identifier: configure-3-azure
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
@@ -61,8 +60,3 @@ Select your cloud provider to see the steps for configuration of database nodes.
     <area target="_blank" alt="Create admin user" title="Create admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="289,259,611,316" shape="rect">
     <area target="_blank" alt="configure cloud provider" title="configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="382,68,521,197" shape="rect">
 </map>
-
-
-
-
-

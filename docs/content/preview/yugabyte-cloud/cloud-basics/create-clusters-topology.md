@@ -4,12 +4,11 @@ linkTitle: Choose a topology
 description: Overview of topologies available in YugabyteDB Managed.
 headcontent:
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-topology
     parent: cloud-basics
     weight: 15
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A YugabyteDB cluster consists of three or more nodes that communicate with each other and across which data is distributed. You can place the nodes of a YugabyteDB cluster across different zones in a single region, and across regions. The topology you choose depends on your requirements for latency, availability, and geo-distribution:

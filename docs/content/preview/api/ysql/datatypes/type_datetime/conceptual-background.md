@@ -8,8 +8,7 @@ menu:
     identifier: conceptual-background
     parent: api-ysql-datatypes-datetime
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following subsections provide the conceptual background for the accounts of the _date-time_ data types that the table shown in the [Synopsis](../../type_datetime/) lists and for the operations that the _date-time_ operators and built-in SQL functions perform.

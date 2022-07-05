@@ -8,8 +8,7 @@ menu:
     identifier: hasura-application
     parent: yugabyte-cloud
     weight: 710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page demonstrates how to deploy an application on Hasura Cloud and Yugabyte Cloud using Hasura's Realtime Poll sample application. This application is built using React and is powered by Hasura GraphQL Engine backed by a Yugabyte Cloud YugabyteDB cluster. It has an interface for users to cast a vote on a poll, and results are updated in an on-screen bar chart in real time.
@@ -134,7 +133,7 @@ Next, add a new Array relationship for the `poll_results` table called `option` 
 To run the Realtime Poll application, on your local computer, navigate to the application root (`realtime-poll`) directory and run the following commands:
 
 ```sh
-$ npm install 
+$ npm install
 $ npm start
 ```
 

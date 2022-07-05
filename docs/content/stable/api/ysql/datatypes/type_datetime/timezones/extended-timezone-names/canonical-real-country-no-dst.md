@@ -8,8 +8,7 @@ menu:
     identifier: canonical-real-country-no-dst
     parent: extended-timezone-names
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This table shows canonically-named timezones that are associated with a specific country or region—in other words, they are _real_ timezones. It selects the timezones that observe Daylight Savings Time using the predicate _std_offset = dst_offset_. The results that the table below presents are based on the view _canonical_real_country_no_dst_ and are ordered by the _utc_offset_ column and then by the _name_ column. Trivial code adds the Markdown table notation. The view is defined thus:

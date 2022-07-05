@@ -12,8 +12,7 @@ menu:
     weight: 7
 aliases:
   - /benchmark/large-datasets/
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

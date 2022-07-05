@@ -8,8 +8,7 @@ menu:
     identifier: rule-4
     parent: name-res-rules
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="" >}}

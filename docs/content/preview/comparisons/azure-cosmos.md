@@ -6,10 +6,11 @@ description: Compare Azure Cosmos DB with YugabyteDB.
 aliases:
   - /comparisons/azure-cosmos/
 menu:
-  preview:
+  preview_faq:
     identifier: azure-cosmos
     parent: comparisons
     weight: 1110
+type: docs
 ---
 
 YugabyteDB's multi-API and tunable read latency approaches are similar to that of [Azure Cosmos DB](https://azure.microsoft.com/en-us/blog/a-technical-overview-of-azure-cosmos-db/). However, it's underlying storage and replication architecture is much more resilient than that of Cosmos DB. Support for fully distributed SQL and global consistency across multi-region and multi-cloud deployments makes it much more suitable for enterprises building scale-out RDBMS as well as internet-scale OLTP apps but do not want to get locked into a proprietary database such as Cosmos DB.

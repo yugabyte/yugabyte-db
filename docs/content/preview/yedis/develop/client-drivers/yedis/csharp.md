@@ -9,8 +9,7 @@ menu:
   preview:
     identifier: client-drivers-yedis-csharp
     parent: develop-yedis
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Prerequisites

@@ -9,9 +9,9 @@ menu:
     identifier: csharp-drivers
     parent: drivers-orms
     weight: 570
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
+
 The following projects can be used to implement C# applications using the YugabyteDB YSQL API.
 
 ## Supported Projects

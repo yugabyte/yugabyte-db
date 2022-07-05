@@ -8,8 +8,7 @@ menu:
     identifier: with-clause-syntax-semantics
     parent: with-clause
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Syntax

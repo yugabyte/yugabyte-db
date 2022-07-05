@@ -10,8 +10,7 @@ menu:
     identifier: install-yb-voyager
     parent: yb-voyager
     weight: 101
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Prerequisites

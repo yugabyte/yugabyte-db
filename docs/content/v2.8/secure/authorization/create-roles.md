@@ -9,8 +9,7 @@ menu:
     identifier: create-roles
     parent: authorization
     weight: 717
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
