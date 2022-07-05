@@ -211,7 +211,7 @@ The following **AWS regions** are available:
 
 ## Known issues
 
-- **Slow Queries** - On clusters with multiple nodes, some nodes may not return all query statements when requested. This can lead to some query statements not being shown on the Slow Queries page.
+- **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
 - **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
