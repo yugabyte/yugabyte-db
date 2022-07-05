@@ -377,7 +377,7 @@ class UniverseReplicationLoader : public Visitor<PersistentUniverseReplicationIn
       // Add any failed universes to be cleared
       if (l->is_deleted_or_failed() ||
           l->pb.state() == SysUniverseReplicationEntryPB::DELETING ||
-          GStringPiece(l->pb.producer_id()).ends_with(".ALTER")) {
+          cdc::IsAlterReplicationUniverseId(l->pb.producer_id())) {
         catalog_manager_->universes_to_clear_.push_back(ri->id());
       }
 
@@ -4514,8 +4514,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
           LOG(ERROR) << "Error registering subscriber: " << s;
           l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
         } else {
-          GStringPiece original_producer_id(universe->id());
-          if (original_producer_id.ends_with(".ALTER")) {
+          if (cdc::IsAlterReplicationUniverseId(universe->id())) {
             // Don't enable ALTER universes, merge them into the main universe instead.
             merge_alter = true;
           } else {
@@ -4538,18 +4537,17 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
   }
 
   if (validated_all_tables) {
-    GStringPiece final_id(universe->id());
+    string final_id = cdc::GetOriginalReplicationUniverseId(universe->id());
     // If this is an 'alter', merge back into primary command now that setup is a success.
     if (merge_alter) {
-      final_id.remove_suffix(sizeof(".ALTER")-1 /* exclude \0 ending */);
-      MergeUniverseReplication(universe, final_id.ToString());
+      MergeUniverseReplication(universe, final_id);
     }
     // Update the in-memory cache of consumer tables.
     LockGuard lock(mutex_);
     for (const auto& info : consumer_info) {
       auto c_table_id = info.consumer_table_id;
       auto c_stream_id = info.stream_id;
-      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id.ToString(), c_stream_id);
+      xcluster_consumer_tables_to_stream_map_[c_table_id].emplace(final_id, c_stream_id);
     }
   }
 }
@@ -5455,7 +5453,7 @@ Status CatalogManager::IsSetupUniverseReplicationDone(
     return STATUS(InvalidArgument, "Producer universe ID must be provided",
                   req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
   }
-  bool isAlterRequest = GStringPiece(req->producer_id()).ends_with(".ALTER");
+  bool isAlterRequest = cdc::IsAlterReplicationUniverseId(req->producer_id());
 
   GetUniverseReplicationRequestPB universe_req;
   GetUniverseReplicationResponsePB universe_resp;
