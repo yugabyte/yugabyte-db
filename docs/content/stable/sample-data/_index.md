@@ -4,11 +4,12 @@ linkTitle: Sample datasets
 description: Sample datasets
 headcontent: Explore the YugabyteDB YSQL API using sample datasets.
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
-section: REFERENCE
 menu:
   stable:
-   identifier: sample-data
-   weight: 2950
+    identifier: sample-data
+    parent: reference
+    weight: 2950
+type: indexpage
 ---
 
 YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. All of the datasets are PostgreSQL-compatible, and you can explore them using the [ysqlsh shell](../admin/ysqlsh/) to compare between PostgreSQL and the YugabyteDB [YSQL API](../api/ysql/).

@@ -9,8 +9,7 @@ menu:
     identifier: diesel-orm
     parent: rust-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Diesel](https://diesel.rs/) is a safe, extensible object-relational mapping (ORM) tool and query builder for [Rust](https://www.rust-lang.org/). Diesel lets you create safe and composable abstractions over queries, and eliminates the possibility of incorrect database interactions at compile time. It's designed to be abstracted over, enabling you to write reusable code and think in terms of your problem domain.

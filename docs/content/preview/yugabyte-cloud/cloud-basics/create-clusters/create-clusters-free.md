@@ -7,12 +7,11 @@ image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /preview/yugabyte-cloud/cloud-basics/create-clusters-free/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-free
     parent: create-clusters
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use your free Sandbox cluster to get started with YugabyteDB. Although not suitable for production workloads or performance testing, a Sandbox cluster includes enough resources to start exploring the core features available for developing applications with YugabyteDB.

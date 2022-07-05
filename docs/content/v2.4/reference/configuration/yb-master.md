@@ -8,8 +8,7 @@ menu:
     identifier: yb-master
     parent: configuration
     weight: 2450
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the `yb-master` binary and its flags to configure the [YB-Master](../../../architecture/concepts/yb-master) server. The `yb-master` executable file is located in the `bin` directory of YugabyteDB home.
@@ -20,7 +19,7 @@ Use the `yb-master` binary and its flags to configure the [YB-Master](../../../a
 yb-master [ flag  ] | [ flag ]
 ```
 
-### Example 
+### Example
 
 ```sh
 $ ./bin/yb-master \
@@ -130,7 +129,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -409,7 +408,7 @@ Default: `5`
 
 ##### --load_balancer_skip_leader_as_remove_victim
 
-Should the LB skip a leader as a possible remove candidate. 
+Should the LB skip a leader as a possible remove candidate.
 
 Default: `false`
 

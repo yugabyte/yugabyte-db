@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: dml_values
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -143,8 +142,3 @@ This is the result:
  o
  g
 ```
-
-
-
-
-

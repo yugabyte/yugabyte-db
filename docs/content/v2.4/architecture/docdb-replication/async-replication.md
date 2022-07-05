@@ -8,8 +8,7 @@ menu:
     identifier: architecture-docdb-async-replication
     parent: architecture-docdb-replication
     weight: 1150
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 xCluster replication enables asynchronous replication between independent YugabyteDB clusters.
@@ -42,7 +41,7 @@ The replication of data can be bi-directional between two clusters. In this case
 
 {{< note title="Note" >}}
 
-The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated. 
+The multi-master deployment is built internally using two master-slave unidirectional replication streams as a building block. Special care is taken to ensure that the timestamps are assigned to ensure last writer wins semantics and the data arriving from the replication stream is not re-replicated.
 
 {{</note >}}
 

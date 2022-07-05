@@ -6,12 +6,11 @@ description: Installing Yugabyte Platform on Public Cloud
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Installing Yugabyte Platform on Public Cloud
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: install-1-public-cloud
     parent: overview-yp
     weight: 20
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your installation type to see the installation flow. Click on the the elements to see detailed steps.
@@ -50,4 +49,3 @@ Select your installation type to see the installation flow. Click on the the ele
     <area target="_blank" alt="Online installation" title="Online installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/" coords="236,1054,394,1112" shape="rect">
     <area target="_blank" alt="Airgapped installation" title="Airgapped installation" href="/preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/" coords="502,1053,666,1114" shape="rect">
 </map>
-

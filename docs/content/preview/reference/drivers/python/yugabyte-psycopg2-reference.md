@@ -10,8 +10,7 @@ menu:
     identifier: ref-yugabyte-psycopg2-driver
     parent: drivers
     weight: 650
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

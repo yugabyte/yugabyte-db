@@ -4,12 +4,11 @@ headerTitle: Enable encryption at rest
 linkTitle: Enable encryption at rest
 description: Enable encryption at rest
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: security
     identifier: enable-encryption-at-rest
     weight: 28
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -69,7 +68,7 @@ You can enable encryption at rest on an existing universe as follows:
 
 2. Select the universe for which to enable encryption.
 
-3. Select **Actions > Edit Universe > Edit Security > Encryption-at-Rest**. 
+3. Select **Actions > Edit Universe > Edit Security > Encryption-at-Rest**.
 
 4. In the **Manage Encryption at Rest** dialog, toggle **Enable Encryption at Rest for <universe_name>**.
 

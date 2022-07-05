@@ -8,8 +8,7 @@ menu:
     identifier: partial-index-ysql
     parent: explore-indexes-constraints
     weight: 250
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -33,7 +32,7 @@ Indexing works by specifying the rows defined by a conditional expression(called
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 

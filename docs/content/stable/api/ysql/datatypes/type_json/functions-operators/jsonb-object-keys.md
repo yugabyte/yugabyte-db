@@ -1,15 +1,14 @@
 ---
 title: jsonb_object_keys() and json_object_keys() [JSON]
 headerTitle: jsonb_object_keys() and json_object_keys()
-linkTitle: jsonb_object_keys() 
+linkTitle: jsonb_object_keys()
 description: Transform the list of key names in the supplied JSON object into a set (that is, table) of text values.
 menu:
   stable:
     identifier: jsonb-object-keys
     parent: json-functions-operators
     weight: 160
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Transform the list of key names in the supplied JSON _object_ into a set (that is, table) of `text` values.

@@ -10,20 +10,18 @@ menu:
     weight: 202
 aliases:
   - /preview/migrate/migrate-from-postgresql/migrate-application/
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This section outlines the recommended changes for porting an existing PostgreSQL application to YugabyteDB.
 
 ## Retry transactions on conflicts
 
-Currently (as of YugabyteDB v2.2), only a subset of transactions that get aborted due to an internal conflict are retried transparently. YugabyteDB uses the error code 40001 (serialization_failure) for retryable transaction conflict errors. We recommend retrying the transactions from the application upon encountering these errors.
+Only a subset of transactions that get aborted due to an internal conflict are retried transparently. YugabyteDB uses the error code 40001 (serialization_failure) for retryable transaction conflict errors. We recommend retrying the transactions from the application upon encountering these errors.
 
 {{< note title="Note" >}}
 This is the state as of YugabyteDB v2.2, reducing transaction conflicts by transparently handling retries of most transactions transparently is work in progress.
 {{< /note >}}
-
 
 ## Distribute load evenly across the cluster
 
@@ -51,7 +49,7 @@ In cases when the driver does not auto-prepare, use an explicit prepared stateme
 
 For example, if you have two tables t1 and t2 both with two columns k (primary key) and v:
 
-```
+```sql
 CREATE TABLE t1 (k VARCHAR PRIMARY KEY, v VARCHAR);
 
 CREATE TABLE t2 (k VARCHAR PRIMARY KEY, v VARCHAR);
@@ -59,7 +57,7 @@ CREATE TABLE t2 (k VARCHAR PRIMARY KEY, v VARCHAR);
 
 Now, consider the following code snippet which repeatedly makes SELECT queries that are not prepared.
 
-```
+```python
 for idx in range(num_rows):
   cur.execute("SELECT * from t1, t2 " +
               "  WHERE t1.k = t2.k AND t1.v = %s LIMIT 1"
@@ -68,7 +66,7 @@ for idx in range(num_rows):
 
 Since the Python psycopg2 driver does not support prepared bind statements (using a cursor.prepare() API), the explicit PREPARE statement is used. The above code snippet can be optimized by changing the above query to the following equivalent query.
 
-```
+```python
 cur.execute("PREPARE myplan as " +
             "  SELECT * from t1, t2 " +
             "  WHERE t1.k = t2.k AND t1.v = $1 LIMIT 1")

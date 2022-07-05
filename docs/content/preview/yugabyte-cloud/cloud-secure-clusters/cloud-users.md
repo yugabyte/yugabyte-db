@@ -5,12 +5,11 @@ description: The default YugabyteDB users and roles available in YugabyteDB Mana
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: cloud-users
     parent: cloud-secure-clusters
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To manage database access and authorization, YugabyteDB uses [role-based access control](../../../secure/authorization/) (RBAC), consisting of a collection of privileges on resources given to roles.

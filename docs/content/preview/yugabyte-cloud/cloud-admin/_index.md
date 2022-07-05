@@ -5,11 +5,12 @@ linkTitle: Administration and billing
 description: Administration and billing.
 image: /images/section_icons/explore/administer.png
 headcontent: Manage users and billing and payment methods.
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: cloud-admin
     weight: 600
+type: indexpage
 ---
 
 Before you can add Dedicated clusters, you need to create a billing profile and add a payment method. You manage your billing profile and payment methods from the **Admin** page. You can also audit activity, view your monthly invoices, and invite team members so that they can create, manage, authorize network access, and connect to clusters.

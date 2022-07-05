@@ -8,8 +8,7 @@ menu:
     identifier: arctype
     parent: tools
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [Arctype](https://arctype.com/) is a collaborative SQL database client that is free to use and cross platform. It offers one-click query sharing for teams, and you can visualize query output and combine multiple charts and tables into a dashboard.

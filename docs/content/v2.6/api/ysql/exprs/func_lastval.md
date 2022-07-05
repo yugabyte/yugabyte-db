@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: api-ysql-exprs-lastval
     parent: api-ysql-exprs
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

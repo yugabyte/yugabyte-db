@@ -8,8 +8,7 @@ menu:
     identifier: explore-point-in-time-recovery-ycql
     parent: explore
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

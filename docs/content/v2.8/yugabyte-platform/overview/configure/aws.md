@@ -5,12 +5,11 @@ linkTitle: Configure
 description: Configuring Yugabyte Platform on On-Premises
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     identifier: configure-1-aws
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
@@ -63,4 +62,3 @@ Select your cloud provider to see the steps for configuration of database nodes.
     <area target="_blank" alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect">
     <area target="_blank" alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect">
 </map>
-

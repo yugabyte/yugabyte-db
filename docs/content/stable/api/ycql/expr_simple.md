@@ -7,15 +7,14 @@ menu:
   stable:
     parent: api-cassandra
     weight: 1331
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A simple expression can be a column, a constant, or NULL.
 
 ## Column expression
 
-A column expression refers to a column in a table by using its name, which can be either a fully qualified name or a simple name.  
+A column expression refers to a column in a table by using its name, which can be either a fully qualified name or a simple name.
 
 ```
 column_expression ::= [keyspace_name.][table_name.][column_name]
@@ -36,4 +35,3 @@ When an expression, typically a column, does not have a value, it is represented
 ```
 null_expression ::= NULL
 ```
-

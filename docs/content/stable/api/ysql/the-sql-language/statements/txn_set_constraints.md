@@ -8,8 +8,7 @@ menu:
   stable:
     identifier: txn_set_constraints
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

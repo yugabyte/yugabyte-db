@@ -12,8 +12,7 @@ menu:
     weight: 4400
 aliases:
   - /preview/explore/ysql-language-features/advanced-features/extensions/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit.

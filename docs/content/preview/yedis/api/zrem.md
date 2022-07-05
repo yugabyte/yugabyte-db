@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/zrem
   - /preview/api/yedis/zrem
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

@@ -10,9 +10,7 @@ menu:
     parent: multi-dc
     identifier: async-replication
     weight: 633
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can perform deployment using unidirectional (master-follower) or bidirectional (multi-master) asynchronous replication between universes (also known as data centers).
@@ -209,31 +207,31 @@ Create tables, tablespaces, and partition tables at both the source and target u
       amount NUMERIC NOT NULL,
       created_at TIMESTAMP DEFAULT NOW()
   ) PARTITION BY LIST (geo_partition);
-  
+
   CREATE TABLESPACE eu_ts WITH(
       replica_placement='{"num_replicas": 1, "placement_blocks":
       [{"cloud": "aws", "region": "eu-west-3","zone":"eu-west-3a", "min_num_replicas":1}]}');
-  
+
   CREATE TABLESPACE us_ts WITH(
       replica_placement='{"num_replicas": 1, "placement_blocks":
       [{"cloud": "aws", "region": "us-west-2","zone":"us-west-2a", "min_num_replicas":1}]}');
-  
+
   CREATE TABLESPACE ap_ts WITH(
       replica_placement='{"num_replicas": 1, "placement_blocks":
       [{"cloud": "aws", "region": "ap-south-1","zone":"ap-south-1a", "min_num_replicas":1}]}');
-  
+
   CREATE TABLE transactions_eu
                     PARTITION OF transactions
                     (user_id, account_id, geo_partition, amount, created_at,
                     PRIMARY KEY (user_id HASH, account_id, geo_partition))
                     FOR VALUES IN ('EU') TABLESPACE eu_ts;
-  
+
   CREATE TABLE transactions_in
                     PARTITION OF transactions
                     (user_id, account_id, geo_partition, amount, created_at,
                     PRIMARY KEY (user_id HASH, account_id, geo_partition))
                     FOR VALUES IN ('IN') TABLESPACE ap_ts;
-  
+
   CREATE TABLE transactions_us
                     PARTITION OF transactions
                     (user_id, account_id, geo_partition, amount, created_at,
@@ -269,7 +267,7 @@ In the Kubernetes environment, you can set up a pod to pod connectivity, as foll
 
 - Create a source and a target universe.
 
-- Create tables in both universes, as follows: 
+- Create tables in both universes, as follows:
 
   - Execute the following commands for the source universe:
 

@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_alter_db
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

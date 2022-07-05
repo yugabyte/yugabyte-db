@@ -8,8 +8,7 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2440
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
@@ -151,7 +150,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -453,7 +452,7 @@ Specifies a comma-separated list of PostgreSQL client authentication settings th
 1. in case text has `,` or `"` it should be quoted with `"`
 2. the `"` symbol inside quoted text should be doubled (i.e. `""`)
 
-Example: 
+Example:
 
 Suppose we have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
 The second field has the `"` symbol, so we should quote this field and double the quotes. The result will be:
@@ -464,7 +463,7 @@ The second field has the `"` symbol, so we should quote this field and double th
 Now the fields can be joined with the `,` and the final flag value is set inside `'` single quotes:
 ```
 --ysql_hba_conf_csv='host all all 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""'
-``` 
+```
 
 For details on using `--ysql_hba_conf_csv` to specify client authentication, see [Fine-grained authentication](../../../secure/authentication/client-authentication).
 
@@ -528,7 +527,7 @@ Default: `100`
 
 ##### --ysql_log_statement
 
-Specifies the types of YSQL statements that should be logged. 
+Specifies the types of YSQL statements that should be logged.
 
 Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
 
@@ -630,24 +629,24 @@ Default: `256MB`
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
-their running total (summation of size of files considered so far) is 
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and
+their running total (summation of size of files considered so far) is
 within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
 
 ##### --rocksdb_universal_compaction_size_ratio
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
-their running total (summation of size of files considered so far) is 
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and
+their running total (summation of size of files considered so far) is
 within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `20`
 
 ##### --timestamp_history_retention_interval_sec
 
-The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval 
-might not be allowed after a compaction and return a `Snapshot too old` error. 
+The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval
+might not be allowed after a compaction and return a `Snapshot too old` error.
 Set this to be greater than the expected maximum duration of any single transaction in your application.
 
 Default: `120`
@@ -691,7 +690,7 @@ Default: `false`
 
 ##### --use_client_to_server_encryption
 
-Use client-to-server, or client-server, encryption with YCQL. 
+Use client-to-server, or client-server, encryption with YCQL.
 
 Default: `false`
 

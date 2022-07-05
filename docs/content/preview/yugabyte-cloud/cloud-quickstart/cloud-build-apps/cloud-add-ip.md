@@ -3,14 +3,12 @@ title: Before you begin
 headerTitle: Before you begin
 description: Obtain your cluster certificate and add your computer to the IP allow list.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Before you begin
     identifier: cloud-add-ip
     weight: 20
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In addition to having a [cluster deployed in YugabyteDB Managed](../../qs-add/), you need the following to run the sample applications with YugabyteDB Managed:

@@ -8,8 +8,7 @@ menu:
     identifier: scatter-plot-for-21-Oct-2020
     parent: analyze-the-covidcast-data
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Scatter-plot for 21-Oct-2020
@@ -150,4 +149,3 @@ Here is the resulting plot
 ![Scatter-plot for synthetic data](/images/api/ysql/exprs/aggregate_functions/covid-data-case-study/scatter-plot-synthetic-data.jpg):
 
 **Note:** The `normal_rand()` function produces a different set of pseudorandomly distributed values each time that  [`synthetic-data.sql`](../analysis-scripts/synthetic-data-sql/) is run. But the overall shape of the scatter-plot will remain the same.
-

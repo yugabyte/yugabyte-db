@@ -4,13 +4,12 @@ linkTitle: Deploy clusters
 description: Deploy clusters in YugabyteDB Managed.
 headcontent: Deploy production-ready clusters.
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: cloud-basics
     weight: 25
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Using YugabyteDB Managed, you can create single- and multi-region clusters that can be deployed across multiple availability zones and regions.

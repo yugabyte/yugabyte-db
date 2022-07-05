@@ -4,12 +4,11 @@ headerTitle: Back up universe YCQL data
 linkTitle: Back up universe data
 description: Use YugabyteDB Anywhere to back up data in YCQL tables.
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-2-ycql
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -46,7 +45,7 @@ By default, the list displays all the backups generated for the universe regardl
 
 To view detailed information about an existing backup, click on it to open **Backup Details**.
 
-The **Backups** page allows you to create new backups that start immediately, as follows: 
+The **Backups** page allows you to create new backups that start immediately, as follows:
 
 - Click **Backup now** to open the dialog shown in the following illustration:<br><br>
 
@@ -56,7 +55,7 @@ The **Backups** page allows you to create new backups that start immediately, as
 
 - Complete the **Select the storage config you want to use for your backup** field whose list depends on your existing backup storage configurations. For more information, see [Configure backup storage](../../configure-backup-storage/).
 
-- Select the database to back up. 
+- Select the database to back up.
 
 - Specify whether you want to back up all tables in the keyspace to which the database belongs or only  certain tables. If you choose **Select a subset of tables**, a **Select Tables** dialog opens allowing you to select one or more tables to back up.
 

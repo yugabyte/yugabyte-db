@@ -13,9 +13,7 @@ aliases:
   - /preview/deploy/kubernetes/aks/
   - /preview/deploy/kubernetes/aks/helm-chart/
   - /preview/deploy/kubernetes/single-zone/aks/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 

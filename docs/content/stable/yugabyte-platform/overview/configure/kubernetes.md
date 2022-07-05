@@ -6,12 +6,11 @@ description: Configuring Yugabyte Platform on Kubernetes
 image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring Yugabyte Platform on Kubernetes
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: configure-4-k8s
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 Select your cloud provider to see the steps for configuration of database nodes. Click on the elements to see detailed steps.
@@ -66,6 +65,3 @@ Select your cloud provider to see the steps for configuration of database nodes.
     <area target="_blank" alt="K8s pre reqs" title="K8s pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#prerequisites" coords="225,475,679,613" shape="rect">
     <area target="_blank" alt="K8s cloud" title="K8s cloud" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-the-cloud-provider" coords="304,670,599,758" shape="rect">
 </map>
-
-
-

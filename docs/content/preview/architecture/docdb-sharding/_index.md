@@ -12,8 +12,8 @@ menu:
     identifier: architecture-docdb-sharding
     parent: architecture
     weight: 1130
+type: indexpage
 ---
-
 {{< note title="Note" >}}
 
 YugabyteDB's sharding architecture is inspired by <a href="https://research.google.com/archive/spanner-osdi2012.pdf">Google Spanner</a>.

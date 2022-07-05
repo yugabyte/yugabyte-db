@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: ddl_create_matview
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

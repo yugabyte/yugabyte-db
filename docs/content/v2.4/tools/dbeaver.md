@@ -8,8 +8,7 @@ menu:
     identifier: dbeaver
     parent: tools
     weight: 2710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [DBeaver](https://dbeaver.io/) is a free (and [open source](https://github.com/dbeaver/dbeaver)) multi-platform, cross-platform database tool for developers, SQL programmers, database administrators, and analysts. DBeaver is written in Java, based on the [Eclipse](https://www.eclipse.org/) platform, and supports supports any database that has a JDBC driver, including PostgreSQL, MariaDB, and MySQL. And, using the PostgreSQL JDBC driver, you can use DBeaver with YugabyteDB.
@@ -42,7 +41,7 @@ JDK and JRE installers for Linux, macOS, and Windows can be downloaded from [Ope
 
 ### PostgreSQL JDBC driver
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) can be used with DBeaver to work with YugabyteDB databases. 
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) can be used with DBeaver to work with YugabyteDB databases.
 
 To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver installed. To download the current version that supports Java 8 or later, go to the [PostgreSQL JDBC Driver download](https://jdbc.postgresql.org/download.html) page.
 
@@ -74,7 +73,7 @@ To connect DBeaver to a YugabyteDB cluster, you need the PostgreSQL JDBC driver 
 
 5. In the **Libraries** tab, select the PostgreSQL JDBC driver JAR file to be used.
 
-6. Click **OK**. The **Create new driver** window closes. 
+6. Click **OK**. The **Create new driver** window closes.
 
 7. Verify that the new "YugabyteDB" driver appears in the **Driver Manager** listing and then click **Close**.
 

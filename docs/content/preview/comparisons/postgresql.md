@@ -6,11 +6,10 @@ description: Compare PostgreSQL with YugabyteDB.
 aliases:
   - /comparisons/postgresql/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1128
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 ## The basics

@@ -7,8 +7,7 @@ menu:
     identifier: prisma
     parent: graphql
     weight: 583
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Explore how you can use Prisma, and its GraphQL support, to interact with YugabyteDB. You will quickly build a GraphQL server and then use the Prisma client to write data to and run queries on a YugabyteDB database. Also, you'll get a taste of Prisma's ORM functionality.
@@ -329,4 +328,3 @@ docker rm <container-id>
 ```
 
 Note: you can list running containers by running `docker ps`.
-

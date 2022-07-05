@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/zrangebyscore
   - /preview/api/yedis/zrangebyscore
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

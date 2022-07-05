@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: cmd_show
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

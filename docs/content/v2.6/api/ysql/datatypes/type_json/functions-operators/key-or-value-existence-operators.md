@@ -8,8 +8,7 @@ menu:
     identifier: key-or-value-existence-operators
     parent: json-functions-operators
     weight: 17
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** (1) If the left-hand JSON value is an _object_, test if the right-hand SQL text value(s) exist as key name(s) in the _object_. (2) If the left-hand JSON value is an _array_, test if the right-hand SQL text value(s) exist as JSON _string_ value(s) in the _array_.
@@ -74,7 +73,7 @@ end;
 $body$;
 ````
 
-**Input is an _array_:** 
+**Input is an _array_:**
 
 ```plpgsql
 do $body$
@@ -248,4 +247,3 @@ begin
 end;
 $body$;
 ```
-

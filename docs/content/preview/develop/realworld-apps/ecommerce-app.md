@@ -10,8 +10,7 @@ menu:
     identifier: ecommerce-app
     parent: realworld-apps
     weight: 582
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview

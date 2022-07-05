@@ -10,8 +10,7 @@ menu:
     identifier: performance-troubleshooting
     parent: benchmark
     weight: 22
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 Use this page for general guidance and steps you can take when troubleshooting the performance of your Yugabyte cluster.
@@ -65,7 +64,7 @@ $ ./tserver/bin/log-dump /mnt/d0/yb-data/tserver/wals/table-e85a116bc557403e82f5
 ### Database (SSTable) Files for various tablets
 You can find SSTable files at `/mnt/d*/yb-data/{master|tserver}/data`.
 
-To pretty print the contents of these SSTable files, 
+To pretty print the contents of these SSTable files,
 
 ```
 $ pwd
@@ -146,7 +145,7 @@ Note: On mac, the environment variable DYLD_FALLBACK_LIBRARY_PATH needs to be se
 export DYLD_FALLBACK_LIBRARY_PATH=~/code/yugabyte/build/latest/rocksdb-build
 ```
 
-## yb-ts-cli 
+## yb-ts-cli
 You can run various tablet related commands with yb-ts-cli by pointing at the master:
 ```
 ./yb-ts-cli list_tablets --server_address=localhost:9000
@@ -159,7 +158,7 @@ You can run various commands with `yb-admin`. Just specify the full set of maste
 # Get all tables
 ./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tables
 # Get all tablets for a specific table
-./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test 
+./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test
 # List the tablet servers for each tablet
 ./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablet_servers $(./yb-admin -master_addresses 127.0.0.1:7000,127.0.0.2:7000,127.0.0.3:7000 list_tablets yb_load_test)
 # List all tablet servers

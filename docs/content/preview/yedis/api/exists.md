@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/exist
   - /preview/api/yedis/exist
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Single-key request only. Requests with multiple keys are not yet supported.
 

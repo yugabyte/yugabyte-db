@@ -8,9 +8,7 @@ menu:
     parent: multi-dc
     identifier: 3dc-deployment
     weight: 632
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Recommended Reading" >}}

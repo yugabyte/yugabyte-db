@@ -8,8 +8,7 @@ menu:
     identifier: hasura-1
     parent: hasura
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the [Hasura GraphQL Engine](https://hasura.io) with YugabyteDB to power your GraphQL applications with a distributed  database.

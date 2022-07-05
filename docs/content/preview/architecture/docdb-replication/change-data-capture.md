@@ -12,9 +12,7 @@ menu:
     parent: architecture-docdb-replication
     identifier: architecture-docdb-replication-cdc
     weight: 1160
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Change data capture (CDC) in YugabyteDB provides technology to ensure that any changes in data (inserts, updates, and deletions) are identified, captured, and automatically applied to another data repository instance, or made available for consumption by applications and other tools.

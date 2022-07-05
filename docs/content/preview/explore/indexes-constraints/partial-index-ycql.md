@@ -9,10 +9,9 @@ menu:
     parent: explore-indexes-constraints
     weight: 241
 aliases:
-   - /preview/explore/ysql-language-features/indexes-1/
-   - /preview/explore/indexes-constraints/indexes-1/
-isTocNested: true
-showAsideToc: true
+  - /preview/explore/ysql-language-features/indexes-1/
+  - /preview/explore/indexes-constraints/indexes-1/
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -37,7 +36,7 @@ Partial indexes can be `UNIQUE`. A UNIQUE partial index enforces the constraint 
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 

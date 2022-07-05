@@ -10,8 +10,7 @@ menu:
     weight: 235
 aliases:
   - /preview/explore/ysql-language-features/savepoints/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document provides an overview of YSQL savepoints, and demonstrates how to use them to checkpoint your progress within a transaction. The `SAVEPOINT` command establishes a new savepoint within the current transaction.

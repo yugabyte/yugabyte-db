@@ -4,12 +4,11 @@ headerTitle: Prepare nodes (on-prem)
 linkTitle: Prepare nodes (on-prem)
 description: Prepare YugabyteDB nodes for on-premises deployments.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     identifier: prepare-on-prem-nodes
     parent: install-yugabyte-platform
     weight: 79
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 For on-premises deployments of YugabyteDB universes, you need to import nodes that can be managed by the Yugabyte Platform. This page outlines the steps required to prepare these YugabyteDB nodes for on-premises deployments.

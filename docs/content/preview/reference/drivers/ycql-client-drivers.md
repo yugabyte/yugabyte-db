@@ -9,8 +9,7 @@ menu:
     parent: drivers
     weight: 2942
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following client drivers are supported for use with the [Yugabyte Cloud Query Language (YCQL) API](../../../api/ycql/), a SQL-based, semi-relational API, with roots in the Apache Cassandra Query Language (CQL).

@@ -7,8 +7,7 @@ menu:
   v2.6:
     identifier: dcl_create_role
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

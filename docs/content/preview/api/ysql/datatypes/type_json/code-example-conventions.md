@@ -8,8 +8,7 @@ menu:
     identifier: code-example-conventions
     parent: api-ysql-datatypes-json
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Note about the code examples

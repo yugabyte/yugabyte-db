@@ -9,10 +9,9 @@ menu:
     parent: explore-indexes-constraints
     weight: 240
 aliases:
-   - /preview/explore/ysql-language-features/indexes-1/
-   - /preview/explore/indexes-constraints/indexes-1/
-isTocNested: true
-showAsideToc: true
+  - /preview/explore/ysql-language-features/indexes-1/
+  - /preview/explore/indexes-constraints/indexes-1/
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -36,7 +35,7 @@ Indexing works by specifying the rows defined by a conditional expression(called
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name(column_list) WHERE condition;
 ```
 

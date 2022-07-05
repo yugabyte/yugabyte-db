@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/ddl_grant_role
   - /preview/api/ycql/ddl_grant_role
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
