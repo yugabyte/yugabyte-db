@@ -29,6 +29,7 @@ type: docs
   </li>
 
 </ul>
+
 [Hibernate ORM](https://hibernate.org/orm/) is an Object/Relational Mapping (ORM) framework for Java applications. Hibernate ORM is concerned with data persistence of relational databases, and enables developers to write applications whose data outlives the application lifetime.
 
 YugabyteDB YSQL API has full compatibility with Hibernate ORM for Data persistence in Java applications. This page provides details for getting started with Hibernate ORM for connecting to YugabyteDB.

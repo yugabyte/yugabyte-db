@@ -9,8 +9,7 @@ menu:
     identifier: java-orm-ebean
     parent: java-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -235,7 +234,7 @@ The example application has an Employee model that retrieves employee informatio
 
     The output should look like the following:
 
-    ```output.json
+    ```output
     ["{'empId' = '1', firstName ='John', 'lastName' ='Smith', 'email' ='jsmith@xyz.com' }"]
     ```
 
