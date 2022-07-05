@@ -128,11 +128,11 @@ You can also use the same command to view the information about a particular sch
 
 ## Restore to a point in time
 
-{{< warning title="Warning!" >}}
+{{< warning title="Stop workloads before restoring" >}}
 
-Before initiating restoration to a point in time, it's recommended that you stop all the application workloads. Transactions running concurrently with the restore operation can lead to data inconsistency.
+Stop all the application workloads before you restore to a point in time. Transactions running concurrently with the restore operation can lead to data inconsistency.
 
-This requirement will be removed in the future releases. Tracking issue: [12853](https://github.com/yugabyte/yugabyte-db/issues/12853)
+This requirement will be removed in an upcoming release, and is tracked in issue [12853](https://github.com/yugabyte/yugabyte-db/issues/12853).
 
 {{< /warning >}}
 
@@ -178,43 +178,44 @@ If a database or a keyspace has an associated snapshot schedule, you can use tha
                                              minus 1h
     ```
 
-For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
+    For detailed information on the relative time formatting, refer to the [`restore_snapshot_schedule` reference](../../../admin/yb-admin/#restore-snapshot-schedule).
 
 {{< note title="YSQL index backfill" >}}
 
-YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is the process of asynchronous population of a new index. The process runs in the background and can take significant amount of time, depending on the size of the data. If you restore to a point in time that is not long ago after an index creation, it is likely you will hit a state where the index is in the middle of the backfill process.
+YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which asynchronously populates a new index. The process runs in the background and can take a significant amount of time, depending on the size of the data. If you restore to a point in time soon after an index creation, you're likely to hit a state where the index is in the middle of the backfill process.
 
-**Such indexes are not functional, as YugabyteDB ignores them during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** You can get a list of indexes that need to be recreated by running the following query:
+**YugabyteDB ignores these partly-backfilled indexes during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** Run the following query to get a list of indexes that need to be recreated:
 
 ```sql
 SELECT pg_class.relname
-FROM pg_index
-JOIN pg_class
-ON pg_index.indexrelid = pg_class.oid
-WHERE NOT indisvalid;
+    FROM pg_index
+    JOIN pg_class
+    ON pg_index.indexrelid = pg_class.oid
+    WHERE NOT indisvalid;
 ```
 
-Note that this affects only YSQL databases. In case of YCQL, index backfill is restarted automatically after the restore.
+This affects only YSQL databases. For YCQL, YugabyteDB automatically restarts index backfill after the restore.
 
-The requirement will be removed in the future releases. Tracking issue: [12672](https://github.com/yugabyte/yugabyte-db/issues/12672)
+This limitation will be removed in an upcoming release, and is tracked in issue [12672](https://github.com/yugabyte/yugabyte-db/issues/12672).
 
 {{< /note >}}
 
 ## Limitations
 
-PITR functionality comes with several limitations, mainly related to it being used together with other features of YugabyteDB. Most of the limitations will be addressed in the future, please refer to corresponding tracking issues for more details.
+PITR functionality has several limitations, primarily related to interactions with other YugabyteDB features. Most of these limitations will be addressed in upcoming releases; refer to each limitation's corresponding tracking issue for details.
 
 ###  CDC
 
-Combination of PITR and [CDC](../../../explore/change-data-capture/) is currently not supported.
+Using PITR and [CDC](../../../explore/change-data-capture/) together is currently not supported.
 
 Tracking issue: [12773](https://github.com/yugabyte/yugabyte-db/issues/12773)
 
 ### xCluster replication
 
-Combination of PITR and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) is not fully tested and is considered beta.
+The combination of PITR and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) is not fully tested, and is considered beta.
 
-xCluster does not replicate any commands related to PITR, so if you have two clusters with replication between them, you should enable PITR on both ends separately. In case of restore, the recommended procedure is the following:
+xCluster does not replicate any commands related to PITR. If you have two clusters with replication between them, enable PITR on both ends separately. To restore, the following is the recommended procedure:
+
 1. Stop application workloads and make sure there are no active transactions.
 1. Wait for replication to complete.
 1. Restore to the same time on both clusters.
@@ -224,13 +225,13 @@ Tracking issue: [10820](https://github.com/yugabyte/yugabyte-db/issues/10820)
 
 ### Tablegroups
 
-Combination of PITR and [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is currently not supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you will get an error. An attempt to create a tablegroup if a schedule exists on **any** of the databases will also end up in an error.
+Using PITR with [tablegroups](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-tablegroups.md) is not currently supported. If you attempt to create a PITR schedule within a cluster with tablegroups, you'll get an error. Attempting to create a tablegroup if a schedule exists on _any of the databases_ will also produce an error.
 
 Tracking issue: [11924](https://github.com/yugabyte/yugabyte-db/issues/11924)
 
 ### Global objects
 
-Global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles and permissions are not currently backed up by the distributed snapshots, and therefore are not supported by PITR. If you alter or drop a global object, and then try to restore to a point in time before the change, the object will **not** be restored.
+PITR doesn't support global objects, such as [tablespaces](../../../explore/ysql-language-features/going-beyond-sql/tablespaces/), roles, and permissions, because they're not currently backed up by the distributed snapshots. If you alter or drop a global object, then try to restore to a point in time before the change, the object will _not_ be restored.
 
 Tracking issue for YSQL tablespaces: [10257](https://github.com/yugabyte/yugabyte-db/issues/10257)
 
@@ -240,24 +241,20 @@ Tracking issue for YCQL: [8453](https://github.com/yugabyte/yugabyte-db/issues/8
 
 {{< note title="Special case for tablespaces" >}}
 
-Tablespaces are crucial for geo-partitioned deployments. Trying to restore a database that relies on a tablespace that had been removed can lead to unexpected behavior, so `DROP TABLESPACE` command is currently disallowed if a schedule exists on **any** of the databases within the cluster.
+Tablespaces are crucial for geo-partitioned deployments. Trying to restore a database that relies on a removed tablespace will lead to unexpected behavior, so the `DROP TABLESPACE` command is currently disallowed if a schedule exists on _any_ of the databases in the cluster.
 
 {{< /note >}}
 
 ### YSQL system catalog upgrade
 
-PITR can't be used to restore to a state before the latest [YSQL system catalog upgrade](../../../admin/yb-admin/#upgrade-ysql-system-catalog). Trying to do so will produce an error. You can still use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/) to restore in such scenarios.
+You can't use PITR to restore to a state before the most recent [YSQL system catalog upgrade](../../../admin/yb-admin/#upgrade-ysql-system-catalog). Trying to do so will produce an error. You can still use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/) to restore in this scenario.
 
 Tracking issue: [13158](https://github.com/yugabyte/yugabyte-db/issues/13158)
 
-{{< note >}}
+This limitation applies only to YSQL databases. YCQL is not affected.
 
-This limitation is only applicable to YSQL databases. YCQL is not affected.
+### Other limitations
 
-{{< /note >}}
-
-### Other restrictions
-
-* `TRUNCATE` command is disallowed for a database with a snapshot schedule. Tracking issue: [7129](https://github.com/yugabyte/yugabyte-db/issues/7129).
-* PITR works **only** with in-cluster distributed snapshot. PITR support for off-cluster backups is considered for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
-* Snapshot schedules can't be modified once created. If you need to change the interval or the retention period, you should delete the snapshot and recreate it with new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
+* The `TRUNCATE` command is disallowed for databases with a snapshot schedule. Tracking issue: [7129](https://github.com/yugabyte/yugabyte-db/issues/7129).
+* PITR works only with _in-cluster_ distributed snapshots. PITR support for off-cluster backups is under consideration for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
+* You can't modify a snapshot schedule once it's created. If you need to change the interval or the retention period, delete the snapshot and recreate it with the new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
