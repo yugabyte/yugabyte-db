@@ -23,9 +23,13 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/countdown_latch.h"
 #include "yb/util/range.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
+using namespace std::literals;
 
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(history_cutoff_propagation_interval_ms);
@@ -447,6 +451,57 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(PackOverflow)) {
   ASSERT_OK(conn.Execute("ALTER TABLE t ADD COLUMN v2 TEXT"));
 
   ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddDropColumn)) {
+  constexpr int kKeys = 15;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY) SPLIT INTO 1 TABLETS"));
+
+  TestThreadHolder thread_holder;
+
+  CountDownLatch alter_latch(1);
+
+  thread_holder.AddThread([this, &stop_flag = thread_holder.stop_flag(), &alter_latch] {
+    std::set<int> columns;
+    int current_column = 0;
+    auto conn = ASSERT_RESULT(Connect());
+    bool signalled = false;
+    while (!stop_flag.load()) {
+      if (columns.empty() || (columns.size() < 10 && RandomUniformBool())) {
+        columns.insert(++current_column);
+        ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t ADD COLUMN v$0 INT", current_column));
+      } else {
+        auto column_it = RandomIterator(columns);
+        ASSERT_OK(conn.ExecuteFormat("ALTER TABLE t DROP COLUMN v$0", *column_it));
+        columns.erase(column_it);
+      }
+      if (!signalled) {
+        alter_latch.CountDown();
+        signalled = true;
+      }
+      std::this_thread::sleep_for(100ms * kTimeMultiplier);
+    }
+  });
+
+  alter_latch.Wait();
+
+  for (auto key : Range(kKeys)) {
+    LOG(INFO) << "Insert key: " << key;
+    auto status = conn.ExecuteFormat("INSERT INTO t VALUES ($0)", key);
+    if (!status.ok()) {
+      LOG(INFO) << "Insert failed for " << key << ": " << status;
+      // TODO temporary workaround for YSQL issue #8096.
+      if (status.ToString().find("Invalid column number") != std::string::npos) {
+        conn = ASSERT_RESULT(Connect());
+        continue;
+      }
+      ASSERT_OK(status);
+    }
+  }
+
+  thread_holder.Stop();
 }
 
 } // namespace pgwrapper
