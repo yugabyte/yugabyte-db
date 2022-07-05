@@ -242,6 +242,11 @@ Status ClusterAdminCli::Run(int argc, char** argv) {
   s = commands_[cmd->second].action_(command_args);
   if (!s.ok()) {
     cerr << "Error running " << cmd->first << ": " << s << endl;
+    if (s.IsInvalidArgument()) {
+      cerr << Format(
+                  "Usage: $0 $1 $2", args[0], cmd->first, commands_[cmd->second].usage_arguments_)
+           << endl;
+    }
     return STATUS(RuntimeError, "Error running command");
   }
   return Status::OK();
