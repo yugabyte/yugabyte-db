@@ -3,15 +3,14 @@ title: Export PostgreSQL data
 headerTitle: Export PostgreSQL data
 linkTitle: Export PostgreSQL data
 description: Steps for exporting PostgreSQL data for importing into YugabyteDB.
+aliases:
+  - /preview/migrate/migrate-from-postgresql/export-data/
 menu:
   preview:
     identifier: migrate-postgresql-export
     parent: manual-import
     weight: 203
-aliases:
-  - /preview/migrate/migrate-from-postgresql/export-data/
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 The recommended way to export data from PostgreSQL for purposes of importing it to YugabyteDB is using the CSV format.

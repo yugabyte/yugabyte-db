@@ -8,13 +8,12 @@ image: /images/section_icons/index/deploy.png
 aliases:
   - /deploy/
   - /preview/deploy/
-section: YUGABYTEDB CORE
 menu:
   preview:
     identifier: deploy
-    weight: 634
+    parent: launch-and-manage
+type: indexpage
 ---
-
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="checklist/">

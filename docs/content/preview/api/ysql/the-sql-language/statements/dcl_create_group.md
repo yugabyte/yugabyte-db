@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/dcl_create_group/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

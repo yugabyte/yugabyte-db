@@ -5,12 +5,12 @@ linkTitle: Administer Yugabyte Platform
 description: Administer Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
 headcontent: Administer Yugabyte Platform.
-type: page
-section: YUGABYTE PLATFORM
 menu:
-  stable:
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
     weight: 649
+type: indexpage
 ---
 
 Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.

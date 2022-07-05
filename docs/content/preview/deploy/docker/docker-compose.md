@@ -12,9 +12,7 @@ menu:
     name: Docker
     identifier: docker-1-compose
     weight: 625
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

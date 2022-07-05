@@ -4,12 +4,11 @@ headerTitle: Upgrade YugabyteDB Anywhere using Replicated
 linkTitle: Upgrade using Replicated
 description: Use Replicated to upgrade YugabyteDB Anywhere
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: upgrade-yp-replicated
     parent: upgrade
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use [Replicated](https://www.replicated.com/) to upgrade your YugabyteDB Anywhere to a newer version.

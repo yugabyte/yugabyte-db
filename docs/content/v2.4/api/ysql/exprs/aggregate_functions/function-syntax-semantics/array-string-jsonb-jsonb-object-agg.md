@@ -8,8 +8,7 @@ menu:
     identifier: array-string-jsonb-jsonb-object-agg
     parent: aggregate-function-syntax-semantics
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The aggregate functions `array_agg()`, `string_agg()`, `jsonb_agg()`, and `jsonb_object_agg()` are described in this same section because each produces, as a single value, a _list_ of the values that are aggregated.  (The term "list" is used informally and somewhat loosely here. The examples make the sense in which the word is used clear.)
@@ -25,7 +24,7 @@ This makes  `array_agg()`, `string_agg()`, and `jsonb_agg()` unique among ordina
 ```
 input value:       anynonarray
                    anyarray
-                   
+
 return value:      anyarray
 ```
 
@@ -40,7 +39,7 @@ The order of the resulting array elements (i.e. the mapping of element value to 
 ```
 input value:       text, text
                    bytea, bytea
-                   
+
 return value:      text
                    bytea
 ```
@@ -64,7 +63,7 @@ select vt, vb from t order by k;
 This is the result:
 
 ```
- vt |  vb  
+ vt |  vb
 ----+------
  m  | \x6d
  o  | \x6f
@@ -91,7 +90,7 @@ from a;
 This is the result:
 
 ```
- text_agg |      bytea_agg       | bytea_agg_text 
+ text_agg |      bytea_agg       | bytea_agg_text
 ----------+----------------------+----------------
  mouse    | \x6d2e6f2e752e732e65 | m.o.u.s.e
 ```
@@ -104,7 +103,7 @@ This aggregate function, together with `json_agg()`, are described fully in the 
 
 ```
 input value:       anyelement
-                   
+
 return value:      jsonb
 ```
 
@@ -118,7 +117,7 @@ This aggregate function, together with `json_object_agg()`, are described fully 
 
 ```
 input value:       "any", "any"
-                   
+
 return value:      jsonb
 ```
 
@@ -151,7 +150,7 @@ select k, class, v from t order by k;
 This is the result:
 
 ```
- k | class | v 
+ k | class | v
 ---+-------+---
  1 |     1 | a
  2 |     1 | b
@@ -180,7 +179,7 @@ order by class;
 This is the result:
 
 ```
- class | array_agg(v) | string_agg(v) |    jsonb_agg    |  jsonb_object_agg(v, k)  
+ class | array_agg(v) | string_agg(v) |    jsonb_agg    |  jsonb_object_agg(v, k)
 -------+--------------+---------------+-----------------+--------------------------
      1 | {c,a}        | c ~ b ~ a     | ["c", "a"]      | {"a": 1, "b": 2, "c": 3}
      2 | {f,e,d}      | f ~ d         | ["f", "e", "d"] | {"d": 4, "f": 6}
@@ -209,7 +208,7 @@ order by 1;
 This is the result:
 
 ```
- class | array_agg(v) | string_agg(v) |  string_agg(v)  |  jsonb_object_agg(v, k)  
+ class | array_agg(v) | string_agg(v) |  string_agg(v)  |  jsonb_object_agg(v, k)
 -------+--------------+---------------+-----------------+--------------------------
      1 | {c}          | c             | ["c"]           | {"c": 3}
      1 | {c}          | c             | ["c"]           | {"b": 2, "c": 3}
@@ -218,8 +217,3 @@ This is the result:
      2 | {f,e}        | f ~ e         | ["f", "e"]      | {"f": 6}
      2 | {f,e,d}      | f ~ e ~ d     | ["f", "e", "d"] | {"d": 4, "f": 6}
 ```
-
-
-
-
-

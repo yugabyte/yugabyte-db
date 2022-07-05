@@ -1,6 +1,6 @@
 ---
 title: Rule 3 (for string intended to specify the UTC offset) [YSQL]
-headerTitle: Rule 3 
+headerTitle: Rule 3
 linkTitle: 3 'set timezone' string not resolved in ~abbrevs.abbrev
 description: Substantiates the rule that a string that's intended to identify a UTC offset is never resolved in pg_timezone_abbrevs.abbrev as the argument of 'set timezone' but is resolved there as the argument of 'timezone()' and within a 'text' literal for a 'timestamptz' value. [YSQL]
 menu:
@@ -8,8 +8,7 @@ menu:
     identifier: rule-3
     parent: name-res-rules
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="" >}}
@@ -30,7 +29,7 @@ from c;
 This is the result:
 
 ```output
- ~names.name | ~names.abbrev | ~abbrevs.abbrev 
+ ~names.name | ~names.abbrev | ~abbrevs.abbrev
 -------------+---------------+-----------------
  false       | false         | true
 ```

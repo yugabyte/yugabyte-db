@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-features-expressions-operators
     parent: explore-ysql-language-features
     weight: 215
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use boolean, numeric, and date expressions, as well as basic operators. In addition, it provides information on conditional expression and operators.
@@ -336,4 +335,3 @@ SELECT
 '25'::INTEGER,
 '02-DEC-2020'::DATE;
 ```
-

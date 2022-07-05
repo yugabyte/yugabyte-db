@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_create_user_mapping
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

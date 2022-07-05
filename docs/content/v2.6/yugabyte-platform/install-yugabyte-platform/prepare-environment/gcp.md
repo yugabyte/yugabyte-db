@@ -4,12 +4,11 @@ headerTitle: Prepare the Google Cloud Platform (GCP) environment
 linkTitle: Prepare the environment
 description: Prepare the Google Cloud Platform (GCP) environment
 menu:
-  v2.6:
+  v2.6_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: prepare-environment-2-gcp
     weight: 55
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

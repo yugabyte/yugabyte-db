@@ -9,12 +9,11 @@ aliases:
   - /preview/yugabyte-cloud/cloud-network/
   - /preview/yugabyte-cloud/cloud-network/ip-whitelists/
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: add-connections
     parent: cloud-secure-clusters
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To secure your cluster from distributed denial-of-service (DDoS) and brute force password attacks, access to your clusters is restricted to IP addresses that you specify in IP allow lists. An IP allow list is a set of IP addresses and ranges that, when assigned to a cluster, grant access to connections made from those addresses; all other connections are ignored.

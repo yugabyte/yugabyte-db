@@ -3,15 +3,14 @@ title: Convert a PostgreSQL schema
 headerTitle: Convert a PostgreSQL schema
 linkTitle: Convert a PostgreSQL schema
 description: Steps for migrating a PostgreSQL schema for YugabyteDB.
+aliases:
+  - /preview/migrate/migrate-from-postgresql/migrate-schema/
 menu:
   preview:
     identifier: migrate-postgresql-schema
     parent: manual-import
     weight: 201
-aliases:
-  - /preview/migrate/migrate-from-postgresql/migrate-schema/
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 To convert the PostgreSQL schema to YugabyteDB schema, the following changes need to be made.
@@ -31,7 +30,6 @@ YugabyteDB (as of v2.2) does not support the PostgreSQL syntax of first declarin
 Altering the primary key of a table after creation is a planned feature, the current status of this enhancement is tracked in [GitHub issue #1104](https://github.com/yugabyte/yugabyte-db/issues/1104).
 
 {{< /note >}}
-
 
 ## Use `HASH` sort order
 
@@ -86,7 +84,7 @@ CREATE TABLE test1 (
 
 Attempting to create this table would result in the following error.
 
-```
+```output
 ERROR:  0A000: COLLATE not supported yet
 LINE 2:     a text COLLATE "de_DE" PRIMARY KEY,
                    ^
@@ -119,7 +117,6 @@ CREATE TABLE contacts (
   phone VARCHAR,
   PRIMARY KEY (contact_id)
 );
-
 ```
 
 One of the following techniques is recommended (in the order of preference) to improve performance when using sequences.
@@ -128,13 +125,13 @@ One of the following techniques is recommended (in the order of preference) to i
 
 In order to use the `SERIAL` data type and not incur a performance penalty on `INSERT` operations, setting the cache size to 1000 is recommended. This can be achieved in the example table above by running an `ALTER` command on the sequence in the following manner.
 
-```
+```sql
 ALTER SEQUENCE contacts_contact_id_seq CACHE 1000;
 ```
 
 You can find the name of the sequence as shown below.
 
-```
+```output.sql
 yugabyte=# SELECT pg_get_serial_sequence('contacts', 'contact_id');
      pg_get_serial_sequence
 --------------------------------

@@ -2,13 +2,12 @@
 title: Django REST framework
 linkTitle: Django REST framework
 description: Django REST framework
-section: INTEGRATIONS
 menu:
   preview:
     identifier: django-rest-framework
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This document describes how to use [Django REST framework](https://www.django-rest-framework.org/), an ORM library in Python, with YugabyteDB.

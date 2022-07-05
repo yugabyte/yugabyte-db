@@ -2,14 +2,13 @@
 title: Client drivers for YCQL API
 headerTitle: Client drivers for YCQL
 linkTitle: Client drivers for YCQL
-description: Lists the client drivers that you can use to build and access YCQL applications. 
+description: Lists the client drivers that you can use to build and access YCQL applications.
 menu:
   stable:
     identifier: ycql-client-libraries
     parent: drivers
     weight: 2942
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following client drivers are supported for use with the [Yugabyte Cloud Query Language (YCQL) API](../../../api/ycql/), a SQL-based, semi-relational API, with roots in the Apache Cassandra Query Language (CQL).

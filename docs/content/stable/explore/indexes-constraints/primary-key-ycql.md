@@ -8,8 +8,7 @@ menu:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
     weight: 201
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

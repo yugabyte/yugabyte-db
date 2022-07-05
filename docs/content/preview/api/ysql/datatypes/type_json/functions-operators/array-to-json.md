@@ -9,8 +9,7 @@ menu:
     identifier: array-to-json
     parent: json-functions-operators
     weight: 53
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a JSON _array_ from a SQL array.

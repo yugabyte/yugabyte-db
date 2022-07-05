@@ -8,8 +8,7 @@ menu:
     identifier: performance
     parent: yb-voyager
     weight: 103
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page describes factors that can affect the performance of migration jobs being carried out using [yb-voyager](https://github.com/yugabyte/yb-voyager), along with the tuneable parameters you can use to improve performance.

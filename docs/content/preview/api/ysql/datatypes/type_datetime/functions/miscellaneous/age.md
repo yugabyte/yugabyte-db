@@ -8,8 +8,7 @@ menu:
     identifier: age
     parent: miscellaneous
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## The semantics of the two-parameter overload of function age(timestamp[tz], timestamp[tz])

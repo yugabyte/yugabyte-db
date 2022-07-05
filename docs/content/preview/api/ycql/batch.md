@@ -8,8 +8,7 @@ menu:
   preview:
     parent: api-cassandra
     weight: 19991
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Batch operations let you send multiple operations in a single RPC call to the database. The larger the batch size,

@@ -9,11 +9,9 @@ menu:
     parent: explore-indexes-constraints
     weight: 220
 aliases:
-   - /preview/explore/ysql-language-features/indexes-1/
-   - /preview/explore/indexes-constraints/indexes-1/
-isTocNested: true
-showAsideToc: true
-
+  - /preview/explore/ysql-language-features/indexes-1/
+  - /preview/explore/indexes-constraints/indexes-1/
+type: docs
 ---
 
 The use of indexes can enhance database performance by enabling the database server to find rows faster. You can create, drop, and list indexes, as well as use indexes on expressions.
@@ -61,7 +59,7 @@ For information regarding the EXPLAIN statement, see:
 
 You can remove one or more existing indexes using the `DROP INDEX` statement in YSQL and YCQL with the following syntax:
 
-```ysql
+```sql
 DROP INDEX index_name1, index_name2, index_name3, ... ;
 ```
 

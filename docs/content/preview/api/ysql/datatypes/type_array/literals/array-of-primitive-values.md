@@ -8,8 +8,7 @@ menu:
     identifier: array-of-primitive-values
     parent: array-literals
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section states a sufficient subset of the rules that allow you to write a syntactically correct array literal that expresses any set of values, for arrays of any scalar data type, that you could want to create. The full set of rules allows more flexibility than do just those that are stated here. But because these are sufficient, the full, and rather complex, set is not documented here. The explanations in this section will certainly allow you to interpret the `::text` typecast of any array value that you might see, for example in `ysqlsh`.

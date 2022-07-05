@@ -10,8 +10,7 @@ menu:
     weight: 582
 aliases:
   - /preview/develop/best-practices/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

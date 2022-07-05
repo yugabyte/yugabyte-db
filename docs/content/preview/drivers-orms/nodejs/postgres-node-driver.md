@@ -7,8 +7,7 @@ menu:
     identifier: postgres-node-driver
     parent: nodejs-drivers
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -63,12 +62,12 @@ client.connect()
 ```
 
 | Parameter | Description | Default |
-| :---------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost
-| port |  Listen port for YSQL | 5433
-| database | Database name | yugabyte
-| user | User for connecting to the database | yugabyte
-| password | Password for connecting to the database | yugabyte
+| :-------- | :---------- | :------ |
+| host | Hostname of the YugabyteDB instance | localhost |
+| port | Listen port for YSQL | 5433 |
+| database | Database name | `yugabyte` |
+| user | User for connecting to the database | `yugabyte` |
+| password | Password for connecting to the database | `yugabyte` |
 
 #### Use SSL
 
@@ -83,8 +82,8 @@ client.connect()
 For other ways to provide connection and SSL-related details, refer to the [node-postgres](https://node-postgres.com/) documentation.
 
 | node-postgres Parameter | Description |
-| :---------- | :---------- |
-| sslmode | SSL mode  |
+| :---------------------- | :---------- |
+| sslmode | SSL mode |
 | sslrootcert | path to the root certificate on your computer |
 
 If you have created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/cloud/), [follow the steps](../../../yugabyte-cloud/cloud-connect/connect-applications/) to obtain the cluster connection parameters and SSL Root certificate.
@@ -160,4 +159,4 @@ After completing these steps, you should have a working Node.JS app that uses th
 
 ## Next steps
 
-- Learn how to build Node.js applications using [Sequelize ORM](../sequelize).
+Learn how to build Node.js applications using [Sequelize ORM](../sequelize).

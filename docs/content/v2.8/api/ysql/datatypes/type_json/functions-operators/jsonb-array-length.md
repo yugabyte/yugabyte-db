@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-array-length
     parent: json-functions-operators
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Return the count of values (primitive or compound) in the array. You can use this to iterate over the elements of a JSON _array_ using the [`->`](../subvalue-operators/) operator.

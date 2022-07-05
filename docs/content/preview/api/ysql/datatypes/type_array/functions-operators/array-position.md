@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: array-position
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 These functions require that the to-be-searched array is one-dimensional. They return the index values of the specified to-be-searched-for value in the specified to-be-searched array.
 

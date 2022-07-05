@@ -9,8 +9,7 @@ menu:
     identifier: explore-ysql-language-features-data-types
     parent: explore-ysql-language-features
     weight: 150
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This document describes the data types supported in YSQL, from the basic data types to the `SERIAL` pseudo-type (for implementing an auto-incrementing primary key column in a table), arrays, composite types, and range types.
@@ -438,4 +437,3 @@ SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
 For more information on range types, see [Range Data Types](/preview/api/ysql/datatypes/type_range/).
-

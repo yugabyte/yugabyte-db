@@ -11,9 +11,7 @@ menu:
     identifier: enable-authentication-3-yedis
     parent: enable-authentication
     weight: 715
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -9,8 +9,7 @@ menu:
     identifier: explore-multi-region-deployments-read-replicas
     parent: explore-multi-region-deployments
     weight: 720
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB supports the following types of reads:

@@ -4,17 +4,16 @@ headerTitle: Create and configure alerts
 linkTitle: Configure alerts
 description: Configure alerts and health check
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: set-up-alerts-health-checking
     parent: configure-yugabyte-platform
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte Platform can check universes for issues that may affect deployment. Should problems arise, Yugabyte Platform can automatically issue alert notifications
 
-For additional information, see the following: 
+For additional information, see the following:
 
 - [Alerts](../../alerts-monitoring/alert/)
 - [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
@@ -26,7 +25,7 @@ You can access Yugabyte Platform health monitor and configure alerts by navigati
 
 ![Configure alerts](/images/yp/config-alerts1.png)
 
-The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform: 
+The **Alert Configurations** view allows you to perform the following for specific universes or for your instance of Yugabyte Platform:
 
 - Create new alert configurations.
 - Modify, delete, activate, or deactivate existing alerts, as well as send test alerts via **Actions**.
@@ -35,11 +34,11 @@ The **Alert Configurations** view allows you to perform the following for specif
 
 ## Create alerts
 
-Regardless of the alert level, you create an alert as follows: 
+Regardless of the alert level, you create an alert as follows:
 
 - Navigate to **Alert Configurations > Alert Policies**.
 
-- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert. 
+- Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert.
 
 - Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration: <br><br>
 
@@ -61,9 +60,9 @@ Regardless of the alert level, you create an alert as follows:
 
 ## Define notification channels
 
-In Yugabyte Platform, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it.<br>You can create a new channel, as well as modify or delete an existing one as follows: 
+In Yugabyte Platform, a notification channel defines how an alert is issued (via an email, a Slack message, a webhook message, or a PagerDuty message) and who should receive it.<br>You can create a new channel, as well as modify or delete an existing one as follows:
 
-- Navigate to **Alert Configurations > Notification Channels**, as per the following illustration: 
+- Navigate to **Alert Configurations > Notification Channels**, as per the following illustration:
 
   <br><br>
 
@@ -77,33 +76,33 @@ In Yugabyte Platform, a notification channel defines how an alert is issued (via
 
   <br><br>
 
-  If you select **Email** as a notification delivery method, perform the following: 
+  If you select **Email** as a notification delivery method, perform the following:
 
   - Provide a descriptive name for your channel.
 
-  - Use the **Emails** field to enter one or more valid email addresses separated by commas. 
+  - Use the **Emails** field to enter one or more valid email addresses separated by commas.
 
   - If you choose to configure the Simple Mail Transfer Protocol (SMTP) settings, toggle the **Custom SMTP Configuration** field and then complete the required fields.
 
-  If you select **Slack** as a notification delivery method, perform the following: 
+  If you select **Slack** as a notification delivery method, perform the following:
 
   - Provide a descriptive name for your channel.
 
-  - Use the **Slack Webhook URL** field to enter a valid URL. 
+  - Use the **Slack Webhook URL** field to enter a valid URL.
 
-  If you select **PagerDuty** as a notification delivery method, perform the following: 
-
-  - Provide a descriptive name for your channel.
-
-  - Enter a PagerDuty API key and service integration key. 
-
-  If you select **WebHook** as a notification delivery method, perform the following: 
+  If you select **PagerDuty** as a notification delivery method, perform the following:
 
   - Provide a descriptive name for your channel.
 
-  - Use the **Webhook URL** field to enter a valid URL. 
+  - Enter a PagerDuty API key and service integration key.
 
-- To modify an existing channel, click its corresponding **Actions > Edit Channel** and then complete the **Edit alert channel** dialog that has the same fields as the **Create new alert channel** dialog.  
+  If you select **WebHook** as a notification delivery method, perform the following:
+
+  - Provide a descriptive name for your channel.
+
+  - Use the **Webhook URL** field to enter a valid URL.
+
+- To modify an existing channel, click its corresponding **Actions > Edit Channel** and then complete the **Edit alert channel** dialog that has the same fields as the **Create new alert channel** dialog.
 - To delete a channel, click **Actions > Delete Channel**.
 
 ## Define alert destinations
@@ -158,4 +157,3 @@ The preceding view allows you to do the following:
 - Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:<br><br>
 
   ![Maintenance](/images/yp/config-alerts10.png)<br><br>
-

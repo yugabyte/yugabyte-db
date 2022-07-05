@@ -9,18 +9,17 @@ menu:
     identifier: sequelize-1
     parent: nodejs-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/preview/drivers-orms/nodejs/sequelize/" class="nav-link active">
+    <a href="../sequelize/" class="nav-link active">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Sequelize
     </a>
   </li>
-<li >
+  <li >
     <a href="/preview/drivers-orms/nodejs/prisma/" class="nav-link ">
       <i class="fab fa-node-js" aria-hidden="true"></i>
       Prisma
@@ -31,7 +30,7 @@ showAsideToc: true
 [Sequelize ORM](https://sequelize.org/v6/) is an Object/Relational Mapping (ORM) framework for Node.js applications. It enables JavaScript developers to work with relational databases, including support for features such as solid transaction support, relations, read replication, and more.
 
 Sequelize works with YugabyteDB because the Sequelize ORM supports PostgreSQL as a backend database, and YugabyteDB YSQL is a PostgreSQL-compatible API.
-To improve the experience and address few limitations (for example, support for `findOrCreate()` API), there is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package.
+To improve the experience and address a few limitations (for example, support for `findOrCreate()` API), there is [ongoing work](https://github.com/yugabyte/yugabyte-db/issues/11683) to add support for YugabyteDB to the Sequelize ORM core package.
 
 Currently, you can use [sequelize-yugabytedb](https://github.com/yugabyte/sequelize-yugabytedb) to build Node.js applications. This page uses the `sequelize-yugabytedb` package to describe how to get started with Sequelize ORM for connecting to YugabyteDB.
 
@@ -195,7 +194,7 @@ This configuration can be used while connecting to a YugabyteDB Managed cluster 
     const fs = require('fs');
     ```
 
-1. Use the following configuration in the `models/index.js` file when you create the sequelize object:
+1. Use the following configuration in the `models/index.js` file when you create the Sequelize object:
 
     ```js
     const sequelize = new Sequelize("<db_name>", "<user_name>","<password>" , {

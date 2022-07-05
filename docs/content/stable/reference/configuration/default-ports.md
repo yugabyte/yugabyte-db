@@ -3,14 +3,12 @@ title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
-section: REFERENCE
 menu:
   stable:
     identifier: default-ports
     parent: configuration
     weight: 2740
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Client APIs
@@ -45,7 +43,7 @@ Admin web server UI can be viewed at these addresses.
 
 ## Firewall Rules
 
-Along with the above, include the following common ports in firewall rules. 
+Along with the above, include the following common ports in firewall rules.
 
 | Service     | Port
 | ------- | ------------------------- |
@@ -71,7 +69,7 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 | Server     | Target                      |
 | ---------- | --------------------------- |
-| yb-master  | `<yb-master-address>:7000`  |  
+| yb-master  | `<yb-master-address>:7000`  |
 | yb-tserver | `<yb-tserver-address>:9000` |
 
 ### APIs

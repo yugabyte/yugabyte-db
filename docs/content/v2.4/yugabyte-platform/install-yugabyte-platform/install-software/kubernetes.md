@@ -4,12 +4,11 @@ headerTitle: Install Yugabyte Platform software - Kubernetes
 linkTitle: Install software
 description: Install Yugabyte Platform software in your Kubernetes environment.
 menu:
-  v2.4:
+  v2.4_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-2-kubernetes
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

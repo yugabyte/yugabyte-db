@@ -8,8 +8,7 @@ menu:
     identifier: postgres-npgsql-driver
     parent: csharp-drivers
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

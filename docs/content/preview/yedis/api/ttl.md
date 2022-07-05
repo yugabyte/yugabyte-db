@@ -9,8 +9,7 @@ menu:
 aliases:
   - /preview/api/redis/ttl
   - /preview/api/yedis/ttl
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

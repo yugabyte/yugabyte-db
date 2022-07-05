@@ -8,8 +8,7 @@ menu:
     identifier: rule-2
     parent: name-res-rules
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="" >}}
@@ -30,7 +29,7 @@ from c;
 This is the result:
 
 ```output
- ~names.name | ~names.abbrev | ~abbrevs.abbrev 
+ ~names.name | ~names.abbrev | ~abbrevs.abbrev
 -------------+---------------+-----------------
  false       | true          | false
 ```
@@ -60,7 +59,7 @@ The values in _pg_timezone_names.abbrev_ are useful only for decorating the _to_
 ```plpgsql
 set timezone = 'Atlantic/Faeroe';
 with v as (
-  select 
+  select
     '2021-01-01 12:00:00 UTC'::timestamptz as t1,
     '2021-07-01 12:00:00 UTC'::timestamptz as t2
   )
@@ -73,7 +72,7 @@ from v;
 This is the result:
 
 ```output
-         t1          |          t2          
+         t1          |          t2
 ---------------------+----------------------
  12:00:00 WET +00:00 | 13:00:00 WEST +01:00
 ```

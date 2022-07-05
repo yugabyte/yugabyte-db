@@ -8,8 +8,7 @@ menu:
   v2.6:
     identifier: api-ysql-datatypes-datetime
     parent: api-ysql-datatypes
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Many users of all kinds of SQL databases have reported that they find everything about the _date-time_ story complex and confusing. This explains why this overall section is rather big and why the hierarchy of pages and child pages is both wide and deep. The order presented in the table of contents was designed so that the pages can be read just like the sections and subsections in a printed text book. (The order of the items in the navigation side-bar reflects this reading order too.) The overall pedagogy was designed with this reading order in mind. It is highly recommended, therefore, that you (at least once) read the whole story from start to finish in this order.

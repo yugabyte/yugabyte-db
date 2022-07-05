@@ -10,8 +10,7 @@ menu:
     weight: 240
 aliases:
   - /preview/explore/ysql-language-features/collations/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Collation basics

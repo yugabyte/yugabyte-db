@@ -7,8 +7,7 @@ menu:
     identifier: codespaces
     parent: gitdev
     weight: 591
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use [GitHub Codespaces](https://github.com/features/codespaces) to provision an instant development environment with a pre-configured YugabyteDB.

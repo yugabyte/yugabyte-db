@@ -5,12 +5,11 @@ description: Add extensions to a YugabyteDB Managed cluster.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: add-extensions
     parent: cloud-clusters
     weight: 400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Extend the functionality of your cluster using PostgreSQL extensions. YugabyteDB comes bundled with a number of extensions that are tested to work with YSQL. For a list of bundled extensions, refer to [PostgreSQL extensions](../../../explore/ysql-language-features/pg-extensions/).

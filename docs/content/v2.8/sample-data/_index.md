@@ -3,11 +3,12 @@ title: Sample datasets
 linkTitle: Sample datasets
 description: Sample datasets
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
-section: REFERENCE
 menu:
   v2.8:
-   identifier: sample-data
-   weight: 2950
+    identifier: sample-data
+    parent: reference
+    weight: 2950
+type: indexpage
 ---
 
 YugabyteDB and YugabyteDB client shell installations include sample datasets you can use to test out YugabyteDB. These are located in the `share` directory of your installation. The datasets are also available in the [sample directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The datasets are provided in the form of SQL script files. You can install and use the sample datasets using either a local installation of YugabyteDB, or by connecting to a cluster in Yugabyte Cloud (including your free cluster) via a client shell.
@@ -31,7 +32,7 @@ For information on connecting to your Yugabyte Cloud cluster using `ysqlsh`, ref
           </div>
       </a>
   </div>
-  
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
       <a class="section-link icon-offset" href="northwind/">
           <div class="head">

@@ -8,12 +8,10 @@ menu:
     identifier: other-constraints
     parent: explore-indexes-constraints
     weight: 270
-isTocNested: true
-showAsideToc: true
 aliases:
-   - /preview/explore/ysql-language-features/constraints/
-   - /preview/explore/indexes-constraints/constraints/
-
+  - /preview/explore/ysql-language-features/constraints/
+  - /preview/explore/indexes-constraints/constraints/
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: savepoint_release
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

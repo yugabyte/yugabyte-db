@@ -8,8 +8,7 @@ menu:
     identifier: cr-do-percent-rank
     parent: analyzing-a-normal-distribution
     weight: 120
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_do_percent_rank.sql`.
 ```plpgsql

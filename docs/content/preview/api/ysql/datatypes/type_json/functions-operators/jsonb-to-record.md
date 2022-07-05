@@ -8,8 +8,7 @@ menu:
     identifier: jsonb-to-record
     parent: json-functions-operators
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Convert a JSON _object_ into the equivalent SQL `record`.

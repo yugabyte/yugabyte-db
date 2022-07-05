@@ -8,8 +8,7 @@ menu:
     identifier: migration-steps
     parent: yb-voyager
     weight: 101
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page provides an overview of the process for migrating from any source database to YugabyteDB.

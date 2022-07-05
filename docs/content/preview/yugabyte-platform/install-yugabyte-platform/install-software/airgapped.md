@@ -4,12 +4,11 @@ headerTitle: Install YugabyteDB Anywhere software - Airgapped
 linkTitle: Install software
 description: Install YugabyteDB Anywhere software in your on-premises, airgapped environment.
 menu:
-  preview:
+  preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-3-airgapped
     weight: 77
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

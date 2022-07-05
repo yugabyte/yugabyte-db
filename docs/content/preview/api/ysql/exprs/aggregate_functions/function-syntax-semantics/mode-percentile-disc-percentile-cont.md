@@ -8,8 +8,7 @@ menu:
     identifier: mode-percentile-disc-percentile-cont
     parent: aggregate-function-syntax-semantics
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes the use of [`mode()`](./#mode), [`percentile_disc()`](./#percentile-disc-percentile-cont), and [`percentile_cont()`](./#percentile-disc-percentile-cont) as "within-group ordered-set" aggregate functions.

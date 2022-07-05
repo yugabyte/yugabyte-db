@@ -9,8 +9,7 @@ menu:
     identifier: api-ysql-extensions
     parent: api-ysql
     weight: 4400
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page documents how to install and use PostgreSQL extensions that are tested to work with YSQL. Note that since YugabyteDB’s storage architecture is not the same as that of native PostgreSQL, PostgreSQL extensions, especially those that interact with the storage layer, are not expected to work as-is on YugabyteDB. We intend to incrementally develop support for as many extensions as possible.
@@ -217,7 +216,7 @@ ORDER BY k;
 You'll see results similar to the following:
 
 ```output
- k  |    v     
+ k  |    v
 ----+----------
   1 |   988.53
   2 |  1005.18
@@ -518,8 +517,8 @@ The [`uuid-ossp`](https://www.postgresql.org/docs/current/uuid-ossp.html) extens
 The easiest way to install the extension is to copy the files from an existing PostgreSQL installation into Yugabyte, and then create the extension.
 
 ```sh
-$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" && 
-  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension && 
+$ cp -v "$(pg_config --pkglibdir)"/*uuid-ossp*.so "$(yb_pg_config --pkglibdir)" &&
+  cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.sql "$(yb_pg_config --sharedir)"/extension &&
   cp -v "$(pg_config --sharedir)"/extension/*uuid-ossp*.control "$(yb_pg_config --sharedir)"/extension &&
   ./bin/ysqlsh -c "CREATE EXTENSION \"uuid-ossp\";"
 ```

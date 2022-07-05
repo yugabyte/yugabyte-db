@@ -10,8 +10,7 @@ menu:
     identifier: deploy-in-aws-1-cloudformation
     parent: public-clouds
     weight: 630
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

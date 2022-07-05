@@ -3,13 +3,12 @@ title: KairosDB
 linkTitle: KairosDB
 description: Use KairosDB with YCQL API
 aliases:
-section: INTEGRATIONS
 menu:
   preview:
     identifier: kairosdb
+    parent: integrations
     weight: 571
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [KairosDB](http://kairosdb.github.io/) is a Java-based time-series metrics API that leverages Cassandra as its underlying distributed database. This page shows how it can be integrated with YugabyteDB's Cassandra-compatible YCQL API.

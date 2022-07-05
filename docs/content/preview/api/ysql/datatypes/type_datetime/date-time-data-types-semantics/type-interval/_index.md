@@ -9,8 +9,7 @@ menu:
     identifier: type-interval
     parent: date-time-data-types-semantics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 ## Why does the interval data type exist?

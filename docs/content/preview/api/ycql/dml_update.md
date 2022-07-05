@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/dml_update
   - /preview/api/ycql/dml_update
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

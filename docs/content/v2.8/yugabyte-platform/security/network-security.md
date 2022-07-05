@@ -4,12 +4,11 @@ headerTitle: Network security
 linkTitle: Network security
 description: Network security
 menu:
-  v2.8:
+  v2.8_yugabyte-platform:
     parent: security
     identifier: network-security
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To ensure that Yugabyte Platform YugabyteDB runs in a trusted network environment you can restrict machine and port access. Here are some steps to ensure that:

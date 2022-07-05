@@ -10,8 +10,7 @@ menu:
     weight: 206
 aliases:
   - /preview/migrate/migrate-from-postgresql/verify-migration/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Here are some things that can be verified to ensure that the migration was successful.
@@ -58,7 +57,7 @@ SELECT cnt_rows(table_schema, table_name)
 
 Below is an example illustrating the output of running the above on the Northwind database.
 
-```output
+```output.sql
 example=# SELECT cnt_rows(table_schema, table_name)
     FROM information_schema.tables
     WHERE table_schema NOT IN ('pg_catalog', 'information_schema')

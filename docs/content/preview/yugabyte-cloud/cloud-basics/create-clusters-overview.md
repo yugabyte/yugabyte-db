@@ -5,12 +5,11 @@ description: Plan a cluster in YugabyteDB Managed.
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters-overview
     parent: cloud-basics
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Before deploying a production cluster, you need to consider the following factors.

@@ -10,10 +10,8 @@ menu:
     identifier: python-drivers
     parent: drivers-orms
     weight: 570
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
-
 The following projects can be used to implement Python applications using the YugabyteDB YSQL API.
 
 | Project (* Recommended) | Type | Support | Examples |

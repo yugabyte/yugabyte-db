@@ -6,8 +6,7 @@ menu:
   v2.4:
     parent: api-yedis
     weight: 2040
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Single-key request only. Requests with multiple keys are not yet supported.

@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_import_foreign_schema
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

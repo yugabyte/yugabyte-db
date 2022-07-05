@@ -10,8 +10,7 @@ menu:
     identifier: ref-yugabyte-jdbc-driver
     parent: drivers
     weight: 500
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

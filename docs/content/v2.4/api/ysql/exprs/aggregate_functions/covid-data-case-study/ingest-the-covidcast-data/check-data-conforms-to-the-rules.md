@@ -7,8 +7,7 @@ menu:
     identifier: check-data-conforms-to-the-rules
     parent: ingest-the-covidcast-data
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The rules to which the values copied in from the `.csv` files must conform are described in the section [Inspect the COVIDcast .csv files](../inspect-the-csv-files). The form of each rule is the same for each of the three files. But sometimes, specific values that the rules govern are specific to the file. Each of the rules is tested, using the `assert` construct, in a single PL/pgSQL stored procedure, created by the script [`cr-assert-assumptions-ok.sql`](../ingest-scripts/cr-assert-assumptions-ok-sql). The tests share these common declarations:
@@ -212,7 +211,7 @@ declare
 
   select count(*) from r$$;
 begin
-  execute replace(replace(replace(chk_code_and_geo_values, 
+  execute replace(replace(replace(chk_code_and_geo_values,
   '?1', names[1].staging_table),
   '?2', names[2].staging_table),
   '?3', names[3].staging_table

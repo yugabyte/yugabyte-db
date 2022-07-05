@@ -10,8 +10,7 @@ menu:
     identifier: free-tier
     parent: yugabyte-cloud
     weight: 640
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You can use the Free Tier level to get started using YugabyteDB, explore core features, and develop applications.

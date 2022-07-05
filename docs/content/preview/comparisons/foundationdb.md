@@ -6,11 +6,10 @@ description: Compare FoundationDB with YugabyteDB.
 aliases:
   - /comparisons/foundationdb/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1100
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 The single most important function of a database is to make application development and deployment easier. FoundationDB misses the mark on this function. On one hand, the API layer is aimed at giving flexibility to systems engineers as opposed to solving real-world data modeling challenges of application developers. On the other hand, the core engine seemingly favors the approaches highlighted in architecturally-limiting database designs such as [Yale’s Calvin](http://cs-www.cs.yale.edu/homes/dna/papers/calvin-sigmod12.pdf) (2012) and [Google’s Percolator](https://ai.google/research/pubs/pub36726) (2010). It is also reinventing the wheel when it comes to high-performance storage engines.

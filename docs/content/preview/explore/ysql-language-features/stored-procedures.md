@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-features-stored-procedures
     parent: explore-ysql-language-features
     weight: 300
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes how to use stored procedures to perform transactions.

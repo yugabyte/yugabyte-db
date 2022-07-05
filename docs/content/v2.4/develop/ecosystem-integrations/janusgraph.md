@@ -7,8 +7,7 @@ menu:
     identifier: janusgraph
     parent: ecosystem-integrations
     weight: 573
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 In this tutorial, you are first going to setup [JanusGraph](https://janusgraph.org/) to work with YugabyteDB as the underlying database. Then, using the Gremlin console, you are going to load some data and run some graph commands.

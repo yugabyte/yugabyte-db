@@ -9,8 +9,7 @@ menu:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;<br>

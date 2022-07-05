@@ -5,11 +5,12 @@ description: Yugabyte Cloud
 headcontent: Fully-managed YugabyteDB-as-a-Service running on public clouds.
 image: /images/section_icons/deploy/public-clouds.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-section: YUGABYTE CLOUD
 menu:
-  v2.4:
+  v2.4_yugabyte-cloud:
+    parent: yugabytedb-managed
     identifier: yugabyte-cloud
     weight: 639
+type: indexpage
 ---
 
 Yugabyte Cloud is a fully-managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on

@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: ddl_create_view
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

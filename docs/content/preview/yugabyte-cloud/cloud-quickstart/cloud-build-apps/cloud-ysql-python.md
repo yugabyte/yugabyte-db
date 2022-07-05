@@ -4,14 +4,12 @@ headerTitle: Build a Python application
 linkTitle: Python
 description: Build a simple Python application using the Python psycopg2 driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-build-apps
     name: Python
     identifier: cloud-python
     weight: 300
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The following tutorial shows a small [Python application](https://github.com/yugabyte/yugabyte-simple-python-app) that connects to a YugabyteDB cluster using the [Python psycopg2 PostgreSQL database adapter](../../../../reference/drivers/ysql-client-drivers/#psycopg2) and performs basic SQL operations. Use the application as a template to get started with YugabyteDB Managed in Python.
