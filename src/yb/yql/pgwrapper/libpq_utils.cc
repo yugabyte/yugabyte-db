@@ -534,6 +534,10 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   constexpr Oid BPCHAROID = 1042;
   constexpr Oid VARCHAROID = 1043;
 
+  if (PQgetisnull(result, row, column)) {
+    return "NULL";
+  }
+
   auto type = PQftype(result, column);
   switch (type) {
     case INT8OID:
@@ -558,7 +562,7 @@ Result<std::string> RowToString(PGresult* result, int row, const std::string& se
     if (col) {
       line += sep;
     }
-    line += CHECK_RESULT(ToString(result, row, col));
+    line += VERIFY_RESULT(ToString(result, row, col));
   }
   return line;
 }
