@@ -184,11 +184,19 @@ For detailed information on the relative time formatting, refer to the [`restore
 
 YugabyteDB supports [index backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md), which is the process of asynchronous population of a new index. The process runs in the background and can take significant amount of time, depending on the size of the data. If you restore to a point in time that is not long ago after an index creation, it is likely you will hit a state where the index is in the middle of the backfill process.
 
-**Such indexes are not functional, as YugabyteDB ignores them during read operations. For YSQL databases, you need to drop these indexes and recreated them again to reinitiate the backfill process.**
+**Such indexes are not functional, as YugabyteDB ignores them during read operations. To make sure the indexes are properly used, you need to drop and create them again to reinitiate the backfill process.** You can get a list of indexes that need to be recreated by running the following query:
 
-This requirement will be removed in the future releases. Tracking issue: [12672](https://github.com/yugabyte/yugabyte-db/issues/12672)
+```sql
+SELECT pg_class.relname
+FROM pg_index
+JOIN pg_class
+ON pg_index.indexrelid = pg_class.oid
+WHERE NOT indisvalid;
+```
 
 Note that this affects only YSQL databases. In case of YCQL, index backfill is restarted automatically after the restore.
+
+The requirement will be removed in the future releases. Tracking issue: [12672](https://github.com/yugabyte/yugabyte-db/issues/12672)
 
 {{< /note >}}
 
@@ -240,6 +248,8 @@ Tablespaces are crucial for geo-partitioned deployments. Trying to restore a dat
 
 PITR can't be used to restore to a state before the latest [YSQL system catalog upgrade](../../../admin/yb-admin/#upgrade-ysql-system-catalog). Trying to do so will produce an error. You can still use [distributed snapshots](../../../manage/backup-restore/snapshot-ysql/) to restore in such scenarios.
 
+Tracking issue: [13158](https://github.com/yugabyte/yugabyte-db/issues/13158)
+
 {{< note >}}
 
 This limitation is only applicable to YSQL databases. YCQL is not affected.
@@ -248,7 +258,6 @@ This limitation is only applicable to YSQL databases. YCQL is not affected.
 
 ### Other restrictions
 
-* `TRUNCATE` command is disallowed for a database with a snapshot schedule.
-* A database can't be dropped if there is at least one schedule assigned to it. If you need to drop a database, you need to delete all its schedules first.
+* `TRUNCATE` command is disallowed for a database with a snapshot schedule. Tracking issue: [7129](https://github.com/yugabyte/yugabyte-db/issues/7129).
 * PITR works **only** with in-cluster distributed snapshot. PITR support for off-cluster backups is considered for the future. Tracking issue: [8847](https://github.com/yugabyte/yugabyte-db/issues/8847).
 * Snapshot schedules can't be modified once created. If you need to change the interval or the retention period, you should delete the snapshot and recreate it with new parameters. Tracking issue: [8417](https://github.com/yugabyte/yugabyte-db/issues/8417).
