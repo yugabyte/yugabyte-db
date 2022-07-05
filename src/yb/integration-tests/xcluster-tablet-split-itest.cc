@@ -887,7 +887,8 @@ TEST_F(XClusterAutomaticTabletSplitITest, YB_DISABLE_TEST_IN_TSAN(AutomaticTable
   auto master_admin_proxy = std::make_unique<master::MasterAdminProxy>(
       proxy_cache_.get(), client_->GetMasterLeaderAddress());
   ASSERT_OK(WaitFor(
-      std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get()),
+      std::bind(&TabletSplitITestBase::IsSplittingComplete, this, master_admin_proxy.get(),
+                false /* wait_for_parent_deletion */),
       30s, "Wait for tablet splitting to complete."));
 }
 

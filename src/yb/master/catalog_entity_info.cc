@@ -789,7 +789,7 @@ TabletInfos TableInfo::GetTablets(IncludeInactive include_inactive) const {
   return result;
 }
 
-bool TableInfo::HasOutstandingSplits() const {
+bool TableInfo::HasOutstandingSplits(bool wait_for_parent_deletion) const {
   SharedLock<decltype(lock_)> l(lock_);
   DCHECK(!colocated());
   std::unordered_set<TabletId> partitions_tablets;
@@ -800,8 +800,14 @@ bool TableInfo::HasOutstandingSplits() const {
                                    << " belonging to table " << id() << " is not yet running";
       return true;
     }
-    partitions_tablets.insert(p.second->tablet_id());
+    if (wait_for_parent_deletion) {
+      partitions_tablets.insert(p.second->tablet_id());
+    }
   }
+  if (!wait_for_parent_deletion) {
+    return false;
+  }
+
   for (const auto& p : tablets_) {
     // If any parents have not been deleted yet, the split is not yet complete.
     if (!partitions_tablets.contains(p.second->tablet_id())) {
