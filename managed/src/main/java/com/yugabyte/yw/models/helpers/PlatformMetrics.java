@@ -56,6 +56,7 @@ public enum PlatformMetrics {
   CREATE_BACKUP_STATUS("Backup creation task status for universe", Unit.STATUS),
   SCHEDULE_BACKUP_STATUS("Backup schedule status for universe", Unit.STATUS),
   UNIVERSE_INACTIVE_CRON_NODES("Count of nodes with inactive cronjob for universe", Unit.COUNT),
+  SSH_KEY_ROTATION_STATUS("SSH Key rotation task status for universe", Unit.STATUS, false),
   // Alert Subsystem
   ALERT_QUERY_STATUS("Alert query status", Unit.STATUS),
   ALERT_QUERY_TOTAL_ALERTS("Total number of alerts, returned by Prometheus", Unit.COUNT),
