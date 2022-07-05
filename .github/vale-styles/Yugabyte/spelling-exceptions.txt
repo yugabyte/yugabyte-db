@@ -519,6 +519,7 @@ reindexing
 reinitialize
 reinitializing
 relicensing
+relref
 remediations
 replicables
 repmgr

@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-YugabyteDB is primarily written in C++ (the distributed storage and transactions layer and the YCQL query layer) and C (the YSQL layer based on PostgreSQL), with some parts of the build system and test suite written in Python, Java, and Bash. In addition, [Protocol Buffers](https://developers.google.com/protocol-buffers) are used to define some data and network message formats.
+YugabyteDB is primarily written in C++ (the distributed storage and transactions layer and the YCQL query layer) and C (the YSQL layer based on PostgreSQL), with some parts of the build system and test suite written in Python, Java, and Bash. In addition, we use [Protocol Buffers](https://developers.google.com/protocol-buffers) to define some data and network message formats.
 
 ## Language-agnostic style guidelines
 
@@ -25,7 +25,7 @@ Avoid rarely used abbreviations. Think about whether all other potential readers
 
 Start full sentences with a capital letter, and end them with a period. This rule doesn't apply if the comment is a single phrase on the same line as a code statement.
 
-Functions and classes in header files should typically have detailed comments, but the comments should not duplicate what is already obvious from the code. In fact, if the code can be restructured, or if functions or classes could be renamed to reduce the need for comments, that is the preferred way. Obvious comments like the following don't add anything useful:
+Functions and classes in header files should typically have detailed comments, but the comments shouldn't duplicate what's already obvious from the code. In fact, if the code can be restructured, or if functions or classes could be renamed to reduce the need for comments, that is the preferred way. Obvious comments like the following don't add anything useful:
 
 ```cpp
   // Returns transaction ID.
@@ -36,9 +36,9 @@ Functions and classes in `.cc` files don't have to be commented as extensively a
 
 ## C coding style
 
-For the modified PostgreSQL C codebase residing inside the YugabyteDB codebase, [PostgreSQL Coding Conventions](https://www.postgresql.org/docs/13/source-format.html) are adhered to. 
+For the modified PostgreSQL C codebase residing inside the YugabyteDB codebase, we adhere to the [PostgreSQL Coding Conventions](https://www.postgresql.org/docs/13/source-format.html).
 
-Note that PostgreSQL code uses tabs for indentation and that rule is followed in the [`src/postgres`](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres) subdirectory; spaces are used for indentation everywhere else in the YugabyteDB code.
+Note that PostgreSQL code uses _tabs_ for indentation and we follow that rule in the [`src/postgres`](https://github.com/yugabyte/yugabyte-db/tree/master/src/postgres) subdirectory; we use spaces for indentation _everywhere else in YugabyteDB code_.
 
 ## C++ coding style
 
@@ -289,28 +289,35 @@ Similarly, for variable declarations and definitions:
 
 ### Pointer vs reference as returned value
 
-When a function never returns `nullptr`, returning references are preferred over pointers.
+When a function never returns `nullptr`, prefer returning references instead of pointers.
 
 This has the following advantages:
-* It is pretty clear to the user of the function that it would never return `nullptr`, and they do not have to check for it.
+
+* It's pretty clear to the user of the function that it would never return `nullptr`, and they don't have to check for it.
 * It works perfectly with YugabyteDB policy to pass read-write arguments as pointers, because the caller will add `&` while passing the result of such function to another call:
-  ```
-  DoSomething(..., &GetX());
-  ```
-* It is clear that returned reference is not owned by the caller. Also, cases when ownership is taken by mistake could be avoided.<br>
-  Consider the following examples, where `GetP()` returns pointer and `GetR()` returns reference:
-  
-  ```
-  // No compilation error. It is useful for refactoring.
-  std::unique_ptr<P> p = GetP();
-  ```
-  ```
-  auto p = GetP();
-  p->foo(); // It is unclear for the caller whether p is stored as smart pointer and owned by him or returned as raw pointer and owner by someone else.
-  ...
-  auto& r = GetR(); // Would not even compile without &, so it is pretty clear that r is reference and not owner by the caller.
-  r.foo();
-  ```
+
+    ```cpp
+    DoSomething(..., &GetX());
+    ```
+
+* It's clear that the caller doesn't own the returned reference. We can also avoid cases where ownership is taken by mistake.
+
+    Consider the following examples, where `GetP()` returns pointer and `GetR()` returns reference:
+
+    ```cpp
+    // No compilation error. It is useful for refactoring.
+    std::unique_ptr<P> p = GetP();
+    ```
+
+    ```cpp
+    auto p = GetP();
+    p->foo(); // It's unclear for the caller whether p is stored as a smart pointer and
+              // owned by the caller, or returned as raw pointer and owned by someone else.
+    ...
+    auto& r = GetR(); // Would not even compile without &, so it's pretty clear
+                      // that r is reference and not owned by the caller.
+    r.foo();
+    ```
 
 ### Get prefix for getters
 
@@ -490,8 +497,6 @@ Multiple inheritance is allowed in general, subject to a few limitations:
 
 * Don't down-cast pointers or references (casting from a base to a derived class).
 
-    <br/><br/>
-
     Note that the only way to do this safely in C++ is using the `dynamic_cast<...>` operator, which relies on run-time type information (RTTI), and there is a possibility that RTTI might be disabled in release builds at some point for performance reasons.
 
 * Don't use multiple inheritance if a base class is part of this object from an architectural point of view. Instead, prefer composition (making the "part" object a member field in the "whole" object) in such cases.
@@ -535,7 +540,7 @@ SCHECK_EQ(schedules.size(), 1, IllegalState,
           Format("Expected exactly one schedule with id $0", schedule_id));
 ```
 
-#### Returing a Status in release mode, but triggering a fatal error in debug mode, with RSTATUS_DCHECK {#rstatus_dcheck}
+#### Returning a Status in release mode, but triggering a fatal error in debug mode, with RSTATUS_DCHECK {#rstatus_dcheck}
 
 `RSTATUS_DCHECK` works similarly to `SCHECK` in release mode, but triggers a fatal error and a log message in debug mode, terminating program execution. Similarly to `SCHECK`, it also has variants for checking for equality and inequality. `RSTATUS_DCHECK` can be used for invariant checks and sanity checks where the error is not expected to happen under normal circumstances but there is a recovery path from this error in a production situation. In these cases it is OK to cause a unit test to crash in debug mode when the error is encountered.
 
@@ -550,25 +555,29 @@ This macro expands to a no-op in release mode. This is reserved for checking inv
 Sometimes `DCHECK` is used to verify function prerequisites. If you never expect an incorrect parameter value to be passed into a function, because there is validation happening in the calling function, it's OK to keep that as a `DCHECK`.
 
 However, if you could theoretically get bad data in production at a certain point in the code, then:
-  * If you can recover from this error, return an error `Status` (e.g. using [`SCHECK`]({{< relref "#scheck" >}}) or [`RSTATUS_DCHECK`]({{< relref "#rstatus_dcheck" >}})).
-  * If this is a severe invariant violation and you can't recover from it, this could be a [`CHECK`]({{< relref "#check" >}}).
+
+* If you can recover from this error, return an error `Status` (e.g. using [`SCHECK`]({{< relref "#scheck" >}}) or [`RSTATUS_DCHECK`]({{< relref "#rstatus_dcheck" >}})).
+* If this is a severe invariant violation and you can't recover from it, this could be a [`CHECK`]({{< relref "#check" >}}).
 
 ### Log levels
 
-The following policy should be used when choosing log level:
-  * `INFO` - general logs that describe some important actions taken by the system.<br>
-    Should not be too verbose, that is, avoid logging the same information several times per second.
-    Use `YB_LOG_EVERY_N_SECS` when necessary.
-  * `WARNING` - expected failures. Failures that could occur while service is running. For instance network disconnect, timeout, and so on.
-  * `ERROR` - should NEVER be used.
-  * `DFATAL` - unexpected failures. Some sanity check failures that should not happen if the system operates correctly.<br>
-    For example, unexpected state, data corruption, and so on.
-    `DFATAL` logs an `ERROR` in release mode and `FATAL` in debug mode. So tests will fail when such issue happen.<br>
-    Also use `RSTATUS_DCHECK` when possible, instead of `DFATAL`.
+Use the following policy when choosing log levels:
+
+* `INFO` - general logs that describe some important actions taken by the system.
+
+    This should not be too verbose, that is, avoid logging the same information several times per second. Use `YB_LOG_EVERY_N_SECS` when necessary.
+
+* `WARNING` - expected failures. Failures that could occur while service is running. For instance, network disconnect, timeout, and so on.
+* `ERROR` - should NEVER be used.
+* `DFATAL` - unexpected failures. Some sanity check failures that should not happen if the system operates correctly. For example, unexpected state, data corruption, and so on.
+
+    `DFATAL` logs an `ERROR` in release mode and `FATAL` in debug mode. So, tests will fail when such issues happen.
+
+    Use `RSTATUS_DCHECK` whenever possible, instead of `DFATAL`.
 
 ### PREDICT_TRUE and PREDICT_FALSE
 
-`PREDICT_TRUE` and `PREDICT_FALSE` macros expand to hints to the compiler that a particular codepath is likely or unlikely. In theory these macros could allow better compiler optimizations. However, these macros are not used in new code as it is difficult to check if they really improve performance.
+`PREDICT_TRUE` and `PREDICT_FALSE` macros expand to hints to the compiler that a particular code path is likely or unlikely. In theory, these macros could allow better compiler optimizations. However, we don't use these macros in new code, as it's difficult to check if they really improve performance.
 
 ### Result vs Status with output parameters
 
@@ -585,7 +594,7 @@ Much of YugabyteDB code is wired to return `Status`, in order to provide the inf
 Status foo(int* return_variable);
 ```
 
-However, there is now a better way to achieve the same goal: the `Result` type can encapsulate both an output parameter (in the successful case) and a `Status` (in case of an error):
+However, the `Result` type is a better way to achieve the same goal, because it can encapsulate both an output parameter (in the successful case) and a `Status` (in case of an error):
 
 ```cpp
 Result<int> foo();
@@ -593,7 +602,7 @@ Result<int> foo();
 
 ### String formatting
 
-Use the `Format` function to produce formatted strings, rather than the older function `Substitute`.
+Use the `Format` function to produce formatted strings, rather than the older `Substitute` function.
 
 While the two functions have similar syntax, with inline substitution parameters `$0`, `$1`, and so on, `Format` has several advantages:
 
@@ -607,11 +616,9 @@ While the two functions have similar syntax, with inline substitution parameters
 
 ### CHECKED_STATUS
 
-YugabyteDB existing codebase used to contain a lot of `CHECKED_STATUS` usage. You might still encounter it in older release branches. It was a useful macro when YugabyteDB main compiler did not support [[nodiscard]] class attribute.
+Avoid using `CHECKED_STATUS`; use `Status` for function return type in all new code.
 
-After switching to a modern compiler, this macro is no longer necessary.
-
-All new code should avoid using `CHECKED_STATUS` and use `Status` for function return type.
+The YugabyteDB codebase used to contain a lot of `CHECKED_STATUS` usage. You might still encounter it in older release branches. It was a useful macro when the YugabyteDB main compiler did not support the [[nodiscard]] class attribute, but after switching to a modern compiler, this macro is no longer necessary.
 
 ### Thread safety analysis
 
@@ -629,7 +636,7 @@ YugabyteDB build scripts enable thread safety analysis for Clang version 11 and 
 
 ### Unused C and C++ features
 
-* C++ exceptions: In most of YugabyteDB code, C++ exceptions are not used. However, in some cases, C++ standard library functions that throw exceptions are used, and those exceptions are caught as early as possible and converted into `Status` or `Result` return values.
+* C++ exceptions: We don't use C++ exceptions in most of the YugabyteDB code. However, in some cases, we use C++ standard library functions that throw exceptions; we catch those exceptions as early as possible, and convert them into `Status` or `Result` return values.
 * `assert`: C library macro. YugabyteDB uses its own set of macros for invariant checking.
 
 ### Other related coding guidelines for C++
@@ -641,5 +648,5 @@ In addition to the guidelines outlined on this page, the YugabyteDB C++ coding s
 Name protobuf structures and enums with a `PB` suffix. This is for the following reasons:
 
 * Better "greppability" (searchability) means fewer false positive results when searching for `TableTypePB` and not `TableType`.
-* It is possible to have structs and classes with the same name, but without PB suffix for usage in the code.
-* It is possible to have enum wrappers similar to `YB_DEFINE_ENUM` with the same name as the protobuf enum, but without the PB suffix.
+* It's possible to have structs and classes with the same name, but without PB suffix for usage in the code.
+* It's possible to have enum wrappers similar to `YB_DEFINE_ENUM` with the same name as the protobuf enum, but without the PB suffix.
