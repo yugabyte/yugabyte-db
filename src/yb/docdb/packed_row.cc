@@ -327,8 +327,11 @@ Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, ssize
 }
 
 Result<Slice> RowPacker::Complete() {
-  RSTATUS_DCHECK_EQ(
-      idx_, packing_.columns(), InvalidArgument, "Not all columns packed");
+  // In case of concurrent schema change YSQL does not send recently added columns.
+  // Fill them with NULLs to keep the same behaviour like we have w/o packed row.
+  while (idx_ < packing_.columns()) {
+    RETURN_NOT_OK(AddValue(packing_.column_packing_data(idx_).id, Slice(), 0));
+  }
   RSTATUS_DCHECK_EQ(
       varlen_write_pos_, prefix_end_, InvalidArgument, "Not all varlen columns packed");
   return result_.AsSlice();
