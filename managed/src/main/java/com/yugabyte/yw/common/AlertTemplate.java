@@ -701,6 +701,18 @@ public enum AlertTemplate {
           .defaultThresholdCondition(Condition.LESS_THAN)
           .build()),
 
+  SSH_KEY_ROTATION_FAILURE(
+      "SSH Key Rotation Failure",
+      "Last SSH Key Rotation task failed for universe",
+      "last_over_time(ybp_ssh_key_rotation_status{universe_uuid = \"__universeUuid__\"}[1d])"
+          + " {{ query_condition }} 1",
+      "Last SSH Key Rotation task for universe '{{ $labels.source_name }}' failed"
+          + " - check SSH Key Rotation task result for more details and retry",
+      0,
+      EnumSet.of(DefinitionSettings.CREATE_FOR_NEW_CUSTOMER),
+      TargetType.UNIVERSE,
+      ThresholdSettings.builder().statusThreshold(SEVERE).build()),
+
   YSQL_OP_AVG_LATENCY(
       "YSQL average latency is high",
       "Average latency of YSQL operations is above threshold",

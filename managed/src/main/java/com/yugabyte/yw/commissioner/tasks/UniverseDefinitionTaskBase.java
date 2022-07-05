@@ -761,7 +761,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Add the az uuid.
       params.azUuid = node.azUuid;
       // The service and the command we want to run.
-      params.process = "yb-controller";
+      params.process = "controller";
       params.command = "start";
       params.placementUuid = node.placementUuid;
       // Set the InstanceType
