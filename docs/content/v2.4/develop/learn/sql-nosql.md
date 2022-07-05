@@ -8,8 +8,7 @@ menu:
     identifier: sql-nosql
     parent: learn
     weight: 561
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Most application developers have used SQL, and possibly some NoSQL databases, to build applications. YugabyteDB brings the best of these two databases together into one unified platform to simplify development of scalable cloud services.
@@ -87,7 +86,7 @@ The second chart below shows the latency for the YCSB run.
 
 ## Geo-distributed
 
-This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region. 
+This is a screenshot of YugabyteDB EE, which visualized the universe created. Below is a screenshot of a 5-node YugabyteDB universe created for a user identity use-case to power users logging in and changing passwords for a SaaS application. The replication factor of this universe is 5, and it is configured to keep 2 copies of data in `us-west`, 2 copies of the data in `us-east` and 1 copy of the data in the Asia-Pacific region.
 
 ![Geo-distributed](/images/develop/learn/yb-geo-distributed.png)
 

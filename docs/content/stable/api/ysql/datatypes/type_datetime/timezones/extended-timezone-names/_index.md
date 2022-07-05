@@ -9,8 +9,7 @@ menu:
     identifier: extended-timezone-names
     parent: timezones
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}
@@ -95,7 +94,7 @@ dst_offset      |  08:00
 is_dst          | false
 country_code    | PH
 lat_long        | +1435+12100
-region_coverage | 
+region_coverage |
 status          | Canonical
 ----------------+--------------------
 name            | Europe/London
@@ -108,7 +107,7 @@ dst_offset      |  01:00
 is_dst          | true
 country_code    | GB
 lat_long        | +513030-0000731
-region_coverage | 
+region_coverage |
 status          | Canonical
 ```
 

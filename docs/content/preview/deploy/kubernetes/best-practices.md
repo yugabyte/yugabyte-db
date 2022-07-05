@@ -7,9 +7,7 @@ menu:
     identifier: best-practices
     parent: deploy-kubernetes
     weight: 626
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Local vs remote SSDs

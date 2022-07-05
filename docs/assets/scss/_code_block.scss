@@ -1,0 +1,122 @@
+.td-content {
+  code {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0 2px;
+    padding: 0 3px;
+    font-size: 16px;
+    border-radius: 4px;
+    background: #e6efff;
+    border: 1px solid #dee0ea;
+    line-height: 1;
+    color: #000041;
+    max-width: 100%;
+    overflow: auto;
+  }
+
+  p > code {
+    white-space: nowrap;
+    padding: 2px 4px;
+  }
+
+  a > code {
+    margin: 0 0 2px;
+  }
+
+  pre {
+    background: transparent !important;
+    padding: 0 !important;
+    margin-top: 20.3438px !important;
+    position: relative !important;
+    overflow: hidden;
+
+    > code {
+      font-size: 100%;
+      display: block;
+      width: 100% !important;
+      line-height: 1.5;
+      border-radius: 7px;
+      padding: 12px 20px;
+      margin: 0;
+      border: 1px solid #dee0ea;
+      background: $YB_LIGHT_GRAY !important;
+      border-color: #dee0ea;
+      white-space: pre !important;
+      word-wrap: normal;
+      word-break: keep-all;
+      overflow: auto;
+    }
+
+    button.copy {
+      position: absolute;
+      border: none !important;
+      right: 0;
+      top: 0;
+      width: 25px;
+      height: 25px;
+      font-size: 12px;
+      line-height: inherit;
+      font-weight: 500;
+      text-align: center;
+      padding: 3px 4px;
+      border-radius: 50%;
+      margin: 12px 12px 0 0;
+      overflow: hidden;
+      transition: all 0.2s;
+
+      &::before {
+        position: absolute;
+        top: 0;
+        left: 0;
+        font: normal normal normal 14px/1 "Font Awesome 5 Free";
+        font-weight: 100;
+        content: "\f0c5";
+        color: #889396;
+        text-align: center;
+        border-radius: 2px;
+        width: 100%;
+        height: 25px;
+        line-height: 26px;
+        opacity: 1;
+        background-color: #f7f8f9;
+      }
+
+      &:hover::before {
+        color: #1c2d38;
+        background-color: #e8edeb;
+      }
+
+      &::after {
+        position: absolute;
+        top: 0;
+        left: 0;
+        font: normal normal normal 11px/1 "Font Awesome 5 Free";
+        font-weight: 100;
+        content: "\f00c";
+        color: #fff;
+        text-align: center;
+        border-radius: 2px;
+        width: 100%;
+        height: 25px;
+        line-height: 26px;
+        opacity: 1;
+        background-color: $YB_SUCCESS_COLOR !important;
+      }
+
+      &.unclicked::after {
+        content: "";
+        opacity: 0;
+        -webkit-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+        -moz-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+        -o-transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+        transition: opacity 0.6s cubic-bezier(0.375, 0.885, 0.6, 1) 0s;
+      }
+    }
+  }
+}
+
+@media (min-width: 992px) {
+  .td-content > pre {
+    max-width: 100%;
+  }
+}

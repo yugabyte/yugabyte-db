@@ -7,25 +7,17 @@ image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/
   - /preview/releases/whats-new/
-section: RELEASES
 menu:
-  preview:
+  preview_releases:
     identifier: releases
+    parent: release-notes
     weight: 1060
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
-
 {{< tip title="Versioning" >}}
 As of v2.2, Yugabyte follows a new release versioning convention for YugabyteDB and YugabyteDB Anywhere releases. For details, see [Release versioning](versioning/).
 {{< /tip >}}
-
-## On this page
-
-* Current [supported releases](#current-supported-releases)
-* Yugabyte's [release support policy](#release-support-policy) and [timelines](#release-support-timelines)
-* Releases that are [no longer supported](#eol-releases)
-* [Release series recommendations](#recommended-release-series-for-projects) for your project
 
 ## Current supported releases
 

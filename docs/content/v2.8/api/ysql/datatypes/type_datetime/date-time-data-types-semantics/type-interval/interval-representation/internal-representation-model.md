@@ -8,8 +8,7 @@ menu:
     identifier: internal-representation-model
     parent: interval-representation
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Download and install the date-time utilities code." >}}

@@ -10,8 +10,7 @@ menu:
     identifier: explore-transactions-distributed-transactions-2-ycql
     parent: explore-transactions
     weight: 230
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

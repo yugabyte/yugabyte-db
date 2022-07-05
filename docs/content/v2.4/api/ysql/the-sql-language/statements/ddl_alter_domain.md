@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: ddl_alter_domain
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

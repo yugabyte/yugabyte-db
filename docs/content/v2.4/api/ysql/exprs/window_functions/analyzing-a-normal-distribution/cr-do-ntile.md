@@ -8,8 +8,7 @@ menu:
     identifier: cr-do-ntile
     parent: analyzing-a-normal-distribution
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_do_ntile.sql`.
 ```plpgsql

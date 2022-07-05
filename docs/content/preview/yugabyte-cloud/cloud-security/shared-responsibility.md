@@ -4,12 +4,11 @@ linkTitle: Shared responsibility model
 description: YugabyteDB Managed security shared responsibility model.
 image: /images/section_icons/index/secure.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     parent: cloud-security
     identifier: shared-responsibility
 weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB Managed security and compliance is a shared responsibility between public cloud providers, Yugabyte, and YugabyteDB Managed customers.

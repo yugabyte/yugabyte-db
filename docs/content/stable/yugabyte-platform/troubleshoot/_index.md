@@ -1,15 +1,15 @@
 ---
-title: Troubleshoot 
+title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot
 image: /images/section_icons/troubleshoot/troubleshoot.png
 headcontent: Diagnose and troubleshoot universe and Yugabyte Platform issues.
-type: page
-section: YUGABYTE PLATFORM
 menu:
-  stable:
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: troubleshoot-yp
     weight: 648
+type: indexpage
 ---
 
 <div class="row">

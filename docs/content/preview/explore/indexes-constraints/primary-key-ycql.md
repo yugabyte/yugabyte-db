@@ -8,12 +8,11 @@ menu:
     identifier: primary-key-ycql
     parent: explore-indexes-constraints
     weight: 201
-isTocNested: true
-showAsideToc: true
 aliases:
-   - /preview/explore/ysql-language-features/constraints/
-   - /preview/explore/indexes-constraints/constraints/
-   - /preview/explore/indexes-constraints/indexes-1/
+  - /preview/explore/ysql-language-features/constraints/
+  - /preview/explore/indexes-constraints/constraints/
+  - /preview/explore/indexes-constraints/indexes-1/
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

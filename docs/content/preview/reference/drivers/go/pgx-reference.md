@@ -10,8 +10,7 @@ menu:
     identifier: ref-pgx-go-driver
     parent: drivers
     weight: 610
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

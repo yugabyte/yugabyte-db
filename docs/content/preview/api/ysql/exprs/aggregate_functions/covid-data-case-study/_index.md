@@ -1,7 +1,10 @@
 ---
-title: Case study—linear regression analysis of COVID data
-linkTitle: case study—linear regression on COVID data
-headerTitle: Case study—linear regression analysis of COVID data from Carnegie Mellon's COVIDcast project
+title: >
+  Case study: linear regression analysis of COVID data
+linkTitle: >
+  Case study: linear regression on COVID data
+headerTitle: >
+  Case study: linear regression analysis of COVID data from Carnegie Mellon's COVIDcast project
 description: Case study—using the YSQL regr_r2(), regr_slope(), regr_intercept() to examine the correlation between COVID-like symptoms and mask-wearing using data from Carnegie Mellon's COVIDcast.
 image: /images/section_icons/api/ysql.png
 menu:
@@ -9,10 +12,9 @@ menu:
     identifier: covid-data-case-study
     parent: aggregate-functions
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
-
 ## Overview of the data and the code
 
 [Carnegie Mellon’s COVIDcast](https://covidcast.cmu.edu/) is an academic project that tracks real-time coronavirus statistics. The team uses various data collection methods and exposes data for download in various formats. This case study uses data that were collected using daily Facebook surveys with the aim of examining the possible correlation between wearing a face-mask and showing symptoms like those of SARS-CoV-2—hereinafter COVID. Specifically, three so-called signals are recorded.

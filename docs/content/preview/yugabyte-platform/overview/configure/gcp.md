@@ -5,12 +5,11 @@ linkTitle: Configure
 description: Configuring YugabyteDB Anywhere on Google Cloud Platform
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: configure-2-gcp
     parent: overview-yp
     weight: 40
-isTocNested: true
-showAsideToc: false
+type: docs
 ---
 
 For overview of how to configure database nodes, select one of the following cloud providers:

@@ -10,6 +10,7 @@ menu:
     parent: integrations
     identifier: hasura
     weight: 645
+type: indexpage
 ---
 
 

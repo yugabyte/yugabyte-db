@@ -10,8 +10,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/txn_show/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

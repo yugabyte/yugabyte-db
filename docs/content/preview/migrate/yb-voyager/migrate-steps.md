@@ -8,10 +8,8 @@ menu:
     identifier: migrate-steps
     parent: yb-voyager
     weight: 102
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
-
 
 This page describes the steps to perform and verify a successful migration to YugabyteDB. Before proceeding with migration, ensure that you have completed the following steps:
 

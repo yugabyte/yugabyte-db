@@ -7,8 +7,7 @@ menu:
   stable:
     identifier: dcl_revoke
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

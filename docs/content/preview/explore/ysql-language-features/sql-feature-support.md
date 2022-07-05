@@ -8,8 +8,7 @@ menu:
     identifier: explore-ysql-language-feature-support
     parent: explore-ysql-language-features
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To understand which standard SQL features we support, refer to the following tables:

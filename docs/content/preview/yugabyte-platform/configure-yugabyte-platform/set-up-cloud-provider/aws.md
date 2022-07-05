@@ -9,12 +9,11 @@ aliases:
   - /preview/yugabyte-platform/deploy/configure-cloud-providers/aws
   - /preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: set-up-cloud-provider-1-aws
     parent: configure-yugabyte-platform
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

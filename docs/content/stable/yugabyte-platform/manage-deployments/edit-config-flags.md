@@ -4,12 +4,11 @@ headerTitle: Edit configuration flags
 linkTitle: Edit configuration flags
 description: Use Yugabyte Platform to edit configuration flags.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: edit-config-flags
     parent: manage-deployments
     weight: 50
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Adding and modifying configuration flags for your YB-Master and YB-TServer nodes in a YugabyteDB universe allows you to resolve issues, improve performance, and customize functionality.
@@ -27,7 +26,7 @@ You can modify configuration flags by opening the universe in the Yugabyte Platf
 Use the **Flags** dialog to do all or some of the following, as per your requirements:
 
 - Click **Add Flags > Add to Master** to open the **Add to Master** dialog, then select the flag you want to add to YB-Master and set its value, as per the following illustration:<br><br>
-  
+
   ![Master Config](/images/ee/add-master-1.png)<br><br>
 
 - Click **Add Flags > Add to T-Server** to open the **Add to T-Server** dialog, then select the flag you want to add to YB-TServer and set its value.
@@ -37,15 +36,15 @@ Use the **Flags** dialog to do all or some of the following, as per your require
   ![JSON Config](/images/ee/add-gflags-json.png)<br><br>
 
 - Use the **FLAG NAME** column to find the flag you want to modify and perform all or some of the following:
-  
+
   - Click the **Edit Flag** icon for either **MASTER VALUE** or **T-SERVER VALUE** to open the **Edit Flag Value** dialog, as per the following illustration, change the value in the **Flag Value** field and then click **Confirm**:<br><br>
-  
+
     ![Master Config](/images/ee/master-flag-1.png)<br><br>
-  
+
   - To delete the flag's value, click the **Remove Value** icon for either **MASTER VALUE** or **T-SERVER VALUE** or both.
-  
+
   - Repeat the preceding procedures for every flag that needs modifications.
-  
+
 - Modify the flag upgrade type.
 
 
@@ -55,5 +54,4 @@ You can add configuration flags when you are creating a new universe, as follows
 
 - Navigate to either **Dashboard** or **Universes** and click **Create Universe**.
 - Complete the required sections of the **Create Universe** page.
-- When you reach **G-Flags**, perform steps described in [Modify configuration flags](#modify-configuration-flags). 
-
+- When you reach **G-Flags**, perform steps described in [Modify configuration flags](#modify-configuration-flags).

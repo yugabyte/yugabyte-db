@@ -4,14 +4,12 @@ linkTitle: Create your cluster
 description: Deploy clusters in YugabyteDB Managed.
 headcontent: Create a cluster in YugabyteDB Managed.
 image: /images/section_icons/index/quick_start.png
-section: YUGABYTEDB MANAGED
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: create-clusters
     parent: cloud-basics
     weight: 25
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 <div class="row">

@@ -12,8 +12,7 @@ menu:
     identifier: docdb-persistence
     parent: docdb
     weight: 1146
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.

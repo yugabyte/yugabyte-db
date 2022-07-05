@@ -8,8 +8,7 @@ menu:
     identifier: yb-docker-ctl
     parent: admin
     weight: 2420
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `yb-docker-ctl` utility provides a simple command line interface (CLI), or shell, for administering a local Docker-based cluster for development and learning. It manages the [YB-Master](../yb-master/) and [YB-TServer](../yb-tserver/) containers to perform the necessary administration.

@@ -4,12 +4,11 @@ headerTitle: Back up universe YCQL data
 linkTitle: Back up universe data
 description: Use Yugabyte Platform to back up data in YCQL tables.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-2-ycql
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -30,7 +29,7 @@ showAsideToc: true
 
 </ul>
 
-Use Yugabyte Platform to back up your YugabyteDB universe YCQL data. 
+Use Yugabyte Platform to back up your YugabyteDB universe YCQL data.
 
 To schedule backups for a later time, or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
 

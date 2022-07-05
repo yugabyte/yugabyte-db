@@ -8,8 +8,7 @@ menu:
     identifier: cr-xform-to-joined-table-sql
     parent: ingest-scripts
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Save this script as "cr-xform-to-covidcast-fb-survey-results.sql"**

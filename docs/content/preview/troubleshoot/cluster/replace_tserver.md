@@ -8,8 +8,7 @@ menu:
     identifier: replace-failed-tserver
     parent: troubleshoot-cluster
     weight: 829
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 If you have a failed YB-TServer in a YugabyteDB cluster that needs to be replaced, follow these steps:

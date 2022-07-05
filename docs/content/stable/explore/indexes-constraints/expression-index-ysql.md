@@ -8,8 +8,7 @@ menu:
     identifier: expression-index-ysql
     parent: explore-indexes-constraints
     weight: 240
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -25,7 +24,7 @@ Indexes usually are created based on the columns, but the Expression Indexes(als
 
 ## Syntax
 
-```ysql
+```sql
 CREATE INDEX index_name ON table_name( (expression) );
 ```
 

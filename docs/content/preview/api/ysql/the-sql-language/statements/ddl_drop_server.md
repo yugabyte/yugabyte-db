@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_drop_foreign_server
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

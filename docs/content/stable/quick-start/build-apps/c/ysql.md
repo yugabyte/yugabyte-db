@@ -8,8 +8,7 @@ menu:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -154,5 +153,5 @@ You should see the following output:
 ```output
 Created table employee
 Inserted data (1, 'John', 35, 'C')
-Query returned: John 35 C 
+Query returned: John 35 C
 ```

@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: array-remove
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Return a new array where _every_ occurrence of the specified value has been removed from the specified input array.

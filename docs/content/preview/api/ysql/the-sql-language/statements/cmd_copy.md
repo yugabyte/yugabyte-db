@@ -9,8 +9,7 @@ menu:
     parent: statements
 aliases:
   - /preview/api/ysql/commands/cmd_copy/
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

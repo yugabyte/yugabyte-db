@@ -11,9 +11,7 @@ menu:
     weight: 624
 aliases:
   - /preview/deploy/kubernetes/aks/statefulset-yaml/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 

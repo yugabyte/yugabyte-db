@@ -8,8 +8,7 @@ menu:
     identifier: row-to-json
     parent: json-functions-operators
     weight: 270
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Create a JSON _object_ from a SQL _record_.
@@ -33,7 +32,7 @@ declare
   j_false constant json := row_to_json(row, false);
   j_true  constant json := row_to_json(row, true);
   expected_j_false constant json := '{"a":42,"b":"dog"}';
-  expected_j_true  constant json := 
+  expected_j_true  constant json :=
 '{"a":42,
  "b":"dog"}';
 begin

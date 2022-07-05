@@ -11,9 +11,7 @@ menu:
     weight: 558
 aliases:
   - /preview/quick-start/build-apps/scala/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

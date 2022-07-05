@@ -4,14 +4,12 @@ headerTitle: 'Optional: editor setup'
 linkTitle: Editor setup
 description: Optional setup steps for selected text editors
 image: /images/section_icons/index/quick_start.png
-type: page
 menu:
   preview:
     identifier: docs-editor-setup
     parent: docs-build
     weight: 2913
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Visual Studio Code-specific" >}}

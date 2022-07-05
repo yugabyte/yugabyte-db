@@ -10,8 +10,7 @@ menu:
 aliases:
   - /preview/api/cassandra/expr_fcall
   - /preview/api/ycql/expr_fcall
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

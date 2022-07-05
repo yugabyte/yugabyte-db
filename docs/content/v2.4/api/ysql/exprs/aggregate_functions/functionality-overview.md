@@ -8,8 +8,7 @@ menu:
     identifier: aggregate-functions-functionality-overview
     parent: aggregate-functions
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Aggregate functions fall into two kinds according to the syntax that you use to invoke them.
@@ -53,7 +52,7 @@ select class, to_char(n, '0.99') as n, s from t order by class, n;
 This is the result:
 
 ```
- class |   n   | s 
+ class |   n   | s
 -------+-------+---
      1 |  7.10 | a
      1 |  7.20 | b
@@ -77,7 +76,7 @@ from t;
 This is the result:
 
 ```
- count |  avg  
+ count |  avg
 -------+-------
     10 |  7.55
 ```
@@ -96,7 +95,7 @@ order by class;
 This is the result:
 
 ```
- class | count |  avg  
+ class | count |  avg
 -------+-------+-------
      1 |     5 |  7.30
      2 |     5 |  7.80
@@ -115,7 +114,7 @@ from t;
 This is the result:
 
 ```
- count |  avg  |          s          
+ count |  avg  |          s
 -------+-------+---------------------
     10 |  7.60 | j-i-h-g-f-e-d-c-b-a
 ```
@@ -146,7 +145,7 @@ from a;
 This is the result:
 
 ```
- class | count |  avg  |     s     
+ class | count |  avg  |     s
 -------+-------+-------+-----------
      1 |     1 |  7.20 | a
      1 |     2 |  7.25 | a-b
@@ -238,13 +237,13 @@ limit 3;
 These are the results:
 
 ```
- class | v  | frequency 
+ class | v  | frequency
 -------+----+-----------
      1 | 37 |         2
      1 |  1 |         1
      1 |  2 |         1
 
- class | v  | frequency 
+ class | v  | frequency
 -------+----+-----------
      2 | 42 |         3
      2 | 11 |         1
@@ -265,7 +264,7 @@ order by class;
 Here is the result:
 
 ```
- class | most frequent v 
+ class | most frequent v
 -------+-----------------
      1 |              37
      2 |              42
@@ -316,7 +315,7 @@ order by class, score nulls first;
 This is the result:
 
 ```
- class | score  
+ class | score
 -------+--------
      1 | <null>
      1 |      2
@@ -354,7 +353,7 @@ order by class, r;
 This is the result:
 
 ```
- class | score  | r 
+ class | score  | r
 -------+--------+---
      1 | <null> | 1
      1 |      2 | 2
@@ -386,7 +385,7 @@ rollback;
 This is the result:
 
 ```
- class | score | r 
+ class | score | r
 -------+-------+---
      1 |     5 | 4
      2 |     6 | 3
@@ -417,11 +416,11 @@ where class = :class;
 These are the results:
 
 ```
- class | score | r 
+ class | score | r
 -------+-------+---
      1 |     5 | 4
 
- class | score | r 
+ class | score | r
 -------+-------+---
      2 |     6 | 3
 ```
@@ -451,12 +450,12 @@ group by class;
 This is the result:
 
 ```
- class | score | r 
+ class | score | r
 -------+-------+---
      1 |     5 | 4
      2 |     5 | 3
 
- class | score | r 
+ class | score | r
 -------+-------+---
      1 |     6 | 4
      2 |     6 | 3

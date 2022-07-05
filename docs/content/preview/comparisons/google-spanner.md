@@ -6,9 +6,10 @@ description: Compare Google Cloud Spanner with YugabyteDB.
 aliases:
   - /comparisons/google-spanner/
 menu:
-  preview:
+  preview_faq:
     parent: comparisons
     weight: 1074
+type: docs
 ---
 
 YugabyteDB’s sharding, replication and transactions architecture is similar to that of [Google Cloud Spanner](https://cloud.google.com/spanner/) which is also a globally-distributed CP database with high write availability. Both these databases are based on the design principles outlined in the [original Google Spanner paper](https://research.google.com/archive/spanner-osdi2012.pdf) published in 2012. Note that while Google Cloud Spanner leverages Google’s proprietary (and expensive) network infrastructure, YugabyteDB is designed work on commodity infrastructure used by most enterprise users.

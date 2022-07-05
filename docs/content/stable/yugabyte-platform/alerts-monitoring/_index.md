@@ -5,12 +5,12 @@ linkTitle: Alerts and monitoring
 description: Use Yugabyte Platform for alerts and monitoring of YugabyteDB universe data.
 image: /images/section_icons/manage/backup.png
 headcontent: Use Yugabyte Platform for alerts and monitoring of YugabyteDB universe data.
-type: page
-section: YUGABYTE PLATFORM
 menu:
-  stable:
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: alerts-monitoring
 weight: 647
+type: indexpage
 ---
 
 <div class="row">

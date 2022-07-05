@@ -8,8 +8,7 @@ menu:
     identifier: observability-2-macos
     parent: explore-observability
     weight: 240
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
  <ul class="nav nav-tabs-alt nav-tabs-yb">

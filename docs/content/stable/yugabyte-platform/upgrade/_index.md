@@ -4,12 +4,12 @@ headerTitle: Upgrade Yugabyte Platform
 linkTitle: Upgrade Yugabyte Platform
 description: Upgrade Yugabyte Platform.
 image: /images/section_icons/manage/enterprise.png
-type: page
-section: YUGABYTE PLATFORM
 menu:
-  stable:
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: upgrade
     weight: 649
+type: indexpage
 ---
 
 You can upgrade Yugabyte Platform to a newer version.
@@ -23,10 +23,9 @@ You can upgrade Yugabyte Platform to a newer version.
         <div class="title">Upgrade Yugabyte Platform using Replicated</div>
       </div>
       <div class="body">
-        Use Replicated to upgrade Yugabyte Platform 
+        Use Replicated to upgrade Yugabyte Platform
       </div>
     </a>
   </div>
 
 </div>
-

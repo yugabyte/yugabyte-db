@@ -6,12 +6,11 @@ description: Migrate your YugabyteDB universes and YugabyteDB Anywhere from Helm
 aliases:
   - /preview/manage/enterprise-edition/migrate-to-helm3/
 menu:
-  preview:
+  preview_yugabyte-platform:
     identifier: migrate-to-helm3
     parent: manage-deployments
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Starting with YugabyteDB version 2.1.8, Helm 2 is not supported. You would need to migrate your existing YugabyteDB universes and YugabyteDB Anywhere from Helm 2 to Helm 3.

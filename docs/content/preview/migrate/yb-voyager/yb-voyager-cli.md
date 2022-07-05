@@ -8,8 +8,7 @@ menu:
     identifier: yb-voyager-cli
     parent: yb-voyager
     weight: 105
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 yb-voyager is a command line executable for migrating databases from PostgreSQL, Oracle, and MySQL to a YugabyteDB database.

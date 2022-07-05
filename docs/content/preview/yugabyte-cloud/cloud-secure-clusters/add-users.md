@@ -5,12 +5,11 @@ description: Add users to YugabyteDB Managed clusters
 headcontent:
 image: /images/section_icons/deploy/enterprise.png
 menu:
-  preview:
+  preview_yugabyte-cloud:
     identifier: add-users
     parent: cloud-secure-clusters
     weight: 350
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Add database users to provide team members and applications access to the cluster's YugabyteDB database.

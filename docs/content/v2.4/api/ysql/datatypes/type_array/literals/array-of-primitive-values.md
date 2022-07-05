@@ -8,8 +8,7 @@ menu:
     identifier: array-of-primitive-values
     parent: array-literals
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section states a sufficient subset of the rules that allow you to write a syntactically correct array literal that expresses any set of values, for arrays of any scalar data type, that you could want to create. The full set of rules allows more flexibility than do just those that are stated here. But because these are sufficient, the full, and rather complex, set is not documented here. The explanations in this section will certainly allow you to interpret the `::text` typecast of any array value that you might see, for example in `ysqlsh`.
@@ -80,7 +79,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
+The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
 
 Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -112,7 +111,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -214,7 +213,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 Again, it shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -260,7 +259,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -312,7 +311,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -369,7 +368,7 @@ Notice that the three different `INSERT` statements define arrays with different
 Here is the `SELECT` result:
 
 ```
- k | ndims |                    v::text                    
+ k | ndims |                    v::text
 ---+-------+-----------------------------------------------
  1 |     1 | {1,2}
  2 |     2 | {{1,2},{3,4}}

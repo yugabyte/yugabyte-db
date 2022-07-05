@@ -9,8 +9,7 @@ menu:
     identifier: prisma-1
     parent: nodejs-drivers
     weight: 600
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -66,7 +65,7 @@ To create a basic Node.js project and install the `prisma` package, do the follo
     echo {} > package.json
     ```
 
-1. Install prisma package:
+1. Install the Prisma package:
 
     ```sh
     npm install prisma
@@ -225,7 +224,7 @@ Use the Prisma client to create a few records in the `employee` table and fetch 
     $ node example.js
     ```
 
-    Expect an output similar to the following:
+    Expect output similar to the following:
 
     ```output
     Created 3 employees.

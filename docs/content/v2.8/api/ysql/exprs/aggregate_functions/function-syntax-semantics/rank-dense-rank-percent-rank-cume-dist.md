@@ -8,8 +8,7 @@ menu:
     identifier: rank-dense-rank-percent-rank-cume-dist
     parent: aggregate-function-syntax-semantics
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section describes the uses of [`rank()`](./#rank), [`dense_rank()`](./#dense-rank), [`percent_rank()`](./#percent-rank), and [`cume_dist()`](./#cume-dist) as "within-group hypothetical-set" aggregate functions.
@@ -76,7 +75,7 @@ Unlike most built-in aggregate functions, these aggregate functions are not stri
 
 ```
 input value:       VARIADIC "any" ORDER BY VARIADIC "any"
-                   
+
 return value:      bigint
 ```
 
@@ -90,7 +89,7 @@ See the account of [`rank()`](../../../window_functions/function-syntax-semantic
 
 ```
 input value:       VARIADIC "any" ORDER BY VARIADIC "any"
-                   
+
 return value:      bigint
 ```
 
@@ -104,7 +103,7 @@ See the account of [`dense_rank()`](../../../window_functions/function-syntax-se
 
 ```
 input value:       VARIADIC "any" ORDER BY VARIADIC "any"
-                   
+
 return value:      double precision
 ```
 
@@ -120,7 +119,7 @@ See the account of [`percent_rank()`](../../../window_functions/function-syntax-
 
 ```
 input value:       VARIADIC "any" ORDER BY VARIADIC "any"
-                   
+
 return value:      double precision
 ```
 
@@ -168,7 +167,7 @@ order by class, score nulls first;
 This is the result:
 
 ```
- class | score  
+ class | score
 -------+--------
      1 | <null>
      1 |      2
@@ -211,7 +210,7 @@ order by class, r;
 This is the result:
 
 ```
- class | score  | r | dr |   pr   |   cd   
+ class | score  | r | dr |   pr   |   cd
 -------+--------+---+----+--------+--------
      1 | <null> | 1 |  1 |   0.00 |   0.17
      1 |      2 | 2 |  2 |   0.20 |   0.33
@@ -244,7 +243,7 @@ rollback;
 This is the result:
 
 ```
- class | score | r | dr |   pr   |   cd   
+ class | score | r | dr |   pr   |   cd
 -------+-------+---+----+--------+--------
      1 |     5 | 4 |  4 |   0.50 |   0.57
      2 |     6 | 3 |  3 |   0.40 |   0.67
@@ -289,7 +288,7 @@ order by class;
 This is the result:
 
 ```
- class | score | r | dr |   pr   |   cd   
+ class | score | r | dr |   pr   |   cd
 -------+-------+---+----+--------+--------
      1 |     5 | 4 |  4 |   0.50 |   0.57
      2 |     5 | 3 |  3 |   0.40 |   0.50
@@ -307,7 +306,7 @@ order by class;
 This is the result:
 
 ```
- class | score | r | dr |   pr   |   cd   
+ class | score | r | dr |   pr   |   cd
 -------+-------+---+----+--------+--------
      1 |     6 | 4 |  4 |   0.50 |   0.71
      2 |     6 | 3 |  3 |   0.40 |   0.67
@@ -331,7 +330,7 @@ order by class;
 This is the result:
 
 ```
- class | score | r | dr |   pr   |   cd   
+ class | score | r | dr |   pr   |   cd
 -------+-------+---+----+--------+--------
      1 |     5 | 4 |  4 |   0.50 |   0.57
      2 |     6 | 3 |  3 |   0.40 |   0.67

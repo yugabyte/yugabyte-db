@@ -7,8 +7,7 @@ menu:
   v2.4:
     identifier: txn_commit
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

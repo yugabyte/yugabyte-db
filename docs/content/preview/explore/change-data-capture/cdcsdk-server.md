@@ -14,8 +14,7 @@ menu:
     parent: change-data-capture
     identifier: cdcsdk-server
     weight: 580
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Yugabyte CDCSDK Server is an open source project that provides a streaming platform for change data capture from YugabyteDB. The server is based on [Debezium](https://github.com/yugabyte/cdcsdk-server/blob/main/debezium.io). CDCSDK Server uses [debezium-yugabytedb-connector](https://github.com/yugabyte/debezium-connector-yugabytedb) to capture change events. It supports a YugabyteDB instance as a source and supports the following sinks:
@@ -87,7 +86,7 @@ touch conf/application.properties
 ## Configuration
 
 The main configuration file is `conf/application.properties`, which includes the following sections:
-* `cdcsdk.source` is for configuring the source connector. 
+* `cdcsdk.source` is for configuring the source connector.
 * `cdcsdk.sink` is for the sink system configuration.
 * `cdcsdk.transforms` is for the configuration of message transformations.
 
@@ -107,7 +106,7 @@ Using environment variables for configuration can be useful when running in cont
 | :--- | :--- | :--- |
 | `quarkus.http.port` | 8080 | The port on which CDCSDK Server exposes Microprofile Health endpoint and other exposed status information. |
 | `quarkus.log.level` | INFO | The default log level for every log category. |
-| `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. | 
+| `quarkus.log.console.json` | true | Determines whether to enable the JSON console formatting extension, which disables "normal" console formatting. |
 
 
 ### Source configuration

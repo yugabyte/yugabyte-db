@@ -8,8 +8,7 @@ menu:
     identifier: cluster-management-point-in-time-recovery-ycql
     parent: explore-cluster-management
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

@@ -12,8 +12,7 @@ menu:
     identifier: point-in-time-recovery
     parent: backup-restore
     weight: 705
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Point-in-time recovery (PITR) in YugabyteDB enables recovery from a user or software error, while minimizing recovery point objective (RPO), recovery time objective (RTO), and overall impact on the cluster.

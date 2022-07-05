@@ -10,8 +10,7 @@ menu:
     identifier: query-tuning-intro
     parent: query-tuning
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 A YugabyteDB cluster consists of multiple nodes running the YB-TServer server process. Due to its distributed nature, tuning a YugabyteDB database requires keeping in mind that, unlike most common databases where only a local machine influences a database query, data is stored across all the nodes of the cluster. This section provides an introduction to tuning YugabyteDB and the tools available.
