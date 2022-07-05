@@ -247,13 +247,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
                             const std::unordered_set<PgOid>& region_local_tables) {
   // Group the items by the table ID.
   std::sort(ybctids->begin(), ybctids->end(), [](const auto& a, const auto& b) {
-    // TODO(dmitry): By design it is only necessary to group ybctids by table, sorting of ybctids
-    // itself is not required. But due to problem described in #12648 unsorted ybctids may produce
-    // incomplete result. Remove ybctid comparision once #12648 is fixed.
-    if (a.table_id != b.table_id) {
-      return a.table_id < b.table_id;
-    }
-    return a.ybctid < b.ybctid;
+    return a.table_id < b.table_id;
   });
 
   auto arena = std::make_shared<Arena>();

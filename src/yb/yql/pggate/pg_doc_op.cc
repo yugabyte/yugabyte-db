@@ -568,7 +568,6 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   RETURN_NOT_OK(InitializeYbctidOperators());
   const auto& partition_keys = table_->GetPartitions();
-
   // Begin a batch of ybctids.
   end_of_data_ = false;
   // Assign ybctid values.
@@ -580,49 +579,52 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     // Find partition. The partition index is the boundary order minus 1.
     // - For hash partitioning, we use hashcode to find the right index.
     // - For range partitioning, we pass partition key to seek the index.
-    // TODO(tsplit): what if table partition is changed during PgDocReadOp lifecycle before or after
-    // the following lines?
-    const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-    SCHECK(partition < table_->GetPartitionCount(), InternalError,
-           "Ybctid value is not within partition boundary");
+    const auto partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
 
     // Assign ybctids to operators.
     auto& read_req = GetReadReq(partition);
-    if (!read_req.has_ybctid_column_value()) {
-      // We must set "ybctid_column_value" in the request for two reasons.
-      // - "client::yb_op" uses it to set the hash_code.
-      // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
-      //   of ybctid-batching operation.
-      pgsql_ops_[partition]->set_active(true);
-      read_req.set_is_forward_scan(true);
-      read_req.mutable_ybctid_column_value()->mutable_value()->dup_binary_value(ybctid);
-
-      // For every read operation set partition boundary. In case a tablet is split between
-      // preparing requests and executing them, docDB will return a paging state for pggate to
-      // continue till the end of current tablet is reached.
-      std::string upper_bound;
-      if (partition < partition_keys.size() - 1) {
-        upper_bound = partition_keys[partition + 1];
-      }
-      RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
-                                            partition_keys[partition],
-                                            /* lower_bound_is_inclusive */ true,
-                                            upper_bound,
-                                            /* upper_bound_is_inclusive */ false));
-    }
 
     // Append ybctid and its order to batch_arguments.
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
     // track of this order, each argument is assigned an order-number.
-    auto batch_arg = read_req.add_batch_arguments();
+    auto* batch_arg = read_req.add_batch_arguments();
     batch_arg->set_order(batch_row_ordering_counter_);
-    batch_arg->mutable_ybctid()->mutable_value()->dup_binary_value(ybctid);
+    auto* arg_value = batch_arg->mutable_ybctid()->mutable_value();
+    arg_value->dup_binary_value(ybctid);
+    const auto arena_ybctid = arg_value->binary_value();
 
     // Remember the order number for each request.
     batch_row_orders_[partition].push_back(batch_row_ordering_counter_);
 
     // Increment counter for the next row.
-    batch_row_ordering_counter_++;
+    ++batch_row_ordering_counter_;
+
+    // We must set "ybctid_column_value" in the request for two reasons:
+    // - "client::yb_op" uses it to set the hash_code.
+    // - Rolling upgrade: Older server will read only "ybctid_column_value" as it doesn't know
+    //   of ybctid-batching operation.
+    // Note: lowest ybctid per partition must be used to correctly handle possible dynamic table
+    // splitting.
+    if (!read_req.has_ybctid_column_value()) {
+      pgsql_ops_[partition]->set_active(true);
+      read_req.set_is_forward_scan(true);
+      read_req.mutable_ybctid_column_value()->mutable_value()->ref_binary_value(arena_ybctid);
+
+      // For every read operation set partition boundary. In case a tablet is split between
+      // preparing requests and executing them, DocDB will return a paging state for pggate to
+      // continue till the end of current tablet is reached.
+      const std::string default_upper_bound;
+      const auto& upper_bound = (partition < partition_keys.size() - 1)
+          ? partition_keys[partition + 1]
+          : default_upper_bound;
+      RETURN_NOT_OK(table_->SetScanBoundary(&read_req,
+                                            partition_keys[partition],
+                                            /* lower_bound_is_inclusive */ true,
+                                            upper_bound,
+                                            /* upper_bound_is_inclusive */ false));
+    } else if (arena_ybctid < read_req.ybctid_column_value().value().binary_value()) {
+      read_req.mutable_ybctid_column_value()->mutable_value()->ref_binary_value(arena_ybctid);
+    }
   }
 
   // Done creating request, but not all partition or operator has arguments (inactive).
