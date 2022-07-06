@@ -68,7 +68,7 @@ When the cluster is ready, the cluster [Overview](../yugabyte-cloud/cloud-monito
 
 >**Sandbox cluster**
 >
->YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/). See [Differences between Sandbox and Dedicated clusters](../faq/yugabyte-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
+>YugabyteDB is a distributed database optimized for deployment across a cluster of servers. The Sandbox cluster has a single node and limited resources, suitable for running tutorials, [Yugabyte University](https://university.yugabyte.com), and [building sample applications](../yugabyte-cloud/cloud-quickstart/cloud-build-apps/). See [Differences between Sandbox and Dedicated clusters](../faq/yugabytedb-managed-faq/#what-are-the-differences-between-sandbox-and-dedicated-clusters) for more information.
 >
 >To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431) for trial credits.
 

@@ -49,27 +49,25 @@ Set the following options:
 
 - **Cluster Name**: Enter a name for the cluster.
 - **Provider**: Choose a cloud provider - AWS or GCP.
-- **[Database Version](../../../../faq/yugabyte-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
+- **[Database Version](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on)**: By default, clusters are deployed using a stable release. If you want to use a preview release for a Dedicated cluster, click **Optional Settings** and choose a release. Before deploying a production cluster using a preview release, contact {{% support-cloud %}}. If you have arranged a custom build with Yugabyte, it will also be listed here.
 
 ### Cluster Setup
 
-Select **Multi-Region Deployment**.
+Select **Multi-Region Deployment** and set the following options.
 
-Set the following options:
+#### Select data distribution mode
 
-- **Select data distribution mode**
+![Add Cluster Wizard - Multi-region data distribution](/images/yb-cloud/cloud-addcluster-multisync-data.png)
 
-  ![Add Cluster Wizard - Multi-region data distribution](/images/yb-cloud/cloud-addcluster-multisync-data.png)
+Set **Data distribution** to **Replicate across regions**.
 
-  - **Data distribution** - Choose **Replicate across regions**.
+#### Select regions and node size
 
-- **Select regions and node size**
+![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
 
-  ![Add Cluster Wizard - Multi-region and size](/images/yb-cloud/cloud-addcluster-multisync.png)
+**Regions** - For each of the 3 regions, choose the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
 
-  - **Regions** - For each of the 3 regions, choose the [region](../../../release-notes#cloud-provider-regions) where the nodes will be located, and the VPC in which to deploy the nodes. Choose the number of nodes to deploy in the regions; each region has the same number of nodes. Only VPCs using the selected cloud provider are listed. The VPCs must be created before deploying the cluster. Refer to [VPC networking](../../cloud-vpcs/).
-
-  - **Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
+**Node size** - enter the number of virtual CPUs per node and the disk size per node (in GB).
 
 Monthly total costs for the cluster are estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 

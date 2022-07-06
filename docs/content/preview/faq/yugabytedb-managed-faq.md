@@ -8,7 +8,7 @@ aliases:
   - /preview/preview/yugabyte-cloud/cloud-faq/
 menu:
   preview_faq:
-    identifier: yugabyte-managed-faq
+    identifier: yugabytedb-managed-faq
     parent: faq
     weight: 2775
 type: docs
@@ -34,11 +34,11 @@ Yugabyte bills for its services as follows:
 - Tabulates costs daily.
 - Displays your current monthly costs under **Invoices** on the **Billing** tab.
 
-For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-admin/cloud-billing-costs/).
+For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../../yugabyte-cloud/cloud-admin/cloud-billing-costs/).
 
 ### What regions in AWS and GCP are available?
 
-Refer to [Cloud provider regions](../release-notes/#cloud-provider-regions) for a list currently supported regions.
+Refer to [Cloud provider regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) for a list currently supported regions.
 
 YugabyteDB Managed supports all the regions that have robust infrastructure and sufficient demand from customers. If there are regions you would like added, reach out to {{% support-cloud %}}.
 
@@ -56,13 +56,13 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 | :----------- | :---------- | :---------- |
 | Cluster | Single Node | Any |
 | vCPU/Storage | Up to 2 vCPU / 4 GB Memory / 10 GB storage | Any |
-| [Regions](../release-notes/#cloud-provider-regions) | All | All |
-| Upgrades | Automatic | Automatic with customizable [maintenance windows](../cloud-clusters/cloud-maintenance/) |
-| [VPC Peering](../cloud-basics/cloud-vpcs/) | No | Yes |
+| [Regions](../../yugabyte-cloud/release-notes/#cloud-provider-regions) | All | All |
+| Upgrades | Automatic | Automatic with customizable [maintenance windows](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/) |
+| [VPC Peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) | No | Yes |
 | Fault Tolerance | None (Single node, RF-1) | Multi node RF-3 clusters with Availability zone and Node level |
 | Connections | Up to 10 simultaneous connections | 10 per vCPU per node |
-| [Scaling](../cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
-| [Backups](../cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
+| [Scaling](../../yugabyte-cloud/cloud-clusters/configure-clusters/) | None | Horizontal and Vertical |
+| [Backups](../../yugabyte-cloud/cloud-clusters/backup-clusters/) | None | Scheduled and on-demand |
 | [YugabyteDB version](#what-version-of-yugabytedb-does-my-cluster-run-on) | Preview | Stable |
 | Price | Free | [Pay-as-you-go and subscription](#how-is-yugabytedb-managed-priced) |
 | Support | Slack Community | Enterprise Support |
@@ -72,7 +72,7 @@ A YugabyteDB Managed account is limited to a single Sandbox cluster; you can add
 If you want to continue testing YugabyteDB with more resource-intensive scenarios, you can:
 
 - Download and run YugabyteDB on a local machine. For instructions, refer to [Quick Start](../../quick-start/).
-- Upgrade to a fault tolerant [single- or multi-region cluster](../cloud-basics/create-clusters/) to access bigger clusters with more resources.
+- Upgrade to a fault tolerant [single- or multi-region cluster](../../yugabyte-cloud/cloud-basics/create-clusters/) to access bigger clusters with more resources.
 
 To evaluate YugabyteDB Managed for production use or conduct a proof-of-concept (POC), contact {{% support-cloud %}} for trial credits.
 
@@ -86,13 +86,13 @@ Upgrades are automatically handled by Yugabyte. There are two types of upgrades:
 
 #### YugabyteDB Managed
 
-During a [maintenance window](../cloud-clusters/cloud-maintenance/), YugabyteDB Managed may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
+During a [maintenance window](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/), YugabyteDB Managed may be in read-only mode and not allow any edit changes. The upgrade has no impact on running clusters. Yugabyte will notify you in advance of the maintenance schedule.
 
 #### Cluster (YugabyteDB) version upgrade
 
 To keep up with the latest bug fixes, improvements, and security fixes, Yugabyte upgrades your cluster database to the [latest version](#what-version-of-yugabytedb-does-my-cluster-run-on).
 
-Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../cloud-clusters/cloud-maintenance/).
+Yugabyte only upgrades clusters during scheduled maintenance windows. Yugabyte notifies you in advance of any upcoming upgrade via email. The email includes the date and time of the maintenance window. An Upcoming Maintenance badge is also displayed on the cluster. You can start the upgrade any time by signing in to YugabyteDB Managed, selecting the cluster, clicking the **Upcoming Maintenance** badge, and clicking **Upgrade Now**. To delay the maintenance, click **Delay to next available window**. To manage maintenance windows, select the cluster [Maintenance tab](../../yugabyte-cloud/cloud-clusters/cloud-maintenance/).
 
 The database is upgraded to the latest release in the [release track](#what-version-of-yugabytedb-does-my-cluster-run-on) that was selected when the cluster was created (either preview or stable). Sandbox clusters are always in the preview track.
 
@@ -142,7 +142,7 @@ Your data is processed at the YugabyteDB Managed account level, and each account
 
 YugabyteDB Managed uses both encryption in transit and encryption at rest to protect clusters and cloud infrastructure. YugabyteDB Managed also provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 
-YugabyteDB Managed uses a shared responsibility model for security. For more information on YugabyteDB Managed security, refer to [Security architecture](../cloud-security/).
+YugabyteDB Managed uses a shared responsibility model for security. For more information on YugabyteDB Managed security, refer to [Security architecture](../../yugabyte-cloud/cloud-security/).
 
 ## Cluster configuration and management
 
@@ -156,7 +156,7 @@ The Fault Tolerance of a cluster determines how resilient the cluster is to node
 - **Node Level** - a minimum of 3 nodes deployed in a single availability zone with a [replication factor](../../architecture/docdb-replication/replication/) (RF) of 3. YugabyteDB can continue to do reads and writes even in case of a node failure, but this configuration is not resilient to availability zone outages. For horizontal scaling, you can scale nodes in increments of 1.
 - **None** - single node, with no replication or resiliency. Recommended for development and testing only.
 
-For multi-region deployments, including [synchronous replication](../../explore/multi-region-deployments/synchronous-replication-ysql/), [asynchronous replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/), and [geo-level partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/), contact {{% support-cloud %}}.
+For multi-region deployments, you can deploy a variety of topologies, including synchronously replicated, geo-level partitioned, cross-cluster, and read replicas. For more information, refer to [Topologies](../../yugabyte-cloud/cloud-basics/create-clusters-topology/).
 
 Sandbox clusters are limited to a single node in a single region.
 
@@ -166,13 +166,13 @@ You can connect to clusters in the following ways:
 
 #### Cloud Shell
 
-Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
+Run the [ysqlsh](../../admin/ysqlsh/) or [ycqlsh](../../admin/ycqlsh/) shell from your browser to connect to and interact with your YugabyteDB database. Cloud Shell does not require a CA certificate or any special network access configured. When you connect using Cloud Shell with the YSQL API, the shell window also incorporates a [Quick Start Guide](../../yugabyte-cloud/cloud-quickstart/qs-explore/), with a series of pre-built queries for you to run.
 
 #### Client Shell
 
 Connect to your YugabyteDB cluster using the YugabyteDB [ysqlsh](../../admin/ysqlsh/) and [ycqlsh](../../admin/ycqlsh/) client shells installed on your computer.
 
-Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../cloud-secure-clusters/add-connections/).
+Before you can connect using a client shell, you need to add your computer to the cluster IP allow list. Refer to [Assign IP Allow Lists](../../yugabyte-cloud/cloud-secure-clusters/add-connections/).
 
 You must be running the latest versions of the client shells (Yugabyte Client 2.6 or later), which you can download using the following command on Linux or macOS:
 
@@ -201,17 +201,17 @@ For detailed steps for configuring other popular third party tools, see [Third p
 
 #### Applications
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../cloud-quickstart/cloud-build-apps/).
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Before you can connect an application, you need to install the correct driver. Clusters have SSL (encryption in-transit) enabled so make sure your driver details include SSL parameters. To build sample applications using popular drivers, refer to [Build an application](../../yugabyte-cloud/cloud-quickstart/cloud-build-apps/).
 
-Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP access list](../cloud-secure-clusters/add-connections/), or use [VPC peering](../cloud-basics/cloud-vpcs/) to add private IP addresses.
+Before you can connect, your application has to be able to reach your YugabyteDB Managed. To add inbound network access from your application environment to YugabyteDB Managed, add the public IP addresses to the [cluster IP access list](../../yugabyte-cloud/cloud-secure-clusters/add-connections/), or use [VPC peering](../../yugabyte-cloud/cloud-basics/cloud-vpcs/) to add private IP addresses.
 
-For more details, refer to [Connect to clusters](../cloud-connect/).
+For more details, refer to [Connect to clusters](../../yugabyte-cloud/cloud-connect/).
 
 ### Why is my Sandbox cluster paused?
 
 Sandbox clusters are paused after 21 days of [inactivity](#what-qualifies-as-activity-on-a-cluster).
 
-For more details, refer to [Inactive Sandbox clusters](../cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
+For more details, refer to [Inactive Sandbox clusters](../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/#inactive-sandbox-clusters).
 
 ### How do I keep my Sandbox cluster from being paused or deleted?
 
