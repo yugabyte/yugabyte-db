@@ -995,7 +995,7 @@ export default class ClusterFields extends Component {
     const {
       deviceInfo: { diskIops }
     } = this.state;
-    var actualVal = this.getThroughputByIops(Number(diskIops), val);
+    const actualVal = this.getThroughputByIops(Number(diskIops), val);
 
     updateFormField(`${clusterType}.throughput`, actualVal);
     this.setState({ deviceInfo: { ...this.state.deviceInfo, throughput: actualVal } });
@@ -1838,7 +1838,7 @@ export default class ClusterFields extends Component {
             <Field
               name={`${clusterType}.throughput`}
               component={YBNumericInputWithLabel}
-              label="Provisioned Throughput (MiB/sec)"
+              label="Provisioned Throughput"
               onInputChanged={self.throughputChanged}
               readOnly={isFieldReadOnly}
             />
@@ -2628,6 +2628,7 @@ export default class ClusterFields extends Component {
               <h4>Instance Configuration</h4>
             </Col>
           </Row>
+
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
@@ -2649,47 +2650,62 @@ export default class ClusterFields extends Component {
                   </span>
                 )}
             </Col>
-            <Col sm={12} md={12} lg={6}>
-              {deviceDetail && (
-                <div className="form-right-aligned-labels">
-                  <div className="form-inline-controls">
-                    <div
-                      className="form-group universe-form-instance-info"
-                      data-yb-field="volumn-info"
-                    >
-                      <label className="form-item-label form-item-label-shrink">Volume Info</label>
-                      {deviceDetail}
-                    </div>
-                  </div>
-                  <div className="form-inline-controls">
-                    <div className="form-group universe-form-instance-info">
-                      {storageTypeSelector}
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!this.checkVolumeSizeRestrictions() && (
-                <div className="has-error">
-                  <div className="help-block standard-error">
-                    Forbidden change. To perform smart resize only increase volume size
-                  </div>
-                </div>
-              )}
-            </Col>
           </Row>
+
+          <Row className="form-sub-field">
+            <Row>
+              <Col sm={12} md={12} lg={6}>
+                {deviceDetail && (
+                  <div className="form-right-aligned-labels">
+                    <div className="form-inline-controls">
+                      <div
+                        className="form-group universe-form-instance-info"
+                        data-yb-field="volumn-info"
+                      >
+                        <label className="form-item-label form-item-label-shrink">
+                          Volume Info
+                        </label>
+                        {deviceDetail}
+                      </div>
+                    </div>
+                    <div className="form-inline-controls">
+                      <div className="form-group universe-form-instance-info">
+                        {storageTypeSelector}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!this.checkVolumeSizeRestrictions() && (
+                  <div className="has-error">
+                    <div className="help-block standard-error">
+                      Forbidden change. To perform smart resize only increase volume size
+                    </div>
+                  </div>
+                )}
+              </Col>
+            </Row>
+
+            <Row>
+              <Col sm={12} md={12} lg={6}>
+                <Col sm={5} className="noPaddingLeft">
+                  <div className="form-right-aligned-labels right-side-form-field">{iopsField}</div>
+                </Col>
+
+                <Col sm={6} className="noPaddingLeft">
+                  <div className="form-right-aligned-labels right-side-form-field throughput-field">
+                    {throughputField}
+                  </div>
+                </Col>
+              </Col>
+            </Row>
+          </Row>
+
           <Row>
             <Col sm={12} md={12} lg={6}>
               <div className="form-right-aligned-labels">
                 {selectTlsCert}
                 {assignPublicIP}
                 {useTimeSync}
-              </div>
-            </Col>
-            <Col sm={12} md={6} lg={4}>
-              <div className="form-right-aligned-labels right-side-form-field">
-                {iopsField}
-                {throughputField}
-                {selectEncryptionAtRestConfig}
               </div>
             </Col>
           </Row>
@@ -2728,8 +2744,18 @@ export default class ClusterFields extends Component {
                 {enableYEDIS}
                 {enableNodeToNodeEncrypt}
                 {enableClientToNodeEncrypt}
-                {enableEncryptionAtRest}
                 <Field name={`${clusterType}.mountPoints`} component={YBTextInput} type="hidden" />
+              </div>
+            </Col>
+          </Row>
+
+          <Row>
+            <Col sm={12} md={12} lg={6}>
+              <div className="form-right-aligned-labels">{enableEncryptionAtRest}</div>
+            </Col>
+            <Col sm={12} md={6} lg={4}>
+              <div className="form-right-aligned-labels right-side-form-field">
+                {selectEncryptionAtRestConfig}
               </div>
             </Col>
           </Row>
