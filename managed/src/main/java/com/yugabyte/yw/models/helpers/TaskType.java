@@ -287,6 +287,8 @@ public enum TaskType {
 
   RestoreBackupYb("subtasks.RestoreBackupYb"),
 
+  RestoreBackupYbc("subtasks.RestoreBackupYbc"),
+
   RestoreUniverseKeys("subtasks.RestoreUniverseKeys"),
 
   RestoreUniverseKeysYb("subtasks.RestoreUniverseKeysYb"),

@@ -41,6 +41,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
@@ -197,7 +198,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     CustomerConfig storageConfig = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormData);
     UUID uniUUID = UUID.randomUUID();
     String commonDir = "univ-" + uniUUID + "/backup-timestamp/keyspace-foo";
-    when(mockAWSUtil.createCloudStoreSpec(any(), any(), any())).thenCallRealMethod();
+    when(mockAWSUtil.createCloudStoreSpec(anyString(), anyString(), any())).thenCallRealMethod();
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("foo"), eq("us-east-1")))
         .thenReturn("s3.us-east-1.amazonaws.com");
     when(mockAWSUtil.getOrCreateHostBase(any(), eq("region-1"), eq("ap-south-1")))
