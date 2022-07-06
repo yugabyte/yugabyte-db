@@ -143,10 +143,12 @@ public class AccessKey extends Model {
   @Getter
   public Date expirationDate;
 
+  @JsonIgnore
   public void setExpirationDate(int expirationThresholdDays) {
     this.expirationDate = DateUtils.addDays(this.creationDate, expirationThresholdDays);
   }
 
+  @JsonIgnore
   public void updateExpirationDate(int expirationThresholdDays) {
     this.setExpirationDate(expirationThresholdDays);
     this.save();

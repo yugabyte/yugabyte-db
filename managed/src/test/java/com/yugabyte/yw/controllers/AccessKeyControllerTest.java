@@ -53,6 +53,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -109,7 +110,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
       boolean skipProvisioning,
       boolean setUpChrony,
       List<String> ntpServers,
-      boolean showSetUpChrony) {
+      boolean showSetUpChrony,
+      Integer expirationThresholdDays) {
     AccessKeyFormData formData = new AccessKeyFormData();
     formData.keyCode = keyCode;
     formData.regionUUID = regionUUID;
@@ -126,6 +128,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     formData.setUpChrony = setUpChrony;
     formData.ntpServers = ntpServers;
     formData.showSetUpChrony = showSetUpChrony;
+    formData.expirationThresholdDays = expirationThresholdDays;
     return formData;
   }
 
@@ -166,7 +169,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
         skipProvisioning,
         setUpChrony,
         ntpServers,
-        true);
+        true,
+        null);
   }
 
   private Result createAccessKey(
@@ -180,7 +184,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
       boolean skipProvisioning,
       boolean setUpChrony,
       List<String> ntpServers,
-      boolean showSetUpChrony) {
+      boolean showSetUpChrony,
+      Integer expirationThresholdDays) {
     String uri =
         "/api/customers/" + defaultCustomer.uuid + "/providers/" + providerUUID + "/access_keys";
 
@@ -219,6 +224,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
       bodyJson.put("skipProvisioning", skipProvisioning);
       bodyJson.put("setUpChrony", setUpChrony);
       bodyJson.put("showSetUpChrony", showSetUpChrony);
+      bodyJson.put("expirationThresholdDays", expirationThresholdDays);
       if (ntpServers != null) {
         ArrayNode arrayNode = Json.newArray();
         for (String server : ntpServers) arrayNode.add(server);
@@ -325,7 +331,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     Result result =
@@ -363,7 +370,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     Result result =
@@ -392,7 +400,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -435,7 +444,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -481,7 +491,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.uploadKeyFile(
@@ -547,7 +558,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.uploadKeyFile(
@@ -608,7 +620,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -652,7 +665,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -707,7 +721,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -767,7 +782,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             true,
             false,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -820,7 +836,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             true,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -874,7 +891,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             true,
             serverList,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -925,7 +943,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             true,
             null,
-            true);
+            true,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     Result result =
@@ -966,7 +985,8 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             true,
             null,
-            false);
+            false,
+            null);
     when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
         .thenReturn(formData);
     when(mockAccessManager.addKey(
@@ -993,8 +1013,71 @@ public class AccessKeyControllerTest extends FakeDBApplication {
             false,
             true,
             null,
-            false);
+            false,
+            null);
     assertOk(result);
+    assertAuditEntry(1, defaultCustomer.uuid);
+  }
+
+  @Test
+  public void testCreateAccessKeyWithExpirationThresholdDays() {
+    Integer expirationThresholdDays = 365;
+    AccessKey accessKey =
+        AccessKey.create(defaultProvider.uuid, "key-code-1", new AccessKey.KeyInfo());
+    accessKey.updateExpirationDate(expirationThresholdDays);
+    AccessKeyFormData formData =
+        createFormData(
+            "key-code-1",
+            defaultRegion.uuid,
+            null,
+            null,
+            DEFAULT_SUDO_SSH_USER,
+            SSH_PORT,
+            true,
+            false,
+            true,
+            "prometheus",
+            9300,
+            false,
+            true,
+            null,
+            false,
+            expirationThresholdDays);
+    when(mockAccessManager.setOrValidateRequestDataWithExistingKey(any(), any()))
+        .thenReturn(formData);
+    when(mockAccessManager.addKey(
+            defaultRegion.uuid,
+            "key-code-1",
+            null,
+            DEFAULT_SUDO_SSH_USER,
+            SSH_PORT,
+            false,
+            false,
+            true,
+            null,
+            false))
+        .thenReturn(accessKey);
+    Result result =
+        createAccessKey(
+            defaultProvider.uuid,
+            "key-code-1",
+            false,
+            false,
+            defaultRegion,
+            false,
+            false,
+            false,
+            false,
+            null,
+            false,
+            expirationThresholdDays);
+
+    assertOk(result);
+
+    JsonNode json = Json.parse(contentAsString(result));
+    AccessKey createdAccessKey = Json.fromJson(json, AccessKey.class);
+    assertEquals(
+        accessKey.getExpirationDate().toString(), createdAccessKey.getExpirationDate().toString());
     assertAuditEntry(1, defaultCustomer.uuid);
   }
 
