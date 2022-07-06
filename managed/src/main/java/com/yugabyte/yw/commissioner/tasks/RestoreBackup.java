@@ -2,6 +2,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
@@ -37,7 +38,10 @@ public class RestoreBackup extends UniverseTaskBase {
         throw new RuntimeException("A backup for this universe is already in progress.");
       }
 
-      createAllRestoreSubtasks(taskParams(), UserTaskDetails.SubTaskGroupType.RestoringBackup);
+      createAllRestoreSubtasks(
+          taskParams(),
+          UserTaskDetails.SubTaskGroupType.RestoringBackup,
+          taskParams().category.equals(BackupCategory.YB_CONTROLLER));
 
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

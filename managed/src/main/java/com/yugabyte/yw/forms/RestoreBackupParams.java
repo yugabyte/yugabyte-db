@@ -1,5 +1,7 @@
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.BackupUtil.RegionLocations;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -30,6 +32,9 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Action type")
   public ActionType actionType;
+
+  @ApiModelProperty(value = "Category of the backup")
+  public BackupCategory category = BackupCategory.YB_BACKUP_SCRIPT;
 
   @ApiModelProperty(value = "Backup's storage info to restore")
   public List<BackupStorageInfo> backupStorageInfoList;

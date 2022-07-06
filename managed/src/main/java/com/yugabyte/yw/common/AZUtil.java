@@ -11,16 +11,19 @@ import com.azure.storage.blob.models.BlobItem;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.ListBlobsOptions;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import java.io.ByteArrayOutputStream;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
@@ -167,6 +170,38 @@ public class AZUtil implements CloudUtil {
     return YbcBackupUtil.buildCloudStoreSpec(container, cloudDir, azCredsMap, Util.AZ);
   }
 
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      CustomerConfigData configData, String bucket, String dir) {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    String azureUrl = "https://" + bucket;
+    String container = dir.split("/")[0];
+    String cloudDir = dir.split("/")[1];
+    Map<String, String> azCredsMap = createCredsMapYbc(azData.azureSasToken, azureUrl);
+    return YbcBackupUtil.buildCloudStoreSpec(container, cloudDir, azCredsMap, Util.AZ);
+  }
+
+  @Override
+  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
+      throws Exception {
+    CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
+    String[] splitValues = getSplitLocationValue(location, false);
+    String azureUrl = "https://" + splitValues[0];
+    String container = splitValues[1];
+    String blob = splitValues[2];
+    String sasToken = azData.azureSasToken;
+
+    BlobContainerClient blobContainerClient =
+        createBlobContainerClient(azureUrl, sasToken, container);
+    BlobClient blobClient = blobContainerClient.getBlobClient(blob);
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    blobClient.download(outputStream);
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode json = mapper.readTree(new String(outputStream.toByteArray()));
+    return json;
+  }
+
   private Map<String, String> createCredsMapYbc(String azureSasToken, String azureContainerUrl) {
     Map<String, String> azCredsMap = new HashMap<>();
     azCredsMap.put(YBC_AZURE_STORAGE_SAS_TOKEN_FIELDNAME, azureSasToken);
@@ -177,5 +212,12 @@ public class AZUtil implements CloudUtil {
   public List<String> listBuckets(CustomerConfigData configData) {
     // TODO Auto-generated method stub
     return new ArrayList<>();
+  }
+
+  @Override
+  public String createDirPath(String bucket, String dir) {
+    StringJoiner joiner = new StringJoiner("/");
+    joiner.add("https:/").add(bucket).add(dir);
+    return joiner.toString();
   }
 }
