@@ -6,10 +6,9 @@ To connect to a cluster using `ycqlsh`:
 1. Make sure you are running the latest version of the Yugabyte Client shell. If you have not installed Yugabyte Client on your computer, select your operating system and copy the command to install Yugabyte Client from the command line.
 1. Click **Download CA Cert** to download the root.crt certificate for TLS encryption, and install the certificate on your computer. If you are using Docker, copy the certificate to your Docker container.
 1. Copy the **YCQL** connection string.
-    \
+
     The connection string includes the cluster host and port, with flags for the database username (`-u`), and TLS settings (`--ssl`). The command specifies that the connection will use the CA certificate you installed on your computer.
 
-    \
     Here's an example of the generated `ycqlsh` command:
 
     ```sh
