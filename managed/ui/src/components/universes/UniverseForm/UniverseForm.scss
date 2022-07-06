@@ -196,6 +196,15 @@
       margin-left: 0 !important;
     }
   }
+
+  .form-sub-field {
+    padding-left: 120px;
+    padding-bottom: 10px;
+  }
+
+  .throughput-field .form-item-label {
+    min-width: 170px !important;
+  }
 }
 
 .az-table-container {
@@ -816,4 +825,8 @@
     color: $YB_DARKER_GRAY;
     margin-top: 56px;
   }
+}
+
+.noPaddingLeft {
+  padding-left: 0;
 }
