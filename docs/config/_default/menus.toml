@@ -396,6 +396,15 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-cloud]]
+  name = "YugabyteDB Managed API"
+  weight = 3
+  url = "https://api-docs.yugabyte.com/"
+  identifier = "yugabytedb-managed-api"
+  [preview_yugabyte-cloud.params]
+    showSection = true
+    newTab = true
+
 ########## Menus for stable
 
 [[stable]]
