@@ -1,5 +1,4 @@
 .docs/api/openapi.yaml
-main.go
 models/hello-world.go
 models/model_account_data.go
 models/model_account_info.go
@@ -133,6 +132,7 @@ models/model_db_upgrade_request.go
 models/model_default_internal_tags_list_response.go
 models/model_default_internal_tags_update_data.go
 models/model_email_template_enum.go
+models/model_encryption_info.go
 models/model_entity_metadata.go
 models/model_entity_metering_data.go
 models/model_entity_type_enum.go

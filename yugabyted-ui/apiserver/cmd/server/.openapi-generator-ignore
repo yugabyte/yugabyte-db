@@ -27,3 +27,4 @@ README.md
 go.mod
 Dockerfile
 handlers/*
+main.go
