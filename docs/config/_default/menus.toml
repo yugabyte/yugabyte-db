@@ -379,7 +379,7 @@
 
 [[preview_yugabyte-platform]]
   name = "YugabyteDB Anywhere API"
-  weight = 1
+  weight = 3
   url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   identifier = "yugabytedb-anywhere-api"
   [preview_yugabyte-platform.params]
