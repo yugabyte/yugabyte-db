@@ -207,30 +207,47 @@ bool entity_exists(EState *estate, Oid graph_oid, graphid id)
 }
 
 /*
- * Insert the edge/vertex tuple into the table and indices. If the table's
- * constraints have not been violated.
+ * Insert the edge/vertex tuple into the table and indices. Check that the
+ * table's constraints have not been violated.
+ *
+ * This function defaults to, and flags for update, the currentCommandId. If
+ * you need to pass a specific cid and avoid using the currentCommandId, use
+ * insert_entity_tuple_cid instead.
  */
 HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
                               TupleTableSlot *elemTupleSlot,
                               EState *estate)
 {
-    HeapTuple tuple;
+    return insert_entity_tuple_cid(resultRelInfo, elemTupleSlot, estate,
+                                   GetCurrentCommandId(true));
+}
+
+/*
+ * Insert the edge/vertex tuple into the table and indices. Check that the
+ * table's constraints have not been violated.
+ *
+ * This function uses the passed cid for updates.
+ */
+HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
+                                  TupleTableSlot *elemTupleSlot,
+                                  EState *estate, CommandId cid)
+{
+    HeapTuple tuple = NULL;
 
     ExecStoreVirtualTuple(elemTupleSlot);
     tuple = ExecMaterializeSlot(elemTupleSlot);
 
-    // Check the constraints of the tuple
+    /* Check the constraints of the tuple */
     tuple->t_tableOid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
     if (resultRelInfo->ri_RelationDesc->rd_att->constr != NULL)
     {
         ExecConstraints(resultRelInfo, elemTupleSlot, estate);
     }
 
-    // Insert the tuple normally
-    heap_insert(resultRelInfo->ri_RelationDesc, tuple,
-                GetCurrentCommandId(true), 0, NULL);
+    /* Insert the tuple using the passed in cid */
+    heap_insert(resultRelInfo->ri_RelationDesc, tuple, cid, 0, NULL);
 
-    // Insert index entries for the tuple
+    /* Insert index entries for the tuple */
     if (resultRelInfo->ri_NumIndices > 0)
     {
         ExecInsertIndexTuples(elemTupleSlot, &(tuple->t_self), estate, false,

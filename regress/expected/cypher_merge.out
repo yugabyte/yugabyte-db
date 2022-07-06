@@ -836,7 +836,54 @@ SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype
 (1 row)
 
 -- Node doesn't exist, is created, then set
--- to be added -jrg
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) DELETE n $$) AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+ n 
+---
+(0 rows)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE (n:node {name: 'Jason'}) SET n.name = 'Lisa' RETURN n $$) AS (n agtype);
+                                         n                                         
+-----------------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "node", "properties": {"name": "Lisa"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+                                         n                                         
+-----------------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "node", "properties": {"name": "Lisa"}}::vertex
+(1 row)
+
+-- Multiple SETs
+SELECT * FROM cypher('cypher_merge', $$ MERGE (n:node {name: 'Lisa'}) SET n.age = 23, n.gender = "Female" RETURN n $$) AS (n agtype);
+                                                        n                                                         
+------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "node", "properties": {"age": 23, "name": "Lisa", "gender": "Female"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+                                                        n                                                         
+------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "node", "properties": {"age": 23, "name": "Lisa", "gender": "Female"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MERGE (n:node {name: 'Jason'}) SET n.name = 'Lisa', n.age = 23, n.gender = 'Female' RETURN n $$) AS (n agtype);
+                                                        n                                                         
+------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395907, "label": "node", "properties": {"age": 23, "name": "Lisa", "gender": "Female"}}::vertex
+(1 row)
+
+SELECT * FROM cypher('cypher_merge', $$ MATCH (n:node) RETURN n $$) AS (n agtype);
+                                                        n                                                         
+------------------------------------------------------------------------------------------------------------------
+ {"id": 2533274790395906, "label": "node", "properties": {"age": 23, "name": "Lisa", "gender": "Female"}}::vertex
+ {"id": 2533274790395907, "label": "node", "properties": {"age": 23, "name": "Lisa", "gender": "Female"}}::vertex
+(2 rows)
+
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
  a 

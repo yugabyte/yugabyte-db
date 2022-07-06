@@ -87,6 +87,7 @@ typedef struct cypher_merge_custom_scan_state
     AttrNumber merge_function_attr;
     bool created_new_path;
     bool found_a_path;
+    CommandId base_currentCommandId;
 } cypher_merge_custom_scan_state;
 
 TupleTableSlot *populate_vertex_tts(TupleTableSlot *elemTupleSlot,
@@ -103,5 +104,8 @@ bool entity_exists(EState *estate, Oid graph_oid, graphid id);
 HeapTuple insert_entity_tuple(ResultRelInfo *resultRelInfo,
                               TupleTableSlot *elemTupleSlot,
                               EState *estate);
+HeapTuple insert_entity_tuple_cid(ResultRelInfo *resultRelInfo,
+                                  TupleTableSlot *elemTupleSlot,
+                                  EState *estate, CommandId cid);
 
 #endif
