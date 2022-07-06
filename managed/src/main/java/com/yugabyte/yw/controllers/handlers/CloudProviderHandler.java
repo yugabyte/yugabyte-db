@@ -375,7 +375,6 @@ public class CloudProviderHandler {
       if (!config.isEmpty()) {
         String gcpCredentialsFile =
             accessManager.createCredentialsFile(provider.uuid, Json.toJson(config));
-        newConfig = new HashMap<>(config);
         String projectId = config.get(GCPCloudImpl.PROJECT_ID_PROPERTY);
         if (projectId != null) {
           newConfig.put(GCPCloudImpl.GCE_PROJECT_PROPERTY, projectId);
