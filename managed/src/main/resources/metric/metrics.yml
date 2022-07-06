@@ -2106,8 +2106,8 @@ tserver_async_replication_lag_micros:
     yaxis:
       ticksuffix: "&nbsp;ms"
       alias:
-        "async_replication_sent_lag_micros": "Sent Lag (Microseconds)"
-        "async_replication_committed_lag_micros": "Committed Lag (Microseconds)"
+        "async_replication_sent_lag_micros": "Sent Lag (Milliseconds)"
+        "async_replication_committed_lag_micros": "Committed Lag (Milliseconds)"
 
 master_overall_rpc_rate:
   metric: "rpc_inbound_calls_created_irate"

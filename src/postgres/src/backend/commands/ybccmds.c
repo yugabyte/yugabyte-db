@@ -102,8 +102,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  colocated,
 										  &handle));
 	HandleYBStatus(YBCPgExecCreateDatabase(handle));
-	if (YBIsDBCatalogVersionMode() &&
-		YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
+	if (YBIsDBCatalogVersionMode())
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 }
 
@@ -119,8 +118,7 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatusIgnoreNotFound(YBCPgExecDropDatabase(handle), &not_found);
 	if (not_found)
 		return;
-	if (YBIsDBCatalogVersionMode() &&
-		YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE)
+	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
 }
 
