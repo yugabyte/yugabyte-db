@@ -51,8 +51,13 @@ class KubernetesClient:
 
         # Heredoc syntax for input redirection from a local shell script
         command = f"/bin/bash -s {params} <<'EOF'\n{local_script}\nEOF"
-        output = self.client.exec_command(command)
 
+        # Cannot use self.exec_command() because it needs '/bin/bash' and '-c' before the command
+        wrapped_command = ['kubectl', 'exec', '-n', self.namespace, '-c',
+                           'yb-master' if self.is_master else 'yb-tserver', self.pod_name, '--',
+                           '/bin/bash', '-c', command]
+
+        output = subprocess.check_output(wrapped_command, env=self.env_config).decode()
         return output
 
 

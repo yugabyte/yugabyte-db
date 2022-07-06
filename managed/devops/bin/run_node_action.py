@@ -41,6 +41,22 @@ def handle_run_command(args, client):
     print(output)
 
 
+def add_run_script_subparser(subparsers, command, parent):
+    parser = subparsers.add_parser(command, help='run script and get output',
+                                   parents=[parent])
+    parser.add_argument('--local_script_path', type=str,
+                        help='Local path to the script to be run')
+    parser.add_argument('--params', type=str,
+                        help='List of params to pass while calling the script',
+                        nargs=argparse.REMAINDER)
+
+
+def handle_run_script(args, client):
+    output = client.exec_script(args.local_script_path, args.params)
+    print('Command output:')
+    print(output)
+
+
 def add_download_logs_subparser(subparsers, command, parent):
     parser = subparsers.add_parser(command, help='download node logs package',
                                    parents=[parent])
@@ -126,8 +142,7 @@ def download_file_ssh(args, client):
 
 
 def download_file_k8s(args, client):
-    # TO DO: Test if k8s works properly!!
-
+    # TO DO: Test if k8s works properly!
     # Name is irrelevant as long as it doesn't already exist
     tar_file_name = args.node_name + "-" + str(uuid.uuid4()) + ".tar.gz"
 
@@ -141,6 +156,7 @@ def download_file_k8s(args, client):
     script_output = client.exec_script("./bin/node_utils.sh", ["create_tar_file"] + cmd)
     print(f"Shell script output : {script_output}")
 
+    # Checking if the file exists
     check_file_exists_output = int(
         client.exec_script("./bin/node_utils.sh", ["check_file_exists", tar_file_name]).strip())
     if(check_file_exists_output):
@@ -162,6 +178,7 @@ node_types = {
 
 actions = {
     'run_command': ActionHandler(handle_run_command, add_run_command_subparser),
+    'run_script': ActionHandler(handle_run_script, add_run_script_subparser),
     'download_logs': ActionHandler(handle_download_logs, add_download_logs_subparser),
     'download_file': ActionHandler(handle_download_file, add_download_file_subparser),
 }
