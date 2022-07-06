@@ -3,10 +3,12 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.gax.paging.Page;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.Blob;
+import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageBatch;
@@ -28,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Iterator;
 import java.util.Spliterator;
+import java.util.StringJoiner;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
@@ -198,5 +201,36 @@ public class GCPUtil implements CloudUtil {
       log.error("Error creating GCS client");
     }
     return bucketList;
+  }
+
+  @Override
+  public CloudStoreSpec createCloudStoreSpec(
+      CustomerConfigData configData, String bucket, String cloudDir) {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
+    return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, gcsCredsMap, Util.GCS);
+  }
+
+  @Override
+  public JsonNode readFileFromCloud(String location, CustomerConfigData configData)
+      throws Exception {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+
+    String[] splitValues = getSplitLocationValue(location);
+    String bucket = splitValues[0];
+    String cloudDir = splitValues.length > 1 ? splitValues[1] : "";
+    BlobId blobId = BlobId.of(bucket, cloudDir);
+    Blob blob = storage.get(blobId);
+
+    ObjectMapper mapper = new ObjectMapper();
+    JsonNode json = mapper.readTree(new String(blob.getContent()));
+    return json;
+  }
+
+  public String createDirPath(String bucket, String dir) {
+    StringJoiner joiner = new StringJoiner("/");
+    joiner.add("gs:/").add(bucket).add(dir);
+    return joiner.toString();
   }
 }
