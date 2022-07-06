@@ -159,7 +159,7 @@ class TransactionParticipant::Impl
   }
 
   void CompleteShutdown() {
-    LOG_IF_WITH_PREFIX(DFATAL, !closing_.load()) << __func__ << " w/o StartShutdown";
+    LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
 
     decltype(status_resolvers_) status_resolvers;
     {
@@ -1051,7 +1051,7 @@ class TransactionParticipant::Impl
     std::vector<ScopedRWOperation> operations;
     operations.reserve(pending_applies.size());
     for (;;) {
-      if (closing_.load(std::memory_order_acquire)) {
+      if (Closing()) {
         LOG_WITH_PREFIX(INFO)
             << __func__ << ": closing, not starting transaction status resolution";
         return;
