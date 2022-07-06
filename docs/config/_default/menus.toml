@@ -377,6 +377,16 @@
     showSection = true
     hideLink = true
 
+[[preview_yugabyte-platform]]
+  name = "YugabyteDB Anywhere API"
+  weight = 1
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  identifier = "yugabytedb-anywhere-api"
+  [preview_yugabyte-platform.params]
+    classes = "other-links"
+    showSection = true
+    newTab = true
+
 ########## Menus (in preview) for YB Managed section
 
 [[preview_yugabyte-cloud]]
@@ -399,9 +409,10 @@
 [[preview_yugabyte-cloud]]
   name = "YugabyteDB Managed API"
   weight = 3
-  url = "https://api-docs.yugabyte.com/"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
   identifier = "yugabytedb-managed-api"
   [preview_yugabyte-cloud.params]
+    classes = "other-links"
     showSection = true
     newTab = true
 
@@ -558,6 +569,16 @@
   [stable_yugabyte-platform.params]
     showSection = true
     hideLink = true
+
+[[stable_yugabyte-platform]]
+  name = "YugabyteDB Anywhere API"
+  weight = 3
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+  identifier = "yugabytedb-anywhere-api"
+  [stable_yugabyte-platform.params]
+    classes = "other-links"
+    showSection = true
+    newTab = true
 
 ########## Menus for v2.8
 
