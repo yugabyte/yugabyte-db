@@ -481,11 +481,13 @@ Status WriteQuery::DoExecute() {
     }
   }
 
+  // TODO(pessimistic): Ensure that wait_queue respects deadline() during conflict resolution.
   docdb::ResolveTransactionConflicts(
       doc_ops_, write_batch, tablet().clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax,
       tablet().doc_db(), partial_range_key_intents,
       transaction_participant, tablet().metrics()->transaction_conflicts.get(),
+      &prepare_result_.lock_batch, tablet().wait_queue(),
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
           ExecuteDone(result.status());
