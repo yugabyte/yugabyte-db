@@ -81,24 +81,12 @@ Your new Java-Play project's folder structure is ready.
 
 ### Add the dependencies
 
-To begin using Ebeans in the application, do the following:
+To begin using Ebean in the application, do the following:
 
-1. Add the plugin `project/plugins.sbt` as follows:
+1. Add the following plugin in the `project/plugins.sbt` file:
 
     ```sbt
     addSbtPlugin("com.typesafe.sbt" % "sbt-play-ebean" % "5.0.0")
-    ```
-
-1. Enable the PlayEbean plugin in the `build.sbt` file by adding `PlayEbean` as follows:
-
-    ```sbt
-    lazy val root = (project in file(".")).enablePlugins(PlayJava,PlayEbean)
-    ```
-
-1. If your default port is already to use, or you want to change the port, modigy the settings by adding `.settings(PlayKeys.playDefaultPort := 8080)` to the `build.sbt` file as follows:
-
-    ```sbt
-    lazy val root = (project in file(".")).enablePlugins(PlayJava,PlayEbean).settings(PlayKeys.playDefaultPort := 8080)
     ```
 
 1. Connect to YugabyteDB by adding the following configuration to the `conf/application.conf` file:
@@ -121,11 +109,23 @@ To begin using Ebeans in the application, do the following:
     libraryDependencies += "com.yugabyte" % "jdbc-yugabytedb" % "42.3.3"
     ```
 
+1. Enable the PlayEbean plugin in the `build.sbt` file by adding `PlayEbean` as follows:
+
+    ```sbt
+    lazy val root = (project in file(".")).enablePlugins(PlayJava,PlayEbean)
+    ```
+
+1. If your default port is already to use, or you want to change the port, modify the settings by adding `.settings(PlayKeys.playDefaultPort := 8080)` to the `build.sbt` file as follows:
+
+    ```sbt
+    lazy val root = (project in file(".")).enablePlugins(PlayJava,PlayEbean).settings(PlayKeys.playDefaultPort := 8080)
+    ```
+
 ### Build the REST API using Ebean ORM with YugabyteDB
 
 The example application has an Employee model that retrieves employee information, including the first name, last name, and email. An `EmployeeController` stores and retrieves the new employee information in the database using a Rest API.
 
-1. Create a `models` folder in the application directory to store the entities you create.
+1. Create a `models` folder in the `app` directory of your project to store the entities you create.
 
 1. To use this directory as a default Ebean package of classes, add the following code at the end of the `conf/application.conf` file:
 
@@ -133,7 +133,7 @@ The example application has an Employee model that retrieves employee informatio
     ebean.default="models.*"
     ```
 
-1. Create a `Employee.java` file in `app/models/`. This is the class definition or information for the employee. Add the following code to the file:
+1. Create a `Employee.java` file in `app/models/`. This is the class definition for the employee. Add the following code to the file:
 
     ```java
     package models;
@@ -171,7 +171,7 @@ The example application has an Employee model that retrieves employee informatio
     }
     ```
 
-1. Create an `EmployeeController.java` file under `app/controllers/` directory. This file controls the flow of employees data. It consists of methods for all API calls, including adding an employee, and retrieving employee information. Using the annotation `@Transactional` over the APIs gives the feature of automatically managing the transaction in that API. Add the following code to the file:
+1. Create an `EmployeeController.java` file in the `app/controllers/` directory. This file controls the flow of employees data. It consists of methods for all API calls, including adding an employee, and retrieving employee information. Use the `@Transactional` annotation to automatically manage the transactions in that API. Add the following code to the file:
 
     ```java
     package controllers;
@@ -200,7 +200,7 @@ The example application has an Employee model that retrieves employee informatio
     }
     ```
 
-1. Add the GET and POST API Request for the `/employees` endpoint to the `conf/routes` file. This will define the necessary method for receiving the request:
+1. Add the GET and POST API Request for the `/employees` endpoint to the `conf/routes` file. This defines the method needed for receiving the request:
 
     ```conf
     GET      /employees            controllers.EmployeeController.GetAllEmployees
@@ -208,6 +208,8 @@ The example application has an Employee model that retrieves employee informatio
     ```
 
 ### Compile and run the project
+
+To run the application and insert a new row, execute the following steps:
 
 1. Compile and run the server in the `project` directory using the following commands:
 
