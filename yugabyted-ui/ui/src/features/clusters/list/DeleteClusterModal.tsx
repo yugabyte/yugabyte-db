@@ -1,10 +1,10 @@
 import React, { FC, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
-import { useRouteMatch } from 'react-router-dom';
+// import { useRouteMatch } from 'react-router-dom';
 import { Box } from '@material-ui/core';
 import { YBModal, YBInput, AlertVariant, YBAlert } from '@app/components';
 import { useDeleteClusterMutation, ClusterData } from '@app/api/src';
-import { browserStorage } from '@app/helpers';
+// import { browserStorage } from '@app/helpers';
 
 export interface DeleteClusterProps {
   open: boolean;
@@ -14,34 +14,14 @@ export interface DeleteClusterProps {
   cluster: ClusterData;
 }
 
-export const DeleteClusterModal: FC<DeleteClusterProps> = ({ open, onClose, onSuccess, onFailure, cluster }) => {
+export const DeleteClusterModal: FC<DeleteClusterProps> = ({ open, onClose, cluster }) => {
   const { t } = useTranslation();
-  const { params } = useRouteMatch<App.RouteParams>();
+  // const { params } = useRouteMatch<App.RouteParams>();
   const [deletingClusterNameInput, setDeletingClusterNameInput] = useState('');
   const { mutate: deleteCluster, isLoading } = useDeleteClusterMutation();
 
   const handleDeleteCluster = () => {
-    deleteCluster(
-      {
-        accountId: params.accountId,
-        projectId: cluster.info.project_id,
-        clusterId: cluster.info.id
-      },
-      {
-        onSuccess: (): void => {
-          onClose();
-          onSuccess();
-          // Remove entry in localStorage
-          browserStorage.deleteClusterSettings(cluster.info.id);
-        },
-        onError: (): void => {
-          onClose();
-          if (onFailure) {
-            onFailure();
-          }
-        }
-      }
-    );
+    deleteCluster();
   };
 
   const handleClose = () => {

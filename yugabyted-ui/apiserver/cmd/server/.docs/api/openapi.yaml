@@ -3064,38 +3064,10 @@ paths:
       summary: Create a cluster
       tags:
       - cluster
-  /public/accounts/{accountId}/projects/{projectId}/clusters/{clusterId}:
+  /cluster:
     delete:
       description: Submit task to delete a Yugabyte Cluster
       operationId: deleteCluster
-      parameters:
-      - description: ID of the associated account
-        explode: false
-        in: path
-        name: accountId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the associated project
-        explode: false
-        in: path
-        name: projectId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the cluster
-        explode: false
-        in: path
-        name: clusterId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
       responses:
         "200":
           description: Successfully submitted delete cluster request
@@ -3117,34 +3089,6 @@ paths:
     get:
       description: Get a Yugabyte Cluster
       operationId: getCluster
-      parameters:
-      - description: ID of the associated account
-        explode: false
-        in: path
-        name: accountId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the associated project
-        explode: false
-        in: path
-        name: projectId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the cluster
-        explode: false
-        in: path
-        name: clusterId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
       responses:
         "200":
           content:
@@ -3170,34 +3114,6 @@ paths:
     put:
       description: Submit task to edit a Yugabyte Cluster
       operationId: editCluster
-      parameters:
-      - description: ID of the associated account
-        explode: false
-        in: path
-        name: accountId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the associated project
-        explode: false
-        in: path
-        name: projectId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
-      - description: ID of the cluster
-        explode: false
-        in: path
-        name: clusterId
-        required: true
-        schema:
-          format: uuid
-          type: string
-        style: simple
       requestBody:
         $ref: '#/components/requestBodies/ClusterSpec'
       responses:
@@ -12977,11 +12893,12 @@ components:
       title: Backup Specification
       type: object
     CloudEnum:
-      default: GCP
+      default: MANUAL
       description: Which cloud the cluster is deployed in
       enum:
       - AWS
       - GCP
+      - MANUAL
       title: Cloud Enum
       type: string
     MigrationBackupKeyspaceInfo:
@@ -14382,27 +14299,26 @@ components:
     ClusterNodeInfo:
       description: Node level information
       example:
-        num_cores: 58
-        memory_mb: 2048
-        disk_size_gb: 2446
+        memory_mb: 6.027456183070403
+        cpu_usage: 5.962133916683182
+        disk_size_gb: 608
       properties:
-        num_cores:
-          default: 4
-          description: The number of cores for each node
-          maximum: 96
-          minimum: 1
-          type: integer
         memory_mb:
-          default: 16384
-          description: The amount of RAM (MB) for each node
-          minimum: 2048
-          type: integer
+          default: 0
+          description: The total amount of RAM (MB) used by all nodes
+          format: double
+          type: number
         disk_size_gb:
           default: 256
-          description: The size of disk (GB) of each node
+          description: The total size of disk (GB)
           maximum: 4096
           minimum: 10
           type: integer
+        cpu_usage:
+          default: 0
+          description: The average CPU usage over all nodes
+          format: double
+          type: number
       required:
       - disk_size_gb
       - memory_mb
@@ -14413,9 +14329,9 @@ components:
       description: Cluster level information
       example:
         node_info:
-          num_cores: 58
-          memory_mb: 2048
-          disk_size_gb: 2446
+          memory_mb: 6.027456183070403
+          cpu_usage: 5.962133916683182
+          disk_size_gb: 608
         is_production: false
         version: 5
         num_nodes: 2
@@ -14535,6 +14451,20 @@ components:
       - placement_info
       title: Cluster Region Info
       type: object
+    EncryptionInfo:
+      description: Cluster encryption info
+      example:
+        encryption_in_transit: false
+        encryption_at_rest: false
+      properties:
+        encryption_at_rest:
+          default: false
+          type: boolean
+        encryption_in_transit:
+          default: false
+          type: boolean
+      title: Encryption Info
+      type: object
     ClusterSpec:
       description: Cluster spec
       example:
@@ -14562,11 +14492,14 @@ components:
         name: name
         cloud_info:
           region: us-west2
+        encryption_info:
+          encryption_in_transit: false
+          encryption_at_rest: false
         cluster_info:
           node_info:
-            num_cores: 58
-            memory_mb: 2048
-            disk_size_gb: 2446
+            memory_mb: 6.027456183070403
+            cpu_usage: 5.962133916683182
+            disk_size_gb: 608
           is_production: false
           version: 5
           num_nodes: 2
@@ -14593,9 +14526,12 @@ components:
           nullable: true
           type: array
           uniqueItems: true
+        encryption_info:
+          $ref: '#/components/schemas/EncryptionInfo'
       required:
       - cloud_info
       - cluster_info
+      - encryption_info
       - name
       - network_info
       - software_info
@@ -14678,11 +14614,14 @@ components:
           name: name
           cloud_info:
             region: us-west2
+          encryption_info:
+            encryption_in_transit: false
+            encryption_at_rest: false
           cluster_info:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             is_production: false
             version: 5
             num_nodes: 2
@@ -14757,11 +14696,14 @@ components:
           name: name
           cloud_info:
             region: us-west2
+          encryption_info:
+            encryption_in_transit: false
+            encryption_at_rest: false
           cluster_info:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             is_production: false
             version: 5
             num_nodes: 2
@@ -16090,9 +16032,9 @@ components:
       description: Private cluster level information
       example:
         node_info:
-          num_cores: 58
-          memory_mb: 2048
-          disk_size_gb: 2446
+          memory_mb: 6.027456183070403
+          cpu_usage: 5.962133916683182
+          disk_size_gb: 608
         is_production: false
         version: 0
       properties:
@@ -16145,9 +16087,9 @@ components:
         name: name
         cluster_info:
           node_info:
-            num_cores: 58
-            memory_mb: 2048
-            disk_size_gb: 2446
+            memory_mb: 6.027456183070403
+            cpu_usage: 5.962133916683182
+            disk_size_gb: 608
           is_production: false
           version: 0
       properties:
@@ -16202,9 +16144,9 @@ components:
           name: name
           cluster_info:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             is_production: false
             version: 0
         db_credentials:
@@ -16256,11 +16198,14 @@ components:
           name: name
           cloud_info:
             region: us-west2
+          encryption_info:
+            encryption_in_transit: false
+            encryption_at_rest: false
           cluster_info:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             is_production: false
             version: 5
             num_nodes: 2
@@ -17069,11 +17014,14 @@ components:
             name: name
             cloud_info:
               region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
             cluster_info:
               node_info:
-                num_cores: 58
-                memory_mb: 2048
-                disk_size_gb: 2446
+                memory_mb: 6.027456183070403
+                cpu_usage: 5.962133916683182
+                disk_size_gb: 608
               is_production: false
               version: 5
               num_nodes: 2
@@ -17226,11 +17174,14 @@ components:
               name: name
               cloud_info:
                 region: us-west2
+              encryption_info:
+                encryption_in_transit: false
+                encryption_at_rest: false
               cluster_info:
                 node_info:
-                  num_cores: 58
-                  memory_mb: 2048
-                  disk_size_gb: 2446
+                  memory_mb: 6.027456183070403
+                  cpu_usage: 5.962133916683182
+                  disk_size_gb: 608
                 is_production: false
                 version: 5
                 num_nodes: 2
@@ -17276,11 +17227,14 @@ components:
               name: name
               cloud_info:
                 region: us-west2
+              encryption_info:
+                encryption_in_transit: false
+                encryption_at_rest: false
               cluster_info:
                 node_info:
-                  num_cores: 58
-                  memory_mb: 2048
-                  disk_size_gb: 2446
+                  memory_mb: 6.027456183070403
+                  cpu_usage: 5.962133916683182
+                  disk_size_gb: 608
                 is_production: false
                 version: 5
                 num_nodes: 2
@@ -17374,11 +17328,14 @@ components:
                 name: name
                 cloud_info:
                   region: us-west2
+                encryption_info:
+                  encryption_in_transit: false
+                  encryption_at_rest: false
                 cluster_info:
                   node_info:
-                    num_cores: 58
-                    memory_mb: 2048
-                    disk_size_gb: 2446
+                    memory_mb: 6.027456183070403
+                    cpu_usage: 5.962133916683182
+                    disk_size_gb: 608
                   is_production: false
                   version: 5
                   num_nodes: 2
@@ -17424,11 +17381,14 @@ components:
                 name: name
                 cloud_info:
                   region: us-west2
+                encryption_info:
+                  encryption_in_transit: false
+                  encryption_at_rest: false
                 cluster_info:
                   node_info:
-                    num_cores: 58
-                    memory_mb: 2048
-                    disk_size_gb: 2446
+                    memory_mb: 6.027456183070403
+                    cpu_usage: 5.962133916683182
+                    disk_size_gb: 608
                   is_production: false
                   version: 5
                   num_nodes: 2
@@ -17496,11 +17456,14 @@ components:
                 name: name
                 cloud_info:
                   region: us-west2
+                encryption_info:
+                  encryption_in_transit: false
+                  encryption_at_rest: false
                 cluster_info:
                   node_info:
-                    num_cores: 58
-                    memory_mb: 2048
-                    disk_size_gb: 2446
+                    memory_mb: 6.027456183070403
+                    cpu_usage: 5.962133916683182
+                    disk_size_gb: 608
                   is_production: false
                   version: 5
                   num_nodes: 2
@@ -17546,11 +17509,14 @@ components:
                 name: name
                 cloud_info:
                   region: us-west2
+                encryption_info:
+                  encryption_in_transit: false
+                  encryption_at_rest: false
                 cluster_info:
                   node_info:
-                    num_cores: 58
-                    memory_mb: 2048
-                    disk_size_gb: 2446
+                    memory_mb: 6.027456183070403
+                    cpu_usage: 5.962133916683182
+                    disk_size_gb: 608
                   is_production: false
                   version: 5
                   num_nodes: 2
@@ -18919,9 +18885,9 @@ components:
       description: Read Replica Spec
       example:
         node_info:
-          num_cores: 58
-          memory_mb: 2048
-          disk_size_gb: 2446
+          memory_mb: 6.027456183070403
+          cpu_usage: 5.962133916683182
+          disk_size_gb: 608
         placement_info:
           vpc_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
           num_replicas: 17
@@ -18949,9 +18915,9 @@ components:
       example:
         spec:
           node_info:
-            num_cores: 58
-            memory_mb: 2048
-            disk_size_gb: 2446
+            memory_mb: 6.027456183070403
+            cpu_usage: 5.962133916683182
+            disk_size_gb: 608
           placement_info:
             vpc_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
             num_replicas: 17
@@ -20596,11 +20562,14 @@ components:
             name: name
             cloud_info:
               region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
             cluster_info:
               node_info:
-                num_cores: 58
-                memory_mb: 2048
-                disk_size_gb: 2446
+                memory_mb: 6.027456183070403
+                cpu_usage: 5.962133916683182
+                disk_size_gb: 608
               is_production: false
               version: 5
               num_nodes: 2
@@ -20642,11 +20611,14 @@ components:
             name: name
             cloud_info:
               region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
             cluster_info:
               node_info:
-                num_cores: 58
-                memory_mb: 2048
-                disk_size_gb: 2446
+                memory_mb: 6.027456183070403
+                cpu_usage: 5.962133916683182
+                disk_size_gb: 608
               is_production: false
               version: 5
               num_nodes: 2
@@ -20708,11 +20680,14 @@ components:
             name: name
             cloud_info:
               region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
             cluster_info:
               node_info:
-                num_cores: 58
-                memory_mb: 2048
-                disk_size_gb: 2446
+                memory_mb: 6.027456183070403
+                cpu_usage: 5.962133916683182
+                disk_size_gb: 608
               is_production: false
               version: 5
               num_nodes: 2
@@ -21317,11 +21292,14 @@ components:
             name: name
             cloud_info:
               region: us-west2
+            encryption_info:
+              encryption_in_transit: false
+              encryption_at_rest: false
             cluster_info:
               node_info:
-                num_cores: 58
-                memory_mb: 2048
-                disk_size_gb: 2446
+                memory_mb: 6.027456183070403
+                cpu_usage: 5.962133916683182
+                disk_size_gb: 608
               is_production: false
               version: 5
               num_nodes: 2
@@ -21613,11 +21591,14 @@ components:
                   name: name
                   cloud_info:
                     region: us-west2
+                  encryption_info:
+                    encryption_in_transit: false
+                    encryption_at_rest: false
                   cluster_info:
                     node_info:
-                      num_cores: 58
-                      memory_mb: 2048
-                      disk_size_gb: 2446
+                      memory_mb: 6.027456183070403
+                      cpu_usage: 5.962133916683182
+                      disk_size_gb: 608
                     is_production: false
                     version: 5
                     num_nodes: 2
@@ -21663,11 +21644,14 @@ components:
                   name: name
                   cloud_info:
                     region: us-west2
+                  encryption_info:
+                    encryption_in_transit: false
+                    encryption_at_rest: false
                   cluster_info:
                     node_info:
-                      num_cores: 58
-                      memory_mb: 2048
-                      disk_size_gb: 2446
+                      memory_mb: 6.027456183070403
+                      cpu_usage: 5.962133916683182
+                      disk_size_gb: 608
                     is_production: false
                     version: 5
                     num_nodes: 2
@@ -21735,11 +21719,14 @@ components:
                   name: name
                   cloud_info:
                     region: us-west2
+                  encryption_info:
+                    encryption_in_transit: false
+                    encryption_at_rest: false
                   cluster_info:
                     node_info:
-                      num_cores: 58
-                      memory_mb: 2048
-                      disk_size_gb: 2446
+                      memory_mb: 6.027456183070403
+                      cpu_usage: 5.962133916683182
+                      disk_size_gb: 608
                     is_production: false
                     version: 5
                     num_nodes: 2
@@ -21785,11 +21772,14 @@ components:
                   name: name
                   cloud_info:
                     region: us-west2
+                  encryption_info:
+                    encryption_in_transit: false
+                    encryption_at_rest: false
                   cluster_info:
                     node_info:
-                      num_cores: 58
-                      memory_mb: 2048
-                      disk_size_gb: 2446
+                      memory_mb: 6.027456183070403
+                      cpu_usage: 5.962133916683182
+                      disk_size_gb: 608
                     is_production: false
                     version: 5
                     num_nodes: 2
@@ -22684,9 +22674,9 @@ components:
         data:
         - spec:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             placement_info:
               vpc_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
               num_replicas: 17
@@ -22708,9 +22698,9 @@ components:
             software_version: software_version
         - spec:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             placement_info:
               vpc_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
               num_replicas: 17
@@ -22752,9 +22742,9 @@ components:
         data:
           spec:
             node_info:
-              num_cores: 58
-              memory_mb: 2048
-              disk_size_gb: 2446
+              memory_mb: 6.027456183070403
+              cpu_usage: 5.962133916683182
+              disk_size_gb: 608
             placement_info:
               vpc_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
               num_replicas: 17
