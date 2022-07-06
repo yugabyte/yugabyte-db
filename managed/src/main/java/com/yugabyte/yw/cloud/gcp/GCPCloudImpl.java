@@ -59,8 +59,9 @@ public class GCPCloudImpl implements CloudAPI {
   public boolean isValidCreds(Map<String, String> config, String region) {
     String projectId = config.get(PROJECT_ID_PROPERTY);
     if (StringUtils.isBlank(projectId)) {
-      log.error("Project ID must be set");
-      return false;
+      log.error("Project ID is not set, skipping validation");
+      // TODO validate for service account.
+      return true;
     }
     try {
       ObjectMapper mapper = new ObjectMapper();
