@@ -191,6 +191,7 @@ libraryDependencies ++= Seq(
 appResolvers := None
 bootResolvers := None
 otherResolvers := Seq()
+checksums := Seq("")
 
 // Whether to use local maven repo to retrieve artifacts (used for yb-client).
 lazy val ybUseMavenLocalEnvVarName = "USE_MAVEN_LOCAL"
