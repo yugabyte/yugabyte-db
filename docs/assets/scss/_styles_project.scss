@@ -378,6 +378,11 @@ body:not(.td-home) .td-main main {
   margin-bottom: 0;
 }
 
+.td-content p + ol,
+.td-content p + ul {
+  margin-top: 1rem;
+}
+
 @media (min-width: 992px) {
   .td-max-width-on-larger-screens,
   .td-content > .highlight,
