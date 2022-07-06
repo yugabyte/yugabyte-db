@@ -1,13 +1,8 @@
-name: coverage_test
-on:
-  pull_request:
-    types:
-      - closed 
+name: code-coverage-test
+on: ["push", "pull_request"]
 
 jobs:
-  if_merged:
-    if: github.event.pull_request.merged == true
-    build:
+  build:
     name: coverage-test
     runs-on: ubuntu-latest
     steps:
@@ -96,12 +91,18 @@ jobs:
         run: |
           make installcheck
           /usr/lib/postgresql/14/bin/psql -d postgres -p 5432 -c "\list"
-          make coverage-html
-          lcov --capture --directory . --output-file coverage/lcov.info
-          pip install cpp-coveralls
-          export COVERALLS_REPO_TOKEN="${{ secrets.COVERALL_PG_STAT_MONITOR_TOKEN }}"
-          coveralls --verbose
+          gcov -abcfu pg_stat_monitor.c
+          gcov -abcfu guc.c
+          gcov -abcfu hash_query.c
+          sudo chmod -R ugo+rwx *.gcov*
         working-directory: src/pg_stat_monitor/
+
+      - name: Upload
+        uses: codecov/codecov-action@v2
+        with:
+          verbose: true
+          working-directory: ./src/pg_stat_monitor
+          files: ./pg_stat_monitor.c.gcov,./hash_query.c.gcov,./guc.c.gcov
 
       - name: Change dir permissions on fail
         if: ${{ failure() }}

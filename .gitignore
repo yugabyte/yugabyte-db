@@ -52,3 +52,6 @@ dkms.conf
 
 ## IDE
 .idea
+
+## DS_Store
+*.DS_Store
