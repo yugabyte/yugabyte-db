@@ -27,8 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.yaml.snakeyaml.Yaml;
 import play.Play;
 
@@ -36,9 +35,8 @@ import play.Play;
 // TODO is this description accurate?
 //
 @ApiModel(description = "Universe-creation response")
+@Slf4j
 public class UniverseResp {
-
-  public static final Logger LOG = LoggerFactory.getLogger(UniverseResp.class);
 
   public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
     UniverseResourceDetails.Context context = new Context(config, universe);
@@ -148,7 +146,7 @@ public class UniverseResp {
     if (dnsSuffix == null) {
       return null;
     }
-    return String.format("%s.%s.%s", name, customer, dnsSuffix);
+    return String.format("%s.%s.%s", name, customer.code, dnsSuffix);
   }
 
   /** Returns the command to run the sample apps in the universe. */
@@ -187,7 +185,7 @@ public class UniverseResp {
               ? universe.getUniverseDetails().rootCA
               : universe.getUniverseDetails().clientRootCA;
       if (certUUID == null) {
-        LOG.warn("!!! CertUUID cannot be null when TLS is enabled !!!");
+        log.warn("CertUUID cannot be null when TLS is enabled");
       }
       if (isKubernetesProvider) {
         String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
