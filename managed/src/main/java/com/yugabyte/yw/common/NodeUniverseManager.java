@@ -109,6 +109,44 @@ public class NodeUniverseManager extends DevopsBase {
     return executeNodeAction(UniverseNodeAction.RUN_COMMAND, universe, node, actionArgs, context);
   }
 
+  /**
+   * Runs a local script with parameters passed in a list
+   *
+   * @param node
+   * @param universe
+   * @param localScriptPath
+   * @param params
+   * @return the ShellResponse object
+   */
+  public ShellResponse runScript(
+      NodeDetails node, Universe universe, String localScriptPath, List<String> params) {
+    return runScript(node, universe, localScriptPath, params, DEFAULT_CONTEXT);
+  }
+
+  /**
+   * Runs a local script with parameters passed in a list
+   *
+   * @param node
+   * @param universe
+   * @param localScriptPath
+   * @param params
+   * @param context
+   * @return the ShellResponse object
+   */
+  public ShellResponse runScript(
+      NodeDetails node,
+      Universe universe,
+      String localScriptPath,
+      List<String> params,
+      ShellProcessContext context) {
+    List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--local_script_path");
+    actionArgs.add(localScriptPath);
+    actionArgs.add("--params");
+    actionArgs.addAll(params);
+    return executeNodeAction(UniverseNodeAction.RUN_SCRIPT, universe, node, actionArgs, context);
+  }
+
   public ShellResponse runYbAdminCommand(
       NodeDetails node, Universe universe, String ybAdminCommand, long timeoutSec) {
     List<String> command = new ArrayList<>();
@@ -271,6 +309,7 @@ public class NodeUniverseManager extends DevopsBase {
 
   public enum UniverseNodeAction {
     RUN_COMMAND,
+    RUN_SCRIPT,
     DOWNLOAD_LOGS,
     DOWNLOAD_FILE,
     UPLOAD_FILE
