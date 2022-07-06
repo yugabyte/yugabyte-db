@@ -11,15 +11,25 @@
  * Do not edit the class manually.
  */
 
+
+
+
 /**
- * Which cloud the cluster is deployed in
+ * Cluster encryption info
  * @export
- * @enum {string}
+ * @interface EncryptionInfo
  */
-export enum CloudEnum {
-  Aws = 'AWS',
-  Gcp = 'GCP',
-  Manual = 'MANUAL'
+export interface EncryptionInfo  {
+  /**
+   *
+   * @type {boolean}
+   * @memberof EncryptionInfo
+   */
+  encryption_at_rest?: boolean;
+  /**
+   *
+   * @type {boolean}
+   * @memberof EncryptionInfo
+   */
+  encryption_in_transit?: boolean;
 }
-
-

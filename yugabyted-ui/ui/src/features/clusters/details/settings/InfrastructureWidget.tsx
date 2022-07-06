@@ -49,7 +49,7 @@ export const InfrastructureWidget: FC<InfrastructureWidgetProps> = ({ cluster })
   const context = useContext(ClusterContext);
   const clusterInfo = cluster.spec.cluster_info;
   const currentNumNodes = clusterInfo.num_nodes ?? 0;
-  const numCoresPerNode = clusterInfo.node_info.num_cores ?? 0;
+  const averageCpuUsage = clusterInfo.node_info.cpu_usage ?? 0;
   const clusterDiskSize = clusterInfo.node_info.disk_size_gb;
   const faultTolerance = clusterInfo.fault_tolerance;
   let faultToleranceDisplay = t('clusterWizard.faultToleranceNone');
@@ -67,7 +67,6 @@ export const InfrastructureWidget: FC<InfrastructureWidgetProps> = ({ cluster })
 
   const originalRegion = cluster?.spec?.cloud_info?.region;
   const clusterTier = cluster?.spec.cluster_info.cluster_tier;
-  const totalNumCores = numCoresPerNode * currentNumNodes;
   const totalDiskSize = clusterDiskSize * currentNumNodes;
 
   const editingDisabled = false;
@@ -106,7 +105,7 @@ export const InfrastructureWidget: FC<InfrastructureWidgetProps> = ({ cluster })
           <Typography variant="subtitle1" color="textSecondary">
             {t('clusterDetail.settings.totalvCpu')}
           </Typography>
-          <p>{totalNumCores}</p>
+          <p>{averageCpuUsage}</p>
         </div>
         <div className={classes.infraStat}>
           <Typography variant="subtitle1" color="textSecondary">

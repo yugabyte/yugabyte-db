@@ -64,10 +64,9 @@ export const ClusterInfo: FC<ClusterInfoProps> = ({ cluster }) => {
   };
 
   const clusterSpec = cluster?.spec;
-  const diskPerNode = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
   const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
-  const totalDiskSize = diskPerNode * numNodes;
-  const totalNumCores = (clusterSpec?.cluster_info?.node_info.num_cores ?? 0) * numNodes;
+  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
+  const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
   return (
     <Paper className={classes.clusterInfo}>
       <Grid container className={classes.container}>
@@ -80,7 +79,7 @@ export const ClusterInfo: FC<ClusterInfoProps> = ({ cluster }) => {
             {t('clusterDetail.infrastructureBrief', {
               region: clusterSpec?.cloud_info?.region ?? '',
               nodes: numNodes,
-              vcpu: totalNumCores
+              cpu: averageCpuUsage
             })}
           </Typography>
         </Grid>
