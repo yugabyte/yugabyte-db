@@ -220,6 +220,9 @@ public class UniverseResourceDetails {
   public static UniverseResourceDetails create(
       Collection<NodeDetails> nodes, UniverseDefinitionTaskParams params, Context context) {
     UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
+    details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
+
     for (Cluster cluster : params.clusters) {
       details.addNumNodes(cluster.userIntent.numNodes);
     }
@@ -235,6 +238,13 @@ public class UniverseResourceDetails {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
           details.addVolumeSizeGB(
               userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+
+          if (userIntent.deviceInfo.diskIops != null) {
+            details.gp3FreePiops = userIntent.deviceInfo.diskIops;
+          }
+          if (userIntent.deviceInfo.throughput != null) {
+            details.gp3FreeThroughput = userIntent.deviceInfo.throughput;
+          }
         }
         if (node.cloudInfo != null
             && node.cloudInfo.az != null
@@ -257,8 +267,6 @@ public class UniverseResourceDetails {
       }
     }
 
-    details.gp3FreePiops = context.getConfig().getInt(GP3_FREE_PIOPS_PARAM);
-    details.gp3FreeThroughput = context.getConfig().getInt(GP3_FREE_THROUGHPUT_PARAM);
     details.addPrice(params, context);
     return details;
   }
