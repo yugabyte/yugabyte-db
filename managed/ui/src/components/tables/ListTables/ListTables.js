@@ -14,6 +14,7 @@ import _ from 'lodash';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBResourceCount } from '../../common/descriptors';
 import { isDisabled, isNotHidden } from '../../../utils/LayoutUtils';
+import { formatSchemaName } from '../../../utils/Formatters';
 
 class TableTitle extends Component {
   render() {
@@ -205,6 +206,7 @@ class ListTableGrid extends Component {
         return {
           keySpace: item.keySpace,
           tableID: item.tableUUID,
+          pgSchemaName: item.pgSchemaName,
           tableType: item.tableType,
           tableName: item.tableName,
           status: 'success',
@@ -230,6 +232,7 @@ class ListTableGrid extends Component {
         if (listItems.findIndex((lItem) => lItem.tableName === pendingTableName) === -1) {
           const pendingTableRow = {
             tableID: pendingTableTasks.id,
+            pgSchemaName: pendingTableTasks.pgSchemaName,
             tableType: 'YQL_TABLE_TYPE',
             tableName: pendingTableName,
             status: 'pending',
@@ -251,12 +254,19 @@ class ListTableGrid extends Component {
         <TableHeaderColumn
           dataField={'tableName'}
           dataFormat={getTableName}
-          width="20%"
+          width="15%"
           columnClassName={'table-name-label yb-table-cell'}
           className={'yb-table-cell'}
           dataSort
         >
           Table Name
+        </TableHeaderColumn>
+        <TableHeaderColumn
+          dataField="pgSchemaName"
+          width="15%"
+          dataFormat={(cell, row) => formatSchemaName(row.tableType, cell)}
+        >
+          Schema Name
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'tableType'}
@@ -270,7 +280,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'keySpace'}
-          width="15%"
+          width="10%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatKeySpace}
           dataSort
@@ -279,7 +289,7 @@ class ListTableGrid extends Component {
         </TableHeaderColumn>
         <TableHeaderColumn
           dataField={'status'}
-          width="10%"
+          width="5%"
           columnClassName={'yb-table-cell'}
           dataFormat={formatTableStatus}
         >
