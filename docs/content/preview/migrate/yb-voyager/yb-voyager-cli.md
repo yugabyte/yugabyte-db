@@ -16,7 +16,7 @@ yb-voyager is a command line executable for migrating databases from PostgreSQL,
 ## Syntax
 
 ```sh
-yb_voyager [ <migration-step>... ] [ <arguments> ... ]
+yb-voyager [ <migration-step>... ] [ <arguments> ... ]
 ```
 
 - *migration-step*: See [Commands](#commands)
@@ -27,13 +27,13 @@ yb_voyager [ <migration-step>... ] [ <arguments> ... ]
 To display the available online help, run:
 
 ```sh
-yb_voyager --help
+yb-voyager --help
 ```
 
 To display the available online help for any migration step, run:
 
 ```sh
-yb_voyager [ <migration-step>... ] --help
+yb-voyager [ <migration-step>... ] --help
 ```
 
 ## Commands
@@ -47,7 +47,7 @@ The following command line options specify the migration steps.
 #### Syntax
 
 ```sh
-yb_voyager export schema [ <arguments> ... ]
+yb-voyager export schema [ <arguments> ... ]
 ```
 
 - *arguments*: See [Arguments](#arguments)
@@ -72,7 +72,7 @@ Analyse the PostgreSQL schema dumped in the export schema step.
 #### Syntax
 
 ```sh
-yb_voyager analyze-schema [ <arguments> ... ]
+yb-voyager analyze-schema [ <arguments> ... ]
 ```
 
 - *arguments*: See [Arguments](#arguments)
@@ -97,7 +97,7 @@ Dump the source database to the machine where yb-voyager is installed.
 #### Syntax
 
 ```sh
-yb_voyager export data [ <arguments> ... ]
+yb-voyager export data [ <arguments> ... ]
 ```
 
 - *arguments*: See [Arguments](#arguments)
@@ -121,7 +121,7 @@ Import schema to the target YugabyteDB.
 #### Syntax
 
 ```sh
-yb_voyager import schema [ <arguments> ... ]
+yb-voyager import schema [ <arguments> ... ]
 ```
 
 - *arguments*: See [Arguments](#arguments)
@@ -143,7 +143,7 @@ Import the data objects to the target YugabyteDB.
 #### Syntax
 
 ```sh
-yb_voyager import data [ <arguments> ... ]
+yb-voyager import data [ <arguments> ... ]
 ```
 
 - *arguments*: See [Arguments](#arguments)
@@ -167,7 +167,7 @@ Load all your data files in csv format directly to the target YugabyteDB.
 #### Syntax
 
 ```sh
-yb_voyager import data file [ <arguments> ... ]
+yb-voyager import data file [ <arguments> ... ]
 ```
 
 - *arguments*: See [Arguments](#arguments)
