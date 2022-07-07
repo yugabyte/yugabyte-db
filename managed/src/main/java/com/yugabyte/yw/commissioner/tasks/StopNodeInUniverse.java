@@ -18,6 +18,7 @@ import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Arrays;
@@ -103,6 +104,12 @@ public class StopNodeInUniverse extends UniverseTaskBase {
         if (isBlacklistLeaders) {
           createModifyBlackListTask(
                   Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+
+        // Stop Yb-controller on this node.
+        if (CommonUtils.canConfigureYbc(universe)) {
+          createStopYbControllerTasks(Arrays.asList(currentNode))
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
