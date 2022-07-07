@@ -22,9 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "yb/client/yb_op.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.pb.h"
@@ -232,8 +229,6 @@ void SetupPaging(LWPgsqlReadRequestPB* req) {
 
 // Helper class to load data from all registered tables
 class Loader {
-  using ReadOperations = std::vector<std::shared_ptr<client::YBPgsqlReadOp>>;
-
  public:
   Loader(PgSession* session, size_t estimated_size)
       : session_(session), arena_(std::make_shared<Arena>()) {
