@@ -25,6 +25,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -40,6 +41,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
@@ -66,6 +68,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
@@ -73,12 +76,15 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import play.libs.Json;
 import play.mvc.Result;
 
 @Slf4j
 @RunWith(JUnitParamsRunner.class)
 public class UniverseInfoControllerTest extends UniverseControllerTestBase {
+  @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
+  @Mock ExecutorService executorService;
 
   @Test
   public void testGetMasterLeaderWithValidParams() {
@@ -237,7 +243,9 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getString(QueryHelper.QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY))
         .thenReturn("total_time");
     when(mockRuntimeConfig.getInt(QueryHelper.QUERY_STATS_SLOW_QUERIES_LIMIT_KEY)).thenReturn(200);
-    QueryHelper queryHelper = new QueryHelper(null, null);
+    when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), anyInt(), any()))
+        .thenReturn(executorService);
+    QueryHelper queryHelper = new QueryHelper(mockAppConfig, null, mockPlatformExecutorFactory);
     String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig);
     assertEquals(
         "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"
