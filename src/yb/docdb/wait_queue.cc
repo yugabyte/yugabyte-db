@@ -282,7 +282,7 @@ class BlockerData {
     txn_status_ = txn_status;
     if (txn_status_response.ok()) {
       if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set) {
-        // TODO(pessimistic): Avoid copying the subtransaction set. See:
+        // TODO(wait-queues): Avoid copying the subtransaction set. See:
         // https://github.com/yugabyte/yugabyte-db/issues/13823
         aborted_subtransactions_ = std::move(txn_status_response->aborted_subtxn_set);
         should_signal = true;
@@ -392,7 +392,7 @@ class WaitQueue::Impl {
                                  << " blockers=" << ToString(blockers)
                                  << " status_tablet_id=" << status_tablet_id;
 
-    // TODO(pessimistic): We can detect tablet-local deadlocks here.
+    // TODO(wait-queues): We can detect tablet-local deadlocks here.
     // See https://github.com/yugabyte/yugabyte-db/issues/13586
     std::vector<BlockerDataAndSubtxnInfo> blocker_datas;
     WaiterDataPtr waiter_data = nullptr;
@@ -419,7 +419,7 @@ class WaitQueue::Impl {
             VLOG_WITH_PREFIX_AND_FUNC(4) << "Re-using blocker " << blocker.id;
             blocker_data = placed_blocker_node;
           } else {
-            // TODO(pessimistic): We should only ever hit this case if a blocker was resolved and
+            // TODO(wait-queues): We should only ever hit this case if a blocker was resolved and
             // all references to it in old waiters were destructed. Perhaps we can remove this
             // dangling reference from blocker_status_ and return Status indicating that conflict
             // resolution should be retried since the status of its blockers may have changed, in
@@ -433,7 +433,7 @@ class WaitQueue::Impl {
         blocker_datas.emplace_back(blocker_data, blocker.subtransactions);
       }
 
-      // TODO(pessimistic): similar to pg, we can wait 1s or so before beginning deadlock detection.
+      // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
       // See https://github.com/yugabyte/yugabyte-db/issues/13576
       auto scoped_reporter = waiting_txn_registry_->Create();
       if (!waiter_txn_id.IsNil()) {
@@ -469,7 +469,7 @@ class WaitQueue::Impl {
   }
 
   void Poll(HybridTime now) EXCLUDES(mutex_) {
-    // TODO(pessimistic): Rely on signaling from the RunningTransaction instance of the blocker
+    // TODO(wait-queues): Rely on signaling from the RunningTransaction instance of the blocker
     // rather than this polling-based mechanism. We should also signal from the RunningTransaction
     // instance of the waiting transaction in case the waiter is aborted by deadlock or otherwise.
     // See https://github.com/yugabyte/yugabyte-db/issues/13578
@@ -782,7 +782,7 @@ class WaitQueue::Impl {
     }
 
     if (waiter_data->blockers.size() == num_resolved_blockers || !status.ok()) {
-      // TODO(pessimistic): Abort transactions without re-invoking conflict resolution when
+      // TODO(wait-queues): Abort transactions without re-invoking conflict resolution when
       // possible, e.g. if the blocking transaction was not a lock-only conflict and was commited.
       // See https://github.com/yugabyte/yugabyte-db/issues/13577
       InvokeWaiterCallback(status, waiter_data);

@@ -53,8 +53,9 @@ DEFINE_UNKNOWN_bool(enable_deadlock_detection, false,
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);
 
-DEFINE_UNKNOWN_bool(enable_wait_queues, false,
-            "If true, use pessimistic locking behavior in conflict resolution.");
+DEFINE_NON_RUNTIME_bool(enable_wait_queues, false,
+    "If true, enable wait queues that help provide Wait-on-Conflict behavior during conflict "
+    "resolution whenever required.");
 TAG_FLAG(enable_wait_queues, evolving);
 
 DEFINE_RUNTIME_bool(ysql_ddl_rollback_enabled, false,
