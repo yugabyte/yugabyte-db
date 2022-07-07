@@ -231,5 +231,26 @@ TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(MultipleConstraintsConflict)) 
   ASSERT_EQ(write_rpc_count, 1);
 }
 
+// The test checks that insert into table with FK constraint raises non error in case of
+// non-transactional writes is activated.
+TEST_F(PgOpBufferingTest, YB_DISABLE_TEST_IN_TSAN(FKCheckWithNonTxnWrites)) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t(k INT PRIMARY KEY)"));
+  ASSERT_OK(conn.Execute("CREATE TABLE ref_t(k INT PRIMARY KEY,"
+                         "                   t_pk INT REFERENCES t(k)) SPLIT INTO 1 TABLETS"));
+  constexpr auto kInsertRowCount = 300;
+  ASSERT_OK(SetMaxBatchSize(&conn, 10));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES(1)"));
+  ASSERT_OK(conn.Execute("SET yb_disable_transactional_writes = 1"));
+  // Warm-up postgres sys cache (FK triggers)
+  ASSERT_OK(conn.Execute("INSERT INTO ref_t VALUES(0, 1)"));
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO ref_t SELECT s, 1 FROM generate_series(1, $0) AS s", kInsertRowCount - 1));
+
+  const auto table_row_count = ASSERT_RESULT(
+      conn.FetchValue<int64_t>("SELECT COUNT(*) FROM ref_t"));
+  ASSERT_EQ(kInsertRowCount, table_row_count);
+}
+
 } // namespace pgwrapper
 } // namespace yb
