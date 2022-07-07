@@ -12,6 +12,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -72,17 +73,24 @@ public class ResizeNode extends UpgradeTaskBase {
 
             if (instanceTypeIsChanging) {
               createPreResizeNodeTasks(nodes, currentIntent.instanceType, currentIntent.deviceInfo);
+              createRollingNodesUpgradeTaskFlow(
+                  (nodez, processTypes) ->
+                      createResizeNodeTasks(nodez, universe, instanceTypeIsChanging, cluster),
+                  clusterNodes,
+                  UpgradeContext.builder()
+                      .reconfigureMaster(userIntent.replicationFactor > 1)
+                      .runBeforeStopping(false)
+                      .processInactiveMaster(false)
+                      .build());
+            } else {
+              // Only disk resizing, could be done without restarts.
+              createNonRestartUpgradeTaskFlow(
+                  (nodez, processTypes) ->
+                      createUpdateDiskSizeTasks(nodez)
+                          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk),
+                  new ArrayList<>(nodes),
+                  ServerType.EITHER);
             }
-
-            createRollingNodesUpgradeTaskFlow(
-                (nodez, processTypes) ->
-                    createResizeNodeTasks(nodez, universe, instanceTypeIsChanging, cluster),
-                clusterNodes,
-                UpgradeContext.builder()
-                    .reconfigureMaster(userIntent.replicationFactor > 1)
-                    .runBeforeStopping(false)
-                    .processInactiveMaster(false)
-                    .build());
 
             Integer newDiskSize = null;
             if (cluster.userIntent.deviceInfo != null) {

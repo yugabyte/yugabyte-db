@@ -145,15 +145,45 @@ public class ResizeNodeTest extends UpgradeTaskTest {
   }
 
   @Test
+  public void testNoChangesFails() {
+    ResizeNodeParams taskParams = createResizeParams();
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    verifyNoMoreInteractions(mockNodeManager);
+  }
+
+  @Test
   public void testChangingVolume() {
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertTasksSequence(subTasks, true, false);
+    Map<Integer, List<TaskInfo>> subTasksByPosition =
+        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
+    int position =
+        assertAllNodesActions(
+            0,
+            subTasksByPosition,
+            TaskType.SetNodeState,
+            TaskType.InstanceActions,
+            TaskType.SetNodeState);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.PersistResizeNode);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.UniverseUpdateSucceeded);
+
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(true, false);
+  }
+
+  private int assertAllNodesActions(
+      int position, Map<Integer, List<TaskInfo>> subTasksByPosition, TaskType... types) {
+    for (TaskType type : types) {
+      List<TaskInfo> tasks = subTasksByPosition.get(position++);
+      assertEquals(defaultUniverse.getNodes().size(), tasks.size());
+      assertEquals(type, tasks.get(0).getTaskType());
+    }
+    return position;
   }
 
   @Test
@@ -191,12 +221,13 @@ public class ResizeNodeTest extends UpgradeTaskTest {
             });
     ResizeNodeParams taskParams = createResizeParams();
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.instanceType = NEW_INSTANCE_TYPE;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize = NEW_VOLUME_SIZE;
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    assertTasksSequence(0, subTasks, true, false, false, true);
+    assertTasksSequence(0, subTasks, true, true, false, true);
     assertEquals(Success, taskInfo.getTaskState());
-    assertUniverseData(true, false);
+    assertUniverseData(true, true);
   }
 
   @Test
