@@ -21,6 +21,7 @@
 #include "yb/docdb/doc_key.h"
 
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 
 DEFINE_int32(cdc_snapshot_batch_size, 250, "Batch size for the snapshot operation in CDC");
 TAG_FLAG(cdc_snapshot_batch_size, runtime);
@@ -700,131 +701,159 @@ Status GetChangesForCDCSDK(
     checkpoint_updated = true;
   } else {
     RequestScope request_scope;
+    OpId last_seen_op_id = op_id;
 
-    auto read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
-        op_id, last_readable_opid_index, deadline));
+    // It's possible that a batch of messages in read_ops after fetching from
+    // 'ReadReplicatedMessagesForCDC' , will not have any actionable messages. In which case we
+    // keep retrying by fetching the next batch, until either we get an actionable message or reach
+    // the 'last_readable_opid_index'.
+    consensus::ReadOpsResult read_ops;
+    do {
+      read_ops = VERIFY_RESULT(tablet_peer->consensus()->ReadReplicatedMessagesForCDC(
+          last_seen_op_id, last_readable_opid_index, deadline));
 
-    if (read_ops.read_from_disk_size && mem_tracker) {
-      consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
-    }
-
-    auto txn_participant = tablet_peer->tablet()->transaction_participant();
-    if (txn_participant) {
-      request_scope = RequestScope(txn_participant);
-    }
-
-    Schema current_schema;
-    bool pending_intents = false;
-    bool schema_streamed = false;
-
-    for (const auto& msg : read_ops.messages) {
-      if (!schema_streamed && !(**cached_schema).initialized()) {
-        current_schema.CopyFrom(*tablet_peer->tablet()->schema().get());
-        string table_name = tablet_peer->tablet()->metadata()->table_name();
-        schema_streamed = true;
-
-        proto_record = resp->add_cdc_sdk_proto_records();
-        row_message = proto_record->mutable_row_message();
-        row_message->set_op(RowMessage_Op_DDL);
-        row_message->set_table(table_name);
-
-        *cached_schema = std::make_shared<Schema>(std::move(current_schema));
-        SchemaPB current_schema_pb;
-        SchemaToPB(**cached_schema, &current_schema_pb);
-        FillDDLInfo(row_message,
-                    current_schema_pb,
-                    tablet_peer->tablet()->metadata()->schema_version());
-      } else {
-        current_schema = **cached_schema;
+      if (read_ops.read_from_disk_size && mem_tracker) {
+        consumption = ScopedTrackedConsumption(mem_tracker, read_ops.read_from_disk_size);
       }
 
-      switch (msg->op_type()) {
-        case consensus::OperationType::UPDATE_TRANSACTION_OP:
-          // Ignore intents.
-          // Read from IntentDB after they have been applied.
-          if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
-            auto txn_id =
-                VERIFY_RESULT(FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
-            auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
-            std::vector<docdb::IntentKeyValueForCDC> intents;
-            docdb::ApplyTransactionState new_stream_state;
+      auto txn_participant = tablet_peer->tablet()->transaction_participant();
+      if (txn_participant) {
+        request_scope = RequestScope(txn_participant);
+      }
 
-            *commit_timestamp = msg->transaction_state().commit_hybrid_time();
-            op_id.term = msg->id().term();
-            op_id.index = msg->id().index();
-            RETURN_NOT_OK(ProcessIntents(
-                op_id, txn_id, stream_metadata, enum_oid_label_map, resp, &consumption, &checkpoint,
-                tablet_peer, &intents, &new_stream_state, &current_schema));
+      Schema current_schema;
+      bool pending_intents = false;
+      bool schema_streamed = false;
 
-            if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
-              pending_intents = true;
-            } else {
-              last_streamed_op_id->term = msg->id().term();
-              last_streamed_op_id->index = msg->id().index();
+      if (read_ops.messages.empty()) {
+        VLOG_WITH_FUNC(1) << "Did not get any messages with current batch of 'read_ops'."
+                          << "last_seen_op_id: " << last_seen_op_id << ", last_readable_opid_index "
+                          << *last_readable_opid_index;
+        break;
+      }
+
+      for (const auto& msg : read_ops.messages) {
+        last_seen_op_id.term = msg->id().term();
+        last_seen_op_id.index = msg->id().index();
+
+        if (!schema_streamed && !(**cached_schema).initialized()) {
+          current_schema.CopyFrom(*tablet_peer->tablet()->schema().get());
+          string table_name = tablet_peer->tablet()->metadata()->table_name();
+          schema_streamed = true;
+
+          proto_record = resp->add_cdc_sdk_proto_records();
+          row_message = proto_record->mutable_row_message();
+          row_message->set_op(RowMessage_Op_DDL);
+          row_message->set_table(table_name);
+
+          *cached_schema = std::make_shared<Schema>(std::move(current_schema));
+          SchemaPB current_schema_pb;
+          SchemaToPB(**cached_schema, &current_schema_pb);
+          FillDDLInfo(
+              row_message, current_schema_pb, tablet_peer->tablet()->metadata()->schema_version());
+        } else {
+          current_schema = **cached_schema;
+        }
+
+        switch (msg->op_type()) {
+          case consensus::OperationType::UPDATE_TRANSACTION_OP:
+            // Ignore intents.
+            // Read from IntentDB after they have been applied.
+            if (msg->transaction_state().status() == TransactionStatus::APPLYING) {
+              auto txn_id = VERIFY_RESULT(
+                  FullyDecodeTransactionId(msg->transaction_state().transaction_id()));
+              auto result = GetTransactionStatus(txn_id, tablet_peer->Now(), txn_participant);
+              std::vector<docdb::IntentKeyValueForCDC> intents;
+              docdb::ApplyTransactionState new_stream_state;
+
+              *commit_timestamp = msg->transaction_state().commit_hybrid_time();
+              op_id.term = msg->id().term();
+              op_id.index = msg->id().index();
+              RETURN_NOT_OK(ProcessIntents(
+                  op_id, txn_id, stream_metadata, enum_oid_label_map, resp, &consumption,
+                  &checkpoint, tablet_peer, &intents, &new_stream_state, &current_schema));
+
+              if (new_stream_state.write_id != 0 && !new_stream_state.key.empty()) {
+                pending_intents = true;
+                VLOG(1) << "There are pending intents for the transaction id " << txn_id
+                        << " with apply record OpId: " << op_id;
+              } else {
+                last_streamed_op_id->term = msg->id().term();
+                last_streamed_op_id->index = msg->id().index();
+              }
+            }
+            checkpoint_updated = true;
+            break;
+
+          case consensus::OperationType::WRITE_OP: {
+            const auto& batch = msg->write().write_batch();
+
+            if (!batch.has_transaction()) {
+              RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
+                  msg, stream_metadata, tablet_peer, enum_oid_label_map, resp, current_schema));
+
+              SetCheckpoint(
+                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+              checkpoint_updated = true;
             }
           }
-          checkpoint_updated = true;
           break;
 
-        case consensus::OperationType::WRITE_OP: {
-          const auto& batch = msg->write().write_batch();
-
-          if (!batch.has_transaction()) {
-            RETURN_NOT_OK(PopulateCDCSDKWriteRecord(
-                msg, stream_metadata, tablet_peer, enum_oid_label_map, resp, current_schema));
-
-            SetCheckpoint(
-                msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-            checkpoint_updated = true;
-          }
-        }
-        break;
-
-        case consensus::OperationType::CHANGE_METADATA_OP: {
-          RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
-          string table_name = tablet_peer->tablet()->metadata()->table_name();
-          *cached_schema = std::make_shared<Schema>(std::move(current_schema));
-          if ((resp->cdc_sdk_proto_records_size() > 0 &&
-               resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+          case consensus::OperationType::CHANGE_METADATA_OP: {
+            RETURN_NOT_OK(SchemaFromPB(msg->change_metadata_request().schema(), &current_schema));
+            string table_name = tablet_peer->tablet()->metadata()->table_name();
+            *cached_schema = std::make_shared<Schema>(std::move(current_schema));
+            if ((resp->cdc_sdk_proto_records_size() > 0 &&
+                 resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
+                         .row_message()
+                         .op() == RowMessage_Op_DDL)) {
+              if ((resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
                        .row_message()
-                       .op() == RowMessage_Op_DDL)) {
-            if ((resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
-                     .row_message()
-                     .schema_version() != msg->change_metadata_request().schema_version())) {
+                       .schema_version() != msg->change_metadata_request().schema_version())) {
+                RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
+                    msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
+              }
+            } else {
               RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
                   msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
             }
-          } else {
-            RETURN_NOT_OK(PopulateCDCSDKDDLRecord(
-                msg, resp->add_cdc_sdk_proto_records(), table_name, current_schema));
-          }
-          SetCheckpoint(
-              msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
-          checkpoint_updated = true;
-        }
-        break;
-
-        case consensus::OperationType::TRUNCATE_OP: {
-          if (FLAGS_stream_truncate_record) {
-            RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
-                msg, resp->add_cdc_sdk_proto_records(), current_schema));
             SetCheckpoint(
                 msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
             checkpoint_updated = true;
           }
-        }
-        break;
-
-        default:
-          // Nothing to do for other operation types.
           break;
+
+          case consensus::OperationType::TRUNCATE_OP: {
+            if (FLAGS_stream_truncate_record) {
+              RETURN_NOT_OK(PopulateCDCSDKTruncateRecord(
+                  msg, resp->add_cdc_sdk_proto_records(), current_schema));
+              SetCheckpoint(
+                  msg->id().term(), msg->id().index(), 0, "", 0, &checkpoint, last_streamed_op_id);
+              checkpoint_updated = true;
+            }
+          }
+          break;
+
+          default:
+            // Nothing to do for other operation types.
+            break;
+        }
+
+        if (pending_intents) break;
+      }
+      if (read_ops.messages.size() > 0) {
+        *msgs_holder = consensus::ReplicateMsgsHolder(
+            nullptr, std::move(read_ops.messages), std::move(consumption));
       }
 
-      if (pending_intents) break;
-    }
-    if (read_ops.messages.size() > 0)
-      *msgs_holder = consensus::ReplicateMsgsHolder(
-          nullptr, std::move(read_ops.messages), std::move(consumption));
+      if (!checkpoint_updated) {
+        LOG_WITH_FUNC(INFO)
+            << "The last batch of 'read_ops' had no actionable message. last_see_op_id: "
+            << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
+            << ". Will retry and get another batch";
+      }
+    } while (!checkpoint_updated && last_readable_opid_index &&
+             last_seen_op_id.index < *last_readable_opid_index);
   }
 
   if (consumption) {
