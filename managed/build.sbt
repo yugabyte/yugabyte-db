@@ -191,7 +191,6 @@ libraryDependencies ++= Seq(
 appResolvers := None
 bootResolvers := None
 otherResolvers := Seq()
-checksums := Seq("")
 
 // Whether to use local maven repo to retrieve artifacts (used for yb-client).
 lazy val ybUseMavenLocalEnvVarName = "USE_MAVEN_LOCAL"
@@ -379,7 +378,7 @@ runPlatform := {
 }
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.20-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "0.0.1"
+libraryDependencies += "org.yb" % "ybc-client" % "0.0.4"
 
 libraryDependencies ++= Seq(
   // We wont use swagger-ui jar since we want to change some of the assets:
@@ -399,7 +398,7 @@ libraryDependencies ++= Seq(
 //libraryDependencies += "eu.unicredit" %% "sbt-swagger-codegen-lib" % "0.0.12"
 
 
-dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
+dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "3.19.4"
 dependencyOverrides += "com.google.guava" % "guava" % "23.0"
 dependencyOverrides += "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.9.10"
 dependencyOverrides += "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % "2.9.10"
