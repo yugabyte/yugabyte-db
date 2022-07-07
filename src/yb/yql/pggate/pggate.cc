@@ -24,10 +24,7 @@
 
 #include <ev++.h>
 
-#include "yb/client/client.h"
-#include "yb/client/client_fwd.h"
 #include "yb/client/client_utils.h"
-#include "yb/client/tablet_server.h"
 
 #include "yb/common/partition.h"
 #include "yb/common/pg_system_attr.h"
@@ -91,10 +88,6 @@ DECLARE_int32(backfill_index_client_rpc_timeout_ms);
 
 namespace yb {
 namespace pggate {
-
-using docdb::PrimitiveValue;
-using docdb::KeyEntryType;
-
 namespace {
 
 struct TableHolder {
@@ -311,7 +304,6 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
 } // namespace
 
 using std::make_shared;
-using client::YBSession;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -1198,7 +1190,7 @@ Status PgApiImpl::ProcessYBTupleId(const YBCPgYBTupleIdDescriptor& descr,
         }
 
         if (attr->is_null) {
-          values->emplace_back(KeyEntryType::kNullLow);
+          values->emplace_back(docdb::KeyEntryType::kNullLow);
         } else {
           if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
             expr_pb->mutable_value()->set_binary_value(pg_session_->GenerateNewRowid());

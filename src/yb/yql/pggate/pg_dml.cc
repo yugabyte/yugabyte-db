@@ -30,12 +30,6 @@
 namespace yb {
 namespace pggate {
 
-using namespace std::literals;  // NOLINT
-using std::list;
-
-// TODO(neil) This should be derived from a GFLAGS.
-static MonoDelta kSessionTimeout = 60s;
-
 //--------------------------------------------------------------------------------------------------
 // PgDml
 //--------------------------------------------------------------------------------------------------

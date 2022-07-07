@@ -13,10 +13,6 @@
 
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-#include "yb/client/client.h"
-#include "yb/client/session.h"
-#include "yb/client/transaction.h"
-
 #include "yb/common/common.pb.h"
 #include "yb/common/transaction_priority.h"
 #include "yb/common/ybc_util.h"
@@ -123,19 +119,8 @@ int* YBCStatementTimeoutPtr = nullptr;
 
 }
 
-using namespace std::literals;
-using namespace std::placeholders;
-
 namespace yb {
 namespace pggate {
-
-using client::YBTransaction;
-using client::AsyncClientInitialiser;
-using client::TransactionManager;
-using client::YBTransactionPtr;
-using client::YBSession;
-using client::YBSessionPtr;
-using client::LocalTabletFilter;
 
 #if defined(__APPLE__) && !defined(NDEBUG)
 // We are experiencing more slowness in tests on macOS in debug mode.
