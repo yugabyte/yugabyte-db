@@ -15,7 +15,6 @@
 
 #include "yb/yql/pggate/pg_ddl.h"
 
-#include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common.pb.h"
@@ -38,13 +37,7 @@ DECLARE_int32(max_num_tablets_for_table);
 namespace yb {
 namespace pggate {
 
-using std::make_shared;
-using std::shared_ptr;
-using std::string;
 using namespace std::literals;  // NOLINT
-
-using client::YBSession;
-using client::YBMetaDataCache;
 
 // TODO(neil) This should be derived from a GFLAGS.
 static MonoDelta kDdlTimeout = 60s * kTimeMultiplier;

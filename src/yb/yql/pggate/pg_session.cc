@@ -22,15 +22,6 @@
 
 #include <boost/functional/hash.hpp>
 
-#include "yb/client/batcher.h"
-#include "yb/client/error.h"
-#include "yb/client/schema.h"
-#include "yb/client/table.h"
-#include "yb/client/tablet_server.h"
-#include "yb/client/transaction.h"
-#include "yb/client/yb_op.h"
-#include "yb/client/yb_table_name.h"
-
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/placement_info.h"
@@ -71,22 +62,6 @@ DEFINE_test_flag(bool, ysql_ignore_add_fk_reference, false,
                  "Don't fill YSQL's internal cache for FK check to force read row from a table");
 namespace yb {
 namespace pggate {
-
-using std::make_shared;
-using std::unique_ptr;
-using std::shared_ptr;
-using std::string;
-
-using client::YBMetaDataCache;
-using client::YBSchema;
-using client::YBOperation;
-using client::YBTable;
-using client::YBTableName;
-using client::YBTableType;
-
-using yb::master::GetNamespaceInfoResponsePB;
-
-using yb::tserver::TServerSharedObject;
 
 namespace {
 
@@ -303,7 +278,7 @@ size_t TableYbctidHasher::operator()(const TableYbctid& value) const {
 
 PgSession::PgSession(
     PgClient* pg_client,
-    const string& database_name,
+    const std::string& database_name,
     scoped_refptr<PgTxnManager> pg_txn_manager,
     scoped_refptr<server::HybridClock> clock,
     const tserver::TServerSharedObject* tserver_shared_object,
@@ -323,7 +298,7 @@ PgSession::~PgSession() = default;
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::ConnectDatabase(const string& database_name) {
+Status PgSession::ConnectDatabase(const std::string& database_name) {
   connected_database_ = database_name;
   return Status::OK();
 }
@@ -336,7 +311,7 @@ Status PgSession::IsDatabaseColocated(const PgOid database_oid, bool *colocated)
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::DropDatabase(const string& database_name, PgOid database_oid) {
+Status PgSession::DropDatabase(const std::string& database_name, PgOid database_oid) {
   tserver::PgDropDatabaseRequestPB req;
   req.set_database_name(database_name);
   req.set_database_oid(database_oid);
@@ -740,7 +715,7 @@ bool PgSession::HasWriteOperationsInDdlMode() const {
   return has_write_ops_in_ddl_mode_ && pg_txn_manager_->IsDdlMode();
 }
 
-Status PgSession::ValidatePlacement(const string& placement_info) {
+Status PgSession::ValidatePlacement(const std::string& placement_info) {
   tserver::PgValidatePlacementRequestPB req;
 
   Result<PlacementInfoConverter::Placement> result =
