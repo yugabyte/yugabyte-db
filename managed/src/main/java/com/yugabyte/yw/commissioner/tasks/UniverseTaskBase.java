@@ -1575,6 +1575,15 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
+   * Creates a task list to stop the yb-controller process on cluster's node and adds it to the
+   * queue.
+   *
+   * @param nodes set of nodes on which yb-controller has to be stopped
+   */
+  public SubTaskGroup createStopYbControllerTasks(Collection<NodeDetails> nodes) {
+    return createStopServerTasks(nodes, "controller", false);
+  }
+  /**
    * Creates a task list to stop the tservers of the cluster and adds it to the task queue.
    *
    * @param nodes set of nodes to be stopped as master
