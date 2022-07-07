@@ -338,10 +338,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 			if (erm->markType != ROW_MARK_REFERENCE && erm->markType != ROW_MARK_COPY)
 			{
 				ybc_state->exec_params->rowmark = erm->markType;
-				/*
-				 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
-				 */
-				ybc_state->exec_params->wait_policy = LockWaitError;
+				YBUpdateRowLockPolicyForSerializable(&ybc_state->exec_params->wait_policy, erm->waitPolicy);
 			}
 			break;
 		}
