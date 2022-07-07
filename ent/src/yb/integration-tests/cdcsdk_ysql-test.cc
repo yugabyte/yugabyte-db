@@ -85,6 +85,8 @@ DECLARE_int32(update_metrics_interval_ms);
 DECLARE_uint64(log_segment_size_bytes);
 DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_int32(cdc_min_replicated_index_considered_stale_secs);
+DECLARE_int32(log_min_seconds_to_retain);
 
 namespace yb {
 
@@ -2570,6 +2572,142 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyAfterCo
   int64 final_num_intents;
   PollForIntentCount(0, 0, IntentCountCompareOption::EqualTo, &final_num_intents);
   ASSERT_EQ(0, final_num_intents);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLogGCedWithTabletBootStrap)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 100000;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_log_segment_size_bytes = 100;
+  FLAGS_log_min_seconds_to_retain = 10;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  // Insert some records.
+  ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
+
+  GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  LOG(INFO) << "Number of records after first transaction: "
+            << change_resp_1.cdc_sdk_proto_records_size();
+  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
+
+  ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
+  // SleepFor(MonoDelta::FromSeconds(FLAGS_cdc_min_replicated_index_considered_stale_secs * 2));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+      /* is_compaction = */ false));
+
+  // Restart of the tsever will make Tablet Bootstrap.
+  test_cluster()->mini_tablet_server(0)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
+
+  SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain));
+  // Here testcase behave like a WAL cleaner thread.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        // Here setting FLAGS_cdc_min_replicated_index_considered_stale_secs to 1, so that CDC
+        // replication index will be set to max value, which will create a scenario to clean stale
+        // WAL logs, even if CDCSDK no consumed those Logs.
+        FLAGS_cdc_min_replicated_index_considered_stale_secs = 1;
+        ASSERT_OK(tablet_peer->RunLogGC());
+      }
+    }
+  }
+
+  GetChangesResponsePB change_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  LOG(INFO) << "Number of records after second transaction: "
+            << change_resp_2.cdc_sdk_proto_records_size();
+  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 100);
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestXClusterLogGCedWithTabletBootStrap)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 100000;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_log_segment_size_bytes = 100;
+  FLAGS_log_min_seconds_to_retain = 10;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+
+  RpcController rpc;
+  CreateCDCStreamRequestPB create_req;
+  CreateCDCStreamResponsePB create_resp;
+  create_req.set_table_id(table_id);
+  create_req.set_source_type(XCLUSTER);
+  ASSERT_OK(cdc_proxy_->CreateCDCStream(create_req, &create_resp, &rpc));
+
+  // Insert some records.
+  ASSERT_OK(WriteRows(0 /* start */, 100 /* end */, &test_cluster_));
+  rpc.Reset();
+
+  GetChangesRequestPB change_req;
+  GetChangesResponsePB change_resp_1;
+  change_req.set_stream_id(create_resp.stream_id());
+  change_req.set_tablet_id(tablets[0].tablet_id());
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
+  change_req.set_serve_as_proxy(true);
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp_1, &rpc));
+  ASSERT_FALSE(change_resp_1.has_error());
+
+  ASSERT_OK(WriteRows(100 /* start */, 200 /* end */, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 100,
+      /* is_compaction = */ false));
+
+  // Restart of the tsever will make Tablet Bootstrap.
+  test_cluster()->mini_tablet_server(0)->Shutdown();
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->Start());
+  ASSERT_OK(test_cluster()->mini_tablet_server(0)->WaitStarted());
+
+  SleepFor(MonoDelta::FromSeconds(FLAGS_log_min_seconds_to_retain));
+  // Here testcase behave like a WAL cleaner thread.
+  for (size_t i = 0; i < test_cluster()->num_tablet_servers(); ++i) {
+    for (const auto& tablet_peer : test_cluster()->GetTabletPeers(i)) {
+      if (tablet_peer->tablet_id() == tablets[0].tablet_id()) {
+        // Here setting FLAGS_cdc_min_replicated_index_considered_stale_secs to 1, so that CDC
+        // replication index will be set to max value, which will create a scenario to clean stale
+        // WAL logs, even if CDCSDK no consumed those Logs.
+        FLAGS_cdc_min_replicated_index_considered_stale_secs = 1;
+        ASSERT_OK(tablet_peer->RunLogGC());
+      }
+    }
+  }
+
+  GetChangesResponsePB change_resp_2;
+  rpc.Reset();
+  change_req.set_stream_id(create_resp.stream_id());
+  change_req.set_tablet_id(tablets[0].tablet_id());
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(
+      change_resp_1.checkpoint().op_id().index());
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(
+      change_resp_1.checkpoint().op_id().term());
+  change_req.set_serve_as_proxy(true);
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+
+  ASSERT_OK(cdc_proxy_->GetChanges(change_req, &change_resp_2, &rpc));
+  ASSERT_FALSE(change_resp_2.has_error());
 }
 
 }  // namespace enterprise

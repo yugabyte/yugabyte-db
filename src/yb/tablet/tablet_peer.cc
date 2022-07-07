@@ -1004,7 +1004,8 @@ Status TabletPeer::reset_cdc_min_replicated_index_if_stale() {
   std::lock_guard<decltype(cdc_min_replicated_index_lock_)> l(cdc_min_replicated_index_lock_);
   auto seconds_since_last_refresh =
       MonoTime::Now().GetDeltaSince(cdc_min_replicated_index_refresh_time_).ToSeconds();
-  if (seconds_since_last_refresh > FLAGS_cdc_min_replicated_index_considered_stale_secs) {
+  if (seconds_since_last_refresh >
+      GetAtomicFlag(&FLAGS_cdc_min_replicated_index_considered_stale_secs)) {
     LOG_WITH_PREFIX(INFO) << "Resetting cdc min replicated index. Seconds since last update: "
                           << seconds_since_last_refresh;
     RETURN_NOT_OK(set_cdc_min_replicated_index_unlocked(std::numeric_limits<int64_t>::max()));
