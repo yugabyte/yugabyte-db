@@ -65,7 +65,7 @@ The following tutorial implements a REST API server using the Java [Ebean](https
 - `orders` — the orders placed by the users
 - `orderline` — each line item of an order
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
+The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
 
 ## Prerequisites
 
@@ -78,7 +78,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebean
+$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebeans
 ```
 
 ## Database configuration
@@ -132,7 +132,7 @@ Create a `build.properties` file under the `project` directory and add the sbt v
 sbt.version=1.2.8
 ```
 
-Build the REST API server from the `ebean` directory using:
+Build the REST API server from the `ebeans` directory using:
 
 ```sh
 $ sbt compile
@@ -151,7 +151,7 @@ libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
 
 ## Run the application
 
-Run the application from the `ebean` directory using:
+Run the application from the `ebeans` directory using:
 
 ```sh
 $ sbt run
@@ -391,4 +391,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
+The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
