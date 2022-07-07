@@ -1,4 +1,5 @@
-import { isDefinedNotNull } from "./ObjectUtils";
+import { TableType } from '../redesign/helpers/dtos';
+import { isDefinedNotNull } from './ObjectUtils';
 
 /**
  * Format the duration into _d _h _m _s _ms format.
@@ -79,3 +80,5 @@ export const formatLagMetric = (milliseconds: number) => {
 
   return formatDuration(milliseconds);
 };
+export const formatSchemaName = (tableType: TableType, schemaName: string) =>
+  tableType === TableType.PGSQL_TABLE_TYPE ? schemaName : '-';

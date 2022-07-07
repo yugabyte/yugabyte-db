@@ -11,12 +11,16 @@ import {
   fetchTaskUntilItCompletes,
   getUniverseInfo
 } from '../../../actions/xClusterReplication';
+import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButton } from '../../common/forms/fields';
-import { IReplication, IReplicationTable } from '../IClusterReplication';
-import { formatBytes, GetCurrentLagForTable, YSQL_TABLE_TYPE } from '../ReplicationUtils';
+import { formatBytes, GetCurrentLagForTable } from '../ReplicationUtils';
 import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 
+import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { IReplication, IReplicationTable } from '../IClusterReplication';
+
 import './ReplicationDetailsTable.scss';
+
 interface props {
   replication: IReplication;
 }
@@ -75,7 +79,8 @@ export function ReplicationDetailsTable({ replication }: props) {
     return null;
   }
 
-  const tablesInReplication = tablesInSourceUniverse?.map((tables: IReplicationTable) => {
+  const tablesInReplication = tablesInSourceUniverse
+    ?.map((tables: IReplicationTable) => {
       return {
         ...tables,
         tableUUID: tables.tableUUID.replaceAll('-', '')
@@ -116,20 +121,26 @@ export function ReplicationDetailsTable({ replication }: props) {
               tableContainerClass="add-to-table-container"
             >
               <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-              <TableHeaderColumn dataField="tableName" width="30%">
+              <TableHeaderColumn dataField="tableName" width="25%">
                 Name
               </TableHeaderColumn>
               <TableHeaderColumn
+                dataField="pgSchemaName"
+                width="15%"
+                dataFormat={(cell: string, row: IReplicationTable) =>
+                  formatSchemaName(row.tableType, cell)
+                }
+              >
+                Schema Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
                 dataField="tableType"
-                width="20%"
-                dataFormat={(cell) => {
-                  if (cell === YSQL_TABLE_TYPE) return 'YSQL';
-                  return 'YCQL';
-                }}
+                width="15%"
+                dataFormat={(cell: TableType) => TABLE_TYPE_MAP[cell]}
               >
                 Type
               </TableHeaderColumn>
-              <TableHeaderColumn dataField="keySpace" width="20%">
+              <TableHeaderColumn dataField="keySpace" width="15%">
                 Keyspace
               </TableHeaderColumn>
               <TableHeaderColumn
