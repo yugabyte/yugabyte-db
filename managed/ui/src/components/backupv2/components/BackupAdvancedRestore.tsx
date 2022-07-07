@@ -27,7 +27,8 @@ import {
 } from '../../common/forms/fields';
 import * as Yup from 'yup';
 import { getKMSConfigs, restoreEntireBackup } from '../common/BackupAPI';
-import { BACKUP_API_TYPES, IBackup, IStorageConfig, TableType } from '../common/IBackup';
+import { BACKUP_API_TYPES, IBackup, IStorageConfig } from '../common/IBackup';
+import { TableType } from '../../../redesign/helpers/dtos';
 
 import { KEYSPACE_VALIDATION_REGEX, PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
 

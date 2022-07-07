@@ -16,10 +16,11 @@ import {
   fetchTaskUntilItCompletes,
   fetchUniversesList
 } from '../../actions/xClusterReplication';
-import { YSQL_TABLE_TYPE } from './ReplicationUtils';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getUniverseStatus, universeState } from '../universes/helpers/universeHelpers';
+import { formatSchemaName } from '../../utils/Formatters';
 
+import { TableType, TABLE_TYPE_MAP } from '../../redesign/helpers/dtos';
 import { IReplicationTable } from './IClusterReplication';
 
 import './ConfigureReplicationModal.scss';
@@ -288,16 +289,22 @@ function SelectTablesForm({
             }}
           >
             <TableHeaderColumn dataField="tableUUID" hidden isKey={true} />
-            <TableHeaderColumn dataField="tableName" width="50%">
+            <TableHeaderColumn dataField="tableName" width="30%">
               Table Name
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="pgSchemaName"
+              width="20%"
+              dataFormat={(cell: string, row: IReplicationTable) =>
+                formatSchemaName(row.tableType, cell)
+              }
+            >
+              Schema Name
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="tableType"
               width="20%"
-              dataFormat={(cell) => {
-                if (cell === YSQL_TABLE_TYPE) return 'YSQL';
-                return 'YCQL';
-              }}
+              dataFormat={(cell: TableType) => TABLE_TYPE_MAP[cell]}
             >
               Type
             </TableHeaderColumn>

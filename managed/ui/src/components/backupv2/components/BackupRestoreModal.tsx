@@ -42,7 +42,9 @@ import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { find, isFunction, omit } from 'lodash';
-import { BACKUP_API_TYPES, TableType } from '../common/IBackup';
+import { BACKUP_API_TYPES } from '../common/IBackup';
+import { TableType } from '../../../redesign/helpers/dtos';
+
 import clsx from 'clsx';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';

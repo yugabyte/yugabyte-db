@@ -336,3 +336,15 @@ export interface HAReplicationSchedule {
   frequency_milliseconds: number;
   is_running: boolean;
 }
+
+export enum TableType {
+  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
+  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
+  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
+}
+
+export const TABLE_TYPE_MAP: Record<TableType, string> = {
+  YQL_TABLE_TYPE: 'YCQL',
+  PGSQL_TABLE_TYPE: 'YSQL',
+  REDIS_TABLE_TYPE: 'REDIS'
+};

@@ -1,7 +1,10 @@
+import { TableType } from '../../redesign/helpers/dtos';
+
 export interface IReplicationTable {
   tableUUID: string;
+  pgSchemaName: string;
   tableName: string;
-  tableType: string;
+  tableType: TableType;
   keySpace: string;
   sizeBytes: string;
 }
