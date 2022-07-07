@@ -3,7 +3,11 @@
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
-    ".": ["$BUILD_ROOT/version_metadata.json"],
+    ".": [
+      "$BUILD_ROOT/master_flags.xml",
+      "$BUILD_ROOT/tserver_flags.xml",
+      "$BUILD_ROOT/version_metadata.json"
+    ],
     "bin": [
       "$BUILD_ROOT/bin/ldb",
       "$BUILD_ROOT/bin/log-dump",
