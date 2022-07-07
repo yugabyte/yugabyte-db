@@ -378,6 +378,17 @@ IsYBReadCommitted()
 }
 
 bool
+YBIsWaitQueueEnabled()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+	{
+		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_enable_wait_queues", false);
+	}
+	return IsYugaByteEnabled() && cached_value;
+}
+
+bool
 YBSavepointsEnabled()
 {
 	static int cached_value = -1;
@@ -2925,4 +2936,28 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
 	reads->wait_time += read_wait;
 	tbl_reads->count += tbl_read_count;
 	tbl_reads->wait_time += tbl_read_wait;
+}
+
+void YBUpdateRowLockPolicyForSerializable(
+		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy)
+{
+	/*
+	 * TODO(concurrency-control): We don't honour SKIP LOCKED/ NO WAIT yet in serializable isolation
+	 * level.
+	 */
+	if (userLockWaitPolicy == LockWaitSkip || userLockWaitPolicy == LockWaitError)
+		elog(WARNING, "%s clause is not supported yet for SERIALIZABLE isolation (GH issue #11761)",
+			userLockWaitPolicy == LockWaitSkip ? "SKIP LOCKED" : "NO WAIT");
+
+	*effectiveWaitPolicy = LockWaitBlock;
+	if (!YBIsWaitQueueEnabled())
+	{
+		/*
+		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is
+		 * mapped to LockWaitError right now (see WaitPolicy proto for meaning of
+		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
+		 * semantics but to Fail-on-Conflict semantics).
+		 */
+		*effectiveWaitPolicy = LockWaitError;
+	}
 }

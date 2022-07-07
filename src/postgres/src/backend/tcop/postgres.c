@@ -4397,6 +4397,21 @@ yb_get_sleep_usecs_on_txn_conflict(int attempt) {
 			RetryMinBackoffMsecs * 1000);
 }
 
+static void yb_maybe_sleep_on_txn_conflict(int attempt)
+{
+	if (!YBIsWaitQueueEnabled())
+	{
+		/*
+		 * If transactions are leveraging the wait queue based infrastructure for
+		 * blocking semantics on conflicts, they need not sleep with exponential
+		 * backoff between retries. The wait queues ensure that the transaction's
+		 * read/ write rpc which faced a kConflict error is unblocked only when all
+		 * conflicting transactions have ended (either committed or aborted).
+		 */
+		pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+	}
+}
+
 /*
  * Process an error that happened during execution with expected read restart
  * errors. Prepares the re-execution if an error is restartable, otherwise -
@@ -4495,7 +4510,7 @@ yb_attempt_to_restart_on_error(int attempt,
 			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			{
 				HandleYBStatus(YBCPgResetTransactionReadPoint());
-				pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+				yb_maybe_sleep_on_txn_conflict(attempt);
 			}
 			else
 			{
@@ -4534,7 +4549,7 @@ yb_attempt_to_restart_on_error(int attempt,
 				 * the same priority.
 				 */
 				YBCRecreateTransaction();
-				pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
+				yb_maybe_sleep_on_txn_conflict(attempt);
 			}
 			else
 			{

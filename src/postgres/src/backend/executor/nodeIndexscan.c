@@ -161,10 +161,8 @@ IndexNext(IndexScanState *node)
 				if (erm->markType != ROW_MARK_REFERENCE &&
 						erm->markType != ROW_MARK_COPY) {
 					scandesc->yb_exec_params->rowmark = erm->markType;
-					/*
-					 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
-					 */
-					scandesc->yb_exec_params->wait_policy = LockWaitError;
+					YBUpdateRowLockPolicyForSerializable(
+							&scandesc->yb_exec_params->wait_policy, erm->waitPolicy);
 				}
 				break;
 			}
