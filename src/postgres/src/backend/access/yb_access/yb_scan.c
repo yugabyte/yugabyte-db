@@ -2548,10 +2548,12 @@ HTSU_Result
 YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy wait_policy,
 						 EState* estate)
 {
-	if (wait_policy == LockWaitBlock) {
+	if (wait_policy == LockWaitBlock && !YBIsWaitQueueEnabled()) {
 		/*
-		 * Right now we don't support LockWaitBlock and default to LockWaitError. This will be resolved
-		 * once we support pessimistic locking.
+		 * If wait-queues are not enabled, we default to the "Fail-on-Conflict" policy which is mapped
+		 * to LockWaitError right now (see WaitPolicy proto for meaning of "Fail-on-Conflict" and the
+		 * reason why LockWaitError is not mapped to no-wait semantics but to Fail-on-Conflict
+		 * semantics).
 		 */
 		wait_policy = LockWaitError;
 	}
