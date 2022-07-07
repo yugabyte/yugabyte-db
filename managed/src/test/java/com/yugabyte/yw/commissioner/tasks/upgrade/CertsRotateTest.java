@@ -9,6 +9,7 @@ import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -410,7 +411,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     }
 
     assertEquals(Failure, taskInfo.getTaskState());
-    assertEquals(1, taskInfo.getSubTasks().size());
+    assertTrue(taskInfo.getSubTasks().isEmpty());
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
   }
 
@@ -463,7 +464,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
         assertEquals(Failure, taskInfo.getTaskState());
-        assertEquals(1, taskInfo.getSubTasks().size());
+        assertTrue(taskInfo.getSubTasks().isEmpty());
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
@@ -562,7 +563,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
           && !currentRootAndClientRootCASame
           && rootAndClientRootCASame)) {
         assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-        assertEquals(1, taskInfo.getSubTasks().size());
+        assertTrue(taskInfo.getSubTasks().isEmpty());
         verify(mockNodeManager, times(0)).nodeCommand(any(), any());
         return;
       }
@@ -666,7 +667,7 @@ public class CertsRotateTest extends UpgradeTaskTest {
     if (!((isRootCARequired && selfSignedServerCertRotate)
         || (isClientRootCARequired && selfSignedClientCertRotate))) {
       assertEquals(Failure, taskInfo.getTaskState());
-      assertEquals(1, taskInfo.getSubTasks().size());
+      assertTrue(taskInfo.getSubTasks().isEmpty());
       verify(mockNodeManager, times(0)).nodeCommand(any(), any());
       return;
     }

@@ -196,7 +196,8 @@ export default class RollingUpgradeForm extends Component {
       modal: { visibleModal },
       universe: { error, supportedReleases },
       formValues,
-      certificates
+      certificates,
+      overrideIntentParams
     } = this.props;
 
     const currentVersion = this.getCurrentVersion();
@@ -530,12 +531,12 @@ export default class RollingUpgradeForm extends Component {
             formName="RollingUpgradeForm"
             showCancelButton
             onHide={this.resetAndClose}
-            title="Confirm Resize Nodes"
+            title="Resize Nodes"
             onFormSubmit={submitAction}
             error={error}
             footerAccessory={
               <YBCheckBox
-                label="Confirm rolling restart"
+                label="Confirm resize nodes"
                 input={{
                   checked: this.state.formConfirmed,
                   onChange: this.toggleConfirmValidation
@@ -545,13 +546,17 @@ export default class RollingUpgradeForm extends Component {
             asyncValidating={!this.state.formConfirmed}
           >
             <div className="form-right-aligned-labels rolling-upgrade-form top-10 time-delay-container">
-              <Field
-                name="timeDelay"
-                type="number"
-                component={YBInputField}
-                label="Rolling Upgrade Delay Between Servers (secs)"
-                initValue={TASK_LONG_TIMEOUT / 1000}
-              />
+              { overrideIntentParams.instanceType ? (
+                <Field
+                  name="timeDelay"
+                  type="number"
+                  component={YBInputField}
+                  label="Rolling Upgrade Delay Between Servers (secs)"
+                  initValue={TASK_LONG_TIMEOUT / 1000}
+                />
+              ) : (
+                <span>This operation will be performed without restart</span>
+              )}
             </div>
             {errorAlert}
           </YBModal>

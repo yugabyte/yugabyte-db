@@ -51,6 +51,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   protected boolean isLoadBalancerOn = true;
   protected boolean isBlacklistLeaders;
   protected int leaderBacklistWaitTimeMs;
+  protected boolean hasRollingUpgrade = false;
 
   protected UpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
@@ -114,7 +115,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       throw t;
     } finally {
       try {
-        if (isBlacklistLeaders) {
+        if (isBlacklistLeaders && hasRollingUpgrade) {
           // This clears all the previously added subtasks.
           getRunnableTask().reset();
           List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
@@ -221,7 +222,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if ((nodes == null) || nodes.isEmpty()) {
       return;
     }
-
+    hasRollingUpgrade = true;
     SubTaskGroupType subGroupType = getTaskSubGroupType();
     Map<NodeDetails, Set<ServerType>> typesByNode = new HashMap<>();
     boolean hasTServer = false;
@@ -406,7 +407,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     createNonRestartUpgradeTaskFlow(nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER);
   }
 
-  private void createNonRestartUpgradeTaskFlow(
+  protected void createNonRestartUpgradeTaskFlow(
       IUpgradeSubTask nonRestartUpgradeLambda, List<NodeDetails> nodes, ServerType processType) {
     if ((nodes == null) || nodes.isEmpty()) {
       return;
