@@ -26,6 +26,7 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -375,10 +376,17 @@ public class Util {
     return details;
   }
 
+  // Wrapper on the existing compareYbVersions() method (to specify if format error
+  // should be suppressed)
+  public static int compareYbVersions(String v1, String v2) {
+
+    return compareYbVersions(v1, v2, false);
+  }
+
   // Compare v1 and v2 Strings. Returns 0 if the versions are equal, a
   // positive integer if v1 is newer than v2, a negative integer if v1
   // is older than v2.
-  public static int compareYbVersions(String v1, String v2) {
+  public static int compareYbVersions(String v1, String v2, boolean suppressFormatError) {
     Pattern versionPattern = Pattern.compile("^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$");
     Matcher v1Matcher = versionPattern.matcher(v1);
     Matcher v2Matcher = versionPattern.matcher(v2);
@@ -405,6 +413,25 @@ public class Util {
         int b = Integer.parseInt(v2BuildNumber);
         return a - b;
       }
+
+      return 0;
+    }
+
+    if (suppressFormatError) {
+
+      // If suppressFormat Error is true and the YB version strings
+      // are unable to be parsed, we output the log for debugging purposes
+      // and simply consider the versions as equal (similar to the custom
+      // build logic above).
+
+      String msg =
+          String.format(
+              "At least one YB version string out of %s and %s is unable to be parsed."
+                  + " The two versions are treated as equal because"
+                  + " suppressFormatError is set to true.",
+              v1, v2);
+
+      LOG.info(msg);
 
       return 0;
     }

@@ -101,7 +101,7 @@ The `SqlInserts` workload prints some statistics while running, which is also sh
 
 ## 3. Observe even load across all nodes
 
-You can check a lot of the per-node statistics by browsing to the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page. It should look like this. The total read and write IOPS per node are highlighted in the screenshot below. Note that both the reads and the writes are roughly the same across all the nodes indicating uniform usage across the nodes.
+You can check a lot of the per-node statistics by browsing to the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page. It should look like this. The total read and write IOPS per node are highlighted in the screenshot below. Note that both the reads and the writes are roughly the same across all the nodes indicating uniform usage across the nodes.
 
 ![Read and write IOPS with 3 nodes](/images/ce/fault-tolerance_evenly_distributed.png)
 
@@ -114,7 +114,7 @@ $ ./bin/yugabyted stop \
                   --base_dir=/tmp/ybd3
 ```
 
-Refresh the <a href='http://127.0.0.1:7000/tablet-servers' target="_blank">tablet-servers</a> page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. Once that number reaches 60s (1 minute), YugabyteDB will change the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
+Refresh the [tablet-servers](http://127.0.0.1:7000/tablet-servers) page to see the stats update. The `Time since heartbeat` value for that node will keep increasing. When that number reaches 60s (1 minute), YugabyteDB will change the status of that node from `ALIVE` to `DEAD`. Note that at this time the universe is running in an under-replicated state for some subset of tablets.
 
 ![Read and write IOPS with 3rd node dead](/images/ce/fault_tolerance_dead_node.png)
 

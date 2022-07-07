@@ -6,9 +6,13 @@ import { useHistory, useLocation } from 'react-router-dom';
 // Local imports
 import { YBSelect } from '@app/components';
 // import { YBSelect, RegionSelector } from '@app/components';
+import { ClusterInfo } from './ClusterInfo';
+import { ClusterInfoWidget } from './ClusterInfoWidget';
 import { RelativeInterval } from '@app/helpers';
 import { useChartConfig } from '@app/features/clusters/details/overview/ChartConfig';
 import { ChartController } from '@app/features/clusters/details/overview/ChartControler';
+import { useGetClusterQuery } from '@app/api/src';
+
 
 const useStyles = makeStyles((theme) => ({
   metricsRow: {
@@ -49,8 +53,14 @@ export const OverviewTab: FC = () => {
     history.push(newLocation); // this will trigger page re-rendering, thus no need in useState/useEffect
   };
 
+  const isMultiRegionEnabled = true;
+
+  const { data: clusterData } = useGetClusterQuery()
+  var cluster = clusterData?.data
   return (
     <>
+      {cluster && isMultiRegionEnabled && <ClusterInfoWidget cluster={cluster} />}
+      {cluster && !isMultiRegionEnabled && <ClusterInfo cluster={cluster} />}
       <div className={classes.metricsRow}>
         <Box display="flex" justifyContent="space-between" alignItems="center" width="100%">          
           <Box>

@@ -12,6 +12,7 @@
 //
 #include "yb/docdb/conflict_resolution.h"
 
+#include <atomic>
 #include <map>
 
 #include "yb/common/hybrid_time.h"
@@ -28,6 +29,7 @@
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -160,6 +162,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
         callback_(std::move(callback)) {}
 
+  virtual ~ConflictResolver() = default;
+
   PartialRangeKeyIntents partial_range_key_intents() {
     return partial_range_key_intents_;
   }
@@ -189,6 +193,16 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     }
 
     ResolveConflicts();
+  }
+
+  // Reset all state to prepare for running conflict resolution again.
+  void Reset() {
+    intent_iter_.Reset();
+    DCHECK(intent_key_upperbound_.empty());
+    conflicts_.clear();
+    transactions_.clear();
+    remaining_transactions_ = 0;
+    DCHECK_EQ(pending_requests_.load(std::memory_order_acquire), 0);
   }
 
   Result<WaitPolicy> CombineWaitPolicy(WaitPolicy existing_policy, WaitPolicy new_policy) {
@@ -299,7 +313,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     }
   }
 
- private:
+ protected:
   void InvokeCallback(const Result<HybridTime>& result) {
     YB_TRANSACTION_DUMP(
         Conflicts, context_->transaction_id(),
@@ -367,12 +381,11 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     if (VERIFY_RESULT(Cleanup())) {
       return true;
     }
-
-    RETURN_NOT_OK(context_->CheckPriority(this, RemainingTransactions()));
-
-    AbortTransactions();
+    RETURN_NOT_OK(OnConflictingTransactionsFound());
     return false;
   }
+
+  virtual Status OnConflictingTransactionsFound() = 0;
 
   // Returns true when there are no conflicts left.
   Result<bool> CheckLocalCommits() {
@@ -508,39 +521,6 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     }
   }
 
-  void AbortTransactions() {
-    auto self = shared_from_this();
-    pending_requests_.store(remaining_transactions_);
-    for (auto& i : RemainingTransactions()) {
-      auto& transaction = i;
-      TRACE("Aborting $0", yb::ToString(transaction.id));
-      status_manager().Abort(
-          transaction.id,
-          [self, &transaction](Result<TransactionStatusResult> result) {
-        VLOG(4) << self->LogPrefix() << "Abort received: " << AsString(result);
-        if (result.ok()) {
-          transaction.ProcessStatus(*result);
-        } else if (result.status().IsRemoteError() || result.status().IsAborted()) {
-          // Non retryable errors. Aborted could be caused by shutdown.
-          transaction.failure = result.status();
-        } else {
-          LOG(INFO) << self->LogPrefix() << "Abort failed, would retry: " << result.status();
-        }
-        if (self->pending_requests_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-          self->AbortTransactionsDone();
-        }
-      });
-    }
-  }
-
-  void AbortTransactionsDone() {
-    if (CheckResolutionDone(Cleanup())) {
-      return;
-    }
-
-    DoResolveConflicts();
-  }
-
   std::string LogPrefix() const {
     return context_->LogPrefix();
   }
@@ -571,6 +551,119 @@ struct IntentData {
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(types, full_doc_key);
   }
+};
+
+class OptimisticLockingConflictResolver : public ConflictResolver {
+ public:
+  OptimisticLockingConflictResolver(
+      const DocDB& doc_db,
+      TransactionStatusManager* status_manager,
+      PartialRangeKeyIntents partial_range_key_intents,
+      std::unique_ptr<ConflictResolverContext> context,
+      ResolutionCallback callback)
+    : ConflictResolver(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback))
+    {}
+
+  Status OnConflictingTransactionsFound() override {
+    DCHECK_GT(remaining_transactions_, 0);
+    RETURN_NOT_OK(context_->CheckPriority(this, RemainingTransactions()));
+
+    AbortTransactions();
+    return Status::OK();
+  }
+
+ private:
+  void AbortTransactions() {
+    auto self = shared_from(this);
+    pending_requests_.store(remaining_transactions_);
+    for (auto& i : RemainingTransactions()) {
+      auto& transaction = i;
+      TRACE("Aborting $0", yb::ToString(transaction.id));
+      status_manager().Abort(
+          transaction.id,
+          [self, &transaction](Result<TransactionStatusResult> result) {
+        VLOG(4) << self->LogPrefix() << "Abort received: " << AsString(result);
+        if (result.ok()) {
+          transaction.ProcessStatus(*result);
+        } else if (result.status().IsRemoteError() || result.status().IsAborted()) {
+          // Non retryable errors. Aborted could be caused by shutdown.
+          transaction.failure = result.status();
+        } else {
+          LOG(INFO) << self->LogPrefix() << "Abort failed, would retry: " << result.status();
+        }
+        if (self->pending_requests_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+          self->AbortTransactionsDone();
+        }
+      });
+    }
+  }
+
+  void AbortTransactionsDone() {
+    if (CheckResolutionDone(Cleanup())) {
+      return;
+    }
+
+    DoResolveConflicts();
+  }
+};
+
+class PessimisticLockingConflictResolver : public ConflictResolver {
+ public:
+  PessimisticLockingConflictResolver(
+      const DocDB& doc_db,
+      TransactionStatusManager* status_manager,
+      PartialRangeKeyIntents partial_range_key_intents,
+      std::unique_ptr<ConflictResolverContext> context,
+      ResolutionCallback callback,
+      WaitQueue* wait_queue,
+      LockBatch* lock_batch)
+        : ConflictResolver(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
+      wait_queue_(wait_queue), lock_batch_(lock_batch)
+    {}
+
+  Status OnConflictingTransactionsFound() override {
+    DCHECK_GT(remaining_transactions_, 0);
+    wait_for_iters_++;
+    VTRACE(3, "Waiting on $0 transactions after $1 tries.",
+              remaining_transactions_, wait_for_iters_);
+
+    // TODO(pessimistic): include status tablet for use with deadlock detection.
+    std::vector<TransactionId> transactions;
+    transactions.reserve(remaining_transactions_);
+    for (auto& txn : RemainingTransactions()) {
+      transactions.push_back(txn.id);
+    }
+
+    return wait_queue_->WaitOn(
+        context_->transaction_id(), lock_batch_, transactions,
+        std::bind(&PessimisticLockingConflictResolver::WaitingDone, shared_from(this), _1));
+  }
+
+  // Note: we must pass in shared_this to keep the PessimisticLockingConflictResolver alive until
+  // the wait queue invokes this call.
+  void WaitingDone(const Status& status) {
+    VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status;
+
+    if (!status.ok()) {
+      InvokeCallback(status);
+      return;
+    }
+
+    // If status from wait_queue is OK, then all blockers read earlier are now resolved. Retry
+    // conflict resolution with all state reset.
+    // TODO(pessimistic): In case wait queue finds that a blocker was committed, and if that blocker
+    // has still-live modification conflicts with this operation (i.e. not from rolled back subtxn),
+    // we can avoid re-running conflict resolution here and just abort.
+    Reset();
+    Resolve();
+  }
+
+ private:
+  WaitQueue* wait_queue_;
+  LockBatch* lock_batch_;
+  uint32_t wait_for_iters_ = 0;
 };
 
 using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
@@ -1095,15 +1188,24 @@ void ResolveTransactionConflicts(const DocOperations& doc_ops,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
                                  Counter* conflicts_metric,
+                                 LockBatch* lock_batch,
+                                 WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   DCHECK(hybrid_time.is_valid());
-  TRACE("ResolveTransactionConflicts");
+  TRACE_FUNC();
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
-  auto resolver = std::make_shared<ConflictResolver>(
-      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
-  // Resolve takes a self reference to extend lifetime.
-  resolver->Resolve();
+  if (wait_queue) {
+    DCHECK(lock_batch);
+    auto resolver = std::make_shared<PessimisticLockingConflictResolver>(
+        doc_db, status_manager, partial_range_key_intents, std::move(context),
+        std::move(callback), wait_queue, lock_batch);
+    resolver->Resolve();
+  } else {
+    auto resolver = std::make_shared<OptimisticLockingConflictResolver>(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+    resolver->Resolve();
+  }
   TRACE("resolver->Resolve done");
 }
 
@@ -1117,7 +1219,8 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
   TRACE("ResolveOperationConflicts");
   auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht,
                                                                     conflicts_metric);
-  auto resolver = std::make_shared<ConflictResolver>(
+  // TODO(pessimistic): Integrate pessimistic locking with single-shard transactions.
+  auto resolver = std::make_shared<OptimisticLockingConflictResolver>(
       doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
   // Resolve takes a self reference to extend lifetime.
   resolver->Resolve();

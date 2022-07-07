@@ -99,12 +99,6 @@ upload_package() {
       log "Skipping package upload for a non-release build (build type: $BUILD_TYPE)"
       return
     fi
-
-    if is_linux && [[ $YB_COMPILER_TYPE != "gcc" &&
-                      $YB_COMPILER_TYPE != "clang12" ]]; then
-      log "Skipping package upload on Linux (compiler type: $YB_COMPILER_TYPE)"
-      return
-    fi
   fi
 
   package_upload_skipped=false

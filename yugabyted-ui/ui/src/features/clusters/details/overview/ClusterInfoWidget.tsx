@@ -1,22 +1,22 @@
-import React, { FC, useContext } from 'react';
+import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
 import { intlFormat } from 'date-fns';
-import clsx from 'clsx';
+// import clsx from 'clsx';
 
 // Local imports
 import { ClusterData, ClusterRegionInfo, useGetRegionsQuery } from '@app/api/src';
 // import { getCloudProviderIcon } from '@app/features/clusters/list/ClusterCard';
 import {
-  convertMBtoGB,
+  roundDecimal,
   getFaultTolerance,
-  OPEN_EDIT_INFRASTRUCTURE_MODAL
+  // OPEN_EDIT_INFRASTRUCTURE_MODAL
 } from '@app/helpers';
-import { YBButton } from '@app/components';
-import { ClusterContext } from '@app/features/clusters/details/ClusterDetails';
+// import { YBButton } from '@app/components';
+// import { ClusterContext } from '@app/features/clusters/details/ClusterDetails';
 
 // Icons
-import PlusIcon from '@app/assets/plus_icon.svg';
+// import PlusIcon from '@app/assets/plus_icon.svg';
 
 const useStyles = makeStyles((theme) => ({
   clusterInfo: {
@@ -31,11 +31,6 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: theme.typography.fontWeightMedium as number,
     marginBottom: theme.spacing(0.75),
     textTransform: 'uppercase'
-  },
-  labelVcpu: {
-    color: theme.palette.grey[600],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    marginBottom: theme.spacing(0.75)
   },
   value: {
     paddingTop: theme.spacing(0.57)
@@ -84,38 +79,57 @@ const getDate = (rawDate?: string): string => {
 export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
-  const context = useContext(ClusterContext);
+  // const context = useContext(ClusterContext);
 
   const clusterSpec = cluster?.spec;
   const cloud = clusterSpec?.cloud_info?.code;
   const { data: regions } = useGetRegionsQuery({ cloud });
 
-  const diskPerNode = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
   const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
-  const totalDiskSize = diskPerNode * numNodes;
-  const totalNumCores = (clusterSpec?.cluster_info?.node_info.num_cores ?? 0) * numNodes;
-  const ramPerNode = clusterSpec?.cluster_info?.node_info.memory_mb;
+  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
+  const totalRamUsageMb = clusterSpec?.cluster_info?.node_info.memory_mb ?? 0;
+  const averageCpuUsage = clusterSpec?.cluster_info?.node_info.cpu_usage ?? 0;
 
   const availableRegions: ClusterRegionInfo[] = clusterSpec?.cluster_region_info ?? [];
 
   // const editingDisabled =
   //   isClusterEditingDisabled(cluster) || clusterSpec?.cluster_info?.cluster_tier === ClusterTier.Free;
 
-     const editingDisabled = false;
+  // const editingDisabled = true;
 
   // Convert ram from MB to GB
-  const getTotalRamText = (value: number, numberOfNodes: number) => {
-    const ramGbPerNode = convertMBtoGB(value, true);
-    const totalRam = ramGbPerNode * numberOfNodes;
-    return value ? t('units.GB', { value: totalRam }) : '';
-  };
+  // const getTotalRamText = (value: number, numberOfNodes: number) => {
+  //   const ramGbPerNode = convertMBtoGB(value, true);
+  //   const totalRam = ramGbPerNode * numberOfNodes;
+  //   return value ? t('units.GB', { value: totalRam }) : '';
+  // };
+
+  // Get text for ram usage
+  const getRamUsageText = (ramUsageMb: number) => {
+    ramUsageMb = roundDecimal(ramUsageMb)
+    return t('units.MB', { value: ramUsageMb });
+  }
+
+  // Get text for encryption
+  const getEncryptionText = (encryptionAtRest: boolean, encryptionInTransit: boolean) => {
+    if (encryptionAtRest && encryptionInTransit) {
+      return t('clusters.inTransitAtRest');
+    }
+    if (encryptionAtRest) {
+      return t('clusters.atRest')
+    }
+    if (encryptionInTransit) {
+      t('clusters.inTransit')
+    }
+    return t('clusters.none')
+  }
 
   // Open edit infra
-  const openEditInfraModal = () => {
-    if (context?.dispatch) {
-      context.dispatch({ type: OPEN_EDIT_INFRASTRUCTURE_MODAL });
-    }
-  };
+  // const openEditInfraModal = () => {
+  //   if (context?.dispatch) {
+  //     context.dispatch({ type: OPEN_EDIT_INFRASTRUCTURE_MODAL });
+  //   }
+  // };
 
   return (
     <Paper className={classes.clusterInfo}>
@@ -138,11 +152,11 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
           </Typography>
         </div>
         <div>
-          <Typography variant="subtitle2" className={classes.labelVcpu}>
-            {t('clusterDetail.overview.totalVcpu')}
+          <Typography variant="subtitle2" className={classes.label}>
+            {t('clusterDetail.overview.averageCpu')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {totalNumCores}
+            {t('units.percent', { value : roundDecimal(averageCpuUsage) })}
           </Typography>
         </div>
         <div>
@@ -155,10 +169,10 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
         </div>
         <div>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.totalRam')}
+            {t('clusterDetail.overview.ramUsed')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {getTotalRamText(ramPerNode, numNodes)}
+            {getRamUsageText(totalRamUsageMb)}
           </Typography>
         </div>
         <div>
@@ -174,7 +188,8 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
             {t('clusters.encryption')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {t('clusters.inTransitAtRest')}
+            {getEncryptionText(clusterSpec?.encryption_info?.encryption_at_rest ?? false,
+              clusterSpec?.encryption_info?.encryption_in_transit ?? false)}
           </Typography>
         </div>
         <div>
@@ -198,11 +213,12 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                 {availableRegions?.map((region) => (
                   <Box mr={1} className={classes.chip} key={region?.placement_info?.cloud_info?.region}>
                     {/* <RegionWithFlag code={region?.placement_info?.cloud_info?.region} regions={regions?.data} /> */}
+                    {region?.placement_info?.cloud_info?.region}
                   </Box>
                 ))}
               </Box>
             </Box>
-            <Box alignSelf="flex-end">
+            {/* <Box alignSelf="flex-end">
               <YBButton
                 variant="secondary"
                 onClick={() => openEditInfraModal()}
@@ -211,7 +227,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
               >
                 <PlusIcon />
               </YBButton>
-            </Box>
+              </Box> */}
           </Box>
         )}
       </Grid>

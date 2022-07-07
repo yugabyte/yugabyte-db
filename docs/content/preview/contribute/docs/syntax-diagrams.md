@@ -337,7 +337,7 @@ Here are the download instructions. You need to do this just once in a newly cre
 ```sh
 cd yugabyte-db/docs/
 
-wget $(curl -s https://api.github.com/repos/Yugabyte/RRDiagram/releases/preview \
+wget $(curl -s https://api.github.com/repos/Yugabyte/RRDiagram/releases/latest \
        | grep browser_download_url | cut -d \" -f 4)
 ```
 

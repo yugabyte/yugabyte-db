@@ -95,7 +95,9 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
 - **Client Secret** represents the secret of an application registered in your Azure Active Directory.
 - **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [How to define a private DNS zone](#how-to-define-a-private-dns-zone).
-- **Virtual Network Setup** allows you to customize your network, including the virtual network.
+- **Virtual Network Setup** allows you to customize your network, including the virtual network, as follows:
+  - Select an existing Virtual Private Cloud (VPC).
+  - Create a new VPC, with certain limitations. For example, an attempt to configure more than one Azure cloud provider with the **Create a new VPC** option enabled will result in a silent failure.
 - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
   - Select **Use provider’s NTP server** to enable cluster nodes to connect to the Azure internal time servers. For more information, consult the Microsoft Azure documentation such as [Time sync for Linux VMs in Azure](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/time-sync).
   - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.

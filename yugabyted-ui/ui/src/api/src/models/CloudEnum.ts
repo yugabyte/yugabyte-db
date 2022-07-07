@@ -18,7 +18,8 @@
  */
 export enum CloudEnum {
   Aws = 'AWS',
-  Gcp = 'GCP'
+  Gcp = 'GCP',
+  Manual = 'MANUAL'
 }
 
 

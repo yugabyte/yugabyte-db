@@ -181,6 +181,7 @@ src/models/DbUpgradeRequest.ts
 src/models/DefaultInternalTagsListResponse.ts
 src/models/DefaultInternalTagsUpdateData.ts
 src/models/EmailTemplateEnum.ts
+src/models/EncryptionInfo.ts
 src/models/EntityMetadata.ts
 src/models/EntityMeteringData.ts
 src/models/EntityTypeEnum.ts

@@ -883,6 +883,14 @@ li.section.back-arrow:hover::before {
   border-color: var(--theme-color);
 }
 
+li.section.other-links {
+  padding: 4px 0;
+}
+
+li.section.other-links a {
+  padding-left: 20px !important;
+}
+
 aside.td-sidebar nav > ul > li.view-all-products > {
   a {
     padding-left: 5px !important;

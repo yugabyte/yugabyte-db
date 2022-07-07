@@ -90,7 +90,7 @@ Notice the `\.` terminator. You can simply execute `\i t.sql` at the  [`ysqlsh`]
 
 {{< note title="Some client-side languages have a dedicated exposure of COPY" >}}
 
-For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`.  See <a href="https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from" target="_blank">Using COPY TO and COPY FROM <i class="fas fa-external-link-alt"></i></a>
+For example, the _"psycopg2"_ PostgreSQL driver for Python (and of course this works for YugabyteDB) has dedicated cursor methods for `COPY`. See [Using COPY TO and COPY FROM](https://www.psycopg.org/docs/usage.html#using-copy-to-and-copy-from).
 
 {{< /note >}}
 

@@ -10,6 +10,7 @@ menu:
     parent: the-sql-language
     weight: 200
 type: indexpage
+showRightNav: true
 ---
 
 A `WITH` clause can be used as part of a `SELECT` statement, an `INSERT` statement, an `UPDATE` statement, or a `DELETE` statement. For this reason, the functionality is described in this dedicated section.
