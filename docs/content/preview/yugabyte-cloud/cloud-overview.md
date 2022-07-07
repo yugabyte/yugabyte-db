@@ -1,7 +1,7 @@
 ---
 title: YugabyteDB Managed
 linkTitle: Overview
-description: Fully managed YugabyteDB-as-a-Service.
+description: Fully managed YugabyteDB-as-a-Service
 headcontent: Fully managed YugabyteDB-as-a-Service
 image: /images/section_icons/index/quick_start.png
 aliases:
@@ -12,10 +12,11 @@ menu:
     identifier: cloud-overview
     parent: yugabytedb-managed
     weight: 1
-type: docs
+type: indexpage
+showRightNav: true
 ---
 
-YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on <a href="https://cloud.google.com/">Google Cloud Platform (GCP)</a> and <a href="https://aws.amazon.com/">Amazon Web Services (AWS)</a>.
+YugabyteDB Managed is a fully managed YugabyteDB-as-a-Service that allows you to run YugabyteDB clusters on [Google Cloud Platform (GCP)](https://cloud.google.com/) and [Amazon Web Services (AWS)](https://aws.amazon.com/).
 
 ### Start here
 
