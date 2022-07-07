@@ -216,3 +216,9 @@ add_executable(yb-master master_main.cc)
 target_link_libraries(yb-master
   master
   ${YB_BASE_LIBS})
+
+# Generate master_flags.xml
+set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
+add_custom_command(TARGET yb-master POST_BUILD
+  COMMAND "${BUILD_SUPPORT_DIR}/gen_flags_metadata_wrapper" "yb-master" "${MASTER_FLAGS_METADATA_FILE}"
+  BYPRODUCTS "${MASTER_FLAGS_METADATA_FILE}")
