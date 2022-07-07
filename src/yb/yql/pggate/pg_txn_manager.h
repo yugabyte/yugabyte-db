@@ -79,7 +79,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
   bool ShouldUseFollowerReads() const { return read_time_for_follower_reads_.is_valid(); }
 
-  void SetupPerformOptions(tserver::PgPerformOptionsPB* options);
+  uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
 
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;

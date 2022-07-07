@@ -524,14 +524,21 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
         false /* read_only */, txn_priority_requirement, &in_txn_limit));
   }
 
-  return Perform(std::move(ops), UseCatalogSession::kFalse);
+  // In case of flushing of non-transactional operations it is required to set read time with the
+  // very first (and all further) request as flushing is done asynchronously (i.e. YSQL may send
+  // multiple bunch of operations in parallel). As a result PgClientService is unable to use read
+  // time from remote t-server or generate its own.
+  const auto ensure_read_time_set_for_current_txn_serial_no = !transactional;
+  return Perform(
+      std::move(ops), UseCatalogSession::kFalse, ensure_read_time_set_for_current_txn_serial_no);
 }
 
 Result<PerformFuture> PgSession::Perform(
-    BufferableOperations ops, UseCatalogSession use_catalog_session) {
+    BufferableOperations ops,
+    UseCatalogSession use_catalog_session,
+    bool ensure_read_time_set_for_current_txn_serial_no) {
   DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
-
   if (use_catalog_session) {
     if (catalog_read_time_) {
       if (*catalog_read_time_) {
@@ -542,7 +549,9 @@ Result<PerformFuture> PgSession::Perform(
     }
     options.set_use_catalog_session(true);
   } else {
-    pg_txn_manager_->SetupPerformOptions(&options);
+    const auto txn_serial_no = pg_txn_manager_->SetupPerformOptions(&options);
+    ProcessPerformOnTxnSerialNo(
+        txn_serial_no, ensure_read_time_set_for_current_txn_serial_no, &options);
   }
   bool global_transaction = yb_force_global_transaction;
   for (auto i = ops.operations.begin(); !global_transaction && i != ops.operations.end(); ++i) {
@@ -556,6 +565,22 @@ Result<PerformFuture> PgSession::Perform(
     promise->set_value(result);
   });
   return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+}
+
+void PgSession::ProcessPerformOnTxnSerialNo(uint64_t txn_serial_no,
+                                            bool ensure_read_time_set_for_current_txn_serial_no,
+                                            tserver::PgPerformOptionsPB* options) {
+  if (txn_serial_no != std::get<0>(last_perform_on_txn_serial_no_).txn_serial_no) {
+    last_perform_on_txn_serial_no_.emplace<0>(
+        txn_serial_no,
+        ensure_read_time_set_for_current_txn_serial_no
+            ? ReadHybridTime::FromHybridTimeRange(clock_->NowRange())
+            : ReadHybridTime());
+  }
+  const auto& read_time = std::get<0>(last_perform_on_txn_serial_no_).read_time;
+  if (ensure_read_time_set_for_current_txn_serial_no && read_time && !options->has_read_time()) {
+    read_time.ToPB(options->mutable_read_time());
+  }
 }
 
 Result<uint64_t> PgSession::GetSharedCatalogVersion() {
