@@ -13,11 +13,12 @@ menu:
     identifier: overview-yp
     weight: 10
 type: indexpage
+showRightNav: true
 ---
 
 YugabyteDB Anywhere is best fit for mission-critical deployments, such as production or pre-production testing. The YugabyteDB Anywhere UI is used in a highly-available mode, allowing you to create and manage YugabyteDB universes, or clusters, on one or more regions across public cloud and private on-premises data centers.
 
-YugabyteDB Anywhere is a containerized application that you can install using <a href="https://www.replicated.com/" target="_blank">Replicated</a> for production, performance, or failure mode testing. For local development or simple functional testing you can also use <a href="../../quick-start/install">YugabyteDB</a>.
+YugabyteDB Anywhere is a containerized application that you can install using [Replicated](https://www.replicated.com/) for production, performance, or failure mode testing. For local development or simple functional testing you can also use [YugabyteDB](../../quick-start/).
 
 You can access YugabyteDB Anywhere via an Internet browser that has been supported by its maker in the past 24 months and that has a market share of at least 0.2%. In addition, you can access YugabyteDB Anywhere via most mobile browsers, except Opera Mini.
 

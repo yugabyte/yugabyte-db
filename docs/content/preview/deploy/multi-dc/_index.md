@@ -18,7 +18,7 @@ The first configuration uses a single cluster stretched across 3 or more data ce
 
 For users not requiring global consistency and automatic resilience to data center failures, the WAN latency can be eliminated altogether through the second configuration where two independent, single-DC clusters are connected through asynchronous replication based on <a href="../../architecture/docdb-replication/change-data-capture/">Change Data Capture</a>.
 
-<a href="https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/" target="_blank">9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency</a> highlights the various multi-DC deployment strategies for a distributed SQL database like YugabyteDB. Note that YugabyteDB is the only Spanner-inspired distributed SQL database to support a 2DC deployment.
+[9 Techniques to Build Cloud-Native, Geo-Distributed SQL Apps with Low Latency](https://blog.yugabyte.com/9-techniques-to-build-cloud-native-geo-distributed-sql-apps-with-low-latency/) highlights the various multi-DC deployment strategies for a distributed SQL database like YugabyteDB. Note that YugabyteDB is the only Spanner-inspired distributed SQL database to support a 2DC deployment.
 
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
