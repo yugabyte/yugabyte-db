@@ -56,7 +56,7 @@ message ProducerEntryPB {
   // Map from stream id to metadata for that stream.
   map<string, StreamEntryPB> stream_map = 1;
   repeated HostPortPB master_addrs = 2;
-  repeated HostPortPB tserver_addrs = 3;
+  repeated HostPortPB DEPRECATED_tserver_addrs = 3; // See issue #11989.
   bool disable_stream = 4; // [default = false] implicit in proto3
 }
 

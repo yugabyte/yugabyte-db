@@ -19,7 +19,7 @@
 /*
  * Enum representing how the catalog version is stored on this cluster.
  * Needed for backwards-compatibility with old clusters.
- * Should only be set once per process (first time the catalog version is 
+ * Should only be set once per process (first time the catalog version is
  * requested) and never modified afterwards.
  * TODO: Once cluster/initdb upgrade is supported (#2272) we should use it
  * to upgrade old cluster and remove the now-obsolete protobuf-based paths.
@@ -36,12 +36,8 @@ extern YbCatalogVersionType yb_catalog_version_type;
 /* Get the latest catalog version from the master leader. */
 extern uint64_t YbGetMasterCatalogVersion();
 
-/* Send a request to increment the master global catalog version. */
-extern void YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
-
-/* Send a request to increment the master catalog version for the given database. */
-extern void YbIncrementMasterDBCatalogVersionTableEntry(Oid db_oid,
-														bool is_breaking_change);
+/* Send a request to increment the master catalog version. */
+extern bool YbIncrementMasterCatalogVersionTableEntry(bool is_breaking_change);
 
 /* Send a request to create the master catalog version for the given database. */
 extern void YbCreateMasterDBCatalogVersionTableEntry(Oid db_oid);

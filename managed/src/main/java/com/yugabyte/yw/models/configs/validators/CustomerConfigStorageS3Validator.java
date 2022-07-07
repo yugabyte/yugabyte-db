@@ -42,6 +42,14 @@ public class CustomerConfigStorageS3Validator extends CustomerConfigStorageWithR
     CustomerConfigStorageS3Data s3data = (CustomerConfigStorageS3Data) data;
     validateUrl(CustomerConfigConsts.AWS_HOST_BASE_FIELDNAME, s3data.awsHostBase, true, true);
 
+    if (StringUtils.isEmpty(s3data.awsAccessKeyId)
+        || StringUtils.isEmpty(s3data.awsSecretAccessKey)) {
+      if (!s3data.isIAMInstanceProfile) {
+        throwBeanValidatorError(
+            CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME,
+            "Aws credentials are null and IAM profile is not used.");
+      }
+    }
     if (!StringUtils.isEmpty(s3data.awsAccessKeyId)) {
       try {
         // Disable cert checking while connecting with s3
