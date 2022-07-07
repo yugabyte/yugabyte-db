@@ -163,6 +163,10 @@ create_backup() {
 
   mkdir -p "${output_path}"
 
+  # The version_metadata.json file is always present in a release package, so
+  # we don't need to check if the file exists before copying it to the output path.
+  cp -r "../../src/main/resources/version_metadata.json" "${output_path}"
+
   # Perform K8s backup.
   if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
     # Run backup script in container.
@@ -255,7 +259,32 @@ restore_backup() {
   data_dir="${8}"
   k8s_namespace="${9}"
   k8s_pod="${10}"
+  disable_version_check="${11}"
   prometheus_dir_regex="^${PROMETHEUS_SNAPSHOT_DIR}/$"
+  m_path="../../src/main/resources/version_metadata.json"
+  r_path="${input_path}/version_metadata.json"
+
+  cp1=$(cat ${m_path} | python -c 'import json,sys; print(json.load(sys.stdin)["version_number"])')
+  cp2=$(cat ${m_path} | python -c 'import json,sys; print(json.load(sys.stdin)["build_number"])')
+  curr_platform_version=${cp1}-${cp2}
+
+  # The version_metadata.json file is always present in a release package, and it would have
+  # been stored during create_backup(), so we don't need to check if the file exists before
+  # restoring it from the restore path.
+  bp1=$(cat ${r_path} | python -c 'import json,sys; print(json.load(sys.stdin)["version_number"])')
+  bp2=$(cat ${r_path} | python -c 'import json,sys; print(json.load(sys.stdin)["build_number"])')
+  back_plat_version=${bp1}-${bp2}
+
+  if [ ${curr_platform_version} != ${back_plat_version} ] && [ "$disable_version_check" != true ]
+  then
+    echo "Your backups were created on a platform of version ${back_plat_version}, and you are
+    attempting to restore these backups on a platform of version ${curr_platform_version},
+    which is a mismatch. Please restore your platform instance exactly back to
+    ${back_plat_version} to proceed, or override this check by running the script with the
+    command line argument --disable_version_check true"
+    exit 1
+  fi
+
 
   # Perform K8s restore.
   if [[ -n "${k8s_namespace}" ]] || [[ -n "${k8s_pod}" ]]; then
@@ -363,6 +392,7 @@ print_restore_usage() {
   echo "  --k8s_namespace                kubernetes namespace"
   echo "  --k8s_pod                      kubernetes pod"
   echo "  -?, --help                     show restore help, then exit"
+  echo " --disable_version_check         disable the backup version check (default: false)"
   echo
 }
 
@@ -401,6 +431,7 @@ k8s_namespace=""
 k8s_pod=""
 data_dir=/opt/yugabyte
 verbose=false
+disable_version_check=false
 
 case $command in
   -?|--help)
@@ -551,6 +582,11 @@ case $command in
           k8s_pod=$2
           shift 2
           ;;
+        --disable_version_check)
+          disable_version_check=true
+          set -x
+          shift
+          ;;
         -?|--help)
           print_restore_usage
           exit 0
@@ -573,7 +609,7 @@ case $command in
     validate_k8s_args "${k8s_namespace}" "${k8s_pod}"
 
     restore_backup "$input_path" "$destination" "$db_host" "$db_port" "$db_username" "$verbose" \
-    "$prometheus_host" "$data_dir" "$k8s_namespace" "$k8s_pod"
+    "$prometheus_host" "$data_dir" "$k8s_namespace" "$k8s_pod" "$disable_version_check"
     exit 0
     ;;
   *)
