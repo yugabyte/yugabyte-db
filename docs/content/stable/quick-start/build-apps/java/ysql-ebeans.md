@@ -1,8 +1,8 @@
 ---
-title: Build a Java application that uses Ebeans and YSQL
+title: Build a Java application that uses Ebean and YSQL
 headerTitle: Build a Java application
 linkTitle: Java
-description: Build a sample Java application that uses Ebeans and YSQL API to connect to and interact with YugabyteDB.
+description: Build a sample Java application that uses Ebean and YSQL API to connect to and interact with YugabyteDB.
 menu:
   stable:
     parent: build-apps
@@ -39,9 +39,9 @@ type: docs
     </a>
   </li>
    <li>
-    <a href="../ysql-ebeans/" class="nav-link active">
+    <a href="../ysql-ebean/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL - Ebeans
+      YSQL - Ebean
     </a>
   </li>
   <li>
@@ -58,14 +58,14 @@ type: docs
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the Java [Ebeans](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
+The following tutorial implements a REST API server using the Java [Ebean](https://ebean.io/docs/) ORM. The scenario is that of an e-commerce application where database access is managed using the [Play framework](https://www.playframework.com/documentation/2.8.x/api/java/index.html); Play uses [Akka](https://doc.akka.io/docs/akka/current/typed/guide/introduction.html) internally and exposes Akka Streams and actors in Websockets and other streaming HTTP responses. It includes the following tables:
 
 - `users` — the users of the e-commerce site
 - `products` — the products being sold
 - `orders` — the orders placed by the users
 - `orderline` — each line item of an order
 
-The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
+The source for the above application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
 
 ## Prerequisites
 
@@ -78,7 +78,7 @@ This tutorial assumes that you have:
 ## Clone the "orm-examples" repository
 
 ```sh
-$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebeans
+$ git clone https://github.com/yugabyte/orm-examples.git && cd orm-examples/java/ebean
 ```
 
 ## Database configuration
@@ -132,7 +132,7 @@ Create a `build.properties` file under the `project` directory and add the sbt v
 sbt.version=1.2.8
 ```
 
-Build the REST API server from the `ebeans` directory using:
+Build the REST API server from the `ebean` directory using:
 
 ```sh
 $ sbt compile
@@ -151,7 +151,7 @@ libraryDependencies += "com.xenoamess" % "nashorn" % "jdk8u265-b01-x3"
 
 ## Run the application
 
-Run the application from the `ebeans` directory using:
+Run the application from the `ebean` directory using:
 
 ```sh
 $ sbt run
@@ -391,4 +391,4 @@ $ curl http://localhost:8080/orders
 
 ## Explore the source
 
-The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebeans) repository.
+The application source is available in the [orm-examples](https://github.com/yugabyte/orm-examples/tree/master/java/ebean) repository.
