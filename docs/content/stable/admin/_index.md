@@ -5,13 +5,12 @@ linkTitle: CLIs
 description: Use these CLIs and command line tools to interact with YugabyteDB.
 image: /images/section_icons/index/admin.png
 headcontent: Command line interfaces (CLIs) and tools reference.
-type: page
-section: REFERENCE
-block_indexing: true
 menu:
   stable:
     identifier: admin
+    parent: reference
     weight: 1400
+type: indexpage
 ---
 
 {{< note title="Note" >}}
@@ -58,7 +57,7 @@ Information about configuring the [YB-Master](../reference/configuration/yb-mast
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cqlsh/">
+    <a class="section-link icon-offset" href="ycqlsh/">
       <div class="head">
         <img class="icon" src="/images/section_icons/api/ycql.png" aria-hidden="true" />
         <div class="title">ycqlsh</div>

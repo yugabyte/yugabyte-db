@@ -50,7 +50,6 @@ extern bool CheckIndexCompatible(Oid oldId,
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 extern Oid ResolveOpClass(List *opclass, Oid attrType,
 			   const char *accessMethodName, Oid accessMethodId);
-extern void BackfillIndex(BackfillIndexStmt *stmt);
 
 /* commands/functioncmds.c */
 extern ObjectAddress CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt);
@@ -80,6 +79,10 @@ extern void interpret_function_parameter_list(ParseState *pstate,
 								  List **parameterDefaults,
 								  Oid *variadicArgType,
 								  Oid *requiredResultType);
+extern ObjectAddress AlterFunctionOwner(AlterOwnerStmt *stmt, Oid newOwnerId);
+extern void AlterFunctionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId);
+extern ObjectAddress RenameFunction(RenameStmt *stmt, const char *newname);
+extern void RenameFunction_internal(Relation rel, HeapTuple tup, const char* newname);
 
 /* commands/operatorcmds.c */
 extern ObjectAddress DefineOperator(List *names, List *parameters);

@@ -32,33 +32,38 @@
 
 #include "yb/rpc/service_pool.h"
 
+#include <pthread.h>
+#include <sys/types.h>
+
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
 #include <vector>
 
 #include <boost/asio/strand.hpp>
-
+#include <boost/optional/optional.hpp>
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
-
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
+#include "yb/gutil/atomicops.h"
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/inbound_call.h"
-#include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/service_if.h"
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
-#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 
 using namespace std::literals;
@@ -80,11 +85,10 @@ DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
 
-METRIC_DEFINE_histogram(server, rpc_incoming_queue_time,
+METRIC_DEFINE_coarse_histogram(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
                         yb::MetricUnit::kMicroseconds,
-                        "Number of microseconds incoming RPC requests spend in the worker queue",
-                        60000000LU, 3);
+                        "Number of microseconds incoming RPC requests spend in the worker queue");
 
 METRIC_DEFINE_counter(server, rpcs_timed_out_in_queue,
                       "RPC Queue Timeouts",
@@ -214,11 +218,11 @@ class ServicePoolImpl final : public InboundCallHandler {
 
   void Overflow(const InboundCallPtr& call, const char* type, size_t limit) {
     const auto err_msg =
-        Substitute("$0 request on $1 from $2 dropped due to backpressure. "
+        Format("$0 request on $1 from $2 dropped due to backpressure. "
                    "The $3 queue is full, it has $4 items.",
-            call->method_name(),
+            call->method_name().ToBuffer(),
             service_->service_name(),
-            yb::ToString(call->remote_address()),
+            call->remote_address(),
             type,
             limit);
     YB_LOG_EVERY_N_SECS(WARNING, 3) << LogPrefix() << err_msg;
@@ -246,6 +250,10 @@ class ServicePoolImpl final : public InboundCallHandler {
     call->RespondFailure(ErrorStatusPB::FATAL_SERVER_SHUTTING_DOWN, response_status);
   }
 
+  void FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) {
+    service_->FillEndpoints(service, map);
+  }
+
   void Handle(InboundCallPtr incoming) override {
     incoming->RecordHandlingStarted(incoming_queue_time_);
     ADOPT_TRACE(incoming->trace());
@@ -256,7 +264,7 @@ class ServicePoolImpl final : public InboundCallHandler {
     } else if (PREDICT_FALSE(ShouldDropRequestDuringHighLoad(incoming))) {
       error_message = "The server is overloaded. Call waited in the queue past max_time_in_queue.";
     } else {
-      TRACE_TO(incoming->trace(), "Handling call");
+      TRACE_TO(incoming->trace(), "Handling call $0", yb::ToString(incoming->method_name()));
 
       if (incoming->TryStartProcessing()) {
         service_->Handle(std::move(incoming));
@@ -379,19 +387,20 @@ class ServicePoolImpl final : public InboundCallHandler {
     return log_prefix_;
   }
 
-  bool CallQueued() override {
+  boost::optional<int64_t> CallQueued(int64_t rpc_queue_limit) override {
     auto queued_calls = queued_calls_.fetch_add(1, std::memory_order_acq_rel);
     if (queued_calls < 0) {
       YB_LOG_EVERY_N_SECS(DFATAL, 5) << "Negative number of queued calls: " << queued_calls;
     }
 
-    if (queued_calls >= max_queued_calls_) {
+    size_t max_queued_calls = std::min(max_queued_calls_, implicit_cast<size_t>(rpc_queue_limit));
+    if (implicit_cast<size_t>(queued_calls) >= max_queued_calls) {
       queued_calls_.fetch_sub(1, std::memory_order_relaxed);
-      return false;
+      return boost::none;
     }
 
     rpcs_in_queue_->Increment();
-    return true;
+    return queued_calls;
   }
 
   void CallDequeued() override {
@@ -479,6 +488,10 @@ void ServicePool::QueueInboundCall(InboundCallPtr call) {
 
 void ServicePool::Handle(InboundCallPtr call) {
   impl_->Handle(std::move(call));
+}
+
+void ServicePool::FillEndpoints(RpcEndpointMap* map) {
+  impl_->FillEndpoints(RpcServicePtr(this), map);
 }
 
 const Counter* ServicePool::RpcsTimedOutInQueueMetricForTests() const {

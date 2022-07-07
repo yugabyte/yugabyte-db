@@ -13,12 +13,13 @@
 
 #include "yb/yql/redis/redisserver/redis_server.h"
 
-#include "yb/gutil/strings/substitute.h"
-#include "yb/yql/redis/redisserver/redis_rpc.h"
-#include "yb/yql/redis/redisserver/redis_service.h"
+#include "yb/tserver/tablet_server_interface.h"
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/size_literals.h"
+
+#include "yb/yql/redis/redisserver/redis_rpc.h"
+#include "yb/yql/redis/redisserver/redis_service.h"
 
 using yb::rpc::ServiceIf;
 using namespace yb::size_literals;
@@ -52,7 +53,7 @@ class RedisConnnectionContextFactory : public rpc::ConnectionContextFactory {
   rpc::GrowableBufferAllocator allocator_;
 };
 
-RedisServer::RedisServer(const RedisServerOptions& opts, tserver::TabletServer* tserver)
+RedisServer::RedisServer(const RedisServerOptions& opts, tserver::TabletServerIf* tserver)
     : RpcAndWebServerBase(
           "RedisServer", opts, "yb.redisserver",
           MemTracker::CreateTracker(

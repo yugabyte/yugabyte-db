@@ -28,7 +28,9 @@ import { connect } from 'react-redux';
 import AddRegionPopupForm from './AddRegionPopupForm';
 import _ from 'lodash';
 import { regionsData } from './providerRegionsData';
+import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
+import clsx from 'clsx';
 import './providerView.scss';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
@@ -93,6 +95,7 @@ class renderAZMappingForm extends Component {
       this.props.fields.push({});
     }
   }
+
   componentDidUpdate(prevProps) {
     const { zones } = this.props;
     if (!_.isEqual(zones, prevProps.zones)) {
@@ -100,6 +103,7 @@ class renderAZMappingForm extends Component {
       this.props.fields.push({});
     }
   }
+
   render() {
     const { fields, zones, regionFormData } = this.props;
     const addFlagItem = function () {
@@ -170,24 +174,24 @@ class renderRegions extends Component {
       </option>,
       ...(this.state.editRegionIndex === undefined
         ? //if add new flow - remove already added regions from region select picker
-        _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
-          <option key={index + 1} value={region.destVpcRegion}>
-            {region.destVpcRegion}
-          </option>
-        ))
+          _.differenceBy(regionsData, formRegions, 'destVpcRegion').map((region, index) => (
+            <option key={index + 1} value={region.destVpcRegion}>
+              {region.destVpcRegion}
+            </option>
+          ))
         : //if edit flow - remove already added regions from region select picker except one to edit and mark it selected
-        _.differenceBy(
-          regionsData,
-          _.filter(
-            formRegions,
-            (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
-          ),
-          'destVpcRegion'
-        ).map((region, index) => (
-          <option key={index + 1} value={region.destVpcRegion}>
-            {region.destVpcRegion}
-          </option>
-        )))
+          _.differenceBy(
+            regionsData,
+            _.filter(
+              formRegions,
+              (o) => o.destVpcRegion !== formRegions[self.state.editRegionIndex].destVpcRegion
+            ),
+            'destVpcRegion'
+          ).map((region, index) => (
+            <option key={index + 1} value={region.destVpcRegion}>
+              {region.destVpcRegion}
+            </option>
+          )))
     ];
 
     //depending on selected region fetch zones matching this region
@@ -490,15 +494,19 @@ class AWSProviderInitView extends Component {
 
   createProviderConfig = (formValues) => {
     const { hostInfo } = this.props;
-    const awsProviderConfig = {};
+    const awsProviderConfig = {
+    };
     if (this.state.credentialInputType === 'custom_keys') {
       awsProviderConfig['AWS_ACCESS_KEY_ID'] = formValues.accessKey;
       awsProviderConfig['AWS_SECRET_ACCESS_KEY'] = formValues.secretKey;
     }
     if (isDefinedNotNull(formValues.hostedZoneId)) {
-      awsProviderConfig['AWS_HOSTED_ZONE_ID'] = formValues.hostedZoneId;
+      awsProviderConfig['HOSTED_ZONE_ID'] = formValues.hostedZoneId;
     }
-    const regionFormVals = {};
+    const regionFormVals = {
+      setUpChrony: formValues['setUpChrony'],
+      ntpServers: formValues['ntpServers']
+    };
     if (this.isHostInAWS()) {
       const awsHostInfo = hostInfo['aws'];
       regionFormVals['hostVpcRegion'] = awsHostInfo['region'];
@@ -533,27 +541,20 @@ class AWSProviderInitView extends Component {
         );
     }
 
+    regionFormVals['perRegionMetadata'] = perRegionMetadata;
+    regionFormVals['sshUser'] = formValues.sshUser;
+
     if (this.state.keypairsInputType === 'custom_keypairs') {
       regionFormVals['keyPairName'] = formValues.keyPairName;
-      regionFormVals['sshUser'] = formValues.sshUser;
-    }
-    regionFormVals['perRegionMetadata'] = perRegionMetadata;
 
-    const sshPrivateKeyText = formValues.sshPrivateKeyContent;
-
-    if (this.state.keypairsInputType === 'custom_keypairs') {
-      if (isNonEmptyObject(sshPrivateKeyText)) {
+      if (isNonEmptyObject(formValues.sshPrivateKeyContent)) {
         const reader = new FileReader();
-        reader.readAsText(sshPrivateKeyText);
-        // Parse the file back to JSON, since the API controller endpoint doesn't support file upload
-        reader.onloadend = () => {
-          try {
-            regionFormVals['sshPrivateKeyContent'] = JSON.parse(reader.result);
-          } catch (e) {
-            this.setState({ error: 'Invalid PEM Config file' });
-          }
+        reader.readAsText(formValues.sshPrivateKeyContent);
+        reader.onload = () => {
+          regionFormVals['sshPrivateKeyContent'] = reader.result;
         };
       }
+      regionFormVals['overrideKeyValidate'] = formValues.overrideKeyValidate;
       return this.props.createAWSProvider(
         formValues.accountName,
         awsProviderConfig,
@@ -585,14 +586,14 @@ class AWSProviderInitView extends Component {
     this.props.closeModal();
   };
 
-  generateRow = (label, field) => {
+  generateRow = (label, field, centerAlign = false) => {
     return (
       <Row className="config-provider-row">
         <Col lg={3}>
           <div className="form-item-custom-label">{label}</div>
         </Col>
         <Col lg={7}>
-          <div className="form-right-aligned-labels">{field}</div>
+          <div className={clsx(['form-right-aligned-labels', {'center-align-row' : centerAlign}])}>{field}</div>
         </Col>
       </Row>
     );
@@ -729,6 +730,22 @@ class AWSProviderInitView extends Component {
     );
   }
 
+  rowSshUser() {
+    const userLabel = 'SSH User';
+    const userTooltipContent = 'Custom SSH user associated with this key.';
+    return this.generateRow(
+      userLabel,
+      <Field
+        name="sshUser"
+        type="text"
+        component={YBTextInputWithLabel}
+        normalize={trimString}
+        infoTitle={userLabel}
+        infoContent={userTooltipContent}
+      />
+    );
+  }
+
   rowCustomKeypair() {
     const nameLabel = 'Keypair Name';
     const nameTooltipContent =
@@ -758,24 +775,11 @@ class AWSProviderInitView extends Component {
         infoContent={pemTooltipContent}
       />
     );
-    const userLabel = 'SSH User';
-    const userTooltipContent = 'Custom SSH user associated with this key.';
-    const sshUserRow = this.generateRow(
-      userLabel,
-      <Field
-        name="sshUser"
-        type="text"
-        component={YBTextInputWithLabel}
-        normalize={trimString}
-        infoTitle={userLabel}
-        infoContent={userTooltipContent}
-      />
-    );
     return (
       <Fragment>
         {nameRow}
         {pemContentRow}
-        {sshUserRow}
+        {this.rowOverrideKeyValidateToggle()}
       </Fragment>
     );
   }
@@ -810,7 +814,8 @@ class AWSProviderInitView extends Component {
         onToggle={this.hostedZoneToggled}
         infoTitle={label}
         infoContent={tooltipContent}
-      />
+      />,
+      true
     );
   }
 
@@ -826,12 +831,43 @@ class AWSProviderInitView extends Component {
         defaultChecked={false}
         infoTitle={label}
         infoContent={tooltipContent}
-      />
+      />,
+      true
     );
   }
 
+  rowNTPServerConfigs(change) {
+    return (
+      <Row className="config-provider-row">
+        <Col lg={3}>
+          <div className="form-item-custom-label">NTP Setup</div>
+        </Col>
+        <Col lg={7}>
+          <div>{<NTPConfig onChange={change}/>}</div>
+        </Col>
+      </Row>
+    )
+
+  }
+
+  rowOverrideKeyValidateToggle() {
+    const label = 'Override Custom KeyPair Validation'
+    const tooltipContent =
+      'Would you like YugaWare to NOT validate KeyPair with AWS?';
+    return this.generateRow(
+      label,
+      <Field
+        name="overrideKeyValidate"
+        component={YBToggle}
+        defaultChecked={false}
+        infoTitle={label}
+        infoContent={tooltipContent}
+      />
+    )
+  }
+
   render() {
-    const { handleSubmit, submitting, error, formRegions } = this.props;
+    const { handleSubmit, submitting, error, formRegions, onBack, isBack, change } = this.props;
     // VPC and region setup.
     const network_setup_options = [
       <option key={1} value={'new_vpc'}>
@@ -884,6 +920,7 @@ class AWSProviderInitView extends Component {
         </Col>
       </Row>
     );
+
     return (
       <div className="provider-config-container">
         <form name="awsProviderConfigForm" onSubmit={handleSubmit(this.createProviderConfig)}>
@@ -898,6 +935,7 @@ class AWSProviderInitView extends Component {
                 {divider}
                 {this.rowKeypairInput(keypair_input_options)}
                 {this.rowSshPort()}
+                {this.rowSshUser()}
                 {customKeypairRows}
                 {divider}
                 {this.rowHostedZoneToggle()}
@@ -905,6 +943,8 @@ class AWSProviderInitView extends Component {
                 {this.rowAirGapInstallToggle()}
                 {divider}
                 {this.rowVpcSetup(network_setup_options)}
+                {divider}
+                {this.rowNTPServerConfigs(change)}
                 {regionsSection}
               </Col>
             </Row>
@@ -916,6 +956,14 @@ class AWSProviderInitView extends Component {
               disabled={submitting}
               btnType="submit"
             />
+            {isBack && (
+              <YBButton
+                onClick={onBack}
+                btnText="Back"
+                btnClass="btn btn-default"
+                disabled={submitting}
+              />
+            )}
           </div>
         </form>
       </div>
@@ -950,15 +998,31 @@ function validate(values) {
     }
   }
 
+  if (isNonEmptyObject(values.sshPrivateKeyContent)) {
+    if (values.sshPrivateKeyContent.size > 256 * 1024) {
+      errors.sshPrivateKeyContent = 'PEM file size exceeds 256Kb';
+    }
+  } else if (values.keypairs_input === 'custom_keypairs') {
+    errors.sshPrivateKeyContent = 'Please choose a private key file';
+  }
+
   if (values.setupHostedZone && !isNonEmptyString(values.hostedZoneId)) {
     errors.hostedZoneId = 'Route53 Zone ID is required';
+  }
+  if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
+    errors.ntpServers = 'NTP servers cannot be empty'
   }
   return errors;
 }
 
 let awsProviderConfigForm = reduxForm({
   form: 'awsProviderConfigForm',
-  validate
+  validate,
+  initialValues: {
+    ntp_option: NTP_TYPES.PROVIDER,
+    ntpServers: []
+  },
+  touchOnChange: true
 })(AWSProviderInitView);
 
 // Decorate with connect to read form values

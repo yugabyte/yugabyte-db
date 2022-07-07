@@ -13,6 +13,7 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 
+#include <condition_variable>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -74,6 +75,9 @@ class LongOperationTrackerHelper {
   }
 
   TrackedOperationPtr Register(const char* message, MonoDelta duration) {
+    if (IsSanitizer()) {
+      return TrackedOperationPtr();
+    }
     auto start = CoarseMonoClock::now();
     auto result = std::make_shared<LongOperationTracker::TrackedOperation>(
         Thread::CurrentThreadIdForStack(), message, start, start + duration * kTimeMultiplier);
@@ -111,7 +115,8 @@ class LongOperationTrackerHelper {
       if (!operation.unique()) {
         lock.unlock();
         LOG(WARNING) << operation->message << " running for " << MonoDelta(now - operation->start)
-                     << ":\n" << DumpThreadStack(operation->thread_id);
+                     << " in thread " << operation->thread_id << ":\n"
+                     << DumpThreadStack(operation->thread_id);
         lock.lock();
       }
     }

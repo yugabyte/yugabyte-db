@@ -73,7 +73,8 @@ extern Oid index_create(Relation heapRelation,
 			 Oid *constraintId,
 			 OptSplit *split_options,
 			 const bool skip_index_backfill,
-			 Oid tablegroupId);
+			 Oid tablegroupId,
+			 Oid colocationId);
 
 #define	INDEX_CONSTR_CREATE_MARK_AS_PRIMARY	(1 << 0)
 #define	INDEX_CONSTR_CREATE_DEFERRABLE		(1 << 1)
@@ -119,8 +120,8 @@ extern void index_backfill(Relation heapRelation,
 						   Relation indexRelation,
 						   IndexInfo *indexInfo,
 						   bool isprimary,
-						   uint64_t *read_time,
-						   RowBounds *row_bounds);
+						   YbBackfillInfo *bfinfo,
+						   YbPgExecOutParam *bfresult);
 
 extern double IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
@@ -144,8 +145,8 @@ extern double IndexBackfillHeapRangeScan(Relation heapRelation,
 										 IndexInfo *indexInfo,
 										 IndexBuildCallback callback,
 										 void *callback_state,
-										 uint64_t *read_time,
-										 RowBounds *row_bounds);
+										 YbBackfillInfo *bfinfo,
+										 YbPgExecOutParam *bfresult);
 
 extern void validate_index(Oid heapId, Oid indexId, Snapshot snapshot);
 
@@ -160,6 +161,7 @@ extern void reindex_index(Oid indexId, bool skip_constraint_checks,
 #define REINDEX_REL_CHECK_CONSTRAINTS		0x04
 #define REINDEX_REL_FORCE_INDEXES_UNLOGGED	0x08
 #define REINDEX_REL_FORCE_INDEXES_PERMANENT 0x10
+#define REINDEX_REL_YB_DROP_AND_CREATE		0x10000
 
 extern bool reindex_relation(Oid relid, int flags, int options);
 

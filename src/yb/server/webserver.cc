@@ -43,26 +43,21 @@
 
 #include "yb/server/webserver.h"
 
-#include <signal.h>
+#include <cds/init.h>
 #include <stdio.h>
 
 #include <algorithm>
 #include <functional>
 #include <map>
-#include <mutex>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/mem_fn.hpp>
-
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <squeasel.h>
 
-#include <cds/init.h>
-
+#include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
@@ -70,15 +65,18 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/strings/strip.h"
+
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
-#include "yb/util/thread.h"
-#include "yb/util/url-coding.h"
-#include "yb/util/version_info.h"
 #include "yb/util/shared_lock.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/url-coding.h"
+#include "yb/util/zlib.h"
 
 #if defined(__APPLE__)
 typedef sig_t sighandler_t;
@@ -89,6 +87,21 @@ DEFINE_int32(webserver_max_post_length_bytes, 1024 * 1024,
              "the embedded web server.");
 TAG_FLAG(webserver_max_post_length_bytes, advanced);
 TAG_FLAG(webserver_max_post_length_bytes, runtime);
+
+DEFINE_int32(webserver_zlib_compression_level, 1,
+             "The zlib compression level."
+             "Lower compression levels result in faster execution, but less compression");
+TAG_FLAG(webserver_zlib_compression_level, advanced);
+TAG_FLAG(webserver_zlib_compression_level, runtime);
+
+DEFINE_uint64(webserver_compression_threshold_kb, 4,
+              "The threshold of response size above which compression is performed."
+              "Default value is 4KB");
+TAG_FLAG(webserver_compression_threshold_kb, advanced);
+TAG_FLAG(webserver_compression_threshold_kb, runtime);
+
+DEFINE_test_flag(bool, mini_cluster_mode, false,
+                 "Enable special fixes for MiniCluster test cluster.");
 
 namespace yb {
 
@@ -104,7 +117,7 @@ Webserver::Webserver(const WebserverOptions& opts, const std::string& server_nam
     context_(nullptr),
     server_name_(server_name) {
   string host = opts.bind_interface.empty() ? "0.0.0.0" : opts.bind_interface;
-  http_address_ = host + ":" + boost::lexical_cast<string>(opts.port);
+  http_address_ = host + ":" + std::to_string(opts.port);
 }
 
 Webserver::~Webserver() {
@@ -346,7 +359,7 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
                                     struct sq_request_info* request_info) {
   PathHandler* handler;
   {
-    SharedLock<boost::shared_mutex> lock(lock_);
+    SharedLock<std::shared_timed_mutex> lock(lock_);
     PathHandlerMap::const_iterator it = path_handlers_.find(request_info->uri);
     if (it == path_handlers_.end()) {
       // Let Mongoose deal with this request; returning NULL will fall through
@@ -379,6 +392,12 @@ int Webserver::RunPathHandler(const PathHandler& handler,
     req.query_string = request_info->query_string;
     BuildArgumentMap(request_info->query_string, &req.parsed_args);
   }
+
+  if (FLAGS_TEST_mini_cluster_mode) {
+    // Pass custom G-flags into the request handler.
+    req.parsed_args["TEST_custom_varz"] = opts_.TEST_custom_varz;
+  }
+
   req.request_method = request_info->request_method;
   if (req.request_method == "POST") {
     const char* content_len_str = sq_get_header(connection, "Content-Length");
@@ -435,20 +454,51 @@ int Webserver::RunPathHandler(const PathHandler& handler,
   if (use_style) {
     BootstrapPageFooter(output);
   }
+  // Check if gzip compression is accepted by the caller. If so, compress the
+  // content and replace the prerendered output.
+  const char* accept_encoding_str = sq_get_header(connection, "Accept-Encoding");
+  bool is_compressed = false;
+  vector<string> encodings = strings::Split(accept_encoding_str, ",");
+  for (string& encoding : encodings) {
+    StripWhiteSpace(&encoding);
+    if (encoding == "gzip") {
+      // Don't bother compressing empty content.
+      const string& uncompressed = resp_ptr->output.str();
+      if (uncompressed.size() < FLAGS_webserver_compression_threshold_kb * 1024) {
+        break;
+      }
+
+      std::ostringstream oss;
+      int level = FLAGS_webserver_zlib_compression_level > 0 &&
+        FLAGS_webserver_zlib_compression_level <= 9 ?
+        FLAGS_webserver_zlib_compression_level : 1;
+      Status s = zlib::CompressLevel(uncompressed, level, &oss);
+      if (s.ok()) {
+        resp_ptr->output.str(oss.str());
+        is_compressed = true;
+      } else {
+        LOG(WARNING) << "Could not compress output: " << s.ToString();
+      }
+      break;
+    }
+  }
+
   string str = output->str();
   // Without styling, render the page as plain text
   if (!use_style) {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/plain\r\n"
               "Content-Length: %zd\r\n"
+              "%s"
               "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length());
+              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
   } else {
     sq_printf(connection, "HTTP/1.1 200 OK\r\n"
               "Content-Type: text/html\r\n"
               "Content-Length: %zd\r\n"
+              "%s"
               "Access-Control-Allow-Origin: *\r\n"
-              "\r\n", str.length());
+              "\r\n", str.length(), is_compressed ? "Content-Encoding: gzip\r\n" : "");
   }
 
   // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
@@ -462,7 +512,7 @@ void Webserver::RegisterPathHandler(const string& path,
                                     bool is_styled,
                                     bool is_on_nav_bar,
                                     const std::string icon) {
-  std::lock_guard<boost::shared_mutex> lock(lock_);
+  std::lock_guard<std::shared_timed_mutex> lock(lock_);
   auto it = path_handlers_.find(path);
   if (it == path_handlers_.end()) {
     it = path_handlers_.insert(
@@ -523,12 +573,12 @@ bool Webserver::static_pages_available() const {
 }
 
 void Webserver::set_footer_html(const std::string& html) {
-  std::lock_guard<boost::shared_mutex> l(lock_);
+  std::lock_guard<std::shared_timed_mutex> l(lock_);
   footer_html_ = html;
 }
 
 void Webserver::BootstrapPageFooter(stringstream* output) {
-  SharedLock<boost::shared_mutex> l(lock_);
+  SharedLock<std::shared_timed_mutex> l(lock_);
   *output << "<div class='yb-bottom-spacer'></div></div>\n"; // end bootstrap 'container' div
   if (!footer_html_.empty()) {
     *output << "<footer class='footer'><div class='yb-footer container text-muted'>";

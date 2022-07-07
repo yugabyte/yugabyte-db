@@ -2,70 +2,123 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import io.ebean.Finder;
+import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-
 import javax.persistence.Column;
-import javax.persistence.Entity;
 import javax.persistence.EmbeddedId;
-import javax.persistence.Id;
-
+import javax.persistence.Entity;
+import lombok.Data;
+import lombok.experimental.Accessors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import io.ebean.*;
-import com.fasterxml.jackson.databind.JsonNode;
-
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 @Entity
 public class HealthCheck extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(HealthCheck.class);
 
+  @Data
+  @Accessors(chain = true)
+  @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+  public static class Details {
+    @Data
+    @Accessors(chain = true)
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    public static class NodeData {
+      private String node;
+      private String process;
+
+      @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+      private Date timestamp;
+
+      private String nodeName;
+      private Boolean hasError = false;
+      private Boolean hasWarning = false;
+      private Boolean metricsOnly = false;
+      private List<String> details;
+      private List<Metric> metrics;
+      private String message;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class Metric {
+      private String name;
+      private String help;
+      private String unit;
+      private List<MetricValue> values;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class MetricValue {
+      private Double value;
+      private List<MetricLabel> labels;
+    }
+
+    @Data
+    @Accessors(chain = true)
+    public static class MetricLabel {
+      private String name;
+      private String value;
+    }
+
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date timestamp;
+
+    private List<NodeData> data = new ArrayList<>();
+    private String ybVersion;
+    private Boolean hasError = false;
+    private Boolean hasWarning = false;
+  }
+
   // The max number of records to keep per universe.
   public static final int RECORD_LIMIT = 10;
 
-  // Top-level payload field for figuring out if we have errors or not.
-  public static final String FIELD_HAS_ERROR = "has_error";
-
-  @EmbeddedId
-  @Constraints.Required
-  public HealthCheckKey idKey;
+  @EmbeddedId @Constraints.Required public HealthCheckKey idKey;
 
   // The customer id, needed only to enforce unique universe names for a customer.
-  @Constraints.Required
-  public Long customerId;
+  @Constraints.Required public Long customerId;
 
   // The Json serialized version of the details. This is used only in read from and writing to the
   // DB.
+  @DbJson
   @Constraints.Required
   @Column(columnDefinition = "TEXT", nullable = false)
-  public String detailsJson;
+  public Details detailsJson = new Details();
 
   public boolean hasError() {
-    JsonNode details = Json.parse(detailsJson);
-    JsonNode hasErrorField = details.get(FIELD_HAS_ERROR);
-    // Only return true if we have the top-level has_error field with a value of true.
-    return hasErrorField != null && hasErrorField.asBoolean();
+    if (detailsJson != null) {
+      return detailsJson.getHasError();
+    }
+    return false;
   }
 
   public static final Finder<UUID, HealthCheck> find =
-    new Finder<UUID, HealthCheck>(HealthCheck.class) {};
+      new Finder<UUID, HealthCheck>(HealthCheck.class) {};
 
   /**
    * Creates an empty universe.
-   * @param taskParams: The details that will describe the universe.
-   * @param customerId: UUID of the customer creating the universe
+   *
+   * @param universeUUID: UUID of the universe..
+   * @param customerId: UUID of the customer creating the universe.
+   * @param report: The details that will describe the universe.
    * @return the newly created universe
    */
-  public static HealthCheck addAndPrune(UUID universeUUID, Long customerId, String details) {
+  public static HealthCheck addAndPrune(UUID universeUUID, Long customerId, Details report) {
     // Create the HealthCheck object.
     HealthCheck check = new HealthCheck();
     check.idKey = HealthCheckKey.create(universeUUID);
     check.customerId = customerId;
-    // Validate it is correct JSON.
-    check.detailsJson = Json.stringify(Json.parse(details));
+    check.detailsJson = report;
     // Save the object.
     check.save();
     keepOnlyLast(universeUUID, RECORD_LIMIT);
@@ -90,11 +143,13 @@ public class HealthCheck extends Model {
   }
 
   public static HealthCheck getLatest(UUID universeUUID) {
-    List<HealthCheck> checks = find.query().where()
-      .eq("universe_uuid", universeUUID)
-      .orderBy("check_time desc")
-      .setMaxRows(1)
-      .findList();
+    List<HealthCheck> checks =
+        find.query()
+            .where()
+            .eq("universe_uuid", universeUUID)
+            .orderBy("check_time desc")
+            .setMaxRows(1)
+            .findList();
     if (checks != null && checks.size() > 0) {
       return checks.get(0);
     } else {

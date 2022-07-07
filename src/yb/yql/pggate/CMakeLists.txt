@@ -11,6 +11,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX pggate)
+set(YB_PCH_DEP_LIBS opid_proto yb_test_util)
+
 # We need access to the generated pg_type_d.h header from this directory.
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include")
 
@@ -23,6 +26,11 @@ set(PGGATE_SRCS
     ybc_pggate_tool.cc
     pggate.cc
     pggate_thread_local_vars.cc
+    pg_client.cc
+    pg_op.cc
+    pg_operation_buffer.cc
+    pg_perform_future.cc
+    pg_sample.cc
     pg_session.cc
     pg_statement.cc
     pg_ddl.cc
@@ -35,10 +43,14 @@ set(PGGATE_SRCS
     pg_expr.cc
     pg_column.cc
     pg_doc_op.cc
+    pg_table.cc
     pg_tabledesc.cc
     pg_txn_manager.cc
     pg_value.cc
-    pg_memctx.cc)
+    pg_memctx.cc
+    pg_callbacks.cc
+    pg_tools.cc
+    pg_sys_table_prefetcher.cc)
 
 ADD_YB_LIBRARY(yb_pggate_flags
                SRCS pggate_flags.cc
@@ -52,11 +64,14 @@ set(PGGATE_LIBS
     tserver_util
     yb_pggate_util
     yb_pggate_flags
-    tablet_error)
+    tablet_error
+    pg_client_proto)
 
 ADD_YB_LIBRARY(yb_pggate
                SRCS ${PGGATE_SRCS}
                DEPS ${PGGATE_LIBS})
+
+yb_use_pch(yb_pggate pggate)
 
 # Test
 add_subdirectory(test)

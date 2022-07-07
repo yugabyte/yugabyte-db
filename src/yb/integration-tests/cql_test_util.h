@@ -20,6 +20,7 @@
 
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 
@@ -57,6 +58,8 @@ class CassandraValue {
     Get(&result);
     return result;
   }
+
+  bool IsNull() const;
 
   std::string ToString() const;
 
@@ -97,6 +100,8 @@ class CassandraRow {
 
   CassandraRowIterator CreateIterator() const;
 
+  std::string RenderToString(const std::string& separator = ",");
+
   void TakeIterator(CassIteratorPtr iterator);
 
  private:
@@ -127,6 +132,9 @@ class CassandraResult {
 
   CassandraIterator CreateIterator() const;
 
+  std::string RenderToString(const std::string& line_separator = ";",
+                             const std::string& value_separator = ",") const;
+
  private:
   CassResultPtr cass_result_;
 };
@@ -154,16 +162,16 @@ class CassandraFuture {
 
   bool Ready() const;
 
-  CHECKED_STATUS Wait();
+  Status Wait();
 
-  CHECKED_STATUS WaitFor(MonoDelta duration);
+  Status WaitFor(MonoDelta duration);
 
   CassandraResult Result();
 
   CassandraPrepared Prepared();
 
  private:
-  CHECKED_STATUS CheckErrorCode();
+  Status CheckErrorCode();
 
   CassFuturePtr future_;
 };
@@ -178,6 +186,8 @@ class CassandraStatement {
 
   explicit CassandraStatement(const std::string& query, size_t parameter_count = 0)
       : cass_statement_(cass_statement_new(query.c_str(), parameter_count)) {}
+
+  void SetKeyspace(const std::string& keyspace);
 
   void Bind(size_t index, const std::string& v);
   void Bind(size_t index, const cass_bool_t& v);
@@ -220,11 +230,11 @@ class CassandraSession {
  public:
   CassandraSession() = default;
 
-  CHECKED_STATUS Connect(CassCluster* cluster);
+  Status Connect(CassCluster* cluster);
 
   static Result<CassandraSession> Create(CassCluster* cluster);
 
-  CHECKED_STATUS Execute(const CassandraStatement& statement);
+  Status Execute(const CassandraStatement& statement);
 
   Result<CassandraResult> ExecuteWithResult(const CassandraStatement& statement);
 
@@ -232,12 +242,19 @@ class CassandraSession {
 
   CassandraFuture ExecuteGetFuture(const std::string& query);
 
-  CHECKED_STATUS ExecuteQuery(const std::string& query);
+  Status ExecuteQuery(const std::string& query);
+
+  template <class... Args>
+  Status ExecuteQueryFormat(const std::string& query, Args&&... args) {
+    return ExecuteQuery(Format(query, std::forward<Args>(args)...));
+  }
 
   Result<CassandraResult> ExecuteWithResult(const std::string& query);
 
+  Result<std::string> ExecuteAndRenderToString(const std::string& statement);
+
   template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(
+  Status ExecuteAndProcessOneRow(
       const CassandraStatement& statement, const Action& action) {
     auto result = VERIFY_RESULT(ExecuteWithResult(statement));
     auto iterator = result.CreateIterator();
@@ -253,16 +270,28 @@ class CassandraSession {
   }
 
   template <class Action>
-  CHECKED_STATUS ExecuteAndProcessOneRow(const std::string& query, const Action& action) {
+  Status ExecuteAndProcessOneRow(const std::string& query, const Action& action) {
     return ExecuteAndProcessOneRow(CassandraStatement(query), action);
   }
 
-  CHECKED_STATUS ExecuteBatch(const CassandraBatch& batch);
+  template <class T>
+  Result<T> FetchValue(const std::string& query) {
+    T result = T();
+    RETURN_NOT_OK(ExecuteAndProcessOneRow(query, [&result](const CassandraRow& row) {
+      result = row.Value(0).As<T>();
+    }));
+    return result;
+  }
+
+  Status ExecuteBatch(const CassandraBatch& batch);
 
   CassandraFuture SubmitBatch(const CassandraBatch& batch);
 
-  Result<CassandraPrepared> Prepare(
-      const std::string& prepare_query, MonoDelta timeout = MonoDelta::kZero);
+  // If 'local_keyspace' is not empty, creating temporary CassStatement and setting keyspace
+  // for this statement only. Result CassPrepared will be based on this temporary statement.
+  Result<CassandraPrepared> Prepare(const std::string& prepare_query,
+                                    MonoDelta timeout = MonoDelta::kZero,
+                                    const std::string& local_keyspace = std::string());
 
   void Reset();
 
@@ -270,14 +299,19 @@ class CassandraSession {
   CassSessionPtr cass_session_;
 };
 
+YB_STRONGLY_TYPED_BOOL(UsePartitionAwareRouting);
+
 class CppCassandraDriver {
  public:
   CppCassandraDriver(
-      const std::vector<std::string>& hosts, uint16_t port, bool use_partition_aware_routing);
+      const std::vector<std::string>& hosts, uint16_t port,
+      UsePartitionAwareRouting use_partition_aware_routing);
 
   ~CppCassandraDriver();
 
   Result<CassandraSession> CreateSession();
+
+  void EnableTLS(const std::vector<std::string>& ca_certs);
 
  private:
   CassCluster* cass_cluster_ = nullptr;
@@ -307,6 +341,7 @@ inline bool operator==(const CassandraJson& lhs, const CassandraJson& rhs) {
 }
 
 extern const MonoDelta kCassandraTimeOut;
+extern const std::string kCqlTestKeyspace;
 
 Result<CassandraSession> EstablishSession(CppCassandraDriver* driver);
 

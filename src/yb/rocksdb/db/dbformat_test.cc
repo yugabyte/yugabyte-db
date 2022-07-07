@@ -21,9 +21,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
@@ -70,7 +73,7 @@ static void TestKey(const std::string& key,
   ASSERT_TRUE(!ParseInternalKey(Slice("bar"), &decoded));
 }
 
-class FormatTest : public testing::Test {};
+class FormatTest : public RocksDBTest {};
 
 TEST_F(FormatTest, InternalKey_EncodeDecode) {
   const char* keys[] = { "", "k", "hello", "longggggggggggggggggggggg" };

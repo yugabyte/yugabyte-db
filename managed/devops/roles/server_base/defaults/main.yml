@@ -9,8 +9,18 @@
 air_gap: false
 update_yum_cache: false
 yum_retry_count: 5
+nproc_override_file: /etc/security/limits.d/yb-nproc.conf
 
-linux_packages: []
+linux_packages:
+  - rsync
+  - openssl
 
 azure_packages:
   - libselinux-python
+
+aarch64_packages:
+  - libatomic
+
+debian_aarch64_packages:
+  - libatomic1
+  - libncurses6

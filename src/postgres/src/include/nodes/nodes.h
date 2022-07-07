@@ -375,7 +375,6 @@ typedef enum NodeTag
 	T_DeallocateStmt,
 	T_DeclareCursorStmt,
 	T_CreateTableGroupStmt,
-	T_DropTableGroupStmt,
 	T_CreateTableSpaceStmt,
 	T_DropTableSpaceStmt,
 	T_AlterObjectDependsStmt,
@@ -479,7 +478,6 @@ typedef enum NodeTag
 	T_PartitionCmd,
 	T_VacuumRelation,
 	T_OptSplit,
-	T_OptTableGroup,
 	T_RowBounds,
 
 	/*
@@ -511,7 +509,16 @@ typedef enum NodeTag
 	T_IndexAmRoutine,			/* in access/amapi.h */
 	T_TsmRoutine,				/* in access/tsmapi.h */
 	T_ForeignKeyCacheInfo,		/* in utils/rel.h */
-	T_CallContext				/* in nodes/parsenodes.h */
+	T_CallContext,				/* in nodes/parsenodes.h */
+
+	/*
+	 * TAGS FOR YUGABYTE NODES.
+	 */
+	T_YbPgExecOutParam,
+	T_YbBackfillInfo,
+	T_PartitionPruneStepFuncOp,
+	T_YbExprParamDesc
+
 } NodeTag;
 
 /*
@@ -814,7 +821,8 @@ typedef enum OnConflictAction
 {
 	ONCONFLICT_NONE,			/* No "ON CONFLICT" clause */
 	ONCONFLICT_NOTHING,			/* ON CONFLICT ... DO NOTHING */
-	ONCONFLICT_UPDATE			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_UPDATE,			/* ON CONFLICT ... DO UPDATE */
+	ONCONFLICT_YB_REPLACE		/* Replace the existing tuple (upsert mode) */
 } OnConflictAction;
 
 #endif							/* NODES_H */

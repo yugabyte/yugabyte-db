@@ -37,9 +37,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.YBClient.Condition;
+import org.yb.util.ConfForTesting;
 import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.RandomNumberUtil;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 
 import java.io.*;
 import java.net.*;
@@ -253,9 +254,11 @@ public class TestUtils {
   public static String getBaseTmpDir() {
     String testTmpDir = System.getenv("TEST_TMPDIR");
     if (testTmpDir == null) {
-      // If we are generating the temporary directory name here, we are responsible for deleting it.
+      // If we are generating the temporary directory name here, we are responsible for deleting it
+      // unless told not to.
       testTmpDir = new File(defaultTestTmpDir).getAbsolutePath();
-      if (defaultTestTmpDirCleanupHookRegistered.compareAndSet(false, true)) {
+      if (!ConfForTesting.keepData() &&
+          defaultTestTmpDirCleanupHookRegistered.compareAndSet(false, true)) {
         final File tmpDirToCleanUp = new File(testTmpDir);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
           if (tmpDirToCleanUp.isDirectory()) {
@@ -270,7 +273,9 @@ public class TestUtils {
     }
 
     File f = new File(testTmpDir);
-    f.mkdirs();
+    if (!f.exists() && !f.mkdirs()) {
+      throw new RuntimeException("Could not create " + testTmpDir + ", not enough permissions?");
+    }
     return f.getAbsolutePath();
   }
 
@@ -353,7 +358,7 @@ public class TestUtils {
   }
 
   public static void waitFor(Condition condition, long timeoutMs, int sleepTime) throws Exception {
-    timeoutMs *= SanitizerUtil.getTimeoutMultiplier();
+    timeoutMs = BuildTypeUtil.adjustTimeout(timeoutMs);
     final long startTimeMs = System.currentTimeMillis();
     while (System.currentTimeMillis() - startTimeMs < timeoutMs && !condition.get()) {
       Thread.sleep(sleepTime);

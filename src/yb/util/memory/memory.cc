@@ -32,17 +32,17 @@
 // under the License.
 //
 
+#include "yb/util/memory/memory.h"
+
 #include <string.h>
 
 #include <algorithm>
 #include <cstdlib>
 
-#include <gflags/gflags.h>
-
 #include "yb/util/alignment.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/memory/memory.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/size_literals.h"
 
 using std::copy;
 using std::max;

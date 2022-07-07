@@ -2,11 +2,176 @@
 
 import React, { Component } from 'react';
 import { isFunction } from 'lodash';
-import Select from 'react-select';
+import Select, { components } from 'react-select';
+import makeAnimated from 'react-select/animated';
 
 import { YBLabel } from '../../../../components/common/descriptors';
 import { isNonEmptyArray } from '../../../../utils/ObjectUtils';
+import clearIcon from '../../media/x-large.svg';
 
+const colourStyles = {
+  option: (styles, { isFocused }) => ({
+    ...styles,
+    backgroundColor: 'white',
+    color: isFocused ? '#EF5824' : '#333333'
+  }),
+  control: (styles) => ({
+    ...styles,
+    borderRadius: '8px',
+    paddingLeft: '10px',
+    height: '40px',
+    alignContent: 'center'
+  }),
+  valueContainer: (styles, { hasValue }) => ({
+    ...styles,
+    padding: hasValue ? '5px 0px 5px 8px' : '0',
+    width: 'auto'
+  }),
+  singleValue: (styles) => ({
+    ...styles,
+    backgroundColor: '#E5E5E9',
+    borderRadius: '6px',
+    padding: '5px 8px',
+    maxWidth: "calc(100% - 10px)",
+    position: "relative",
+    top: "initial",
+    transform: "none",
+  }),
+  multiValue: (styles) => ({
+    ...styles,
+    backgroundColor: '#E5E5E9',
+    borderRadius: '6px',
+    margin: '6px 1px 6px 1px'
+  }),
+  multiValueLabel: (styles) => ({
+    ...styles,
+    padding: '7.5px 0px 7.5px 11px !important',
+    borderRadius: '6px',
+    fontFamily: 'Inter',
+    fontStyle: 'normal',
+    fontWeight: '500',
+    fontSize: '12px'
+  }),
+  multiValueRemove: (styles) => ({
+    ...styles,
+    borderRadius: '0 6px 6px 0',
+    padding: '1px 7px 0 2px',
+    marginLeft: '2.5px',
+    ':hover': {
+      backgroundColor: '#E5E5E9'
+    },
+    cursor: 'pointer'
+  }),
+  menu: (base) => ({
+    ...base,
+    width: "max-content",
+    minWidth: "100%"
+}),
+  dropdownIndicator: (styles) => ({
+    ...styles,
+    cursor: 'pointer',
+    paddingLeft: '5px'
+  }),
+  clearIndicator: (styles) => ({
+    ...styles,
+    cursor: 'pointer',
+    padding: 0
+  })
+};
+
+const Control = ({ children, hasValue, menuIsOpen, ...props }) => {
+  const labelStyle = {
+    fontFamily: 'Inter',
+    fontStyle: 'normal',
+    fontSize: '14px'
+  };
+  const { selectProps: { customLabel} } = props;
+
+  return (
+    <components.Control {...props}>
+      {hasValue && customLabel && <span style={labelStyle}>{customLabel}</span> }
+      {children}
+    </components.Control>
+  );
+};
+
+const MultiValue = (props) => {
+  return <components.MultiValue className="YBMultiValue" {...props} />;
+};
+const MultiValueRemove = (props) => {
+  return (
+    <components.MultiValueRemove {...props}>
+      <img src={clearIcon} alt="clear" className="clear-icon" style={{ height: 16, width: 16 }} />
+    </components.MultiValueRemove>
+  );
+};
+
+const SingleValue = (props) => {
+  return <components.SingleValue className="YBSingleValue" {...props} />;
+}
+
+const DropdownIndicator = (props) => {
+  const indicatorStyle = {
+    width: 0,
+    height: 0,
+    borderLeft: '4px solid transparent',
+    borderRight: '4px solid transparent',
+    borderTop: '4px solid black'
+  };
+
+  return (
+    <components.DropdownIndicator {...props}>
+      <div style={indicatorStyle} />
+    </components.DropdownIndicator>
+  );
+};
+
+const ClearIndicator = (props) => {
+  return (
+    <components.ClearIndicator {...props}>
+      <img
+        src={clearIcon}
+        alt="clear all"
+        className="clear-icon lg-icon"
+        style={{ height: 24, width: 24 }}
+      />
+    </components.ClearIndicator>
+  );
+};
+
+const animatedComponents = makeAnimated({
+  Control,
+  MultiValue,
+  MultiValueRemove,
+  DropdownIndicator,
+  ClearIndicator,
+  IndicatorSeparator: () => null,
+  SingleValue
+});
+
+export const YBMultiSelectRedesiged = (props) => {
+  const { options, value, onChange, placeholder, name, className, isMulti = true, customLabel, isClearable = false } = props;
+  return (
+    <Select
+      className={className}
+      classNamePrefix="select"
+      isMulti={isMulti}
+      name={name}
+      placeholder={placeholder}
+      options={options}
+      value={value}
+      onChange={onChange}
+      components={animatedComponents}
+      styles={colourStyles}
+      customLabel={customLabel}
+      isClearable={isClearable}
+    />
+  );
+};
+
+// The below is used in all our redux-form.
+// TODO: Unify the design for all dropdowns and reduce some code duplication here.
+// ----------------------------------------------------------------------------
 // TODO: Rename to YBMultiSelect after changing prior YBMultiSelect references.
 // TODO: Make default export after checking all corresponding imports.
 export class YBNewMultiSelect extends Component {
@@ -35,7 +200,7 @@ export class YBNewMultiSelect extends Component {
     const self = this;
     function onChange(val) {
       val = isMulti ? val : val.slice(-1);
-      if (isFunction(self.props.input.onChange)) {
+      if (isFunction(self.props.input?.onChange)) {
         self.props.input.onChange(val);
       }
       if (selectValChanged) {
@@ -54,10 +219,9 @@ export class YBNewMultiSelect extends Component {
         ...provided,
         width: 'auto',
         borderColor: '#dedee0',
-        borderRadius: 7,
-        boxShadow: 'inset 0 1px 1px rgba(0, 0, 0, .075)',
+        borderRadius: 8,
         fontSize: '14px',
-        height: 42
+        minHeight: 42
       }),
       placeholder: (provided) => ({
         ...provided,
@@ -89,7 +253,7 @@ export class YBNewMultiSelect extends Component {
         styles={customStyles}
         {...input}
         options={options}
-        disabled={isReadOnly}
+        isDisabled={isReadOnly}
         isMulti={true}
         onBlur={() => {}}
         onChange={onChange}

@@ -12,17 +12,17 @@
 //
 
 #include <chrono>
-#include <cmath>
 #include <random>
 
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
 #include <gtest/gtest.h>
 
-DECLARE_int32(rate_limiter_min_rate);
+DECLARE_uint64(rate_limiter_min_rate);
 
 namespace yb {
 
@@ -41,7 +41,7 @@ TEST(RateLimiter, TestRate) {
     RateLimiter rate_limiter([rate]() { return rate; });
     auto min_rate = std::max(rate, static_cast<uint64_t>(FLAGS_rate_limiter_min_rate));
     ASSERT_EQ(rate_limiter.GetMaxSizeForNextTransmission(),
-              min_rate * rate_limiter.time_slot_ms_ / MonoTime::kMillisecondsPerSecond);
+              min_rate * rate_limiter.time_slot_ms() / MonoTime::kMillisecondsPerSecond);
   }
 }
 
@@ -96,7 +96,7 @@ TEST(RateLimiter, TestSendRequest) {
   auto time_diff_ms = GetDifference(elapsed.ToMilliseconds(), 4 * MonoTime::kMillisecondsPerSecond);
 
   // Allow a 5% difference (200 ms in this case).
-  auto max_allowed_time_diff_ms = 4 * MonoTime::kMillisecondsPerSecond * 5 / 100;
+  uint64_t max_allowed_time_diff_ms = 4 * MonoTime::kMillisecondsPerSecond * 5 / 100;
 #if defined(OS_MACOSX)
   // MacOS tests are much slower, and the timing check usually fails. So use the time slept by the
   // rate limiter instead.
@@ -168,7 +168,7 @@ TEST(RateLimiter, TestSendRequestWithMultipleRates) {
   // send/receive function slept for (MonoTime::kMillisecondsPerSecond / 10) ms) since rate limiter
   // should have never had additional sleeps. The only sleeps that should have happened are the ones
   // in our send/receive function.
-  auto expected_time_ms = kIterations * MonoTime::kMillisecondsPerSecond / 10;
+  uint64_t expected_time_ms = kIterations * MonoTime::kMillisecondsPerSecond / 10;
   auto time_diff_ms = GetDifference(elapsed.ToMilliseconds(), expected_time_ms);
   auto max_allowed_time_diff_ms = expected_time_ms * 5 / 100;
 #if defined(OS_MACOSX)
@@ -238,7 +238,7 @@ TEST(RateLimiter, TestFastSendRequestWithMultipleRates) {
   // The total time should be ~10s
   // ((kIterations * MonoTime::kMillisecondsPerSecond / 10) milliseconds) since the RateLimiter
   // object should have slept for 100ms for every call to SendOrReceiveData.
-  auto expected_time_ms = kIterations * MonoTime::kMillisecondsPerSecond / 10;
+  uint64_t expected_time_ms = kIterations * MonoTime::kMillisecondsPerSecond / 10;
   auto time_diff_ms = GetDifference(elapsed.ToMilliseconds(), expected_time_ms);
   auto max_allowed_time_diff_ms = expected_time_ms * 5 / 100;
 #if defined(OS_MACOSX)

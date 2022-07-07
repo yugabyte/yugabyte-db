@@ -22,10 +22,11 @@
 
 #pragma once
 
-#include <cstring>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include <boost/range/iterator_range.hpp>
 
 #include "yb/util/slice.h"
 #include "yb/util/tostring.h"
@@ -100,6 +101,10 @@ bool IsDecimal(const Slice& s);
 // Whether the string is "true"/"false" (case-insensitive)
 bool IsBoolean(const Slice& s);
 
+// Whether the string is 32 lowercase hex characters like the one used as an ID for namespaces,
+// (non-special) tables, tablegroups, etc.
+bool IsIdLikeUuid(const Slice& s);
+
 using StringVector = std::vector<std::string>;
 StringVector StringSplit(const std::string& arg, char delim);
 
@@ -130,6 +135,13 @@ std::string RightPadToWidth(const T& val, int width) {
     return ss_str;
   }
   return ss_str + string(padding, ' ');
+}
+
+// Returns true if s starts with substring start.
+bool StringStartsWithOrEquals(const std::string& s, const char* start, size_t start_len);
+
+inline bool StringStartsWithOrEquals(const std::string& s, const std::string start) {
+  return StringStartsWithOrEquals(s, start.c_str(), start.length());
 }
 
 // Returns true if s ends with substring end, and s has at least one more character before
@@ -168,6 +180,20 @@ vector<string> ToStringVector(Args&&... args) {
   details::AppendItem(&result, args...);
   return result;
 }
+
+inline void EnlargeBufferIfNeeded(std::string* buffer, const size_t new_capacity) {
+  if (new_capacity <= buffer->capacity()) {
+    return;
+  }
+  buffer->reserve(new_capacity);
+}
+
+// Takes a vector of strings and treats each element as a list of items separated by the given set
+// of separator characters (only comma by default). Splits each string using these separators and
+// returns the combined list of all items.
+std::vector<std::string> SplitAndFlatten(
+    const std::vector<std::string>& input,
+    const char* separators = ",");
 
 }  // namespace yb
 

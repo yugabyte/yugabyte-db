@@ -16,9 +16,9 @@
 
 #include <string>
 
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
 
 namespace yb {
@@ -26,7 +26,8 @@ namespace docdb {
 
 Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type);
 
-Result<std::string> DocDBValueToDebugStr(KeyType key_type, const std::string& key_str, Slice value);
+Result<std::string> DocDBValueToDebugStr(
+    KeyType key_type, Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage);
 
 }  // namespace docdb
 }  // namespace yb

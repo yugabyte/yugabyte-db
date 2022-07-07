@@ -13,16 +13,22 @@
 
 #include "yb/tablet/tablet_component.h"
 
+#include "yb/common/index.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+
 namespace yb {
 namespace tablet {
 
-ScopedRWOperationPause TabletComponent::PauseReadWriteOperations() {
-  return tablet_.PauseReadWriteOperations();
+Result<TabletScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
+    DisableFlushOnShutdown disable_flush_on_shutdown) {
+  return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
 }
 
-Status TabletComponent::ResetRocksDBs(
-    Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown) {
-  return tablet_.ResetRocksDBs(destroy, disable_flush_on_shutdown);
+Status TabletComponent::CompleteShutdownRocksDBs(
+    Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
+  return tablet_.CompleteShutdownRocksDBs(destroy, ops_pauses);
 }
 
 Status TabletComponent::OpenRocksDBs() {
@@ -38,7 +44,7 @@ RaftGroupMetadata& TabletComponent::metadata() const {
 }
 
 RWOperationCounter& TabletComponent::pending_op_counter() const {
-  return tablet_.pending_op_counter_;
+  return tablet_.pending_non_abortable_op_counter_;
 }
 
 rocksdb::DB& TabletComponent::regular_db() const {
@@ -63,6 +69,13 @@ std::mutex& TabletComponent::create_checkpoint_lock() const {
 
 rocksdb::Env& TabletComponent::rocksdb_env() const {
   return tablet_.rocksdb_env();
+}
+
+void TabletComponent::RefreshYBMetaDataCache() {
+  tablet_.ResetYBMetaDataCache();
+  if (!metadata().index_map()->empty()) {
+    tablet_.CreateNewYBMetaDataCache();
+  }
 }
 
 } // namespace tablet

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 1996-2018, PostgreSQL Global Development Group
  *
- * src/backend/catalog/system_views.sql
+ * src/backend/catalog/yb_system_views.sql
  *
  * Note: this file is read in single-user -j mode, which means that the
  * command terminator is semicolon-newline-newline; whenever the backend
@@ -902,6 +902,29 @@ CREATE VIEW pg_stat_progress_vacuum AS
 		S.param6 AS max_dead_tuples, S.param7 AS num_dead_tuples
     FROM pg_stat_get_progress_info('VACUUM') AS S
 		LEFT JOIN pg_database D ON S.datid = D.oid;
+
+CREATE VIEW pg_stat_progress_copy AS
+    SELECT
+        S.pid AS pid, S.datid AS datid, D.datname AS datname,
+        S.relid AS relid,
+        CASE S.param5 WHEN 1 THEN 'COPY FROM'
+                      WHEN 2 THEN 'COPY TO'
+                      END AS command,
+        CASE S.param6 WHEN 1 THEN 'FILE'
+                      WHEN 2 THEN 'PROGRAM'
+                      WHEN 3 THEN 'PIPE'
+                      WHEN 4 THEN 'CALLBACK'
+                      END AS "type",
+        CASE S.param7 WHEN 0 THEN 'IN PROGRESS'
+                      WHEN 1 THEN 'ERROR'
+                      WHEN 2 THEN 'SUCCESS'
+                      END AS yb_status,
+        S.param1 AS bytes_processed,
+        S.param2 AS bytes_total,
+        S.param3 AS tuples_processed,
+        S.param4 AS tuples_excluded
+    FROM pg_stat_get_progress_info('COPY') AS S
+        LEFT JOIN pg_database D ON S.datid = D.oid;
 
 CREATE VIEW pg_user_mappings AS
     SELECT

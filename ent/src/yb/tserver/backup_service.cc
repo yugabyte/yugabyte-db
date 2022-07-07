@@ -17,17 +17,27 @@
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
+#include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
 #include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/random_util.h"
+#include "yb/util/status_format.h"
+
+using namespace std::literals;
+
+DEFINE_test_flag(int32, tablet_delay_restore_ms, 0, "Delay restore on tablet");
+
 namespace yb {
 namespace tserver {
 
 using rpc::RpcContext;
-using tablet::SnapshotOperationState;
+using tablet::SnapshotOperation;
 using tablet::OperationCompletionCallback;
 using tablet::Tablet;
 
@@ -59,7 +69,8 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   TRACE_EVENT1("tserver", "TabletSnapshotOp", "tablet_id: ", tablet_id);
 
   LOG(INFO) << "Processing TabletSnapshotOp for tablet " << tablet_id << " from "
-            << context.requestor_string() << ": " << req->operation();
+            << context.requestor_string() << ": "
+            << TabletSnapshotOpRequestPB::Operation_Name(req->operation());
   VLOG(1) << "Full request: " << req->DebugString();
 
   auto tablet = LookupLeaderTabletOrRespond(tablet_manager_, tablet_id, resp, &context);
@@ -70,7 +81,7 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
   auto snapshot_hybrid_time = HybridTime::FromPB(req->snapshot_hybrid_time());
   tablet::ScopedReadOperation read_operation;
   // Transaction aware snapshot
-  if (snapshot_hybrid_time) {
+  if (snapshot_hybrid_time && req->operation() == TabletSnapshotOpRequestPB::CREATE_ON_TABLET) {
     // We need to ensure that the state of the tablet's data at the snapshot hybrid time is not
     // garbage-collected away only while performing submit.
     // Since history cutoff is propagated using Raft, it will use the same queue as the
@@ -94,20 +105,23 @@ void TabletServiceBackupImpl::TabletSnapshotOp(const TabletSnapshotOpRequestPB* 
     }
   }
 
-  auto tx_state = std::make_unique<SnapshotOperationState>(tablet.peer->tablet(), req);
+  auto operation = std::make_unique<SnapshotOperation>(tablet.peer->tablet(), req);
 
   auto clock = tablet_manager_->server()->Clock();
-  tx_state->set_completion_callback(
+  operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, clock));
 
-  if (!tx_state->CheckOperationRequirements()) {
+  if (operation->request()->operation() == TabletSnapshotOpRequestPB::RESTORE_ON_TABLET) {
+    AtomicFlagRandomSleepMs(&FLAGS_TEST_tablet_delay_restore_ms);
+  }
+
+  if (!operation->CheckOperationRequirements()) {
     return;
   }
 
   // TODO(txn_snapshot) Avoid duplicate snapshots.
   // Submit the create snapshot op. The RPC will be responded to asynchronously.
-  tablet.peer->Submit(
-      std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)), tablet.leader_term);
+  tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
 
 }  // namespace tserver

@@ -102,6 +102,7 @@ _copyPlannedStmt(const PlannedStmt *from)
 	COPY_NODE_FIELD(utilityStmt);
 	COPY_LOCATION_FIELD(stmt_location);
 	COPY_LOCATION_FIELD(stmt_len);
+	COPY_SCALAR_FIELD(yb_num_referenced_relations);
 
 	return newnode;
 }
@@ -223,6 +224,8 @@ _copyModifyTable(const ModifyTable *from)
 	COPY_SCALAR_FIELD(exclRelRTI);
 	COPY_NODE_FIELD(exclRelTlist);
 	COPY_NODE_FIELD(ybPushdownTlist);
+	COPY_NODE_FIELD(ybReturningColumns);
+	COPY_NODE_FIELD(ybColumnRefs);
 	COPY_NODE_FIELD(no_update_index_list);
 	COPY_SCALAR_FIELD(no_row_trigger);
 
@@ -1238,6 +1241,17 @@ _copyPartitionPruneStepCombine(const PartitionPruneStepCombine *from)
 	COPY_SCALAR_FIELD(step.step_id);
 	COPY_SCALAR_FIELD(combineOp);
 	COPY_NODE_FIELD(source_stepids);
+
+	return newnode;
+}
+
+static PartitionPruneStepFuncOp *
+_copyPartitionPruneStepFuncOp(const PartitionPruneStepFuncOp *from)
+{
+	PartitionPruneStepFuncOp *newnode = makeNode(PartitionPruneStepFuncOp);
+
+	COPY_SCALAR_FIELD(step.step_id);
+	COPY_NODE_FIELD(exprs);
 
 	return newnode;
 }
@@ -2862,7 +2876,6 @@ _copyIndexElem(const IndexElem *from)
 	COPY_NODE_FIELD(opclass);
 	COPY_SCALAR_FIELD(ordering);
 	COPY_SCALAR_FIELD(nulls_ordering);
-	COPY_NODE_FIELD(yb_name_list);
 
 	return newnode;
 }
@@ -3332,18 +3345,6 @@ _copyOptSplit(const OptSplit *from)
 	return newnode;
 }
 
-static OptTableGroup *
-_copyOptTableGroup(const OptTableGroup *from)
-{
-	OptTableGroup *newnode = makeNode(OptTableGroup);
-
-	COPY_SCALAR_FIELD(has_tablegroup);
-	COPY_STRING_FIELD(tablegroup_name);
-
-	return newnode;
-}
-
-
 /*
  * CopyCreateStmtFields
  *
@@ -3363,7 +3364,7 @@ CopyCreateStmtFields(const CreateStmt *from, CreateStmt *newnode)
 	COPY_NODE_FIELD(options);
 	COPY_SCALAR_FIELD(oncommit);
 	COPY_STRING_FIELD(tablespacename);
-	COPY_NODE_FIELD(tablegroup);
+	COPY_STRING_FIELD(tablegroupname);
 	COPY_SCALAR_FIELD(if_not_exists);
 	COPY_NODE_FIELD(split_options);
 }
@@ -3478,7 +3479,6 @@ _copyIndexStmt(const IndexStmt *from)
 	COPY_SCALAR_FIELD(relationId);
 	COPY_STRING_FIELD(accessMethod);
 	COPY_STRING_FIELD(tableSpace);
-	COPY_NODE_FIELD(tablegroup);
 	COPY_NODE_FIELD(indexParams);
 	COPY_NODE_FIELD(indexIncludingParams);
 	COPY_NODE_FIELD(options);
@@ -3873,6 +3873,7 @@ _copyDropdbStmt(const DropdbStmt *from)
 
 	COPY_STRING_FIELD(dbname);
 	COPY_SCALAR_FIELD(missing_ok);
+	COPY_NODE_FIELD(options);
 
 	return newnode;
 }
@@ -4024,16 +4025,9 @@ _copyCreateTableGroupStmt(const CreateTableGroupStmt *from)
 	CreateTableGroupStmt *newnode = makeNode(CreateTableGroupStmt);
 
 	COPY_STRING_FIELD(tablegroupname);
+	COPY_STRING_FIELD(tablespacename);
+	COPY_NODE_FIELD(owner);
 	COPY_NODE_FIELD(options);
-	return newnode;
-}
-
-static DropTableGroupStmt *
-_copyDropTableGroupStmt(const DropTableGroupStmt *from)
-{
-	DropTableGroupStmt *newnode = makeNode(DropTableGroupStmt);
-
-	COPY_STRING_FIELD(tablegroupname);
 	return newnode;
 }
 
@@ -4810,6 +4804,53 @@ _copyForeignKeyCacheInfo(const ForeignKeyCacheInfo *from)
 	return newnode;
 }
 
+static BackfillIndexStmt *
+_copyBackfillIndexStmt(const BackfillIndexStmt *from)
+{
+	BackfillIndexStmt *newnode = makeNode(BackfillIndexStmt);
+
+	COPY_SCALAR_FIELD(oid_list);
+	COPY_NODE_FIELD(bfinfo);
+
+	return newnode;
+}
+
+static YbBackfillInfo *
+_copyYbBackfillInfo(const YbBackfillInfo *from)
+{
+	YbBackfillInfo *newnode = makeNode(YbBackfillInfo);
+
+	COPY_STRING_FIELD(bfinstr);
+	COPY_SCALAR_FIELD(read_time);
+	COPY_NODE_FIELD(row_bounds);
+
+	return newnode;
+}
+
+static RowBounds *
+_copyRowBounds(const RowBounds *from)
+{
+	RowBounds *newnode = makeNode(RowBounds);
+
+	COPY_STRING_FIELD(partition_key);
+	COPY_STRING_FIELD(row_key_start);
+	COPY_STRING_FIELD(row_key_end);
+
+	return newnode;
+}
+
+static YbExprParamDesc *
+_copyYbExprParamDesc(const YbExprParamDesc *from)
+{
+	YbExprParamDesc *newnode = makeNode(YbExprParamDesc);
+
+	COPY_SCALAR_FIELD(attno);
+	COPY_SCALAR_FIELD(typid);
+	COPY_SCALAR_FIELD(typmod);
+	COPY_SCALAR_FIELD(collid);
+
+	return newnode;
+}
 
 /*
  * copyObjectImpl -- implementation of copyObject(); see nodes/nodes.h
@@ -5413,9 +5454,6 @@ copyObjectImpl(const void *from)
 		case T_CreateTableGroupStmt:
 			retval = _copyCreateTableGroupStmt(from);
 			break;
-		case T_DropTableGroupStmt:
-			retval = _copyDropTableGroupStmt(from);
-			break;
 		case T_CreateTableSpaceStmt:
 			retval = _copyCreateTableSpaceStmt(from);
 			break;
@@ -5704,15 +5742,28 @@ copyObjectImpl(const void *from)
 		case T_OptSplit:
 			retval = _copyOptSplit(from);
 			break;
-		case T_OptTableGroup:
-			retval = _copyOptTableGroup(from);
-			break;
 
 			/*
 			 * MISCELLANEOUS NODES
 			 */
 		case T_ForeignKeyCacheInfo:
 			retval = _copyForeignKeyCacheInfo(from);
+			break;
+
+		case T_BackfillIndexStmt:
+			retval = _copyBackfillIndexStmt(from);
+			break;
+
+		case T_YbBackfillInfo:
+			retval = _copyYbBackfillInfo(from);
+			break;
+
+		case T_RowBounds:
+			retval = _copyRowBounds(from);
+			break;
+
+		case T_YbExprParamDesc:
+			retval = _copyYbExprParamDesc(from);
 			break;
 
 		default:

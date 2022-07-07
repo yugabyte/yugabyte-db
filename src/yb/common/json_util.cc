@@ -11,14 +11,16 @@
 // under the License.
 //
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
 #include "yb/common/json_util.h"
+
+#include <rapidjson/prettywriter.h>
+
+#include "yb/bfql/bfunc_convert.h"
+
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/util/bfql/bfunc_convert.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_case.h"
 
 namespace yb {
@@ -172,17 +174,18 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
   return Status::OK();
 }
 
-std::string WriteRapidJsonToString(const rapidjson::Document& document) {
+std::string WriteRapidJsonToString(const rapidjson::Value& document) {
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
   document.Accept(writer);
   return std::string(buffer.GetString());
 }
 
-std::string WriteRapidJsonToString(const rapidjson::Value& value) {
-  rapidjson::Document document;
-  document.CopyFrom(value, document.GetAllocator());
-  return WriteRapidJsonToString(document);
+std::string PrettyWriteRapidJsonToString(const rapidjson::Value& document) {
+  rapidjson::StringBuffer buffer;
+  rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(buffer);
+  document.Accept(writer);
+  return std::string(buffer.GetString());
 }
 
 } // namespace common

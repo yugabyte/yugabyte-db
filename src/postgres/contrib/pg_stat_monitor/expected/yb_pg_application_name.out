@@ -1,0 +1,28 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+SELECT 1 AS num;
+ num
+-----
+   1
+(1 row)
+
+SELECT query,application_name FROM pg_stat_monitor ORDER BY query COLLATE "C";
+                                     query                                      |         application_name
+--------------------------------------------------------------------------------+-----------------------------------
+ SELECT $1 AS num                                                               | pg_regress/yb_pg_application_name
+ SELECT pg_stat_monitor_reset();                                                | pg_regress/yb_pg_application_name
+ SELECT query,application_name FROM pg_stat_monitor ORDER BY query COLLATE "C"; | pg_regress/yb_pg_application_name
+(3 rows)
+
+SELECT pg_stat_monitor_reset();
+ pg_stat_monitor_reset
+-----------------------
+
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

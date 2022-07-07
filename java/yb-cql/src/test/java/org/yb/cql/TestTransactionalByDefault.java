@@ -14,17 +14,20 @@ package org.yb.cql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.YBTestRunner;
 
 @RunWith(value=YBTestRunner.class)
 public class TestTransactionalByDefault extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestTransactionalByDefault.class);
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    builder.addCommonTServerArgs("--cql_table_is_transactional_by_default");
+    builder.addCommonTServerFlag("cql_table_is_transactional_by_default", "true");
   }
 
   @Test

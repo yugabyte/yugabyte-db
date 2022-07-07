@@ -34,11 +34,15 @@
 
 #include <string>
 
+#include <boost/functional/hash.hpp>
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_fwd.h"
-#include "yb/util/metrics.h"
-#include "yb/util/net/sockaddr.h"
+#include "yb/rpc/remote_method.h"
+
+#include "yb/util/metrics_fwd.h"
 
 namespace google {
 namespace protobuf {
@@ -47,23 +51,32 @@ class Message;
 }
 
 namespace yb {
-
-class Histogram;
-
 namespace rpc {
 
 struct RpcMethodMetrics {
-  RpcMethodMetrics();
-  explicit RpcMethodMetrics(scoped_refptr<Histogram> handler_latency);
-  ~RpcMethodMetrics();
-
+  scoped_refptr<Counter> request_bytes;
+  scoped_refptr<Counter> response_bytes;
   scoped_refptr<Histogram> handler_latency;
+
+  RpcMethodMetrics();
+  RpcMethodMetrics(const scoped_refptr<Counter>& request_bytes,
+                   const scoped_refptr<Counter>& response_bytes,
+                   const scoped_refptr<Histogram>& handler_latency);
+  RpcMethodMetrics(const RpcMethodMetrics&);
+  ~RpcMethodMetrics();
+};
+
+struct RpcMethodDesc {
+  RemoteMethod method;
+  std::function<void(InboundCallPtr)> handler;
+  RpcMethodMetrics metrics;
 };
 
 // Handles incoming messages that initiate an RPC.
 class ServiceIf {
  public:
   virtual ~ServiceIf();
+  virtual void FillEndpoints(const RpcServicePtr& service, RpcEndpointMap* map) = 0;
   virtual void Handle(InboundCallPtr incoming) = 0;
 
   virtual void Shutdown();
@@ -72,4 +85,5 @@ class ServiceIf {
 
 }  // namespace rpc
 }  // namespace yb
+
 #endif  // YB_RPC_SERVICE_IF_H_

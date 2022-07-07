@@ -93,3 +93,12 @@ SELECT * FROM foo ORDER BY f1;
 SELECT * FROM foo ORDER BY f1 NULLS FIRST;
 SELECT * FROM foo ORDER BY f1 DESC;
 SELECT * FROM foo ORDER BY f1 DESC NULLS LAST;
+
+--
+-- For https://github.com/YugaByte/yugabyte-db/issues/10254
+--
+CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r ASC));
+INSERT INTO t VALUES(1, 1), (1, 3);
+SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
+-- On this query postgres process stucked in an infinite loop.
+SELECT * FROM t WHERE h = 1 AND r IN (1, 2, 3) FOR KEY SHARE;

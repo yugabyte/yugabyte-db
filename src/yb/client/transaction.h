@@ -21,43 +21,25 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "yb/common/common.pb.h"
 #include "yb/common/consistent_read_point.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
 #include "yb/client/client_fwd.h"
+#include "yb/client/in_flight_op.h"
 
-#include "yb/util/async_util.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 class HybridTime;
 
+class Trace;
+
 namespace client {
 
-struct InFlightOpsGroup {
-  using Iterator = internal::InFlightOps::const_iterator;
-
-  bool need_metadata = false;
-  const Iterator begin;
-  const Iterator end;
-
-  InFlightOpsGroup(const Iterator& group_begin, const Iterator& group_end);
-  std::string ToString() const;
-};
-
-struct InFlightOpsGroupsWithMetadata {
-  static const size_t kPreallocatedCapacity = 40;
-
-  boost::container::small_vector<InFlightOpsGroup, kPreallocatedCapacity> groups;
-  TransactionMetadata metadata;
-};
-
-typedef StatusFunctor Waiter;
-typedef StatusFunctor CommitCallback;
-typedef std::function<void(const Result<ChildTransactionDataPB>&)> PrepareChildCallback;
+using Waiter = boost::function<void(const Status&)>;
+using PrepareChildCallback = std::function<void(const Result<ChildTransactionDataPB>&)>;
 
 struct ChildTransactionData {
   TransactionMetadata metadata;
@@ -79,7 +61,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   class PrivateOnlyTag {};
 
  public:
-  explicit YBTransaction(TransactionManager* manager);
+  explicit YBTransaction(TransactionManager* manager,
+                         TransactionLocality locality = TransactionLocality::GLOBAL);
 
   // Trick to allow std::make_shared with this ctor only from methods of this class.
   YBTransaction(TransactionManager* manager, const TransactionMetadata& metadata, PrivateOnlyTag);
@@ -94,45 +77,27 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   ~YBTransaction();
 
+  Trace *trace();
   void SetPriority(uint64_t priority);
 
   uint64_t GetPriority() const;
 
   // Should be invoked to complete transaction creation.
   // Transaction is unusable before Init is called.
-  CHECKED_STATUS Init(
+  Status Init(
       IsolationLevel isolation, const ReadHybridTime& read_time = ReadHybridTime());
 
   // Allows starting a transaction that reuses an existing read point.
   void InitWithReadPoint(IsolationLevel isolation, ConsistentReadPoint&& read_point);
 
-  // This function is used to init metadata of Write/Read request.
-  // If we don't have enough information, then the function returns false and stores
-  // the waiter, which will be invoked when we obtain such information.
-  bool Prepare(InFlightOpsGroupsWithMetadata* ops_info,
-               ForceConsistentRead force_consistent_read,
-               CoarseTimePoint deadline,
-               Initial initial,
-               Waiter waiter);
-
-  // Ask transaction to expect `count` operations in future. I.e. Prepare will be called with such
-  // number of ops.
-  void ExpectOperations(size_t count);
-
-  // Notifies transaction that specified ops were flushed with some status.
-  void Flushed(
-      const internal::InFlightOps& ops, const ReadHybridTime& used_read_time, const Status& status);
+  internal::TxnBatcherIf& batcher_if();
 
   // Commits this transaction.
   void Commit(CoarseTimePoint deadline, SealOnly seal_only, CommitCallback callback);
 
-  void Commit(CoarseTimePoint deadline, CommitCallback callback) {
-    Commit(deadline, SealOnly::kFalse, callback);
-  }
+  void Commit(CoarseTimePoint deadline, CommitCallback callback);
 
-  void Commit(CommitCallback callback) {
-    Commit(CoarseTimePoint(), SealOnly::kFalse, std::move(callback));
-  }
+  void Commit(CommitCallback callback);
 
   // Utility function for Commit.
   std::future<Status> CommitFuture(
@@ -140,6 +105,9 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Aborts this transaction.
   void Abort(CoarseTimePoint deadline = CoarseTimePoint());
+
+  // Promote a local transaction into a global transaction.
+  Status PromoteToGlobal(CoarseTimePoint deadline = CoarseTimePoint());
 
   // Returns transaction ID.
   const TransactionId& id() const;
@@ -153,7 +121,7 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   Result<YBTransactionPtr> CreateRestartedTransaction();
 
   // Setup precreated transaction to be restarted version of this transaction.
-  CHECKED_STATUS FillRestartedTransaction(const YBTransactionPtr& dest);
+  Status FillRestartedTransaction(const YBTransactionPtr& dest);
 
   // Prepares child data, so child transaction could be started in another server.
   // Should be async because status tablet could be not ready yet.
@@ -169,13 +137,13 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   // Apply results from child to this parent transaction.
   // `result` should be prepared with FinishChild of child transaction.
-  CHECKED_STATUS ApplyChildResult(const ChildTransactionResultPB& result);
+  Status ApplyChildResult(const ChildTransactionResultPB& result);
 
-  std::shared_future<Result<TransactionMetadata>> GetMetadata() const;
+  std::shared_future<Result<TransactionMetadata>> GetMetadata(CoarseTimePoint deadline) const;
 
   std::string ToString() const;
 
-  const IsolationLevel isolation() const;
+  IsolationLevel isolation() const;
 
   // Releases this transaction object returning its metadata.
   // So this transaction could be used by some other application instance.
@@ -185,9 +153,39 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // between application instances.
   static YBTransactionPtr Take(TransactionManager* manager, const TransactionMetadata& metadata);
 
+  void SetActiveSubTransaction(SubTransactionId id);
+
+  Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
+
+  bool HasSubTransactionState();
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
+};
+
+class YBSubTransaction {
+ public:
+  bool active() const {
+    return highest_subtransaction_id_ >= kMinSubTransactionId;
+  }
+
+  void SetActiveSubTransaction(SubTransactionId id);
+
+  Status RollbackToSubTransaction(SubTransactionId id);
+
+  const SubTransactionMetadata& get();
+
+  std::string ToString() const;
+
+  bool operator==(const YBSubTransaction& other) const;
+
+ private:
+  SubTransactionMetadata sub_txn_;
+
+  // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
+  // the highest live subtransaction_id.
+  SubTransactionId highest_subtransaction_id_ = 0;
 };
 
 } // namespace client

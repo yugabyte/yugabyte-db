@@ -10,22 +10,36 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/gutil/strings/join.h"
+#include <signal.h>
+
+#include <fstream>
+#include <thread>
+
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_info.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/pgsql_error.h"
+#include "yb/common/schema.h"
+
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_defaults.h"
+#include "yb/master/master_util.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/barrier.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/size_literals.h"
-#include "yb/util/stol_utils.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-
-#include "yb/client/client_fwd.h"
-#include "yb/common/common.pb.h"
-#include "yb/common/pgsql_error.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/tserver/tserver.pb.h"
 
 using namespace std::literals;
 
@@ -39,6 +53,9 @@ METRIC_DECLARE_counter(rpc_inbound_calls_created);
 
 namespace yb {
 namespace pgwrapper {
+
+using master::GetColocatedDbParentTableId;
+using master::GetTablegroupParentTableId;
 
 class PgLibPqTest : public LibPqTestBase {
  protected:
@@ -230,7 +247,6 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(UriMd5), PgLibPqTestAuthMd5) {
 // The described prodecure is repeated multiple times to increase probability of catching bug,
 // w/o running test multiple times.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
-  static const std::string kTryAgain = "Try again.";
   constexpr auto kKeys = RegularBuildVsSanitizers(10, 20);
   constexpr auto kColors = 2;
   constexpr auto kIterations = 20;
@@ -246,9 +262,9 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
     SCOPED_TRACE(iteration_title);
     LOG(INFO) << iteration_title;
 
-    auto status = conn.Execute("DELETE FROM t");
-    if (!status.ok()) {
-      ASSERT_STR_CONTAINS(status.ToString(), kTryAgain);
+    auto s = conn.Execute("DELETE FROM t");
+    if (!s.ok()) {
+      ASSERT_TRUE(HasTryAgain(s)) << s;
       continue;
     }
     for (int k = 0; k != kKeys; ++k) {
@@ -261,15 +277,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
     for (int i = 0; i != kColors; ++i) {
       int32_t color = i;
       threads.emplace_back([this, color, kKeys, &complete] {
-        auto conn = ASSERT_RESULT(Connect());
+        auto connection = ASSERT_RESULT(Connect());
 
-        ASSERT_OK(conn.Execute("BEGIN"));
-        ASSERT_OK(conn.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
+        ASSERT_OK(connection.Execute("BEGIN"));
+        ASSERT_OK(connection.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"));
 
-        auto res = conn.Fetch("SELECT * FROM t");
+        auto res = connection.Fetch("SELECT * FROM t");
         if (!res.ok()) {
-          auto msg = res.status().message().ToBuffer();
-          ASSERT_STR_CONTAINS(res.status().ToString(), kTryAgain);
+          ASSERT_TRUE(HasTryAgain(res.status())) << res.status();
           return;
         }
         auto columns = PQnfields(res->get());
@@ -277,23 +292,24 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SerializableColoring)) {
 
         auto lines = PQntuples(res->get());
         ASSERT_EQ(kKeys, lines);
-        for (int i = 0; i != lines; ++i) {
-          if (ASSERT_RESULT(GetInt32(res->get(), i, 1)) == color) {
+        for (int j = 0; j != lines; ++j) {
+          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
             continue;
           }
 
-          auto key = ASSERT_RESULT(GetInt32(res->get(), i, 0));
-          auto status = conn.ExecuteFormat("UPDATE t SET color = $1 WHERE key = $0", key, color);
+          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
+          auto status = connection.ExecuteFormat(
+              "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
             auto msg = status.message().ToBuffer();
             // Missing metadata means that transaction was aborted and cleaned.
-            ASSERT_TRUE(msg.find("Try again.") != std::string::npos ||
+            ASSERT_TRUE(HasTryAgain(status) ||
                         msg.find("Missing metadata") != std::string::npos) << status;
             break;
           }
         }
 
-        auto status = conn.Execute("COMMIT");
+        auto status = connection.Execute("COMMIT");
         if (!status.ok()) {
           auto msg = status.message().ToBuffer();
           ASSERT_TRUE(msg.find("Operation expired") != std::string::npos) << status;
@@ -645,15 +661,16 @@ void PgLibPqTest::TestMultiBankAccount(IsolationLevel isolation) {
   thread_holder.AddThreadFunctor(
       [this, &counter, &reads, &writes, isolation, &stop_flag = thread_holder.stop_flag()]() {
     SetFlagOnExit set_flag_on_exit(&stop_flag);
-    auto conn = ASSERT_RESULT(Connect());
+    auto connection = ASSERT_RESULT(Connect());
     auto failures_in_row = 0;
     while (!stop_flag.load(std::memory_order_acquire)) {
       if (isolation == IsolationLevel::SERIALIZABLE_ISOLATION) {
         auto lower_bound = reads.load() * kRequiredWrites < writes.load() * kRequiredReads
             ? 1.0 - 1.0 / (1ULL << failures_in_row) : 0.0;
-        ASSERT_OK(conn.ExecuteFormat("SET yb_transaction_priority_lower_bound = $0", lower_bound));
+        ASSERT_OK(connection.ExecuteFormat(
+            "SET yb_transaction_priority_lower_bound = $0", lower_bound));
       }
-      auto sum = ReadSumBalance(&conn, kAccounts, isolation, &counter);
+      auto sum = ReadSumBalance(&connection, kAccounts, isolation, &counter);
       if (!sum.ok()) {
         // Do not overflow long when doing bitshift above.
         failures_in_row = std::min(failures_in_row + 1, 63);
@@ -756,7 +773,7 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
   // Make a counter for each thread and have each thread increment it
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    int key = threads.size();
+    int key = narrow_cast<int>(threads.size());
     ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (key, value) VALUES ($0, 0)", key));
 
     threads.emplace_back([this, key, isolation] {
@@ -840,15 +857,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
 
   for (int i = 0; i != kThreads; ++i) {
     holder.AddThread([this, i, &stop = holder.stop_flag(), &written] {
-      auto conn = ASSERT_RESULT(Connect());
-      SetFlagOnExit set_flag_on_exit(&stop);
+      auto connection = ASSERT_RESULT(Connect());
       int key = 0;
 
       while (!stop.load(std::memory_order_acquire)) {
         if (RandomUniformBool()) {
           int a = i * 1000000 + key;
           int b = key;
-          ASSERT_OK(conn.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
+          ASSERT_OK(connection.ExecuteFormat("INSERT INTO t (a, b) VALUES ($0, $1)", a, b));
           written[i].store(++key, std::memory_order_release);
         } else {
           int writer_index = RandomUniformInt(0, kThreads - 1);
@@ -858,7 +874,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(SecondaryIndexInsertSelect)) {
           }
           int read_key = num_written - 1;
           int b = read_key;
-          int read_a = ASSERT_RESULT(conn.FetchValue<int32_t>(
+          int read_a = ASSERT_RESULT(connection.FetchValue<int32_t>(
               Format("SELECT a FROM t WHERE b = $0 LIMIT 1", b)));
           ASSERT_EQ(read_a % 1000000, read_key);
         }
@@ -890,33 +906,56 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(InTxnDelete)) {
   ASSERT_NO_FATALS(AssertRows(&conn, 1));
 }
 
+namespace {
+
+Result<string> GetNamespaceIdByNamespaceName(
+    client::YBClient* client, const string& namespace_name) {
+  const auto namespaces = VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL));
+  for (const auto& ns : namespaces) {
+    if (ns.name() == namespace_name) {
+      return ns.id();
+    }
+  }
+  return STATUS(NotFound, "The namespace does not exist");
+}
+
+Result<string> GetTableIdByTableName(
+    client::YBClient* client, const string& namespace_name, const string& table_name) {
+  const auto tables = VERIFY_RESULT(client->ListTables());
+  for (const auto& t : tables) {
+    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
+      return t.table_id();
+    }
+  }
+  return STATUS(NotFound, "The table does not exist");
+}
+
+} // namespace
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CompoundKeyColumnOrder)) {
+  const string namespace_name = "yugabyte";
   const string table_name = "test";
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat(
       "CREATE TABLE $0 (r2 int, r1 int, h int, v2 int, v1 int, primary key (h, r1, r2))",
       table_name));
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  yb::client::YBSchema schema;
-  PartitionSchema partition_schema;
-  bool table_found = false;
-  // TODO(dmitry): Find table by name instead of checking all the tables when catalog_mangager
-  // will be able to find YSQL tables
-  const auto tables = ASSERT_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_type() == YQLDatabase::YQL_DATABASE_PGSQL && t.table_name() == table_name) {
-      table_found = true;
-      ASSERT_OK(client->GetTableSchema(t, &schema, &partition_schema));
-      const auto& columns = schema.columns();
-      std::array<string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
-      ASSERT_EQ(expected_column_names.size(), columns.size());
-      for (size_t i = 0; i < expected_column_names.size(); ++i) {
-        ASSERT_EQ(columns[i].name(), expected_column_names[i]);
-      }
-      break;
-    }
+
+  std::string table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), namespace_name, table_name));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
   }
-  ASSERT_TRUE(table_found);
+
+  const auto& columns = table_info->schema.columns();
+  std::array<string, 5> expected_column_names{"h", "r1", "r2", "v2", "v1"};
+  ASSERT_EQ(expected_column_names.size(), columns.size());
+  for (size_t i = 0; i < expected_column_names.size(); ++i) {
+    ASSERT_EQ(columns[i].name(), expected_column_names[i]);
+  }
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(BulkCopy)) {
@@ -994,21 +1033,16 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CatalogManagerMapsTest)) {
   ASSERT_OK(result);
   ASSERT_FALSE(result.get());
 
-  string ns_id;
-  auto list_result = client->ListNamespaces(YQL_DATABASE_PGSQL);
-  ASSERT_OK(list_result);
-  for (const auto& ns : list_result.get()) {
-    if (ns.name() == "test_db_renamed") {
-      ns_id = ns.id();
-    }
+  std::string table_id =
+      ASSERT_RESULT(GetTableIdByTableName(client.get(), "test_db_renamed", "bar"));
+  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
+  {
+    Synchronizer sync;
+    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
+    ASSERT_OK(sync.Wait());
   }
-
-  client::YBSchema schema;
-  PartitionSchema partition_schema;
-  ASSERT_OK(client->GetTableSchema(
-      {YQL_DATABASE_PGSQL, ns_id, "test_db_renamed", "bar"}, &schema, &partition_schema));
-  ASSERT_EQ(schema.num_columns(), 1);
-  ASSERT_EQ(schema.Column(0).name(), "b");
+  ASSERT_EQ(table_info->schema.num_columns(), 1);
+  ASSERT_EQ(table_info->schema.Column(0).name(), "b");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
@@ -1021,34 +1055,21 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TestSystemTableRollback)) {
 }
 
 namespace {
+
 Result<master::TabletLocationsPB> GetColocatedTabletLocations(
     client::YBClient* client,
     std::string database_name,
     MonoDelta timeout) {
-  std::string ns_id;
+  const string ns_id =
+      VERIFY_RESULT(GetNamespaceIdByNamespaceName(client, database_name));
+
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-
-  bool exists = VERIFY_RESULT(client->NamespaceExists(database_name, YQL_DATABASE_PGSQL));
-  if (!exists) {
-    return STATUS(NotFound, "namespace does not exist");
-  }
-
-  // Get namespace id.
-  for (const auto& ns : VERIFY_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
-    if (ns.name() == database_name) {
-      ns_id = ns.id();
-      break;
-    }
-  }
-  if (ns_id.empty()) {
-    return STATUS(NotFound, "namespace not found");
-  }
 
   // Get TabletLocations for the colocated tablet.
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            ns_id + master::kColocatedParentTableIdSuffix,
+            GetColocatedDbParentTableId(ns_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1063,10 +1084,6 @@ Result<master::TabletLocationsPB> GetColocatedTabletLocations(
       "wait for colocated parent tablet"));
 
   return tablets[0];
-}
-
-const TableId GetTableGroupTableId(const std::string& tablegroup_id) {
-  return tablegroup_id + master::kTablegroupParentTableIdSuffix;
 }
 
 Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
@@ -1085,7 +1102,7 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
   RETURN_NOT_OK(WaitFor(
       [&]() -> Result<bool> {
         Status s = client->GetTabletsFromTableId(
-            GetTableGroupTableId(tablegroup_id),
+            GetTablegroupParentTableId(tablegroup_id),
             0 /* max_tablets */,
             &tablets);
         if (s.ok()) {
@@ -1102,17 +1119,6 @@ Result<master::TabletLocationsPB> GetTablegroupTabletLocations(
   return tablets[0];
 }
 
-Result<string> GetTableIdByTableName(
-    client::YBClient* client, const string& namespace_name, const string& table_name) {
-  const auto tables = VERIFY_RESULT(client->ListTables());
-  for (const auto& t : tables) {
-    if (t.namespace_name() == namespace_name && t.table_name() == table_name) {
-      return t.table_id();
-    }
-  }
-  return STATUS(NotFound, "The table does not exist");
-}
-
 } // namespace
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
@@ -1120,7 +1126,6 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
   const string kDatabaseName = "test_db";
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_bar_index;
-  string ns_id;
 
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocated = true", kDatabaseName));
@@ -1203,6 +1208,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1236,6 +1242,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TableColocation)) {
         client->LookupTabletById(
             colocated_tablet_id,
             colocated_table,
+              master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               tablet_found = result.ok();
@@ -1296,6 +1303,50 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(TxnConflictsForColocatedTables)) {
   ASSERT_OK(conn2.CommitTransaction());
 }
 
+// Ensure tablet bootstrap doesn't crash when replaying change metadata operations
+// for a deleted colocated table. This is a regression test for #6096.
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ReplayDeletedTableInColocatedDB)) {
+  const std::string kDatabaseName = "testdb";
+  constexpr int kTimeoutSecs = 30;
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 with colocated=true", kDatabaseName));
+
+  PGConn conn_new = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn_new.Execute("CREATE TABLE foo (i int)"));
+  ASSERT_OK(conn_new.Execute("INSERT INTO foo VALUES (10)"));
+
+  // Flush tablets; requests from here on will be replayed from the WAL during bootstrap.
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "foo"));
+  ASSERT_OK(client->FlushTables(
+      {table_id},
+      false /* add_indexes */,
+      kTimeoutSecs,
+      false /* is_compaction */));
+
+  // ALTER requires foo's table id to be in the TS raft metadata
+  ASSERT_OK(conn_new.Execute("ALTER TABLE foo ADD c char"));
+  ASSERT_OK(conn_new.Execute("ALTER TABLE foo RENAME COLUMN c to d"));
+  // but DROP will remove foo's table id from the TS raft metadata
+  ASSERT_OK(conn_new.Execute("DROP TABLE foo"));
+  ASSERT_OK(conn_new.Execute("CREATE TABLE bar (c char)"));
+
+  // Restart a TS that serves this tablet so we do a local bootstrap and replay WAL files.
+  // Ensure we don't crash here due to missing table info in metadata when replaying the ALTER.
+  ASSERT_NO_FATALS(cluster_->tablet_server(0)->Shutdown());
+
+  LOG(INFO) << "Start tserver";
+  ASSERT_OK(cluster_->tablet_server(0)->Restart());
+  ASSERT_OK(cluster_->WaitForTabletsRunning(cluster_->tablet_server(0),
+      MonoDelta::FromSeconds(60)));
+
+  // Ensure the rest of the WAL replayed successfully.
+  PGConn conn_after = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  auto res = ASSERT_RESULT(conn_after.FetchValue<int64_t>("SELECT COUNT(*) FROM bar"));
+  ASSERT_EQ(res, 0);
+}
+
 class PgLibPqTablegroupTest : public PgLibPqTest {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     // Enable tablegroup beta feature
@@ -1313,7 +1364,7 @@ struct TableGroupInfo {
   std::shared_ptr<client::YBTable> table;
 };
 
-Result<TableGroupInfo> SelectTableGroup(
+Result<TableGroupInfo> SelectTablegroup(
     client::YBClient* client, PGConn* conn, const std::string& database_name,
     const std::string& group_name) {
   TableGroupInfo group_info;
@@ -1321,7 +1372,7 @@ Result<TableGroupInfo> SelectTableGroup(
       conn->FetchFormat("SELECT oid FROM pg_database WHERE datname=\'$0\'", database_name));
   const int database_oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
   res = VERIFY_RESULT(
-      conn->FetchFormat("SELECT oid FROM pg_tablegroup WHERE grpname=\'$0\'", group_name));
+      conn->FetchFormat("SELECT oid FROM pg_yb_tablegroup WHERE grpname=\'$0\'", group_name));
   group_info.oid = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
 
   group_info.id = GetPgsqlTablegroupId(database_oid, group_info.oid);
@@ -1331,7 +1382,10 @@ Result<TableGroupInfo> SelectTableGroup(
       group_info.id,
       30s))
     .tablet_id();
-  group_info.table = VERIFY_RESULT(client->OpenTable(GetTableGroupTableId(group_info.id)));
+  group_info.table = VERIFY_RESULT(client->OpenTable(GetTablegroupParentTableId(group_info.id)));
+  SCHECK(VERIFY_RESULT(client->TablegroupExists(database_name, group_info.id)),
+         InternalError,
+         "YBClient::TablegroupExists couldn't find a tablegroup!");
   return group_info;
 }
 
@@ -1352,7 +1406,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  const auto tablegroup = ASSERT_RESULT(SelectTableGroup(
+  const auto tablegroup = ASSERT_RESULT(SelectTablegroup(
       client.get(), &conn, kDatabaseName, kTablegroupName));
 
   // Create a range partition table, the table should share the tablet with the parent table.
@@ -1411,7 +1465,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  auto tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+  auto tablegroup_alt = ASSERT_RESULT(SelectTablegroup(
       client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Create another range partition table - should be part of the second tablegroup
@@ -1444,6 +1498,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
           client->LookupTabletById(
               tablets_bar_index[i].tablet_id(),
               table_bar_index,
+              master::IncludeInactive::kFalse,
               CoarseMonoClock::Now() + 30s,
               [&, i](const Result<client::internal::RemoteTabletPtr>& result) {
                 tablet_founds[i] = result.ok();
@@ -1460,8 +1515,9 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop table did not use tablegroups"));
 
   // Drop a tablegroup.
+  ASSERT_TRUE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, tablegroup_alt.id)));
   ASSERT_OK(conn.ExecuteFormat("DROP TABLEGROUP $0", kTablegroupAltName));
-  ASSERT_FALSE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, kTablegroupAltName)));
+  ASSERT_FALSE(ASSERT_RESULT(client->TablegroupExists(kDatabaseName, tablegroup_alt.id)));
 
   // The alt tablegroup tablet should be deleted after dropping the tablegroup.
   bool alt_tablet_found = true;
@@ -1472,6 +1528,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               alt_tablet_found = result.ok();
@@ -1487,7 +1544,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
   ASSERT_OK(conn.ExecuteFormat("CREATE TABLEGROUP $0", kTablegroupAltName));
 
   // A parent table with one tablet should be created when the tablegroup is created.
-  tablegroup_alt = ASSERT_RESULT(SelectTableGroup(
+  tablegroup_alt = ASSERT_RESULT(SelectTablegroup(
         client.get(), &conn, kDatabaseName, kTablegroupAltName));
 
   // Add a table back in and ensure that it is part of the recreated tablegroup.
@@ -1515,6 +1572,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup.tablet_id,
             tablegroup.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               orig_tablet_found = result.ok();
@@ -1533,6 +1591,7 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
         client->LookupTabletById(
             tablegroup_alt.tablet_id,
             tablegroup_alt.table,
+            master::IncludeInactive::kFalse,
             CoarseMonoClock::Now() + 30s,
             [&](const Result<client::internal::RemoteTabletPtr>& result) {
               second_tablet_found = result.ok();
@@ -1553,47 +1612,55 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTablegroups),
       30s, "Drop database with tablegroup (wait for RPCs to finish)"));
 }
 
+namespace {
+
+class PgLibPqTestRF1: public PgLibPqTest {
+  int GetNumMasters() const override {
+    return 1;
+  }
+
+  int GetNumTabletServers() const override {
+    return 1;
+  }
+};
+
+} // namespace
+
 // Test that the number of RPCs sent to master upon first connection is not too high.
 // See https://github.com/yugabyte/yugabyte-db/issues/3049
-TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs)) {
-  auto get_master_inbound_rpcs_created = [&cluster_ = this->cluster_]() -> Result<int64_t> {
+// Test uses RF1 cluster to avoid possible relelections which affects the number of RPCs received
+// by a master.
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NumberOfInitialRpcs), PgLibPqTestRF1) {
+  auto get_master_inbound_rpcs_created = [this]() -> Result<int64_t> {
     int64_t m_in_created = 0;
-    for (auto* master : cluster_->master_daemons()) {
+    for (const auto* master : this->cluster_->master_daemons()) {
       m_in_created += VERIFY_RESULT(master->GetInt64Metric(
           &METRIC_ENTITY_server, "yb.master", &METRIC_rpc_inbound_calls_created, "value"));
     }
     return m_in_created;
   };
 
-  int64_t rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
+  auto rpcs_before = ASSERT_RESULT(get_master_inbound_rpcs_created());
   ASSERT_RESULT(Connect());
-  int64_t rpcs_after  = ASSERT_RESULT(get_master_inbound_rpcs_created());
-  int64_t rpcs_during = rpcs_after - rpcs_before;
+  auto rpcs_during = ASSERT_RESULT(get_master_inbound_rpcs_created()) - rpcs_before;
 
-  // Real-world numbers (debug build, local Mac): 328 RPCs before, 95 after the fix for #3049
+  // Real-world numbers (debug build, local PC): 58 RPCs
   LOG(INFO) << "Master inbound RPC during connection: " << rpcs_during;
   // RPC counter is affected no only by table read/write operations but also by heartbeat mechanism.
-  // As far as ASAN/TSAN builds are slower they can receive more heartbeats while
-  // processing requests. As a result RPC count might be higher in comparison to other build types.
-  ASSERT_LT(rpcs_during, RegularBuildVsSanitizers(150, 200));
+  // As far as ASAN builds are slower they can receive more heartbeats while processing requests.
+  // As a result RPC count might be higher in comparison to other build types.
+  ASSERT_LT(rpcs_during, 100);
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
   const string kDatabaseName ="yugabyte";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
-  string ns_id;
 
   auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
   ASSERT_OK(conn.Execute("CREATE TABLE range(a int, PRIMARY KEY(a ASC)) " \
       "SPLIT AT VALUES ((100), (1000))"));
 
-  // Get database and table IDs
-  for (const auto& ns : ASSERT_RESULT(client->ListNamespaces(YQL_DATABASE_PGSQL))) {
-    if (ns.name() == kDatabaseName) {
-      ns_id = ns.id();
-      break;
-    }
-  }
+  auto ns_id = ASSERT_RESULT(GetNamespaceIdByNamespaceName(client.get(), kDatabaseName));
   ASSERT_FALSE(ns_id.empty());
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -1607,26 +1674,11 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(RangePresplit)) {
 // Override the base test to start a cluster that kicks out unresponsive tservers faster.
 class PgLibPqTestSmallTSTimeout : public PgLibPqTest {
  public:
-  PgLibPqTestSmallTSTimeout() {
-    more_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
-    more_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
-    more_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=10");
-  }
-
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
+    options->extra_master_flags.push_back("--tserver_unresponsive_timeout_ms=8000");
+    options->extra_master_flags.push_back("--unresponsive_ts_rpc_timeout_ms=10000");
+    options->extra_tserver_flags.push_back("--follower_unavailable_considered_failed_sec=8");
   }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
 };
 
 // Test that adding a tserver and removing a tserver causes the colocation tablet to adjust raft
@@ -1636,9 +1688,10 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqTestSmallTSTimeout) {
   const std::string kDatabaseName = "co";
   const auto kTimeout = 60s;
-  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
-  std::string ns_id;
+  const auto starting_num_tablet_servers = cluster_->num_tablet_servers();
+  ExternalMiniClusterOptions opts;
   std::map<std::string, int> ts_loads;
+  static const int tserver_unresponsive_timeout_ms = 8000;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
   auto conn = ASSERT_RESULT(Connect());
@@ -1665,8 +1718,9 @@ TEST_F_EX(PgLibPqTest,
   }
 
   // Add a tablet server.
+  UpdateMiniClusterOptions(&opts);
   ASSERT_OK(cluster_->AddTabletServer(ExternalMiniClusterOptions::kDefaultStartCqlProxy,
-                                      more_tserver_flags));
+                                      opts.extra_tserver_flags));
   ASSERT_OK(cluster_->WaitForTabletServerCount(starting_num_tablet_servers + 1, kTimeout));
 
   // Wait for load balancing.  This should move some tablet-peers (e.g. of the colocation tablet,
@@ -1688,24 +1742,18 @@ TEST_F_EX(PgLibPqTest,
   // Remove a tablet server.
   cluster_->tablet_server(0)->Shutdown();
 
-  // Wait for load balancing.  This should move the remaining tablet-peers off the dead tserver.
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        bool is_idle = VERIFY_RESULT(client->IsLoadBalancerIdle());
-        return !is_idle;
-      },
-      kTimeout,
-      "wait for load balancer to be active"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      kTimeout,
-      "wait for load balancer to be idle"));
+  // Wait for the master leader to mark it dead.
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    return cluster_->is_ts_stale(0);
+  },
+  MonoDelta::FromMilliseconds(2 * tserver_unresponsive_timeout_ms),
+  "Is TS dead",
+  MonoDelta::FromSeconds(1)));
 
-  // Collect colocation tablet replica locations.
-  {
-    master::TabletLocationsPB tablet_locations = ASSERT_RESULT(GetColocatedTabletLocations(
+  // Collect colocation tablet replica locations and verify that load has been moved off
+  // from the dead TS.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    master::TabletLocationsPB tablet_locations = VERIFY_RESULT(GetColocatedTabletLocations(
         client.get(),
         kDatabaseName,
         kTimeout));
@@ -1713,25 +1761,28 @@ TEST_F_EX(PgLibPqTest,
     for (const auto& replica : tablet_locations.replicas()) {
       ts_loads[replica.ts_info().permanent_uuid()]++;
     }
-  }
-
-  // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
-  // which is shut down.
-  ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
-  for (const auto& entry : ts_loads) {
-    ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
-    ASSERT_NOTNULL(ts);
-    ASSERT_NE(ts, cluster_->tablet_server(0));
-    ASSERT_EQ(entry.second, 1);
-    LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
-  }
+    // Ensure each colocation tablet replica is on the three tablet servers excluding the first one,
+    // which is shut down.
+    if (ts_loads.size() != starting_num_tablet_servers) {
+      return false;
+    }
+    for (const auto& entry : ts_loads) {
+      ExternalTabletServer* ts = cluster_->tablet_server_by_uuid(entry.first);
+      if (ts == nullptr || ts == cluster_->tablet_server(0) || entry.second != 1) {
+        return false;
+      }
+    }
+    return true;
+  },
+  kTimeout,
+  "Wait for load to be moved off from tserver 0"));
 }
 
 // Test that adding a tserver causes colocation tablets to offload tablet-peers to the new tserver.
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   constexpr int kNumDatabases = 3;
   const auto kTimeout = 60s;
-  const int starting_num_tablet_servers = cluster_->num_tablet_servers();
+  const size_t starting_num_tablet_servers = cluster_->num_tablet_servers();
   const std::string kDatabasePrefix = "co";
   std::map<std::string, int> ts_loads;
 
@@ -1788,1150 +1839,14 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(LoadBalanceMultipleColocatedDB)) {
   ASSERT_EQ(ts_loads.size(), kNumDatabases + 1);
 }
 
-// Override the base test to start a cluster with index backfill enabled.
-class PgLibPqTestIndexBackfill : public PgLibPqTest {
- public:
-  PgLibPqTestIndexBackfill() {
-    more_master_flags.push_back("--ysql_disable_index_backfill=false");
-    more_tserver_flags.push_back("--ysql_disable_index_backfill=false");
-  }
-
-  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
-  }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
-};
-
-// Make sure that backfill works.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillSimple),
-          PgLibPqTestIndexBackfill) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (c char, i int, p point)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('a', 0, '(1, 2)')", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('y', -5, '(0, -2)')", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('b', 100, '(868, 9843)')", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (c ASC)", kTableName));
-
-  // Index scan to verify contents of index table.
-  const std::string query = Format("SELECT * FROM $0 ORDER BY c", kTableName);
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  auto res = ASSERT_RESULT(conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 3);
-  std::array<int, 3> values = {
-    ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-    ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-    ASSERT_RESULT(GetInt32(res.get(), 2, 1)),
-  };
-  ASSERT_EQ(values[0], 0);
-  ASSERT_EQ(values[1], 100);
-  ASSERT_EQ(values[2], -5);
-}
-
-// Make sure that partial indexes work for index backfill.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillPartial),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 7;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(-1, -$1, -1))",
-      kTableName,
-      kNumRows));
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i ASC) WHERE j > -5", kTableName));
-
-  // Index scan to verify contents of index table.
-  {
-    const std::string query = Format("SELECT j FROM $0 WHERE j > -3 ORDER BY i", kTableName);
-    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 2);
-    ASSERT_EQ(PQnfields(res.get()), 1);
-    std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-    };
-    ASSERT_EQ(values[0], -1);
-    ASSERT_EQ(values[1], -2);
-  }
-  {
-    const std::string query = Format(
-        "SELECT i FROM $0 WHERE j > -5 ORDER BY i DESC LIMIT 2",
-        kTableName);
-    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 2);
-    ASSERT_EQ(PQnfields(res.get()), 1);
-    std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-    };
-    ASSERT_EQ(values[0], 4);
-    ASSERT_EQ(values[1], 3);
-  }
-}
-
-// Make sure that expression indexes work for index backfill.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillExpression),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 9;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
-      kTableName,
-      kNumRows));
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 ((j % i))", kTableName));
-
-  // Index scan to verify contents of index table.
-  const std::string query = Format(
-      "SELECT j, i, j % i as mod FROM $0 WHERE j % i = 2 ORDER BY i",
-      kTableName);
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  auto res = ASSERT_RESULT(conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 2);
-  ASSERT_EQ(PQnfields(res.get()), 3);
-  std::array<std::array<int, 3>, 2> values = {{
-    {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 2)),
-    },
-    {
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 2)),
-    },
-  }};
-  ASSERT_EQ(values[0][0], 14);
-  ASSERT_EQ(values[0][1], 4);
-  ASSERT_EQ(values[0][2], 2);
-  ASSERT_EQ(values[1][0], 18);
-  ASSERT_EQ(values[1][1], 8);
-  ASSERT_EQ(values[1][2], 2);
-}
-
-// Make sure that unique indexes work when index backfill is enabled.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillUnique),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 3;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
-      kTableName,
-      kNumRows));
-  // Add row that would make j not unique.
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (99, 11)",
-      kTableName,
-      kNumRows));
-
-  // Create unique index without failure.
-  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
-  // Index scan to verify contents of index table.
-  const std::string query = Format(
-      "SELECT * FROM $0 ORDER BY i",
-      kTableName);
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  auto res = ASSERT_RESULT(conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 4);
-  ASSERT_EQ(PQnfields(res.get()), 2);
-
-  // Create unique index with failure.
-  Status status = conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (j ASC)", kTableName);
-  ASSERT_NOK(status);
-  auto msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("duplicate key value violates unique constraint") != std::string::npos)
-      << status;
-}
-
-// Make sure that indexes created in postgres nested DDL work and skip backfill (optimization).
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillNestedDdl),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 3;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, UNIQUE (j))", kTableName));
-
-  // Make sure that the index create was not multi-stage.
-  std::string table_id =
-      ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
-  std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
-  Synchronizer sync;
-  ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
-  ASSERT_OK(sync.Wait());
-  ASSERT_EQ(table_info->schema.version(), 1);
-
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
-      kTableName,
-      kNumRows));
-
-  // Add row that violates unique constraint on j.
-  Status status = conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (99, 11)",
-      kTableName,
-      kNumRows);
-  ASSERT_NOK(status);
-  auto msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("duplicate key value") != std::string::npos) << status;
-}
-
-// Make sure that drop index works when index backfill is enabled (skips online schema migration for
-// now)
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillDrop),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 5;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kIndexName = "i";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
-      kTableName,
-      kNumRows));
-
-  // Create index.
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
-
-  // Drop index.
-  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
-
-  // Ensure index is not used for scan.
-  const std::string query = Format(
-      "SELECT * FROM $0 ORDER BY i",
-      kTableName);
-  ASSERT_FALSE(ASSERT_RESULT(conn.HasIndexScan(query)));
-}
-
-// Make sure deletes to nonexistent rows look like noops to clients.  This may seem too obvious to
-// necessitate a test, but logic for backfill is special in that it wants nonexistent index deletes
-// to be applied for the backfill process to use them.  This test guards against that logic being
-// implemented incorrectly.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillNonexistentDelete),
-          PgLibPqTestIndexBackfill) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY)", kTableName));
-
-  // Delete to nonexistent row should return no rows.
-  auto res = ASSERT_RESULT(conn.FetchFormat("DELETE FROM $0 WHERE i = 1 RETURNING i", kTableName));
-  ASSERT_EQ(PQntuples(res.get()), 0);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-}
-
-// Make sure that index backfill on large tables backfills all data.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillLarge),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 10000;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-
-  // Insert bunch of rows.
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1))",
-      kTableName,
-      kNumRows));
-
-  // Create index.
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
-
-  // All rows should be in the index.
-  const std::string query = Format(
-      "SELECT COUNT(*) FROM $0 WHERE i > 0",
-      kTableName);
-  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  auto res = ASSERT_RESULT(conn.Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  int actual_num_rows = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
-  ASSERT_EQ(actual_num_rows, kNumRows);
-}
-
-// Make sure that CREATE INDEX NONCONCURRENTLY doesn't use backfill.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillNonconcurrent),
-          PgLibPqTestIndexBackfill) {
-  const std::string kIndexName = "x";
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
-
-  // To determine whether the index uses backfill or not, look at the table schema version before
-  // and after.  We can't look at the DocDB index permissions because
-  // - if backfill is skipped, index_permissions is unset, and the default value is
-  //   INDEX_PERM_READ_WRITE_AND_DELETE
-  // - if backfill is used, index_permissions is INDEX_PERM_READ_WRITE_AND_DELETE
-  // - GetTableSchemaById offers no way to see whether the default value for index permissions is
-  //   set
-  std::shared_ptr<client::YBTableInfo> info = std::make_shared<client::YBTableInfo>();
-  {
-    Synchronizer sync;
-    ASSERT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
-    ASSERT_OK(sync.Wait());
-  }
-  ASSERT_EQ(info->schema.version(), 0);
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX NONCONCURRENTLY $0 ON $1 (i)",
-                               kIndexName,
-                               kTableName));
-
-  // If the index used backfill, it would have incremented the table schema version by two or three:
-  // - add index info with INDEX_PERM_DELETE_ONLY
-  // - update to INDEX_PERM_DO_BACKFILL (as part of issue #6218)
-  // - update to INDEX_PERM_READ_WRITE_AND_DELETE
-  // If the index did not use backfill, it would have incremented the table schema version by one:
-  // - add index info with no DocDB permission (default INDEX_PERM_READ_WRITE_AND_DELETE)
-  // Expect that it did not use backfill.
-  {
-    Synchronizer sync;
-    ASSERT_OK(client->GetTableSchemaById(table_id, info, sync.AsStatusCallback()));
-    ASSERT_OK(sync.Wait());
-  }
-  ASSERT_EQ(info->schema.version(), 1);
-}
-
-// Test simultaneous CREATE INDEX.
-// TODO(jason): update this when closing issue #6269.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(CreateIndexSimultaneously),
-          PgLibPqTestIndexBackfill) {
-  constexpr int kNumRows = 10;
-  constexpr int kNumThreads = 5;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-  const std::string query = Format("SELECT * FROM $0 WHERE i = $1", kTableName, 7);
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1))",
-      kTableName,
-      kNumRows));
-
-  std::vector<std::thread> threads;
-  std::vector<Status> statuses;
-  LOG(INFO) << "Starting threads";
-  for (int i = 0; i < kNumThreads; ++i) {
-    threads.emplace_back([&] {
-      auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-      statuses.emplace_back(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
-    });
-  }
-  LOG(INFO) << "Joining threads";
-  for (auto& thread : threads) {
-    thread.join();
-  }
-
-  LOG(INFO) << "Inspecting statuses";
-  int num_ok = 0;
-  ASSERT_EQ(statuses.size(), kNumThreads);
-  for (auto& status : statuses) {
-    LOG(INFO) << "status: " << status;
-    if (status.ok()) {
-      num_ok++;
-    } else {
-      ASSERT_TRUE(status.IsNetworkError()) << status;
-      const std::string msg = status.message().ToBuffer();
-      ASSERT_TRUE(
-          (msg.find("Catalog Version Mismatch") != std::string::npos)
-          || (msg.find("Conflicts with higher priority transaction") != std::string::npos)
-          || (msg.find("Transaction aborted") != std::string::npos)
-          || (msg.find("Unknown transaction, could be recently aborted") != std::string::npos)
-          || (msg.find("Transaction metadata missing") != std::string::npos))
-        << status.message().ToBuffer();
-    }
-  }
-  ASSERT_EQ(num_ok, 1);
-
-  LOG(INFO) << "Checking postgres schema";
-  {
-    // Check number of indexes.
-    auto res = ASSERT_RESULT(conn.FetchFormat(
-        "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
-    const std::string expected = Format("$0_i_idx", kTableName);
-    ASSERT_EQ(actual, expected);
-
-    // Check whether index is public using index scan.
-    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-  }
-  LOG(INFO) << "Checking DocDB schema";
-  std::vector<TableId> orphaned_docdb_index_ids;
-  {
-    auto client = ASSERT_RESULT(cluster_->CreateClient());
-    std::string table_id =
-        ASSERT_RESULT(GetTableIdByTableName(client.get(), kNamespaceName, kTableName));
-    std::shared_ptr<client::YBTableInfo> table_info = std::make_shared<client::YBTableInfo>();
-    Synchronizer sync;
-    ASSERT_OK(client->GetTableSchemaById(table_id, table_info, sync.AsStatusCallback()));
-    ASSERT_OK(sync.Wait());
-
-    // Check schema version.
-    //   kNumThreads (INDEX_PERM_WRITE_AND_DELETE)
-    // + 1 (INDEX_PERM_READ_WRITE_AND_DELETE)
-    // = kNumThreads + 1
-    // TODO(jason): change this when closing #6218 because DO_BACKFILL permission will add another
-    // schema version.
-    ASSERT_EQ(table_info->schema.version(), kNumThreads + 1);
-
-    // Check number of indexes.
-    ASSERT_EQ(table_info->index_map.size(), kNumThreads);
-
-    // Check index permissions.  Also collect orphaned DocDB indexes.
-    int num_rwd = 0;
-    for (auto& pair : table_info->index_map) {
-      VLOG(1) << "table id: " << pair.first;
-      IndexPermissions perm = pair.second.index_permissions();
-      if (perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE) {
-        num_rwd++;
-      } else {
-        ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_WRITE_AND_DELETE);
-        orphaned_docdb_index_ids.emplace_back(pair.first);
-      }
-    }
-    ASSERT_EQ(num_rwd, 1);
-  }
-
-  LOG(INFO) << "Removing orphaned DocDB indexes";
-  {
-    auto client = ASSERT_RESULT(cluster_->CreateClient());
-    for (TableId& index_id : orphaned_docdb_index_ids) {
-      client::YBTableName indexed_table_name;
-      ASSERT_OK(client->DeleteIndexTable(index_id, &indexed_table_name));
-    }
-  }
-
-  LOG(INFO) << "Checking if index still works";
-  {
-    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn.Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    auto value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, 7);
-  }
-}
-
-// Override the index backfill test to disable transparent retries on cache version mismatch.
-class PgLibPqTestIndexBackfillNoRetry : public PgLibPqTestIndexBackfill {
- public:
-  PgLibPqTestIndexBackfillNoRetry() {
-    more_tserver_flags.push_back("--TEST_ysql_disable_transparent_cache_refresh_retry=true");
-  }
-};
-
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillDropNoRetry),
-          PgLibPqTestIndexBackfillNoRetry) {
-  constexpr int kNumRows = 5;
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kIndexName = "i";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat(
-      "INSERT INTO $0 VALUES (generate_series(1, $1), generate_series(11, 10 + $1))",
-      kTableName,
-      kNumRows));
-
-  // Create index.
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i ASC)", kIndexName, kTableName));
-
-  // Update the table cache entry for the indexed table.
-  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
-
-  // Drop index.
-  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
-
-  // Ensure that there is no schema version mismatch for the indexed table.  This is because the
-  // above `DROP INDEX` should have invalidated the corresponding table cache entry.  (There also
-  // should be no catalog version mismatch because it is updated for the same session after DDL.)
-  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kTableName));
-}
-
-// Override the index backfill test to do alter slowly.
-class PgLibPqTestIndexBackfillAlterSlowly : public PgLibPqTestIndexBackfill {
- public:
-  PgLibPqTestIndexBackfillAlterSlowly() {
-    more_tserver_flags.push_back("--TEST_alter_schema_delay_ms=10000");
-  }
-};
-
-// Test whether IsCreateTableDone works when creating an index with backfill enabled.  See issue
-// #6234.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillIsCreateTableDone),
-          PgLibPqTestIndexBackfillAlterSlowly) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName));
-}
-
-namespace {
-
-Result<bool> IsAtTargetIndexStateFlags(
-    PGConn* conn,
-    const std::string& index_name,
-    const std::map<std::string, bool>& target_index_state_flags) {
-  constexpr int kNumIndexStateFlags = 3;
-
-  // Check target_index_state_flags.
-  SCHECK_EQ(
-      target_index_state_flags.size(),
-      kNumIndexStateFlags,
-      InvalidArgument,
-      Format("$0 should have $1 state flags", "target_index_state_flags", kNumIndexStateFlags));
-  SCHECK(
-      target_index_state_flags.find("indislive") != target_index_state_flags.end(),
-      InvalidArgument,
-      Format("$0 should have $1 state flag", "target_index_state_flags", "indislive"));
-  SCHECK(
-      target_index_state_flags.find("indisready") != target_index_state_flags.end(),
-      InvalidArgument,
-      Format("$0 should have $1 state flag", "target_index_state_flags", "indisready"));
-  SCHECK(
-      target_index_state_flags.find("indisvalid") != target_index_state_flags.end(),
-      InvalidArgument,
-      Format("$0 should have $1 state flag", "target_index_state_flags", "indisvalid"));
-
-  // Get actual index state flags.
-  auto res = VERIFY_RESULT(conn->FetchFormat(
-      "SELECT $0"
-      " FROM pg_class INNER JOIN pg_index ON pg_class.oid = pg_index.indexrelid"
-      " WHERE pg_class.relname = '$1'",
-      JoinKeysIterator(target_index_state_flags.begin(), target_index_state_flags.end(), ", "),
-      index_name));
-  if (PQntuples(res.get()) == 0) {
-    LOG(WARNING) << index_name << " not found in system tables";
-    return false;
-  }
-
-  // Check index state flags.
-  for (const auto& target_index_state_flag : target_index_state_flags) {
-    bool actual_value = VERIFY_RESULT(GetBool(
-        res.get(),
-        0,
-        std::distance(
-            target_index_state_flags.begin(),
-            target_index_state_flags.find(target_index_state_flag.first))));
-    bool expected_value = target_index_state_flag.second;
-    if (actual_value < expected_value) {
-      LOG(INFO) << index_name
-                << " not yet at target index state flag "
-                << target_index_state_flag.first;
-      return false;
-    } else if (actual_value > expected_value) {
-      return STATUS(RuntimeError,
-                    Format("$0 exceeded target index state flag $1",
-                           index_name,
-                           target_index_state_flag.first));
-    }
-  }
-  return true;
-}
-
-CHECKED_STATUS WaitForBackfillStage(
-    PGConn* conn,
-    const std::string& index_name,
-    const MonoDelta& index_state_flags_update_delay) {
-  const MonoTime start_time = MonoTime::Now();
-  const std::map<std::string, bool> index_state_flags{
-    {"indislive", true},
-    {"indisready", true},
-    {"indisvalid", false},
-  };
-
-  LOG(INFO) << "Waiting for pg_index indisready to be true";
-  RETURN_NOT_OK(WaitFor(
-      std::bind(IsAtTargetIndexStateFlags, conn, index_name, index_state_flags),
-      index_state_flags_update_delay * 2,
-      Format("Wait for index state flags to hit target: $0", index_state_flags)));
-
-  LOG(INFO) << "Waiting till (approx) the end of the delay after committing indisready true";
-  SleepFor(
-      (index_state_flags_update_delay * 2)
-      - (MonoTime::Now() - start_time));
-
-  return Status::OK();
-}
-
-} // namespace
-
-// Override the index backfill test to have slower backfill-related operations
-class PgLibPqTestIndexBackfillSlow : public PgLibPqTestIndexBackfill {
- public:
-  PgLibPqTestIndexBackfillSlow() {
-    more_master_flags.push_back("--TEST_slowdown_backfill_alter_table_rpcs_ms=7000");
-    more_tserver_flags.push_back("--TEST_ysql_index_state_flags_update_delay_ms=7000");
-    more_tserver_flags.push_back("--TEST_slowdown_backfill_by_ms=7000");
-  }
-};
-
-// Make sure that read time (and write time) for backfill works.  Simulate this situation:
-//   Session A                                    Session B
-//   --------------------------                   ---------------------------------
-//   CREATE INDEX
-//   - indislive
-//   - indisready
-//   - backfill
-//     - get safe time for read
-//                                                UPDATE a row of the indexed table
-//     - do the actual backfill
-//   - indisvalid
-// The backfill should use the values before update when writing to the index.  The update should
-// write and delete to the index because of permissions.  Since backfill writes with an ancient
-// timestamp, the update should appear to have happened after the backfill.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillReadTime),
-          PgLibPqTestIndexBackfillSlow) {
-  const MonoDelta& kIndexStateFlagsUpdateDelay = MonoDelta::FromMilliseconds(
-      ASSERT_RESULT(CheckedStoi(ASSERT_RESULT(
-        cluster_->tserver_daemons()[0]->GetFlag("TEST_ysql_index_state_flags_update_delay_ms")))));
-  const MonoDelta& kSlowDownBackfillDelay = MonoDelta::FromMilliseconds(
-      ASSERT_RESULT(CheckedStoi(ASSERT_RESULT(
-        cluster_->tserver_daemons()[0]->GetFlag("TEST_slowdown_backfill_by_ms")))));
-  const std::map<std::string, bool> index_state_flags{
-    {"indislive", true},
-    {"indisready", true},
-    {"indisvalid", false},
-  };
-  const std::string kIndexName = "rn_idx";
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "rn";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
-  for (auto pair = std::make_pair(0, 10); pair.first < 6; ++pair.first, ++pair.second) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)",
-                                 kTableName,
-                                 pair.first,
-                                 pair.second));
-  }
-
-  std::vector<std::thread> threads;
-  threads.emplace_back([&] {
-    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
-    {
-      // Index scan to verify contents of index table.
-      const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
-      ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-      auto res = ASSERT_RESULT(conn.Fetch(query));
-      auto lines = PQntuples(res.get());
-      ASSERT_EQ(1, lines);
-      auto columns = PQnfields(res.get());
-      ASSERT_EQ(2, columns);
-      auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-      ASSERT_EQ(key, 3);
-      // Make sure that the update is visible.
-      auto value = ASSERT_RESULT(GetInt32(res.get(), 0, 1));
-      ASSERT_EQ(value, 113);
-    }
-  });
-  threads.emplace_back([&] {
-    ASSERT_OK(WaitForBackfillStage(&conn, kIndexName, kIndexStateFlagsUpdateDelay));
-
-    // Give the backfill stage enough time to get a read time.
-    // TODO(jason): come up with some way to wait until the read time is chosen rather than relying
-    // on a brittle sleep.
-    LOG(INFO) << "Waiting out half the delay of executing backfill so that we're hopefully after "
-              << "getting the safe read time and before executing backfill";
-    SleepFor(kSlowDownBackfillDelay / 2);
-
-    {
-      auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-      LOG(INFO) << "Updating row";
-      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = 3", kTableName));
-      LOG(INFO) << "Done updating row";
-    }
-
-    // It should still be in the backfill stage, hopefully before the actual backfill started.
-    {
-      auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-      ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(&conn, kIndexName, index_state_flags)));
-    }
-  });
-
-  for (auto& thread : threads) {
-    thread.join();
-  }
-}
-
-// Make sure that updates at each stage of multi-stage CREATE INDEX work.  Simulate this situation:
-//   Session A                                    Session B
-//   --------------------------                   ---------------------------------
-//   CREATE INDEX
-//   - indislive
-//                                                UPDATE a row of the indexed table
-//   - indisready
-//                                                UPDATE a row of the indexed table
-//   - indisvalid
-//                                                UPDATE a row of the indexed table
-// Updates should succeed and get written to the index.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillPermissions),
-          PgLibPqTestIndexBackfillSlow) {
-  const auto kIndexStateFlagsWaitTime = 10s;
-  const auto kThreadWaitTime = 60s;
-  const std::array<std::pair<std::map<std::string, bool>, int>, 3> index_state_flags_key_pairs = {
-    std::make_pair(std::map<std::string, bool>{
-        {"indislive", true},
-        {"indisready", false},
-        {"indisvalid", false},
-      }, 2),
-    std::make_pair(std::map<std::string, bool>{
-        {"indislive", true},
-        {"indisready", true},
-        {"indisvalid", false},
-      }, 3),
-    std::make_pair(std::map<std::string, bool>{
-        {"indislive", true},
-        {"indisready", true},
-        {"indisvalid", true},
-      }, 4),
-  };
-  const std::string kIndexName = "rn_idx";
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "rn";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int, j int, PRIMARY KEY (i ASC))", kTableName));
-  for (auto pair = std::make_pair(0, 10); pair.first < 6; ++pair.first, ++pair.second) {
-    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ($1, $2)",
-                                 kTableName,
-                                 pair.first,
-                                 pair.second));
-  }
-
-  std::atomic<int> updates(0);
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([&] {
-    LOG(INFO) << "Begin create thread";
-    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-    ASSERT_OK(conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
-  });
-  thread_holder.AddThreadFunctor([&] {
-    LOG(INFO) << "Begin update thread";
-    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-    for (auto pair : index_state_flags_key_pairs) {
-      std::map<std::string, bool>& index_state_flags = pair.first;
-      int key = pair.second;
-
-      ASSERT_OK(WaitFor(
-          std::bind(IsAtTargetIndexStateFlags, &conn, kIndexName, index_state_flags),
-          kIndexStateFlagsWaitTime * (index_state_flags["indisvalid"] ? 6 : 1),
-          Format("Wait for index state flags to hit target: $0", index_state_flags)));
-      LOG(INFO) << "running UPDATE on i = " << key;
-      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = $1", kTableName, key));
-      LOG(INFO) << "done running UPDATE on i = " << key;
-
-      // Make sure permission didn't change yet.
-      ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(&conn, kIndexName, index_state_flags)));
-      updates++;
-    }
-  });
-
-  thread_holder.WaitAndStop(kThreadWaitTime);
-
-  ASSERT_EQ(updates.load(std::memory_order_acquire), index_state_flags_key_pairs.size());
-
-  for (auto pair : index_state_flags_key_pairs) {
-    int key = pair.second;
-
-    // Verify contents of index table.
-    const std::string query = Format(
-        "WITH j_idx AS (SELECT * FROM $0 ORDER BY j) SELECT j FROM j_idx WHERE i = $1",
-        kTableName,
-        key);
-    ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
-    auto res = ASSERT_RESULT(conn.Fetch(query));
-    int lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
-    int columns = PQnfields(res.get());
-    ASSERT_EQ(1, columns);
-    // Make sure that the update is visible.
-    int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, key + 110);
-  }
-}
-
-// Make sure that writes during CREATE UNIQUE INDEX don't cause unique duplicate row errors to be
-// thrown.  Simulate this situation:
-//   Session A                                    Session B
-//   --------------------------                   ---------------------------------
-//                                                INSERT a row to the indexed table
-//   CREATE UNIQUE INDEX
-//                                                INSERT a row to the indexed table
-//   - indislive
-//                                                INSERT a row to the indexed table
-//   - indisready
-//                                                INSERT a row to the indexed table
-//   - backfill
-//                                                INSERT a row to the indexed table
-//   - indisvalid
-//                                                INSERT a row to the indexed table
-// Particularly pay attention to the insert between indisready and backfill.  The insert
-// should cause a write to go to the index.  Backfill should choose a read time after this write, so
-// it should try to backfill this same row.  Rather than conflicting when we see the row already
-// exists in the index during backfill, check whether the rows match, and don't error if they do.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(CreateUniqueIndexWithOnlineWrites),
-          PgLibPqTestIndexBackfillSlow) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-
-  // Start a thread that continuously inserts distinct values.  The hope is that this would cause
-  // inserts to happen at all permissions.
-  TestThreadHolder thread_holder;
-  thread_holder.AddThreadFunctor([this, kTableName, &stop = thread_holder.stop_flag()] {
-    auto insert_conn = ASSERT_RESULT(Connect());
-    int i = 0;
-    while (!stop.load(std::memory_order_acquire)) {
-      Status status = insert_conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, ++i);
-      if (!status.ok()) {
-        // Schema version mismatches will likely occur when changing index permissions, and we can
-        // just ignore them for the purposes of this test.
-        // TODO(jason): no longer expect these errors after closing issue #3979.
-        ASSERT_TRUE(status.IsNetworkError()) << status;
-        std::string msg = status.message().ToBuffer();
-        ASSERT_TRUE(msg.find("schema version mismatch") != std::string::npos) << status;
-      }
-    }
-  });
-
-  // Create unique index (should not complain about duplicate row).
-  ASSERT_OK(conn.ExecuteFormat("CREATE UNIQUE INDEX ON $0 (i ASC)", kTableName));
-
-  thread_holder.Stop();
-}
-
-// Override the index backfill slow test to have smaller WaitUntilIndexPermissionsAtLeast deadline.
-class PgLibPqTestIndexBackfillSlowSmallClientDeadline : public PgLibPqTestIndexBackfillSlow {
- public:
-  PgLibPqTestIndexBackfillSlowSmallClientDeadline() {
-    more_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=3000");
-  }
-};
-
-// Make sure that the postgres timeout when waiting for backfill to finish causes the index to not
-// become public.  Simulate this situation:
-//   CREATE INDEX
-//   - indislive
-//   - indisready
-//   - backfill
-//     - get safe time for read
-//   - (timeout)
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillWaitBackfillTimeout),
-          PgLibPqTestIndexBackfillSlowSmallClientDeadline) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
-  ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-  const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-      << status;
-
-  // Make sure that the index is not public.
-  ASSERT_FALSE(ASSERT_RESULT(conn.HasIndexScan(Format(
-      "SELECT * FROM $0 WHERE i = 1",
-      kTableName))));
-}
-
-// Make sure that you can still drop an index that failed to fully create.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillDropAfterFail),
-          PgLibPqTestIndexBackfillSlowSmallClientDeadline) {
-  const std::string kIndexName = "x";
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-  ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-  const std::string msg = status.message().ToBuffer();
-  ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-      << status;
-
-  // Make sure that the index exists in DocDB metadata.
-  auto tables = ASSERT_RESULT(client->ListTables());
-  bool found = false;
-  for (const auto& table : tables) {
-    if (table.namespace_name() == kNamespaceName && table.table_name() == kIndexName) {
-      found = true;
-      break;
-    }
-  }
-  ASSERT_TRUE(found);
-
-  ASSERT_OK(conn.ExecuteFormat("DROP INDEX $0", kIndexName));
-
-  // Make sure that the index is gone.
-  // Check postgres metadata.
-  auto res = ASSERT_RESULT(conn.FetchFormat(
-      "SELECT COUNT(*) FROM pg_class WHERE relname = '$0'", kIndexName));
-  int value = ASSERT_RESULT(GetInt64(res.get(), 0, 0));
-  ASSERT_EQ(value, 0);
-  // Check DocDB metadata.
-  tables = ASSERT_RESULT(client->ListTables());
-  for (const auto& table : tables) {
-    ASSERT_FALSE(table.namespace_name() == kNamespaceName && table.table_name() == kIndexName);
-  }
-}
-
-// Override the index backfill slow test to have more than one master and 30s BackfillIndex client
-// timeout.
-class PgLibPqTestIndexBackfillSlowMultiMaster : public PgLibPqTestIndexBackfillSlow {
- public:
-  PgLibPqTestIndexBackfillSlowMultiMaster() {
-    more_tserver_flags.push_back("--backfill_index_client_rpc_timeout_ms=30000");
-  }
-
-  int GetNumMasters() const override { return 3; }
-};
-
-// Make sure that master leader change during backfill causes the index to not become public and
-// doesn't cause any weird hangups or other issues.  Simulate this situation:
-//   Thread A                                     Thread B
-//   --------------------------                   ----------------------
-//   CREATE INDEX
-//   - indislive
-//   - indisready
-//   - backfill
-//     - get safe time for read
-//                                                master leader stepdown
-// TODO(jason): update this test when handling master leader changes during backfill (issue #6218).
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillMasterLeaderStepdown),
-          PgLibPqTestIndexBackfillSlowMultiMaster) {
-  const MonoDelta& kIndexStateFlagsUpdateDelay = MonoDelta::FromMilliseconds(
-      ASSERT_RESULT(CheckedStoi(ASSERT_RESULT(
-        cluster_->tserver_daemons()[0]->GetFlag("TEST_ysql_index_state_flags_update_delay_ms")))));
-  const MonoDelta& kSlowDownBackfillDelay = MonoDelta::FromMilliseconds(
-      ASSERT_RESULT(CheckedStoi(ASSERT_RESULT(
-        cluster_->tserver_daemons()[0]->GetFlag("TEST_slowdown_backfill_by_ms")))));
-  const std::map<std::string, bool> index_state_flags{
-    {"indislive", true},
-    {"indisready", true},
-    {"indisvalid", false},
-  };
-  const std::string kIndexName = "x";
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-
-  std::thread create_index_thread([&] {
-    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-    // The CREATE INDEX should get master leader change during backfill so that its
-    // WaitUntilIndexPermissionsAtLeast call starts querying the new leader.  Since the new leader
-    // will be inactive at the WRITE_AND_DELETE docdb permission, it will wait until the deadline,
-    // which is set to 30s.
-    Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-    ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-    const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-        << status;
-  });
-
-  ASSERT_OK(WaitForBackfillStage(&conn, kIndexName, kIndexStateFlagsUpdateDelay));
-
-  LOG(INFO) << "Waiting out half the delay of executing backfill";
-  SleepFor(kSlowDownBackfillDelay / 2);
-
-  LOG(INFO) << "Doing master leader stepdown";
-  tserver::TabletServerErrorPB::Code error_code;
-  ASSERT_OK(cluster_->StepDownMasterLeader(&error_code));
-
-  // It should still be in the backfill stage.
-  ASSERT_TRUE(ASSERT_RESULT(IsAtTargetIndexStateFlags(&conn, kIndexName, index_state_flags)));
-
-  LOG(INFO) << "Waiting for create index thread to complete";
-  create_index_thread.join();
-}
-
-// Make sure that DROP INDEX during backfill is handled well.  Simulate this situation:
-//   Thread A                                     Thread B
-//   --------------------------                   ----------------------
-//   CREATE INDEX
-//   - indislive
-//   - indisready
-//   - backfill
-//     - get safe time for read
-//                                                DROP INDEX
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillDropWhileBackfilling),
-          PgLibPqTestIndexBackfillSlowMultiMaster) {
-  const std::string kIndexName = "x";
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-
-  std::thread create_index_thread([&] {
-    auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-    Status status = conn.ExecuteFormat("CREATE INDEX $0 ON $1 (i)", kIndexName, kTableName);
-    // Expect timeout because
-    // DROP INDEX is currently not online and removes the index info from the indexed table
-    // ==> the WaitUntilIndexPermissionsAtLeast will keep failing and retrying GetTableSchema on the
-    // index.
-    ASSERT_TRUE(status.IsNetworkError()) << "Got " << status;
-    const std::string msg = status.message().ToBuffer();
-    ASSERT_TRUE(msg.find("Timed out waiting for Backfill Index") != std::string::npos)
-        << status;
-  });
-
-  // Sleep for
-  //   7s (delay after committing pg_index indislive)
-  // + 7s (delay after committing pg_index indisready)
-  // + 3s (to be somewhere in the middle of the 7s delay before doing backfill)
-  // = 17s
-  LOG(INFO) << "Waiting 17s";
-  std::this_thread::sleep_for(17s);
-  LOG(INFO) << "Done waiting 17s";
-
-  auto conn2 = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-  ASSERT_OK(conn2.ExecuteFormat("DROP INDEX $0", kIndexName));
-
-  LOG(INFO) << "Waiting for create index thread to complete";
-  create_index_thread.join();
-}
-
-// Override the index backfill test to enable authentication.  Flags taken from
-// <https://docs.yugabyte.com/latest/secure/authentication/password-authentication/> and modified to
-// allow postgres role unconditionally.
-class PgLibPqTestIndexBackfillAuth : public PgLibPqTestIndexBackfill {
- public:
-  PgLibPqTestIndexBackfillAuth() {
-    more_tserver_flags.push_back("--ysql_hba_conf="
-                                 "host yugabyte postgres 0.0.0.0/0 trust,"
-                                 "host yugabyte postgres ::0/0 trust,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 md5,"
-                                 "host yugabyte yugabyte 0.0.0.0/0 scram-sha-256,"
-                                 "host yugabyte yugabyte ::0/0 md5,"
-                                 "host yugabyte yugabyte ::0/0 scram-sha-256");
-    more_tserver_flags.push_back("--ysql_pg_conf=password_encryption=scram-sha-256");
-  }
-};
-
-// Test backfill on clusters where the yugabyte role has authentication enabled.
-TEST_F_EX(PgLibPqTest,
-          YB_DISABLE_TEST_IN_TSAN(BackfillAuth),
-          PgLibPqTestIndexBackfillAuth) {
-  const std::string kNamespaceName = "yugabyte";
-  const std::string kTableName = "t";
-
-  auto conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
-  Status status = conn.ExecuteFormat("CREATE INDEX ON $0 (i)", kTableName);
-
-// TODO(jason): expect success when closing issue #5324.
-  ASSERT_TRUE(status.IsNetworkError()) << status;
-  ASSERT_TRUE(status.message().ToBuffer().find(
-      "backfill query couldn't be sent") != std::string::npos) << status;
-}
-
 // Override the base test to start a cluster with transparent retries on cache version mismatch
 // disabled.
 class PgLibPqTestNoRetry : public PgLibPqTest {
  public:
-  PgLibPqTestNoRetry() {
-    more_tserver_flags.push_back("--TEST_ysql_disable_transparent_cache_refresh_retry=true");
-  }
-
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
-    options->extra_master_flags.insert(
-        std::end(options->extra_master_flags),
-        std::begin(more_master_flags),
-        std::end(more_master_flags));
-    options->extra_tserver_flags.insert(
-        std::end(options->extra_tserver_flags),
-        std::begin(more_tserver_flags),
-        std::end(more_tserver_flags));
+    options->extra_tserver_flags.push_back(
+        "--TEST_ysql_disable_transparent_cache_refresh_retry=true");
   }
-
- protected:
-  std::vector<std::string> more_master_flags;
-  std::vector<std::string> more_tserver_flags;
 };
 
 // This test is like "TestPgCacheConsistency#testVersionMismatchWithFailedRetry".  That one gets
@@ -2945,8 +1860,8 @@ void PgLibPqTest::TestCacheRefreshRetry(const bool is_retry_disabled) {
   const std::string kTableName = "t";
   int num_successes = 0;
   std::array<PGConn, 2> conns = {
-    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
-    ASSERT_RESULT(ConnectToDB(kNamespaceName)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
+    ASSERT_RESULT(ConnectToDB(kNamespaceName, true /* simple_query_protocol */)),
   };
 
   ASSERT_OK(conns[0].ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
@@ -3095,7 +2010,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutGC)) {
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  // Create Table: will timeout because the admin setting is lower than the DB create latency.
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
@@ -3126,7 +2041,7 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
   NamespaceName test_name = "test_pgsql_table";
   auto client = ASSERT_RESULT(cluster_->CreateClient());
 
-  // Create Database: will timeout because the admin setting is lower than the DB create latency.
+  // Create Table: will timeout because the admin setting is lower than the DB create latency.
   {
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_NOK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
@@ -3161,6 +2076,267 @@ TEST_F(PgLibPqTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestTableTimeoutAndResta
     WARN_NOT_OK(ResultToStatus(ret), "");
     return ret.ok() && ret.get() == false;
   }, MonoDelta::FromSeconds(20), "Verify Table was removed by Transaction GC"));
+}
+
+class PgLibPqIndexTableTimeoutTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_user_ddl_operation_timeout_sec=10");
+  }
+};
+
+TEST_F(PgLibPqIndexTableTimeoutTest, YB_DISABLE_TEST_IN_TSAN(TestIndexTableTimeoutGC)) {
+  const string kDatabaseName ="yugabyte";
+  NamespaceName test_name = "test_pgsql_table";
+  NamespaceName test_name_idx = test_name + "_idx";
+
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  // Lower the delays so we successfully create this first table.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "10"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "0"));
+
+  // Create Table that Index will be set on.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.Execute("CREATE TABLE " + test_name + " (key INT PRIMARY KEY)"));
+  }
+
+  // After successfully creating the first table, set to flags similar to: PgLibPqTableTimeoutTest.
+  ASSERT_OK(cluster_->SetFlagOnMasters("ysql_transaction_bg_task_wait_ms", "13000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_simulate_slow_table_create_secs", "12"));
+
+  // Create Index: will timeout because the admin setting is lower than the DB create latency.
+  {
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_NOK(conn.Execute("CREATE INDEX " + test_name_idx + " ON " + test_name + "(key)"));
+  }
+
+  // Wait for DocDB Table creation, even though it will fail in PG layer.
+  // 'ysql_transaction_bg_task_wait_ms' setting ensures we can finish this before the GC.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    LOG(INFO) << "Requesting TableExists";
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == true;
+  }, MonoDelta::FromSeconds(40), "Verify Index Table was created in DocDB"));
+
+  // DocDB will notice the PG layer failure because the transaction aborts.
+  // Confirm that DocDB async deletes the namespace.
+  ASSERT_OK(LoggedWaitFor([&]() -> Result<bool> {
+    auto ret = client->TableExists(
+        client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, test_name_idx));
+    WARN_NOT_OK(ResultToStatus(ret), "");
+    return ret.ok() && ret.get() == false;
+  }, MonoDelta::FromSeconds(40), "Verify Index Table was removed by Transaction GC"));
+}
+
+class PgLibPqTestEnumType: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--TEST_do_not_add_enum_sort_order=true");
+  }
+};
+
+// Make sure that enum type backfill works.
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(EnumType),
+          PgLibPqTestEnumType) {
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  auto conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TYPE $0 as enum('b', 'e', 'f', 'c', 'a', 'd')", kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('a')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('b')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('c')", kTableName));
+
+  // Do table scan to verify contents the table with an ORDER BY clause. This
+  // ensures that old enum values which did not have sort order can be read back,
+  // sorted and displayed correctly.
+  const std::string query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "c");
+  ASSERT_EQ(values[2], "a");
+
+  // Now alter the gflag so any new values will have sort order added.
+  ASSERT_OK(cluster_->SetFlagOnTServers(
+              "TEST_do_not_add_enum_sort_order", "false"));
+
+  // Disconnect from the database so we don't have a case where the
+  // postmaster dies while clients are still connected.
+  conn = nullptr;
+
+  // For each tablet server, kill the corresponding PostgreSQL process.
+  // A new PostgreSQL process will be respawned by the tablet server and
+  // inherit the new --TEST_do_not_add_enum_sort_order flag from the tablet
+  // server.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    ExternalTabletServer* ts = cluster_->tablet_server(i);
+    const string pg_pid_file = JoinPathSegments(ts->GetRootDir(), "pg_data",
+                                                "postmaster.pid");
+
+    LOG(INFO) << "pg_pid_file: " << pg_pid_file;
+    ASSERT_TRUE(Env::Default()->FileExists(pg_pid_file));
+    std::ifstream pg_pid_in;
+    pg_pid_in.open(pg_pid_file, std::ios_base::in);
+    ASSERT_FALSE(pg_pid_in.eof());
+    pid_t pg_pid = 0;
+    pg_pid_in >> pg_pid;
+    ASSERT_GT(pg_pid, 0);
+    LOG(INFO) << "Killing PostgresSQL process: " << pg_pid;
+    ASSERT_EQ(kill(pg_pid, SIGKILL), 0);
+  }
+
+  // Reconnect to the database after the new PostgreSQL starts.
+  conn = std::make_unique<PGConn>(ASSERT_RESULT(ConnectToDB(kDatabaseName)));
+
+  // Insert three more rows with --TEST_do_not_add_enum_sort_order=false.
+  // The new enum values will have sort order added.
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('d')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('e')", kTableName));
+  ASSERT_OK(conn->ExecuteFormat("INSERT INTO $0 VALUES ('f')", kTableName));
+
+  // Do table scan again to verify contents the table with an ORDER BY clause.
+  // This ensures that old enum values which did not have sort order, mixed
+  // with new enum values which have sort order, can be read back, sorted and
+  // displayed correctly.
+  ASSERT_FALSE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn->ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify contents of index table.
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query)));
+  res = ASSERT_RESULT(conn->Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 6);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+    ASSERT_RESULT(GetString(res.get(), 3, 0)),
+    ASSERT_RESULT(GetString(res.get(), 4, 0)),
+    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+  };
+  ASSERT_EQ(values[0], "b");
+  ASSERT_EQ(values[1], "e");
+  ASSERT_EQ(values[2], "f");
+  ASSERT_EQ(values[3], "c");
+  ASSERT_EQ(values[4], "a");
+  ASSERT_EQ(values[5], "d");
+
+  // Test where clause.
+  const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
+  res = ASSERT_RESULT(conn->Fetch(query2));
+  ASSERT_EQ(PQntuples(res.get()), 1);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
+  ASSERT_EQ(value, "b");
+}
+
+// Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
+// when extended to Datum type (unsigned long), the sign-bit is extended so that the high 32-bit
+// is ffffffff. This caused unexpected assertion failures and errors.
+class PgLibPqLargeOidTest: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+      Format("--TEST_ysql_oid_prefetch_adjustment=$0", kOidAdjustment));
+  }
+  const Oid kOidAdjustment = 2147483648U - kPgFirstNormalObjectId; // 2^31 - 16384
+};
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(LargeOid),
+          PgLibPqLargeOidTest) {
+  // Test large OID with enum type which had Postgres Assert failure.
+  const string kDatabaseName ="yugabyte";
+  const string kTableName ="enum_table";
+  const string kEnumTypeName ="enum_type";
+  PGConn conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.ExecuteFormat("CREATE TYPE $0 as enum('a', 'c')", kEnumTypeName));
+  // Do ALTER TYPE to ensure we correctly put sort order as the high 32-bit after clearing
+  // the signed extended ffffffff. The following index scan would yield wrong order if we
+  // left ffffffff in the high 32-bit.
+  ASSERT_OK(conn.ExecuteFormat("ALTER TYPE $0 ADD VALUE 'b' BEFORE 'c'", kEnumTypeName));
+  std::string query = "SELECT oid FROM pg_enum";
+  PGResultPtr res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<int32> enum_oids = {
+    ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
+    ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+    ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+  };
+  // Ensure that we do see large OIDs in pg_enum table.
+  LOG(INFO) << "enum_oids: " << (Oid)enum_oids[0] << ","
+            << (Oid)enum_oids[1] << "," << (Oid)enum_oids[2];
+  ASSERT_GT((Oid)enum_oids[0], kOidAdjustment);
+  ASSERT_GT((Oid)enum_oids[1], kOidAdjustment);
+  ASSERT_GT((Oid)enum_oids[2], kOidAdjustment);
+
+  // Create a table using the enum type and insert a few rows.
+  ASSERT_OK(conn.ExecuteFormat(
+    "CREATE TABLE $0 (id $1)",
+    kTableName,
+    kEnumTypeName));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES ('a'), ('b'), ('c')", kTableName));
+
+  // Create an index on the enum table column.
+  ASSERT_OK(conn.ExecuteFormat("CREATE INDEX ON $0 (id ASC)", kTableName));
+
+  // Index only scan to verify that with large OIDs, the contents of index table
+  // is still correct. This also triggers index backfill statement, which used to
+  // fail on large oid such as:
+  // BACKFILL INDEX 2147500041 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
+  // We fix the syntax error by rewriting it to
+  // BACKFILL INDEX -2147467255 WITH x'0880011a00' READ TIME 6725053491126669312 PARTITION x'5555';
+  // Internally, -2147467255 will be reinterpreted as OID 2147500041 which is the OID of the index.
+  query = Format("SELECT * FROM $0 ORDER BY id", kTableName);
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query)));
+  res = ASSERT_RESULT(conn.Fetch(query));
+  ASSERT_EQ(PQntuples(res.get()), 3);
+  ASSERT_EQ(PQnfields(res.get()), 1);
+  std::vector<string> enum_values = {
+    ASSERT_RESULT(GetString(res.get(), 0, 0)),
+    ASSERT_RESULT(GetString(res.get(), 1, 0)),
+    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  };
+  ASSERT_EQ(enum_values[0], "a");
+  ASSERT_EQ(enum_values[1], "b");
+  ASSERT_EQ(enum_values[2], "c");
 }
 
 namespace {
@@ -3208,7 +2384,7 @@ class CoordinatedRunner {
 
 bool RetryableError(const Status& status) {
   const auto msg = status.message().ToBuffer();
-  const std::string expected_errors[] = {"Try Again",
+  const std::string expected_errors[] = {"Try again",
                                          "Catalog Version Mismatch",
                                          "Restart read required at",
                                          "schema version mismatch for table"};
@@ -3246,6 +2422,293 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
   std::this_thread::sleep_for(10s);
   runner.Stop();
   ASSERT_FALSE(runner.HasError());
+}
+
+TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(CollationRangePresplit)) {
+  const string kDatabaseName ="yugabyte";
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute("CREATE TABLE collrange(a text COLLATE \"en-US-x-icu\", "
+                         "PRIMARY KEY(a ASC)) SPLIT AT VALUES (('100'), ('200'))"));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, "collrange"));
+
+  // Validate that number of tablets created is 3.
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_EQ(tablets.size(), 3);
+  // Partition key length of plain encoded '100' or '200'.
+  const size_t partition_key_length = 7;
+  // When a text value is collation encoded, we need at least 3 extra bytes.
+  const size_t min_collation_extra_bytes = 3;
+  for (const auto& tablet : tablets) {
+    ASSERT_TRUE(tablet.has_partition());
+    auto partition_start = tablet.partition().partition_key_start();
+    auto partition_end = tablet.partition().partition_key_end();
+    LOG(INFO) << "partition_start: " << b2a_hex(partition_start)
+              << ", partition_end: " << b2a_hex(partition_end);
+    ASSERT_TRUE(partition_start.empty() ||
+                partition_start.size() >= partition_key_length + min_collation_extra_bytes);
+    ASSERT_TRUE(partition_end.empty() ||
+                partition_end.size() >= partition_key_length + min_collation_extra_bytes);
+  }
+}
+
+// The motive of this test is to prove that when a postgres backend crashes
+// while possessing an LWLock, the postmaster will kill all postgres backends
+// and would perform a restart.
+// TEST_lwlock_crash_after_acquire_lock_pg_stat_statements_reset when set true
+// will crash a postgres backend after acquiring a LWLock. Specifically in this
+// example, when pg_stat_statements_reset() function is called when this flag
+// is set, it crashes after acquiring a lock on pgss->lock. This causes the
+// postmaster to terminate all the connections. Hence, the SELECT 1 that is
+// executed by conn2 also fails.
+class PgLibPqYSQLBackendCrash: public PgLibPqTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back(
+        Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+  }
+
+ protected:
+  const std::string expected_oom_score = "123";
+};
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestLWPgBackendKillAfterLWLockAcquire),
+          PgLibPqYSQLBackendCrash) {
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_NOK(conn1.FetchFormat("SELECT pg_stat_statements_reset()"));
+  ASSERT_NOK(conn2.FetchFormat("SELECT 1"));
+}
+
+#ifdef __linux__
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestOomScoreAdjPGBackend),
+          PgLibPqYSQLBackendCrash) {
+
+  auto conn = ASSERT_RESULT(Connect());
+  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
+
+  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_oom_score);
+}
+#endif
+
+class PgLibPqCatalogVersionTest : public PgLibPqTest {
+ public:
+  struct YsqlCatalogVersion {
+    uint32 db_oid;
+    uint64 current_version;
+    uint64 last_breaking_version;
+    std::string ToString() const {
+      return Format("($0, $1, $2)", db_oid, current_version, last_breaking_version);
+    }
+  };
+  typedef std::unordered_map<uint32, YsqlCatalogVersion> CatalogVersionMap;
+
+  // Return a CatalogVersionMap by making a query of the pg_yb_catalog_version table.
+  CatalogVersionMap GetCatalogVersionMap(PGConn* conn) {
+    CatalogVersionMap catalog_version_map;
+    auto res = CHECK_RESULT(conn->Fetch("SELECT * FROM pg_yb_catalog_version"));
+    auto lines = PQntuples(res.get());
+    CHECK_GT(lines, 0);
+    auto columns = PQnfields(res.get());
+    CHECK_EQ(columns, 3);
+    for (int i = 0; i != lines; ++i) {
+      uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), i, 0)));
+      uint64 current_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 1)));
+      uint64 last_breaking_version = static_cast<uint64>(CHECK_RESULT(GetInt64(res.get(), i, 2)));
+      catalog_version_map.emplace(
+          db_oid, YsqlCatalogVersion{db_oid, current_version, last_breaking_version});
+    }
+
+    // Log the latest catalog version map we just fetched.
+    std::string output;
+    for (const auto& it : catalog_version_map) {
+      if (!output.empty()) {
+        output += ", ";
+      }
+      output += it.second.ToString();
+    }
+    LOG(INFO) << "Catalog version map: " << output;
+    return catalog_version_map;
+  }
+
+  uint32 GetDatabaseOid(PGConn* conn, const string& db_name) {
+    auto res = CHECK_RESULT(conn->FetchFormat(
+        "SELECT oid FROM pg_database WHERE datname = '$0'", db_name));
+    auto lines = PQntuples(res.get());
+    CHECK_EQ(lines, 1) << db_name;
+    auto columns = PQnfields(res.get());
+    CHECK_EQ(columns, 1) << db_name;
+    uint32 db_oid = static_cast<uint32>(CHECK_RESULT(GetInt32(res.get(), 0, 0)));
+    return db_oid;
+  }
+
+  void AssertSameCatalogVersion(const YsqlCatalogVersion& v1, const YsqlCatalogVersion& v2) {
+    ASSERT_EQ(v1.db_oid, v2.db_oid);
+    ASSERT_EQ(v1.current_version, v2.current_version);
+    ASSERT_EQ(v1.last_breaking_version, v2.last_breaking_version);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion),
+          PgLibPqCatalogVersionTest) {
+  const string kYugabyteDatabase = "yugabyte";
+  const string kTestDatabase = "test_db";
+
+  // Prepare the table pg_yb_catalog_version to have one row per database.
+  // The pg_yb_catalog_version row for a database is inserted at CREATE DATABATE time
+  // when the gflag --TEST_enable_db_catalog_version_mode is true. It is expected for
+  // users to add the rows for existing databases manually. If we change to always
+  // insert a row into pg_yb_catalog_version at CREATE DATABATE time regardless of
+  // the value of --TEST_enable_db_catalog_version_mode, then a new YSQL upgrade
+  // migration will take care of adding rows for existing databases.
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  LOG(INFO) << "Preparing pg_yb_catalog_version to have one row per database";
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+  ASSERT_OK(conn_yugabyte.Execute("INSERT INTO pg_catalog.pg_yb_catalog_version "
+                                  "SELECT oid, 1, 1 from pg_catalog.pg_database where oid != 1"));
+
+  LOG(INFO) << "Restart the cluster and turn on --TEST_enable_db_catalog_version_mode";
+  cluster_->Shutdown();
+  for (size_t i = 0; i != cluster_->num_masters(); ++i) {
+    cluster_->master(i)->mutable_flags()->push_back("--TEST_enable_db_catalog_version_mode=true");
+  }
+  for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
+    cluster_->tablet_server(i)->mutable_flags()->push_back(
+        "--TEST_enable_db_catalog_version_mode=true");
+  }
+  ASSERT_OK(cluster_->Restart());
+
+  LOG(INFO) << "Connects to database 'yugabyte' on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+
+  // Get the initial catalog version map.
+  auto map = GetCatalogVersionMap(&conn_yugabyte);
+  int initial_row_count = static_cast<int>(map.size());
+  ASSERT_GT(initial_row_count, 0);
+
+  // The initial version for every database is (1, 1).
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Create a new database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // There should be a new row in pg_yb_catalog_version for the newly created database.
+  const uint32 new_db_oid = GetDatabaseOid(&conn_yugabyte, kTestDatabase);
+  auto it = map.find(new_db_oid);
+  ASSERT_NE(it, map.end());
+
+  // The initial version for the new database is (1, 1). All others also remain (1, 1).
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Make a new connection to a different node at index 1";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_test = ASSERT_RESULT(ConnectToDB(kTestDatabase));
+
+  LOG(INFO) << "Create a table";
+  ASSERT_OK(conn_test.ExecuteFormat("CREATE TABLE t(id int)"));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  // Should still have the same number of rows in pg_yb_catalog_version.
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // The above create table statement does not cause catalog version to change.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+  }
+
+  LOG(INFO) << "Read the table from 'conn_test'";
+  ASSERT_OK(conn_test.Fetch("SELECT * FROM t"));
+
+  LOG(INFO) << "Drop the table from 'conn_test'";
+  ASSERT_OK(conn_test.ExecuteFormat("DROP TABLE t"));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == new_db_oid) {
+      // We should have incremented the row for 'new_db_oid'.
+      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  LOG(INFO) << "Execute a DDL statement that causes a breaking catalog change";
+  ASSERT_OK(conn_test.Execute("REVOKE ALL ON SCHEMA public FROM public"));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count + 1);
+
+  // Under --TEST_enable_db_catalog_version_mode=true, only the row for 'new_db_oid' is updated.
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == new_db_oid) {
+      // We should have incremented the row for 'new_db_oid', including both the current version
+      // and the last breaking version because REVOKE is a DDL statement that causes a breaking
+      // catalog change.
+      AssertSameCatalogVersion(it.second, {current_db_oid, 3, 3});
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  // Even though 'conn_test' is still accessing 'test_db' through node at index 1, we
+  // can still drop it from 'conn_yugabyte'.
+  LOG(INFO) << "Drop the new database from 'conn_yugabyte'";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("DROP DATABASE $0", kTestDatabase));
+
+  LOG(INFO) << "Refresh the catalog version map";
+  // The row for 'new_db_oid' should be deleted.
+  map = GetCatalogVersionMap(&conn_yugabyte);
+  ASSERT_EQ(map.size(), initial_row_count);
+
+  // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
+  // was performed from 'conn_yugabyte'.
+  const uint32 yugabyte_db_oid = GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase);
+  for (const auto& it : map) {
+    const uint32 current_db_oid = it.first;
+    if (current_db_oid == yugabyte_db_oid) {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 2, 1});
+    } else if (current_db_oid == new_db_oid) {
+      ASSERT_TRUE(false) << "Failed to delete the row for " << new_db_oid;
+    } else {
+      AssertSameCatalogVersion(it.second, {current_db_oid, 1, 1});
+    }
+  }
+
+  // After the test database is dropped, 'conn_test' should no longer succeed.
+  LOG(INFO) << "Read the table from 'conn_test'";
+  ASSERT_NOK(conn_test.Fetch("SELECT * FROM t"));
 }
 
 } // namespace pgwrapper

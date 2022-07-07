@@ -1,25 +1,26 @@
 package com.yugabyte.yw.commissioner;
 
 import com.yugabyte.yw.models.TaskInfo;
+import java.util.ArrayList;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * Class that encapsulates the user task details.
- */
+/** Class that encapsulates the user task details. */
 public class UserTaskDetails {
   public static final Logger LOG = LoggerFactory.getLogger(UserTaskDetails.class);
 
   // The various groupings of user facing subtasks.
   public enum SubTaskGroupType {
+    // Used for parent tasks which could have own details/errors. Only for UI/API
+    // purposes, not stored in DB.
+    Preparation,
+
     // Ignore this subtask and do not display it to the user.
     Invalid,
 
     // Perform preflight checks to determine if the node is ready to be configured or provisioned.
-    PreflightChecks(true),
+    PreflightChecks,
 
     // Deploying machines in the desired cloud, fetching information (ip address, etc) of these
     // newly deployed machines, etc.
@@ -39,6 +40,12 @@ public class UserTaskDetails {
     // placement info, wait for the tservers to start up, etc.
     ConfigureUniverse,
 
+    // Increasing disk size
+    ResizingDisk,
+
+    // Change instance type
+    ChangeInstanceType,
+
     // Migrating data from one set of nodes to another.
     WaitForDataMigration,
 
@@ -54,8 +61,14 @@ public class UserTaskDetails {
     // Bootstrapping Region
     BootstrappingRegion,
 
+    // Bootstrapping a source universe to set up xCluster replication
+    BootstrappingProducer,
+
     // Creating Access Key
     CreateAccessKey,
+
+    // Rotate access key to all nodes of a universe
+    RotateAccessKey,
 
     // Initializing Cloud Metadata
     InitializeCloudMetadata,
@@ -65,6 +78,9 @@ public class UserTaskDetails {
 
     // Creating Table
     CreatingTable,
+
+    // Creating Tablespaces
+    CreatingTablespaces,
 
     // Importing Data
     ImportingData,
@@ -77,6 +93,12 @@ public class UserTaskDetails {
 
     // Starting Node
     StartingNode,
+
+    // Pausing universe
+    PauseUniverse,
+
+    // Resuming universe
+    ResumeUniverse,
 
     // Start master and tserver processes on a node
     StartingNodeProcesses,
@@ -96,11 +118,20 @@ public class UserTaskDetails {
     // Deleting Table
     DeletingTable,
 
+    // Deleting Backup
+    DeletingBackup,
+
+    // Creating a backup
+    CreatingBackup,
+
     // Creating Table Backup
     CreatingTableBackup,
 
     // Restoring Table Backup
     RestoringTableBackup,
+
+    // Restoring Backup
+    RestoringBackup,
 
     // Create Namespace for Kubectl.
     CreateNamespace,
@@ -145,21 +176,22 @@ public class UserTaskDetails {
     KubernetesInitYSQL,
 
     // Start master process on a node
-    StartingMasterProcess;
+    StartingMasterProcess,
 
-    private boolean alwaysRunAll;
+    // Rotate Node Certs.
+    RotatingCert,
 
-    SubTaskGroupType() {
-      this.alwaysRunAll = false;
-    }
+    // Upgrade to Systemd.
+    SystemdUpgrade,
 
-    SubTaskGroupType(boolean alwaysRunAll) {
-      this.alwaysRunAll = alwaysRunAll;
-    }
+    // Add certificates and toggle TLS gflags
+    ToggleTls,
 
-    public boolean getAlwaysRunAll() {
-      return this.alwaysRunAll;
-    }
+    // Rebooting the node.
+    RebootingNode,
+
+    // Running custom hooks
+    RunningHooks;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -169,15 +201,21 @@ public class UserTaskDetails {
     String title;
     String description;
     switch (subTaskGroupType) {
+      case Preparation:
+        title = "Action preparation";
+        description = "Preparing to execute a selected action.";
+        break;
       case PreflightChecks:
         title = "Preflight Checks";
-        description = "Perform preflight checks to determine if node is ready" +
-          " to be provisioned/configured.";
-          break;
+        description =
+            "Perform preflight checks to determine if node is ready"
+                + " to be provisioned/configured.";
+        break;
       case Provisioning:
         title = "Provisioning";
-        description = "Deploying machines of the required config into the desired cloud and" +
-          " fetching information about them.";
+        description =
+            "Deploying machines of the required config into the desired cloud and"
+                + " fetching information about them.";
         break;
       case UpgradingSoftware:
         title = "Upgrading software";
@@ -185,23 +223,39 @@ public class UserTaskDetails {
         break;
       case InstallingSoftware:
         title = "Installing software";
-        description = "Configuring mount points, setting up the various directories and installing" +
-          " the YugaByte software on the newly provisioned nodes.";
+        description =
+            "Configuring mount points, setting up the various directories and installing"
+                + " the YugaByte software on the newly provisioned nodes.";
         break;
       case ConfigureUniverse:
         title = "Configuring the universe";
-        description = "Creating and populating the universe config, waiting for the various" +
-          " machines to discover one another.";
+        description =
+            "Creating and populating the universe config, waiting for the various"
+                + " machines to discover one another.";
+        break;
+      case ResizingDisk:
+        title = "Increasing disk size";
+        description = "Increasing disk size on live nodes to the size intended by the user";
+        break;
+      case SystemdUpgrade:
+        title = "Upgrading to Systemd";
+        description = "Upgrading Cron Job to Systemd for all nodes in the universe.";
+        break;
+      case ChangeInstanceType:
+        title = "Changing instance type";
+        description = "Change the instance type of all the nodes in the universe";
         break;
       case WaitForDataMigration:
         title = "Waiting for data migration";
-        description = "Waiting for the data to get copied into the new set of machines to achieve" +
-          " the desired configuration.";
+        description =
+            "Waiting for the data to get copied into the new set of machines to achieve"
+                + " the desired configuration.";
         break;
       case RemovingUnusedServers:
         title = "Removing servers no longer used";
-        description = "Removing servers that are no longer needed once the configuration change has" +
-          " been successfully completed";
+        description =
+            "Removing servers that are no longer needed once the configuration change has"
+                + " been successfully completed";
         break;
       case DownloadingSoftware:
         title = "Downloading software";
@@ -219,6 +273,10 @@ public class UserTaskDetails {
         title = "Bootstrapping Region";
         description = "Set up AccessKey, Region, and Provider for a given cloud Provider.";
         break;
+      case BootstrappingProducer:
+        title = "Bootstrapping Source Universe";
+        description = "Creating a checkpoint on the source universe.";
+        break;
       case CreateAccessKey:
         title = "Creating AccessKey";
         description = "Set up AccessKey in the given Provider Vault";
@@ -234,6 +292,10 @@ public class UserTaskDetails {
       case CreatingTable:
         title = "Creating Table";
         description = "Create a table.";
+        break;
+      case CreatingTablespaces:
+        title = "Creating Tablespaces";
+        description = "Create tablespaces.";
         break;
       case ImportingData:
         title = "Importing Data";
@@ -255,15 +317,15 @@ public class UserTaskDetails {
         title = "Starting Node processes";
         description = "Waiting for node to start either tserver or master process.";
         break;
-     case AddingNode:
+      case AddingNode:
         title = "Adding a node";
         description = "Add a node to universe and start tserver (and master, if required).";
         break;
-     case RemovingNode:
+      case RemovingNode:
         title = "Removing a node";
         description = "Remove a node from universe.";
         break;
-     case ReleasingInstance:
+      case ReleasingInstance:
         title = "Releasing the instance back to the IaaS.";
         description = "Releasing the instance from universe.";
         break;
@@ -273,7 +335,15 @@ public class UserTaskDetails {
         break;
       case DeletingTable:
         title = "Deleting Table";
-        description = "Delete an existing table from a universe";
+        description = "Delete an existing table from a universe.";
+        break;
+      case DeletingBackup:
+        title = "Deleting Backup";
+        description = "Delete an existing backup of a universe.";
+        break;
+      case CreatingBackup:
+        title = "Creating Backup";
+        description = "Creating backup for either a keyspace or a set of tables.";
         break;
       case CreatingTableBackup:
         title = "Creating Table Backup";
@@ -281,6 +351,10 @@ public class UserTaskDetails {
         break;
       case RestoringTableBackup:
         title = "Restoring Table Backup";
+        description = "Restoring from a backup.";
+        break;
+      case RestoringBackup:
+        title = "Restoring Backup";
         description = "Restoring from a backup.";
         break;
       case HelmInit:
@@ -331,6 +405,10 @@ public class UserTaskDetails {
         title = "Starting Master Process";
         description = "Waiting for node to start the master process.";
         break;
+      case RotatingCert:
+        title = "Rotating Cert";
+        description = "Changing certs.";
+        break;
       case CreateNamespace:
         title = "Creating Namespace";
         description = "Create namespace for Kubectl.";
@@ -342,6 +420,30 @@ public class UserTaskDetails {
       case UpdateNumNodes:
         title = "Updating number of nodes";
         description = "Update number of nodes.";
+        break;
+      case PauseUniverse:
+        title = "Pause Universe";
+        description = "Pause the universe.";
+        break;
+      case ResumeUniverse:
+        title = "Resume Universe";
+        description = "Resume the universe.";
+        break;
+      case ToggleTls:
+        title = "Toggle TLS";
+        description = "Add certificates and toggle TLS gflags";
+        break;
+      case RotateAccessKey:
+        title = "Rotate Access Key";
+        description = "Rotate the access key for a universe";
+        break;
+      case RebootingNode:
+        title = "Rebooting Node";
+        description = "Rebooting node";
+        break;
+      case RunningHooks:
+        title = "Running Hooks";
+        description = "Run custom hooks";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
@@ -386,8 +488,8 @@ public class UserTaskDetails {
       return description;
     }
 
-    public String getState() {
-      return state.toString();
+    public TaskInfo.State getState() {
+      return state;
     }
   }
 }

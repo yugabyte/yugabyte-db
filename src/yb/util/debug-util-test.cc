@@ -32,22 +32,24 @@
 
 #include <signal.h>
 
-#include <string>
-#include <vector>
 #include <regex>
 #include <sstream>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include <glog/logging.h>
-#include <glog/stl_logging.h>
 
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
-
-#include "yb/util/debug/long_operation_tracker.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 using std::vector;
@@ -254,6 +256,51 @@ TEST_F(DebugUtilTest, TestGetStackTraceInALoop) {
   }
 }
 
+// TODO: enable this test when we fully fix https://github.com/yugabyte/yugabyte-db/issues/6672.
+TEST_F(DebugUtilTest, YB_DISABLE_TEST(GetStackTraceParallelWithDumpThreadStack)) {
+  std::atomic<ThreadIdForStack> get_stack_trace_thread_id;
+
+  CountDownLatch get_stack_trace_thread_started(1);
+  CountDownLatch dump_started(1);
+
+  std::thread thread1([&] {
+    get_stack_trace_thread_id = Thread::CurrentThreadIdForStack();
+    get_stack_trace_thread_started.CountDown();
+    dump_started.Wait();
+    LOG(INFO) << "Starting GetStacktrace loop";
+    for (int i = 0; i < 10000; i++) {
+      const auto s = GetStackTrace();
+      if (i == 0) {
+        LOG(INFO) << "My stack trace: " << s;
+      }
+    }
+  });
+
+  get_stack_trace_thread_started.Wait();
+  std::vector<std::thread> dump_threads;
+  for (int t = 0; t < 10; ++t) {
+    dump_threads.emplace_back([&] {
+      const auto thread_id = get_stack_trace_thread_id.load();
+      LOG(INFO) << "Starting dump loop";
+      for (int i = 0; i < 10000; ++i) {
+        const auto s = ThreadStack(thread_id);
+        if (i == 0) {
+          LOG(INFO) << (s.ok() ? "Got stacktrace" : AsString(s.status()));
+        }
+      }
+    });
+  }
+  LOG(INFO) << "Started dump loops";
+  std::this_thread::sleep_for(1s);
+  dump_started.CountDown();
+
+  thread1.join();
+  for (auto& thread : dump_threads) {
+    thread.join();
+  }
+  LOG(INFO) << "Done";
+}
+
 TEST_F(DebugUtilTest, TestConcurrentStackTrace) {
   constexpr size_t kTotalThreads = 10;
   constexpr size_t kNumCycles = 100;
@@ -332,11 +379,15 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
 
   std::this_thread::sleep_for(kLongDuration);
 
-  ASSERT_EQ(log_sink.MessagesSize(), 4);
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(0), "Op2");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
-  ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  if (IsSanitizer()) {
+    ASSERT_EQ(log_sink.MessagesSize(), 0);
+  } else {
+    ASSERT_EQ(log_sink.MessagesSize(), 4);
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(0), "Op2");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(1), "Op2");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(2), "Op4");
+    ASSERT_STR_CONTAINS(log_sink.MessageAt(3), "Op4");
+  }
 }
 
 } // namespace yb

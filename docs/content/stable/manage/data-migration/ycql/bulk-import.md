@@ -3,16 +3,12 @@ title: Bulk import for YCQL
 headerTitle: Bulk import
 linkTitle: Bulk import
 description: Export data from Apache Cassandra and MySQL and bulk import data into YugabyteDB for YCQL.
-aliases:
-  - /stable/manage/data-migration/bulk-import/
-block_indexing: true
 menu:
   stable:
     identifier: manage-bulk-import
     parent: manage-bulk-import-export
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -47,7 +43,7 @@ CREATE TABLE SensorData (
 
 ## Prepare Source Data
 
-We will prepare a csv (comma-separated values) file where each row of entries must match with the column types declared in the table schema above. Concretely, each comma-separated value must be a valid Cassandra Query Language (CQL) literal for its corresponding type, except the top-level quotes are not needed (e.g. foo rather than 'foo' for strings). 
+We will prepare a csv (comma-separated values) file where each row of entries must match with the column types declared in the table schema above. Concretely, each comma-separated value must be a valid Cassandra Query Language (CQL) literal for its corresponding type, except the top-level quotes are not needed (e.g. foo rather than 'foo' for strings).
 
 ### Generate Sample Data
 
@@ -68,7 +64,7 @@ fi
 
 > $2 # clearing file
 for i in `seq 1 $1`
-do 
+do
   echo customer$((i%10)),$((i%3)),2017-11-11 12:30:$((i%60)).000000+0000,\"{temp:$i, humidity:$i}\" >> $2
 done
 ```
@@ -95,17 +91,17 @@ If you already had the data in a MySQL table named `SensorData`, then use the fo
 
 ```sql
 SELECT customer_name, device_id, ts, sensor_data
-FROM SensorData 
+FROM SensorData
 INTO OUTFILE '/path/to/sample.csv' FIELDS TERMINATED BY ',';
 ```
 
 ## Import data
 
-These instructions are organized by the size of the input datasets, ranging from small (MBs of data) to larger datasets (GBs of data). 
+These instructions are organized by the size of the input datasets, ranging from small (MBs of data) to larger datasets (GBs of data).
 
 ### Small datasets (MBs)
 
-Cassandra’s CQL Shell provides the COPY FROM (see also COPY TO) command which allows importing data from csv files. 
+Cassandra’s CQL Shell provides the COPY FROM (see also COPY TO) command which allows importing data from csv files.
 
 ```sql
 ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
@@ -113,7 +109,7 @@ ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
 
 {{< note title="Note" >}}
 
-By default, `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format. 
+By default, `COPY` exports timestamps in `yyyy-MM-dd HH:mm:ss.SSSZ` format.
 
 {{< /note >}}
 

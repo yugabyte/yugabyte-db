@@ -13,11 +13,13 @@ import json
 import logging
 import os
 import re
+import time
 
 from ipaddress import ip_network
-from ybops.utils import get_or_create, get_and_cleanup
+from ybops.utils import get_or_create, get_and_cleanup, DNS_RECORD_SET_TTL
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.utils import request_retry_decorator
+from ybops.cloud.common.cloud import AbstractCloud
 
 RESOURCE_PREFIX_FORMAT = "yb-{}"
 IGW_CIDR = "0.0.0.0/0"
@@ -127,7 +129,7 @@ def add_cidr_to_rules(rules, cidr):
         "from_port": 0,
         "to_port": 65535,
         "cidr_ip": cidr
-        }
+    }
     rules.append(rule_block)
 
 
@@ -210,7 +212,7 @@ class AwsBootstrapClient():
         self._validate_cidr_overlap()
 
     def _validate_cidr_overlap(self):
-        region_networks = [ip_network(cidr.decode('utf-8')) for cidr in self.region_cidrs.values()]
+        region_networks = [ip_network(cidr) for cidr in self.region_cidrs.values()]
         all_networks = region_networks
         for i in range(len(all_networks)):
             for j in range(i + 1, len(all_networks)):
@@ -235,19 +237,23 @@ class AwsBootstrapClient():
         host_vpc = None
         if self.host_vpc_id and self.host_vpc_region:
             host_vpc = get_client(self.host_vpc_region).Vpc(self.host_vpc_id)
-            region_and_vpc_tuples.append((self.host_vpc_region, host_vpc))
+            if self.host_vpc_id not in [c.vpc.id for _, c in components.items()]:
+                region_and_vpc_tuples.append((self.host_vpc_region, host_vpc))
         # Setup VPC peerings.
         for i in range(len(region_and_vpc_tuples) - 1):
             i_region, i_vpc = region_and_vpc_tuples[i]
             for j in range(i + 1, len(region_and_vpc_tuples)):
                 j_region, j_vpc = region_and_vpc_tuples[j]
-                peering = create_vpc_peering(
+                peerings = create_vpc_peering(
                     # i is the host, j is the target.
                     client=get_client(i_region), vpc=j_vpc, host_vpc=i_vpc, target_region=j_region)
-                if len(peering) != 1:
+                if len(peerings) != 1:
                     raise YBOpsRuntimeError(
-                        "Expecting one peering connection, got {}".format(peer_conn))
-                peering = peering[0]
+                        "Expecting one peering connection from {} to {}, got {}".format(
+                            i_vpc.id,
+                            j_vpc.id,
+                            len(peerings)))
+                peering = peerings[0]
                 # Add route i -> j.
                 add_route_to_rt(components[i_region].route_table, j_vpc.cidr_block,
                                 "VpcPeeringConnectionId", peering.id)
@@ -279,10 +285,10 @@ class AwsBootstrapClient():
                 found = False
                 for perm in ip_perms:
                     if perm.get("FromPort") == rule["from_port"] and \
-                        perm.get("ToPort") == rule["to_port"] and \
-                        perm.get("IpProtocol") == rule["ip_protocol"] and \
-                        len([True for r in perm.get("IpRanges", [])
-                             if r.get("CidrIp") == rule["cidr_ip"]]) > 0:
+                            perm.get("ToPort") == rule["to_port"] and \
+                            perm.get("IpProtocol") == rule["ip_protocol"] and \
+                            len([True for r in perm.get("IpRanges", [])
+                                 if r.get("CidrIp") == rule["cidr_ip"]]) > 0:
                         # This rule matches this permission, so no need to add it.
                         found = True
                         break
@@ -324,6 +330,14 @@ def aws_request_limit_retry(fn):
     return request_retry_decorator(fn, aws_exception_handler)
 
 
+def get_raw_client(region):
+    """
+    Returns:
+        boto3 client
+    """
+    return boto3.client("ec2", region_name=region)
+
+
 def get_client(region):
     """Method to get boto3 ec2 resource for given region
     Args:
@@ -360,6 +374,22 @@ def get_spot_pricing(region, zone, instance_type):
     return spot_price['SpotPriceHistory'][0]['SpotPrice']
 
 
+def describe_ami(region, ami):
+    client = boto3.client("ec2", region_name=region)
+    images = client.describe_images(ImageIds=[ami]).get("Images", [])
+    if len(images) == 0:
+        raise YBOpsRuntimeError('Could not find image for AMI {} in region {}'.format(ami, region))
+    return images[0]
+
+
+def get_image_arch(region, ami):
+    return describe_ami(region, ami).get("Architecture")
+
+
+def get_root_label(region, ami):
+    return describe_ami(region, ami).get("RootDeviceName")
+
+
 def get_zones(region, dest_vpc_id=None):
     """Method to fetch zones for given region or all the regions if none specified.
     Args:
@@ -390,7 +420,7 @@ def get_zones(region, dest_vpc_id=None):
 
 
 def get_vpc(client, tag_name, **kwargs):
-    """Method to fetch vpc based on the tag_name.
+    """Method to fetch vpc based on the tag_name and cidr optionally if present.
     Args:
         client (boto client): Boto Client for the region to query.
         tag_name (str): VPC tag name.
@@ -398,7 +428,17 @@ def get_vpc(client, tag_name, **kwargs):
         VPC obj: VPC object or None.
     """
     filters = get_tag_filter(tag_name)
-    return next(iter(client.vpcs.filter(Filters=filters)), None)
+    vpcs = client.vpcs.filter(Filters=filters)
+    if 'cidr' in kwargs:
+        net1 = ip_network(kwargs.get('cidr'))
+        for vpc in vpcs:
+            net2 = ip_network(vpc.cidr_block)
+            if net1.subnet_of(net2) and net2.subnet_of(net1):
+                return vpc
+            raise YBOpsRuntimeError("VPC {} with tag {} already exists with different CIDR {}"
+                                    .format(vpc.id, tag_name, vpc.cidr_block))
+        return None
+    return next(iter(vpcs), None)
 
 
 def fetch_subnets(vpc, tag_name):
@@ -638,7 +678,7 @@ def query_vpc(region):
     raw_client = boto3.client("ec2", region_name=region)
     zones = [z["ZoneName"]
              for z in raw_client.describe_availability_zones(
-                Filters=get_filters("state", "available")).get("AvailabilityZones", [])]
+            Filters=get_filters("state", "available")).get("AvailabilityZones", [])]
     # Default to empty lists, in case some zones do not have subnets, so we can use this as a query
     # for all available AZs in this region.
     subnets_by_zone = {z: [] for z in zones}
@@ -804,7 +844,6 @@ def cleanup_vpc_peering(vpc_peerings, **kwargs):
 @get_or_create(get_vpc_peerings)
 def create_vpc_peering(client, vpc, host_vpc, target_region):
     """Method would create a vpc peering between the newly created VPC and caller's VPC
-    Also makes sure, if they aren't the same, then there is no need for vpc peering.
     Args:
         client (boto client): Region specific boto client
         vpc (VPC object): Newly created VPC object
@@ -827,38 +866,52 @@ def create_vpc_peering(client, vpc, host_vpc, target_region):
         raise YBOpsRuntimeError("Unable to create VPC peering.")
 
 
-def get_device_names(instance_type, num_volumes):
+def get_instance_details(instance_type, region):
+    c = get_raw_client(region)
+    instances = c.describe_instance_types(InstanceTypes=[instance_type]).get("InstanceTypes", [])
+    if (len(instances) == 0):
+        raise YBOpsRuntimeError("Could not find instance type {}".format(instance_type))
+    return instances[0]
+
+
+def get_device_names(instance_type, num_volumes, region):
     device_names = []
+    instance = get_instance_details(instance_type, region)
     for i in range(num_volumes):
-        device_name_format = "nvme{}n1" if is_nvme(instance_type) else "xvd{}"
-        index = "{}".format(i if is_nvme(instance_type) else chr(ord('b') + i))
+        device_name_format = "nvme{}n1" if is_nvme(instance) else "xvd{}"
+        index = "{}".format(i if is_nvme(instance) else chr(ord('b') + i))
         device_names.append(device_name_format.format(index))
     return device_names
 
 
-def is_next_gen(instance_type):
-    return instance_type.startswith(("c3.", "c4.", "c5.", "m4.", "r4."))
+def is_ebs_only(instance):
+    """
+    Determines whether or not an instance only supports EBS volumes.
+    Must be called on instance type dictionary details as returned by get_instance_details()
+    """
+    return not instance.get("InstanceStorageSupported")
 
 
-def is_nvme(instance_type):
-    return instance_type.startswith(("i3.", "c5d."))
+def is_nvme(instance):
+    """
+    Determines whether or not an instance has instance storage.
+    """
+    return instance.get("InstanceStorageSupported")
 
 
-def has_ephemerals(instance_type):
-    return not is_nvme(instance_type) and not is_next_gen(instance_type)
+def is_burstable(instance):
+    """
+    Determines whether or not an instance has burstable performance.
+    """
+    return instance.get("BurstablePerformanceSupported")
 
 
-def create_instance(args):
-    client = get_client(args.region)
-    vars = {
-        "ImageId": args.machine_image,
-        "KeyName": args.key_pair_name,
-        "MinCount": 1,
-        "MaxCount": 1,
-        "InstanceType": args.instance_type,
-    }
-    # Network setup.
-    # Lets assume they have provided security group id comma delimited.
+def has_ephemerals(instance_type, region):
+    instance = get_instance_details(instance_type, region)
+    return not is_nvme(instance) and not is_ebs_only(instance)
+
+
+def __get_security_group(client, args):
     sg_ids = args.security_group_id.split(",") if args.security_group_id else None
     if sg_ids is None:
         # Figure out which VPC this instance will be brought up in and search for the SG in there.
@@ -871,18 +924,46 @@ def create_instance(args):
         sg_name = get_yb_sg_name(args.region)
         sg = get_security_group(client, sg_name, vpc)
         sg_ids = [sg.id]
+    return sg_ids
+
+
+def create_instance(args):
+    client = get_client(args.region)
+    instance = get_instance_details(args.instance_type, args.region)
+    vars = {
+        "ImageId": args.machine_image,
+        "KeyName": args.key_pair_name,
+        "MinCount": 1,
+        "MaxCount": 1,
+        "InstanceType": args.instance_type,
+    }
+    # Network setup.
+    # Lets assume they have provided security group id comma delimited.
+    sg_ids = __get_security_group(client, args)
+
     vars["NetworkInterfaces"] = [{
         "DeviceIndex": 0,
-        "AssociatePublicIpAddress": args.assign_public_ip,
         "SubnetId": args.cloud_subnet,
-        "Groups": sg_ids
+        "Groups": sg_ids,
+        "DeleteOnTermination": True
     }]
+    if args.cloud_subnet_secondary:
+        vars["NetworkInterfaces"].append({
+            "DeviceIndex": 1,
+            "SubnetId": args.cloud_subnet_secondary,
+            "Groups": sg_ids,
+            "DeleteOnTermination": True
+        })
+    # AWS limitation that no public IP can be assigned if using two network interfaces.
+    else:
+        vars["NetworkInterfaces"][0]["AssociatePublicIpAddress"] = args.assign_public_ip
+
     # Volume setup.
     volumes = []
+
     ebs = {
-        "DeleteOnTermination": True,
-        # TODO: constant
-        "VolumeSize": 40,
+        "DeleteOnTermination": args.auto_delete_boot_disk,
+        "VolumeSize": args.boot_disk_size_gb,
         "VolumeType": "gp2"
     }
 
@@ -895,38 +976,42 @@ def create_instance(args):
             "Arn": args.iam_profile_arn
         }
     volumes.append({
-        "DeviceName": "/dev/sda1",
+        "DeviceName": get_root_label(args.region, args.machine_image),
         "Ebs": ebs
     })
 
-    device_names = get_device_names(args.instance_type, args.num_volumes)
+    device_names = get_device_names(args.instance_type, args.num_volumes, args.region)
     # TODO: Clean up semantics on nvme vs "next-gen" vs ephemerals, as this is currently whack...
     for i, device_name in enumerate(device_names):
         volume = {}
-        if has_ephemerals(args.instance_type):
+        if has_ephemerals(args.instance_type, args.region):
             volume = {
                 "DeviceName": "/dev/{}".format(device_name),
                 "VirtualName": "ephemeral{}".format(i)
             }
-        elif is_next_gen(args.instance_type):
+        elif is_ebs_only(instance):
             ebs = {
                 "DeleteOnTermination": True,
                 "VolumeType": args.volume_type,
-                # TODO: make this int.
                 "VolumeSize": args.volume_size
             }
             if args.cmk_res_name is not None:
                 ebs["Encrypted"] = True
                 ebs["KmsKeyId"] = args.cmk_res_name
-            if args.volume_type == "io1":
-                # TODO: make this int.
+            if args.volume_type == "io1" or args.volume_type == "gp3":
                 ebs["Iops"] = args.disk_iops
+            if args.volume_type == "gp3":
+                ebs["Throughput"] = args.disk_throughput
             volume = {
                 "DeviceName": "/dev/{}".format(device_name),
                 "Ebs": ebs
             }
         volumes.append(volume)
     vars["BlockDeviceMappings"] = volumes
+
+    if args.boot_script:
+        with open(args.boot_script, 'r') as script:
+            vars["UserData"] = script.read()
 
     # Tag setup.
     def __create_tag(k, v):
@@ -938,12 +1023,33 @@ def create_instance(args):
         __create_tag("yb-server-type", args.type)
     ]
     custom_tags = args.instance_tags if args.instance_tags is not None else '{}'
+    user_tags = []
     for k, v in json.loads(custom_tags).items():
         instance_tags.append(__create_tag(k, v))
-    vars["TagSpecifications"] = [{
+        user_tags.append(__create_tag(k, v))
+    resources_to_tag = [
+        "network-interface", "volume"
+    ]
+    tag_dicts = []
+    tag_dicts.append({
         "ResourceType": "instance",
         "Tags": instance_tags
-    }]
+    })
+    if user_tags:
+        for tagged_resource in resources_to_tag:
+            resources_tag_dict = {
+                "ResourceType": tagged_resource,
+                "Tags": user_tags
+            }
+            tag_dicts.append(resources_tag_dict)
+    vars["TagSpecifications"] = tag_dicts
+
+    # Newer instance types have Credit Specification set to unlimited by default
+    if is_burstable(instance):
+        vars["CreditSpecification"] = {
+            "CpuCredits": 'standard'
+        }
+
     # TODO: user_data > templates/cloud_init.yml.j2, still needed?
     logging.info("[app] About to create AWS VM {}. ".format(args.search_pattern))
     instance_ids = client.create_instances(**vars)
@@ -953,7 +1059,45 @@ def create_instance(args):
             len(instance_ids)))
     instance = instance_ids[0]
     instance.wait_until_running()
+
     logging.info("[app] AWS VM {} created.".format(args.search_pattern))
+
+    if args.assign_static_public_ip:
+        # Create elastic IP.
+        eip_tags = list(user_tags)
+        eip_tags.extend([
+            __create_tag("Name", "ip-" + args.search_pattern),
+            __create_tag("launched-by", os.environ.get("USER", "unknown")),
+            __create_tag("Created", time.asctime(time.gmtime()))
+        ])
+        ec2_client = boto3.client("ec2", region_name=args.region)
+        eip = ec2_client.allocate_address(
+            Domain="vpc",
+            TagSpecifications=[{
+                "ResourceType": "elastic-ip",
+                "Tags": eip_tags
+            }]
+        )
+        # Re-fetch instance to get latest state.
+        instance = client.Instance(instance.id)
+        # Get instance's primary network interface and attach IP.
+        interface_id = None
+        # If secondary subnet, we want to set the public IP on the customer
+        # facing NIC.
+        req_index = 1 if args.cloud_subnet_secondary else 0
+        for i in instance.network_interfaces:
+            if i.attachment.get("DeviceIndex") == req_index:
+                interface_id = i.id
+                break
+        # Associate elastic IP with instance.
+        ec2_client.associate_address(
+            AllocationId=eip["AllocationId"],
+            NetworkInterfaceId=interface_id
+        )
+        logging.info("[app] Created Elastic IP address at {} in region {} for AWS VM {}"
+                     .format(eip["PublicIp"], args.region, args.search_pattern))
+
+    return instance.id
 
 
 def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
@@ -980,7 +1124,7 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
 
 def update_disk(args, instance_id):
     ec2_client = boto3.client('ec2', region_name=args.region)
-    device_names = set(get_device_names(args.instance_type, args.num_volumes))
+    device_names = set(get_device_names(args.instance_type, args.num_volumes, args.region))
     instance = get_client(args.region).Instance(instance_id)
     vol_ids = list()
     for volume in instance.volumes.all():
@@ -992,6 +1136,17 @@ def update_disk(args, instance_id):
                 ec2_client.modify_volume(VolumeId=volume.id, Size=args.volume_size)
     # Wait for volumes to be ready.
     _wait_for_disk_modifications(ec2_client, vol_ids)
+
+
+def change_instance_type(region, instance_id, new_instance_type):
+    instance = get_client(region).Instance(instance_id)
+
+    try:
+        # Change instance type
+        instance.modify_attribute(Attribute='instanceType', Value=new_instance_type)
+        logging.info('Instance {}\'s type changed to {}'.format(instance_id, new_instance_type))
+    except Exception as e:
+        raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 
 
 def delete_route(rt, cidr):
@@ -1039,7 +1194,7 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
             'ResourceRecordSet': {
                 'Name': "{}.{}".format(domain_name_prefix, hosted_zone_name),
                 'Type': 'A',
-                'TTL': 5,
+                'TTL': DNS_RECORD_SET_TTL,
                 'ResourceRecords': records
             }
         }]
@@ -1050,27 +1205,38 @@ def _update_dns_record_set(hosted_zone_id, domain_name_prefix, ip_list, action):
     client.get_waiter('resource_record_sets_changed').wait(
         Id=result['ChangeInfo']['Id'],
         WaiterConfig={
-          'Delay': 10,
-          'MaxAttempts': 60
+            'Delay': 10,
+            'MaxAttempts': 60
         })
 
 
 def _wait_for_disk_modifications(ec2_client, vol_ids):
-    num_vols_completed = 0
+    # This function returns as soon as the volume state is optimizing, not completed.
     num_vols_to_modify = len(vol_ids)
-    # Loop till the progress is at 100
-    while True:
+    # It should retry for a 1 hour time limit.
+    retry_num = int((1 * 3600) / AbstractCloud.SSH_WAIT_SECONDS) + 1
+    # Loop till all volumes are modified or the limit is reached.
+    while retry_num > 0:
+        num_vols_modified = 0
         response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
         # The response format can be found here:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
-        for entry in response['VolumesModifications']:
-            if entry['Progress'] == 100:
-                if entry['ModificationState'] != 'completed':
-                    raise YBOpsRuntimeError(("Disk {} could not be modified.").format(
-                        entry['VolumeId']))
-                else:
-                    num_vols_completed += 1
+        for entry in response["VolumesModifications"]:
+            if entry["ModificationState"] == "failed":
+                raise YBOpsRuntimeError(("Mofication of disk {} failed.").format(
+                    entry['VolumeId']))
+
+            if entry["ModificationState"] == "optimizing" or \
+                    entry["ModificationState"] == "completed":
+                # Modifying completed.
+                num_vols_modified += 1
+
         # This means all volumes have completed modification.
-        if num_vols_completed == num_vols_to_modify:
+        if num_vols_modified == num_vols_to_modify:
             break
-        time.sleep(WAIT_TIME_BETWEEN_RETRIES)
+
+        time.sleep(AbstractCloud.SSH_WAIT_SECONDS)
+        retry_num -= 1
+
+    if retry_num <= 0:
+        raise YBOpsRuntimeError("wait_for_disk_modifications failed. Retry limit reached.")

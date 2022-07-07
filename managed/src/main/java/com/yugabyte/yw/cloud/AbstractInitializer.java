@@ -13,20 +13,34 @@ package com.yugabyte.yw.cloud;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
+import com.yugabyte.yw.models.Provider;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Result;
 
-import java.util.UUID;
-
+@Getter
 public abstract class AbstractInitializer {
+
   public static final Logger LOG = LoggerFactory.getLogger(AbstractInitializer.class);
 
-  @Inject
-  ApiHelper apiHelper;
+  @Inject private ApiHelper apiHelper;
 
-  @Inject
-  CloudQueryHelper cloudQueryHelper;
+  @Inject private CloudQueryHelper cloudQueryHelper;
 
-  public abstract Result initialize(UUID customerUUID, UUID providerUUID);
+  public abstract void initialize(UUID customerUUID, UUID providerUUID);
+
+  @Getter
+  public static class InitializationContext {
+
+    private final Provider provider;
+    private final List<Map<String, String>> availableInstances = new ArrayList<>();
+
+    public InitializationContext(Provider provider) {
+      this.provider = provider;
+    }
+  }
 }

@@ -50,7 +50,6 @@
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_trigger.h"
@@ -60,6 +59,7 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_yb_tablegroup.h"
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -163,7 +163,7 @@ static const Oid object_classes[] = {
 	TSConfigRelationId,			/* OCLASS_TSCONFIG */
 	AuthIdRelationId,			/* OCLASS_ROLE */
 	DatabaseRelationId,			/* OCLASS_DATABASE */
-	TableGroupRelationId,		/* OCLASS_TBLGROUP */
+	YbTablegroupRelationId,		/* OCLASS_TBLGROUP */
 	TableSpaceRelationId,		/* OCLASS_TBLSPACE */
 	ForeignDataWrapperRelationId,	/* OCLASS_FDW */
 	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
@@ -584,6 +584,7 @@ findDependentObjects(const ObjectAddress *object,
 				switch_fallthrough();
 
 			case DEPENDENCY_INTERNAL:
+				switch_fallthrough();
 			case DEPENDENCY_INTERNAL_AUTO:
 
 				/*
@@ -968,6 +969,9 @@ reportDependentObjects(const ObjectAddresses *targetObjects,
 												 numNotReportedClient),
 						 numNotReportedClient);
 
+	if (IsYugaByteEnabled() && clientdetail.data != NULL)
+		clientdetail.data = YBDetailSorted(clientdetail.data);
+
 	if (!ok)
 	{
 		if (origObject)
@@ -1133,15 +1137,13 @@ doDeletion(const ObjectAddress *object, int flags)
 
 					Assert(object->objectSubId == 0);
 
-					if (IsYBRelationById(object->objectId))
-					{
-						Relation index = RelationIdGetRelation(object->objectId);
+					Relation index = RelationIdGetRelation(object->objectId);
 
-						if (!index->rd_index->indisprimary)
-							YBCDropIndex(object->objectId);
+					if (IsYBRelation(index) && !index->rd_index->indisprimary)
+						YBCDropIndex(index);
 
-						RelationClose(index);
-					}
+					RelationClose(index);
+
 					index_drop(object->objectId, concurrent);
 				}
 				else
@@ -1151,8 +1153,13 @@ doDeletion(const ObjectAddress *object, int flags)
 											object->objectSubId);
 					else
 					{
-						if (IsYBRelationById(object->objectId))
-							YBCDropTable(object->objectId);
+						Relation rel = RelationIdGetRelation(object->objectId);
+
+						if (IsYBRelation(rel))
+							YBCDropTable(rel);
+
+						RelationClose(rel);
+
 						heap_drop_with_catalog(object->objectId);
 					}
 				}
@@ -1304,7 +1311,7 @@ doDeletion(const ObjectAddress *object, int flags)
 			break;
 
 		case OCLASS_TBLGROUP:
-			RemoveTableGroupById(object->objectId);
+			RemoveTablegroupById(object->objectId);
 			break;
 
 			/*
@@ -2529,7 +2536,7 @@ getObjectClass(const ObjectAddress *object)
 		case DatabaseRelationId:
 			return OCLASS_DATABASE;
 
-		case TableGroupRelationId:
+		case YbTablegroupRelationId:
 			return OCLASS_TBLGROUP;
 
 		case TableSpaceRelationId:

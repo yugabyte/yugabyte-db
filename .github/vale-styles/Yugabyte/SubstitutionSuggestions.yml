@@ -1,0 +1,24 @@
+---
+# Suggestion: Yugabyte.SubstitutionSuggestions
+#
+# Suggests better options for frequently misused terms that are often (but not always) incorrect.
+# SubstitutionWarnings.yml and Substitutions.yml also exist.
+#
+# For a list of all options, see https://errata-ai.github.io/vale/styles/
+extends: substitution
+message: 'Consider %s instead of "%s".'
+level: suggestion
+ignorecase: true
+swap:
+#  active user: '"billable user"'
+#  active users: '"billable users"'
+#  docs: '"documentation"'
+#  GFM: '"GitLab Flavored Markdown"'
+  OAuth2: '"OAuth 2.0"'
+  once that: '"after that"'
+  once the: '"after the"'
+  once you: '"after you"'
+  since: '"because" or "after"'
+  sub-group: '"subgroup"'
+  sub-groups: '"subgroups"'
+  within: '"in"'

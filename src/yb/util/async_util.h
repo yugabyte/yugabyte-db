@@ -33,15 +33,15 @@
 #ifndef YB_UTIL_ASYNC_UTIL_H
 #define YB_UTIL_ASYNC_UTIL_H
 
-#include <condition_variable>
+#include <pthread.h>
+
 #include <future>
-#include <mutex>
 
 #include <boost/function.hpp>
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
-#include "yb/util/countdown_latch.h"
+
+#include "yb/util/monotime.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
@@ -79,15 +79,15 @@ class Synchronizer {
     return std::bind(&Synchronizer::StatusCB, this, std::placeholders::_1);
   }
 
-  CHECKED_STATUS Wait() {
+  Status Wait() {
     return WaitUntil(std::chrono::steady_clock::time_point::max());
   }
 
-  CHECKED_STATUS WaitFor(const MonoDelta& delta) {
+  Status WaitFor(const MonoDelta& delta) {
     return WaitUntil(std::chrono::steady_clock::now() + delta.ToSteadyDuration());
   }
 
-  CHECKED_STATUS WaitUntil(const std::chrono::steady_clock::time_point& time);
+  Status WaitUntil(const std::chrono::steady_clock::time_point& time);
 
   void Reset();
 

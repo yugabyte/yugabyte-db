@@ -27,11 +27,11 @@ class PosixSequentialFile : public SequentialFile {
   PosixSequentialFile(const std::string& fname, FILE* f, const FileSystemOptions& options);
   virtual ~PosixSequentialFile();
 
-  CHECKED_STATUS Read(size_t n, Slice* result, uint8_t* scratch) override;
-  CHECKED_STATUS Skip(uint64_t n) override;
-  CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
+  Status Read(size_t n, Slice* result, uint8_t* scratch) override;
+  Status Skip(uint64_t n) override;
+  Status InvalidateCache(size_t offset, size_t length) override;
 
-  const string& filename() const override { return filename_; }
+  const std::string& filename() const override { return filename_; }
 
  private:
   std::string filename_;
@@ -47,14 +47,14 @@ class PosixRandomAccessFile : public RandomAccessFile {
                         const FileSystemOptions& options);
   virtual ~PosixRandomAccessFile();
 
-  virtual CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result,
+  virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       uint8_t* scratch) const override;
 
   Result<uint64_t> Size() const override;
 
   Result<uint64_t> INode() const override;
 
-  const string& filename() const override { return filename_; }
+  const std::string& filename() const override { return filename_; }
 
   size_t memory_footprint() const override;
 
@@ -62,7 +62,7 @@ class PosixRandomAccessFile : public RandomAccessFile {
   virtual size_t GetUniqueId(char* id) const override;
 #endif
   virtual void Hint(AccessPattern pattern) override;
-  virtual CHECKED_STATUS InvalidateCache(size_t offset, size_t length) override;
+  virtual Status InvalidateCache(size_t offset, size_t length) override;
 
  private:
   std::string filename_;

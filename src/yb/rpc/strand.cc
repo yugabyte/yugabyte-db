@@ -10,10 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/rpc/strand.h"
 
 #include <thread>
+
+#include "yb/util/flag_tags.h"
+#include "yb/util/status.h"
+
+DEFINE_test_flag(int32, strand_done_inject_delay_ms, 0,
+                 "Inject into Strand::Done after resetting running flag.");
 
 using namespace std::literals;
 
@@ -30,6 +35,15 @@ const Status& StrandAbortedStatus() {
 }
 
 Strand::Strand(ThreadPool* thread_pool) : thread_pool_(*thread_pool) {}
+
+Strand::~Strand() {
+  const auto running = running_.load();
+  const auto closing = closing_.load();
+  const auto active_tasks = active_tasks_.load();
+  LOG_IF(DFATAL, running || !closing || active_tasks) << Format(
+      "Strand $0 has not been fully shut down, running: $1, closing: $2, active_tasks: $3",
+      static_cast<void*>(this), running, closing, active_tasks);
+}
 
 void Strand::Enqueue(StrandTask* task) {
   if (closing_.load(std::memory_order_acquire)) {
@@ -68,8 +82,9 @@ void Strand::Run() {
 
 void Strand::Done(const Status& status) {
   for (;;) {
+    size_t tasks_fetched = 0;
     while (StrandTask *task = queue_.Pop()) {
-      active_tasks_.fetch_sub(1, std::memory_order_release);
+      ++tasks_fetched;
 
       const auto& actual_status =
           !closing_.load(std::memory_order_acquire) ? status : StrandAbortedStatus();
@@ -79,8 +94,12 @@ void Strand::Done(const Status& status) {
       task->Done(actual_status);
     }
     running_.store(false, std::memory_order_release);
-    // Check whether tasks have been added while we were setting running to false.
-    if (active_tasks_.load(std::memory_order_acquire)) {
+    if (FLAGS_TEST_strand_done_inject_delay_ms > 0) {
+      std::this_thread::sleep_for(FLAGS_TEST_strand_done_inject_delay_ms * 1ms);
+    }
+    // Decrease active_tasks_ and check whether tasks have been added while we were setting running
+    // to false.
+    if (active_tasks_.fetch_sub(tasks_fetched) > tasks_fetched) {
       // Got more operations, try stay in the loop.
       bool expected = false;
       if (running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {

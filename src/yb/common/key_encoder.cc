@@ -32,10 +32,8 @@
 
 #include <functional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include <boost/noncopyable.hpp>
 
 #include "yb/common/common.pb.h"
 #include "yb/common/key_encoder.h"
@@ -62,7 +60,7 @@ class EncoderResolver {
   }
 
  private:
-  EncoderResolver<Buffer>() {
+  EncoderResolver() {
     AddMapping<BOOL>();
     AddMapping<UINT8>();
     AddMapping<INT8>();
@@ -79,7 +77,7 @@ class EncoderResolver {
 
   template<DataType Type> void AddMapping() {
     KeyEncoderTraits<Type, Buffer> traits;
-    InsertOrDie(&encoders_, Type, shared_ptr<KeyEncoder<Buffer> >(new KeyEncoder<Buffer>(traits)));
+    encoders_.emplace(Type, std::make_shared<KeyEncoder<Buffer>>(traits));
   }
 
   friend class Singleton<EncoderResolver<Buffer> >;
@@ -88,13 +86,13 @@ class EncoderResolver {
 
 template <typename Buffer>
 const KeyEncoder<Buffer>& GetKeyEncoder(const TypeInfo* typeinfo) {
-  return Singleton<EncoderResolver<Buffer> >::get()->GetKeyEncoder(typeinfo->physical_type());
+  return Singleton<EncoderResolver<Buffer> >::get()->GetKeyEncoder(typeinfo->physical_type);
 }
 
 // Returns true if the type is allowed in keys.
-const bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
+bool IsTypeAllowableInKey(const TypeInfo* typeinfo) {
   return Singleton<EncoderResolver<faststring> >::get()->HasKeyEncoderForType(
-      typeinfo->physical_type());
+      typeinfo->physical_type);
 }
 
 //------------------------------------------------------------

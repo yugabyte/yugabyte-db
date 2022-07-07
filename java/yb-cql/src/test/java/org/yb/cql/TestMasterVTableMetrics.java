@@ -24,6 +24,7 @@ import org.yb.client.TestUtils;
 import org.yb.minicluster.IOMetrics;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
+import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 
@@ -43,10 +44,12 @@ import org.junit.runner.RunWith;
 @RunWith(value = YBTestRunner.class)
 public class TestMasterVTableMetrics extends BaseCQLTest {
 
-  protected static final String[] TABLES = {
+  protected static final String[] SYSTEM_TABLES = {
       "local",
+      "peers",
       "partitions",
       "size_estimates" };
+
 
   @Override
   public int getTestMethodTimeoutSec() {
@@ -54,11 +57,18 @@ public class TestMasterVTableMetrics extends BaseCQLTest {
     return 240;
   }
 
+  @Override
+  protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+      super.customizeMiniClusterBuilder(builder);
+      // Disable the system.partitions vtable refresh bg thread.
+      builder.yqlSystemPartitionsVtableRefreshSecs(0);
+  }
+
   private Map<String, Integer> getYcqlSystemQueryStats() throws Exception {
     Map<HostAndPort, MiniYBDaemon> masters = miniCluster.getMasters();
     Map<String, Integer> stats = new HashMap<String, Integer>();
     for (MiniYBDaemon master : masters.values()) {
-      for (String i : TABLES) {
+      for (String i : SYSTEM_TABLES) {
         Metrics.Histogram h = new Metrics(master.getLocalhostIP(),
                                           master.getWebPort(), "server")
                                           .getHistogram("ycql_queries_system_" + i);
@@ -80,13 +90,13 @@ public class TestMasterVTableMetrics extends BaseCQLTest {
   public void testMasterMetrics() throws Exception {
     Map<String, Integer> before = getYcqlSystemQueryStats();
 
-    for (String i : TABLES) {
+    for (String i : SYSTEM_TABLES) {
       session.execute(String.format("select * from system.%s", i));
     }
 
     Map<String, Integer> after = getYcqlSystemQueryStats();
 
-    for (String i : TABLES) {
+    for (String i : SYSTEM_TABLES) {
       int diff = after.get(i) - before.get(i);
       assertGreaterThan(diff, 0);
     }

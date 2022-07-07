@@ -31,6 +31,7 @@ Usage: ${0##*/} <daemon> <command> OR
 Daemons:
   master
   tserver
+  controller
 Commands:
   create        - Start the YB process on this node in cluster creation node (only applicable for
                   master)
@@ -152,6 +153,55 @@ clean_data_paths() {
   fi
 }
 
+# Collect the postmaster pids from the postmaster.pid file under pg_data dir to
+# the global array postmaster_pids.
+collect_postmaster_pids() {
+  postmaster_pids=()
+  for mnt in "${MOUNT_PATHS[@]}";
+  do
+    local postmaster_pid_file="${mnt}/pg_data/postmaster.pid"
+    if [[ -f "$postmaster_pid_file" ]]; then
+      read -r line < "${postmaster_pid_file}"
+      postmaster_pids+=("$line")
+    fi
+  done
+}
+
+# Given the collected postmaster_pids, send SIGKILL to all of the postgres processed
+# including postmaster and all of its child processes.
+hard_kill_postgres() {
+{% raw %}
+  [[ ${#postmaster_pids[@]} -eq 0 ]] && return
+{% endraw %}
+  for postmaster_pid in "${postmaster_pids[@]}";
+  do
+    if [[ ${postmaster_pid} =~ ^[0-9]+$ ]]; then
+      local pg_pids=()
+      # In case of the ps command returning nothing, it returns as an error.
+      set +e
+      mapfile -t pg_pids < <(ps -p "${postmaster_pid}" --ppid "${postmaster_pid}" -o pid=)
+      set -e
+
+      if [[ -n ${pg_pids:-} ]]; then
+        for pg_pid in "${pg_pids[@]}";
+        do
+          if [[ ${pg_pid} =~ ^[0-9]+$ ]]; then
+            print_err_out "Killing postgres PID: ${pg_pid}..."
+            # set +e in case of the pg_pid is not alive, the kill returns as an error.
+            set +e
+            kill -KILL "${pg_pid}"
+            set -e
+          else
+            print_err_out "Found invalid Postgres PID: ${pg_pid}. Skipped."
+          fi
+        done
+      fi
+    else
+      print_err_out "Found invalid Postmaster PID: ${postmaster_pid}. Skipped."
+    fi
+  done
+}
+
 command=""
 daemon=""
 case "$1" in
@@ -165,6 +215,7 @@ esac
 if [ "$1" == "clean-instance" ]; then
   print_err_out "Cleaning instance `hostname`"
   rm -rf "{{ yb_home_dir }}"/*
+  rm -rf "{{ yb_home_dir }}"/.yugabytedb
   exit 0
 fi
 
@@ -187,6 +238,12 @@ case "$daemon" in
       exit 1
     fi
   ;;
+  controller)
+    if [ "$command" == "create" ]; then
+      echo "create command is not valid for controller"
+      exit 1
+    fi
+  ;;
   *)
     echo "Invalid Daemon: $daemon"
     print_help
@@ -195,7 +252,11 @@ esac
 
 daemon_home="{{ yb_home_dir }}/$daemon"
 daemon_logs_dir="$daemon_home/logs"
-daemon_binary="$daemon_home/bin/yb-$daemon"
+if [[ $daemon == controller ]]; then
+  daemon_binary="$daemon_home/bin/yb-$daemon-server"
+else
+  daemon_binary="$daemon_home/bin/yb-$daemon"
+fi
 daemon_conf="$daemon_home/conf/server.conf"
 daemon_pid_file="$daemon_logs_dir/yb-$daemon.pid"
 
@@ -255,6 +316,33 @@ case "$command" in
       print_err_out "yb-$daemon is still running, using SIGKILL"
       kill -KILL "$daemon_pid"
     fi
+
+    if [[ $daemon == "tserver" ]]; then
+      # Grace period for normal shutdown
+      sleep 1s
+
+      postmaster_pids=()
+      collect_postmaster_pids
+
+      # If PG exited normally, stop immediately.
+{% raw %}
+      if [[ ${#postmaster_pids[@]} -eq 0 ]]; then
+        echo "Postmaster exited. Stopped."
+        exit 0
+      fi
+{% endraw %}
+
+      print_err_out "Found postmaster PIDs: ${postmaster_pids[*]}"
+
+      # Grace period for a real hung PG process
+      wait_sec='30s'
+      echo "Wait for ${wait_sec}..."
+      sleep ${wait_sec}
+
+      collect_postmaster_pids
+      hard_kill_postgres
+    fi
+    echo "Stopped."
   ;;
   clean)
     print_err_out "Cleaning all mount paths for $daemon on `hostname`"

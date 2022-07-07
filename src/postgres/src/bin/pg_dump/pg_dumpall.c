@@ -40,7 +40,7 @@ static void dropTablespaces(PGconn *conn);
 static void dumpTablespaces(PGconn *conn);
 static void dropDBs(PGconn *conn);
 static void dumpUserConfig(PGconn *conn, const char *username);
-static void dumpDatabases(PGconn *conn);
+static void dumpDatabases(PGconn *conn, const char *pgdb);
 static void dumpTimestamp(const char *msg);
 static int	runPgDump(const char *dbname, const char *create_opts);
 static void buildShSecLabels(PGconn *conn,
@@ -52,6 +52,7 @@ static PGconn *connectDatabase(const char *dbname, const char *connstr, const ch
 static char *constructConnStr(const char **keywords, const char **values);
 static PGresult *executeQuery(PGconn *conn, const char *query);
 static void executeCommand(PGconn *conn, const char *query);
+static void ybProcessTablespaceSpcOptions(PGconn *conn, PQExpBuffer *buf, char *spcoptions);
 
 static char pg_dump_bin[MAXPGPATH];
 static const char *progname;
@@ -78,6 +79,9 @@ static int	no_unlogged_table_data = 0;
 static int	no_role_passwords = 0;
 static int	server_version;
 static int	load_via_partition_root = 0;
+static int	include_yb_metadata = 0;	/* In this mode DDL statements include YB specific
+										 * metadata such as tablet partitions. */
+static int	dump_single_database = 0;	/* Dump only one DB specified by '--database' argument. */
 
 static char role_catalog[10];
 #define PG_AUTHID "pg_authid"
@@ -85,6 +89,8 @@ static char role_catalog[10];
 
 static FILE *OPF;
 static char *filename = NULL;
+
+static char *masterHosts = NULL;
 
 #define exit_nicely(code) exit(code)
 
@@ -113,6 +119,7 @@ main(int argc, char *argv[])
 		{"password", no_argument, NULL, 'W'},
 		{"no-privileges", no_argument, NULL, 'x'},
 		{"no-acl", no_argument, NULL, 'x'},
+		{"masters", required_argument, NULL, 'm'},
 
 		/*
 		 * the following options don't have an equivalent short option letter
@@ -137,6 +144,8 @@ main(int argc, char *argv[])
 		{"no-subscriptions", no_argument, &no_subscriptions, 1},
 		{"no-sync", no_argument, NULL, 4},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
+		{"include-yb-metadata", no_argument, &include_yb_metadata, 1},
+		{"dump-single-database", no_argument, &dump_single_database, 1},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -203,7 +212,7 @@ main(int argc, char *argv[])
 
 	pgdumpopts = createPQExpBuffer();
 
-	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:oOp:rsS:tU:vwWx", long_options, &optindex)) != -1)
+	while ((c = getopt_long(argc, argv, "acd:E:f:gh:l:m:oOp:rsS:tU:vwWx", long_options, &optindex)) != -1)
 	{
 		switch (c)
 		{
@@ -242,6 +251,10 @@ main(int argc, char *argv[])
 
 			case 'l':
 				pgdb = pg_strdup(optarg);
+				break;
+
+			case 'm':           /* DEPRECATED and NOT USED: YB master hosts */
+				masterHosts = pg_strdup(optarg);
 				break;
 
 			case 'o':
@@ -406,6 +419,8 @@ main(int argc, char *argv[])
 		appendPQExpBufferStr(pgdumpopts, " --no-subscriptions");
 	if (no_unlogged_table_data)
 		appendPQExpBufferStr(pgdumpopts, " --no-unlogged-table-data");
+	if (include_yb_metadata)
+		appendPQExpBufferStr(pgdumpopts, " --include-yb-metadata");
 
 	/*
 	 * If there was a database specified on the command line, use that,
@@ -560,7 +575,8 @@ main(int argc, char *argv[])
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
-		dumpDatabases(conn);
+		/* Dump one DB only with '--dump-single-database'. */
+		dumpDatabases(conn, dump_single_database ? pgdb : NULL);
 
 	PQfinish(conn);
 
@@ -606,11 +622,16 @@ help(void)
 	printf(_("  -S, --superuser=NAME         superuser user name to use in the dump\n"));
 	printf(_("  -t, --tablespaces-only       dump only tablespaces, no databases or roles\n"));
 	printf(_("  -x, --no-privileges          do not dump privileges (grant/revoke)\n"));
+	printf(_("  --dump-single-database       dump only one DB specified by '--database' argument\n"));
 	printf(_("  --binary-upgrade             for use by upgrade utilities only\n"));
 	printf(_("  --column-inserts             dump data as INSERT commands with column names\n"));
 	printf(_("  --disable-dollar-quoting     disable dollar quoting, use SQL standard quoting\n"));
 	printf(_("  --disable-triggers           disable triggers during data-only restore\n"));
 	printf(_("  --if-exists                  use IF EXISTS when dropping objects\n"));
+	printf(_("  --include-yb-metadata        include Yugabyte-specific metadata, uses extended\n"
+			 "                               YSQL syntax not compatible with PostgreSQL.\n"
+			 "                               (As of now, doesn't automatically include some things\n"
+			 "                               like SPLIT details).\n"));
 	printf(_("  --inserts                    dump data as INSERT commands, rather than COPY\n"));
 	printf(_("  --load-via-partition-root    load partitions via the root table\n"));
 	printf(_("  --no-comments                do not dump comments\n"));
@@ -625,6 +646,8 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+	printf(_("  -m, --masters=HOST:PORT      DEPRECATED and NOT USED\n"
+			 "                               comma-separated list of YB-Master hosts and ports\n"));
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -1147,7 +1170,7 @@ dumpTablespaces(PGconn *conn)
 						   "(SELECT pg_catalog.array_agg(acl) FROM (SELECT pg_catalog.unnest(pg_catalog.acldefault('t',spcowner)) AS acl "
 						   "EXCEPT SELECT pg_catalog.unnest(coalesce(spcacl,pg_catalog.acldefault('t',spcowner)))) as foo)"
 						   "AS rspcacl,"
-						   "array_to_string(spcoptions, ', '),"
+						   "spcoptions,"
 						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
 						   "FROM pg_catalog.pg_tablespace "
 						   "WHERE spcname !~ '^pg_' "
@@ -1212,11 +1235,13 @@ dumpTablespaces(PGconn *conn)
 
 		appendPQExpBufferStr(buf, " LOCATION ");
 		appendStringLiteralConn(buf, spclocation, conn);
-		appendPQExpBufferStr(buf, ";\n");
-
 		if (spcoptions && spcoptions[0] != '\0')
-			appendPQExpBuffer(buf, "ALTER TABLESPACE %s SET (%s);\n",
-							  fspcname, spcoptions);
+		{
+			appendPQExpBuffer(buf, " WITH (");
+			ybProcessTablespaceSpcOptions(conn, &buf, spcoptions);
+			appendPQExpBufferStr(buf, ")");
+		}
+		appendPQExpBufferStr(buf, ";\n");
 
 		if (!skip_acls &&
 			!buildACLCommands(fspcname, NULL, NULL, "TABLESPACE",
@@ -1251,6 +1276,23 @@ dumpTablespaces(PGconn *conn)
 	fprintf(OPF, "\n\n");
 }
 
+/*
+ * Vanilla PG does not have strings in spcoptions column in pg_tablespace.
+ * Since YB tablespaces have JSON strings in its options, process using
+ * appendRelOptionsArray and append to 'buf'.
+ */
+static void
+ybProcessTablespaceSpcOptions(PGconn *conn, PQExpBuffer *buf, char *spcoptions)
+{
+	int encoding = PQclientEncoding(conn);
+	bool std_strings = PQparameterStatus(conn, "standard_conforming_strings");
+	bool res = appendReloptionsArray(*buf, spcoptions, "", encoding, std_strings);
+	if (!res)
+	{
+		fprintf(stderr, "WARNING: could not parse reloptions array\n");
+		exit_nicely(1);
+	}
+}
 
 /*
  * Dump commands to drop each database.
@@ -1351,7 +1393,7 @@ dumpUserConfig(PGconn *conn, const char *username)
  * Dump contents of databases.
  */
 static void
-dumpDatabases(PGconn *conn)
+dumpDatabases(PGconn *conn, const char *pgdb)
 {
 	PGresult   *res;
 	int			i;
@@ -1378,6 +1420,9 @@ dumpDatabases(PGconn *conn)
 		char	   *dbname = PQgetvalue(res, i, 0);
 		const char *create_opts;
 		int			ret;
+
+		if (pgdb && strcmp(dbname, pgdb) != 0)
+			continue;
 
 		/* Skip template0, even if it's not marked !datallowconn. */
 		if (strcmp(dbname, "template0") == 0)
@@ -1448,6 +1493,12 @@ runPgDump(const char *dbname, const char *create_opts)
 
 	appendPQExpBuffer(cmd, "\"%s\" %s %s", pg_dump_bin,
 					  pgdumpopts->data, create_opts);
+
+	/*
+	 * DEPRECATED: Custom YB-Master host/port to use.
+	 */
+	if (masterHosts != NULL)
+		fprintf(stderr, "WARNING: ignoring the deprecated argument --masters (-m)\n");
 
 	/*
 	 * If we have a filename, use the undocumented plain-append pg_dump

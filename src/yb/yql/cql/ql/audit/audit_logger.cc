@@ -16,16 +16,19 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/optional/optional_io.hpp>
-#include <boost/uuid/uuid.hpp>
-#include <boost/uuid/random_generator.hpp>
+#include <boost/preprocessor/seq/for_each.hpp>
 
 #include "yb/rpc/connection.h"
+
 #include "yb/util/date_time.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/result.h"
+#include "yb/util/string_util.h"
+
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 #include "yb/yql/cql/ql/ptree/pt_create_keyspace.h"
-#include "yb/yql/cql/ql/ptree/pt_create_role.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_delete.h"
@@ -35,11 +38,8 @@
 #include "yb/yql/cql/ql/ptree/pt_select.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+#include "yb/yql/cql/ql/util/ql_env.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/util/net/sockaddr.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/string_util.h"
-#include "yb/util/type_traits.h"
 
 DEFINE_bool(ycql_enable_audit_log,
             false,
@@ -49,7 +49,7 @@ TAG_FLAG(ycql_enable_audit_log, runtime);
 // IMPORTANT:
 // These flags are expected to change at runtime, but due to the nature of std::string we shouldn't
 // access them directly as a concurrent read-write access would lead to an undefined behaviour.
-// Instead, use FLAGS_NAMESPACE::GetCommandLineOption("flag_name", &result)
+// Instead, use GFLAGS_NAMESPACE::GetCommandLineOption("flag_name", &result)
 
 DEFINE_string(ycql_audit_log_level,
               "ERROR",
@@ -59,7 +59,7 @@ TAG_FLAG(ycql_audit_log_level, runtime);
 DEFINE_string(ycql_audit_included_keyspaces,
               "",
               "Comma separated list of keyspaces to be included in the audit log, "
-              "if none - includes all keyspaces");
+              "if none - includes all (non-excluded) keyspaces");
 TAG_FLAG(ycql_audit_included_keyspaces, runtime);
 
 DEFINE_string(ycql_audit_excluded_keyspaces,
@@ -70,7 +70,7 @@ TAG_FLAG(ycql_audit_excluded_keyspaces, runtime);
 DEFINE_string(ycql_audit_included_categories,
               "",
               "Comma separated list of categories to be included in the audit log, "
-              "if none - includes all categories");
+              "if none - includes all (non-excluded) categories");
 TAG_FLAG(ycql_audit_included_categories, runtime);
 
 DEFINE_string(ycql_audit_excluded_categories,
@@ -80,7 +80,8 @@ TAG_FLAG(ycql_audit_excluded_categories, runtime);
 
 DEFINE_string(ycql_audit_included_users,
               "",
-              "Comma separated list of users to be included in the audit log");
+              "Comma separated list of users to be included in the audit log, "
+              "if none - includes all (non-excluded) users");
 TAG_FLAG(ycql_audit_included_users, runtime);
 
 DEFINE_string(ycql_audit_excluded_users,
@@ -94,9 +95,6 @@ namespace ql {
 namespace audit {
 
 using boost::optional;
-using yb::cqlserver::CQLMessage;
-using yb::cqlserver::CQLResponse;
-using yb::cqlserver::ErrorResponse;
 
 //
 // Entities
@@ -158,10 +156,12 @@ YB_DEFINE_ENUM(Category, (QUERY)(DML)(DDL)(DCL)(AUTH)(PREPARE)(ERROR)(OTHER))
     static const Type type_name; \
     /**/
 
+#define YCQL_FORWARD_MACRO(r, data, tuple) data tuple
+
 // Audit type with category, an enum-like class.
 class Type {
  public:
-  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, DECLARE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
+  BOOST_PP_SEQ_FOR_EACH(YCQL_FORWARD_MACRO, DECLARE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
 
   const std::string name_;
   const Category    category_;
@@ -176,7 +176,7 @@ class Type {
     const Type Type::type_name = Type(BOOST_PP_STRINGIZE(type_name), Category::category_name); \
     /**/
 
-BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, DEFINE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
+BOOST_PP_SEQ_FOR_EACH(YCQL_FORWARD_MACRO, DEFINE_YCQL_AUDIT_TYPE, YCQL_AUDIT_TYPES)
 
 struct LogEntry {
   // Username of the currently active user, special case is "anonymous" user. None if not logged in.
@@ -244,7 +244,7 @@ std::unordered_set<std::string> SplitGflagList(const std::string& gflag) {
 
 template<typename T>
 bool Contains(const std::unordered_set<T>& set, const T& value) {
-  return set.find(value) != set.end();
+  return set.count(value) != 0;
 }
 
 // Return an audit log type for a tree node, or nullptr if a node can't be audited.
@@ -298,20 +298,20 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
       const auto& cast_node = static_cast<const PTDropStmt&>(tnode);
       // We only expect a handful of types here, same as Executor::ExecPTNode(const PTDropStmt*)
       switch (cast_node.drop_type()) {
-        case OBJECT_SCHEMA:
+        case ObjectType::SCHEMA:
           *keyspace = cast_node.name()->last_name().data();
           return &Type::DROP_KEYSPACE;
-        case OBJECT_INDEX:
+        case ObjectType::INDEX:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_INDEX;
-        case OBJECT_ROLE:
+        case ObjectType::ROLE:
           return &Type::DROP_ROLE;
-        case OBJECT_TABLE:
+        case ObjectType::TABLE:
           *keyspace = cast_node.yb_table_name().namespace_name();
           *scope    = cast_node.yb_table_name().table_name();
           return &Type::DROP_TABLE;
-        case OBJECT_TYPE:
+        case ObjectType::TYPE:
           *keyspace = cast_node.name()->first_name().data();
           *scope    = cast_node.name()->last_name().data();
           return &Type::DROP_TYPE;
@@ -378,23 +378,23 @@ const Type* GetAuditLogTypeOption(const TreeNode& tnode,
           break;
       }
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
     case TreeNodeOpcode::kPTGrantRevokeRole: {
       const auto& cast_node = static_cast<const PTGrantRevokeRole&>(tnode);
       // Scope is not used.
       switch (cast_node.statement_type()) {
-        case GrantRevokeStatementType::GRANT:
+        case client::GrantRevokeStatementType::GRANT:
           return &Type::GRANT;
-        case GrantRevokeStatementType::REVOKE:
+        case client::GrantRevokeStatementType::REVOKE:
           return &Type::REVOKE;
       }
-      FATAL_INVALID_ENUM_VALUE(GrantRevokeStatementType, cast_node.statement_type());
+      FATAL_INVALID_ENUM_VALUE(client::GrantRevokeStatementType, cast_node.statement_type());
     }
 
     case TreeNodeOpcode::kPTListNode: {
@@ -464,14 +464,14 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
   static const auto replacement = "<REDACTED>";
   // Using somewhat tricky code to account for escaped quotes ('') in a password.
   // We replace an entire string, including quotes.
-  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'");
+  static const std::regex pwd_start_regex("password[\\s]*=[\\s]*'", std::regex_constants::icase);
   std::smatch m;
   if (!regex_search(operation, m, pwd_start_regex)) {
     return operation;
   }
-  int pwd_start_idx = m.position() + m.length() - 1;
-  int pwd_length = -1;
-  for (int i = pwd_start_idx + 1; i < operation.length(); ++i) {
+  size_t pwd_start_idx = m.position() + m.length() - 1;
+  ssize_t pwd_length = -1;
+  for (auto i = pwd_start_idx + 1; i < operation.length(); ++i) {
     if (operation[i] == '\'') {
       // If the next character is a quote too - this is an escaped quote.
       if (i < operation.length() - 1 && operation[i + 1] == '\'') {
@@ -491,7 +491,7 @@ std::string ObfuscateOperation(const TreeNode& tnode, const std::string& operati
 }
 
 // Follows Cassandra's view format for prettified binary log.
-CHECKED_STATUS AddLogEntry(const LogEntry& e) {
+Status AddLogEntry(const LogEntry& e) {
   std::string str;
   str.reserve(512); // Some reasonable default that's expected to fit most of the audit records.
   str.append("AUDIT: ");
@@ -561,8 +561,8 @@ bool AuditLogger::SatisfiesGFlag(const LogEntry& e,
   std::string gflag_value;
   bool found = GFLAGS_NAMESPACE::GetCommandLineOption(gflag_name.c_str(), &gflag_value);
   if (!found) {
-    // This should never happen as we use compile-time check in a macro.
-    LOG(FATAL) << "Gflag " << gflag_name << " does not exist!";
+    // This should never happen as we use a compile-time check in a macro.
+    LOG(DFATAL) << "Gflag " << gflag_name << " does not exist!";
     return false;
   }
 
@@ -587,7 +587,7 @@ bool AuditLogger::SatisfiesGFlag(const LogEntry& e,
 // Returns false if the given predicate is not satisfied.
 #define RETURN_IF_NOT_SATISFIES_GFLAG(gflag, entry, predicate_on_split_and_e) \
     static_assert(std::is_same<decltype(BOOST_PP_CAT(FLAGS_, gflag)), std::string&>::value, \
-                  "Flag must be string"); \
+                  "Flag " BOOST_PP_STRINGIZE(gflag) " must be string"); \
     \
     if (!SatisfiesGFlag(e, BOOST_PP_STRINGIZE(gflag), \
                         [](const GflagListValue& split, const LogEntry& e) { \
@@ -648,15 +648,16 @@ Result<LogEntry> AuditLogger::CreateLogEntry(const Type& type,
     .operation     = std::move(operation),
     .error_message = std::move(error_message)
   };
-  return std::move(entry);
+  return entry;
 }
 
-Status AuditLogger::StartBatchRequest(int statements_count) {
-  if (!FLAGS_ycql_enable_audit_log) {
+Status AuditLogger::StartBatchRequest(size_t statements_count,
+                                      IsRescheduled is_rescheduled) {
+  if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
   }
 
-  if (rescheduled_ && !batch_id_.empty()) {
+  if (is_rescheduled && !batch_id_.empty()) {
     // Keep an existing batch ID in case of reschedule.
     return Status::OK();
   }
@@ -664,7 +665,7 @@ Status AuditLogger::StartBatchRequest(int statements_count) {
   // We cannot have sub-batches as only DMLs are allowed within a batch.
   SCHECK(batch_id_.empty(), InternalError, "Batch request mode is already active!");
 
-  batch_id_ = AsString(boost::uuids::random_generator()());
+  batch_id_ = AsString(batch_id_gen_());
 
   auto operation = Format("BatchId:[$0] - BATCH of [$1] statements", batch_id_, statements_count);
 
@@ -697,7 +698,7 @@ Status AuditLogger::EndBatchRequest() {
 }
 
 Status AuditLogger::LogAuthResponse(const CQLResponse& response) {
-  if (!FLAGS_ycql_enable_audit_log) {
+  if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
   }
 
@@ -733,9 +734,9 @@ Status AuditLogger::LogAuthResponse(const CQLResponse& response) {
 
 Status AuditLogger::LogStatement(const TreeNode* tnode,
                                  const std::string& statement,
-                                 bool is_prepare) {
-  // FIXME(alex): Rescheduled statements should not be logged.
-  if (!FLAGS_ycql_enable_audit_log || !tnode /* || rescheduled_*/) {
+                                 IsPrepare is_prepare) {
+  // FIXME(alex): Rescheduled statements should not be logged (this requires additional testing).
+  if (!FLAGS_ycql_enable_audit_log || !tnode || !conn_) {
     return Status::OK();
   }
 
@@ -764,8 +765,8 @@ Status AuditLogger::LogStatement(const TreeNode* tnode,
 Status AuditLogger::LogStatementError(const TreeNode* tnode,
                                       const std::string& statement,
                                       const Status& error_status,
-                                      bool error_is_formatted) {
-  if (!FLAGS_ycql_enable_audit_log || !tnode) {
+                                      ErrorIsFormatted error_is_formatted) {
+  if (!FLAGS_ycql_enable_audit_log || !tnode || !conn_) {
     return Status::OK();
   }
 
@@ -774,8 +775,8 @@ Status AuditLogger::LogStatementError(const TreeNode* tnode,
 
 Status AuditLogger::LogStatementError(const std::string& statement,
                                       const Status& error_status,
-                                      bool error_is_formatted) {
-  if (!FLAGS_ycql_enable_audit_log) {
+                                      ErrorIsFormatted error_is_formatted) {
+  if (!FLAGS_ycql_enable_audit_log || !conn_) {
     return Status::OK();
   }
 

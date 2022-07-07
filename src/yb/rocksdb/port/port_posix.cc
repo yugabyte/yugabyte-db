@@ -27,15 +27,18 @@
 #if defined(__i386__) || defined(__x86_64__)
 #include <cpuid.h>
 #endif
-#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
-#include <sys/resource.h>
-#include <unistd.h>
-#include <cstdlib>
+
+#include <glog/logging.h>
+
 #include "yb/rocksdb/util/logging.h"
+#include "yb/util/status_log.h"
+
+#if defined(RLIMIT_NOFILE)
+#include "yb/util/std_util.h"
+#endif
 
 namespace rocksdb {
 namespace port {
@@ -85,7 +88,7 @@ void Mutex::Unlock() {
 
 void Mutex::AssertHeld() {
 #ifndef NDEBUG
-  assert(locked_);
+  DCHECK(locked_);
 #endif
 }
 
@@ -179,7 +182,7 @@ int GetMaxOpenFiles() {
     return -1;
   }
   // protect against overflow
-  if (no_files_limit.rlim_cur >= std::numeric_limits<int>::max()) {
+  if (yb::std_util::cmp_greater_equal(no_files_limit.rlim_cur, std::numeric_limits<int>::max())) {
     return std::numeric_limits<int>::max();
   }
   return static_cast<int>(no_files_limit.rlim_cur);

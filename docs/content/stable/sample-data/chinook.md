@@ -3,26 +3,31 @@ title: Chinook sample database
 headerTitle: Chinook sample database
 linkTitle: Chinook
 description: Use the Chinook sample database for a media store to explore and learn YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: chinook
     parent: sample-data
-    weight: 2751
-isTocNested: true
-showAsideToc: true
+    weight: 100
+type: docs
 ---
 
 The Chinook sample database for a digital media store can be used to explore and learn YugabyteDB.
 
+You can install and use the Chinook sample database using:
+
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
+- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick start](../../yugabyte-cloud/cloud-quickstart/).
+
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
+
 ## About the Chinook database
 
-The Chinook data model represents a digital media store, including tables for artists, albums, media tracks, invoices and customers.
+The Chinook data model represents a digital media store, including tables for artists, albums, media tracks, invoices, and customers.
 
 - Media-related data was created using real data from an Apple iTunes library.
 - Customer and employee information was created using fictitious names and addresses that can be located on Google maps, and other well formatted data (phone, fax, email, etc.)
 - Sales information was auto generated using random data for a four year period.
-  
+
 The Chinook sample database includes:
 
 - 11 tables
@@ -33,35 +38,27 @@ For details, here's the entity relationship diagram of the Chinook data model.
 
 ![Chinook ER diagram](/images/sample-data/chinook/chinook-er-diagram.png)
 
-## Before you begin
+## Install the Chinook sample database
 
-To install and use the Chinook sample database, you need to have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/stable/quick-start/).
+The Chinook SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
-Install the Chinook sample database
+- [chinook_ddl.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/chinook_ddl.sql) — Creates the tables and constraints
+- [chinook_genres_artists_albums.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
+- [chinook_songs.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/chinook_songs.sql) — Loads individual song information
 
-### 1. Download the SQL scripts
+Follow the steps here to install the Chinook sample database.
 
-You can download the Chinook database that is compatible with YugabyteDB from the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Download the following three files.
+### Open the YSQL shell
 
-- [`chinook_ddl.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_ddl.sql) — Creates the tables and constraints
-- [`chinook_genres_artists_albums.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_genres_artists_albums.sql) — Loads artist and album information
-- [`chinook_songs.sql`](https://raw.githubusercontent.com/yugabyte/yugabyte-db/42799a519726c75f502f463795ac6cd3ebda40c2/sample/chinook_songs.sql) — Loads individual song information
-
-### 2. Open the YSQL shell
-
-To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root directory.
+If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```
-ysqlsh (11.2)
-Type "help" for help.
-yugabyte=#
-```
+If you are connecting to Yugabyte Cloud, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
-### 3. Create the Chinook database
+### Create the Chinook database
 
 To create the `chinook` database, run the following command.
 
@@ -81,12 +78,12 @@ Connect to the `chinook` database.
 yugabyte=# \c chinook
 ```
 
-```
+```output
 You are now connected to database "chinook" as user "yugabyte".
 chinook=#
 ```
 
-### 4. Build the tables and objects
+### Build the tables and objects
 
 To build the tables and database objects, run the following `\i` command.
 
@@ -100,7 +97,7 @@ You can verify that all 11 tables have been created by running the `\d` command.
 chinook=# \d
 ```
 
-### 5. Load the sample data
+### Load the sample data
 
 To load the `chinook` database with sample data, you need to run the SQL scripts.
 
@@ -122,7 +119,7 @@ Now verify that you have data by running a simple `SELECT` statement to pull som
 chinook=# SELECT "Name", "Composer" FROM "Track" LIMIT 10;
 ```
 
-```
+```output
               Name               |                          Composer
 ---------------------------------+------------------------------------------------------------
  Boa Noite                       |

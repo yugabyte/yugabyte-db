@@ -21,24 +21,25 @@
 #include <boost/compute/detail/lru_cache.hpp>
 
 #include "yb/client/meta_data_cache.h"
-#include "yb/client/transaction_pool.h"
 
-#include "yb/gutil/strings/join.h"
+#include "yb/gutil/casts.h"
+#include "yb/gutil/strings/substitute.h"
+
+#include "yb/tserver/tablet_server_interface.h"
+
+#include "yb/util/bytes_formatter.h"
+#include "yb/util/format.h"
+#include "yb/util/mem_tracker.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_rpc.h"
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/cql/cqlserver/system_query_cache.h"
-
-#include "yb/gutil/strings/substitute.h"
-#include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/tserver/tablet_server.h"
-
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/crypt.h"
-
-#include "yb/util/mem_tracker.h"
+#include "yb/yql/cql/ql/parser/parser.h"
 
 using namespace std::placeholders;
 using namespace yb::size_literals;
@@ -182,11 +183,6 @@ void CQLServiceImpl::Shutdown() {
   for (const auto& processor : processors) {
     processor->Shutdown();
   }
-
-  auto client = this->client();
-  if (client) {
-    client->messenger()->Shutdown();
-  }
 }
 
 void CQLServiceImpl::Handle(yb::rpc::InboundCallPtr inbound_call) {
@@ -241,7 +237,7 @@ void CQLServiceImpl::ReturnProcessor(const CQLProcessorListPos& pos) {
 }
 
 shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
-    const CQLMessage::QueryId& query_id, const string& keyspace, const string& query) {
+    const ql::CQLMessage::QueryId& query_id, const string& keyspace, const string& query) {
   // Get exclusive lock before allocating a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -269,7 +265,7 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
 }
 
 shared_ptr<const CQLStatement> CQLServiceImpl::GetPreparedStatement(
-    const CQLMessage::QueryId& query_id) {
+    const ql::CQLMessage::QueryId& query_id) {
   // Get exclusive lock before looking up a prepared statement and updating the LRU list.
   std::lock_guard<std::mutex> guard(prepared_stmts_mutex_);
 
@@ -385,12 +381,16 @@ void CQLServiceImpl::CollectGarbage(size_t required) {
           << ", memory usage = " << prepared_stmts_mem_tracker_->consumption();
 }
 
-client::TransactionPool* CQLServiceImpl::TransactionPool() {
+client::TransactionPool& CQLServiceImpl::TransactionPool() {
   return server_->tserver()->TransactionPool();
 }
 
 server::Clock* CQLServiceImpl::clock() {
   return server_->clock();
+}
+
+void CQLServiceImpl::FillEndpoints(const rpc::RpcServicePtr& service, rpc::RpcEndpointMap* map) {
+  map->emplace(CQLInboundCall::static_serialized_remote_method(), std::make_pair(service, 0ULL));
 }
 
 }  // namespace cqlserver

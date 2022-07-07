@@ -455,6 +455,10 @@ EXPLAIN (COSTS OFF)
 SELECT circle_center(f1), round(radius(f1)) as radius FROM gcircle_tbl ORDER BY f1 <-> '(200,300)'::point LIMIT 10;
 SELECT circle_center(f1), round(radius(f1)) as radius FROM gcircle_tbl ORDER BY f1 <-> '(200,300)'::point LIMIT 10;
 
+EXPLAIN (COSTS OFF)
+SELECT point(x,x), (SELECT f1 FROM gpolygon_tbl ORDER BY f1 <-> point(x,x) LIMIT 1) as c FROM generate_series(0,10,1) x;
+SELECT point(x,x), (SELECT f1 FROM gpolygon_tbl ORDER BY f1 <-> point(x,x) LIMIT 1) as c FROM generate_series(0,10,1) x;
+
 -- Now check the results from bitmap indexscan
 SET enable_seqscan = OFF;
 SET enable_indexscan = OFF;
@@ -619,10 +623,10 @@ SELECT * FROM array_index_op_test WHERE i = '{}' ORDER BY seqno;
 SELECT * FROM array_index_op_test WHERE i @> '{}' ORDER BY seqno;
 SELECT * FROM array_index_op_test WHERE i && '{}' ORDER BY seqno;
 SELECT * FROM array_index_op_test WHERE i <@ '{}' ORDER BY seqno;
-SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
-SELECT * FROM array_op_test WHERE i @> '{NULL}' ORDER BY seqno;
-SELECT * FROM array_op_test WHERE i && '{NULL}' ORDER BY seqno;
-SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i = '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i @> '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i && '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
 
 CREATE INDEX textarrayidx ON array_index_op_test USING gin (t);
 
@@ -655,8 +659,8 @@ SELECT * FROM array_index_op_test WHERE t && '{AAAAAAA80240}' ORDER BY seqno;
 SELECT * FROM array_index_op_test WHERE i @> '{32}' AND t && '{AAAAAAA80240}' ORDER BY seqno;
 SELECT * FROM array_index_op_test WHERE i && '{32}' AND t @> '{AAAAAAA80240}' ORDER BY seqno;
 SELECT * FROM array_index_op_test WHERE t = '{}' ORDER BY seqno;
-SELECT * FROM array_op_test WHERE i = '{NULL}' ORDER BY seqno;
-SELECT * FROM array_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i = '{NULL}' ORDER BY seqno;
+SELECT * FROM array_index_op_test WHERE i <@ '{NULL}' ORDER BY seqno;
 
 RESET enable_seqscan;
 RESET enable_indexscan;

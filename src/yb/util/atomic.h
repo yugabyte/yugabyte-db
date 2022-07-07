@@ -37,12 +37,16 @@
 #include <atomic>
 #include <thread>
 
+#include <boost/atomic.hpp>
 #include <boost/type_traits/make_signed.hpp>
+#include <glog/logging.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/casts.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
+
+#include "yb/util/cast.h"
+#include "yb/util/random_util.h"
 
 namespace yb {
 
@@ -378,7 +382,7 @@ AtomicUniquePtr<T> MakeAtomicUniquePtr(Args&&... args) {
 template <class T>
 T GetAtomicFlag(T* flag) {
   std::atomic<T>& atomic_flag = *pointer_cast<std::atomic<T>*>(flag);
-  return atomic_flag.load(std::memory_order::memory_order_relaxed);
+  return atomic_flag.load(std::memory_order::relaxed);
 }
 
 template <class U, class T>
@@ -392,6 +396,14 @@ void AtomicFlagSleepMs(T* flag) {
   auto value = GetAtomicFlag(flag);
   if (value != 0) {
     std::this_thread::sleep_for(std::chrono::milliseconds(value));
+  }
+}
+
+template <class T>
+void AtomicFlagRandomSleepMs(T* flag) {
+  auto value = GetAtomicFlag(flag);
+  if (value != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(RandomUniformInt<T>(0, value)));
   }
 }
 
@@ -426,6 +438,39 @@ class AtomicTryMutex {
  private:
   std::atomic<bool> locked_{false};
 };
+
+template <class T, class D>
+T AddFetch(std::atomic<T>* atomic, const D& delta, std::memory_order memory_order) {
+  return atomic->fetch_add(delta, memory_order) + delta;
+}
+
+// ------------------------------------------------------------------------------------------------
+// A utility for testing if an atomic is lock-free.
+
+namespace atomic_internal {
+
+template <class T>
+bool IsAcceptableAtomicImpl(const T& atomic_variable) {
+#ifdef __aarch64__
+  // TODO: ensure we are using proper 16-byte atomics on aarch64.
+  // https://github.com/yugabyte/yugabyte-db/issues/9196
+  return true;
+#else
+  return atomic_variable.is_lock_free();
+#endif
+}
+
+}  // namespace atomic_internal
+
+template <class T>
+bool IsAcceptableAtomicImpl(const boost::atomics::atomic<T>& atomic_variable) {
+  return atomic_internal::IsAcceptableAtomicImpl(atomic_variable);
+}
+
+template <class T>
+bool IsAcceptableAtomicImpl(const std::atomic<T>& atomic_variable) {
+  return atomic_internal::IsAcceptableAtomicImpl(atomic_variable);
+}
 
 } // namespace yb
 #endif /* YB_UTIL_ATOMIC_H */

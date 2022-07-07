@@ -29,29 +29,34 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/tserver/remote_bootstrap_service.h"
 
 #include <algorithm>
 #include <string>
 #include <vector>
 
-#include <boost/date_time/time_duration.hpp>
-#include <boost/thread/locks.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/consensus/log.h"
-#include "yb/fs/fs_manager.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/map-util.h"
+
+#include "yb/consensus/log_util.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/rpc/rpc_context.h"
-#include "yb/tserver/remote_bootstrap_snapshots.h"
-#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tablet_peer_lookup.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -138,6 +143,9 @@ RemoteBootstrapServiceImpl::RemoteBootstrapServiceImpl(
                           &session_expiration_thread_));
 }
 
+RemoteBootstrapServiceImpl::~RemoteBootstrapServiceImpl() {
+}
+
 void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
         const BeginRemoteBootstrapSessionRequestPB* req,
         BeginRemoteBootstrapSessionResponsePB* resp,
@@ -169,10 +177,8 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
           tablet_peer, session_id, requestor_uuid, &nsessions_));
       it = sessions_.emplace(session_id, SessionData{session, CoarseTimePoint()}).first;
       auto new_nsessions = nsessions_.fetch_add(1, std::memory_order_acq_rel) + 1;
-      if (new_nsessions != sessions_.size()) {
-        LOG(DFATAL) << "nsessions_ " << new_nsessions
-                    << " !=  number of sessions " << sessions_.size();
-      }
+      LOG_IF(DFATAL, implicit_cast<size_t>(new_nsessions) != sessions_.size())
+          << "nsessions_ " << new_nsessions << " !=  number of sessions " << sessions_.size();
     } else {
       session = it->second.session;
       LOG(INFO) << "Re-initializing existing remote bootstrap session on tablet " << tablet_id
@@ -193,12 +199,13 @@ void RemoteBootstrapServiceImpl::BeginRemoteBootstrapSession(
   resp->mutable_initial_committed_cstate()->CopyFrom(session->initial_committed_cstate());
 
   auto const& log_segments = session->log_segments();
-  resp->mutable_deprecated_wal_segment_seqnos()->Reserve(log_segments.size());
+  resp->mutable_deprecated_wal_segment_seqnos()->Reserve(narrow_cast<int>(log_segments.size()));
   for (const scoped_refptr<log::ReadableLogSegment>& segment : log_segments) {
     resp->add_deprecated_wal_segment_seqnos(segment->header().sequence_number());
   }
   if (!log_segments.empty()) {
-    resp->set_first_wal_segment_seqno(log_segments.front()->header().sequence_number());
+    const log::ReadableLogSegmentPtr& first_segment = CHECK_RESULT(log_segments.front());
+    resp->set_first_wal_segment_seqno(first_segment->header().sequence_number());
   }
 
   context.RespondSuccess();

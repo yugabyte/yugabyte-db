@@ -14,8 +14,11 @@
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.proxy.h"
@@ -23,6 +26,8 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 namespace yb {
 namespace tserver {
@@ -47,7 +52,7 @@ class BackupServiceTest : public TabletServerTestBase {
             proxy_cache_.get(), HostPort::FromBoundEndpoint(mini_server_->bound_rpc_addr())));
   }
 
-  gscoped_ptr<TabletServerBackupServiceProxy> backup_proxy_;
+  std::unique_ptr<TabletServerBackupServiceProxy> backup_proxy_;
 };
 
 TEST_F(BackupServiceTest, TestCreateTabletSnapshot) {
@@ -157,7 +162,7 @@ TEST_F(BackupServiceTest, TestSnapshotData) {
   VerifyRows(schema_, { KeyValue(1, 11), KeyValue(2, 22) });
 
   // Send the restore snapshot request.
-  req.set_operation(TabletSnapshotOpRequestPB::RESTORE);
+  req.set_operation(TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   {
     RpcController rpc;
     SCOPED_TRACE(req.DebugString());

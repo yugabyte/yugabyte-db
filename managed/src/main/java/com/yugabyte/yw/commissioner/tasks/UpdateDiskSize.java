@@ -10,43 +10,46 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.util.Set;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+@Slf4j
 public class UpdateDiskSize extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UpdateDiskSize.class);
+
+  @Inject
+  protected UpdateDiskSize(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends DiskIncreaseFormData {}
 
   @Override
   protected DiskIncreaseFormData taskParams() {
-    return (DiskIncreaseFormData)taskParams;
+    return (DiskIncreaseFormData) taskParams;
   }
 
   @Override
   public void run() {
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
-      // Update the user intent.
-      writeUserIntentToUniverse();
+      Universe universe =
+          lockUniverseForUpdate(
+              taskParams().expectedUniverseVersion,
+              u -> {
+                // Set the task param data to universe in-memory.
+                setUserIntentToUniverse(u, taskParams(), false);
+              });
 
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
 
@@ -60,13 +63,13 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error={}.", getName(), t);
       throw t;
     } finally {
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

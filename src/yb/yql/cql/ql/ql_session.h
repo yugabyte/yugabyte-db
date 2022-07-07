@@ -18,15 +18,11 @@
 #define YB_YQL_CQL_QL_QL_SESSION_H_
 
 #include <memory>
-#include <mutex>
 #include <string>
 
 #include <boost/thread/locks.hpp>
-#include <boost/thread/shared_mutex.hpp>
-
 #include <gflags/gflags.h>
 
-#include "yb/master/master_defaults.h"
 #include "yb/util/shared_lock.h"
 
 DECLARE_bool(use_cassandra_authentication);
@@ -51,44 +47,44 @@ class QLSession {
   // Access functions for current keyspace. It can be accessed by multiple calls in parallel so
   // they need to be thread-safe for shared reads / exclusive writes.
   std::string current_keyspace() const {
-    SharedLock<boost::shared_mutex> l(current_keyspace_mutex_);
+    SharedLock<std::shared_timed_mutex> l(current_keyspace_mutex_);
     return current_keyspace_;
   }
 
   void set_current_keyspace(const std::string& keyspace) {
-    boost::lock_guard<boost::shared_mutex> l(current_keyspace_mutex_);
+    boost::lock_guard<std::shared_timed_mutex> l(current_keyspace_mutex_);
     current_keyspace_ = keyspace;
   }
 
   // Access functions for current role_name. It can be accessed by multiple calls in parallel so
   // they need to be thread-safe for shared reads / exclusive writes.
   std::string current_role_name() const {
-    SharedLock<boost::shared_mutex> l(current_role_name_mutex_);
+    SharedLock<std::shared_timed_mutex> l(current_role_name_mutex_);
     return current_role_name_;
   }
 
   void set_current_role_name(const std::string& role_name) {
-    boost::lock_guard<boost::shared_mutex> l(current_role_name_mutex_);
+    boost::lock_guard<std::shared_timed_mutex> l(current_role_name_mutex_);
     current_role_name_ = role_name;
   }
 
   // Access functions for 'user is authenticated' flag. It can be accessed by multiple calls in
   // parallel so they need to be thread-safe for shared reads / exclusive writes.
   bool is_user_authenticated() const {
-    SharedLock<boost::shared_mutex> l(user_authenticated_mutex_);
+    SharedLock<std::shared_timed_mutex> l(user_authenticated_mutex_);
     return user_authenticated_;
   }
 
   void set_user_authenticated(bool authenticated = true) {
-    boost::lock_guard<boost::shared_mutex> l(user_authenticated_mutex_);
+    boost::lock_guard<std::shared_timed_mutex> l(user_authenticated_mutex_);
     user_authenticated_ = authenticated;
   }
 
  private:
   // Mutexes to protect access to the class fields.
-  mutable boost::shared_mutex current_keyspace_mutex_;
-  mutable boost::shared_mutex current_role_name_mutex_;
-  mutable boost::shared_mutex user_authenticated_mutex_;
+  mutable std::shared_timed_mutex current_keyspace_mutex_;
+  mutable std::shared_timed_mutex current_role_name_mutex_;
+  mutable std::shared_timed_mutex user_authenticated_mutex_;
   // Current keyspace.
   std::string current_keyspace_ = kUndefinedKeyspace;
   // TODO (Bristy) : After Login has been done, test this.

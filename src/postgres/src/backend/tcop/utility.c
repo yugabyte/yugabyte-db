@@ -58,6 +58,7 @@
 #include "commands/user.h"
 #include "commands/vacuum.h"
 #include "commands/view.h"
+#include "libpq/libpq-be.h"
 #include "miscadmin.h"
 #include "parser/parse_utilcmd.h"
 #include "postmaster/bgwriter.h"
@@ -73,6 +74,7 @@
 #include "utils/rel.h"
 
 #include "pg_yb_utils.h"
+#include "commands/ybccmds.h"
 
 static void YBProcessUtilityDefaultHook(PlannedStmt *pstmt,
                                         const char *queryString,
@@ -207,7 +209,6 @@ check_xact_readonly(Node *parsetree)
 		case T_ViewStmt:
 		case T_DropStmt:
 		case T_DropdbStmt:
-		case T_DropTableGroupStmt:
 		case T_DropTableSpaceStmt:
 		case T_DropRoleStmt:
 		case T_GrantStmt:
@@ -550,11 +551,6 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			CreateTableGroup((CreateTableGroupStmt *) parsetree);
 			break;
 
-		case T_DropTableGroupStmt:
-			PreventInTransactionBlock(isTopLevel, "DROP TABLEGROUP");
-			DropTableGroup((DropTableGroupStmt *) parsetree);
-			break;
-
 		case T_CreateTableSpaceStmt:
 			/* no event triggers for global objects */
 			PreventInTransactionBlock(isTopLevel, "CREATE TABLESPACE");
@@ -628,13 +624,9 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_DropdbStmt:
-			{
-				DropdbStmt *stmt = (DropdbStmt *) parsetree;
-
-				/* no event triggers for global objects */
-				PreventInTransactionBlock(isTopLevel, "DROP DATABASE");
-				dropdb(stmt->dbname, stmt->missing_ok);
-			}
+			/* no event triggers for global objects */
+			PreventInTransactionBlock(isTopLevel, "DROP DATABASE");
+			DropDatabase(pstate, (DropdbStmt *) parsetree);
 			break;
 
 			/* Query-level asynchronous notification */
@@ -798,7 +790,7 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			 * can be a useful way of reducing switchover time when using
 			 * various forms of replication.
 			 */
-			RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
+			RequestCheckpoint(CHECKPOINT_CAUSE_CLIENT | CHECKPOINT_IMMEDIATE | CHECKPOINT_WAIT |
 							  (RecoveryInProgress() ? 0 : CHECKPOINT_FORCE));
 			break;
 
@@ -842,10 +834,20 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 			break;
 
 		case T_BackfillIndexStmt:
+			/*
+			 * Only tserver-postgres libpq connection can send BACKFILL request.
+			 */
+			if (!IsYugaByteEnabled() ||
+				!MyProcPort->yb_is_tserver_auth_method ||
+				IsBootstrapProcessingMode() ||
+				YBIsPreparingTemplates())
 			{
-				BackfillIndexStmt *stmt = (BackfillIndexStmt *) parsetree;
-				BackfillIndex(stmt);
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot run this query: %s",
+								CreateCommandTag(parsetree))));
 			}
+			YbBackfillIndex((BackfillIndexStmt *) parsetree, dest);
 			break;
 
 			/*
@@ -1335,24 +1337,28 @@ ProcessUtilitySlow(ParseState *pstate,
 					Oid			relid;
 					LOCKMODE	lockmode;
 
-					if (stmt->concurrent)
+					if (stmt->concurrent != YB_CONCURRENCY_DISABLED)
 					{
-						if (IsYugaByteEnabled() &&
+						/*
+						 * If concurrency is implicitly enabled, transparently
+						 * switch to nonconcurrent index build.
+						 * TODO(jason): heed issue #6240.
+						 */
+						if (stmt->concurrent == YB_CONCURRENCY_IMPLICIT_ENABLED &&
+							IsYugaByteEnabled() &&
 							!IsBootstrapProcessingMode() &&
 							!YBIsPreparingTemplates() &&
 							IsInTransactionBlock(isTopLevel))
 						{
-							/*
-							 * Transparently switch to nonconcurrent index
-							 * build.
-							 * TODO(jason): heed issue #6240.
-							 */
-							ereport(DEBUG1,
+							ereport(NOTICE,
 									(errmsg("making create index for table "
-											"\"%s\" in transaction block "
-											"nonconcurrent",
-											stmt->relation->relname)));
-							stmt->concurrent = false;
+											"\"%s\" nonconcurrent",
+											stmt->relation->relname),
+									 errdetail("Create index in transaction"
+											   " block cannot be concurrent."),
+									 errhint("Consider running it outside of a"
+											 " transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.")));
+							stmt->concurrent = YB_CONCURRENCY_DISABLED;
 						}
 						else
 							PreventInTransactionBlock(isTopLevel,
@@ -1368,8 +1374,8 @@ ProcessUtilitySlow(ParseState *pstate,
 					 * eventually be needed here, so the lockmode calculation
 					 * needs to match what DefineIndex() does.
 					 */
-					lockmode = stmt->concurrent ? ShareUpdateExclusiveLock
-						: ShareLock;
+					lockmode = (stmt->concurrent != YB_CONCURRENCY_DISABLED)
+						? ShareUpdateExclusiveLock : ShareLock;
 					relid =
 						RangeVarGetRelidExtended(stmt->relation, lockmode,
 												 0,
@@ -1409,11 +1415,17 @@ ProcessUtilitySlow(ParseState *pstate,
 												   stmt->relation->relname)));
 						}
 						list_free(inheritors);
+					}
 
+					if (get_rel_relkind(relid) == RELKIND_PARTITIONED_TABLE)
+					{
 						/*
-						 * Transparently switch to nonconcurrent index build.
+						 * If CONCURRENTLY is explicitly specified, an error
+						 * will be thrown during the DefineIndex() subroutine.
+						 * If concurrency is implicitly enabled, transparently switch
+						 * to nonconcurrent index build.
 						 */
-						if (stmt->concurrent &&
+						if (stmt->concurrent == YB_CONCURRENCY_IMPLICIT_ENABLED &&
 							IsYugaByteEnabled() &&
 							!IsBootstrapProcessingMode() &&
 							!YBIsPreparingTemplates())
@@ -1423,7 +1435,7 @@ ProcessUtilitySlow(ParseState *pstate,
 											"partitioned table \"%s\" "
 											"nonconcurrent",
 											stmt->relation->relname)));
-							stmt->concurrent = false;
+							stmt->concurrent = YB_CONCURRENCY_DISABLED;
 						}
 					}
 
@@ -1523,7 +1535,7 @@ ProcessUtilitySlow(ParseState *pstate,
 				break;
 
 			case T_AlterEnumStmt:	/* ALTER TYPE (enum) */
-				address = AlterEnum((AlterEnumStmt *) parsetree, isTopLevel);
+				address = AlterEnum((AlterEnumStmt *) parsetree);
 				break;
 
 			case T_ViewStmt:	/* CREATE VIEW */
@@ -1866,6 +1878,9 @@ UtilityReturnsTuples(Node *parsetree)
 		case T_VariableShowStmt:
 			return true;
 
+		case T_BackfillIndexStmt:
+			return true;
+
 		default:
 			return false;
 	}
@@ -1920,6 +1935,9 @@ UtilityTupleDescriptor(Node *parsetree)
 
 				return GetPGVariableResultDesc(n->name);
 			}
+
+		case T_BackfillIndexStmt:
+			return YbBackfillIndexResultDesc((BackfillIndexStmt *) parsetree);
 
 		default:
 			return NULL;
@@ -2100,7 +2118,7 @@ AlterObjectTypeCommandTag(ObjectType objtype)
 		case OBJECT_TABCONSTRAINT:
 			tag = "ALTER TABLE";
 			break;
-		case OBJECT_TABLEGROUP:
+		case OBJECT_YBTABLEGROUP:
 			tag = "ALTER TABLEGROUP";
 			break;
 		case OBJECT_TABLESPACE:
@@ -2281,10 +2299,6 @@ CreateCommandTag(Node *parsetree)
 			tag = "CREATE TABLEGROUP";
 			break;
 
-		case T_DropTableGroupStmt:
-			tag = "DROP TABLEGROUP";
-			break;
-
 		case T_CreateTableSpaceStmt:
 			tag = "CREATE TABLESPACE";
 			break;
@@ -2452,6 +2466,9 @@ CreateCommandTag(Node *parsetree)
 					break;
 				case OBJECT_STATISTIC_EXT:
 					tag = "DROP STATISTICS";
+					break;
+				case OBJECT_YBTABLEGROUP:
+					tag = "DROP TABLEGROUP";
 					break;
 				default:
 					tag = "???";
@@ -3541,10 +3558,6 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_CreateTableGroupStmt:
-			lev = LOGSTMT_DDL;
-			break;
-
-		case T_DropTableGroupStmt:
 			lev = LOGSTMT_DDL;
 			break;
 

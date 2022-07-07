@@ -43,8 +43,7 @@
 
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
-#include "yb/util/slice.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -56,7 +55,7 @@ void PutMemcmpableVarint64(faststring *dst, uint64_t value);
 
 // Standard Get... routines parse a value from the beginning of a Slice
 // and advance the slice past the parsed value.
-CHECKED_STATUS GetMemcmpableVarint64(Slice *input, uint64_t *value);
+Status GetMemcmpableVarint64(Slice *input, uint64_t *value);
 
 } // namespace yb
 

@@ -30,36 +30,47 @@
 # under the License.
 #
 
-YB_INCLUDE_EXTENSIONS()
+set(YB_PCH_PREFIX master)
+set(YB_PCH_DEP_LIBS opid_proto)
 
 YRPC_GENERATE(
   MASTER_YRPC_SRCS MASTER_YRPC_HDRS MASTER_YRPC_TGTS
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES master.proto)
+  PROTO_FILES
+      master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
+      master_encryption.proto master_heartbeat.proto master_replication.proto
+  MESSAGES_PROTO_FILES
+      master_ddl.proto
+  NO_SERVICE_MESSAGES_PROTO_FILES
+      catalog_entity_info.proto master_types.proto)
 set(MASTER_YRPC_LIBS
   consensus_metadata_proto
   yrpc
   protobuf
+  encryption_proto
+  rpc_base_proto
   rpc_header_proto
   tablet_proto
   tserver_proto
-  wire_protocol_proto
-  yb_pgwrapper
   cdc_consumer_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
   NONLINK_DEPS ${MASTER_YRPC_TGTS})
 
+YB_INCLUDE_EXTENSIONS()
+
 set(MASTER_PROTO_LIBS
   master_proto
   ${MASTER_PROTO_LIBS_EXTENSIONS})
 
+include_directories(${YB_BUILD_ROOT}/postgres/include/server)
+
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
-  call_home.cc
+  master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
   catalog_manager_util.cc
@@ -68,23 +79,37 @@ set(MASTER_SRCS
   catalog_loaders.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
+  cluster_balance_util.cc
   encryption_manager.cc
   permissions_manager.cc
   flush_manager.cc
   master.cc
+  master_admin_service.cc
+  master_client_service.cc
+  master_cluster_service.cc
+  master_dcl_service.cc
+  master_ddl_service.cc
+  master_encryption_service.cc
+  master_heartbeat_service.cc
+  master_replication_service.cc
   master_options.cc
   master_service_base.cc
-  master_service.cc
   master_tablet_service.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
   master_snapshot_coordinator.cc
+  restoration_state.cc
+  snapshot_coordinator_context.cc
+  snapshot_schedule_state.cc
+  snapshot_state.cc
+  state_with_tablets.cc
   sys_catalog.cc
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
   system_tablet.cc
   tasks_tracker.cc
+  tablet_split_manager.cc
   ts_descriptor.cc
   ts_manager.cc
   yql_virtual_table.cc
@@ -108,6 +133,8 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_partitions_vtable.cc
   ysql_transaction_ddl.cc
+  ysql_tablegroup_manager.cc
+  ysql_tablespace_manager.cc
   ${MASTER_SRCS_EXTENSIONS})
 
 set(MASTER_DEPS
@@ -124,7 +151,9 @@ set(MASTER_DEPS
   rpc_header_proto
   master_util
   version_info_proto
-  yb_pggate_flags)
+  yb_pggate_flags
+  yb_pggate
+)
 
 ADD_YB_LIBRARY(master
   SRCS ${MASTER_SRCS}
@@ -158,7 +187,8 @@ ADD_YB_LIBRARY(master_util
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
-  master-test_base.cc)
+  master-test_base.cc
+  master-test-util.cc)
 add_library(master_test_common ${MASTER_TEST_COMMON_SRCS})
 target_link_libraries(master_test_common
   master ${MASTER_PROTO_LIBS} yb_client ${YB_MIN_TEST_LIBS})

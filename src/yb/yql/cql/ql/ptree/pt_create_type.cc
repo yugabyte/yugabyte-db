@@ -16,7 +16,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
+
+#include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
@@ -26,9 +30,9 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTTypeField::PTTypeField(MemoryContext *memctx,
-                                       YBLocation::SharedPtr loc,
-                                       const MCSharedPtr<MCString>& name,
-                                       const PTBaseType::SharedPtr& datatype)
+                         YBLocation::SharedPtr loc,
+                         const MCSharedPtr<MCString>& name,
+                         const PTBaseType::SharedPtr& datatype)
     : TreeNode(memctx, loc),
       name_(name),
       datatype_(datatype) {
@@ -38,7 +42,7 @@ PTTypeField::~PTTypeField() {
 }
 
 
-CHECKED_STATUS PTTypeField::Analyze(SemContext *sem_context) {
+Status PTTypeField::Analyze(SemContext *sem_context) {
 
   // Save context state, and set "this" as current type field in the context.
   SymbolEntry cached_entry = *sem_context->current_processing_id();
@@ -82,11 +86,11 @@ PTCreateType::PTCreateType(MemoryContext *memctx,
 PTCreateType::~PTCreateType() {
 }
 
-CHECKED_STATUS PTCreateType::Analyze(SemContext *sem_context) {
+Status PTCreateType::Analyze(SemContext *sem_context) {
   SemState sem_state(sem_context);
 
   // Processing type name.
-  RETURN_NOT_OK(name_->AnalyzeName(sem_context, OBJECT_TYPE));
+  RETURN_NOT_OK(name_->AnalyzeName(sem_context, ObjectType::TYPE));
 
   if (FLAGS_use_cassandra_authentication) {
     if (!sem_context->CheckHasAllKeyspacesPermission(loc(),

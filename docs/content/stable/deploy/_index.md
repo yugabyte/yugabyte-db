@@ -5,15 +5,11 @@ linkTitle: Deploy
 description: Deploy to any public cloud or private data center of your choice.
 headcontent: Deploy to any public cloud or private data center of your choice.
 image: /images/section_icons/index/deploy.png
-aliases:
-  - /deploy/
-  - /stable/deploy/
-section: YUGABYTEDB CORE
-block_indexing: true
 menu:
   stable:
     identifier: deploy
-    weight: 634
+    parent: launch-and-manage
+type: indexpage
 ---
 
 <div class="row">
@@ -68,7 +64,7 @@ menu:
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="docker/">
+    <a class="section-link icon-offset" href="docker/docker-compose/">
       <div class="head">
         <div class="icon">
           <i class="fab fa-docker"></i>
@@ -77,7 +73,7 @@ menu:
         <div class="title">Docker</div>
       </div>
       <div class="body">
-        Orchestrated deployment of YugabyteDB in Docker Swarm and Docker Compose.
+        Orchestrated deployment of YugabyteDB in Docker Compose.
       </div>
     </a>
   </div>
@@ -91,18 +87,6 @@ menu:
       </div>
       <div class="body">
           Deploy across multiple data centers in 3DC or 2DC configurations.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cdc/">
-      <div class="head">
-        <img class="icon" src="/images/deploy/cdc/deploy.png" aria-hidden="true" />
-        <div class="title">Change data capture (CDC)</div>
-      </div>
-      <div class="body">
-          Use change data capture (CDC) to asynchronously replicate data changes between data centers.
       </div>
     </a>
   </div>

@@ -14,6 +14,14 @@
 
 #include "yb/yql/pggate/pg_value.h"
 
+#include "yb/common/ql_value.h"
+
+#include "yb/util/decimal.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 namespace yb {
 namespace pggate {
 
@@ -32,7 +40,7 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
   }
 
   *is_null = false;
-  switch(type_entity->yb_type) {
+  switch (type_entity->yb_type) {
     case YB_YQL_DATA_TYPE_INT8: {
       SCHECK(ql_value.has_int8_value(), InternalError, "Unexpected type in the QL value");
       int8_t val = ql_value.int8_value();
@@ -105,7 +113,7 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
 
     case YB_YQL_DATA_TYPE_BINARY: {
       SCHECK(ql_value.has_binary_value(), InternalError, "Unexpected type in the QL value");
-      auto size = ql_value.string_value().size();
+      auto size = ql_value.binary_value().size();
       auto val = const_cast<char *>(ql_value.binary_value().c_str());
       *datum = type_entity->yb_to_datum(reinterpret_cast<uint8_t *>(val), size, &type_attrs);
       break;
@@ -135,23 +143,15 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
       break;
     }
 
-    case YB_YQL_DATA_TYPE_VARINT:
-    case YB_YQL_DATA_TYPE_INET:
-    case YB_YQL_DATA_TYPE_LIST:
-    case YB_YQL_DATA_TYPE_MAP:
-    case YB_YQL_DATA_TYPE_SET:
-    case YB_YQL_DATA_TYPE_UUID:
-    case YB_YQL_DATA_TYPE_TIMEUUID:
-    case YB_YQL_DATA_TYPE_TUPLE:
-    case YB_YQL_DATA_TYPE_TYPEARGS:
-    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-    case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_JSONB:
-    case YB_YQL_DATA_TYPE_UINT8:
-    case YB_YQL_DATA_TYPE_UINT16:
-    default:
+    case YB_YQL_DATA_TYPE_GIN_NULL: {
+      SCHECK(ql_value.has_gin_null_value(), InternalError, "Unexpected type in the QL value");
+      uint8_t val = ql_value.gin_null_value();
+      *datum = type_entity->yb_to_datum(&val, 0, &type_attrs);
+      break;
+    }
+
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
       return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
   }
 
@@ -162,13 +162,13 @@ Status PgValueFromPB(const YBCPgTypeEntity *type_entity,
 Status PgValueToPB(const YBCPgTypeEntity *type_entity,
                    uint64_t datum,
                    bool is_null,
-                   QLValue* ql_value) {
-    if (is_null) {
-      ql_value->SetNull();
-      return Status::OK();
-    }
+                   QLValuePB* ql_value) {
+  if (is_null) {
+    SetNull(ql_value);
+    return Status::OK();
+  }
 
-    switch (type_entity->yb_type) {
+  switch (type_entity->yb_type) {
     case YB_YQL_DATA_TYPE_INT8: {
       int8_t value;
       type_entity->datum_to_yb(datum, &value, nullptr);
@@ -250,23 +250,14 @@ Status PgValueToPB(const YBCPgTypeEntity *type_entity,
       ql_value->set_decimal_value(yb_decimal.EncodeToComparable());
       break;
     }
-    case YB_YQL_DATA_TYPE_VARINT:
-    case YB_YQL_DATA_TYPE_INET:
-    case YB_YQL_DATA_TYPE_LIST:
-    case YB_YQL_DATA_TYPE_MAP:
-    case YB_YQL_DATA_TYPE_SET:
-    case YB_YQL_DATA_TYPE_UUID:
-    case YB_YQL_DATA_TYPE_TIMEUUID:
-    case YB_YQL_DATA_TYPE_TUPLE:
-    case YB_YQL_DATA_TYPE_TYPEARGS:
-    case YB_YQL_DATA_TYPE_USER_DEFINED_TYPE:
-    case YB_YQL_DATA_TYPE_FROZEN:
-    case YB_YQL_DATA_TYPE_DATE: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_TIME: // Not used for PG storage
-    case YB_YQL_DATA_TYPE_JSONB:
-    case YB_YQL_DATA_TYPE_UINT8:
-    case YB_YQL_DATA_TYPE_UINT16:
-    default:
+    case YB_YQL_DATA_TYPE_GIN_NULL: {
+      uint8_t value;
+      type_entity->datum_to_yb(datum, &value, nullptr);
+      ql_value->set_gin_null_value(value);
+      break;
+    }
+    YB_PG_UNSUPPORTED_TYPES_IN_SWITCH:
+    YB_PG_INVALID_TYPES_IN_SWITCH:
       return STATUS_SUBSTITUTE(InternalError, "unsupported type $0", type_entity->yb_type);
   }
   return Status::OK();

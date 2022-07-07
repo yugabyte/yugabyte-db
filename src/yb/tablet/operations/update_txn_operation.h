@@ -16,48 +16,29 @@
 #ifndef YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
 #define YB_TABLET_OPERATIONS_UPDATE_TXN_OPERATION_H
 
-#include <yb/tserver/tserver_service.pb.h>
-#include "yb/tablet/transaction_coordinator.h"
-
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/tablet/operations.pb.h"
 
 namespace yb {
 namespace tablet {
 
-class TransactionCoordinator;
-
-class UpdateTxnOperationState : public OperationStateBase<tserver::TransactionStatePB> {
+class UpdateTxnOperation
+    : public OperationBase<OperationType::kUpdateTransaction, TransactionStatePB> {
  public:
   template <class... Args>
-  explicit UpdateTxnOperationState(Args&&... args)
-      : OperationStateBase(std::forward<Args>(args)...) {}
+  explicit UpdateTxnOperation(Args&&... args)
+      : OperationBase(std::forward<Args>(args)...) {}
 
- private:
-  void UpdateRequestFromConsensusRound() override;
-};
-
-class UpdateTxnOperation : public Operation {
- public:
-  explicit UpdateTxnOperation(std::unique_ptr<UpdateTxnOperationState> state)
-      : Operation(std::move(state), OperationType::kUpdateTransaction) {}
-
-  UpdateTxnOperationState* state() override {
-    return down_cast<UpdateTxnOperationState*>(Operation::state());
-  }
-
-  const UpdateTxnOperationState* state() const override {
-    return down_cast<const UpdateTxnOperationState*>(Operation::state());
+  bool use_mvcc() const override {
+    return true;
   }
 
  private:
   TransactionCoordinator& transaction_coordinator() const;
-
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
-  CHECKED_STATUS Prepare() override;
-  void DoStart() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
-  std::string ToString() const override;
+  Status Prepare() override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
 };
 
 } // namespace tablet

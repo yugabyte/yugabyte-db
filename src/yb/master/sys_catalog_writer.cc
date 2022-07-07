@@ -13,18 +13,23 @@
 
 #include "yb/master/sys_catalog_writer.h"
 
+#include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/master/sys_catalog_constants.h"
 
 #include "yb/tablet/tablet.h"
 
+#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/pb_util.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace master {
@@ -39,7 +44,7 @@ void SetInt8Value(const int8_t int8_value, QLExpressionPB* expr_pb) {
   expr_pb->mutable_value()->set_int8_value(int8_value);
 }
 
-CHECKED_STATUS SetColumnId(
+Status SetColumnId(
     const Schema& schema_with_ids, const std::string& column_name, QLColumnValuePB* col_pb) {
   auto column_id = VERIFY_RESULT(schema_with_ids.ColumnIdByName(column_name));
   col_pb->set_column_id(column_id.rep());
@@ -52,11 +57,12 @@ bool IsWrite(QLWriteRequestPB::QLStmtType op_type) {
   return op_type == QLWriteRequestPB::QL_STMT_INSERT || op_type == QLWriteRequestPB::QL_STMT_UPDATE;
 }
 
-SysCatalogWriter::SysCatalogWriter(
-    const std::string& tablet_id, const Schema& schema_with_ids, int64_t leader_term)
-    : schema_with_ids_(schema_with_ids), leader_term_(leader_term) {
-  req_.set_tablet_id(tablet_id);
+SysCatalogWriter::SysCatalogWriter(const Schema& schema_with_ids, int64_t leader_term)
+    : schema_with_ids_(schema_with_ids), req_(std::make_unique<tserver::WriteRequestPB>()),
+      leader_term_(leader_term) {
 }
+
+SysCatalogWriter::~SysCatalogWriter() = default;
 
 Status SysCatalogWriter::DoMutateItem(
     int8_t type,
@@ -79,7 +85,7 @@ Status SysCatalogWriter::DoMutateItem(
   }
 
   return FillSysCatalogWriteRequest(
-      type, item_id, new_pb, op_type, schema_with_ids_, req_.add_ql_write_batch());
+      type, item_id, new_pb, op_type, schema_with_ids_, req_->add_ql_write_batch());
 }
 
 Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
@@ -88,7 +94,7 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
                                              const Schema& target_schema,
                                              const uint32_t target_schema_version,
                                              bool is_upsert) {
-  PgsqlWriteRequestPB* pgsql_write = req_.add_pgsql_write_batch();
+  PgsqlWriteRequestPB* pgsql_write = req_->add_pgsql_write_batch();
 
   pgsql_write->set_client(YQL_CLIENT_PGSQL);
   if (is_upsert) {
@@ -123,23 +129,16 @@ Status SysCatalogWriter::InsertPgsqlTableRow(const Schema& source_schema,
 }
 
 Status FillSysCatalogWriteRequest(
-    int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+    int8_t type, const std::string& item_id, const Slice& data,
     QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {
-  req->set_type(op_type);
-
   if (IsWrite(op_type)) {
-    faststring metadata_buf;
-
-    if (!pb_util::SerializeToString(new_pb, &metadata_buf)) {
-      return STATUS_FORMAT(
-          Corruption, "Unable to serialize SysCatalog entry $0", item_id);
-    }
-
     // Add the metadata column.
     QLColumnValuePB* metadata = req->add_column_values();
     RETURN_NOT_OK(SetColumnId(schema_with_ids, kSysCatalogTableColMetadata, metadata));
-    SetBinaryValue(metadata_buf, metadata->mutable_expr());
+    SetBinaryValue(data, metadata->mutable_expr());
   }
+
+  req->set_type(op_type);
 
   // Add column type.
   SetInt8Value(type, req->add_range_column_values());
@@ -150,34 +149,62 @@ Status FillSysCatalogWriteRequest(
   return Status::OK();
 }
 
+Status FillSysCatalogWriteRequest(
+    int8_t type, const std::string& item_id, const google::protobuf::Message& new_pb,
+    QLWriteRequestPB::QLStmtType op_type, const Schema& schema_with_ids, QLWriteRequestPB* req) {
+  req->set_type(op_type);
+
+  if (IsWrite(op_type)) {
+    faststring metadata_buf;
+
+    RETURN_NOT_OK(pb_util::SerializeToString(new_pb, &metadata_buf));
+
+    return FillSysCatalogWriteRequest(
+        type, item_id, Slice(metadata_buf.data(), metadata_buf.size()), op_type, schema_with_ids,
+        req);
+  }
+
+  return FillSysCatalogWriteRequest(type, item_id, Slice(), op_type, schema_with_ids, req);
+}
+
 Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
-    const std::function<Status(const Slice& id, const Slice& data)>& callback) {
-  const int type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
-  const int entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
-  const int metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColMetadata));
-
+    const EnumerationCallback& callback) {
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(
-      schema.CopyWithoutColumnIds(), boost::none, ReadHybridTime::Max(), /* table_id= */"",
+      schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
-  auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
+  return EnumerateSysCatalog(
+      down_cast<docdb::DocRowwiseIterator*>(iter.get()), schema, entry_type, callback);
+}
+
+Status EnumerateSysCatalog(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
+    const EnumerationCallback& callback) {
+  const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
+  const auto entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
+  const auto metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(
+      kSysCatalogTableColMetadata));
+
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
+  const std::vector<docdb::KeyEntryValue> empty_hash_components;
   docdb::DocQLScanSpec spec(
       schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
-      {} /* hashed_components */, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
+      empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   QLTableRow value_map;
   QLValue found_entry_type, entry_id, metadata;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&value_map));
+  while (VERIFY_RESULT(doc_iter->HasNext())) {
+    RETURN_NOT_OK(doc_iter->NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
     SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+    SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption,
+              "System catalog snapshot is corrupted, or is built using different build type");
     RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
   }
 

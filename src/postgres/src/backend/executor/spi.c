@@ -878,6 +878,7 @@ SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
 		mtuple->t_data->t_ctid = tuple->t_data->t_ctid;
 		mtuple->t_self = tuple->t_self;
 		mtuple->t_tableOid = tuple->t_tableOid;
+		HEAPTUPLE_COPY_YBCTID(tuple->t_ybctid, mtuple->t_ybctid);
 		if (rel->rd_att->tdhasoid)
 			HeapTupleSetOid(mtuple, HeapTupleGetOid(tuple));
 	}
@@ -2109,6 +2110,14 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 		CachedPlanSource *plansource = (CachedPlanSource *) lfirst(lc1);
 		List	   *stmt_list;
 		ListCell   *lc2;
+
+		/*
+		 * If the planner found a pg relation in this plan, set the appropriate
+		 * flag for the execution txn.
+		 */
+		if (plansource->usesPostgresRel) {
+			SetTxnWithPGRel();
+		}
 
 		spierrcontext.arg = (void *) plansource->query_string;
 

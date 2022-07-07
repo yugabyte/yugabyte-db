@@ -32,25 +32,28 @@
 
 #include <vector>
 
+#include "yb/common/index.h"
+
+#include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log-test-base.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/consensus/consensus-test-util.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+
 #include "yb/server/logical_clock.h"
-#include "yb/server/metadata.h"
-#include "yb/tablet/tablet_bootstrap_if.h"
+
 #include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/logging.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/tostring.h"
-#include "yb/tablet/tablet_options.h"
-#include "yb/util/env_util.h"
-#include "yb/yql/pggate/ybc_pg_typedefs.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(skip_flushed_entries);
 DECLARE_int32(retryable_request_timeout_secs);
@@ -161,11 +164,10 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
   bool transactional = false;
 };
 
+static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
+
 class BootstrapTest : public LogTestBase {
  protected:
-
-  static constexpr TableType kTableType = TableType::YQL_TABLE_TYPE;
-
   void SetUp() override {
     LogTestBase::SetUp();
     test_hooks_ = std::make_shared<BootstrapTestHooksImpl>();
@@ -175,19 +177,17 @@ class BootstrapTest : public LogTestBase {
     Schema schema = SchemaBuilder(schema_).Build();
     std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
 
-    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(
-        fs_manager_.get(),
-        log::kTestTable,
-        log::kTestTablet,
-        log::kTestNamespace,
-        log::kTestTable,
-        kTableType,
-        schema,
-        partition.first,
-        partition.second,
-        boost::none /* index_info */,
-        TABLET_DATA_READY,
-        meta));
+    auto table_info = std::make_shared<TableInfo>(
+        Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType, schema,
+        IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
+    *meta = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
+      .fs_manager = fs_manager_.get(),
+      .table_info = table_info,
+      .raft_group_id = log::kTestTablet,
+      .partition = partition.second,
+      .tablet_data_state = TABLET_DATA_READY,
+      .snapshot_schedules = {},
+    }));
     return (*meta)->Flush();
   }
 
@@ -202,7 +202,7 @@ class BootstrapTest : public LogTestBase {
   Status RunBootstrapOnTestTablet(const RaftGroupMetadataPtr& meta,
                                   TabletPtr* tablet,
                                   ConsensusBootstrapInfo* boot_info) {
-    gscoped_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
+    std::unique_ptr<TabletStatusListener> listener(new TabletStatusListener(meta));
     scoped_refptr<LogAnchorRegistry> log_anchor_registry(new LogAnchorRegistry());
     // Now attempt to recover the log
     TabletOptions tablet_options;
@@ -221,6 +221,10 @@ class BootstrapTest : public LogTestBase {
       .transaction_coordinator_context = nullptr,
       .txns_enabled = TransactionsEnabled::kTrue,
       .is_sys_catalog = IsSysCatalogTablet::kFalse,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
+      .allowed_history_cutoff_provider = {},
+      .transaction_manager_provider = nullptr,
     };
     BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
@@ -245,7 +249,7 @@ class BootstrapTest : public LogTestBase {
     config.set_opid_index(consensus::kInvalidOpIdIndex);
     consensus::RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(meta->fs_manager()->uuid());
-    peer->set_member_type(consensus::RaftPeerPB::VOTER);
+    peer->set_member_type(consensus::PeerMemberType::VOTER);
 
     std::unique_ptr<ConsensusMetadata> cmeta;
     RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(meta->fs_manager(), meta->raft_group_id(),
@@ -260,7 +264,7 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    auto iter = tablet->NewRowIterator(schema_, /* transaction_id */ boost::none);
+    auto iter = tablet->NewRowIterator(schema_);
     ASSERT_OK(iter);
     ASSERT_OK(IterateToStringList(iter->get(), results));
     for (const string& result : *results) {
@@ -308,7 +312,7 @@ TEST_F(BootstrapTest, TestOrphanedReplicate) {
   BuildLog();
 
   // Append a REPLICATE with no commit
-  int replicate_index = current_index_++;
+  auto replicate_index = current_index_++;
 
   OpIdPB opid = MakeOpId(1, replicate_index);
 
@@ -638,7 +642,7 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
   const auto final_op_id_by_index = GenerateRawEntriesAndFinalOpByIndex(
       num_entries, rng, res_input);
 
-  const auto committed_op_id_for_index = [&final_op_id_by_index](int index) -> OpId {
+  const auto committed_op_id_for_index = [&final_op_id_by_index](int64_t index) -> OpId {
     auto it = final_op_id_by_index.find(index);
     if (it == final_op_id_by_index.end()) {
       return OpId();
@@ -828,6 +832,17 @@ void GenerateRandomInput(size_t num_entries, std::mt19937_64* rng, BootstrapInpu
             }
           }
         }
+        if (index <= intents_flushed_index && op_id >= first_op_id_of_segment_to_replay) {
+          // We replay Update transactions having an APPLY record even if their intents were only
+          // flushed to intents db.
+          if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
+            bool replay = batch_data.txn_status == TransactionStatus::APPLYING;
+            if (replay) {
+              replayed.push_back(op_id);
+              replayed_to_intents_only.push_back(op_id);
+            }
+          }
+        }
       } else {
         // This operation was never committed. Mark it as "overwritable", meaning it _could_ be
         // overwritten as part of tablet bootstrap, but is not guaranteed to be.
@@ -888,7 +903,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
 
     BuildLog();
 
-    for (auto i = 0; i < input.entries.size(); ++i) {
+    for (size_t i = 0; i < input.entries.size(); ++i) {
       const auto& entry = input.entries[i];
       if (entry.start_new_segment_with_this_entry && i != 0) {
         ASSERT_OK(RollLog());

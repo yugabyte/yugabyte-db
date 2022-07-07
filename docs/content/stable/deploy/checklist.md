@@ -3,16 +3,12 @@ title: Deployment checklist for YugabyteDB clusters
 headerTitle: Deployment checklist
 linkTitle: Deployment checklist
 description: Deployment checklist for multi-node YugabyteDB clusters used for production and performance testing
-aliases:
-  - /deploy/checklist/
-block_indexing: true
 menu:
   stable:
     identifier: checklist
     parent: deploy
     weight: 605
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -21,9 +17,9 @@ A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../
 
 ## Basics
 
-- YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are CentOS 7.x and RHEL 7.x.
+- YugabyteDB works on a variety of operating systems. For production workloads, the recommended operating systems are **CentOS 7.x** and **RHEL 7.x**.
 - Set the appropriate [system limits using `ulimit`](../manual-deployment/system-config/#ulimits) on each node running a YugabyteDB server.
-- Use [ntp](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
+- Use [ntp or chrony](../manual-deployment/system-config/#ntp) to synchronize time among the machines.
 
 ## Replication
 
@@ -53,12 +49,12 @@ You should allocate adequate CPU and RAM. YugabyteDB has good defaults for runni
 
 **Minimum requirement**
 
-- 2 cores 
+- 2 cores
 - 2GB RAM
 
 **Production requirement**
 
-- 16+ cores 
+- 16+ cores
 - 32GB+ RAM
 - Add more CPU (compared to adding more RAM) to improve performance.
 
@@ -70,20 +66,30 @@ Memory depends on your application query pattern. Writes require memory but only
 
 YugabyteDB explicitly manages a block cache, and doesn't need the entire data set to fit in memory. It does not rely on OS to keep data in its buffers. If you give YugabyteDB sufficient memory data accessed and present in block cache will stay in memory.
 
+### Verify support for SSE2
+
+YugabyteDB requires SSE2 instruction set support, which was introduced into Intel chips with the Pentium 4 in 2001 and AMD processors in 2003. Most systems produced in the last several years are equipped with SSE2. YugabyteDB requires this instruction set.
+
+To verify that your system supports SSE2, run the following command:
+
+```sh
+$ cat /proc/cpuinfo | grep sse2
+```
+
 ### Disks
 
-- SSDs (solid state disks) are required. 
+- SSDs (solid state disks) are required.
 - Both local or remote attached storage work with YugabyteDB. Since YugabyteDB internally replicates data for fault tolerance, remote attached storage which does its own additional replication is not a requirement. Local disks often offer better performance at a lower cost.
-- Multi-disk nodes  
-      - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).  
+- Multi-disk nodes
+      - Do not use RAID across multiple disks. YugabyteDB can natively handle multi-disk nodes (JBOD).
       - Create a data directory on each of the data disks and specify a comma separated list of those directories to the yb-master and yb-tserver servers via the `--fs_data_dirs` flag.
-- Mount settings  
-      - XFS is the recommended filesystem.  
-      - Use the `noatime` setting when mounting the data drives.  
-      - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).  
-      - NFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).  
+- Mount settings
+      - XFS is the recommended filesystem.
+      - Use the `noatime` setting when mounting the data drives.
+      - ZFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4157).
+      - NFS isn't currently supported and [is in the roadmap](https://github.com/yugabyte/yugabyte-db/issues/4388).
 
-YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup. 
+YugabyteDB does not require any form of RAID, but runs optimally on a JBOD (just a bunch of disks) setup.
 It can also leverage multiple disks per node and has been tested beyond 10 TB of storage per node.
 
 Write-heavy applications usually require more disk IOPS (especially if the size of each record is larger), therefore in this case the total IOPS that a disk can support matters. On the read side, if the data does not fit into the cache and data needs to be read from the disk in order to satisfy queries, the disk performance (latency and IOPS) will start to matter.
@@ -96,9 +102,9 @@ Below is a minimal list of default ports (along with the network access required
 
 - Each of the nodes in the YugabyteDB cluster must be able to communicate with each other using TCP/IP on the following ports.
 
-      7100 for YB-Master RPC communication 
+      7100 for YB-Master RPC communication
 
-      9100 for YB-TServer RPC communication 
+      9100 for YB-TServer RPC communication
 
 - In order to view the cluster dashboard, you need to be able to navigate to the following ports on the nodes.
 
@@ -122,7 +128,7 @@ For Yugabyte Platform, the SSH port is changed for added security.
 
 ## Clock synchronization
 
-For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/). Below are some recommendations on how to configure clock synchronization.
+For YugabyteDB to preserve data consistency, the clock drift and clock skew across different nodes must be bounded. This can be achieved by running clock synchronization software, such as [NTP](http://www.ntp.org/) or [chrony](https://chrony.tuxfamily.org/). Below are some recommendations on how to configure clock synchronization.
 
 ### Clock skew
 

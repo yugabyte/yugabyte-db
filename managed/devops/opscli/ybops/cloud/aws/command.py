@@ -14,12 +14,16 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsNetworkBootstrapMethod, AwsNetworkQueryMethod, AwsNetworkCleanupMethod, \
     AwsQueryCurrentHostMethod, AwsAccessDeleteKeyMethod, \
     AwsQueryVPCMethod, AwsQuerySpotPricingMethod, AwsCreateDnsEntryMethod, AwsEditDnsEntryMethod, \
-    AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod
+    AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, \
+    AwsResumeInstancesMethod, AwsCreateRootVolumesMethod, AwsReplaceRootVolumeMethod, \
+    AwsChangeInstanceTypeMethod, AwsUpdateMountedDisksMethod, AwsQueryImageMethod, \
+    AwsDeleteRootVolumesMethod
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
-from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
-    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod
+    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, \
+    TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
+    RebootInstancesMethod, RunHooks
 
 
 class AwsInstanceCommand(InstanceCommand):
@@ -37,7 +41,20 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(AwsTagsMethod(self))
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
+        self.add_method(AwsUpdateMountedDisksMethod(self))
         self.add_method(CronCheckMethod(self))
+        self.add_method(AwsPauseInstancesMethod(self))
+        self.add_method(AwsResumeInstancesMethod(self))
+        self.add_method(AwsReplaceRootVolumeMethod(self))
+        self.add_method(AwsCreateRootVolumesMethod(self))
+        self.add_method(AwsDeleteRootVolumesMethod(self))
+        self.add_method(AwsChangeInstanceTypeMethod(self))
+        self.add_method(TransferXClusterCerts(self))
+        self.add_method(VerifySSHConnection(self))
+        self.add_method(AddAuthorizedKey(self))
+        self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(RebootInstancesMethod(self))
+        self.add_method(RunHooks(self))
 
 
 class AwsNetworkCommand(NetworkCommand):
@@ -58,6 +75,7 @@ class AwsAccessCommand(AccessCommand):
         self.add_method(AwsAccessAddKeyMethod(self))
         self.add_method(AwsAccessListKeysMethod(self))
         self.add_method(AccessCreateVaultMethod(self))
+        self.add_method(AccessEditVaultMethod(self))
         self.add_method(AwsAccessDeleteKeyMethod(self))
 
 
@@ -72,6 +90,7 @@ class AwsQueryCommand(QueryCommand):
         self.add_method(AwsQueryCurrentHostMethod(self))
         self.add_method(AwsQueryVPCMethod(self))
         self.add_method(AwsQuerySpotPricingMethod(self))
+        self.add_method(AwsQueryImageMethod(self))
 
 
 class AwsDnsCommand(DnsCommand):

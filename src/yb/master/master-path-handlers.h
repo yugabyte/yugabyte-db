@@ -38,9 +38,11 @@
 
 #include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/macros.h"
-#include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
+
+#include "yb/master/master_fwd.h"
+
 #include "yb/server/webserver.h"
+#include "yb/util/enums.h"
 
 namespace yb {
 
@@ -56,6 +58,8 @@ struct TabletReplica;
 class TSDescriptor;
 class TSRegistrationPB;
 
+YB_DEFINE_ENUM(TServersViewType, (kTServersDefaultView)(kTServersClocksView));
+
 // Web page support for the master.
 class MasterPathHandlers {
  public:
@@ -66,25 +70,49 @@ class MasterPathHandlers {
 
   ~MasterPathHandlers();
 
-  const string kYBOrange = "#f75821";
-  const string kYBDarkBlue = "#202951";
-  const string kYBLightBlue = "#3eb1cc";
-  const string kYBGray = "#5e647a";
+  const std::string kYBOrange = "#f75821";
+  const std::string kYBDarkBlue = "#202951";
+  const std::string kYBLightBlue = "#3eb1cc";
+  const std::string kYBGray = "#5e647a";
 
-  CHECKED_STATUS Register(Webserver* server);
+  const std::vector<std::string> kYBColorList = {
+    "#30307F", "#36B8F5",
+    "#BB43BC", "#43BFC2", "#90948E",
+    "#1C7180", "#EEA95F", "#3590D9",
+    "#F0679E", "#707B8E", "#800000",
+    "#F08080", "#FF8C00", "#7CFC00",
+    "#D2691E", "#696969", "#FFD700",
+    "#B8860B", "#006400", "#FF6347"
+  };
 
-  string BytesToHumanReadable (uint64_t bytes);
+  Status Register(Webserver* server);
+
+  std::string BytesToHumanReadable (uint64_t bytes);
 
  private:
   enum TableType {
     kUserTable,
     kUserIndex,
-    kColocatedParentTable,
+    kParentTable,
     kSystemTable,
     kNumTypes,
   };
 
-  const string kSystemPlatformNamespace = "system_platform";
+  enum CatalogTableColumns {
+    kKeyspace,
+    kTableName,
+    kState,
+    kMessage,
+    kUuid,
+    kYsqlOid,
+    kParentOid,
+    kColocationId,
+    kOnDiskSize,
+    kHidden,
+    kNumColumns
+  };
+
+  const std::string kSystemPlatformNamespace = "system_platform";
 
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
@@ -112,21 +140,40 @@ class MasterPathHandlers {
     typedef std::map<std::string, ZoneTree> RegionTree;
     typedef std::map<std::string, RegionTree> CloudTree;
   };
-
   // Map of tserver UUID -> TabletCounts
   typedef std::unordered_map<std::string, TabletCounts> TabletCountMap;
 
-  const string table_type_[kNumTypes] = {"User", "Index", "Colocated", "System"};
+  struct ReplicaInfo {
+    PeerRole role;
+    TabletId tablet_id;
 
-  const string kNoPlacementUUID = "NONE";
+    ReplicaInfo(const PeerRole& role, const TabletId& tablet_id) {
+      this->role = role;
+      this->tablet_id = tablet_id;
+    }
+  };
 
-  static inline void TServerTable(std::stringstream* output);
+  // Map of table id -> tablet list for a tserver.
+  typedef std::unordered_map<std::string, std::vector<ReplicaInfo>> PerTServerTableTree;
+
+  // Map of tserver UUID -> its table tree.
+  typedef std::unordered_map<std::string, PerTServerTableTree> TServerTree;
+
+  // Map of zone -> its tserver tree.
+  typedef std::unordered_map<std::string, TServerTree> ZoneToTServer;
+
+  const std::string table_type_[kNumTypes] = {"User", "Index", "Parent", "System"};
+
+  const std::string kNoPlacementUUID = "NONE";
+
+  static inline void TServerTable(std::stringstream* output, TServersViewType viewType);
 
   void TServerDisplay(const std::string& current_uuid,
                       std::vector<std::shared_ptr<TSDescriptor>>* descs,
                       TabletCountMap* tmap,
                       std::stringstream* output,
-                      const int hide_dead_node_threshold_override);
+                      const int hide_dead_node_threshold_override,
+                      TServersViewType viewType);
 
   // Outputs a ZoneTabletCounts::CloudTree as an html table with a heading.
   static void DisplayTabletZonesTable(
@@ -145,10 +192,12 @@ class MasterPathHandlers {
   void CallIfLeaderOrPrintRedirect(const Webserver::WebRequest& req, Webserver::WebResponse* resp,
                                    const Webserver::PathHandlerCallback& callback);
   void RedirectToLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  Result<std::string> GetLeaderAddress(const Webserver::WebRequest& req);
   void RootHandler(const Webserver::WebRequest& req,
                    Webserver::WebResponse* resp);
   void HandleTabletServers(const Webserver::WebRequest& req,
-                           Webserver::WebResponse* resp);
+                           Webserver::WebResponse* resp,
+                           TServersViewType viewType);
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
@@ -172,9 +221,12 @@ class MasterPathHandlers {
   void HandleGetUnderReplicationStatus(const Webserver::WebRequest &req,
                                         Webserver::WebResponse *resp);
   void HandleVersionInfoDump(const Webserver::WebRequest &req, Webserver::WebResponse *resp);
+  void HandlePrettyLB(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
 
   // Calcuates number of leaders/followers per table.
   void CalculateTabletMap(TabletCountMap* tablet_map);
+
+  Status CalculateTServerTree(TServerTree* tserver_tree);
 
   std::vector<TabletInfoPtr> GetNonSystemTablets();
 
@@ -183,7 +235,7 @@ class MasterPathHandlers {
   Result<std::vector<TabletInfoPtr>> GetUnderReplicatedTablets();
 
   // Calculates the YSQL OID of a tablegroup / colocated database parent table
-  string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
+  std::string GetParentTableOid(scoped_refptr<TableInfo> parent_table);
 
   // Convert location of peers to HTML, indicating the roles
   // of each tablet server in a consensus configuration.

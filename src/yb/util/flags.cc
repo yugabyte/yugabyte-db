@@ -32,7 +32,6 @@
 
 #include "yb/util/flags.h"
 
-#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -41,12 +40,12 @@
 #include <gperftools/heap-profiler.h>
 #endif
 
+#include <boost/algorithm/string/case_conv.hpp>
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
-#include "yb/util/tsan_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 
@@ -234,8 +233,15 @@ void AppendXMLTag(const char* tag, const string& txt, string* r) {
 }
 
 static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
-  unordered_set<string> tags;
+  unordered_set<FlagTag> tags;
   GetFlagTags(flag.name, &tags);
+  vector<string> tags_str;
+  std::transform(tags.begin(), tags.end(), std::back_inserter(tags_str), [](const FlagTag tag) {
+    // Convert "kEnum_val" to "enum_val"
+    auto name = ToString(tag).erase(0, 1);
+    boost::algorithm::to_lower(name);
+    return name;
+  });
 
   string r("<flag>");
   AppendXMLTag("file", flag.filename, &r);
@@ -244,7 +250,7 @@ static string DescribeOneFlagInXML(const CommandLineFlagInfo& flag) {
   AppendXMLTag("default", flag.default_value, &r);
   AppendXMLTag("current", flag.current_value, &r);
   AppendXMLTag("type", flag.type, &r);
-  AppendXMLTag("tags", JoinStrings(tags, ","), &r);
+  AppendXMLTag("tags", JoinStrings(tags_str, ","), &r);
   r += "</flag>";
   return r;
 }
@@ -283,7 +289,11 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   if (FLAGS_helpxml) {
     DumpFlagsXML();
   } else if (FLAGS_dump_metrics_json) {
-    MetricPrototypeRegistry::get()->WriteAsJsonAndExit();
+    std::stringstream s;
+    JsonWriter w(&s, JsonWriter::PRETTY);
+    WriteRegistryAsJson(&w);
+    std::cout << s.str() << std::endl;
+    exit(0);
   } else if (FLAGS_version) {
     ShowVersionAndExit();
   } else {

@@ -29,15 +29,14 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/consensus.h"
 
 #include <set>
 
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace consensus {
@@ -54,51 +53,12 @@ ConsensusBootstrapInfo::ConsensusBootstrapInfo()
     last_committed_id(MinimumOpId()) {
 }
 
-ConsensusRound::ConsensusRound(Consensus* consensus,
-                               ReplicateMsgPtr replicate_msg,
-                               ConsensusReplicatedCallback replicated_cb)
-    : consensus_(consensus),
-      replicate_msg_(std::move(replicate_msg)),
-      replicated_cb_(std::move(replicated_cb)) {}
-
-ConsensusRound::ConsensusRound(Consensus* consensus,
-                               ReplicateMsgPtr replicate_msg)
-    : consensus_(consensus),
-      replicate_msg_(std::move(replicate_msg)) {
-  DCHECK_NOTNULL(replicate_msg_.get());
-}
-
-void ConsensusRound::NotifyReplicationFinished(
-    const Status& status, int64_t leader_term, OpIds* applied_op_ids) {
-  if (PREDICT_FALSE(replicated_cb_ == nullptr)) return;
-  replicated_cb_(status, leader_term, applied_op_ids);
-}
-
-Status ConsensusRound::CheckBoundTerm(int64_t current_term) const {
-  if (PREDICT_FALSE(bound_term_ != current_term)) {
-    if (bound_term_ == kUnboundTerm) {
-      return STATUS_FORMAT(
-          Aborted, "Attempt to submit operation with unbound term, current term: $0", current_term);
-    }
-    return STATUS_FORMAT(Aborted,
-                         "Operation submitted in term $0 cannot be replicated in term $1",
-                         bound_term_, current_term);
-  }
-  return Status::OK();
-}
-
 LeaderStatus Consensus::GetLeaderStatus(bool allow_stale) const {
   return GetLeaderState(allow_stale).status;
 }
 
 int64_t Consensus::LeaderTerm() const {
   return GetLeaderState().term;
-}
-
-scoped_refptr<ConsensusRound> Consensus::NewRound(
-    ReplicateMsgPtr replicate_msg,
-    const ConsensusReplicatedCallback& replicated_cb) {
-  return make_scoped_refptr(new ConsensusRound(this, std::move(replicate_msg), replicated_cb));
 }
 
 void Consensus::SetFaultHooks(const shared_ptr<ConsensusFaultHooks>& hooks) {
@@ -128,16 +88,66 @@ Status Consensus::ExecuteHook(HookPoint point) {
   return Status::OK();
 }
 
-Result<yb::OpId> Consensus::GetLastOpId(OpIdType type) {
+Result<OpId> Consensus::GetLastOpId(OpIdType type) {
   switch (type) {
     case OpIdType::RECEIVED_OPID:
       return GetLastReceivedOpId();
     case OpIdType::COMMITTED_OPID:
       return GetLastCommittedOpId();
-    case OpIdType::UNKNOWN_OPID_TYPE:
+    default:
       break;
   }
   return STATUS(InvalidArgument, "Unsupported OpIdType", OpIdType_Name(type));
+}
+
+Status Consensus::StepDown(const LeaderStepDownRequestPB* req, LeaderStepDownResponsePB* resp) {
+  return STATUS(NotSupported, "Not implemented.");
+}
+
+Status Consensus::ChangeConfig(const ChangeConfigRequestPB& req,
+                               const StdStatusCallback& client_cb,
+                               boost::optional<tserver::TabletServerErrorPB::Code>* error) {
+  return STATUS(NotSupported, "Not implemented.");
+}
+
+Status Consensus::ConsensusFaultHooks::PreStart() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostStart() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreConfigChange() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostConfigChange() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreReplicate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostReplicate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreUpdate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostUpdate() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PreShutdown() {
+  return Status::OK();
+}
+
+Status Consensus::ConsensusFaultHooks::PostShutdown() {
+  return Status::OK();
 }
 
 LeaderState& LeaderState::MakeNotReadyLeader(LeaderStatus status_) {
@@ -168,6 +178,10 @@ Status LeaderState::CreateStatus() const {
   }
 
   FATAL_INVALID_ENUM_VALUE(consensus::LeaderStatus, status);
+}
+
+Status MoveStatus(LeaderState&& state) {
+  return state.CreateStatus();
 }
 
 } // namespace consensus

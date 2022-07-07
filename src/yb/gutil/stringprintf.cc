@@ -20,11 +20,11 @@
 #include <errno.h>
 #include <stdarg.h> // For va_list and related operations
 #include <stdio.h> // MSVC requires this for _vsnprintf
+
 #include <vector>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 
 using std::vector;
@@ -131,10 +131,10 @@ string StringPrintfVector(const char* format, const vector<string>& v) {
   // or displaying random chunks of memory to users.
 
   const char* cstr[kStringPrintfVectorMaxArgs];
-  for (int i = 0; i < v.size(); ++i) {
+  for (size_t i = 0; i < v.size(); ++i) {
     cstr[i] = v[i].c_str();
   }
-  for (int i = v.size(); i < arraysize(cstr); ++i) {
+  for (size_t i = v.size(); i < arraysize(cstr); ++i) {
     cstr[i] = &string_printf_empty_block[0];
   }
 

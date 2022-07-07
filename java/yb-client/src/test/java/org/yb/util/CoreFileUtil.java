@@ -13,16 +13,16 @@
  */
 package org.yb.util;
 
-import org.apache.commons.lang3.math.NumberUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
-import org.yb.minicluster.LogPrinter;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import org.apache.commons.lang3.math.NumberUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.yb.client.TestUtils;
 
 public final class CoreFileUtil {
 
@@ -58,6 +58,16 @@ public final class CoreFileUtil {
     boolean allowNoPid() { return true; }
   }
 
+  /**
+   * Log stack trace of core file(s).
+   *
+   * Find core files according to pid, coreFileDir, and matchMode.
+   *
+   * Note: this assumes that
+   *       - for linux, kernel.core_pattern = core
+   *       - for mac, kern.corefile = /cores/core.%P
+   * TODO(#11754): don't assume the above
+   */
   public static void processCoreFile(int pid,
                                      String executablePath,
                                      String programDescription,
@@ -105,17 +115,11 @@ public final class CoreFileUtil {
             executablePath
         );
         LOG.warn("Analyzing core file using the command: " + analysisArgs);
-        ProcessBuilder procBuilder = new ProcessBuilder().command(analysisArgs);
-        procBuilder.redirectErrorStream(true);
-        Process analysisProcess = procBuilder.start();
 
-        LogPrinter logPrinter = new LogPrinter(analysisProcess.getInputStream(), "    ");
-        analysisProcess.waitFor();
-        logPrinter.stop();
+        ProcessUtil.executeSimple(analysisArgs, "    ");
 
-        if (analysisProcess.exitValue() != 0) {
-          LOG.warn("Core file analysis script " + analysisProcess + " exited with code: " +
-              analysisProcess.exitValue());
+        if (ConfForTesting.keepData()) {
+          LOG.info("Skipping deletion of core file '{}'", coreFile.getAbsolutePath());
         } else {
           if (coreFile.delete()) {
             LOG.warn("Deleted core file at '{}'", coreFile.getAbsolutePath());

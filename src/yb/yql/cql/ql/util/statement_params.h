@@ -18,12 +18,10 @@
 #ifndef YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
 #define YB_YQL_CQL_QL_UTIL_STATEMENT_PARAMS_H_
 
-#include <boost/thread/shared_mutex.hpp>
-
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol.pb.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -48,7 +46,10 @@ class StatementParameters {
   void set_page_size(const uint64_t page_size) { page_size_ = page_size; }
 
   // Set paging state.
-  CHECKED_STATUS SetPagingState(const std::string& paging_state);
+  Status SetPagingState(const std::string& paging_state);
+
+  // Write paging state to output.
+  void WritePagingState(QLPagingStatePB *output) const { output->CopyFrom(paging_state()); }
 
   // Accessor functions for paging state fields.
   const std::string& table_id() const { return paging_state().table_id(); }
@@ -65,16 +66,19 @@ class StatementParameters {
 
   ReadHybridTime read_time() const;
 
+  // Check if a bind variable is unset. To be overridden by subclasses
+  // to return actual bind variables status.
+  virtual Result<bool> IsBindVariableUnset(const std::string& name,
+                                           int64_t pos) const;
+
   // Retrieve a bind variable for the execution of the statement. To be overridden by subclasses
   // to return actual bind variables.
-  virtual CHECKED_STATUS GetBindVariable(const std::string& name,
+  virtual Status GetBindVariable(const std::string& name,
                                          int64_t pos,
                                          const std::shared_ptr<QLType>& type,
-                                         QLValue* value) const {
-    return STATUS(RuntimeError, "no bind variable available");
-  }
+                                         QLValue* value) const;
 
-  const YBConsistencyLevel yb_consistency_level() const {
+  YBConsistencyLevel yb_consistency_level() const {
     return yb_consistency_level_;
   }
 

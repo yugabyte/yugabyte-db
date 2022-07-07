@@ -20,17 +20,19 @@ const mapDispatchToProps = (dispatch) => {
 function mapStateToProps(state, ownProps) {
   const initialFormValues = {
     restoreToUniverseUUID: '',
-    restoreToTableName: '',
     restoreToKeyspace: '',
+    restoreToTableName: '',
     storageConfigUUID: '',
     storageLocation: '',
+    restoreTimeStamp: '',
     parallelism: 8,
     kmsConfigUUID: ''
   };
   const {
     customer: { configs },
     universe: { currentUniverse, universeList },
-    cloud
+    cloud,
+    featureFlags,
   } = state;
   const storageConfigs = configs.data.filter((config) => config.type === 'STORAGE');
 
@@ -53,9 +55,8 @@ function mapStateToProps(state, ownProps) {
      * is a string while the other options, when selected, return an object
      * with the format { label: <display>, value: <internal> }
      */
-    initialFormValues.restoreToUniverseUUID = universeUUID;
-
     initialFormValues.restoreToTableName = tableName;
+    initialFormValues.restoreToUniverseUUID = { value: universeUUID, label: currentUniverse.data.name };
     initialFormValues.restoreTableNameList = tableNameList;
     initialFormValues.restoreTableUUIDList = tableUUIDList;
     initialFormValues.restoreToKeyspace = keyspace;
@@ -65,10 +66,13 @@ function mapStateToProps(state, ownProps) {
     initialFormValues.backupList = backupList;
   } else {
     if (getPromiseState(currentUniverse).isSuccess() && isNonEmptyObject(currentUniverse.data)) {
-      initialFormValues.restoreToUniverseUUID = currentUniverse.data.universeUUID;
+      initialFormValues.restoreToUniverseUUID = { value: currentUniverse.data.universeUUID, label: currentUniverse.data.name };
     }
     if (isNonEmptyArray(storageConfigs)) {
-      initialFormValues.storageConfigUUID = storageConfigs[0].configUUID;
+      initialFormValues.storageConfigUUID = {
+        value: storageConfigs[0].configUUID,
+        label: storageConfigs[0].configName
+      };
     }
   }
 
@@ -77,7 +81,8 @@ function mapStateToProps(state, ownProps) {
     currentUniverse: currentUniverse,
     universeList: universeList,
     initialValues: initialFormValues,
-    cloud: cloud
+    cloud: cloud,
+    featureFlags: featureFlags,
   };
 }
 

@@ -23,13 +23,10 @@
 
 #include "yb/rocksdb/util/thread_local.h"
 
-#include <stdlib.h>
-
-#include <vector>
 #include <algorithm>
 
-#include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/port/likely.h"
+#include "yb/rocksdb/util/mutexlock.h"
 
 namespace rocksdb {
 

@@ -22,7 +22,6 @@
 
 #include <vector>
 
-#include "yb/rocksdb/comparator.h"
 #include "yb/util/slice.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/util/arena.h"
@@ -225,8 +224,7 @@ Status BlockPrefixIndex::Create(const SliceTransform* internal_prefix_extractor,
   return s;
 }
 
-uint32_t BlockPrefixIndex::GetBlocks(const Slice& key,
-                                     uint32_t** blocks) {
+uint32_t BlockPrefixIndex::GetBlocks(const Slice& key, uint32_t** blocks) const {
   Slice prefix = internal_prefix_extractor_->Transform(key);
 
   uint32_t bucket = PrefixToBucket(prefix, num_buckets_);

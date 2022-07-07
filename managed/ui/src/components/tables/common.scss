@@ -1,3 +1,5 @@
+@import '../../_style/colors.scss';
+
 .table-type-logo {
   width: 30px;
   height: 30px;
@@ -26,5 +28,28 @@
 
   .cron-description {
     margin: 5px 0 15px;
+  }
+}
+.config {
+  .select-nested__group-heading {
+    font-size: 13px;
+  }
+  .select-nested__group-heading {
+    font-size: 13px;
+  }
+
+  .select-nested__group {
+    padding-top: 0;
+    .select-nested__option {
+      cursor: pointer;
+      padding: 5px 5px 5px 25px;
+      background: #fff;
+      &:hover{
+        background-color : $YB_GRAY_HOVER
+      }
+    }
+    .select-nested__option--is-selected{
+      color : $YB_ORANGE
+    }
   }
 }

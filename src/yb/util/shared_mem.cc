@@ -19,14 +19,16 @@
 #include <sys/syscall.h>
 #endif
 #include <fcntl.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <string>
 #include <glog/logging.h>
 
+#include "yb/gutil/casts.h"
+
 #include "yb/util/errno.h"
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
@@ -101,7 +103,7 @@ std::string GetSharedMemoryDirectory() {
 int memfd_create() {
   // This name doesn't really matter, it is only useful for debugging purposes.
   // See http://man7.org/linux/man-pages/man2/memfd_create.2.html.
-  return syscall(__NR_memfd_create, kAnonShmFilenamePrefix, 0 /* flags */);
+  return narrow_cast<int>(syscall(__NR_memfd_create, kAnonShmFilenamePrefix, 0 /* flags */));
 }
 
 // Attempts to create a shared memory file using memfd_create.

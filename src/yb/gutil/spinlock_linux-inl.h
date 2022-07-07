@@ -47,7 +47,6 @@
  * This file is a Linux-specific part of spinlock_internal.cc
  */
 
-#include <errno.h>
 #include <sched.h>
 #include <time.h>
 #include <limits.h>
@@ -66,15 +65,10 @@ static struct InitModule {
     int x = 0;
     // futexes are ints, so we can use them only when
     // that's the same size as the lockword_ in SpinLock.
-#ifdef __arm__
-    // ARM linux doesn't support sys_futex1(void*, int, int, struct timespec*);
-    have_futex = 0;
-#else
     have_futex = (sizeof (Atomic32) == sizeof (int) &&
-                  sys_futex(&x, FUTEX_WAKE, 1, 0) >= 0);
-#endif
+                  sys_futex(&x, FUTEX_WAKE, 1, nullptr, nullptr, 0) >= 0);
     if (have_futex &&
-        sys_futex(&x, FUTEX_WAKE | futex_private_flag, 1, 0) < 0) {
+        sys_futex(&x, FUTEX_WAKE | futex_private_flag, 1, nullptr, nullptr, 0) < 0) {
       futex_private_flag = 0;
     }
   }
@@ -83,6 +77,7 @@ static struct InitModule {
 }  // anonymous namespace
 
 
+namespace yb {
 namespace base {
 namespace internal {
 
@@ -92,7 +87,7 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop) {
     struct timespec tm;
     tm.tv_sec = 0;
     if (have_futex) {
-      tm.tv_nsec = base::internal::SuggestedDelayNS(loop);
+      tm.tv_nsec = yb::base::internal::SuggestedDelayNS(loop);
     } else {
       tm.tv_nsec = 2000001;   // above 2ms so linux 2.4 doesn't spin
     }
@@ -100,9 +95,10 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop) {
       tm.tv_nsec *= 16;  // increase the delay; we expect explicit wakeups
       sys_futex(reinterpret_cast<int *>(const_cast<Atomic32 *>(w)),
                 FUTEX_WAIT | futex_private_flag,
-                value, reinterpret_cast<struct kernel_timespec *>(&tm));
+                value, reinterpret_cast<struct kernel_timespec *>(&tm),
+                nullptr, 0);
     } else {
-      nanosleep(&tm, NULL);
+      nanosleep(&tm, nullptr);
     }
     errno = save_errno;
   }
@@ -111,9 +107,11 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop) {
 void SpinLockWake(volatile Atomic32 *w, bool all) {
   if (have_futex) {
     sys_futex(reinterpret_cast<int *>(const_cast<Atomic32 *>(w)),
-              FUTEX_WAKE | futex_private_flag, all? INT_MAX : 1, 0);
+              FUTEX_WAKE | futex_private_flag, all? INT_MAX : 1,
+              nullptr, nullptr, 0);
   }
 }
 
 } // namespace internal
 } // namespace base
+} // namespace yb

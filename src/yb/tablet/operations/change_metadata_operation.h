@@ -37,17 +37,21 @@
 #include <string>
 
 #include "yb/common/index.h"
+
+#include "yb/consensus/log_fwd.h"
+
 #include "yb/gutil/macros.h"
+
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_admin.pb.h"
+
 #include "yb/util/locks.h"
 
 namespace yb {
 
 class Schema;
-
-namespace log {
-class Log;
-}
 
 namespace tablet {
 
@@ -55,22 +59,16 @@ class TabletPeer;
 
 // Operation Context for the AlterSchema operation.
 // Keeps track of the Operation states (request, result, ...)
-class ChangeMetadataOperationState :
-    public ExclusiveSchemaOperationState<tserver::ChangeMetadataRequestPB> {
+class ChangeMetadataOperation
+    : public ExclusiveSchemaOperation<OperationType::kChangeMetadata,
+                                      ChangeMetadataRequestPB> {
  public:
-  ~ChangeMetadataOperationState() {
-  }
+  ChangeMetadataOperation(Tablet* tablet, log::Log* log,
+                          const ChangeMetadataRequestPB* request = nullptr);
 
-  ChangeMetadataOperationState(Tablet* tablet, log::Log* log,
-                            const tserver::ChangeMetadataRequestPB* request = nullptr)
-      : ExclusiveSchemaOperationState(tablet, request), log_(log) {
-  }
+  explicit ChangeMetadataOperation(const ChangeMetadataRequestPB* request);
 
-  explicit ChangeMetadataOperationState(const tserver::ChangeMetadataRequestPB* request)
-      : ChangeMetadataOperationState(nullptr, nullptr, request) {
-  }
-
-  void UpdateRequestFromConsensusRound() override;
+  ~ChangeMetadataOperation();
 
   void set_schema(const Schema* schema) { schema_ = schema; }
   const Schema* schema() const { return schema_; }
@@ -115,52 +113,29 @@ class ChangeMetadataOperationState :
 
   virtual std::string ToString() const override;
 
- private:
-  log::Log* const log_;
-
-  // The new (target) Schema.
-  const Schema* schema_ = nullptr;
-
-  // Lookup map for the associated indexes.
-  IndexMap index_map_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperationState);
-};
-
-// Executes the metadata change operation.
-class ChangeMetadataOperation : public Operation {
- public:
-  explicit ChangeMetadataOperation(std::unique_ptr<ChangeMetadataOperationState> operation_state);
-
-  ChangeMetadataOperationState* state() override {
-    return down_cast<ChangeMetadataOperationState*>(Operation::state());
-  }
-
-  const ChangeMetadataOperationState* state() const override {
-    return down_cast<const ChangeMetadataOperationState*>(Operation::state());
-  }
-
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
-
   // Executes a Prepare for the metadata change operation.
   //
   // TODO: need a schema lock?
 
-  CHECKED_STATUS Prepare() override;
-
-  std::string ToString() const override;
+  Status Prepare() override;
 
  private:
   // Starts the ChangeMetadataOperation by assigning it a timestamp.
-  void DoStart() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
 
-  DISALLOW_COPY_AND_ASSIGN(ChangeMetadataOperation);
+  log::Log* const log_;
+
+  // The new (target) Schema.
+  const Schema* schema_ = nullptr;
+  std::unique_ptr<Schema> schema_holder_;
+
+  // Lookup map for the associated indexes.
+  IndexMap index_map_;
 };
 
-CHECKED_STATUS SyncReplicateChangeMetadataOperation(
-    const tserver::ChangeMetadataRequestPB* req,
+Status SyncReplicateChangeMetadataOperation(
+    const ChangeMetadataRequestPB* req,
     tablet::TabletPeer* tablet_peer,
     int64_t term);
 

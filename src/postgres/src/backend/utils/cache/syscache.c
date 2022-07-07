@@ -29,6 +29,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
+#include "catalog/pg_attrdef.h"
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
@@ -45,6 +46,7 @@
 #include "catalog/pg_foreign_data_wrapper.h"
 #include "catalog/pg_foreign_server.h"
 #include "catalog/pg_foreign_table.h"
+#include "catalog/pg_inherits.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
@@ -66,7 +68,6 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
-#include "catalog/pg_tablegroup.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_transform.h"
 #include "catalog/pg_ts_config.h"
@@ -76,13 +77,14 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#include "catalog/pg_yb_tablegroup.h"
+#include "miscadmin.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
 
-#include "catalog/pg_attrdef.h"
 #include "pg_yb_utils.h"
 
 /*---------------------------------------------------------------------------
@@ -492,6 +494,17 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
+	{InheritsRelationId,    /* INHERITSRELID */
+		InheritsParentIndexId,
+		2,
+		{
+			Anum_pg_inherits_inhparent,
+			Anum_pg_inherits_inhrelid,
+			0,
+			0
+		},
+		32
+	},
 	{LanguageRelationId,		/* LANGNAME */
 		LanguageNameIndexId,
 		1,
@@ -800,17 +813,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
-	{TableGroupRelationId,		/* TABLEGROUPOID */
-		TablegroupOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0,
-		},
-		4
-	},
 	{TableSpaceRelationId,		/* TABLESPACEOID */
 		TablespaceOidIndexId,
 		1,
@@ -986,7 +988,18 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		2
-	}
+	},
+	{YbTablegroupRelationId,	/* YBTABLEGROUPOID */
+		YbTablegroupOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0,
+		},
+		4
+	},
 };
 
 typedef struct YBPinnedObjectKey
@@ -1004,7 +1017,7 @@ typedef struct YBPinnedObjectsCacheData
 } YBPinnedObjectsCacheData;
 
 /* Stores all pinned objects */
-static YBPinnedObjectsCacheData YBPinnedObjectsCache = {.regular = NULL, .shared = NULL};
+static YBPinnedObjectsCacheData YBPinnedObjectsCache = {0};
 
 static CatCache *SysCache[SysCacheSize];
 
@@ -1063,11 +1076,11 @@ YBSysTablePrimaryKey(Oid relid)
 		case TSDictionaryRelationId:
 		case TSParserRelationId:
 		case TSTemplateRelationId:
-		case TableGroupRelationId:
 		case TableSpaceRelationId:
 		case TransformRelationId:
 		case TypeRelationId:
 		case UserMappingRelationId:
+		case YbTablegroupRelationId:
 			YBPkAddAttribute(ObjectIdAttributeNumber);
 			break;
 		case AttributeRelationId:
@@ -1138,6 +1151,9 @@ void YBSetSysCacheTuple(Relation rel, HeapTuple tup)
 			SetCatCacheTuple(SysCache[ATTNUM], tup, tupdesc);
 			SetCatCacheTuple(SysCache[ATTNAME], tup, tupdesc);
 			break;
+		case PartitionedRelationId:
+			SetCatCacheTuple(SysCache[PARTRELID], tup, tupdesc);
+			break;
 
 		default:
 			/* For non-critical tables/indexes nothing to do */
@@ -1198,50 +1214,23 @@ YBPreloadCatalogCache(int cache_id, int idx_cache_id)
 				continue;
 			}
 
-			char *fname          = NameStr(*DatumGetName(ndt));
-			char *internal_fname = TextDatumGetCString(heap_getattr(ntp,
-			                                                        Anum_pg_proc_prosrc,
-			                                                        tupdesc,
-			                                                        &is_null));
-
-			/*
-			 * The internal name must be unique so if this is the
-			 * same as the function name, then this must be the only
-			 * or at least first occurrence of this function name.
-			 * TODO this assumption holds for standard procs (i.e.
-			 * initdb) but we should clean this up when enabling
-			 * CREATE PROCEDURE.
-			 */
-			bool is_canonical = strcmp(fname, internal_fname) == 0;
-
-			if (!is_canonical)
+			/* Look for an existing list for functions with this name. */
+			foreach(lc, list_of_lists)
 			{
-				/*
-				 * Look for an existing list for functions with
-				 * this name.
-				 */
-				foreach(lc, list_of_lists)
-				{
-					List      *fnlist = lfirst(lc);
-					HeapTuple otp     = (HeapTuple) linitial(fnlist);
-					Datum     odt     = heap_getattr(otp,
-					                                 key.sk_attno,
-					                                 tupdesc,
-					                                 &is_null);
+				List      *fnlist = lfirst(lc);
+				HeapTuple otp     = (HeapTuple) linitial(fnlist);
+				Datum     odt     = heap_getattr(otp, key.sk_attno, tupdesc, &is_null);
 
-					Datum test = FunctionCall2Coll(&key.sk_func,
-					                               key.sk_collation,
-					                               ndt,
-					                               odt);
-					found_match = DatumGetBool(test);
-					if (found_match)
-					{
-						fnlist = lappend(fnlist, ntp);
-						lc->data.ptr_value = fnlist;
-						break;
-					}
+				Datum test = FunctionCall2Coll(&key.sk_func, key.sk_collation, ndt, odt);
+				found_match = DatumGetBool(test);
+				if (found_match)
+				{
+					fnlist = lappend(fnlist, ntp);
+					lc->data.ptr_value = fnlist;
+					break;
 				}
 			}
+
 			if (!found_match)
 			{
 				List *new_list = lappend(NIL, ntp);
@@ -1312,9 +1301,29 @@ YBPreloadCatalogCache(int cache_id, int idx_cache_id)
  *
  * Used during initdb.
  */
+static bool
+YBIsEssentialCache(int cache_id)
+{
+	switch (cache_id)
+	{
+		case RELOID:           switch_fallthrough();
+		case TYPEOID:          switch_fallthrough();
+		case ATTNAME:          switch_fallthrough();
+		case PROCOID:          switch_fallthrough();
+		case OPEROID:          switch_fallthrough();
+		case CASTSOURCETARGET: return true;
+		default:
+			break;
+	}
+	return false;
+}
+
 static void
 YBPreloadCatalogCacheIfEssential(int cache_id)
 {
+	if (!YBIsEssentialCache(cache_id))
+		return;
+
 	int idx_cache_id = -1;
 
 	switch (cache_id)
@@ -1334,12 +1343,8 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
 		case OPEROID:
 			idx_cache_id = OPERNAMENSP;
 			break;
-		case CASTSOURCETARGET:
-			/* No index cache */
-			break;
 		default:
-			/* non-essential table -- nothing to do */
-			return;
+			break;
 	}
 
 	YBPreloadCatalogCache(cache_id, idx_cache_id);
@@ -1354,14 +1359,16 @@ YBPreloadCatalogCacheIfEssential(int cache_id)
 void
 YBPreloadCatalogCaches(void)
 {
-	int			cacheId;
-
 	Assert(CacheInitialized);
 
 	/* Ensure individual caches are initialized */
 	InitCatalogCachePhase2();
 
-	for (cacheId = 0; cacheId < SysCacheSize; cacheId++)
+	for (int cacheId = 0; cacheId < SysCacheSize; ++cacheId)
+		if (YBIsEssentialCache(cacheId))
+			YbRegisterSysTableForPrefetching(SysCache[cacheId]->cc_reloid);
+
+	for (int cacheId = 0; cacheId < SysCacheSize; ++cacheId)
 		YBPreloadCatalogCacheIfEssential(cacheId);
 }
 
@@ -1416,11 +1423,9 @@ YBBuildPinnedObjectCache(const char *name,
 	return cache;
 }
 
-void
-YBLoadPinnedObjectsCache() {
-	/* Avoid cache building in case of `initdb`. Also avoid cache rebuilding. */
-	if (YBHasPinnedObjectsCache() || YBCIsInitDbModeEnvVarSet())
-		return;
+static void
+YBLoadPinnedObjectsCache()
+{
 	YBPinnedObjectsCacheData cache = {
 		.shared = YBBuildPinnedObjectCache("Shared pinned objects cache",
 		                                   20, /* Number of pinned objects in pg_shdepend is 9 */
@@ -1438,26 +1443,35 @@ YBLoadPinnedObjectsCache() {
 }
 
 bool
-YBHasPinnedObjectsCache() {
-	/* Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough. */
+YBIsPinnedObjectsCacheAvailable()
+{
+	/*
+	 * Build the cache in case it is not yet ready.
+	 * Both 'regular' and 'shared' fields are set at same time. Checking any of them is enough.
+	 * Avoid cache building in case of `initdb`.
+	 */
+	if (!(YBPinnedObjectsCache.regular || YBCIsInitDbModeEnvVarSet()))
+		YBLoadPinnedObjectsCache();
 	return YBPinnedObjectsCache.regular;
 }
 
 static bool
-YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId) {
+YBIsPinned(HTAB *pinned_cache, Oid classId, Oid objectId)
+{
+	Assert(pinned_cache);
 	YBPinnedObjectKey key = {.classid = classId, .objid = objectId};
 	return hash_search(pinned_cache, &key, HASH_FIND, NULL);
 }
 
 bool
-YBIsObjectPinned(Oid classId, Oid objectId) {
-	Assert(YBHasPinnedObjectsCache());
+YBIsObjectPinned(Oid classId, Oid objectId)
+{
 	return YBIsPinned(YBPinnedObjectsCache.regular, classId, objectId);
 }
 
 bool
-YBIsSharedObjectPinned(Oid classId, Oid objectId) {
-	Assert(YBHasPinnedObjectsCache());
+YBIsSharedObjectPinned(Oid classId, Oid objectId)
+{
 	return YBIsPinned(YBPinnedObjectsCache.shared, classId, objectId);
 }
 

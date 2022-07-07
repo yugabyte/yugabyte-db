@@ -95,7 +95,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 								   node->ioss_NumOrderByKeys);
 
 		node->ioss_ScanDesc = scandesc;
-
+		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
 
 		/* Set it up for index-only scan */
 		node->ioss_ScanDesc->xs_want_itup = true;
@@ -121,12 +121,18 @@ IndexOnlyNext(IndexOnlyScanState *node)
 
 		// TODO(hector) Add row marks for INDEX_ONLY_SCAN
 		scandesc->yb_exec_params->rowmark = -1;
-		scandesc->yb_exec_params->read_from_followers = YBReadFromFollowersEnabled();
 	}
 
 	/*
 	 * OK, now that we have what we need, fetch the next tuple.
 	 */
+	MemoryContext oldcontext;
+	/*
+	 * To handle dead tuple for temp table, we shouldn't store its index
+	 * in per-tuple memory context.
+	 */
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		oldcontext = MemoryContextSwitchTo(node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	while ((tid = index_getnext_tid(scandesc, direction)) != NULL)
 	{
 		HeapTuple	tuple = NULL;
@@ -169,7 +175,7 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 *
 		 * YugaByte index tuple is always visible.
 		 */
-		if (!IsYugaByteEnabled() &&
+		if (!IsYBRelation(node->ss.ss_currentRelation) &&
 			!VM_ALL_VISIBLE(scandesc->heapRelation,
 							ItemPointerGetBlockNumber(tid),
 							&node->ioss_VMBuffer))
@@ -229,9 +235,10 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			if (!ExecQualAndReset(node->indexqual, econtext))
+			if (!ExecQual(node->indexqual, econtext))
 			{
 				/* Fails recheck, so drop it and loop back for another */
+				ResetExprContext(econtext);
 				InstrCountFiltered2(node, 1);
 				continue;
 			}
@@ -263,9 +270,12 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			PredicateLockPage(scandesc->heapRelation,
 							  ItemPointerGetBlockNumber(tid),
 							  estate->es_snapshot);
-
+		if (IsYBRelation(node->ss.ss_currentRelation))
+			MemoryContextSwitchTo(oldcontext);
 		return slot;
 	}
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		MemoryContextSwitchTo(oldcontext);
 
 	/*
 	 * if we get here it means the index scan failed so we are at the end of

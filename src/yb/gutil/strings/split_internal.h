@@ -28,8 +28,8 @@
 //
 // IWYU pragma: private, include "strings/split.h"
 
-#ifndef STRINGS_SPLIT_INTERNAL_H_
-#define STRINGS_SPLIT_INTERNAL_H_
+#ifndef YB_GUTIL_STRINGS_SPLIT_INTERNAL_H
+#define YB_GUTIL_STRINGS_SPLIT_INTERNAL_H
 
 #include <iterator>
 using std::back_insert_iterator;
@@ -42,6 +42,7 @@ using std::vector;
 
 #include "yb/gutil/port.h"  // for LANG_CXX11
 #include "yb/gutil/strings/stringpiece.h"
+#include "yb/gutil/type_traits.h"
 
 #ifdef LANG_CXX11
 // This must be included after "base/port.h", which defines LANG_CXX11.
@@ -424,4 +425,4 @@ class Splitter {
 
 }  // namespace strings
 
-#endif  // STRINGS_SPLIT_INTERNAL_H_
+#endif  // YB_GUTIL_STRINGS_SPLIT_INTERNAL_H

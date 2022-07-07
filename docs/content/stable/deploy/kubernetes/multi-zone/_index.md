@@ -5,14 +5,12 @@ headerTitle: Multi-zone Kubernetes
 description: Deploy YugabyteDB on multi-zone Kubernetes
 headcontent: Deploy YugabyteDB on a multi-zone Kubernetes cluster
 image: /images/section_icons/deploy/kubernetes.png
-aliases:
-  - /stable/deploy/kubernetes/multi-zone
-block_indexing: true
 menu:
   stable:
     identifier: deploy-kubernetes-mz
     parent: deploy-kubernetes
     weight: 622
+type: indexpage
 ---
 
 As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multiple-zones/">Kubernetes multi-zone documentation</a>, Kubernetes is by default a single-zone technology. This means workloads will be distributed across multiple nodes of a single Kubernetes cluster running in a single zone. Running a single Kubernetes cluster with nodes present in multiple zones of a single region is possible with additional configuration. Multi-zone Kubernetes clusters have a <a href="https://kubernetes.io/docs/setup/best-practices/multiple-zones/#limitations">list of known limitations</a> that users should be aware of.
@@ -26,7 +24,7 @@ As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multi
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="eks/">
+    <a class="section-link icon-offset" href="eks/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/amazon-eks.png" aria-hidden="true" />
         <div class="title">Amazon Elastic Kubernetes Service (Amazon EKS)</div>
@@ -38,7 +36,7 @@ As highlighted in <a href="https://kubernetes.io/docs/setup/best-practices/multi
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="gke/">
+    <a class="section-link icon-offset" href="gke/helm-chart/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/gke.png" aria-hidden="true" />
         <div class="title">Google Kubernetes Engine (GKE)</div>

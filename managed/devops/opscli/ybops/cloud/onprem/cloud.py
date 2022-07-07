@@ -12,8 +12,7 @@ import json
 
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.common.method import AbstractInstancesMethod
-from ybops.cloud.onprem.command import OnPremInstanceCommand
-from ybops.cloud.common.command import AccessCommand
+from ybops.cloud.onprem.command import OnPremInstanceCommand, OnPremAccessCommand
 from ybops.common.exceptions import YBOpsRuntimeError
 
 
@@ -33,7 +32,7 @@ class OnPremCloud(AbstractCloud):
         """Override to setup the cloud-specific instances of the subcommands.
         """
         self.add_subcommand(OnPremInstanceCommand())
-        self.add_subcommand(AccessCommand())
+        self.add_subcommand(OnPremAccessCommand())
 
     def get_host_info(self, args, get_all=False):
         """Override to get host specific information from an on premise deployed machine.
@@ -60,7 +59,7 @@ class OnPremCloud(AbstractCloud):
                 region=data.get("region"),
                 zone=data.get("zone"),
                 instance_type=data.get("instanceType"),
-                ssh_port=data.get("sshPort", 22),
+                ssh_port=args.custom_ssh_port or data.get("sshPort", 22),
                 ssh_user=data.get("sshUser"),
                 # TODO: would we ever use this for non yugabyte servers?
                 server_type=AbstractInstancesMethod.YB_SERVER_TYPE

@@ -16,4 +16,4 @@ activate_virtualenv
 cd "$yb_devops_home"
 
 activate_virtualenv
-"$@"
+$PYTHON_EXECUTABLE "$@"

@@ -776,6 +776,7 @@ Datum
 timestamptz_out(PG_FUNCTION_ARGS)
 {
 	TimestampTz dt = PG_GETARG_TIMESTAMPTZ(0);
+	DatumDecodeOptions *decode_options = NULL;
 	char	   *result;
 	int			tz;
 	struct pg_tm tt,
@@ -784,9 +785,16 @@ timestamptz_out(PG_FUNCTION_ARGS)
 	const char *tzn;
 	char		buf[MAXDATELEN + 1];
 
+	if(PG_NARGS() == 2)
+	{
+		decode_options = (DatumDecodeOptions *)PG_GETARG_POINTER(1);
+	}
+
 	if (TIMESTAMP_NOT_FINITE(dt))
 		EncodeSpecialTimestamp(dt, buf);
-	else if (timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL) == 0)
+	else if (((decode_options != NULL && decode_options->from_YB) ?
+		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, pg_tzset(decode_options->timezone))) :
+		(timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL))) == 0)
 		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf);
 	else
 		ereport(ERROR,
@@ -5090,6 +5098,23 @@ timestamp_izone(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TIMESTAMPTZ(result);
 }								/* timestamp_izone() */
+
+/* TimestampTimestampTzRequiresRewrite()
+ *
+ * Returns false if the TimeZone GUC setting causes timestamp_timestamptz and
+ * timestamptz_timestamp to be no-ops, where the return value has the same
+ * bits as the argument.  Since project convention is to assume a GUC changes
+ * no more often than STABLE functions change, the answer is valid that long.
+ */
+bool
+TimestampTimestampTzRequiresRewrite(void)
+{
+	long		offset;
+
+	if (pg_get_timezone_offset(session_timezone, &offset) && offset == 0)
+		PG_RETURN_BOOL(false);
+	PG_RETURN_BOOL(true);
+}
 
 /* timestamp_timestamptz()
  * Convert local timestamp to timestamp at GMT

@@ -42,32 +42,21 @@
 package org.yb.client;
 
 import com.stumbleupon.async.Deferred;
-
-import org.jboss.netty.channel.ConnectTimeoutException;
-import org.jboss.netty.handler.timeout.ReadTimeoutException;
-import org.yb.WireProtocol;
-import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
-import org.yb.rpc.RpcHeader;
-import org.yb.tserver.Tserver;
-import org.yb.util.Pair;
-
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelEvent;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.ExceptionEvent;
+import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.replay.ReplayingDecoder;
 import org.jboss.netty.handler.codec.replay.VoidEnum;
+import org.jboss.netty.handler.timeout.ReadTimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.security.sasl.SaslException;
+import org.yb.WireProtocol;
+import org.yb.annotations.InterfaceAudience;
+import org.yb.cdc.CdcService;
+import org.yb.master.MasterTypes;
+import org.yb.rpc.RpcHeader;
+import org.yb.tserver.TserverTypes;
+import org.yb.util.Pair;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -411,8 +400,9 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     // so convert it into an exception and nullify decoded so that we use the errback route.
     // Have to do it for both TS and Master errors.
     if (decoded != null) {
-      if (decoded.getSecond() instanceof Tserver.TabletServerErrorPB) {
-        Tserver.TabletServerErrorPB error = (Tserver.TabletServerErrorPB) decoded.getSecond();
+      if (decoded.getSecond() instanceof TserverTypes.TabletServerErrorPB) {
+        TserverTypes.TabletServerErrorPB error =
+            (TserverTypes.TabletServerErrorPB) decoded.getSecond();
         exception = dispatchTSErrorOrReturnException(rpc, error);
         if (exception == null) {
           // It was taken care of.
@@ -421,14 +411,24 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
           // We're going to errback.
           decoded = null;
         }
-
-      } else if (decoded.getSecond() instanceof Master.MasterErrorPB) {
-        Master.MasterErrorPB error = (Master.MasterErrorPB) decoded.getSecond();
+      } else if (decoded.getSecond() instanceof MasterTypes.MasterErrorPB) {
+        MasterTypes.MasterErrorPB error = (MasterTypes.MasterErrorPB) decoded.getSecond();
         exception = dispatchMasterErrorOrReturnException(rpc, error);
         if (exception == null) {
           // Exception was taken care of.
           return null;
         } else {
+          decoded = null;
+        }
+      }
+      else if (decoded.getSecond() instanceof CdcService.CDCErrorPB) {
+        CdcService.CDCErrorPB error = (CdcService.CDCErrorPB) decoded.getSecond();
+        exception = dispatchCDCErrorOrReturnException(rpc, error);
+        if (exception == null) {
+          // It was taken care of.
+          return null;
+        } else {
+          // We're going to errback.
           decoded = null;
         }
       }
@@ -460,20 +460,20 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
    * @return An exception if we couldn't dispatch the error, or null.
    */
   private Exception dispatchTSErrorOrReturnException(YRpc rpc,
-                                                     Tserver.TabletServerErrorPB error) {
+                                                     TserverTypes.TabletServerErrorPB error) {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
     TabletServerErrorException ex = new TabletServerErrorException(uuid, error);
-    if (error.getCode() == Tserver.TabletServerErrorPB.Code.TABLET_NOT_FOUND) {
+    if (error.getCode() == TserverTypes.TabletServerErrorPB.Code.TABLET_NOT_FOUND) {
       ybClient.handleTabletNotFound(rpc, ex, this);
       // we're not calling rpc.callback() so we rely on the client to retry that RPC
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE ||
                code == WireProtocol.AppStatusPB.ErrorCode.LEADER_NOT_READY_TO_SERVE ||
                error.getCode() ==
-                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_CHANGE_CONFIG ||
+                 TserverTypes.TabletServerErrorPB.Code.LEADER_NOT_READY_CHANGE_CONFIG ||
                error.getCode() ==
-                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN ||
+                 TserverTypes.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_STEP_DOWN ||
                error.getCode() ==
-                 Tserver.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_SERVE) {
+                 TserverTypes.TabletServerErrorPB.Code.LEADER_NOT_READY_TO_SERVE) {
       ybClient.handleRetryableError(rpc, ex, this);
       // The following error codes are an indication that the tablet isn't a leader, or, in case
       // of LEADER_HAS_NO_LEASE, might no longer be the leader due to failing to replicate a leader
@@ -481,12 +481,45 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.LEADER_HAS_NO_LEASE ||
                code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
                code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
-               error.getCode() == Tserver.TabletServerErrorPB.Code.NOT_THE_LEADER) {
+               error.getCode() == TserverTypes.TabletServerErrorPB.Code.NOT_THE_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);
     } else {
       return ex;
     }
     return null;
+  }
+
+  private Exception dispatchCDCErrorOrReturnException(YRpc rpc,
+                                                     CdcService.CDCErrorPB error) {
+    WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
+    CDCErrorException ex = new CDCErrorException(uuid, error);
+    if (error.getCode() == CdcService.CDCErrorPB.Code.TABLET_NOT_RUNNING ||
+      error.getCode() == CdcService.CDCErrorPB.Code.LEADER_NOT_READY ||
+      error.getCode() == CdcService.CDCErrorPB.Code.NOT_LEADER ||
+      error.getCode() == CdcService.CDCErrorPB.Code.NOT_RUNNING) {
+      // rpc.deadlineTracker.reset();
+      ybClient.handleNotLeader(rpc, ex, this);
+      // we're not calling rpc.callback() so we rely on the client to retry that RPC
+    } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE ||
+      code == WireProtocol.AppStatusPB.ErrorCode.IO_ERROR ||
+      code == WireProtocol.AppStatusPB.ErrorCode.LEADER_NOT_READY_TO_SERVE ||
+      code == WireProtocol.AppStatusPB.ErrorCode.TIMED_OUT) {
+      ybClient.handleRetryableError(rpc, ex, this);
+      // The following error codes are an indication that the tablet isn't a leader, or, in case
+      // of LEADER_HAS_NO_LEASE, might no longer be the leader due to failing to replicate a leader
+      // lease, so we retry looking up the leader anyway.
+    }
+    else if (error.getCode() == CdcService.CDCErrorPB.Code.TABLET_NOT_FOUND ||
+      code == WireProtocol.AppStatusPB.ErrorCode.NOT_FOUND) {
+      ybClient.handleTabletNotFound(rpc, ex, this);
+    }
+    else if (code == WireProtocol.AppStatusPB.ErrorCode.LEADER_HAS_NO_LEASE ||
+      code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
+      code == WireProtocol.AppStatusPB.ErrorCode.ABORTED ||
+      error.getCode() == CdcService.CDCErrorPB.Code.NOT_LEADER) {
+      ybClient.handleNotLeader(rpc, ex, this);
+    }
+    return ex;
   }
 
   /**
@@ -497,13 +530,13 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
    * @return An exception if we couldn't dispatch the error, or null.
    */
   private Exception dispatchMasterErrorOrReturnException(YRpc rpc,
-                                                         Master.MasterErrorPB error) {
+                                                         MasterTypes.MasterErrorPB error) {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
     MasterErrorException ex = new MasterErrorException(uuid, error);
-    if (error.getCode() == Master.MasterErrorPB.Code.NOT_THE_LEADER) {
+    if (error.getCode() == MasterTypes.MasterErrorPB.Code.NOT_THE_LEADER) {
       ybClient.handleNotLeader(rpc, ex, this);
-    } else if (error.getCode() == Master.MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED ||
-               error.getCode() == Master.MasterErrorPB.Code.CAN_RETRY_LOAD_BALANCE_CHECK) {
+    } else if (error.getCode() == MasterTypes.MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED ||
+               error.getCode() == MasterTypes.MasterErrorPB.Code.CAN_RETRY_LOAD_BALANCE_CHECK) {
       ybClient.handleRetryableError(rpc, ex, this);
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE &&
         (!(rpc instanceof GetMasterRegistrationRequest))) {

@@ -17,6 +17,8 @@
 #ifndef YB_ROCKSDB_FILE_H
 #define YB_ROCKSDB_FILE_H
 
+#include <stddef.h>
+
 namespace rocksdb {
 
 class File {

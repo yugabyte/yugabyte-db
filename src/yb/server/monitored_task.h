@@ -33,14 +33,19 @@
 #ifndef YB_SERVER_MONITORED_TASK_H
 #define YB_SERVER_MONITORED_TASK_H
 
+#include <memory>
 #include <string>
+#include <type_traits>
 
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
 
 namespace yb {
+namespace server {
 
 YB_DEFINE_ENUM(MonitoredTaskState,
   (kWaiting)    // RPC not issued, or is waiting to be retried.
@@ -82,6 +87,8 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     BACKFILL_TABLE,
     ASYNC_SPLIT_TABLET,
     START_ELECTION,
+    ASYNC_GET_TABLET_SPLIT_KEY,
+    ASYNC_TEST_RETRY
   };
 
   virtual Type type() const = 0;
@@ -103,6 +110,8 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
     return false;
   }
 
+  std::string ToString() const;
+
  protected:
   static bool IsStateTerminal(MonitoredTaskState state) {
     return state == MonitoredTaskState::kComplete ||
@@ -111,6 +120,7 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
   }
 };
 
+} // namespace server
 } // namespace yb
 
 #endif  // YB_SERVER_MONITORED_TASK_H

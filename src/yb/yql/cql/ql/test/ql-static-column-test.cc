@@ -15,11 +15,14 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/yql/cql/ql/test/ql-test-base.h"
-
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
+
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_ddl.pb.h"
+
+#include "yb/util/status_log.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
 using std::unique_ptr;
@@ -70,15 +73,14 @@ TEST_F(TestQLStaticColumn, TestCreateTable) {
   EXEC_VALID_STMT("create table static_table (h int, r int, s int static, PRIMARY KEY((h), r));");
 
   // Query the table schema.
-  master::Master *master = cluster_->mini_master()->master();
-  master::CatalogManager *catalog_manager = master->catalog_manager();
+  auto &catalog_manager = cluster_->mini_master()->catalog_manager();
   master::GetTableSchemaRequestPB request_pb;
   master::GetTableSchemaResponsePB response_pb;
   request_pb.mutable_table()->mutable_namespace_()->set_name(kDefaultKeyspaceName);
   request_pb.mutable_table()->set_table_name("static_table");
 
   // Verify the static column.
-  CHECK_OK(catalog_manager->GetTableSchema(&request_pb, &response_pb));
+  CHECK_OK(catalog_manager.GetTableSchema(&request_pb, &response_pb));
   for (const ColumnSchemaPB& column : response_pb.schema().columns()) {
     if (column.name() == "s") {
       EXPECT_TRUE(column.is_static());

@@ -69,14 +69,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef UTIL_GTL_SINGLETON_H__
-#define UTIL_GTL_SINGLETON_H__
+#ifndef YB_GUTIL_SINGLETON_H
+#define YB_GUTIL_SINGLETON_H
 
 #include <stddef.h>
 
 #include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/once.h"
 
 namespace util {
@@ -165,4 +164,4 @@ Type* Singleton<Type>::instance_ = NULL;
 template <typename Type>
 Type* Singleton<Type>::injected_instance_ = NULL;
 
-#endif  // UTIL_GTL_SINGLETON_H__
+#endif  // YB_GUTIL_SINGLETON_H

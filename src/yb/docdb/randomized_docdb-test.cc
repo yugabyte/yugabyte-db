@@ -15,9 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include <gflags/gflags.h>
 
-#include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
@@ -87,8 +85,8 @@ class RandomizedDocDBTest : public DocDBTestBase,
   void RunWorkloadWithSnaphots(bool enable_history_cleanup);
 
   int num_iterations_divider() {
-    // GetSubDocument is slower when trying to resolve intents, so we reduce number of iterations
-    // in order to respect the timeout.
+    // Read path is slower when trying to resolve intents, so we reduce number of iterations in
+    // order to respect the timeout.
     return resolve_intents_ ? 2 : 1;
   }
 
@@ -229,7 +227,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   // case we did fewer than 15000 iterations.
   RemoveEntriesWithSecondComponentHigherThan(
       &expected_cleanup_ht_and_iteration,
-      load_gen_->last_operation_ht().value());
+      narrow_cast<int>(load_gen_->last_operation_ht().value()));
 
   ASSERT_FALSE(expected_cleanup_ht_and_iteration.empty());
   ASSERT_EQ(expected_cleanup_ht_and_iteration, cleanup_ht_and_iteration);
@@ -257,7 +255,7 @@ void RandomizedDocDBTest::RunWorkloadWithSnaphots(bool enable_history_cleanup) {
   // Remove entries that don't apply to us because we did not get to do a cleanup at that
   // hybrid_time.
   RemoveEntriesWithSecondComponentHigherThan(&expected_divergent_snapshot_and_cleanup_ht,
-                                             max_history_cleanup_ht.value());
+                                             narrow_cast<int>(max_history_cleanup_ht.value()));
 
   ASSERT_EQ(expected_divergent_snapshot_and_cleanup_ht,
             load_gen_->divergent_snapshot_ht_and_cleanup_ht());

@@ -30,14 +30,24 @@ import java.util.Map;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestBatchRequest extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestBatchRequest.class);
 
   @Override
   public int getTestMethodTimeoutSec() {
     // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 180;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("allow_index_table_read_write", "true");
+    return flagMap;
   }
 
   @Test
@@ -94,6 +104,26 @@ public class TestBatchRequest extends BaseCQLTest {
         "Row[8, h8, 8, r8, 8, v8]",
         "Row[9, h9, 9, r9, 9, v9]",
         "Row[10, h10, 10, r10, 10, v10]");
+  }
+
+  @Test
+  public void testDMLInBatchWith2Indexes() throws Exception {
+    session.execute("create table test_batch (k int primary key, v1 int, v2 int) " +
+                    "with transactions = {'enabled' : true};");
+    session.execute("create index test_batch_by_v1 on test_batch (v1);");
+    session.execute("create index test_batch_by_v2 on test_batch (v2);");
+
+    BatchStatement batch = new BatchStatement();
+    batch.add(new SimpleStatement("insert into test_batch (k, v1) values (1, 101);"));
+    batch.add(new SimpleStatement("insert into test_batch (k, v2) values (1, 201);"));
+    session.execute(batch);
+
+    assertQuery("select * from test_batch;", "Row[1, 101, 201]");
+    assertQuery("select * from test_batch_by_v1;", "Row[1, 101]");
+    assertQuery("select * from test_batch_by_v2;", "Row[1, 201]");
+    // Verify rows can be selected by the index columns.
+    assertQuery("select * from test_batch where v1 = 101;", "Row[1, 101, 201]");
+    assertQuery("select * from test_batch where v2 = 201;", "Row[1, 101, 201]");
   }
 
   @Test

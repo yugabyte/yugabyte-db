@@ -15,11 +15,33 @@
 
 #include "yb/yql/pggate/test/pggate_test.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+
+#include <boost/optional.hpp>
 #include <gflags/gflags.h>
 
-#include "yb/yql/pggate/pg_session.h"
-#include "yb/yql/pggate/pg_memctx.h"
+#include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
+
+#include "yb/gutil/ref_counted.h"
+
+#include "yb/rpc/rpc_controller.h"
+
+#include "yb/tserver/tserver_util_fwd.h"
+#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/tserver/tserver_shared_mem.h"
+
+#include "yb/util/memory/arena.h"
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
 #include "yb/yql/pggate/pggate_flags.h"
+#include "yb/yql/pggate/ybc_pggate.h"
+
+using namespace std::literals;
 
 DECLARE_string(pggate_master_addresses);
 DECLARE_string(test_leave_files);
@@ -28,25 +50,39 @@ namespace yb {
 namespace pggate {
 namespace {
 
-extern "C" void FetchUniqueConstraintName(PgOid relation_id, char* dest, size_t max_size) {
-  CHECK(false) << "Not implemented";
+void YbPgMemUpdateMax() {
+  CHECK(true) << "Skip execution in test";
+}
+
+YBCPgMemctx global_test_memctx = nullptr;
+
+YBCPgMemctx GetCurrentTestYbMemctx() {
+  if (!global_test_memctx) {
+    global_test_memctx = YBCPgCreateMemctx();
+  }
+  return global_test_memctx;
+}
+
+void ClearCurrentTestYbMemctx() {
+  if (global_test_memctx != nullptr) {
+    CHECK_YBC_STATUS(YBCPgDestroyMemctx(global_test_memctx));
+
+    // We assume the memory context has actually already been deleted.
+    global_test_memctx = nullptr;
+  }
+}
+
+const char* GetDebugQueryStringStub() {
+  return "GetDebugQueryString not implemented in test";
 }
 
 } // namespace
 
-YBCPgMemctx test_memctx = nullptr;
-static YBCPgMemctx TestGetCurrentYbMemctx() {
-  if (!test_memctx) {
-    test_memctx = YBCPgCreateMemctx();
-  }
-  return test_memctx;
-}
-
-PggateTest::PggateTest() {
+PggateTest::PggateTest()
+    : tserver_shared_object_(CHECK_RESULT(tserver::TServerSharedObject::Create())) {
 }
 
 PggateTest::~PggateTest() {
-  CHECK_YBC_STATUS(YBCPgDestroyMemctx(test_memctx));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -82,6 +118,9 @@ void PggateTest::SetUp() {
 }
 
 void PggateTest::TearDown() {
+  // It is important to destroy the memory context before destroying PgGate.
+  ClearCurrentTestYbMemctx();
+
   // Destroy the client before shutting down servers.
   YBCDestroyPgGate();
 
@@ -104,12 +143,23 @@ Status PggateTest::Init(const char *test_name, int num_tablet_servers) {
   int count = 0;
   YBCTestGetTypeTable(&type_table, &count);
   YBCPgCallbacks callbacks;
-  callbacks.FetchUniqueConstraintName = &FetchUniqueConstraintName;
-  callbacks.GetCurrentYbMemctx = &TestGetCurrentYbMemctx;
-  YBCInitPgGate(type_table, count, callbacks);
+  callbacks.GetCurrentYbMemctx = &GetCurrentTestYbMemctx;
+  callbacks.GetDebugQueryString = &GetDebugQueryStringStub;
+  callbacks.YbPgMemUpdateMax = &YbPgMemUpdateMax;
 
-  // Don't try to connect to tserver shared memory in pggate tests.
-  FLAGS_TEST_pggate_ignore_tserver_shm = true;
+  {
+    auto proxy = cluster_->GetProxy<tserver::TabletServerServiceProxy>(cluster_->tablet_server(0));
+    tserver::GetSharedDataRequestPB req;
+    tserver::GetSharedDataResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    CHECK_OK(proxy.GetSharedData(req, &resp, &controller));
+    CHECK_EQ(resp.data().size(), sizeof(*tserver_shared_object_));
+    memcpy(pointer_cast<char*>(&*tserver_shared_object_), resp.data().c_str(), resp.data().size());
+  }
+  FLAGS_pggate_tserver_shm_fd = tserver_shared_object_.GetFd();
+
+  YBCInitPgGate(type_table, count, callbacks);
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* pg_env */, nullptr /* database_name */));
@@ -152,6 +202,18 @@ void PggateTest::CreateDB(const string& db_name, const YBCPgOid db_oid) {
 
 void PggateTest::ConnectDB(const string& db_name) {
   CHECK_YBC_STATUS(YBCPgConnectDatabase(db_name.c_str()));
+}
+
+void PggateTest::BeginDDLTransaction() {
+  CHECK_YBC_STATUS(YBCPgEnterSeparateDdlTxnMode());
+}
+
+void PggateTest::CommitDDLTransaction() {
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
+}
+
+void PggateTest::BeginTransaction() {
+  CHECK_YBC_STATUS(YBCPgBeginTransaction());
 }
 
 void PggateTest::CommitTransaction() {

@@ -10,9 +10,15 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/common/wire_protocol.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/common/wire_protocol.h"
+
+#include "yb/master/cdc_rpc_tasks.h"
+
+#include "yb/util/result.h"
+#include "yb/util/shared_lock.h"
+#include "yb/util/trace.h"
 
 using std::set;
 
@@ -23,15 +29,21 @@ namespace master {
 // CDCStreamInfo
 // ================================================================================================
 
-const TableId& CDCStreamInfo::table_id() const {
-  auto l = LockForRead();
-  return l->data().pb.table_id();
+const google::protobuf::RepeatedPtrField<std::string>& CDCStreamInfo::table_id() const {
+  return LockForRead()->pb.table_id();
+}
+
+const NamespaceId& CDCStreamInfo::namespace_id() const {
+  return LockForRead()->pb.namespace_id();
 }
 
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [table=$1] {metadata=$2} ", id(), l->data().pb.table_id(),
-                             l->data().pb.DebugString());
+  if (l->pb.has_namespace_id()) {
+    return Format(
+        "$0 [namespace=$1] {metadata=$2} ", id(), l->pb.namespace_id(), l->pb.ShortDebugString());
+  }
+  return Format("$0 [table=$1] {metadata=$2} ", id(), l->pb.table_id(0), l->pb.ShortDebugString());
 }
 
 // ================================================================================================
@@ -65,8 +77,17 @@ Result<std::shared_ptr<CDCRpcTasks>> UniverseReplicationInfo::GetOrCreateCDCRpcT
 
 std::string UniverseReplicationInfo::ToString() const {
   auto l = LockForRead();
-  return strings::Substitute("$0 [data=$1] ", id(),
-                             l->data().pb.DebugString());
+  return strings::Substitute("$0 [data=$1] ", id(), l->pb.ShortDebugString());
+}
+
+void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
+  std::lock_guard<decltype(lock_)> l(lock_);
+  setup_universe_replication_error_ = status;
+}
+
+Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {
+  SharedLock<decltype(lock_)> l(lock_);
+  return setup_universe_replication_error_;
 }
 
 ////////////////////////////////////////////////////////////
@@ -76,13 +97,11 @@ std::string UniverseReplicationInfo::ToString() const {
 SnapshotInfo::SnapshotInfo(SnapshotId id) : snapshot_id_(std::move(id)) {}
 
 SysSnapshotEntryPB::State SnapshotInfo::state() const {
-  auto l = LockForRead();
-  return l->data().state();
+  return LockForRead()->state();
 }
 
 const std::string& SnapshotInfo::state_name() const {
-  auto l = LockForRead();
-  return l->data().state_name();
+  return LockForRead()->state_name();
 }
 
 std::string SnapshotInfo::ToString() const {
@@ -90,62 +109,54 @@ std::string SnapshotInfo::ToString() const {
 }
 
 bool SnapshotInfo::IsCreateInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_creating();
+  return LockForRead()->is_creating();
 }
 
 bool SnapshotInfo::IsRestoreInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_restoring();
+  return LockForRead()->is_restoring();
 }
 
 bool SnapshotInfo::IsDeleteInProgress() const {
-  auto l = LockForRead();
-  return l->data().is_deleting();
+  return LockForRead()->is_deleting();
 }
 
-Status SnapshotInfo::AddEntries(const TableDescription& table_description) {
+void SnapshotInfo::AddEntries(
+    const TableDescription& table_description, std::unordered_set<NamespaceId>* added_namespaces) {
   SysSnapshotEntryPB& pb = mutable_metadata()->mutable_dirty()->pb;
-  AddEntries(table_description, pb.mutable_entries(), pb.mutable_tablet_snapshots());
-  return Status::OK();
+  AddEntries(
+      table_description, pb.mutable_entries(), pb.mutable_tablet_snapshots(), added_namespaces);
 }
 
 void SnapshotInfo::AddEntries(
     const TableDescription& table_description,
     google::protobuf::RepeatedPtrField<SysRowEntry>* out,
-    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos) {
+    google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos,
+    std::unordered_set<NamespaceId>* added_namespaces) {
   // Note: SysSnapshotEntryPB includes PBs for stored (1) namespaces (2) tables (3) tablets.
   // Add namespace entry.
-  SysRowEntry* entry = out->Add();
-  {
+  if (added_namespaces->emplace(table_description.namespace_info->id()).second) {
     TRACE("Locking namespace");
-    auto l = table_description.namespace_info->LockForRead();
-    FillInfoEntry(*table_description.namespace_info, entry);
+    AddInfoEntry(table_description.namespace_info.get(), out);
   }
 
   // Add table entry.
-  entry = out->Add();
   {
     TRACE("Locking table");
-    auto l = table_description.table_info->LockForRead();
-    FillInfoEntry(*table_description.table_info, entry);
+    AddInfoEntry(table_description.table_info.get(), out);
   }
 
   // Add tablet entries.
   for (const scoped_refptr<TabletInfo>& tablet : table_description.tablet_infos) {
     SysSnapshotEntryPB::TabletSnapshotPB* const tablet_info =
         tablet_infos ? tablet_infos->Add() : nullptr;
-    entry = out->Add();
 
     TRACE("Locking tablet");
-    auto l = tablet->LockForRead();
+    auto l = AddInfoEntry(tablet.get(), out);
 
     if (tablet_info) {
       tablet_info->set_id(tablet->id());
       tablet_info->set_state(SysSnapshotEntryPB::CREATING);
     }
-
-    FillInfoEntry(*tablet, entry);
   }
 }
 

@@ -6,12 +6,11 @@ description: Install Yugabyte Platform and prepare universe nodes.
 image: /images/section_icons/quick_start/install.png
 headcontent: Install Yugabyte Platform to begin creating and managing deployments.
 menu:
-  stable:
-    parent: yugabyte-platform
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: install-yugabyte-platform
 weight: 641
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 <div class="row">
@@ -29,7 +28,7 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prepare-environment/">
+    <a class="section-link icon-offset" href="prepare-environment/aws/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
         <div class="title">Prepare the environment</div>
@@ -41,7 +40,7 @@ showAsideToc: true
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-software/">
+    <a class="section-link icon-offset" href="install-software/default/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install software</div>

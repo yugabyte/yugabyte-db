@@ -4,12 +4,11 @@ headerTitle: Uninstall the Yugabyte Platform software
 linkTitle: Uninstall software
 description: Uninstall the Yugabyte Platform software.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: uninstall-software
     parent: install-yugabyte-platform
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes environments.
@@ -58,7 +57,7 @@ To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes enviro
 
     A message displays that the Yugabyte Platform release and the namespace is deleted.
 
-    ```
+    ```output
     release "yw-test" uninstalled
     ```
 
@@ -66,10 +65,10 @@ To uninstall Yugabyte Platform, follow the steps for Docker or Kubernetes enviro
 
     ```sh
     $ kubectl delete namespace yw-test
-  
     ```
 
     You should see the following message:
 
-    ```namespace "yw-test" deleted
+    ```output
+    namespace "yw-test" deleted
     ```

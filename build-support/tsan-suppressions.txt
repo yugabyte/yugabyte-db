@@ -137,13 +137,9 @@ race:dwarf_lookup_pc
 race:read_function_entry
 
 # False positives of TSAN, because we use atomic to check whether all responses are filled.
-race:yb::redisserver::RedisInboundCall::Serialize
+race:yb::redisserver::RedisInboundCall::DoSerialize
 race:yb::redisserver::RedisInboundCall::DynamicMemoryUsage
 race:yb::redisserver::(anonymous namespace)::BatchContext::LookupDone
-
-# It is OK to write concurrently into this buffer, since we use it for skipping data in case of
-# hitting memory limits and never read from it.
-race:yb::rpc::GetGlobalSkipBuffer()::global_skip_buffer
 
 # Usages of URCU
 race:yb::internal::ConcurrentValue
@@ -177,3 +173,6 @@ race:google::protobuf::Any::ByteSizeLong
 # Races on gflag changes should be strictly test-only issues, as we never update gflags from the
 # code, at runtime.
 race:fLI::*
+
+# Known problem with PstackWatcher
+signal:yb::PstackWatcher::DumpStacks

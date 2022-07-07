@@ -36,44 +36,17 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_types.proto";
 import "yb/consensus/metadata.proto";
 import "yb/tablet/metadata.proto";
-import "yb/tserver/tserver.proto";
-
-message ChangeMetadataRequestPB {
-  // UUID of server this request is addressed to.
-  optional bytes dest_uuid = 5;
-
-  required bytes tablet_id = 1;
-
-  // TODO: Replace with the table descriptor
-  // (Schema, Column IDs, Column Attributes)
-  optional SchemaPB schema = 2;
-
-  repeated IndexInfoPB indexes = 7;
-
-  optional uint32 schema_version = 3;
-  optional string new_table_name = 4;
-
-  optional fixed64 propagated_hybrid_time = 6;
-
-  optional tablet.TableInfoPB add_table = 8;
-
-  optional uint32 wal_retention_secs = 9;
-
-  optional bytes remove_table_id = 10;
-
-  // Note that we don't use the value of this and just check has_mark_backfill_done.
-  optional bool mark_backfill_done = 11;
-
-  // Used for alter schema on a non-primary table (e.g. colocated user table).
-  optional bytes alter_table_id = 12;
-}
+import "yb/tablet/operations.proto";
+import "yb/tablet/tablet_types.proto";
+import "yb/tserver/tserver_types.proto";
 
 // This is used to export tablet metadata changes to a protobuf file to be reloaded on a new cluster
 // startup to avoid running initdb.
 message ExportedTabletMetadataChanges {
-  repeated ChangeMetadataRequestPB metadata_changes = 1;
+  repeated tablet.ChangeMetadataRequestPB metadata_changes = 1;
 }
 
 message ChangeMetadataResponsePB {
@@ -123,6 +96,9 @@ message BackfillIndexRequestPB {
 
   // Currently only used for YSQL.
   optional string namespace_name = 9;
+
+  // Indexed table ID so we can properly address a colocated table.
+  optional bytes indexed_table_id = 10;
 }
 
 message BackfillIndexResponsePB {
@@ -134,6 +110,12 @@ message BackfillIndexResponsePB {
   // the backfill has completed, so that it can be resumed.
   // Encoded as the DocKey for the next row to be backfilled.
   optional bytes backfilled_until = 3;
+
+  // In case of a partial error, list of indexes that failed.
+  repeated bytes failed_index_ids = 4;
+
+  // Returns the number of rows backfilled in the request.
+  optional uint64 number_rows_processed = 5;
 }
 
 message CopartitionTableRequestPB {
@@ -178,6 +160,8 @@ message CreateTabletRequestPB {
 
   // True if the tablet is colocated.
   optional bool colocated = 13 [ default = false ];
+
+  repeated bytes snapshot_schedules = 16;
 }
 
 message CreateTabletResponsePB {
@@ -208,34 +192,27 @@ message DeleteTabletRequestPB {
   // the value of the committed config opid index and shutting down the tablet
   // for deletion. See comments in ts_tablet_manager.cc
   optional int64 cas_config_opid_index_less_or_equal = 5;
+
+  // Hide tablet instead of deleting it.
+  optional bool hide_only = 6;
+
+  // Tablet server should trigger abort of all transactions it participates in upon shutting down
+  // this tablet. Should generally be set to true in the case of a dropped table.
+  optional bool should_abort_active_txns = 7;
 }
 
 message DeleteTabletResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
-// Enum of the server's Tablet Manager state: currently this is only
-// used for assertions, but this can also be sent to the master.
-enum TSTabletManagerStatePB {
-  UNKNOWN = 999;
-
-  // Indicates that Tablet Manager is initializing.
-  MANAGER_INITIALIZING = 0;
-
-  // Indicates that Tablet Manager is running and can create new
-  // tablets.
-  MANAGER_RUNNING = 1;
-
-  // Indicates that tablet manager is shutting down and no new tablets
-  // can be created.
-  MANAGER_QUIESCING = 2;
-
-  // Tablet Manager has shutdown.
-  MANAGER_SHUTDOWN = 3;
-}
-
 // TODO: rename this to FlushOrCompactTabletsRequestPB
 message FlushTabletsRequestPB {
+  enum Operation {
+    FLUSH = 0;
+    COMPACT = 1;
+    LOG_GC = 2;
+  }
+
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 1;
 
@@ -244,8 +221,8 @@ message FlushTabletsRequestPB {
 
   optional fixed64 propagated_hybrid_time = 3;
 
-  // Whether we want to compact the tablets instead of flushing them.
-  optional bool is_compaction = 4;
+  // Actual operation that we plan to perform.
+  optional Operation operation = 4;
 
   // Whether we want to flush or compact all tablets in the server.
   optional bool all_tablets = 5;
@@ -287,24 +264,29 @@ message RemoveTableFromTabletResponsePB {
   optional fixed64 propagated_hybrid_time = 2;
 }
 
-message SplitTabletRequestPB {
-  // UUID of server this request is addressed to.
-  optional bytes dest_uuid = 1;
-
+message SplitTabletResponsePB {
+  optional TabletServerErrorPB error = 1;
   optional fixed64 propagated_hybrid_time = 2;
-
-  required bytes tablet_id = 3;
-
-  required bytes new_tablet1_id = 4;
-
-  required bytes new_tablet2_id = 5;
-
-  required bytes split_partition_key = 6;
-
-  required bytes split_encoded_key = 7;
 }
 
-message SplitTabletResponsePB {
+message UpgradeYsqlRequestPB {
+}
+
+message UpgradeYsqlResponsePB {
+  optional TabletServerErrorPB error = 1;
+}
+
+message TestRetryRequestPB {
+  // UUID of server this request is addressed to.
+  optional bytes dest_uuid = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // See TestRetry RPC method description below.
+  required int32 num_retries = 4;
+}
+
+message TestRetryResponsePB {
   optional TabletServerErrorPB error = 1;
   optional fixed64 propagated_hybrid_time = 2;
 }
@@ -318,7 +300,7 @@ service TabletServerAdminService {
   rpc DeleteTablet(DeleteTabletRequestPB) returns (DeleteTabletResponsePB);
 
   // Alter a tablet's schema.
-  rpc AlterSchema(ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+  rpc AlterSchema(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
 
   // GetSafeTime API to get the current safe time.
   rpc GetSafeTime(GetSafeTimeRequestPB) returns (GetSafeTimeResponsePB);
@@ -328,7 +310,7 @@ service TabletServerAdminService {
   rpc BackfillIndex(BackfillIndexRequestPB) returns (BackfillIndexResponsePB);
 
   // Marks an index table as having completed backfilling.
-  rpc BackfillDone(ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
+  rpc BackfillDone(tablet.ChangeMetadataRequestPB) returns (ChangeMetadataResponsePB);
 
   // Create a co-partitioned table in an existing tablet
   rpc CopartitionTable(CopartitionTableRequestPB) returns (CopartitionTableResponsePB);
@@ -342,5 +324,10 @@ service TabletServerAdminService {
   rpc RemoveTableFromTablet(RemoveTableFromTabletRequestPB)
       returns (RemoveTableFromTabletResponsePB);
 
-  rpc SplitTablet(SplitTabletRequestPB) returns (SplitTabletResponsePB);
+  rpc SplitTablet(tablet.SplitTabletRequestPB) returns (SplitTabletResponsePB);
+
+  rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
+
+  // For test purposes: returns TryAgain error until specified number of calls is done.
+  rpc TestRetry(TestRetryRequestPB) returns (TestRetryResponsePB);
 }

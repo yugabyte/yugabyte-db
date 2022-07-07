@@ -37,21 +37,17 @@
 #include <utility>
 #include <vector>
 
-#include "yb/common/partition.h"
 #include "yb/common/schema.h"
-#include "yb/consensus/log_anchor_registry.h"
+
 #include "yb/fs/fs_manager.h"
-#include "yb/server/logical_clock.h"
-#include "yb/server/metadata.h"
+
+#include "yb/server/clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_options.h"
+
 #include "yb/util/env.h"
-#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
-#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 using std::string;
 using std::vector;
@@ -65,17 +61,7 @@ namespace tablet {
 //
 // The partition schema will have no hash components, and a single range component over the primary
 // key columns. The partition will cover the entire partition-key space.
-static std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schema) {
-  // Create a default partition schema.
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
-
-  // Create the tablet partitions.
-  vector<Partition> partitions;
-  CHECK_OK(partition_schema.CreatePartitions(vector<YBPartialRow>(), schema, &partitions));
-  CHECK_EQ(1, partitions.size());
-  return std::make_pair(partition_schema, partitions[0]);
-}
+std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schema);
 
 class TabletHarness {
  public:
@@ -97,78 +83,15 @@ class TabletHarness {
   TabletHarness(const Schema& schema, Options options)
       : options_(std::move(options)), schema_(schema) {}
 
-  virtual ~TabletHarness() {}
+  virtual ~TabletHarness() = default;
 
-  CHECKED_STATUS Create(bool first_time) {
-    std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
+  Status Create(bool first_time);
 
-    // Build the Tablet
-    fs_manager_.reset(new FsManager(options_.env, options_.root_dir, "tserver_test"));
-    if (first_time) {
-      RETURN_NOT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    }
-    RETURN_NOT_OK(fs_manager_->Open());
+  Status Open();
 
-    RaftGroupMetadataPtr metadata;
-    RETURN_NOT_OK(RaftGroupMetadata::LoadOrCreate(
-        fs_manager_.get(),
-        "YBTableTest",
-        options_.tablet_id,
-        "test",
-        "YBTableTest",
-        options_.table_type,
-        schema_,
-        partition.first,
-        partition.second,
-        boost::none /* index_info */,
-        TABLET_DATA_READY,
-        &metadata));
-    if (options_.enable_metrics) {
-      metrics_registry_.reset(new MetricRegistry());
-    }
+  Result<TabletPtr> OpenTablet(const TabletId& tablet_id);
 
-    clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitial);
-    tablet_ = std::make_shared<Tablet>(MakeTabletInitData(metadata));
-    return Status::OK();
-  }
-
-  CHECKED_STATUS Open() {
-    RETURN_NOT_OK(tablet_->Open());
-    tablet_->MarkFinishedBootstrapping();
-    return tablet_->EnableCompactions(/* operation_pause */ nullptr);
-  }
-
-  Result<TabletPtr> OpenTablet(const TabletId& tablet_id) {
-    RaftGroupMetadataPtr metadata;
-    RETURN_NOT_OK(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id, &metadata));
-    TabletOptions tablet_options;
-    auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
-    RETURN_NOT_OK(tablet->Open());
-    tablet->MarkFinishedBootstrapping();
-    RETURN_NOT_OK(tablet->EnableCompactions(/* operation_pause */ nullptr));
-    return tablet;
-  }
-
-  TabletInitData MakeTabletInitData(const RaftGroupMetadataPtr& metadata) {
-    return TabletInitData {
-      .metadata = metadata,
-      .client_future = std::shared_future<client::YBClient*>(),
-      .clock = clock_,
-      .parent_mem_tracker = std::shared_ptr<MemTracker>(),
-      .block_based_table_mem_tracker = std::shared_ptr<MemTracker>(),
-      .metric_registry = metrics_registry_.get(),
-      .log_anchor_registry = new log::LogAnchorRegistry(),
-      .tablet_options = TabletOptions(),
-      .log_prefix_suffix = std::string(),
-      .transaction_participant_context = nullptr,
-      .local_tablet_filter = client::LocalTabletFilter(),
-      .transaction_coordinator_context = nullptr,
-      .txns_enabled = TransactionsEnabled::kFalse,
-      .is_sys_catalog = IsSysCatalogTablet::kFalse,
-      .snapshot_coordinator = nullptr,
-      .tablet_splitter = nullptr
-    };
-  }
+  TabletInitData MakeTabletInitData(const RaftGroupMetadataPtr& metadata);
 
   server::Clock* clock() const {
     return clock_.get();
@@ -191,11 +114,11 @@ class TabletHarness {
  private:
   Options options_;
 
-  gscoped_ptr<MetricRegistry> metrics_registry_;
+  std::unique_ptr<MetricRegistry> metrics_registry_;
 
   scoped_refptr<server::Clock> clock_;
   Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   TabletPtr tablet_;
 };
 

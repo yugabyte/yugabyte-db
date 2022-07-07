@@ -54,7 +54,9 @@ static DumpableObject **oprinfoindex;
 static DumpableObject **collinfoindex;
 static DumpableObject **nspinfoindex;
 static DumpableObject **extinfoindex;
+static DumpableObject **tblgrpinfoindex;
 static int	numTables;
+static int	numTablegroups;
 static int	numTypes;
 static int	numFuncs;
 static int	numOperators;
@@ -96,6 +98,7 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	NamespaceInfo *nspinfo;
 	ExtensionInfo *extinfo;
 	InhInfo    *inhinfo;
+	TablegroupInfo *tblgrpinfo;
 	int			numAggregates;
 	int			numInherits;
 	int			numRules;
@@ -176,6 +179,11 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined access methods\n");
 	getAccessMethods(fout, &numAccessMethods);
+
+	if (g_verbose)
+		write_msg(NULL, "reading user-defined tablegroups\n");
+	tblgrpinfo = getTablegroups(fout, &numTablegroups);
+	tblgrpinfoindex = buildIndexArray(tblgrpinfo, numTablegroups, sizeof(TablegroupInfo));
 
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined operator classes\n");
@@ -932,6 +940,17 @@ ExtensionInfo *
 findExtensionByOid(Oid oid)
 {
 	return (ExtensionInfo *) findObjectByOid(oid, extinfoindex, numExtensions);
+}
+
+/*
+ * findTablegroupByOid
+ *	  finds the entry (in tblgrpinfo) of the tablegroup with the given oid
+ *	  returns NULL if not found
+ */
+TablegroupInfo *
+findTablegroupByOid(Oid oid)
+{
+	return (TablegroupInfo *) findObjectByOid(oid, tblgrpinfoindex, numTablegroups);
 }
 
 /*

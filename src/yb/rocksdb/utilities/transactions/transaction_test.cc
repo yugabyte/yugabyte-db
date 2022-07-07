@@ -35,11 +35,14 @@
 #include "yb/rocksdb/utilities/merge_operators.h"
 #include "yb/rocksdb/utilities/merge_operators/string_append/stringappend.h"
 
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
+
 using std::string;
 
 namespace rocksdb {
 
-class TransactionTest : public testing::Test {
+class TransactionTest : public RocksDBTest {
  public:
   TransactionDB* db;
   string dbname;
@@ -1962,7 +1965,7 @@ TEST_F(TransactionTest, UndoGetForUpdateTest) {
   // Verify that A is now unlocked
   s = txn2->Put("A", "a2");
   ASSERT_OK(s);
-  txn2->Commit();
+  ASSERT_OK(txn2->Commit());
   delete txn2;
   s = db->Get(read_options, "A", &value);
   ASSERT_OK(s);
@@ -2176,7 +2179,7 @@ TEST_F(TransactionTest, UndoGetForUpdateTest2) {
   s = txn2->Put("G", "g3");
   ASSERT_OK(s);
 
-  txn1->RollbackToSavePoint();  // rollback to 2
+  ASSERT_OK(txn1->RollbackToSavePoint());  // rollback to 2
 
   // Verify A,B,D,E,F are still locked and C,G,H are not.
   s = txn2->Put("A", "a3");
@@ -2223,7 +2226,7 @@ TEST_F(TransactionTest, UndoGetForUpdateTest2) {
   s = txn2->Put("H", "h3");
   ASSERT_OK(s);
 
-  txn1->RollbackToSavePoint();  // rollback to 1
+  ASSERT_OK(txn1->RollbackToSavePoint());  // rollback to 1
 
   // Verify A,B,F are still locked and C,D,E,G,H are not.
   s = txn2->Put("A", "a3");

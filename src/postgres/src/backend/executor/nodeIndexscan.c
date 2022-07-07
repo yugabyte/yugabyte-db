@@ -31,7 +31,11 @@
 
 #include "access/nbtree.h"
 #include "access/relscan.h"
+#include "access/sysattr.h"
+#include "access/xact.h"
 #include "catalog/pg_am.h"
+#include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
 #include "executor/execdebug.h"
 #include "executor/nodeIndexscan.h"
 #include "lib/pairingheap.h"
@@ -117,6 +121,7 @@ IndexNext(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
+		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -133,22 +138,44 @@ IndexNext(IndexScanState *node)
 	 */
 	if (IsYugaByteEnabled()) {
 		scandesc->yb_exec_params = &estate->yb_exec_params;
-		// Add row marks.
 		scandesc->yb_exec_params->rowmark = -1;
-		ListCell   *l;
-		foreach(l, estate->es_rowMarks) {
-			ExecRowMark *erm = (ExecRowMark *) lfirst(l);
-			// Do not propogate non-row-locking row marks.
-			if (erm->markType != ROW_MARK_REFERENCE &&
-				erm->markType != ROW_MARK_COPY)
-				scandesc->yb_exec_params->rowmark = erm->markType;
-			break;
+
+		// Add row marks.
+		if (XactIsoLevel == XACT_SERIALIZABLE)
+		{
+			/*
+			 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
+			 * INSERTion of new rows that satisfy the query predicate. So, we set the rowmark on all
+			 * read requests sent to tserver instead of locking each tuple one by one in LockRows node.
+			 */
+			ListCell   *l;
+			foreach(l, estate->es_rowMarks) {
+				ExecRowMark *erm = (ExecRowMark *) lfirst(l);
+				// Do not propogate non-row-locking row marks.
+				if (erm->markType != ROW_MARK_REFERENCE &&
+						erm->markType != ROW_MARK_COPY) {
+					scandesc->yb_exec_params->rowmark = erm->markType;
+					/*
+					 * TODO(Piyush): We don't honour SKIP LOCKED yet in serializable isolation level.
+					 */
+					scandesc->yb_exec_params->wait_policy = LockWaitError;
+				}
+				break;
+			}
 		}
 	}
 
 	/*
 	 * ok, now that we have what we need, fetch the next tuple.
 	 */
+	MemoryContext oldcontext;
+	/*
+	 * To handle dead tuple for temp table, we shouldn't store its index
+	 * in per-tuple memory context.
+	 */
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		oldcontext = MemoryContextSwitchTo(
+			node->ss.ps.ps_ExprContext->ecxt_per_tuple_memory);
 	while ((tuple = index_getnext(scandesc, direction)) != NULL)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -170,14 +197,16 @@ IndexNext(IndexScanState *node)
 		if (scandesc->xs_recheck)
 		{
 			econtext->ecxt_scantuple = slot;
-			if (!ExecQualAndReset(node->indexqualorig, econtext))
+			if (!ExecQual(node->indexqualorig, econtext))
 			{
+				ResetExprContext(econtext);
 				/* Fails recheck, so drop it and loop back for another */
 				InstrCountFiltered2(node, 1);
 				continue;
 			}
 		}
-
+		if (IsYBRelation(node->ss.ss_currentRelation))
+			MemoryContextSwitchTo(oldcontext);
 		return slot;
 	}
 
@@ -186,6 +215,8 @@ IndexNext(IndexScanState *node)
 	 * the scan..
 	 */
 	node->iss_ReachedEnd = true;
+	if (IsYBRelation(node->ss.ss_currentRelation))
+		MemoryContextSwitchTo(oldcontext);
 	return ExecClearTuple(slot);
 }
 
@@ -241,6 +272,7 @@ IndexNextWithReorder(IndexScanState *node)
 								   node->iss_NumOrderByKeys);
 
 		node->iss_ScanDesc = scandesc;
+		scandesc->yb_scan_plan = (Scan *)node->ss.ps.plan;
 
 		/*
 		 * If no run-time keys to calculate or they are ready, go ahead and
@@ -611,8 +643,12 @@ ExecReScanIndexScan(IndexScanState *node)
 	/* flush the reorder queue */
 	if (node->iss_ReorderQueue)
 	{
+		HeapTuple	tuple;
 		while (!pairingheap_is_empty(node->iss_ReorderQueue))
-			reorderqueue_pop(node);
+		{
+			tuple = reorderqueue_pop(node);
+			heap_freetuple(tuple);
+		}
 	}
 
 	/* reset index scan */
@@ -1267,19 +1303,33 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 			Assert(leftop != NULL);
 
+			if (IsA(leftop, FuncExpr)
+				&& ((FuncExpr *) leftop)->funcid == YB_HASH_CODE_OID)
+			{
+				flags |= SK_IS_HASHED;
+			}
+
 			if (!(IsA(leftop, Var) &&
-				  ((Var *) leftop)->varno == INDEX_VAR))
+				  ((Var *) leftop)->varno == INDEX_VAR)
+				  && ((flags & SK_IS_HASHED) == 0))
 				elog(ERROR, "indexqual doesn't have key on left side");
 
-			varattno = ((Var *) leftop)->varattno;
-			if (varattno < 1 || varattno > indnkeyatts)
-				elog(ERROR, "bogus index qualification");
 
-			/*
-			 * We have to look up the operator's strategy number.  This
-			 * provides a cross-check that the operator does match the index.
-			 */
-			opfamily = index->rd_opfamily[varattno - 1];
+			if ((flags & SK_IS_HASHED) != 0)
+			{
+				varattno = InvalidAttrNumber;
+				opfamily = INTEGER_LSM_FAM_OID;
+			} else {
+				varattno = ((Var *) leftop)->varattno;
+				if (varattno < 1 || varattno > indnkeyatts)
+					elog(ERROR, "bogus index qualification");
+
+				/*
+				 * We have to look up the operator's strategy number.  This
+				 * provides a cross-check that the operator does match the index.
+				 */
+				opfamily = index->rd_opfamily[varattno - 1];
+			}
 
 			get_op_opfamily_properties(opno, opfamily, isorderby,
 									   &op_strategy,

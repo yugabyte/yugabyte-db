@@ -102,6 +102,15 @@
 #define ALLOC_BLOCKHDRSZ	MAXALIGN(sizeof(AllocBlockData))
 #define ALLOC_CHUNKHDRSZ	sizeof(struct AllocChunkData)
 
+/* Calculate the total allocated size for a block */
+#define ASET_BLOCK_TOTAL_SIZE(BLK) (BLK->endptr - ((char *)BLK))
+/*
+ * Calculate the total initial allocated size for a set. Note that the keeper
+ * block is always allocated along with the set header at the same time. It
+ * is never removed from the header or replaced.
+ */
+#define ASET_INITIAL_TOTAL_SIZE(SET) (((AllocSetContext *) SET)->keeper->endptr - ((char *) SET))
+
 typedef struct AllocBlockData *AllocBlock;	/* forward reference */
 typedef struct AllocChunkData *AllocChunk;
 
@@ -424,9 +433,13 @@ AllocSetContextCreateExtended(MemoryContext parent,
 	/*
 	 * Check whether the parameters match either available freelist.  We do
 	 * not need to demand a match of maxBlockSize.
+	 * Access to the freelist is not thread safe, so avoid it in multi-thread
+	 * mode.
 	 */
-	if (minContextSize == ALLOCSET_DEFAULT_MINSIZE &&
-		initBlockSize == ALLOCSET_DEFAULT_INITSIZE)
+	if (IsMultiThreadedMode())
+		freeListIndex = -1;
+	else if (minContextSize == ALLOCSET_DEFAULT_MINSIZE &&
+			 initBlockSize == ALLOCSET_DEFAULT_INITSIZE)
 		freeListIndex = 0;
 	else if (minContextSize == ALLOCSET_SMALL_MINSIZE &&
 			 initBlockSize == ALLOCSET_SMALL_INITSIZE)
@@ -485,6 +498,8 @@ AllocSetContextCreateExtended(MemoryContext parent,
 				 errdetail("Failed while creating memory context \"%s\".",
 						   name)));
 	}
+
+	YbPgMemAddConsumption(firstBlockSize);
 
 	/*
 	 * Avoid writing code that can fail between here and MemoryContextCreate;
@@ -604,6 +619,8 @@ AllocSetReset(MemoryContext context)
 		else
 		{
 			/* Normal case, release the block */
+			YbPgMemSubConsumption(ASET_BLOCK_TOTAL_SIZE(block));
+
 #ifdef CLOBBER_FREED_MEMORY
 			wipe_mem(block, block->freeptr - ((char *) block));
 #endif
@@ -664,6 +681,8 @@ AllocSetDelete(MemoryContext context)
 				freelist->first_free = (AllocSetContext *) oldset->header.nextchild;
 				freelist->num_free--;
 
+				YbPgMemSubConsumption(ASET_INITIAL_TOTAL_SIZE(oldset));
+
 				/* All that remains is to free the header/initial block */
 				free(oldset);
 			}
@@ -688,11 +707,15 @@ AllocSetDelete(MemoryContext context)
 #endif
 
 		if (block != set->keeper)
+		{
+			YbPgMemSubConsumption(ASET_BLOCK_TOTAL_SIZE(block));
 			free(block);
+		}
 
 		block = next;
 	}
 
+	YbPgMemSubConsumption(ASET_INITIAL_TOTAL_SIZE(set));
 	/* Finally, free the context header, including the keeper block */
 	free(set);
 }
@@ -733,6 +756,9 @@ AllocSetAlloc(MemoryContext context, Size size)
 		block = (AllocBlock) malloc(blksize);
 		if (block == NULL)
 			return NULL;
+
+		YbPgMemAddConsumption(blksize);
+
 		block->aset = set;
 		block->freeptr = block->endptr = ((char *) block) + blksize;
 
@@ -928,6 +954,8 @@ AllocSetAlloc(MemoryContext context, Size size)
 		if (block == NULL)
 			return NULL;
 
+		YbPgMemAddConsumption(blksize);
+
 		block->aset = set;
 		block->freeptr = ((char *) block) + ALLOC_BLOCKHDRSZ;
 		block->endptr = ((char *) block) + blksize;
@@ -1028,6 +1056,10 @@ AllocSetFree(MemoryContext context, void *pointer)
 			set->blocks = block->next;
 		if (block->next)
 			block->next->prev = block->prev;
+
+		/* Must be place before the wipe_mem wipes the content */
+		YbPgMemSubConsumption(ASET_BLOCK_TOTAL_SIZE(block));
+
 #ifdef CLOBBER_FREED_MEMORY
 		wipe_mem(block, block->freeptr - ((char *) block));
 #endif
@@ -1144,6 +1176,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		AllocBlock	block = (AllocBlock) (((char *) chunk) - ALLOC_BLOCKHDRSZ);
 		Size		chksize;
 		Size		blksize;
+		Size		oldsize = block->endptr - ((char *) block);
 
 		/*
 		 * Try to verify that we have a sane block pointer: it should
@@ -1167,6 +1200,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 			return NULL;
 		}
 		block->freeptr = block->endptr = ((char *) block) + blksize;
+		YbPgMemAddConsumption(blksize - oldsize);
 
 		/* Update pointers since block has likely been moved */
 		chunk = (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ);

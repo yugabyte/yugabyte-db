@@ -21,12 +21,12 @@
 // New code should use one of the targeted libraries that provide hash
 // interfaces for the types needed. See //util/hash/README for details.
 
-#ifndef UTIL_HASH_LEGACY_HASH_H_
-#define UTIL_HASH_LEGACY_HASH_H_
+#ifndef YB_GUTIL_HASH_LEGACY_HASH_H
+#define YB_GUTIL_HASH_LEGACY_HASH_H
 
-#include "yb/gutil/integral_types.h"
 #include "yb/gutil/hash/builtin_type_hash.h"
-#include "yb/gutil/hash/string_hash.h"
+#include "yb/gutil/hash/jenkins.h"
+#include "yb/gutil/integral_types.h"
 
 // Hash8, Hash16 and Hash32 are for legacy use only.
 typedef uint32 Hash32;
@@ -74,10 +74,10 @@ inline uint32 HashTo32 arglist {                               \
 // HashToXX(char c);
 // etc
 
-HASH_TO((const char *s, uint32 slen), Hash32StringWithSeed(s, slen, MIX32))
-HASH_TO((const wchar_t *s, uint32 slen),
+HASH_TO((const char *s, size_t slen), Hash32StringWithSeed(s, slen, MIX32))
+HASH_TO((const wchar_t *s, size_t slen),
         Hash32StringWithSeed(reinterpret_cast<const char*>(s),
-                             static_cast<uint32>(sizeof(wchar_t) * slen),
+                             sizeof(wchar_t) * slen,
                              MIX32))
 HASH_TO((char c),  Hash32NumWithSeed(static_cast<uint32>(c), MIX32))
 HASH_TO((schar c),  Hash32NumWithSeed(static_cast<uint32>(c), MIX32))
@@ -90,9 +90,9 @@ HASH_TO((int64 c),  static_cast<uint32>(Hash64NumWithSeed(c, MIX64) >> 32))
 
 #undef HASH_TO        // clean up the macro space
 
-inline uint16 HashTo16(const char *s, uint32 slen) {
+inline uint16 HashTo16(const char *s, uint64 slen) {
   uint16 retval = Hash32StringWithSeed(s, slen, MIX32) >> 16;
   return retval == kIllegalHash16 ? static_cast<uint16>(retval-1) : retval;
 }
 
-#endif  // UTIL_HASH_LEGACY_HASH_H_
+#endif  // YB_GUTIL_HASH_LEGACY_HASH_H

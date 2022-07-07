@@ -16,7 +16,6 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/stringize.hpp>
-
 #include <gflags/gflags.h>
 
 #include "yb/client/client.h"
@@ -25,16 +24,22 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/common/partition.h"
+#include "yb/common/redis_constants_common.h"
+
+#include "yb/gutil/strings/join.h"
+
+#include "yb/master/master_client.pb.h"
 #include "yb/master/master_util.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
 #include "yb/util/crypt.h"
+#include "yb/util/format.h"
 #include "yb/util/metrics.h"
 #include "yb/util/redis_util.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 
@@ -168,7 +173,7 @@ BOOST_PP_SEQ_FOR_EACH(DEFINE_HISTOGRAM, ~, REDIS_COMMANDS)
 #define CLUSTER_OP RedisResponsePB
 
 #define DO_PARSER_FORWARD(name, cname, arity, type) \
-    CHECKED_STATUS BOOST_PP_CAT(Parse, cname)( \
+    Status BOOST_PP_CAT(Parse, cname)( \
         BOOST_PP_CAT(type, _OP) *op, \
         const RedisClientCommand& args);
 #define PARSER_FORWARD(r, data, elem) DO_PARSER_FORWARD elem
@@ -226,7 +231,11 @@ void Command(
                       BatchContext* context) { \
       BOOST_PP_CAT(type, _COMMAND)(cname); \
     }; \
-    yb::rpc::RpcMethodMetrics metrics(YB_REDIS_METRIC(name).Instantiate(metric_entity)); \
+    yb::rpc::RpcMethodMetrics metrics {               \
+        nullptr, \
+        nullptr, \
+        YB_REDIS_METRIC(name).Instantiate(metric_entity), \
+    };\
     setup_method({BOOST_PP_STRINGIZE(name), functor, arity, std::move(metrics)}); \
   } \
   /**/
@@ -346,7 +355,7 @@ void GetTabletLocations(LocalCommandData data, RedisArrayPB* array_response) {
     response.push_back(redisserver::EncodeAsInteger(end_key_exclusive - 1).ToBuffer());
 
     for (const auto &replica : location.replicas()) {
-      if (replica.role() == consensus::RaftPeerPB::LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         auto host = DesiredHostPort(replica.ts_info(), CloudInfoPB()).host();
         ts_info.push_back(redisserver::EncodeAsBulkString(host).ToBuffer());
 
@@ -406,11 +415,11 @@ void HandlePubSub(LocalCommandData data) {
   RedisResponsePB response;
   if (boost::iequals(data.arg(1).ToBuffer(), "CHANNELS") && data.arg_size() <= 3) {
     auto all = data.context()->service_data()->GetAllSubscriptions(AsPattern::kFalse);
-    unordered_set<string> matched;
+    std::unordered_set<std::string> matched;
     if (data.arg_size() > 2) {
       const string& pattern = data.arg(2).ToBuffer();
       for (auto& channel : all) {
-        if (RedisUtil::RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
+        if (RedisPatternMatch(pattern, channel, /* ignore case */ false)) {
           matched.insert(channel);
         }
       }
@@ -430,9 +439,9 @@ void HandlePubSub(LocalCommandData data) {
     response.set_int_response(names.size());
   } else if (boost::iequals(data.arg(1).ToBuffer(), "NUMSUB")) {
     auto array_response = response.mutable_array_response();
-    for (int idx = 2; idx < data.arg_size(); idx++) {
+    for (size_t idx = 2; idx < data.arg_size(); idx++) {
       const string& channel = data.arg(idx).ToBuffer();
-      int subs = data.context()->service_data()->NumSubscribers(AsPattern::kFalse, channel);
+      auto subs = data.context()->service_data()->NumSubscribers(AsPattern::kFalse, channel);
       AddElements(redisserver::EncodeAsBulkString(channel), array_response);
       AddElements(redisserver::EncodeAsInteger(subs), array_response);
     }
@@ -463,14 +472,14 @@ void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
 
   // Add to the appenders after the call has been handled (i.e. reponded with "OK").
   vector<string> channels;
-  vector<int> subs;
-  for (int idx = 1; idx < data.arg_size(); idx++) {
+  for (size_t idx = 1; idx < data.arg_size(); idx++) {
     channels.emplace_back(data.arg(idx).ToBuffer());
   }
   auto conn = data.call()->connection().get();
+  vector<size_t> subs;
   data.context()->service_data()->AppendToSubscribers(as_pattern, channels, conn, &subs);
   string encoded_response;
-  for (int idx = 0; idx < channels.size(); idx++) {
+  for (size_t idx = 0; idx < channels.size(); idx++) {
     encoded_response += redisserver::EncodeAsArrayOfEncodedElements(vector<string>{
         redisserver::EncodeAsBulkString(as_pattern ? "psubscribe" : "subscribe").ToBuffer(),
         redisserver::EncodeAsBulkString(channels[idx]).ToBuffer(),
@@ -499,7 +508,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
   auto conn = data.call()->connection().get();
   vector<string> channels;
   if (data.arg_size() > 1) {
-    for (int idx = 1; idx < data.arg_size(); idx++) {
+    for (size_t idx = 1; idx < data.arg_size(); idx++) {
       channels.push_back(data.arg(idx).ToBuffer());
     }
   } else {
@@ -508,10 +517,10 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
     }
   }
 
-  vector<int> subs;
+  vector<size_t> subs;
   data.context()->service_data()->RemoveFromSubscribers(as_pattern, channels, conn, &subs);
   string encoded_response;
-  for (int idx = 0; idx < channels.size(); idx++) {
+  for (size_t idx = 0; idx < channels.size(); idx++) {
     encoded_response += redisserver::EncodeAsArrayOfEncodedElements(vector<string>{
         redisserver::EncodeAsBulkString(as_pattern ? "punsubscribe" : "unsubscribe").ToBuffer(),
         redisserver::EncodeAsBulkString(channels[idx]).ToBuffer(),
@@ -651,7 +660,7 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
   std::shared_ptr<client::YBRedisWriteOp> write_dest_op_;
   std::shared_ptr<client::YBRedisWriteOp> write_dest_ttl_op_;
   std::shared_ptr<client::YBRedisWriteOp> delete_src_op_;
-  std::atomic_int num_tablets_{0};
+  std::atomic<size_t> num_tablets_{0};
 
   client::YBSession* session_;
   StatusFunctor src_functor_, dest_functor_;
@@ -703,13 +712,10 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       return;
     }
 
-    auto status1 = session_->Apply(read_src_op_);
-    auto status2 = session_->Apply(read_ttl_op_);
-    if (!status1.ok() || !status2.ok()) {
-      RespondWithError("Could not apply read_src_op_.");
-      return;
-    }
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->Apply(read_src_op_);
+    session_->Apply(read_ttl_op_);
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Reading from src during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -802,8 +808,8 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       return;
     }
 
-    RedisResponsePB ttlResponse = read_ttl_op_->response();
-    int ttl_ms = ttlResponse.int_response();
+    RedisResponsePB ttl_response = read_ttl_op_->response();
+    auto ttl_ms = ttl_response.int_response();
     if (ttl_ms > 0) {
       auto table = data_.context()->table();
       write_dest_ttl_op_ = std::make_shared<client::YBRedisWriteOp>(table);
@@ -813,13 +819,10 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       write_dest_ttl_op_->mutable_request()->mutable_set_ttl_request()->set_ttl(ttl_ms);
     }
 
-    auto status1 = session_->Apply(delete_dest_op_);
-    auto status2 = session_->Apply(write_dest_op_);
-    if (!status1.ok() || !status2.ok()) {
-      RespondWithError("Could not apply deleteOps/write_dest_op_.");
-      return;
-    }
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->Apply(delete_dest_op_);
+    session_->Apply(write_dest_op_);
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Writing to dest during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -836,13 +839,10 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
       return;
     }
 
-    auto status = session_->Apply(write_dest_ttl_op_);
-    if (!status.ok()) {
-      RespondWithError("Could not apply write_dest_ttl_op_.");
-      return;
-    }
+    session_->Apply(write_dest_ttl_op_);
 
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Updating ttl for dest during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -854,12 +854,9 @@ class RenameData : public std::enable_shared_from_this<RenameData> {
 
   void BeginDeleteSrc() {
     VLOG(1) << "4. BeginDeleteSrc";
-    auto status = session_->Apply(delete_src_op_);
-    if (!status.ok()) {
-      RespondWithError("Could not apply delete_src_op_.");
-      return;
-    }
-    session_->FlushAsync([retained_self = shared_from_this()](const Status& s) {
+    session_->Apply(delete_src_op_);
+    session_->FlushAsync([retained_self = shared_from_this()](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       if (!s.ok()) {
         LOG(ERROR) << "Deleting src during a Rename failed. " << s;
         retained_self->RespondWithError(s.message().ToBuffer());
@@ -915,17 +912,15 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
     request->mutable_keys_request()->set_pattern(data_.arg(1).ToBuffer());
     request->mutable_keys_request()->set_threshold(keys_threshold_);
     sessions_[idx]->set_allow_local_calls_in_curr_thread(false);
-    auto status = sessions_[idx]->Apply(operation);
-    if (!status.ok()) {
-      ProcessedAll(status);
-      return;
-    }
+    sessions_[idx]->Apply(operation);
     sessions_[idx]->FlushAsync(std::bind(
         &KeysProcessor::ProcessedOne, shared_from_this(), idx, operation, _1));
   }
 
   void ProcessedOne(
-      size_t idx, const std::shared_ptr<client::YBRedisReadOp>& operation, const Status& status) {
+      size_t idx, const std::shared_ptr<client::YBRedisReadOp>& operation,
+      client::FlushStatus* flush_status) {
+    const auto& status = flush_status->status;
     if (!status.ok()) {
       ProcessedAll(status);
       return;
@@ -939,12 +934,12 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
       return;
     }
 
-    size_t count = response.array_response().elements_size();
+    auto count = response.array_response().elements_size();
     auto** elements = response.mutable_array_response()->mutable_elements()->mutable_data();
     keys_threshold_ -= count;
 
     auto& array_response = *resp_.mutable_array_response();
-    for (size_t i = 0; i != count; ++i) {
+    for (int i = 0; i != count; ++i) {
       array_response.mutable_elements()->AddAllocated(elements[i]);
     }
 
@@ -973,7 +968,7 @@ class KeysProcessor : public std::enable_shared_from_this<KeysProcessor> {
   std::vector<StatusFunctor> callbacks_;
   std::atomic<size_t> stored_{0};
   RedisResponsePB resp_;
-  size_t keys_threshold_ = FLAGS_redis_keys_threshold;
+  int32_t keys_threshold_ = FLAGS_redis_keys_threshold;
 };
 
 void HandleKeys(LocalCommandData data) {

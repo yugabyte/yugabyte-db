@@ -128,6 +128,7 @@ typedef struct plperl_proc_desc
 	FmgrInfo   *arg_out_func;	/* output fns for arg types */
 	bool	   *arg_is_rowtype; /* is each arg composite? */
 	Oid		   *arg_arraytype;	/* InvalidOid if not an array */
+	uint64 yb_catalog_version; /* catalog version at function load time */
 } plperl_proc_desc;
 
 #define increment_prodesc_refcount(prodesc)  \
@@ -1876,8 +1877,8 @@ PG_FUNCTION_INFO_V1(plperl_inline_handler);
 Datum
 plperl_inline_handler(PG_FUNCTION_ARGS)
 {
-	LOCAL_FCINFO(fake_fcinfo, 0);
 	InlineCodeBlock *codeblock = (InlineCodeBlock *) PG_GETARG_POINTER(0);
+	FunctionCallInfoData fake_fcinfo;
 	FmgrInfo	flinfo;
 	plperl_proc_desc desc;
 	plperl_call_data *volatile save_call_data = current_call_data;
@@ -1899,10 +1900,10 @@ plperl_inline_handler(PG_FUNCTION_ARGS)
 	 * plperl_call_perl_func().  In particular note that this sets things up
 	 * with no arguments passed, and a result type of VOID.
 	 */
-	MemSet(fake_fcinfo, 0, SizeForFunctionCallInfo(0));
+	MemSet(&fake_fcinfo, 0, sizeof(fake_fcinfo));
 	MemSet(&flinfo, 0, sizeof(flinfo));
 	MemSet(&desc, 0, sizeof(desc));
-	fake_fcinfo->flinfo = &flinfo;
+	fake_fcinfo.flinfo = &flinfo;
 	flinfo.fn_oid = InvalidOid;
 	flinfo.fn_mcxt = GetCurrentMemoryContext();
 
@@ -1920,7 +1921,7 @@ plperl_inline_handler(PG_FUNCTION_ARGS)
 	desc.nargs = 0;
 	desc.reference = NULL;
 
-	this_call_data.fcinfo = fake_fcinfo;
+	this_call_data.fcinfo = &fake_fcinfo;
 	this_call_data.prodesc = &desc;
 	/* we do not bother with refcounting the fake prodesc */
 
@@ -1940,7 +1941,7 @@ plperl_inline_handler(PG_FUNCTION_ARGS)
 		if (!desc.reference)	/* can this happen? */
 			elog(ERROR, "could not create internal procedure for anonymous code block");
 
-		perlret = plperl_call_perl_func(&desc, fake_fcinfo);
+		perlret = plperl_call_perl_func(&desc, &fake_fcinfo);
 
 		SvREFCNT_dec_current(perlret);
 
@@ -2194,11 +2195,11 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 
 	for (i = 0; i < desc->nargs; i++)
 	{
-		if (fcinfo->args[i].isnull)
+		if (fcinfo->argnull[i])
 			PUSHs(&PL_sv_undef);
 		else if (desc->arg_is_rowtype[i])
 		{
-			SV		   *sv = plperl_hash_from_datum(fcinfo->args[i].value);
+			SV		   *sv = plperl_hash_from_datum(fcinfo->arg[i]);
 
 			PUSHs(sv_2mortal(sv));
 		}
@@ -2208,15 +2209,15 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 			Oid			funcid;
 
 			if (OidIsValid(desc->arg_arraytype[i]))
-				sv = plperl_ref_from_pg_array(fcinfo->args[i].value, desc->arg_arraytype[i]);
+				sv = plperl_ref_from_pg_array(fcinfo->arg[i], desc->arg_arraytype[i]);
 			else if ((funcid = get_transform_fromsql(argtypes[i], current_call_data->prodesc->lang_oid, current_call_data->prodesc->trftypes)))
-				sv = (SV *) DatumGetPointer(OidFunctionCall1(funcid, fcinfo->args[i].value));
+				sv = (SV *) DatumGetPointer(OidFunctionCall1(funcid, fcinfo->arg[i]));
 			else
 			{
 				char	   *tmp;
 
 				tmp = OutputFunctionCall(&(desc->arg_out_func[i]),
-										 fcinfo->args[i].value);
+										 fcinfo->arg[i]);
 				sv = cstr2sv(tmp);
 				pfree(tmp);
 			}
@@ -2673,7 +2674,8 @@ validate_plperl_function(plperl_proc_ptr *proc_ptr, HeapTuple procTup)
 		 * This is needed because CREATE OR REPLACE FUNCTION can modify the
 		 * function's pg_proc entry without changing its OID.
 		 ************************************************************/
-		uptodate = (prodesc->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
+		uptodate = (IsYugabyteEnabled() ? procdesc->yb_catalog_version == YBGetActiveCatalogCacheVersion() :
+					prodesc->fn_xmin == HeapTupleHeaderGetRawXmin(procTup->t_data) &&
 					ItemPointerEquals(&prodesc->fn_tid, &procTup->t_self));
 
 		if (uptodate)
@@ -2803,6 +2805,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger, bool is_event_trigger)
 		prodesc->arg_out_func = (FmgrInfo *) palloc0(prodesc->nargs * sizeof(FmgrInfo));
 		prodesc->arg_is_rowtype = (bool *) palloc0(prodesc->nargs * sizeof(bool));
 		prodesc->arg_arraytype = (Oid *) palloc0(prodesc->nargs * sizeof(Oid));
+		prodesc->yb_catalog_version = YBGetActiveCatalogCacheVersion();
 		MemoryContextSwitchTo(oldcontext);
 
 		/* Remember if function is STABLE/IMMUTABLE */

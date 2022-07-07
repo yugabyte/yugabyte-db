@@ -24,13 +24,11 @@
 //
 // Scanning utility functions.
 //--------------------------------------------------------------------------------------------------
+#include "yb/yql/cql/ql/parser/scanner_util.h"
 
 #include <algorithm>
 
 #include "yb/gutil/macros.h"
-#include "yb/yql/cql/ql/parser/scanner_util.h"
-#include "yb/yql/cql/ql/util/errcodes.h"
-#include "yb/util/logging.h"
 
 namespace yb {
 namespace ql {
@@ -78,7 +76,7 @@ void downcase_truncate_identifier(char *result, const char *ident, int len, bool
   }
 }
 
-void truncate_identifier(char *ident, int len, bool warn) {
+void truncate_identifier(char *ident, size_t len, bool warn) {
   if (len >= NAMEDATALEN) {
     len = pg_encoding_mbcliplen(ident, len, NAMEDATALEN - 1);
     if (warn) {
@@ -153,33 +151,30 @@ pg_wchar surrogate_pair_to_codepoint(pg_wchar first, pg_wchar second) {
 
 //--------------------------------------------------------------------------------------------------
 
-int pg_utf_mblen(const unsigned char *s) {
-  int     len;
-
+size_t pg_utf_mblen(const unsigned char *s) {
   if ((*s & 0x80) == 0)
-    len = 1;
+    return 1;
   else if ((*s & 0xe0) == 0xc0)
-    len = 2;
+    return 2;
   else if ((*s & 0xf0) == 0xe0)
-    len = 3;
+    return 3;
   else if ((*s & 0xf8) == 0xf0)
-    len = 4;
+    return 4;
 #ifdef NOT_USED
   else if ((*s & 0xfc) == 0xf8)
-    len = 5;
+    return 5;
   else if ((*s & 0xfe) == 0xfc)
-    len = 6;
+    return 6;
 #endif
   else
-    len = 1;
-  return len;
+    return 1;
 }
 
-int pg_mbstrlen_with_len(const char *mbstr, int limit) {
-  int     len = 0;
+size_t pg_mbstrlen_with_len(const char *mbstr, size_t limit) {
+  size_t len = 0;
 
   while (limit > 0 && *mbstr) {
-    int l = pg_utf_mblen((const unsigned char *)mbstr);
+    auto l = pg_utf_mblen((const unsigned char *)mbstr);
 
     limit -= l;
     mbstr += l;
@@ -188,13 +183,9 @@ int pg_mbstrlen_with_len(const char *mbstr, int limit) {
   return len;
 }
 
-int pg_verify_mbstr_len(const char *mbstr, int len, bool noError) {
-  int mb_len;
-
-  mb_len = 0;
+size_t pg_verify_mbstr_len(const char *mbstr, size_t len, bool noError) {
+  size_t mb_len = 0;
   while (len > 0) {
-    int     l;
-
     /* fast path for ASCII-subset characters */
     if (!is_utf_highbit_set(static_cast<unsigned char>(*mbstr))) {
       if (*mbstr != '\0') {
@@ -209,7 +200,7 @@ int pg_verify_mbstr_len(const char *mbstr, int len, bool noError) {
       report_invalid_encoding(mbstr, len);
     }
 
-    l = pg_utf8_verifier((const unsigned char *) mbstr, len);
+    auto l = pg_utf8_verifier((const unsigned char *) mbstr, len);
 
     if (l < 0) {
       if (noError)
@@ -226,18 +217,17 @@ int pg_verify_mbstr_len(const char *mbstr, int len, bool noError) {
 
 //--------------------------------------------------------------------------------------------------
 
-void report_invalid_encoding(const char *mbstr, int len) {
-  int     l = pg_utf_mblen((const unsigned char *)mbstr);
+void report_invalid_encoding(const char *mbstr, size_t len) {
+  auto    l = pg_utf_mblen((const unsigned char *)mbstr);
   char    buf[8 * 5 + 1];
   char   *p = buf;
-  int     j, jlimit;
 
-  jlimit = min(l, len);
-  jlimit = min(jlimit, 8);  /* prevent buffer overrun */
+  auto jlimit = min(l, len);
+  jlimit = min<size_t>(jlimit, 8);  /* prevent buffer overrun */
 
   // The following NOLINTs are used as I tried to leave PostgreQL's code as is. Eventually, when we
   // use our own error reporting for QL interface, the NOLINTs should be gone then.
-  for (j = 0; j < jlimit; j++) {
+  for (size_t j = 0; j < jlimit; j++) {
     p += sprintf(p, "0x%02x", (unsigned char) mbstr[j]);  // NOLINT(*)
     if (j < jlimit - 1)
       p += sprintf(p, " ");  // NOLINT(*)
@@ -249,8 +239,8 @@ void report_invalid_encoding(const char *mbstr, int len) {
 
 //--------------------------------------------------------------------------------------------------
 
-int pg_utf8_verifier(const unsigned char *s, int len) {
-  int     l = pg_utf_mblen(s);
+ssize_t pg_utf8_verifier(const unsigned char *s, size_t len) {
+  auto l = pg_utf_mblen(s);
 
   if (len < l)
     return -1;
@@ -263,7 +253,7 @@ int pg_utf8_verifier(const unsigned char *s, int len) {
 
 //--------------------------------------------------------------------------------------------------
 
-bool pg_utf8_islegal(const unsigned char *source, int length) {
+bool pg_utf8_islegal(const unsigned char *source, size_t length) {
   unsigned char a;
 
   switch (length) {
@@ -322,18 +312,16 @@ bool pg_utf8_islegal(const unsigned char *source, int length) {
 
 //--------------------------------------------------------------------------------------------------
 
-int pg_encoding_mbcliplen(const char *mbstr, int len, int limit) {
-  int     clen = 0;
-  int     l;
+size_t pg_encoding_mbcliplen(const char *mbstr, size_t len, size_t limit) {
+  size_t     clen = 0;
 
-  while (len > 0 && *mbstr) {
-    l = pg_utf_mblen((const unsigned char *) mbstr);
+  while (clen < len && *mbstr) {
+    auto l = pg_utf_mblen((const unsigned char *) mbstr);
     if ((clen + l) > limit)
       break;
     clen += l;
     if (clen == limit)
       break;
-    len -= l;
     mbstr += l;
   }
   return clen;

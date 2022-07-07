@@ -43,27 +43,58 @@ class MasterServiceBase {
 
  protected:
   template <class ReqType, class RespType, class FnType>
-  void HandleOnLeader(const ReqType* req, RespType* resp, rpc::RpcContext* rpc, FnType f,
-                      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
+  void HandleOnLeader(
+      const ReqType* req,
+      RespType* resp,
+      rpc::RpcContext* rpc,
+      FnType f,
+      const char* file_name,
+      int line_number,
+      const char* function_name,
+      HoldCatalogLock hold_catalog_lock);
 
   template <class HandlerType, class ReqType, class RespType>
-  void HandleOnAllMasters(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-                          Status (HandlerType::*f)(const ReqType* req, RespType*));
-
-  template <class HandlerType, class ReqType, class RespType>
-  void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
-      Status (HandlerType::*f)(RespType*),
-      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
-
-  template <class HandlerType, class ReqType, class RespType>
-  void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
+  void HandleOnAllMasters(
+      const ReqType* req,
+      RespType* resp,
+      rpc::RpcContext* rpc,
       Status (HandlerType::*f)(const ReqType*, RespType*),
-      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
+      const char* file_name,
+      int line_number,
+      const char* function_name);
 
   template <class HandlerType, class ReqType, class RespType>
-  void HandleIn(const ReqType* req, RespType* resp, rpc::RpcContext* rpc,
+  void HandleIn(
+      const ReqType* req,
+      RespType* resp,
+      rpc::RpcContext* rpc,
+      Status (HandlerType::*f)(RespType*),
+      const char* file_name,
+      int line,
+      const char* function_name,
+      HoldCatalogLock hold_catalog_lock);
+
+  template <class HandlerType, class ReqType, class RespType>
+  void HandleIn(
+      const ReqType* req,
+      RespType* resp,
+      rpc::RpcContext* rpc,
+      Status (HandlerType::*f)(const ReqType*, RespType*),
+      const char* file_name,
+      int line_number,
+      const char* function_name,
+      HoldCatalogLock hold_catalog_lock);
+
+  template <class HandlerType, class ReqType, class RespType>
+  void HandleIn(
+      const ReqType* req,
+      RespType* resp,
+      rpc::RpcContext* rpc,
       Status (HandlerType::*f)(const ReqType*, RespType*, rpc::RpcContext*),
-      HoldCatalogLock hold_catalog_lock = HoldCatalogLock::kTrue);
+      const char* file_name,
+      int line_number,
+      const char* function_name,
+      HoldCatalogLock hold_catalog_lock);
 
   enterprise::CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);

@@ -24,18 +24,31 @@
 #ifndef YB_ROCKSDB_DB_VERSION_EDIT_H
 #define YB_ROCKSDB_DB_VERSION_EDIT_H
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
 #include <algorithm>
+#include <limits>
+#include <memory>
 #include <set>
+#include <stack>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <string>
 
 #include <boost/optional.hpp>
 
+#include "yb/gutil/atomicops.h"
+
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/listener.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
 
 namespace rocksdb {
 
@@ -93,10 +106,11 @@ struct FileMetaData {
 
   int refs;
   FileDescriptor fd;
-  bool being_compacted;     // Is this file undergoing compaction?
-  BoundaryValues smallest;  // The smallest values in this file
-  BoundaryValues largest;   // The largest values in this file
-  bool imported = false;    // Was this file imported from another DB.
+  bool being_compacted;        // Is this file undergoing compaction?
+  bool being_deleted = false;  // Updated by DB::DeleteFile
+  BoundaryValues smallest;     // The smallest values in this file
+  BoundaryValues largest;      // The largest values in this file
+  bool imported = false;       // Was this file imported from another DB.
 
   // Needs to be disposed when refs becomes 0.
   Cache::Handle* table_reader_handle;
@@ -119,20 +133,38 @@ struct FileMetaData {
   bool marked_for_compaction;  // True if client asked us nicely to compact this
                                // file.
 
+  bool delete_after_compaction() const {
+    return base::subtle::NoBarrier_Load(&delete_after_compaction_) != 0;
+  }
+
+  void set_delete_after_compaction(bool value) {
+    base::subtle::Release_Store(&delete_after_compaction_, value ? 1 : 0);
+  }
+
   FileMetaData();
 
-  // REQUIRED: Keys must be given to the function in sorted order (it expects
-  // the last key to be the largest).
-  void UpdateBoundaries(InternalKey key, const FileBoundaryValuesBase& source);
+  void UpdateKey(const Slice& key, UpdateBoundariesType type);
 
   // Update all boundaries except key.
-  void UpdateBoundariesExceptKey(const FileBoundaryValuesBase& source, UpdateBoundariesType type);
+  void UpdateBoundariesExceptKey(const BoundaryValues& source, UpdateBoundariesType type);
+
+  void UpdateBoundarySeqNo(SequenceNumber sequence_number);
+
+  void UpdateBoundaryUserValues(const UserBoundaryValueRefs& source, UpdateBoundariesType type);
 
   bool Unref(TableCache* table_cache);
 
   Slice UserFilter() const; // Extracts user filter from largest boundary value if present.
 
+  // Outputs smallest and largest user frontiers to string, if they exist.
+  std::string FrontiersToString() const;
+
   std::string ToString() const;
+
+ private:
+  // True if file has been marked for direct deletion.
+  // We cannot use std::atomic<bool> here, because this class is stored in std::vector.
+  AtomicWord delete_after_compaction_ = 0;
 };
 
 class VersionEdit {
@@ -172,33 +204,11 @@ class VersionEdit {
                    const FileDescriptor& fd,
                    const FileMetaData::BoundaryValues& smallest,
                    const FileMetaData::BoundaryValues& largest,
-                   bool marked_for_compaction) {
-    DCHECK_LE(smallest.seqno, largest.seqno);
-    FileMetaData f;
-    f.fd = fd;
-    f.fd.table_reader = nullptr;
-    f.smallest = smallest;
-    f.largest = largest;
-    f.marked_for_compaction = marked_for_compaction;
-    new_files_.emplace_back(level, f);
-  }
+                   bool marked_for_compaction);
 
-  void AddFile(int level, const FileMetaData& f) {
-    DCHECK_LE(f.smallest.seqno, f.largest.seqno);
-    new_files_.emplace_back(level, f);
-  }
+  void AddFile(int level, const FileMetaData& f);
 
-  void AddCleanedFile(int level, const FileMetaData& f) {
-    DCHECK_LE(f.smallest.seqno, f.largest.seqno);
-    FileMetaData nf;
-    nf.fd = f.fd;
-    nf.fd.table_reader = nullptr;
-    nf.smallest = f.smallest;
-    nf.largest = f.largest;
-    nf.marked_for_compaction = f.marked_for_compaction;
-    nf.imported = f.imported;
-    new_files_.emplace_back(level, std::move(nf));
-  }
+  void AddCleanedFile(int level, const FileMetaData& f);
 
   // Delete the specified "file" from the specified "level".
   void DeleteFile(int level, uint64_t file) {

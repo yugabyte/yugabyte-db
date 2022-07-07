@@ -1,5 +1,5 @@
 {
-  "all": {
+  "yugabyte": {
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },
@@ -16,7 +16,6 @@
       "$BUILD_ROOT/bin/yb-ts-cli",
       "$BUILD_ROOT/bin/yb-tserver",
       "$BUILD_ROOT/bin/yb-ysck",
-      "$BUILD_ROOT/bin/yb_load_test_tool",
       "$BUILD_ROOT/postgres/bin/*",
       "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
       "bin/bulk_load_cleanup.sh",
@@ -37,16 +36,19 @@
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
+      "$BUILD_ROOT/share/ysql_migrations",
       "sample/*.sql"
     ],
     "tools": [
       "bin/yb-prof.py",
       "bin/print_stacks.sh",
-      "bin/yb-check-failed-tablets.sh"
+      "bin/yb-check-failed-tablets.sh",
+      "scripts/k8s_preflight.py",
+      "scripts/k8s_parent.py"
     ],
     "www": ["www/*"]
   },
-  "cli": {
+  "yugabyte-client": {
     "%symlinks%": {
       "bin/ysqlsh": "../postgres/bin/ysqlsh"
     },

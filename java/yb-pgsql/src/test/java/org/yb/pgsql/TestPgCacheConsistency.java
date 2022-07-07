@@ -17,7 +17,7 @@ import org.hamcrest.CoreMatchers;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBCluster;
@@ -190,21 +190,6 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         assertEquals(expectedRows, getRowSet(rs));
       }
       expectedRows.clear();
-    }
-  }
-
-  @Test
-  public void testNoDDLRetry() throws Exception {
-    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
-         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
-         Statement statement1 = connection1.createStatement();
-         Statement statement2 = connection2.createStatement()) {
-      // Create a table with connection 1.
-      statement1.execute("CREATE TABLE a(id int primary key)");
-      statement1.execute("ALTER TABLE a ADD b int");
-      // Create a table with connection 2 (should fail)
-      runInvalidQuery(statement2, "CREATE TABLE b(id int primary key)",
-          "Catalog Version Mismatch");
     }
   }
 
@@ -518,6 +503,8 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Mixing in some "concurrent" DDLs to invalidate cache.
       stmt2.executeUpdate("CREATE TABLE t()");
       stmt2.executeUpdate("DROP TABLE t");
+      // Make sure other connections will detect catalog version change.
+      waitForTServerHeartbeat();
 
       stmt1.executeUpdate("GRANT SELECT, INSERT, UPDATE, DELETE ON with_default TO application");
 
@@ -546,8 +533,11 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
       // Mixing in some "concurrent" DDLs to invalidate cache.
       stmt2.executeUpdate("CREATE TABLE t()");
       stmt2.executeUpdate("DROP TABLE t");
+      // Make sure other connections will detect catalog version change.
+      waitForTServerHeartbeat();
 
       stmt1.executeUpdate("DROP TABLE with_default");
+      waitForTServerHeartbeat();
 
       for (Statement stmt : Arrays.asList(stmt1, stmt2)) {
         runInvalidQuery(stmt, "SELECT * FROM with_default",
@@ -555,6 +545,61 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         runInvalidQuery(stmt, "SELECT nextval('some_seq'::regclass)",
             "relation \"some_seq\" does not exist");
       }
+    }
+  }
+
+  @Test
+  public void testPgInheritsCacheConsistency() throws Exception {
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement stmt1 = connection1.createStatement();
+         Statement stmt2 = connection2.createStatement()) {
+
+      // Create a partitioned table and some partitions in connection1.
+      stmt1.executeUpdate("CREATE TABLE prt (a int, b varchar) PARTITION BY RANGE(a)");
+      stmt1.executeUpdate("CREATE TABLE prt_p1 PARTITION OF prt FOR VALUES FROM (0) TO (10)");
+
+      // Create additional partitions in connection2 and perform operations ensuring that the cache
+      // is populated in connection2.
+      stmt2.executeUpdate("CREATE TABLE prt_p2 PARTITION OF prt FOR VALUES FROM (10) TO (20)");
+
+      // Now in a loop, create a new partition and insert data into it in connection1.
+      // The cache in connection2 must refresh itself each time a partition is created in
+      // connection1, therefore the data fetched using SELECT query in both connections
+      // must be the same.
+      final int numIterations = 25;
+      final String query = "SELECT * FROM prt WHERE a>0";
+      for (int ii = 2; ii < numIterations; ++ii) {
+        final int startPartition = 10 * ii;
+        final int endPartition = 10 * (ii + 1);
+        stmt1.executeUpdate(String.format(
+              "CREATE TABLE prt_p%d PARTITION OF prt FOR VALUES FROM (%d) TO (%d)",
+              ii + 1, startPartition, endPartition));
+        stmt1.executeUpdate(String.format("INSERT INTO prt_p%d(a,b) VALUES (%d, 'abc')",
+                                          ii + 1, startPartition + 1));
+        waitForTServerHeartbeat();
+        assertEquals(getRowList(stmt1, query).size(), getRowList(stmt2, query).size());
+      }
+
+      // Now repeat the same test as above, but start a transaction in stmt2 in
+      // the loop. Snapshot isolation guarantees here should ensure that the
+      // transaction in stmt2 should not see the new partition or the data inserted
+      // in stmt1.
+      for (int ii = numIterations; ii < numIterations * 2; ++ii) {
+        stmt2.execute("BEGIN");
+        final int startPartition = 10 * ii;
+        final int endPartition = 10 * (ii + 1);
+        stmt1.executeUpdate(String.format(
+              "CREATE TABLE prt_p%d PARTITION OF prt FOR VALUES FROM (%d) TO (%d)",
+              ii + 1, startPartition, endPartition));
+        stmt1.executeUpdate(String.format(
+              "INSERT INTO prt_p%d(a,b) VALUES (%d, 'abc')",
+              ii + 1, startPartition + 1));
+        waitForTServerHeartbeat();
+        assertEquals(getRowList(stmt1, query).size() - 1, getRowList(stmt2, query).size());
+        stmt2.execute("END");
+      }
+
     }
   }
 

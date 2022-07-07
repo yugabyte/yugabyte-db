@@ -36,12 +36,19 @@ package yb.tserver;
 option java_package = "org.yb.tserver";
 
 import "yb/common/common.proto";
+import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
+import "yb/tablet/tablet_types.proto";
+import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
-import "yb/tablet/metadata.proto";
+import "yb/tserver/tserver_types.proto";
 
 service TabletServerService {
   rpc Write(WriteRequestPB) returns (WriteResponsePB);
   rpc Read(ReadRequestPB) returns (ReadResponsePB);
+  rpc VerifyTableRowRange(VerifyTableRowRangeRequestPB)
+      returns (VerifyTableRowRangeResponsePB);
+
   rpc NoOp(NoOpRequestPB) returns (NoOpResponsePB);
   rpc ListTablets(ListTabletsRequestPB) returns (ListTabletsResponsePB);
   rpc GetLogLocation(GetLogLocationRequestPB) returns (GetLogLocationResponsePB);
@@ -64,6 +71,9 @@ service TabletServerService {
   rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
       returns (GetTransactionStatusAtParticipantResponsePB);
   rpc AbortTransaction(AbortTransactionRequestPB) returns (AbortTransactionResponsePB);
+  // Change the status tablet id used for a transaction.
+  rpc UpdateTransactionStatusLocation(UpdateTransactionStatusLocationRequestPB)
+      returns (UpdateTransactionStatusLocationResponsePB);
   rpc Truncate(TruncateRequestPB) returns (TruncateResponsePB);
   rpc GetTabletStatus(GetTabletStatusRequestPB) returns (GetTabletStatusResponsePB);
   rpc GetMasterAddresses(GetMasterAddressesRequestPB) returns (GetMasterAddressesResponsePB);
@@ -74,6 +84,10 @@ service TabletServerService {
 
   // Takes precreated transaction from this tserver.
   rpc TakeTransaction(TakeTransactionRequestPB) returns (TakeTransactionResponsePB);
+
+  rpc GetSplitKey(GetSplitKeyRequestPB) returns (GetSplitKeyResponsePB);
+
+  rpc GetSharedData(GetSharedDataRequestPB) returns (GetSharedDataResponsePB);
 }
 
 message GetLogLocationRequestPB {
@@ -132,7 +146,7 @@ message ImportDataResponsePB {
 
 message UpdateTransactionRequestPB {
   optional bytes tablet_id = 1;
-  optional TransactionStatePB state = 2;
+  optional tablet.TransactionStatePB state = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
 }
@@ -154,6 +168,8 @@ message GetTransactionStatusResponsePB {
   // Error message, if any.
   optional TabletServerErrorPB error = 1;
 
+  // For backward compatibility we use multiple repeated fields instead of one field
+  // with custom message.
   repeated TransactionStatus status = 2;
   // For description of status_hybrid_time see comment in TransactionStatusResult.
   repeated fixed64 status_hybrid_time = 3;
@@ -161,6 +177,12 @@ message GetTransactionStatusResponsePB {
   optional fixed64 propagated_hybrid_time = 4;
 
   repeated int64 num_replicated_batches = 5;
+
+  // Size could be less than status size. In this case appropriates values should be interpreted
+  // as invalid hybrid time.
+  repeated fixed64 coordinator_safe_time = 6;
+
+  repeated AbortedSubTransactionSetPB aborted_subtxn_set = 7;
 }
 
 message GetTransactionStatusAtParticipantRequestPB {
@@ -194,11 +216,48 @@ message AbortTransactionResponsePB {
   optional fixed64 status_hybrid_time = 3;
 
   optional fixed64 propagated_hybrid_time = 4;
+
+  optional fixed64 coordinator_safe_time = 5;
+}
+
+message UpdateTransactionStatusLocationRequestPB {
+  optional bytes tablet_id = 1;
+  optional bytes transaction_id = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+
+  // ID of new status tablet that the transaction will be using.
+  optional bytes new_status_tablet_id = 4;
+}
+
+message UpdateTransactionStatusLocationResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
 }
 
 message TakeTransactionRequestPB {
+  optional bool is_global = 1;
 }
 
 message TakeTransactionResponsePB {
   optional TransactionMetadataPB metadata = 1;
+}
+
+message GetSplitKeyRequestPB {
+  required bytes tablet_id = 1;
+  optional fixed64 propagated_hybrid_time = 2;
+  optional bool is_manual_split = 3;
+}
+
+message GetSplitKeyResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional bytes split_partition_key = 2;
+  optional bytes split_encoded_key = 3;
+  optional fixed64 propagated_hybrid_time = 4;
+}
+
+message GetSharedDataRequestPB {
+}
+
+message GetSharedDataResponsePB {
+  optional bytes data = 1;
 }

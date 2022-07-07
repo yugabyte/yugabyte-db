@@ -14,7 +14,9 @@
 #ifndef YB_TSERVER_HEARTBEATER_FACTORY_H
 #define YB_TSERVER_HEARTBEATER_FACTORY_H
 
-#include "yb/tserver/heartbeater.h"
+#include <memory>
+
+#include "yb/tserver/tserver_fwd.h"
 
 namespace yb {
 namespace tserver {

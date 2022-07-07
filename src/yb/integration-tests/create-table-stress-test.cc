@@ -30,49 +30,64 @@
 // under the License.
 //
 
-#include <fstream>
 #include <memory>
 #include <thread>
-#include <boost/bind.hpp>
-#include <boost/thread/thread.hpp>
-#include <gflags/gflags.h>
+
 #include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-#include "yb/common/schema.h"
+
+#include "yb/common/partition.h"
 #include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/consensus.proxy.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/mini_master.h"
+
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
+#include "yb/master/master.h"
+#include "yb/master/master_client.proxy.h"
+#include "yb/master/master_cluster.proxy.h"
+#include "yb/master/master_heartbeat.proxy.h"
+#include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/hdr_histogram.h"
 #include "yb/util/metrics.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/spinlock_profiling.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using yb::client::YBClient;
 using yb::client::YBClientBuilder;
-using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 using yb::client::YBTableCreator;
 using yb::client::YBTableName;
 using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
-using yb::master::MasterServiceProxy;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
@@ -94,7 +109,7 @@ DEFINE_int32(benchmark_num_threads, 16, "Number of threads to run the benchmark"
 // Increase this for actually using this as a benchmark test.
 DEFINE_int32(benchmark_num_tablets, 8, "Number of tablets to create");
 
-METRIC_DECLARE_histogram(handler_latency_yb_master_MasterService_GetTableLocations);
+METRIC_DECLARE_histogram(handler_latency_yb_master_MasterClient_GetTableLocations);
 
 using std::string;
 using std::vector;
@@ -133,7 +148,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     YBMiniClusterTestBase::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(YBClientBuilder()
@@ -143,9 +158,8 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
     messenger_ = ASSERT_RESULT(
         MessengerBuilder("stress-test-msgr").set_num_reactors(1).Build());
     rpc::ProxyCache proxy_cache(messenger_.get());
-    master_proxy_.reset(new MasterServiceProxy(&proxy_cache,
-                                               cluster_->mini_master()->bound_rpc_addr()));
-    ASSERT_OK(CreateTabletServerMap(master_proxy_.get(), &proxy_cache, &ts_map_));
+    master::MasterClusterProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+    ts_map_ = ASSERT_RESULT(CreateTabletServerMap(proxy, &proxy_cache));
   }
 
   void DoTearDown() override {
@@ -161,7 +175,7 @@ class CreateTableStressTest : public YBMiniClusterTestBase<MiniCluster> {
   std::unique_ptr<YBClient> client_;
   YBSchema schema_;
   std::unique_ptr<Messenger> messenger_;
-  gscoped_ptr<MasterServiceProxy> master_proxy_;
+  std::unique_ptr<master::MasterClusterProxy> master_proxy_;
   TabletServerMap ts_map_;
 };
 
@@ -192,7 +206,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   master::GetTableLocationsResponsePB create_resp;
   LOG_TIMING(INFO, "waiting for creation of big table") {
     ASSERT_OK(WaitForRunningTabletCount(cluster_->mini_master(), table_name,
-                                       FLAGS_benchmark_num_tablets, &create_resp));
+                                        FLAGS_benchmark_num_tablets, &create_resp));
   }
   // Sleep for a while to let all TS heartbeat to master.
   SleepFor(MonoDelta::FromSeconds(10));
@@ -205,7 +219,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   // probably be testing the serialization and network code rather than the
   // master GTL code.
   vector<rpc::AutoShutdownMessengerHolder> messengers;
-  vector<unique_ptr<MasterServiceProxy>> proxies;
+  vector<master::MasterClientProxy> proxies;
   vector<unique_ptr<rpc::ProxyCache>> caches;
   messengers.reserve(kNumThreads);
   proxies.reserve(kNumThreads);
@@ -214,8 +228,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
     messengers.emplace_back(
         ASSERT_RESULT(MessengerBuilder("Client").set_num_reactors(1).Build()).release());
     caches.emplace_back(new rpc::ProxyCache(messengers.back().get()));
-    proxies.emplace_back(new MasterServiceProxy(
-          caches.back().get(), cluster_->mini_master()->bound_rpc_addr()));
+    proxies.emplace_back(caches.back().get(), cluster_->mini_master()->bound_rpc_addr());
   }
 
   std::atomic<bool> stop { false };
@@ -231,7 +244,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
           controller.set_timeout(MonoDelta::FromSeconds(10));
           table_name.SetIntoTableIdentifierPB(req.mutable_table());
           req.set_max_returned_locations(1000);
-          CHECK_OK(proxies[i]->GetTableLocations(req, &resp, &controller));
+          CHECK_OK(proxies[i].GetTableLocations(req, &resp, &controller));
           CHECK_EQ(resp.tablet_locations_size(), FLAGS_benchmark_num_tablets);
         }
       });
@@ -249,7 +262,7 @@ TEST_F(CreateTableStressTest, GetTableLocationsBenchmark) {
   FlushSynchronizationProfile(&profile, &discarded_samples);
 
   const auto& ent = cluster_->mini_master()->master()->metric_entity();
-  auto hist = METRIC_handler_latency_yb_master_MasterService_GetTableLocations
+  auto hist = METRIC_handler_latency_yb_master_MasterClient_GetTableLocations
       .Instantiate(ent);
 
   cluster_->Shutdown();
@@ -315,7 +328,7 @@ TEST_P(CreateMultiHBTableStressTest, CreateAndDeleteBigTable) {
   // messages have a max size.
   std::cout << "Response:\n" << resp.DebugString();
   std::cout << "CatalogManager state:\n";
-  cluster_->mini_master()->master()->catalog_manager()->DumpState(&std::cerr);
+  cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
 
   // Store all relevant tablets for this big table we've created.
   std::vector<string> big_table_tablets;
@@ -371,7 +384,7 @@ TEST_P(CreateMultiHBTableStressTest, RestartServersAfterCreation) {
   Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp);
   if (!s.ok()) {
-    cluster_->mini_master()->master()->catalog_manager()->DumpState(&std::cerr);
+    cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
     CHECK_OK(s);
   }
 }
@@ -423,7 +436,7 @@ TEST_F(CreateSmallHBTableStressTest, TestRestartMasterDuringFullHeartbeat) {
   Status s = WaitForRunningTabletCount(cluster_->mini_master(), table_name,
                                        FLAGS_num_test_tablets, &resp);
   if (!s.ok()) {
-    cluster_->mini_master()->master()->catalog_manager()->DumpState(&std::cerr);
+    cluster_->mini_master()->catalog_manager().DumpState(&std::cerr);
     CHECK_OK(s);
   }
 }
@@ -454,6 +467,9 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   ASSERT_EQ(ts_server->tablet_manager()->GetReportLimit(), FLAGS_tablet_report_limit);
   ASSERT_LE(hb_req.tablet_report().updated_tablets_size(), FLAGS_tablet_report_limit);
 
+  rpc::ProxyCache proxy_cache(messenger_.get());
+  master::MasterHeartbeatProxy proxy(&proxy_cache, cluster_->mini_master()->bound_rpc_addr());
+
   // Grab Master and Process this Tablet Report.
   // This should go over the deadline and get truncated.
   master::TSHeartbeatResponsePB hb_resp;
@@ -464,7 +480,7 @@ TEST_F(CreateTableStressTest, TestHeartbeatDeadline) {
   for (int tries = 0; tries < 3; ++tries) {
     RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_heartbeat_rpc_timeout_ms));
-    heartbeat_status = master_proxy_->TSHeartbeat(hb_req, &hb_resp, &rpc);
+    heartbeat_status = proxy.TSHeartbeat(hb_req, &hb_resp, &rpc);
     if (heartbeat_status.ok()) break;
     ASSERT_TRUE(heartbeat_status.IsTimedOut());
   }
@@ -507,7 +523,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(0);
-    Status s = cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp);
+    Status s = cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp);
     ASSERT_STR_CONTAINS(s.ToString(), "must be greater than 0");
   }
 
@@ -518,7 +534,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(1);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(resp.tablet_locations_size(), 1);
     // empty since it's the first
     ASSERT_EQ(resp.tablet_locations(0).partition().partition_key_start(), "");
@@ -533,7 +549,7 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(half_tablets);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(half_tablets, resp.tablet_locations_size());
   }
 
@@ -544,22 +560,21 @@ DontVerifyClusterBeforeNextTearDown();
     resp.Clear();
     table_name.SetIntoTableIdentifierPB(req.mutable_table());
     req.set_max_returned_locations(FLAGS_num_test_tablets);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     ASSERT_EQ(FLAGS_num_test_tablets, resp.tablet_locations_size());
   }
 
   LOG(INFO) << "========================================================";
   LOG(INFO) << "Tables and tablets:";
   LOG(INFO) << "========================================================";
-  std::vector<scoped_refptr<master::TableInfo> > tables;
-  cluster_->mini_master()->master()->catalog_manager()->GetAllTables(&tables);
+  auto tables = cluster_->mini_master()->catalog_manager().GetTables(
+      master::GetTablesMode::kAll);
   for (const scoped_refptr<master::TableInfo>& table_info : tables) {
     LOG(INFO) << "Table: " << table_info->ToString();
-    std::vector<scoped_refptr<master::TabletInfo> > tablets;
-    table_info->GetAllTablets(&tablets);
+    auto tablets = table_info->GetTablets();
     for (const scoped_refptr<master::TabletInfo>& tablet_info : tablets) {
       auto l_tablet = tablet_info->LockForRead();
-      const master::SysTabletsEntryPB& metadata = l_tablet->data().pb;
+      const master::SysTabletsEntryPB& metadata = l_tablet->pb;
       LOG(INFO) << "  Tablet: " << tablet_info->ToString()
                 << " { start_key: "
                 << ((metadata.partition().has_partition_key_start())
@@ -572,26 +587,6 @@ DontVerifyClusterBeforeNextTearDown();
     ASSERT_EQ(FLAGS_num_test_tablets, tablets.size());
   }
   LOG(INFO) << "========================================================";
-
-  // Get a single tablet in the middle, make sure we get that one back
-
-  gscoped_ptr<YBPartialRow> row(schema_.NewRow());
-  ASSERT_OK(row->SetInt32(0, half_tablets - 1));
-  string start_key_middle;
-  ASSERT_OK(row->EncodeRowKey(&start_key_middle));
-
-  LOG(INFO) << "Start key middle: " << start_key_middle;
-  LOG(INFO) << CURRENT_TEST_NAME() << ": Step 7. Asking for single middle tablet...";
-  LOG_TIMING(INFO, "asking for single middle tablet") {
-    req.Clear();
-    resp.Clear();
-    table_name.SetIntoTableIdentifierPB(req.mutable_table());
-    req.set_max_returned_locations(1);
-    req.set_partition_key_start(start_key_middle);
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
-    ASSERT_EQ(1, resp.tablet_locations_size()) << "Response: [" << resp.DebugString() << "]";
-    ASSERT_EQ(start_key_middle, resp.tablet_locations(0).partition().partition_key_start());
-  }
 }
 
 // Creates tables and reloads on-disk metadata concurrently to test for races
@@ -609,10 +604,15 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->VisitSysCatalog(0));
+      CHECK_OK(cluster_->mini_master()->catalog_manager().VisitSysCatalog(0));
       // Give table creation a chance to run.
-      SleepFor(MonoDelta::FromMilliseconds(yb::NonTsanVsTsan(1, 5)));
+      SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }
+  });
+
+  auto se = ScopeExit([&stop, &reload_metadata_thread] {
+    stop.Store(true);
+    reload_metadata_thread.join();
   });
 
   for (int num_tables_created = 0; num_tables_created < 20;) {
@@ -645,8 +645,6 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
     num_tables_created++;
     LOG(INFO) << "Total created: " << num_tables_created;
   }
-  stop.Store(true);
-  reload_metadata_thread.join();
 }
 
 }  // namespace yb

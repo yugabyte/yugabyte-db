@@ -39,6 +39,13 @@ public class TestSparkLocality extends BaseCQLTest {
       builder.yqlSystemPartitionsVtableRefreshSecs(0);
   }
 
+  @Override
+  protected void resetSettings() {
+    super.resetSettings();
+    // Disable the system query cache for spark tests.
+    systemQueryCacheUpdateMs = 0;
+  }
+
   // Timeout to wait for load balancing to complete.
   private static final int LOADBALANCE_TIMEOUT_MS = 120000; // 2 mins
 

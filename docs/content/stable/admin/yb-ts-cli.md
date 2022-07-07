@@ -3,14 +3,12 @@ title: yb-ts-cli - command line tool for advanced yb-tserver operations
 headerTitle: yb-ts-cli
 linkTitle: yb-ts-cli
 description: Use the yb-ts-cli command line utility to perform advanced YB-TServer operations.
-block_indexing: true
 menu:
   stable:
     identifier: yb-ts-cli
     parent: admin
     weight: 2466
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 `yb-ts-cli` is a command line tool that can be used to perform an operation on a particular tablet server (`yb-tserver`). Some of the commands perform operations similar to [`yb-admin` commands](../yb-admin). The `yb-admin` commands focus on cluster administration, the `yb-ts-cli` commands apply to specific YB-TServer nodes.
@@ -23,19 +21,35 @@ showAsideToc: true
 yb-ts-cli [ --server_address=<host>:<port> ] <command> <flags>
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- *command*: The operation to be performed. See [Commands](#commands) below.
-- *flags*: The flags to be applied to the command. See [Flags](#flags).
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *command*: The operation to be performed. See [Commands](#commands) below.
+* *flags*: The flags to be applied to the command. See [Flags](#flags).
 
 ## Command line help
 
 To display the available online help, run `yb-ts-cli` without any commands or flags at the YugabyteDB home directory.
 
 ```sh
-$ ./bin/yb-ts-cli
+./bin/yb-ts-cli
 ```
 
 ## Commands
+
+The following commands are available:
+
+* [are_tablets_running](#are-tablets-running)
+* [is_server_ready](#is-server-ready)
+* [compact_all_tablets](#compact-all-tablets)
+* [compact_tablet](#compact-tablet)
+* [count_intents](#count-intents)
+* [current_hybrid_time](#current-hybrid-time)
+* [delete_tablet](#delete-tablet)
+* [dump_tablet](#dump-tablet)
+* [flush_all_tablets](#flush-all-tablets)
+* [flush_tablet](#flush-tablet)
+* [list_tablets](#list-tablets)
+* [set_flag](#set-flag)
+* [status](#status)
 
 ##### are_tablets_running
 
@@ -44,10 +58,23 @@ If all tablets are running, returns "All tablets are running".
 **Syntax**
 
 ```sh
-$ yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
+yb-ts-cli [ --server_address=<host>:<port> ] are_tablets_running
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+
+##### is_server_ready
+
+Prints the number of tablets that have not yet bootstrapped.
+If all tablets have bootstrapped, returns "Tablet server is ready".
+
+**Syntax**
+
+```sh
+yb-ts-cli [ --server_address=<host>:<port> ] is_server_ready
+```
+
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ##### compact_all_tablets
 
@@ -56,10 +83,10 @@ Compact all tablets on the tablet server.
 **Syntax**
 
 ```sh
-yb-tsi-cli [ --server_address=<host>:<port> ] compact_all_tablets
+yb-ts-cli [ --server_address=<host>:<port> ] compact_all_tablets
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ##### compact_tablet
 
@@ -68,11 +95,11 @@ Compact the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-tsi-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] compact_tablet <tablet_id>
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- *tablet_id*: The identifier of the tablet to compact.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet_id*: The identifier of the tablet to compact.
 
 ##### count_intents
 
@@ -84,7 +111,7 @@ Print the count of uncommitted intents (or [provisional records](../../../archit
 yb-ts-cli  [ --server_address=<host>:<port> ] count_intents
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ##### current_hybrid_time
 
@@ -93,10 +120,10 @@ Prints the value of the current [hybrid time](../../../architecture/transactions
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
+yb-ts-cli  [ --server_address=<host>:<port> ] current_hybrid_time
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ##### delete_tablet
 
@@ -105,12 +132,12 @@ Deletes the tablet with the specified tablet ID (`tablet_id`) and reason.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
+yb-ts-cli  [ --server_address=<host>:<port> ] delete_tablet <tablet_id> "<reason-string>"
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- *tablet_id*: The identifier (ID) for the tablet.
-- *reason-string*: Text string providing useful information on why the tablet was deleted.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet_id*: The identifier (ID) for the tablet.
+* *reason-string*: Text string providing useful information on why the tablet was deleted.
 
 ##### dump_tablet
 
@@ -122,8 +149,8 @@ Dump, or export, the specified tablet ID (`tablet_id`).
 yb-ts-cli [ --server_address=<host>:<port> ] dump_tablet <tablet_id>
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- *tablet_id*: The identifier (ID) for the tablet.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet_id*: The identifier (ID) for the tablet.
 
 ##### flush_all_tablets
 
@@ -132,10 +159,10 @@ Flush all tablets on the tablet server.
 **Syntax**
 
 ```sh
-yb-tsi-cli [ --server_address=<host>:<port> ] flush_all_tablets
+yb-ts-cli [ --server_address=<host>:<port> ] flush_all_tablets
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ##### flush_tablet
 
@@ -144,18 +171,15 @@ Flush the specified tablet on the tablet server.
 **Syntax**
 
 ```sh
-yb-tsi-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
+yb-ts-cli [ --server_address=<host>:<port> ] flush_tablet <tablet_id>
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- *tablet_id*: The identifier of the tablet to compact.
-
-
-
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *tablet_id*: The identifier of the tablet to compact.
 
 ##### list_tablets
 
-Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, partition, and schema.
+Lists the tablets on the specified tablet server, displaying the following properties: column name, tablet ID, state, table name, shard, and schema.
 
 **Syntax**
 
@@ -163,7 +187,7 @@ Lists the tablets on the specified tablet server, displaying the following prope
 yb-ts-cli [ --server_address=<host>:<port> ] list_tablets
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 ##### set_flag
 
@@ -172,13 +196,13 @@ Sets the specified configuration flag for the tablet server.
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
+yb-ts-cli [ --server_address=<host>:<port> ] set_flag [ --force ] <flag> <value>
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
-- `--force`: Flag to to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
-- *flag*: The `yb-tserver` configuration flag (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-flags)
-- *value*: The value to be applied.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* `--force`: Flag to allow a change to a flag that is not explicitly marked as runtime-settable. Note that the change may be ignored on the server or may cause the server to crash, if unsafe values are provided. See [--force](#force).
+* *flag*: The `yb-tserver` configuration flag (without the `--` prefix) to be set. See [`yb-tserver`](../../reference/configuration/yb-tserver/#configuration-flags)
+* *value*: The value to be applied.
 
 {{< note title="Important" >}}
 
@@ -197,10 +221,10 @@ Prints the status of the tablet server, including information on the node instan
 **Syntax**
 
 ```sh
-$ ./bin/yb-ts-cli [ --server_address=<host>:<port> ] status
+yb-ts-cli [ --server_address=<host>:<port> ] status
 ```
 
-- *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
+* *host*:*port*: The *host* and *port* of the tablet server. Default is `localhost:9100`.
 
 For an example, see [Return the status of a tablet server](#return-the-status-of-a-tablet-server)
 
@@ -231,10 +255,10 @@ Default: `60000` (1000 ms = 1 sec)
 ### Return the status of a tablet server
 
 ```sh
-$ ./bin/yb-ts-cli -server_address=127.0.0.1 status
+./bin/yb-ts-cli -server_address=127.0.0.1 status
 ```
 
-```json
+```output
 node_instance {
   permanent_uuid: "237678d61086489991080bdfc68a28db"
   instance_seqno: 1579278624770505
@@ -263,9 +287,9 @@ version_info {
 ### Display the current hybrid time
 
 ```sh
-$ ./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
+./bin/yb-ts-cli  [ --server_address=yb-tserver-1:9100 ] current_hybrid_time
 ```
 
-```
+```output
 6470519323472437248
 ```

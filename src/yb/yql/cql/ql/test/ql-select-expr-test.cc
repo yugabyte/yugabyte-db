@@ -2,15 +2,23 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include <thread>
 #include <cmath>
 #include <limits>
 
-#include "yb/yql/cql/ql/test/ql-test-base.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/decimal.h"
 #include "yb/common/jsonb.h"
+#include "yb/common/ql_serialization.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
+#include "yb/util/decimal.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/cql/ql/statement.h"
+#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/yql/cql/ql/util/cql_message.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 DECLARE_bool(TEST_tserver_timeout);
 
@@ -27,9 +35,56 @@ using yb::util::VarInt;
 namespace yb {
 namespace ql {
 
+struct CQLQueryParameters : public CQLMessage::QueryParameters {
+  typedef CQLMessage::QueryParameters::NameToIndexMap NameToIndexMap;
+
+  CQLQueryParameters() {
+    flags = CQLMessage::QueryParameters::kWithValuesFlag;
+  }
+
+  void Reset() {
+    values.clear();
+    value_map.clear();
+  }
+
+  void PushBackInt32(const string& name, int32_t val) {
+    QLValue qv;
+    qv.set_int32_value(val);
+    PushBack(name, qv, DataType::INT32);
+  }
+
+  void PushBack(const string& name, const QLValue& qv, DataType data_type) {
+    PushBack(name, qv, QLType::Create(data_type));
+  }
+
+  void PushBack(const string& name, const QLValue& qv, const shared_ptr<QLType>& type) {
+    faststring buffer;
+    SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
+
+    CQLMessage::Value msg_value;
+    msg_value.name = name;
+    msg_value.value = buffer.ToString();
+    value_map.insert(NameToIndexMap::value_type(name, values.size()));
+    values.push_back(msg_value);
+  }
+};
+
 class QLTestSelectedExpr : public QLTestBase {
  public:
   QLTestSelectedExpr() : QLTestBase() {
+  }
+
+  void CheckSelectedRow(TestQLProcessor *processor,
+                        const string& query,
+                        const string& expected_row) const {
+    CHECK_VALID_STMT(query);
+    shared_ptr<QLRowBlock> row_block = processor->row_block();
+    EXPECT_EQ(row_block->row_count(), 1);
+    if (row_block->row_count() > 0) {
+      const QLRow& row = row_block->row(0);
+      LOG(INFO) << "Got row: " << row.ToString();
+      EXPECT_EQ(row.ToString(), expected_row);
+    }
   }
 };
 
@@ -1668,7 +1723,7 @@ TEST_F(QLTestSelectedExpr, ScanRangeTestIncDecAcrossHashCols) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
-  for (int h = 0; h < row_block->row_count(); h++) {
+  for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
@@ -1715,7 +1770,7 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
   std::shared_ptr<QLRowBlock> row_block = processor->row_block();
   EXPECT_EQ(row_block->row_count(), 2 * max_h);
   vector<bool> seen(max_h, false);
-  for (int h = 0; h < row_block->row_count(); h++) {
+  for (size_t h = 0; h < row_block->row_count(); h++) {
     const QLRow& row = row_block->row(h);
     LOG(INFO) << "got " << row.ToString();
     seen[row.column(0).int32_value()] = true;
@@ -1732,6 +1787,183 @@ TEST_F(QLTestSelectedExpr, ScanChoicesTestIncDecAcrossHashCols) {
   for (int h = 0; h < max_h; h++) {
     CHECK_EQ(seen[h], true);
   }
+}
+
+TEST_F(QLTestSelectedExpr, TestPreparedStatementWithCollections) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  PreparedResult::UniPtr result;
+
+  LOG(INFO) << "Create and setup test table.";
+  CHECK_VALID_STMT("CREATE TABLE test_tbl (h INT, r INT, "
+                   "vm MAP<INT, TEXT>, vs set<INT>, vl list<TEXT>, PRIMARY KEY((h), r))");
+
+  //----------------------------------------------------------------------------------------------
+  // Testing Map.
+  //----------------------------------------------------------------------------------------------
+  // Test INSERT into MAP prepared statement.
+  LOG(INFO) << "Prepare insert into MAP statement.";
+  Statement insert_vm(processor->CurrentKeyspace(),
+                      "INSERT INTO test_tbl (h, r, vm) VALUES(?, ?, ?);");
+  EXPECT_OK(insert_vm.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  auto vm_binds = result->bind_variable_schemas();
+  EXPECT_EQ(vm_binds.size(), 3);
+  EXPECT_EQ(vm_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vm_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vm_binds[2].ToString(), "vm[map NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vm_binds[2].type()->ToString(), "map<int, text>");
+
+  // Bind and execute the prepared statement with correct values.
+  QLValue qvm;
+  qvm.add_map_key()->set_int32_value(2);
+  qvm.add_map_value()->set_string_value("b");
+  qvm.add_map_key()->set_int32_value(3);
+  qvm.add_map_value()->set_string_value("c");
+
+  CQLQueryParameters params;
+  params.PushBackInt32("h", 1);
+  params.PushBackInt32("r", 1);
+  params.PushBack("vm", qvm, QLType::CreateTypeMap(DataType::INT32, DataType::STRING));
+
+  EXPECT_OK(processor->Run(insert_vm, params));
+
+  // Bind and execute the prepared statement with NULL in value.
+  QLValue qvm_null_val;
+  qvm_null_val.add_map_key()->set_int32_value(1);
+  qvm_null_val.add_map_value()->Clear(); // Set to null by clearing all existing values.
+
+  params.Reset();
+  params.PushBackInt32("h", 2);
+  params.PushBackInt32("r", 2);
+  params.PushBack("vm", qvm_null_val, QLType::CreateTypeMap(DataType::INT32, DataType::STRING));
+
+  Status s = processor->Run(insert_vm, params);
+  LOG(INFO) << "Expected error: " << s;
+  EXPECT_TRUE(s.IsQLError()) << "Expected QLError, got: " << s;
+  EXPECT_EQ(GetErrorCode(s), ErrorCode::INVALID_ARGUMENTS)
+      << "Expected INVALID_ARGUMENT, got " << s;
+  EXPECT_NE(s.message().ToBuffer().find("null is not supported inside collections"),
+      string::npos) << s;
+
+  // Bind and execute the prepared statement with NULL in key.
+  QLValue qvm_null_key;
+  qvm_null_key.add_map_key()->Clear(); // Set to null by clearing all existing values.
+  qvm_null_key.add_map_value()->set_string_value("a");
+
+  params.Reset();
+  params.PushBackInt32("h", 9);
+  params.PushBackInt32("r", 9);
+  params.PushBack("vm", qvm_null_key, QLType::CreateTypeMap(DataType::INT32, DataType::STRING));
+
+  s = processor->Run(insert_vm, params);
+  LOG(INFO) << "Expected error: " << s;
+  EXPECT_TRUE(s.IsQLError()) << "Expected QLError, got: " << s;
+  EXPECT_EQ(GetErrorCode(s), ErrorCode::INVALID_ARGUMENTS)
+      << "Expected INVALID_ARGUMENT, got " << s;
+  EXPECT_NE(s.message().ToBuffer().find("null is not supported inside collections"),
+      string::npos) << s;
+
+  //----------------------------------------------------------------------------------------------
+  // Testing Set.
+  //----------------------------------------------------------------------------------------------
+  // Test INSERT into SET prepared statement.
+  LOG(INFO) << "Prepare insert into SET statement.";
+  Statement insert_vs(processor->CurrentKeyspace(),
+                      "INSERT INTO test_tbl (h, r, vs) VALUES(?, ?, ?);");
+  EXPECT_OK(insert_vs.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  auto vs_binds = result->bind_variable_schemas();
+  EXPECT_EQ(vs_binds.size(), 3);
+  EXPECT_EQ(vs_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vs_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vs_binds[2].ToString(), "vs[set NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vs_binds[2].type()->ToString(), "set<int>");
+
+  // Bind and execute the prepared statement with correct values.
+  QLValue qvs;
+  qvs.add_set_elem()->set_int32_value(4);
+  qvs.add_set_elem()->set_int32_value(5);
+
+  params.Reset();
+  params.PushBackInt32("h", 1);
+  params.PushBackInt32("r", 1);
+  params.PushBack("vs", qvs, QLType::CreateTypeSet(DataType::INT32));
+
+  EXPECT_OK(processor->Run(insert_vs, params));
+
+  // Bind and execute the prepared statement with NULL in SET element.
+  QLValue qvs_null_elem;
+  qvs_null_elem.add_set_elem()->Clear(); // Set to null by clearing all existing values.
+
+  params.Reset();
+  params.PushBackInt32("h", 9);
+  params.PushBackInt32("r", 9);
+  params.PushBack("vs", qvs_null_elem, QLType::CreateTypeSet(DataType::INT32));
+
+  s = processor->Run(insert_vs, params);
+  LOG(INFO) << "Expected error: " << s;
+  EXPECT_TRUE(s.IsQLError()) << "Expected QLError, got: " << s;
+  EXPECT_EQ(GetErrorCode(s), ErrorCode::INVALID_ARGUMENTS)
+      << "Expected INVALID_ARGUMENT, got " << s;
+  EXPECT_NE(s.message().ToBuffer().find("null is not supported inside collections"),
+      string::npos) << s;
+
+  //----------------------------------------------------------------------------------------------
+  // Testing List.
+  //----------------------------------------------------------------------------------------------
+  // Test INSERT into LIST prepared statement.
+  LOG(INFO) << "Prepare insert into LIST statement.";
+  Statement insert_vl(processor->CurrentKeyspace(),
+                      "INSERT INTO test_tbl (h, r, vl) VALUES(?, ?, ?);");
+  EXPECT_OK(insert_vl.Prepare(
+      &processor->ql_processor(), nullptr /* mem_tracker */, false /* internal */, &result));
+  auto vl_binds = result->bind_variable_schemas();
+  EXPECT_EQ(vl_binds.size(), 3);
+  EXPECT_EQ(vl_binds[0].ToString(), "h[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[1].ToString(), "r[int32 NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[2].ToString(), "vl[list NOT NULL NOT A PARTITION KEY]");
+  EXPECT_EQ(vl_binds[2].type()->ToString(), "list<text>");
+
+  // Bind and execute the prepared statement with correct values.
+  QLValue qvl;
+  qvl.add_list_elem()->set_string_value("x");
+  qvl.add_list_elem()->set_string_value("y");
+
+  params.Reset();
+  params.PushBackInt32("h", 1);
+  params.PushBackInt32("r", 1);
+  params.PushBack("vl", qvl, QLType::CreateTypeList(DataType::STRING));
+
+  EXPECT_OK(processor->Run(insert_vl, params));
+
+  // Bind and execute the prepared statement with NULL in LIST element.
+  QLValue qvl_null_elem;
+  qvl_null_elem.add_list_elem()->Clear(); // Set to null by clearing all existing values.
+
+  params.Reset();
+  params.PushBackInt32("h", 3);
+  params.PushBackInt32("r", 3);
+  params.PushBack("vl", qvl_null_elem, QLType::CreateTypeList(DataType::STRING));
+
+  s = processor->Run(insert_vl, params);
+  LOG(INFO) << "Expected error: " << s;
+  EXPECT_TRUE(s.IsQLError()) << "Expected QLError, got: " << s;
+  EXPECT_EQ(GetErrorCode(s), ErrorCode::INVALID_ARGUMENTS)
+      << "Expected INVALID_ARGUMENT, got " << s;
+  EXPECT_NE(s.message().ToBuffer().find("null is not supported inside collections"),
+      string::npos) << s;
+
+  //----------------------------------------------------------------------------------------------
+  // Checking row.
+  //----------------------------------------------------------------------------------------------
+  CheckSelectedRow(processor, "SELECT * FROM test_tbl WHERE h = 1 AND r = 1",
+      "{ int32:1, int32:1, map:{int32:2 -> string:\"b\", int32:3 -> string:\"c\"}, "
+      "set:{int32:4, int32:5}, list:[string:\"x\", string:\"y\"] }");
+  LOG(INFO) << "Done.";
 }
 
 } // namespace ql

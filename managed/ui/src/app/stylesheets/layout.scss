@@ -20,7 +20,7 @@
 }
 
 .container-body {
-  padding: 60px 0 45px 90px;
+  padding: $YB_HEADER_HEIGHT 0 $YB_FOOTER_HEIGHT $YB_SIDEBAR_WIDTH;
 
   & > *:first-child {
     &:before {
@@ -142,6 +142,14 @@ pre {
   &.badge-orange {
     padding: 3px 6px;
     background-color: $YB_ORANGE;
+  }
+  &.badge-green {
+    padding: 3px 6px;
+    background-color: $YB_SUCCESS_COLOR;
+  }
+  &.badge-gray {
+    padding: 3px 6px;
+    background-color: $YB_DARK_GRAY;
   }
 }
 

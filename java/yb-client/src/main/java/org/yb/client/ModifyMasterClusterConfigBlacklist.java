@@ -18,37 +18,53 @@ import java.util.List;
 import java.util.TreeSet;
 
 import org.yb.annotations.InterfaceAudience;
-import org.yb.Common.HostPortPB;
-import org.yb.master.Master;
-
+import org.yb.CommonNet.HostPortPB;
+import org.yb.master.CatalogEntityInfo;
 
 @InterfaceAudience.Public
 public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClusterConfig {
-  private List<HostPortPB> modifyHosts;
-  private boolean isAdd;
+  private List<HostPortPB> addHosts;
+  private List<HostPortPB> removeHosts;
   private boolean isLeaderBlacklist;
 
+
+  // This constructor is retained for backward compatibility.
   public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> modifyHosts,
       boolean isAdd) {
-    super(client);
-    this.modifyHosts = modifyHosts;
-    this.isAdd = isAdd;
-    this.isLeaderBlacklist = false;
+    this(client, modifyHosts, isAdd, false);
   }
 
+  // This constructor is retained for backward compatibility.
   public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> modifyHosts,
       boolean isAdd, boolean isLeaderBlacklist) {
     super(client);
-    this.modifyHosts = modifyHosts;
-    this.isAdd = isAdd;
+    if (isAdd) {
+      this.addHosts = modifyHosts;
+    } else {
+      this.removeHosts = modifyHosts;
+    }
+    this.isLeaderBlacklist = isLeaderBlacklist;
+  }
+
+  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> addHosts,
+      List<HostPortPB> removeHosts) {
+    this(client, addHosts, removeHosts, false);
+  }
+
+  public ModifyMasterClusterConfigBlacklist(YBClient client, List<HostPortPB> addHosts,
+      List<HostPortPB> removeHosts, boolean isLeaderBlacklist) {
+    super(client);
+    this.addHosts = addHosts;
+    this.removeHosts = removeHosts;
     this.isLeaderBlacklist = isLeaderBlacklist;
   }
 
   @Override
-  protected Master.SysClusterConfigEntryPB modifyConfig(Master.SysClusterConfigEntryPB config) {
+  protected CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
+      CatalogEntityInfo.SysClusterConfigEntryPB config) {
     // Modify the blacklist.
-    Master.SysClusterConfigEntryPB.Builder configBuilder =
-        Master.SysClusterConfigEntryPB.newBuilder(config);
+    CatalogEntityInfo.SysClusterConfigEntryPB.Builder configBuilder =
+        CatalogEntityInfo.SysClusterConfigEntryPB.newBuilder(config);
 
     // Use a TreeSet so we can prune duplicates while keeping HostPortPB as storage.
     TreeSet<HostPortPB> finalHosts =
@@ -76,15 +92,15 @@ public class ModifyMasterClusterConfigBlacklist extends AbstractModifyMasterClus
     } else {
       finalHosts.addAll(config.getServerBlacklist().getHostsList());
     }
-    // Add or remove the given list of servers.
-    if (isAdd) {
-      finalHosts.addAll(modifyHosts);
-    } else {
-      finalHosts.removeAll(modifyHosts);
+    if (addHosts != null) {
+      finalHosts.addAll(addHosts);
+    }
+    if (removeHosts != null) {
+      finalHosts.removeAll(removeHosts);
     }
     // Change the blacklist in the local config copy.
-    Master.BlacklistPB blacklist =
-        Master.BlacklistPB.newBuilder().addAllHosts(finalHosts).build();
+    CatalogEntityInfo.BlacklistPB blacklist =
+        CatalogEntityInfo.BlacklistPB.newBuilder().addAllHosts(finalHosts).build();
 
     if (isLeaderBlacklist) {
       configBuilder.setLeaderBlacklist(blacklist);

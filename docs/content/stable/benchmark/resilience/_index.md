@@ -5,12 +5,12 @@ linkTitle: Resilience
 description: Benchmark YugabyteDB's ability to withstand component failure.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Benchmarking the ability to withstand component failure.
-block_indexing: true
 menu:
   stable:
     identifier: resilience
     parent: benchmark
     weight: 21
+type: indexpage
 ---
 
 For a tutorial that explores how YugabyteDB handles component failure and provides high availability (HA), see [Fault tolerance](../../../explore/fault-tolerance).

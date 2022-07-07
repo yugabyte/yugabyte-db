@@ -36,11 +36,10 @@
 #include <string>
 #include <unordered_map>
 
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/status.h"
+#include "yb/rocksdb/types.h"
+
 #include "yb/util/size_literals.h"
 
 namespace rocksdb {
@@ -156,11 +155,15 @@ struct BlockBasedTableOptions {
   // used to avoid too many index levels in case we have large keys.
   size_t min_keys_per_index_block = 64;
 
-  // Use delta encoding to compress keys in blocks.
+  // Use delta encoding to compress keys in data blocks.
   // Iterator::PinData() requires this option to be disabled.
   //
   // Default: true
   bool use_delta_encoding = true;
+
+  // Specifies format for encoding entries in data blocks.
+  KeyValueEncodingFormat data_block_key_value_encoding_format =
+      KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
 
   // If non-nullptr, use the specified filter policy for new SST files to reduce disk reads.
   // Many applications will benefit from passing the result of
@@ -220,6 +223,8 @@ struct BlockBasedTablePropertyNames {
   static const char kWholeKeyFiltering[];
   // value is "1" for true and "0" for false.
   static const char kPrefixFiltering[];
+  // value is a uint8_t.
+  static const char kDataBlockKeyValueEncodingFormat[];
 };
 
 // Create default block based table factory.
@@ -384,7 +389,7 @@ class TableFactory {
   // It is the caller's responsibility to keep the file open and close the file
   // after closing the table builder. compression_type is the compression type
   // to use in this table.
-  virtual TableBuilder* NewTableBuilder(
+  virtual std::unique_ptr<TableBuilder> NewTableBuilder(
       const TableBuilderOptions& table_builder_options,
       uint32_t column_family_id, WritableFileWriter* base_file,
       WritableFileWriter* data_file = nullptr) const = 0;

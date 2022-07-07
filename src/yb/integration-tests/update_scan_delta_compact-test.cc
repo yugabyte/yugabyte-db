@@ -34,19 +34,28 @@
 #include <string>
 #include <vector>
 
+#include <boost/range/iterator_range.hpp>
+
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
+#include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
+
 #include "yb/gutil/strings/strcat.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/mini_master.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/curl_util.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -122,7 +131,7 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
 
   void InitCluster() {
     // Start mini-cluster with 1 tserver.
-    cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
+    cluster_.reset(new MiniCluster(MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
     client_ = ASSERT_RESULT(cluster_->CreateClient());
   }
@@ -147,10 +156,10 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   // TODO randomize the string column.
   void MakeRow(int64_t key, int64_t val, QLWriteRequestPB* req) const;
 
-  // If 'key' is a multiple of kSessionBatchSize, it uses 'last_s' to wait for the previous batch
-  // to finish and then flushes the current one.
+  // If 'key' is a multiple of kSessionBatchSize, it uses 'flush_future' to wait for the previous
+  // batch to finish and then flushes the current one.
   Status WaitForLastBatchAndFlush(int64_t key,
-                                  Synchronizer* last_s,
+                                  std::future<client::FlushStatus>* flush_future,
                                   shared_ptr<YBSession> session);
 
   YBSchema schema_;
@@ -181,18 +190,21 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
 
 void UpdateScanDeltaCompactionTest::InsertBaseData() {
   shared_ptr<YBSession> session = CreateSession();
-  Synchronizer last_s;
-  last_s.StatusCB(Status::OK());
+  std::promise<client::FlushStatus> promise;
+  auto flush_future = promise.get_future();
+  promise.set_value(client::FlushStatus());
 
   LOG_TIMING(INFO, "Insert") {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
       auto insert = table_.NewInsertOp();
       MakeRow(key, 0, insert->mutable_request());
-      ASSERT_OK(session->Apply(insert));
-      ASSERT_OK(WaitForLastBatchAndFlush(key, &last_s, session));
+      session->Apply(insert);
+      ASSERT_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
     }
-    ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, session));
-    ASSERT_OK(last_s.Wait());
+    ASSERT_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &flush_future, session));
+    if (flush_future.valid()) {
+      ASSERT_OK(flush_future.get().status);
+    }
   }
 }
 
@@ -238,20 +250,22 @@ void UpdateScanDeltaCompactionTest::RunThreads() {
 
 void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
   shared_ptr<YBSession> session = CreateSession();
-  Synchronizer last_s;
 
   for (int64_t iteration = 1; stop_latch->count() > 0; iteration++) {
-    last_s.StatusCB(Status::OK());
     LOG_TIMING(INFO, "Update") {
+      std::promise<client::FlushStatus> promise;
+      auto flush_future = promise.get_future();
+      promise.set_value(client::FlushStatus());
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
         auto update = table_.NewUpdateOp();
         MakeRow(key, iteration, update->mutable_request());
-        CHECK_OK(session->Apply(update));
-        CHECK_OK(WaitForLastBatchAndFlush(key, &last_s, session));
+        session->Apply(update);
+        CHECK_OK(WaitForLastBatchAndFlush(key, &flush_future, session));
       }
-      CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &last_s, session));
-      CHECK_OK(last_s.Wait());
-      last_s.Reset();
+      CHECK_OK(WaitForLastBatchAndFlush(kSessionBatchSize, &flush_future, session));
+      if (flush_future.valid()) {
+        CHECK_OK(flush_future.get().status);
+      }
     }
   }
 }
@@ -291,13 +305,11 @@ void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
   table_.AddInt64ColumnValue(req, "int64", val);
 }
 
-Status UpdateScanDeltaCompactionTest::WaitForLastBatchAndFlush(int64_t key,
-                                                               Synchronizer* last_s,
-                                                               shared_ptr<YBSession> session) {
+Status UpdateScanDeltaCompactionTest::WaitForLastBatchAndFlush(
+    int64_t key, std::future<client::FlushStatus>* flush_future, shared_ptr<YBSession> session) {
   if (key % kSessionBatchSize == 0) {
-    RETURN_NOT_OK(last_s->Wait());
-    last_s->Reset();
-    session->FlushAsync(last_s->AsStatusFunctor());
+    RETURN_NOT_OK(flush_future->get().status);
+    *flush_future = session->FlushFuture();
   }
   return Status::OK();
 }

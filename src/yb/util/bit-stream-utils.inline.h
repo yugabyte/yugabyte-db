@@ -75,7 +75,7 @@ inline void BitWriter::PutValue(uint64_t v, int num_bits) {
 }
 
 inline void BitWriter::Flush(bool align) {
-  int num_bytes = BitUtil::Ceil(bit_offset_, 8);
+  int num_bytes = ceil_div(bit_offset_, 8);
   buffer_->reserve(align_up(byte_offset_ + num_bytes, 8));
   buffer_->resize(byte_offset_ + num_bytes);
   DCHECK_LE(byte_offset_ + num_bytes, buffer_->capacity());
@@ -114,18 +114,18 @@ inline void BitWriter::PutVlqInt(int32_t v) {
 }
 
 
-inline BitReader::BitReader(const uint8_t* buffer, int buffer_len)
+inline BitReader::BitReader(const uint8_t* buffer, size_t buffer_len)
   : buffer_(buffer),
     max_bytes_(buffer_len),
     buffered_values_(0),
     byte_offset_(0),
     bit_offset_(0) {
-  int num_bytes = std::min(8, max_bytes_);
+  auto num_bytes = std::min<size_t>(8, max_bytes_);
   memcpy(&buffered_values_, buffer_ + byte_offset_, num_bytes);
 }
 
 inline void BitReader::BufferValues() {
-  int bytes_remaining = max_bytes_ - byte_offset_;
+  auto bytes_remaining = max_bytes_ - byte_offset_;
   if (PREDICT_TRUE(bytes_remaining >= 8)) {
     memcpy(&buffered_values_, buffer_ + byte_offset_, 8);
   } else {
@@ -141,7 +141,8 @@ inline bool BitReader::GetValue(int num_bits, T* v) {
 
   if (PREDICT_FALSE(byte_offset_ * 8 + bit_offset_ + num_bits > max_bytes_ * 8)) return false;
 
-  *v = BitUtil::TrailingBits(buffered_values_, bit_offset_ + num_bits) >> bit_offset_;
+  *v = static_cast<T>(
+      BitUtil::TrailingBits(buffered_values_, bit_offset_ + num_bits) >> bit_offset_);
 
   bit_offset_ += num_bits;
   if (bit_offset_ >= 64) {
@@ -149,20 +150,20 @@ inline bool BitReader::GetValue(int num_bits, T* v) {
     bit_offset_ -= 64;
     BufferValues();
     // Read bits of v that crossed into new buffered_values_
-    *v |= BitUtil::TrailingBits(buffered_values_, bit_offset_)
-          << (num_bits - bit_offset_);
+    *v |= static_cast<T>(
+        BitUtil::TrailingBits(buffered_values_, bit_offset_) << (num_bits - bit_offset_));
   }
   DCHECK_LE(bit_offset_, 64);
   return true;
 }
 
-inline void BitReader::Rewind(int num_bits) {
+inline void BitReader::Rewind(ssize_t num_bits) {
   bit_offset_ -= num_bits;
   if (bit_offset_ >= 0) {
     return;
   }
   while (bit_offset_ < 0) {
-    int seek_back = std::min(byte_offset_, 8);
+    auto seek_back = std::min<size_t>(byte_offset_, 8);
     byte_offset_ -= seek_back;
     bit_offset_ += seek_back * 8;
   }
@@ -175,7 +176,7 @@ inline void BitReader::Rewind(int num_bits) {
 inline void BitReader::SeekToBit(uint stream_position) {
   DCHECK_LE(stream_position, max_bytes_ * 8);
 
-  int delta = stream_position - position();
+  auto delta = stream_position - position();
   if (delta == 0) {
     return;
   } else if (delta < 0) {
@@ -198,7 +199,7 @@ inline void BitReader::SeekToBit(uint stream_position) {
 template<typename T>
 inline bool BitReader::GetAligned(int num_bytes, T* v) {
   DCHECK_LE(num_bytes, sizeof(T));
-  int bytes_read = BitUtil::Ceil(bit_offset_, 8);
+  auto bytes_read = ceil_div<size_t>(bit_offset_, 8);
   if (PREDICT_FALSE(byte_offset_ + bytes_read + num_bytes > max_bytes_)) return false;
 
   // Advance byte_offset to next unread byte and read num_bytes
@@ -208,7 +209,7 @@ inline bool BitReader::GetAligned(int num_bytes, T* v) {
 
   // Reset buffered_values_
   bit_offset_ = 0;
-  int bytes_remaining = max_bytes_ - byte_offset_;
+  auto bytes_remaining = max_bytes_ - byte_offset_;
   if (PREDICT_TRUE(bytes_remaining >= 8)) {
     memcpy(&buffered_values_, buffer_ + byte_offset_, 8);
   } else {

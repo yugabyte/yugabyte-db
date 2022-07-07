@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { PageHeader } from 'react-bootstrap';
-import { YBButton, YBFormInput, YBSegmentedButtonGroup } from '../fields';
+import { YBButton, YBCheckBox, YBFormInput, YBSegmentedButtonGroup } from '../fields';
 import YBLogo from '../../YBLogo/YBLogo';
 import { browserHistory } from 'react-router';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
@@ -11,7 +11,13 @@ import * as Yup from 'yup';
 
 import './RegisterForm.scss';
 
+const MIN_PASSWORD_LENGTH = 8;
 class RegisterForm extends Component {
+  componentDidMount() {
+    const { validateRegistration } = this.props;
+    validateRegistration();
+  }
+
   componentDidUpdate(prevProps) {
     const {
       customer: { authToken }
@@ -23,14 +29,21 @@ class RegisterForm extends Component {
   }
 
   submitRegister = (formValues) => {
-    const { registerCustomer } = this.props;
+    const config = {
+      type: 'PASSWORD_POLICY',
+      name: 'password policy',
+      data: this.props.passwordValidationInfo,
+    }
+    const { registerCustomer, addCustomerConfig } = this.props;
     registerCustomer(formValues);
+    addCustomerConfig(config);
   };
 
   render() {
     const {
-      customer: { authToken }
+      customer: { authToken }, passwordValidationInfo
     } = this.props;
+    const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
 
     const validationSchema = Yup.object().shape({
       code: Yup.string()
@@ -41,11 +54,20 @@ class RegisterForm extends Component {
 
       email: Yup.string().required('Enter email').email('This is not a valid email'),
 
-      password: Yup.string().required('Enter password'),
+      password: Yup.string()
+        .required('Enter password')
+        .min(minPasswordLength, `Password is too short - must be ${minPasswordLength} characters minimum.`)
+        .matches(/^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          `Password must contain at least ${passwordValidationInfo?.minDigits} digit
+          , ${passwordValidationInfo?.minUppercase} capital
+          , ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`),
 
       confirmPassword: Yup.string()
         .oneOf([Yup.ref('password'), null], "Passwords don't match")
-        .required('Password confirm is required')
+        .required('Password confirm is required'),
+
+      confirmEULA: Yup.bool().oneOf([true], 'Please accept the agreement to continue.')
     });
 
     const initialValues = {
@@ -53,7 +75,8 @@ class RegisterForm extends Component {
       name: '',
       email: '',
       password: '',
-      confirmPassword: ''
+      confirmPassword: '',
+      confirmEULA: false
     };
 
     return (
@@ -71,7 +94,7 @@ class RegisterForm extends Component {
               setSubmitting(false);
             }}
           >
-            {({ handleSubmit, isSubmitting }) => (
+            {({ handleSubmit, isSubmitting, isValid }) => (
               <Form className="form-register" onSubmit={handleSubmit}>
                 <div
                   className={`alert alert-danger form-error-alert ${authToken.error ? '' : 'hide'}`}
@@ -95,10 +118,14 @@ class RegisterForm extends Component {
                     label="Confirm Password"
                   />
                 </div>
-                <div className="clearfix">
+                <div className="clearfix form-register__footer">
+                  <div className="confirm-eula">
+                    <Field name="confirmEULA" component={YBCheckBox} />
+                    <div>I agree to Yugabyte, Inc's <a href="https://www.yugabyte.com/eula/" target="_blank" rel="noreferrer noopener">End User License Agreement</a>.</div>
+                  </div>
                   <YBButton
                     btnType="submit"
-                    disabled={isSubmitting || getPromiseState(authToken).isLoading()}
+                    disabled={isSubmitting || !isValid || getPromiseState(authToken).isLoading()}
                     btnClass="btn btn-orange pull-right"
                     btnText="Register"
                   />

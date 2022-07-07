@@ -18,56 +18,62 @@
 
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
+#include <ostream>
+
 namespace yb {
 namespace ql {
 
 const char* ObjectTypeName(ObjectType object_type) {
   switch (object_type) {
-    case OBJECT_AGGREGATE: return "aggregate";
-    case OBJECT_AMOP: return "access method operator";
-    case OBJECT_AMPROC: return "access method procedure";
-    case OBJECT_ATTRIBUTE: return "attribute";
-    case OBJECT_CAST: return "cast";
-    case OBJECT_COLUMN: return "column";
-    case OBJECT_COLLATION: return "collation";
-    case OBJECT_CONVERSION: return "conversion";
-    case OBJECT_DATABASE: return "database";
-    case OBJECT_DEFAULT: return "default";
-    case OBJECT_DEFACL: return "defacl";
-    case OBJECT_DOMAIN: return "domain";
-    case OBJECT_DOMCONSTRAINT: return "domain constraint";
-    case OBJECT_EVENT_TRIGGER: return "event trigger";
-    case OBJECT_EXTENSION: return "extension";
-    case OBJECT_FDW: return "foreign data wrapper";
-    case OBJECT_FOREIGN_SERVER: return "foreign server";
-    case OBJECT_FOREIGN_TABLE: return "foreign table";
-    case OBJECT_FUNCTION: return "function";
-    case OBJECT_INDEX: return "index";
-    case OBJECT_LANGUAGE: return "language";
-    case OBJECT_LARGEOBJECT: return "large object";
-    case OBJECT_MATVIEW: return "materialized view";
-    case OBJECT_OPCLASS: return "operator class";
-    case OBJECT_OPERATOR: return "operator";
-    case OBJECT_OPFAMILY: return "operator family";
-    case OBJECT_POLICY: return "policy";
-    case OBJECT_ROLE: return "role";
-    case OBJECT_RULE: return "rule";
-    case OBJECT_SCHEMA: return "schema";
-    case OBJECT_SEQUENCE: return "sequence";
-    case OBJECT_TABCONSTRAINT: return "table constraint";
-    case OBJECT_TABLE: return "table";
-    case OBJECT_TABLESPACE: return "tablespace";
-    case OBJECT_TRANSFORM: return "transform";
-    case OBJECT_TRIGGER: return "trigger";
-    case OBJECT_TSCONFIGURATION: return "text search configuration";
-    case OBJECT_TSDICTIONARY: return "text search dictionary";
-    case OBJECT_TSPARSER: return "text search parser";
-    case OBJECT_TSTEMPLATE: return "text search template";
-    case OBJECT_TYPE: return "type";
-    case OBJECT_USER_MAPPING: return "user mapping";
-    case OBJECT_VIEW: return "view";
+    case ObjectType::AGGREGATE: return "aggregate";
+    case ObjectType::AMOP: return "access method operator";
+    case ObjectType::AMPROC: return "access method procedure";
+    case ObjectType::ATTRIBUTE: return "attribute";
+    case ObjectType::CAST: return "cast";
+    case ObjectType::COLUMN: return "column";
+    case ObjectType::COLLATION: return "collation";
+    case ObjectType::CONVERSION: return "conversion";
+    case ObjectType::DATABASE: return "database";
+    case ObjectType::DEFAULT: return "default";
+    case ObjectType::DEFACL: return "defacl";
+    case ObjectType::DOMAIN: return "domain";
+    case ObjectType::DOMCONSTRAINT: return "domain constraint";
+    case ObjectType::EVENT_TRIGGER: return "event trigger";
+    case ObjectType::EXTENSION: return "extension";
+    case ObjectType::FDW: return "foreign data wrapper";
+    case ObjectType::FOREIGN_SERVER: return "foreign server";
+    case ObjectType::FOREIGN_TABLE: return "foreign table";
+    case ObjectType::FUNCTION: return "function";
+    case ObjectType::INDEX: return "index";
+    case ObjectType::LANGUAGE: return "language";
+    case ObjectType::LARGEOBJECT: return "large object";
+    case ObjectType::MATVIEW: return "materialized view";
+    case ObjectType::OPCLASS: return "operator class";
+    case ObjectType::OPERATOR: return "operator";
+    case ObjectType::OPFAMILY: return "operator family";
+    case ObjectType::POLICY: return "policy";
+    case ObjectType::ROLE: return "role";
+    case ObjectType::RULE: return "rule";
+    case ObjectType::SCHEMA: return "schema";
+    case ObjectType::SEQUENCE: return "sequence";
+    case ObjectType::TABCONSTRAINT: return "table constraint";
+    case ObjectType::TABLE: return "table";
+    case ObjectType::TABLESPACE: return "tablespace";
+    case ObjectType::TRANSFORM: return "transform";
+    case ObjectType::TRIGGER: return "trigger";
+    case ObjectType::TSCONFIGURATION: return "text search configuration";
+    case ObjectType::TSDICTIONARY: return "text search dictionary";
+    case ObjectType::TSPARSER: return "text search parser";
+    case ObjectType::TSTEMPLATE: return "text search template";
+    case ObjectType::TYPE: return "type";
+    case ObjectType::USER_MAPPING: return "user mapping";
+    case ObjectType::VIEW: return "view";
   }
   return "unknown object type";
+}
+
+std::ostream& operator<<(std::ostream& out, ObjectType object_type) {
+  return out << ObjectTypeName(object_type);
 }
 
 }  // namespace ql

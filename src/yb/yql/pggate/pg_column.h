@@ -18,8 +18,8 @@
 #ifndef YB_YQL_PGGATE_PG_COLUMN_H_
 #define YB_YQL_PGGATE_PG_COLUMN_H_
 
-#include "yb/yql/pggate/pg_coldesc.h"
-#include "yb/yql/pggate/pg_expr.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_datatype.h"
 
 namespace yb {
 namespace pggate {
@@ -27,59 +27,46 @@ namespace pggate {
 class PgColumn {
  public:
   // Constructor & Destructor.
-  PgColumn();
-  virtual ~PgColumn() {
-  }
-
-  // Initialize hidden columns.
-  void Init(PgSystemAttrNum attr_num);
+  PgColumn(std::reference_wrapper<const Schema> schema, size_t index);
 
   // Bindings for write requests.
-  PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlWriteRequestPB *write_req);
-  PgsqlExpressionPB *AllocBindPB(PgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlWriteRequestPB *write_req);
 
   // Bindings for read requests.
-  PgsqlExpressionPB *AllocPrimaryBindPB(PgsqlReadRequestPB *write_req);
-  PgsqlExpressionPB *AllocBindPB(PgsqlReadRequestPB *read_req);
+  LWPgsqlExpressionPB *AllocPrimaryBindPB(LWPgsqlReadRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocBindPB(LWPgsqlReadRequestPB *read_req);
 
   // Bindings for read requests.
-  PgsqlExpressionPB *AllocBindConditionExprPB(PgsqlReadRequestPB *read_req);
+  LWPgsqlExpressionPB *AllocBindConditionExprPB(LWPgsqlReadRequestPB *read_req);
 
   // Assign values for write requests.
-  PgsqlExpressionPB *AllocAssignPB(PgsqlWriteRequestPB *write_req);
+  LWPgsqlExpressionPB *AllocAssignPB(LWPgsqlWriteRequestPB *write_req);
+
+  void ResetBindPB();
 
   // Access functions.
-  ColumnDesc *desc() {
-    return &desc_;
-  }
+  const ColumnSchema& desc() const;
 
-  const ColumnDesc *desc() const {
-    return &desc_;
-  }
-
-  PgsqlExpressionPB *bind_pb() {
+  const LWPgsqlExpressionPB *bind_pb() const {
     return bind_pb_;
   }
 
-  PgsqlExpressionPB *assign_pb() {
+  LWPgsqlExpressionPB *bind_pb() {
+    return bind_pb_;
+  }
+
+  LWPgsqlExpressionPB *assign_pb() {
     return assign_pb_;
   }
 
-  const string& attr_name() const {
-    return desc_.name();
-  }
+  const std::string& attr_name() const;
 
-  int attr_num() const {
-    return desc_.attr_num();
-  }
+  int attr_num() const;
 
-  int id() const {
-    return desc_.id();
-  }
+  int id() const;
 
-  InternalType internal_type() const {
-    return desc_.internal_type();
-  }
+  InternalType internal_type() const;
 
   bool read_requested() const {
     return read_requested_;
@@ -97,14 +84,35 @@ class PgColumn {
     write_requested_ = value;
   }
 
-  bool is_system_column() {
-    return attr_num() < 0;
+  bool is_partition() const;
+  bool is_primary() const;
+  bool is_virtual_column() const;
+
+  void set_pg_type_info(int typid, int typmod, int collid) {
+    pg_typid_ = typid;
+    pg_typmod_ = typmod;
+    pg_collid_ = collid;
   }
 
-  bool is_virtual_column();
+  bool has_pg_type_info() const {
+    return pg_typid_ != 0;
+  }
+
+  int pg_typid() const {
+    return pg_typid_;
+  }
+
+  int pg_typmod() const {
+    return pg_typmod_;
+  }
+
+  int pg_collid() const {
+    return pg_collid_;
+  }
 
  private:
-  ColumnDesc desc_;
+  const Schema& schema_;
+  const size_t index_;
 
   // Protobuf code.
   // Input binds. For now these are just literal values of the columns.
@@ -114,17 +122,23 @@ class PgColumn {
   //   structures for associated expressions of the primary columns in the specified order.
   // - During DML execution, the reserved expression spaces will be filled with actual values.
   // - The data-member "primary_exprs" is to map column id with the reserved expression spaces.
-  PgsqlExpressionPB *bind_pb_ = nullptr;
-  PgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
+  LWPgsqlExpressionPB *bind_pb_ = nullptr;
+  LWPgsqlExpressionPB *bind_condition_expr_pb_ = nullptr;
 
   // Protobuf for new-values of a column in the tuple.
-  PgsqlExpressionPB *assign_pb_ = nullptr;
+  LWPgsqlExpressionPB *assign_pb_ = nullptr;
 
   // Wether or not this column must be read from DB for the SQL request.
   bool read_requested_ = false;
 
   // Wether or not this column will be written for the request.
   bool write_requested_ = false;
+
+  int pg_typid_ = 0;
+
+  int pg_typmod_ = -1;
+
+  int pg_collid_ = 0;
 };
 
 }  // namespace pggate

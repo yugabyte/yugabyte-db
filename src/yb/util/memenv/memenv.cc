@@ -18,28 +18,27 @@
 //
 // Modified for yb:
 // - use boost mutexes instead of port mutexes
+#include "yb/util/memenv/memenv.h"
 
 #include <string.h>
 
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
 
 #include <glog/logging.h>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/strip.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 #include "yb/util/env.h"
 #include "yb/util/file_system_mem.h"
 #include "yb/util/malloc.h"
 #include "yb/util/mutex.h"
-#include "yb/util/memenv/memenv.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
 
 namespace yb {
@@ -104,9 +103,9 @@ class WritableFileImpl : public WritableFile {
 
   // This is a dummy implementation that simply serially appends all
   // slices using regular I/O.
-  Status AppendVector(const vector<Slice>& data_vector) override {
-    for (const Slice& data : data_vector) {
-      RETURN_NOT_OK(file_->Append(data));
+  Status AppendSlices(const Slice* slices, size_t num) override {
+    for (const auto* end = slices + num; slices != end; ++slices) {
+      RETURN_NOT_OK(file_->Append(*slices));
     }
     return Status::OK();
   }
@@ -250,14 +249,14 @@ class InMemoryEnv : public EnvWrapper {
                                      std::string* created_filename,
                                      std::unique_ptr<WritableFile>* result) override {
     // Not very random, but InMemoryEnv is basically a test env.
-    Random random(GetCurrentTimeMicros());
+    std::mt19937_64 random(GetCurrentTimeMicros());
     while (true) {
       string stripped;
       if (!TryStripSuffixString(name_template, "XXXXXX", &stripped)) {
         return STATUS(InvalidArgument, "Name template must end with the string XXXXXX",
                                        name_template);
       }
-      uint32_t num = random.Next() % 999999; // Ensure it's <= 6 digits long.
+      uint32_t num = random() % 999999; // Ensure it's <= 6 digits long.
       string path = StringPrintf("%s%06u", stripped.c_str(), num);
 
       MutexLock lock(mutex_);
@@ -275,7 +274,7 @@ class InMemoryEnv : public EnvWrapper {
     return file_map_.find(fname) != file_map_.end();
   }
 
-  CHECKED_STATUS GetChildren(const std::string& dir,
+  Status GetChildren(const std::string& dir,
                              ExcludeDots exclude_dots,
                              vector<std::string>* result) override {
     MutexLock lock(mutex_);
@@ -407,6 +406,10 @@ class InMemoryEnv : public EnvWrapper {
 
   Result<uint64_t> GetFreeSpaceBytes(const std::string& path) override {
     LOG(FATAL) << "Not implemented";
+  }
+
+  bool IsEncrypted() const override {
+    return false;
   }
 
  private:

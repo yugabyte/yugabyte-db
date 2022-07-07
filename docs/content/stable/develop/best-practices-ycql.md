@@ -3,16 +3,12 @@ title: Best practices for YCQL applications
 headerTitle: Best practices
 linkTitle: Best practices
 description: Learn best practices for developing YCQL applications.
-block_indexing: true
 menu:
   stable:
     identifier: best-practices-ycql
     parent: develop
     weight: 582
-aliases:
-  - /stable/develop/best-practices/
-isTocNested: 4
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -96,10 +92,20 @@ Big columns add up when selecting full rows or multiple of them. For consistent 
 
 ### Don't use big collections
 
-Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages). 
-While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them. 
-In particular, some list operations (insert at an index and remove elements) require a read-before-write. 
+Collections are designed for storing small sets of values that are not expected to grow to arbitrary size (such as phone numbers or addresses for a user rather than posts or messages).
+While collections of larger sizes are allowed, they may have a significant impact on performance for queries involving them.
+In particular, some list operations (insert at an index and remove elements) require a read-before-write.
 
+### Collections with many elements
+
+Each element inside a collection ends up as a [separate key value](../../architecture/docdb/persistence#ycql-collection-type-example) in DocDB adding per-element overhead.
+
+If your collections are immutable, or you update the whole collection in full, consider using the `JSONB` data type. An alternative would also be to use ProtoBuf or FlatBuffers and store the serialized data in a `BLOB` column.
+
+### Use `partition_hash` for large table scans
+
+`partition_hash` function can be handy for querying a subset of the data to get approximate row counts or to breakdown
+ full-table operations into smaller sub-tasks that can be run in parallel. See [example usage](../../api/ycql/expr_fcall#partition-hash-function) along with a working Python script.
 
 ## Miscellaneous
 

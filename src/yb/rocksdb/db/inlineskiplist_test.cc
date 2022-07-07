@@ -23,9 +23,10 @@
 
 #include <set>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/inlineskiplist.h"
 #include "yb/rocksdb/db/skiplist.h"
-
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/concurrent_arena.h"
 #include "yb/rocksdb/util/hash.h"
@@ -34,6 +35,7 @@
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/random_util.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tsan_util.h"
 
 namespace rocksdb {
@@ -63,7 +65,7 @@ struct TestComparator {
   }
 };
 
-class InlineSkipTest : public testing::Test {};
+class InlineSkipTest : public RocksDBTest {};
 
 TEST_F(InlineSkipTest, Empty) {
   Arena arena;

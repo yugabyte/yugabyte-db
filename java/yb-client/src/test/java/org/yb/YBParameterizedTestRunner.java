@@ -19,6 +19,8 @@ import org.junit.runner.Runner;
 import org.junit.runner.manipulation.Filter;
 import org.junit.runners.Parameterized;
 import org.junit.runners.parameterized.BlockJUnit4ClassRunnerWithParameters;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.yb.client.TestUtils;
 import org.yb.util.ConfForTesting;
 
@@ -29,8 +31,18 @@ public class YBParameterizedTestRunner extends Parameterized {
   /**
    * Only called reflectively. Do not use programmatically.
    */
+  private static final Logger LOG = LoggerFactory.getLogger(YBParameterizedTestRunner.class);
+
+  protected boolean shouldRunTests() {
+    return true;
+  }
+
   public YBParameterizedTestRunner(Class<?> klass) throws Throwable {
     super(klass);
+
+    if (!shouldRunTests()) {
+      return;
+    }
     if (ConfForTesting.onlyCollectingTests()) {
       for (Runner runner : super.getChildren()) {
         BlockJUnit4ClassRunnerWithParameters r = ((BlockJUnit4ClassRunnerWithParameters) runner);
@@ -53,7 +65,7 @@ public class YBParameterizedTestRunner extends Parameterized {
 
   @Override
   protected List<Runner> getChildren() {
-    if (ConfForTesting.onlyCollectingTests()) {
+    if (ConfForTesting.onlyCollectingTests() || !shouldRunTests()) {
       return Collections.emptyList();
     }
     return super.getChildren();

@@ -34,7 +34,6 @@
 
 #include "yb/gutil/integral_types.h"
 #include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/hash/jenkins_lookup2.h"
 #include "yb/gutil/macros.h"
 
@@ -46,10 +45,9 @@ static inline uint64 char2unsigned64(char c) {
   return static_cast<uint64>(static_cast<unsigned char>(c));
 }
 
-uint32 Hash32StringWithSeedReferenceImplementation(const char *s, uint32 len,
-                                                   uint32 c) {
+uint32 Hash32StringWithSeedReferenceImplementation(const char *s, size_t len, uint32 c) {
   uint32 a, b;
-  uint32 keylen;
+  size_t keylen;
 
   a = b = 0x9e3779b9UL;           // the golden ratio; an arbitrary value
 
@@ -58,7 +56,7 @@ uint32 Hash32StringWithSeedReferenceImplementation(const char *s, uint32 len,
     a += Google1At(s);
     b += Google1At(s + sizeof(a));
     c += Google1At(s + sizeof(a)*2);
-    mix(a,b,c);
+    mix(a, b, c);
   }
 
   c += len;
@@ -77,18 +75,17 @@ uint32 Hash32StringWithSeedReferenceImplementation(const char *s, uint32 len,
     case 1 : a += char2unsigned(s[0]);
       // case 0 : nothing left to add
   }
-  mix(a,b,c);
+  mix(a, b, c);
   return c;
 }
 
 
-uint32 Hash32StringWithSeed(const char *s, uint32 len, uint32 c) {
+uint32 Hash32StringWithSeed(const char *s, size_t len, uint32 c) {
   uint32 a, b;
-  uint32 keylen;
 
   a = b = 0x9e3779b9UL;           // the golden ratio; an arbitrary value
 
-  keylen = len;
+  size_t keylen = len;
   if (keylen >= 4 * sizeof(a)) {
     uint32 word32AtOffset0 = Google1At(s);
     do {
@@ -156,18 +153,18 @@ uint32 Hash32StringWithSeed(const char *s, uint32 len, uint32 c) {
   return c;
 }
 
-uint64 Hash64StringWithSeed(const char *s, uint32 len, uint64 c) {
+uint64 Hash64StringWithSeed(const char *s, size_t len, uint64 c) {
   uint64 a, b;
-  uint32 keylen;
+  size_t keylen;
 
   a = b = GG_ULONGLONG(0xe08c1d668b756f82);   // the golden ratio; an arbitrary value
 
   for ( keylen = len;  keylen >= 3 * sizeof(a);
-	keylen -= 3 * static_cast<uint32>(sizeof(a)), s += 3 * sizeof(a) ) {
+    keylen -= 3 * static_cast<uint32>(sizeof(a)), s += 3 * sizeof(a) ) {
     a += Word64At(s);
     b += Word64At(s + sizeof(a));
     c += Word64At(s + sizeof(a) * 2);
-    mix(a,b,c);
+    mix(a, b, c);
   }
 
   c += len;
@@ -195,9 +192,9 @@ uint64 Hash64StringWithSeed(const char *s, uint32 len, uint64 c) {
     case  4: a += char2unsigned64(s[ 3]) << 24; FALLTHROUGH_INTENDED;
     case  3: a += char2unsigned64(s[ 2]) << 16; FALLTHROUGH_INTENDED;
     case  2: a += char2unsigned64(s[ 1]) << 8; FALLTHROUGH_INTENDED;
-    case  1: a += char2unsigned64(s[ 0]) ;
+    case  1: a += char2unsigned64(s[ 0]);
       // case 0: nothing left to add
-   }
-   mix(a,b,c);
-   return c;
+  }
+  mix(a, b, c);
+  return c;
 }

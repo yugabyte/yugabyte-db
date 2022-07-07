@@ -23,9 +23,13 @@ import java.util.Random;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCreateTableWithProperties extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCreateTableWithProperties.class);
+
   @Test
   public void testCreateTable() throws Exception {
     LOG.info("Begin test");
@@ -569,4 +573,37 @@ public class TestCreateTableWithProperties extends BaseCQLTest {
     RunInvalidTableProperty("transactions = 1234");
   }
 
+  @Test
+  public void testTablets() throws Exception {
+    // Test create table with and without specified number of tablets.
+    String create_table = "create table %s (k int primary key, v int) %s;";
+    session.execute(String.format(create_table, "test_0", ""));
+    session.execute(String.format(create_table, "test_1", "with tablets=0"));
+    session.execute(String.format(create_table, "test_2", "with tablets=7"));
+    session.execute(String.format(create_table, "test_3",
+        "with transactions = {'enabled' : true} and tablets = 5;"));
+
+    // Test create index with and without specified number of tablets.
+    String create_index = "create index %s on %s(v) %s;";
+    session.execute(String.format(create_index, "test_3_idx_1", "test_3", ""));
+    session.execute(String.format(create_index, "test_3_idx_2", "test_3", "with tablets = 6"));
+
+    // Verify the number of tablets property.
+    assertQueryRowsUnordered("select table_name, tablets from system_schema.tables where " +
+        "keyspace_name = '" + DEFAULT_TEST_KEYSPACE + "';",
+        "Row[test_1, NULL]",
+        "Row[test_3, 5]",
+        "Row[test_2, 7]",
+        "Row[test_0, NULL]");
+
+    assertQueryRowsUnordered("select index_name, tablets from system_schema.indexes where " +
+        "keyspace_name = '" + DEFAULT_TEST_KEYSPACE + "';",
+        "Row[test_3_idx_1, NULL]",
+        "Row[test_3_idx_2, 6]");
+
+    // Test invalid tablets property settings.
+    runInvalidStmt(String.format(create_table, "test", "tablets=3")); // No 'WITH' word.
+    RunInvalidTableProperty("tablets=-3");
+    RunInvalidTableProperty("tablets=9000");
+  }
 }

@@ -21,7 +21,11 @@
 #include "yb/client/client.h"
 
 #include "yb/consensus/opid_util.h"
+
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/logging.h"
+#include "yb/util/status_log.h"
 #include "yb/util/threadpool.h"
 
 // Similar heuristic to heartbeat_interval in heartbeater.cc.
@@ -63,6 +67,7 @@ CDCPoller::CDCPoller(const cdc::ProducerTabletInfo& producer_tablet_info,
     output_client_(CreateTwoDCOutputClient(
         cdc_consumer,
         consumer_tablet_info,
+        producer_tablet_info,
         local_client,
         rpcs,
         std::bind(&CDCPoller::HandleApplyChanges, this, std::placeholders::_1),
@@ -110,10 +115,10 @@ void CDCPoller::DoPoll() {
   // determine if we should delay our upcoming poll
   int64_t delay = FLAGS_async_replication_polling_delay_ms; // normal throttling.
   if (idle_polls_ >= FLAGS_async_replication_max_idle_wait) {
-    delay = max(delay, (int64_t)FLAGS_async_replication_idle_delay_ms); // idle backoff.
+    delay = std::max(delay, (int64_t)FLAGS_async_replication_idle_delay_ms); // idle backoff.
   }
   if (poll_failures_ > 0) {
-    delay = max(delay, (int64_t)1 << poll_failures_); // exponential backoff for failures.
+    delay = std::max(delay, (int64_t)1 << poll_failures_); // exponential backoff for failures.
   }
   if (delay > 0) {
     SleepFor(MonoDelta::FromMilliseconds(delay));
@@ -146,8 +151,8 @@ void CDCPoller::DoPoll() {
       nullptr, /* RemoteTablet: will get this from 'req' */
       producer_client_->client.get(),
       &req,
-      [=](const Status &status, cdc::GetChangesResponsePB &&new_resp) {
-        auto retained = rpcs->Unregister(&poll_handle_);
+      [this](const Status &status, cdc::GetChangesResponsePB &&new_resp) {
+        auto retained = rpcs_->Unregister(&poll_handle_);
         auto resp = std::make_shared<cdc::GetChangesResponsePB>(std::move(new_resp));
         WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(&CDCPoller::HandlePoll, this,
                                                        status, resp)),
@@ -185,10 +190,10 @@ void CDCPoller::HandlePoll(yb::Status status,
   }
   if (failed) {
     // In case of errors, try polling again with backoff
-    poll_failures_ = min(poll_failures_ + 1, FLAGS_replication_failure_delay_exponent);
+    poll_failures_ = std::min(poll_failures_ + 1, FLAGS_replication_failure_delay_exponent);
     return Poll();
   }
-  poll_failures_ = max(poll_failures_ - 2, 0); // otherwise, recover slowly if we're congested
+  poll_failures_ = std::max(poll_failures_ - 2, 0); // otherwise, recover slowly if we're congested
 
   // Success Case: ApplyChanges() from Poll
   WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
@@ -214,13 +219,13 @@ void CDCPoller::DoHandleApplyChanges(cdc::OutputClientResponse response) {
   if (!response.status.ok()) {
     LOG_WITH_PREFIX_UNLOCKED(WARNING) << "ApplyChanges failure: " << response.status;
     // Repeat the ApplyChanges step, with exponential backoff
-    apply_failures_ = min(apply_failures_ + 1, FLAGS_replication_failure_delay_exponent);
+    apply_failures_ = std::min(apply_failures_ + 1, FLAGS_replication_failure_delay_exponent);
     int64_t delay = (1 << apply_failures_) -1;
     SleepFor(MonoDelta::FromMilliseconds(delay));
     WARN_NOT_OK(output_client_->ApplyChanges(resp_.get()), "Could not ApplyChanges");
     return;
   }
-  apply_failures_ = max(apply_failures_ - 2, 0); // recover slowly if we've gotten congested
+  apply_failures_ = std::max(apply_failures_ - 2, 0); // recover slowly if we've gotten congested
 
   op_id_ = response.last_applied_op_id;
 

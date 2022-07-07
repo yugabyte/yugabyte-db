@@ -10,179 +10,218 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.Set;
+import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import org.yb.Common;
-import org.yb.client.YBClient;
-
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
+import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
+@Abortable
+@Retryable
 public class CreateUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(CreateUniverse.class);
 
+  @Inject
+  protected CreateUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
+
+  // In-memory password store for ysqlPassword and ycqlPassword.
+  private static final Cache<UUID, AuthPasswords> passwordStore =
+      CacheBuilder.newBuilder().expireAfterAccess(2, TimeUnit.DAYS).maximumSize(1000).build();
+
+  @AllArgsConstructor
+  private static class AuthPasswords {
+    public String ycqlPassword;
+    public String ysqlPassword;
+  }
+
+  // CreateUniverse can be retried, so all tasks within should be idempotent. For an example of how
+  // to achieve idempotence or to make retries more performant, see the createProvisionNodeTasks
+  // pattern below
   @Override
   public void run() {
-    LOG.info("Started {} task.", getName());
+    log.info("Started {} task.", getName());
     try {
-      // Verify the task params.
-      verifyParams(UniverseOpType.CREATE);
+      if (isFirstTryForTask(taskParams())) {
+        // Verify the task params.
+        verifyParams(UniverseOpType.CREATE);
+      }
 
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      boolean isYCQLAuthEnabled =
+          primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth;
+      boolean isYSQLAuthEnabled =
+          primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth;
+
+      // Store the passwords in the temporary variables first.
+      // DB does not store the actual passwords.
+      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+        if (isFirstTryForTask(taskParams())) {
+          if (isYCQLAuthEnabled) {
+            ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+          }
+          if (isYSQLAuthEnabled) {
+            ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+          }
+        }
+      }
 
       // Update the universe DB with the update to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
+      // It returns the latest state of the Universe after saving.
+      Universe universe =
+          lockUniverseForUpdate(
+              taskParams().expectedUniverseVersion,
+              u -> {
+                if (isFirstTryForTask(taskParams())) {
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
+                  // Set all the in-memory node names.
+                  setNodeNames(u);
+                  // Select master nodes and apply isMaster flags immediately.
+                  selectAndApplyMasters();
+                  // Set non on-prem node UUIDs.
+                  setCloudNodeUuids(u);
+                  // Update on-prem node UUIDs.
+                  updateOnPremNodeUuidsOnTaskParams();
+                  // Set the prepared data to universe in-memory.
+                  setUserIntentToUniverse(u, taskParams(), false);
+                  // There is a rare possibility that this succeeds and
+                  // saving the Universe fails. It is ok because the retry
+                  // will just fail.
+                  updateTaskDetailsInDB(taskParams());
+                }
+              });
 
-      // Set all the in-memory node names.
-      setNodeNames(UniverseOpType.CREATE, universe);
-
-      // Select master nodes.
-      selectMasters();
-
-      if (taskParams().firstTry) {
-        // Update the user intent.
-        writeUserIntentToUniverse();
+      if (isYCQLAuthEnabled || isYSQLAuthEnabled) {
+        if (isFirstTryForTask(taskParams())) {
+          if (isYCQLAuthEnabled) {
+            taskParams().getPrimaryCluster().userIntent.ycqlPassword =
+                Util.redactString(ycqlPassword);
+          }
+          if (isYSQLAuthEnabled) {
+            taskParams().getPrimaryCluster().userIntent.ysqlPassword =
+                Util.redactString(ysqlPassword);
+          }
+          log.debug("Storing passwords in memory");
+          passwordStore.put(universe.universeUUID, new AuthPasswords(ycqlPassword, ysqlPassword));
+        } else {
+          log.debug("Reading password for {}", universe.universeUUID);
+          // Read from the in-memory store on retry.
+          AuthPasswords passwords = passwordStore.getIfPresent(universe.universeUUID);
+          if (passwords == null) {
+            throw new RuntimeException(
+                "Auth passwords are not found. Platform might have restarted"
+                    + " or task might have expired");
+          }
+          ycqlPassword = passwords.ycqlPassword;
+          ysqlPassword = passwords.ysqlPassword;
+        }
       }
 
-      // Update the universe to the latest state and
-      // check if the nodes already exist in the cloud provider, if so,
-      // fail the universe creation.
-      universe = Universe.get(universe.universeUUID);
-      checkIfNodesExist(universe);
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
+      // TODO this can be moved to subtasks.
+      validateNodeExistence(universe);
 
-      // Check if nodes are able to be provisioned/configured properly.
-      createPrecheckTasks(taskParams().nodeDetailsSet)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      // Create preflight node check tasks for on-prem nodes.
+      createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
-      // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(taskParams().nodeDetailsSet)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Get all information about the nodes of the cluster. This includes the public ip address,
-      // the private ip address (in the case of AWS), etc.
-      createServerInfoTasks(taskParams().nodeDetailsSet)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(taskParams().nodeDetailsSet, false /* isShell */)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      // Provision the nodes.
+      // State checking is enabled because the subtasks are not idempotent.
+      createProvisionNodeTasks(
+          universe,
+          taskParams().nodeDetailsSet,
+          false /* isShell */,
+          false /* ignore node status check */,
+          false /*ignoreUseCustomImageConfig*/);
 
       Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
-      // Override master flags (on primary cluster) and tserver flags as necessary.
-      createGFlagsOverrideTasks(primaryNodes, ServerType.MASTER);
-
-      // Set default gflags
-      addDefaultGFlags(primaryCluster.userIntent);
-      createGFlagsOverrideTasks(taskParams().nodeDetailsSet, ServerType.TSERVER);
 
       // Get the new masters from the node list.
       Set<NodeDetails> newMasters = PlacementInfoUtil.getMastersToProvision(primaryNodes);
 
-      // Creates the YB cluster by starting the masters in the create mode.
-      createStartMasterTasks(newMasters)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Start masters.
+      createStartMasterProcessTasks(newMasters);
 
-      // Wait for new masters to be responsive.
-      createWaitForServersTasks(newMasters, ServerType.MASTER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Start the tservers in the clusters.
-      createStartTServersTasks(taskParams().nodeDetailsSet)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Wait for new tablet servers to be responsive.
-      createWaitForServersTasks(taskParams().nodeDetailsSet, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Start tservers on all nodes.
+      createStartTserverProcessTasks(taskParams().nodeDetailsSet);
 
       // Set the node state to live.
       createSetNodeStateTasks(taskParams().nodeDetailsSet, NodeDetails.NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-      // Wait for a Master Leader to be elected.
-      createWaitForMasterLeaderTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Persist the placement info into the YB master leader.
-      createPlacementInfoTask(null /* blacklistNodes */)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Manage encryption at rest
-      SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
-      if (manageEncryptionKeyTask != null) {
-        manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Start ybc process on all the nodes
+      if (CommonUtils.canConfigureYbc(universe)) {
+        createStartYbcProcessTasks(taskParams().nodeDetailsSet);
       }
 
-      // Wait for a master leader to hear from all the tservers.
-      createWaitForTServerHeartBeatsTask()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Update the swamper target file.
-      createSwamperTargetUpdateTask(false /* removeFile */);
-
-      if (primaryCluster.userIntent.enableYEDIS) {
-        // Create a simple redis table.
-        createTableTask(Common.TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Update the DNS entry for all the nodes once, using the primary cluster type.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Create, false,
-                                primaryCluster.userIntent.providerType,
-                                primaryCluster.userIntent.provider,
-                                primaryCluster.userIntent.universeName)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Marks the update of this universe as a success only if all the tasks before it succeeded.
-      createMarkUniverseUpdateSuccessTasks()
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createConfigureUniverseTasks(primaryCluster);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      LOG.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate();
+      Universe universe = unlockUniverseForUpdate();
+      if (universe != null && universe.getUniverseDetails().updateSucceeded) {
+        log.debug("Removing passwords for {}", universe.universeUUID);
+        passwordStore.invalidate(universe.universeUUID);
+      }
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 
-  private void checkIfNodesExist(Universe universe) {
-    String errMsg;
+  private void validateNodeExistence(Universe universe) {
     for (NodeDetails node : universe.getNodes()) {
       if (node.placementUuid == null) {
-        errMsg = String.format("Node %s does not have placement.", node.nodeName);
+        String errMsg = String.format("Node %s does not have placement.", node.nodeName);
         throw new RuntimeException(errMsg);
       }
       Cluster cluster = universe.getCluster(node.placementUuid);
-      if (!cluster.userIntent.providerType.equals(CloudType.onprem)) {
-        NodeTaskParams nodeParams = new NodeTaskParams();
-        nodeParams.universeUUID = universe.universeUUID;
-        nodeParams.expectedUniverseVersion = universe.version;
-        nodeParams.nodeName = node.nodeName;
-        nodeParams.azUuid = node.azUuid;
-        nodeParams.placementUuid = node.placementUuid;
-        if (instanceExists(nodeParams)){
-          errMsg = String.format("Node %s already exist. Pick different universe name.",
-                                 node.nodeName);
-          throw new RuntimeException(errMsg);
-        }
+      if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
+        continue;
+      }
+      Map<String, String> expectedTags = new HashMap<>();
+      expectedTags.put("universe_uuid", universe.universeUUID.toString());
+      if (node.nodeUuid != null) {
+        expectedTags.put("node_uuid", node.nodeUuid.toString());
+      }
+      NodeTaskParams nodeParams = new NodeTaskParams();
+      nodeParams.universeUUID = universe.universeUUID;
+      nodeParams.expectedUniverseVersion = universe.version;
+      nodeParams.nodeName = node.nodeName;
+      nodeParams.nodeUuid = node.nodeUuid;
+      nodeParams.azUuid = node.azUuid;
+      nodeParams.placementUuid = node.placementUuid;
+      Optional<Boolean> optional = instanceExists(nodeParams, expectedTags);
+      if (optional.isPresent() && !optional.get()) {
+        String errMsg =
+            String.format("Node %s already exist. Pick different universe name.", node.nodeName);
+        throw new RuntimeException(errMsg);
       }
     }
   }

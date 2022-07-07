@@ -47,10 +47,11 @@
 #include "yb/rocksdb/util/aligned_buffer.h"
 
 #include "util/thread_senv_tatus_updater.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
 #include <Rpc.h>  // For UUID generation
 #include <Windows.h>
+
+DECLARE_bool(never_fsync);
 
 namespace rocksdb {
 
@@ -70,10 +71,6 @@ std::string GetWindowsErrSz(DWORD err) {
 namespace {
 
 const size_t c_OneMB = (1 << 20);
-
-ThreadStatusUpdater* CreateThreadStatusUpdater() {
-  return new ThreadStatusUpdater();
-}
 
 inline Status IOErrorFromWindowsError(const std::string& context, DWORD err) {
   return STATUS(IOError, context, GetWindowsErrSz(err));
@@ -167,6 +164,9 @@ SSIZE_T pread(HANDLE hFile, char* src, size_t numBytes, uint64_t offset) {
 // to errno
 // is a sad business
 inline int fsync(HANDLE hFile) {
+  if (FLAGS_never_fsync) {
+    return 0;
+  }
   if (!FlushFileBuffers(hFile)) {
     return -1;
   }
@@ -1180,9 +1180,6 @@ class WinEnv : public Env {
     for (auto& thpool : thread_pools_) {
       thpool.JoinAllThreads();
     }
-    // All threads must be joined before the deletion of
-    // thread_status_updater_.
-    delete thread_status_updater_;
   }
 
   Status DeleteFile(const std::string& fname) override {
@@ -1650,12 +1647,6 @@ class WinEnv : public Env {
     return Status::OK();
   }
 
-  virtual Status GetThreadList(
-      std::vector<ThreadStatus>* thread_list) override {
-    assert(thread_status_updater_);
-    return thread_status_updater_->GetThreadList(thread_list);
-  }
-
   static uint64_t gettid() {
     uint64_t thread_id = GetCurrentThreadId();
     return thread_id;
@@ -1997,17 +1988,7 @@ class WinEnv : public Env {
       size_t thread_id = meta->thread_id_;
       ThreadPool* tp = meta->thread_pool_;
 
-#if ROCKSDB_USING_THREAD_STATUS
-      // for thread-status
-      ThreadStatusUtil::RegisterThread(
-          tp->env_, (tp->GetThreadPriority() == Env::Priority::HIGH
-                         ? ThreadStatus::HIGH_PRIORITY
-                         : ThreadStatus::LOW_PRIORITY));
-#endif
       tp->BGThread(thread_id);
-#if ROCKSDB_USING_THREAD_STATUS
-      ThreadStatusUtil::UnregisterThread();
-#endif
       return nullptr;
     }
 
@@ -2173,9 +2154,6 @@ WinEnv::WinEnv()
     // This allows later initializing the thread-local-env of each thread.
     thread_pools_[pool_id].SetHostEnv(this);
   }
-
-  // Protected member of the base class
-  thread_status_updater_ = CreateThreadStatusUpdater();
 }
 
 void WinEnv::Schedule(void (*function)(void*), void* arg, Priority pri,

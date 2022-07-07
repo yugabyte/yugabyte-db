@@ -21,14 +21,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/version_set.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/env.h"
+
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class GenerateLevelFilesBriefTest : public testing::Test {
+class GenerateLevelFilesBriefTest : public RocksDBTest {
  public:
   std::vector<FileMetaData*> files_;
   LevelFilesBrief file_level_;
@@ -102,7 +106,7 @@ Options GetOptionsWithNumLevels(int num_levels,
   return opt;
 }
 
-class VersionStorageInfoTest : public testing::Test {
+class VersionStorageInfoTest : public RocksDBTest {
  public:
   const Comparator* ucmp_;
   InternalKeyComparatorPtr icmp_;
@@ -266,7 +270,7 @@ TEST_F(VersionStorageInfoTest, EstimateLiveDataSize2) {
   ASSERT_EQ(4U, vstorage_.EstimateLiveDataSize());
 }
 
-class FindLevelFileTest : public testing::Test {
+class FindLevelFileTest : public RocksDBTest {
  public:
   LevelFilesBrief file_level_;
   bool disjoint_sorted_files_;

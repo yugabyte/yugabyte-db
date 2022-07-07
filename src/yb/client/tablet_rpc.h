@@ -16,25 +16,37 @@
 #ifndef YB_CLIENT_TABLET_RPC_H
 #define YB_CLIENT_TABLET_RPC_H
 
+#include <memory>
+#include <string>
 #include <unordered_set>
 
-#include "yb/client/client-internal.h"
+#include <gflags/gflags_declare.h>
+#include <gtest/gtest_prod.h>
+
 #include "yb/client/client_fwd.h"
+
+#include "yb/common/hybrid_time.h"
+
+#include "yb/master/master_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/tserver/tserver.pb.h"
+#include "yb/tserver/tserver_fwd.h"
+#include "yb/tserver/tserver_types.pb.h"
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
-#include "yb/util/trace.h"
-#include "yb/util/net/net_util.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/net/net_fwd.h"
 
 namespace yb {
 
 namespace tserver {
 class TabletServerServiceProxy;
+class TabletServerForwardServiceProxy;
+}
+
+namespace rpc {
+class RpcController;
 }
 
 namespace client {
@@ -55,10 +67,11 @@ class TabletRpc {
 };
 
 tserver::TabletServerErrorPB_Code ErrorCode(const tserver::TabletServerErrorPB* error);
+
 class TabletInvoker {
  public:
   // If table is specified, TabletInvoker can detect that table partitions are stale in case tablet
-  // is no longer available and return ClientErrorCode::kTablePartitionsAreStale.
+  // is no longer available and return ClientErrorCode::kTablePartitionListIsStale.
   explicit TabletInvoker(const bool local_tserver_only,
                          const bool consistent_prefix,
                          YBClient* client,
@@ -67,7 +80,9 @@ class TabletInvoker {
                          RemoteTablet* tablet,
                          const std::shared_ptr<const YBTable>& table,
                          rpc::RpcRetrier* retrier,
-                         Trace* trace);
+                         Trace* trace,
+                         master::IncludeInactive include_inactive =
+                            master::IncludeInactive::kFalse);
 
   virtual ~TabletInvoker();
 
@@ -77,6 +92,12 @@ class TabletInvoker {
   bool Done(Status* status);
 
   bool IsLocalCall() const;
+
+  void WriteAsync(const tserver::WriteRequestPB& req, tserver::WriteResponsePB *resp,
+                  rpc::RpcController *controller, std::function<void()>&& cb);
+
+  void ReadAsync(const tserver::ReadRequestPB& req, tserver::ReadResponsePB *resp,
+                 rpc::RpcController *controller, std::function<void()>&& cb);
 
   const RemoteTabletPtr& tablet() const { return tablet_; }
   std::shared_ptr<tserver::TabletServerServiceProxy> proxy() const;
@@ -103,7 +124,7 @@ class TabletInvoker {
 
   // Marks all replicas on current_ts_ as failed and retries the write on a
   // new replica.
-  CHECKED_STATUS FailToNewReplica(const Status& reason,
+  Status FailToNewReplica(const Status& reason,
                                   const tserver::TabletServerErrorPB* error_code = nullptr);
 
   // Called when we finish a lookup (to find the new consensus leader). Retries
@@ -120,6 +141,8 @@ class TabletInvoker {
         ErrorCode(error_code) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
         current_ts_ != nullptr;
   }
+
+  bool ShouldUseNodeLocalForwardProxy();
 
   YBClient* const client_;
 
@@ -140,6 +163,9 @@ class TabletInvoker {
   // while this object is alive.
   Trace* const trace_;
 
+  // Whether or not to allow lookups of inactive (hidden) tablets.
+  master::IncludeInactive const include_inactive_;
+
   // Used to retry some failed RPCs.
   // Tablet servers that refused the write because they were followers at the time.
   // Cleared when new consensus configuration information arrives from the master.
@@ -149,9 +175,7 @@ class TabletInvoker {
     // Error time.
     CoarseTimePoint time;
 
-    std::string ToString() const {
-      return Format("{ status: $0 time: $1 }", status, CoarseMonoClock::now() - time);
-    }
+    std::string ToString() const;
   };
 
   std::unordered_map<RemoteTabletServer*, FollowerData> followers_;
@@ -167,9 +191,17 @@ class TabletInvoker {
 
   // Should we assign new leader in meta cache when successful response is received.
   bool assign_new_leader_ = false;
+
+  // Whether to use the local node proxy or to use the default remote proxy for communication to the
+  // tablet servers. This flag is true if all of the following conditions are true:
+  // 1. FLAGS_ysql_forward_rpcs_to_local_tserver is true
+  // 2. The node local forward proxy is set in the client.
+  // 3. The destination tserver is not the same as the node local tserver.
+  // 4. The rpc is not intended for the master.
+  bool should_use_local_node_proxy_ = false;
 };
 
-CHECKED_STATUS ErrorStatus(const tserver::TabletServerErrorPB* error);
+Status ErrorStatus(const tserver::TabletServerErrorPB* error);
 template <class Response>
 HybridTime GetPropagatedHybridTime(const Response& response) {
   return response.has_propagated_hybrid_time() ? HybridTime(response.propagated_hybrid_time())

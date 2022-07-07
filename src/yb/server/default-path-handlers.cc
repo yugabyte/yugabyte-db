@@ -50,6 +50,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
@@ -58,6 +59,8 @@
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/split.h"
@@ -65,19 +68,25 @@
 #include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/jsonwriter.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_int64(web_log_bytes, 1024 * 1024,
+DEFINE_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
+DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
 TAG_FLAG(web_log_bytes, runtime);
+
+DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
 
@@ -145,13 +154,52 @@ static void LogsHandler(const Webserver::WebRequest& req, Webserver::WebResponse
   }
 }
 
-// Registered to handle "/flags", and prints out all command-line flags and their values
+// Registered to handle "/varz", and prints out all command-line flags and their values.
 static void FlagsHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
   bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
   Tags tags(as_text);
   (*output) << tags.header << "Command-line Flags" << tags.end_header;
-  (*output) << tags.pre_tag << CommandlineFlagsIntoString() << tags.end_pre_tag;
+  (*output) << tags.pre_tag;
+  std::vector<google::CommandLineFlagInfo> flag_infos;
+  google::GetAllFlags(&flag_infos);
+
+  if (FLAGS_TEST_mini_cluster_mode) {
+    const string* custom_varz_ptr = FindOrNull(req.parsed_args, "TEST_custom_varz");
+    if (custom_varz_ptr != nullptr) {
+      map<string, string> varz;
+      SplitStringToMapUsing(*custom_varz_ptr, "\n", &varz);
+
+      // Replace values for existing flags.
+      for (auto& flag_info : flag_infos) {
+        auto varz_it = varz.find(flag_info.name);
+        if (varz_it != varz.end()) {
+          flag_info.current_value  = varz_it->second;
+          varz.erase(varz_it);
+        }
+      }
+
+      // Add new flags.
+      for (auto const& flag : varz) {
+        google::CommandLineFlagInfo flag_info;
+        flag_info.name = flag.first;
+        flag_info.current_value = flag.second;
+        flag_infos.push_back(flag_info);
+      }
+    }
+  }
+
+  for (const auto& flag_info : flag_infos) {
+    (*output) << "--" << flag_info.name << "=";
+    std::unordered_set<FlagTag> tags;
+    GetFlagTags(flag_info.name, &tags);
+    if (PREDICT_FALSE(ContainsKey(tags, FlagTag::kSensitive_info))) {
+      (*output) << "****" << endl;
+    } else {
+      (*output) << flag_info.current_value << endl;
+    }
+  }
+  (*output) << tags.end_pre_tag;
 }
 
 // Registered to handle "/status", and simply returns empty JSON.
@@ -185,9 +233,19 @@ static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebR
   *output << "  <tr><th>Id</th><th>Current Consumption</th>"
       "<th>Peak consumption</th><th>Limit</th></tr>\n";
 
+  int max_depth = INT_MAX;
+  string depth = FindWithDefault(req.parsed_args, "max_depth", "");
+  if (depth != "") {
+    max_depth = std::stoi(depth);
+  }
+
   std::vector<MemTrackerData> trackers;
   CollectMemTrackerData(MemTracker::GetRootTracker(), 0, &trackers);
   for (const auto& data : trackers) {
+    // If the data.depth >= max_depth, skip the info.
+    if (data.depth > max_depth) {
+      continue;
+    }
     const auto& tracker = data.tracker;
     const std::string limit_str =
         tracker->limit() == -1 ? "none" : HumanReadableNumBytes::ToString(tracker->limit());
@@ -225,57 +283,72 @@ static MetricLevel MetricLevelFromName(const std::string& level) {
   }
 }
 
+static void ParseRequestOptions(const Webserver::WebRequest& req,
+                                vector<string> *requested_metrics,
+                                MetricPrometheusOptions *promethus_opts,
+                                MetricJsonOptions *json_opts = nullptr,
+                                JsonWriter::Mode *json_mode = nullptr) {
+
+  if (requested_metrics) {
+    const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
+    if (requested_metrics_param != nullptr) {
+      SplitStringUsing(*requested_metrics_param, ",", requested_metrics);
+    } else {
+      // Default to including all metrics.
+      requested_metrics->push_back("*");
+    }
+  }
+
+  string arg;
+  if (json_opts) {
+    arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
+    json_opts->include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "include_schema", "false");
+    json_opts->include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
+
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    json_opts->level = MetricLevelFromName(arg);
+  }
+
+  if (promethus_opts) {
+    arg = FindWithDefault(req.parsed_args, "level", "debug");
+    promethus_opts->level = MetricLevelFromName(arg);
+    promethus_opts->max_tables_metrics_breakdowns = std::stoi(FindWithDefault(req.parsed_args,
+      "max_tables_metrics_breakdowns", std::to_string(FLAGS_max_tables_metrics_breakdowns)));
+    promethus_opts->priority_regex = FindWithDefault(req.parsed_args, "priority_regex", "");
+  }
+
+  if (json_mode) {
+    arg = FindWithDefault(req.parsed_args, "compact", "false");
+    *json_mode =
+        ParseLeadingBoolValue(arg.c_str(), false) ? JsonWriter::COMPACT : JsonWriter::PRETTY;
+  }
+}
+
 static void WriteMetricsAsJson(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  const string* requested_metrics_param = FindOrNull(req.parsed_args, "metrics");
   vector<string> requested_metrics;
   MetricJsonOptions opts;
-
-  {
-    string arg = FindWithDefault(req.parsed_args, "include_raw_histograms", "false");
-    opts.include_raw_histograms = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-  {
-    string arg = FindWithDefault(req.parsed_args, "include_schema", "false");
-    opts.include_schema_info = ParseLeadingBoolValue(arg.c_str(), false);
-  }
-  {
-    string arg = FindWithDefault(req.parsed_args, "level", "debug");
-    opts.level = MetricLevelFromName(arg);
-  }
   JsonWriter::Mode json_mode;
-  {
-    string arg = FindWithDefault(req.parsed_args, "compact", "false");
-    json_mode = ParseLeadingBoolValue(arg.c_str(), false) ?
-      JsonWriter::COMPACT : JsonWriter::PRETTY;
-  }
+  ParseRequestOptions(req, &requested_metrics, /* prometheus opts */ nullptr, &opts, &json_mode);
 
+  std::stringstream* output = &resp->output;
   JsonWriter writer(output, json_mode);
-
-  if (requested_metrics_param != nullptr) {
-    SplitStringUsing(*requested_metrics_param, ",", &requested_metrics);
-  } else {
-    // Default to including all metrics.
-    requested_metrics.push_back("*");
-  }
 
   WARN_NOT_OK(metrics->WriteAsJson(&writer, requested_metrics, opts),
               "Couldn't write JSON metrics over HTTP");
 }
 
-static void WriteForPrometheus(const MetricRegistry* const metrics,
+static void WriteMetricsForPrometheus(const MetricRegistry* const metrics,
                                const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
+  vector<string> requested_metrics;
   MetricPrometheusOptions opts;
+  ParseRequestOptions(req, &requested_metrics, &opts);
 
-  {
-    string arg = FindWithDefault(req.parsed_args, "level", "debug");
-    opts.level = MetricLevelFromName(arg);
-  }
-
+  std::stringstream *output = &resp->output;
   PrometheusWriter writer(output);
-  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, opts),
+  WARN_NOT_OK(metrics->WriteForPrometheus(&writer, requested_metrics, opts),
               "Couldn't write text metrics for Prometheus");
 }
 
@@ -327,7 +400,7 @@ void AddDefaultPathHandlers(Webserver* webserver) {
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics) {
   Webserver::PathHandlerCallback callback = std::bind(WriteMetricsAsJson, metrics, _1, _2);
   Webserver::PathHandlerCallback prometheus_callback = std::bind(
-      WriteForPrometheus, metrics, _1, _2);
+      WriteMetricsForPrometheus, metrics, _1, _2);
   bool not_styled = false;
   bool not_on_nav_bar = false;
   webserver->RegisterPathHandler("/metrics", "Metrics", callback, not_styled, not_on_nav_bar);
@@ -338,6 +411,38 @@ void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* cons
 
   webserver->RegisterPathHandler(
       "/prometheus-metrics", "Metrics", prometheus_callback, not_styled, not_on_nav_bar);
+}
+
+// Registered to handle "/drives", and prints out paths usage
+static void PathUsageHandler(FsManager* fsmanager,
+                             const Webserver::WebRequest& req,
+                             Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  *output << "<h1>Drives usage by subsystem</h1>\n";
+  *output << "<table class='table table-striped'>\n";
+  *output << "  <tr><th>Path</th><th>Used Space</th>"
+      "<th>Total Space</th></tr>\n";
+
+  Env* env = fsmanager->env();
+  for (const auto& path : fsmanager->GetFsRootDirs()) {
+    const auto stats = env->GetFilesystemStatsBytes(path);
+    if (!stats.ok()) {
+      LOG(WARNING) << stats.status();
+      *output << Format("  <tr><td>$0</td><td colspan=\"2\">$1</td></tr>\n",
+                        path, stats.status().message());
+      continue;
+    }
+    const std::string used_space_str = HumanReadableNumBytes::ToString(stats->used_space);
+    const std::string total_space_str = HumanReadableNumBytes::ToString(stats->total_space);
+    *output << Format("  <tr><td>$0</td><td>$1</td><td>$2</td></tr>\n",
+                      path, used_space_str, total_space_str);
+  }
+  *output << "</table>\n";
+}
+
+void RegisterPathUsageHandler(Webserver* webserver, FsManager* fsmanager) {
+  Webserver::PathHandlerCallback callback = std::bind(PathUsageHandler, fsmanager, _1, _2);
+  webserver->RegisterPathHandler("/drives", "Drives", callback, true, false);
 }
 
 } // namespace yb

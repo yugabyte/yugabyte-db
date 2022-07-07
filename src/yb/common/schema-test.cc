@@ -29,47 +29,23 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/common/schema.h"
-
 #include <unordered_map>
 #include <vector>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/key_encoder.h"
+#include "yb/common/common.pb.h"
 #include "yb/common/row.h"
+#include "yb/common/schema.h"
+
 #include "yb/gutil/strings/substitute.h"
-#include "yb/util/hexdump.h"
-#include "yb/util/stopwatch.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {
 namespace tablet {
 
-using std::unordered_map;
 using std::vector;
-using strings::Substitute;
-
-// Copy a row and its referenced data into the given Arena.
-static Status CopyRowToArena(const Slice &row,
-                             const Schema &schema,
-                             Arena *dst_arena,
-                             ContiguousRow *copied) {
-  Slice row_data;
-
-  // Copy the direct row data to arena
-  if (!dst_arena->RelocateSlice(row, &row_data)) {
-    return STATUS(IOError, "no space for row data in arena");
-  }
-
-  copied->Reset(row_data.mutable_data());
-  RETURN_NOT_OK(RelocateIndirectDataToArena(copied, dst_arena));
-  return Status::OK();
-}
-
-
 
 // Test basic functionality of Schema definition
 TEST(TestSchema, TestSchema) {
@@ -91,15 +67,17 @@ TEST(TestSchema, TestSchema) {
   ASSERT_GT(schema.memory_footprint_excluding_this(),
             empty_schema.memory_footprint_excluding_this());
 
-  EXPECT_EQ("Schema [\n"
-            "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
-            "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
-            "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
-            "]\nproperties: contain_counters: false is_transactional: false "
-            "consistency_level: STRONG "
-            "use_mangled_column_name: false "
-            "is_ysql_catalog_table: false "
-            "retain_delete_markers: false",
+  EXPECT_EQ(Format("Schema [\n"
+                   "\tkey[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\tuint32val[uint32 NULLABLE NOT A PARTITION KEY],\n"
+                   "\tint32val[int32 NOT NULL NOT A PARTITION KEY]\n"
+                   "]\nproperties: contain_counters: false is_transactional: false "
+                   "consistency_level: STRONG "
+                   "use_mangled_column_name: false "
+                   "is_ysql_catalog_table: false "
+                   "retain_delete_markers: false "
+                   "partitioning_version: $0",
+                   kCurrentPartitioningVersion),
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
   EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
@@ -244,115 +222,6 @@ TEST(TestSchema, TestProjectRename) {
   ASSERT_EQ(row_projector.base_cols_mapping()[1].second, 1); // val schema1
 }
 
-
-// Test that the schema can be used to compare and stringify rows.
-TEST(TestSchema, TestRowOperations) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", STRING),
-                  ColumnSchema("col3", UINT32),
-                  ColumnSchema("col4", INT32) },
-                1);
-
-  Arena arena(1024, 256*1024);
-
-  RowBuilder rb(schema);
-  rb.AddString(string("row_a_1"));
-  rb.AddString(string("row_a_2"));
-  rb.AddUint32(3);
-  rb.AddInt32(-3);
-  ContiguousRow row_a(&schema);
-  ASSERT_OK(CopyRowToArena(rb.data(), schema, &arena, &row_a));
-
-  rb.Reset();
-  rb.AddString(string("row_b_1"));
-  rb.AddString(string("row_b_2"));
-  rb.AddUint32(3);
-  rb.AddInt32(-3);
-  ContiguousRow row_b(&schema);
-  ASSERT_OK(CopyRowToArena(rb.data(), schema, &arena, &row_b));
-
-  ASSERT_GT(schema.Compare(row_b, row_a), 0);
-  ASSERT_LT(schema.Compare(row_a, row_b), 0);
-
-  ASSERT_EQ(string("(string col1=row_a_1, string col2=row_a_2, uint32 col3=3, int32 col4=-3)"),
-            schema.DebugRow(row_a));
-}
-
-TEST(TestKeyEncoder, TestKeyEncoder) {
-  faststring fs;
-  const KeyEncoder<faststring>& encoder = GetKeyEncoder<faststring>(GetTypeInfo(STRING));
-
-  typedef std::tuple<vector<Slice>, Slice> test_pair;
-
-  vector<test_pair> pairs;
-
-  // Simple key
-  pairs.push_back(test_pair({ Slice("foo", 3) }, Slice("foo", 3)));
-
-  // Simple compound key
-  pairs.push_back(test_pair({ Slice("foo", 3), Slice("bar", 3) },
-                            Slice("foo" "\x00\x00" "bar", 8)));
-
-  // Compound key with a \x00 in it
-  pairs.push_back(test_pair({ Slice("xxx\x00yyy", 7), Slice("bar", 3) },
-                            Slice("xxx" "\x00\x01" "yyy" "\x00\x00" "bar", 13)));
-
-  int i = 0;
-  for (const test_pair &t : pairs) {
-    const vector<Slice> &in = std::get<0>(t);
-    Slice expected = std::get<1>(t);
-
-    fs.clear();
-    for (int col = 0; col < in.size(); col++) {
-      encoder.Encode(&in[col], col == in.size() - 1, &fs);
-    }
-
-    ASSERT_EQ(0, expected.compare(Slice(fs)))
-      << "Failed encoding example " << i << ".\n"
-      << "Expected: " << HexDump(expected) << "\n"
-      << "Got:      " << HexDump(Slice(fs));
-    i++;
-  }
-}
-
-TEST(TestSchema, TestDecodeKeys_CompoundStringKey) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", STRING),
-                  ColumnSchema("col3", STRING) },
-                2);
-
-  EXPECT_EQ("(string col1=foo, string col2=bar)",
-            schema.DebugEncodedRowKey(Slice("foo\0\0bar", 8), Schema::START_KEY));
-  EXPECT_EQ("(string col1=fo\\000o, string col2=bar)",
-            schema.DebugEncodedRowKey(Slice("fo\x00\x01o\0\0""bar", 10), Schema::START_KEY));
-  EXPECT_EQ("(string col1=fo\\000o, string col2=bar\\000xy)",
-            schema.DebugEncodedRowKey(Slice("fo\x00\x01o\0\0""bar\0xy", 13), Schema::START_KEY));
-
-  EXPECT_EQ("<start of table>",
-            schema.DebugEncodedRowKey("", Schema::START_KEY));
-  EXPECT_EQ("<end of table>",
-            schema.DebugEncodedRowKey("", Schema::END_KEY));
-}
-
-// Test that appropriate statuses are returned when trying to decode an invalid
-// encoded key.
-TEST(TestSchema, TestDecodeKeys_InvalidKeys) {
-  Schema schema({ ColumnSchema("col1", STRING),
-                  ColumnSchema("col2", UINT32),
-                  ColumnSchema("col3", STRING) },
-                2);
-
-  EXPECT_EQ("<invalid key: Invalid argument: Error decoding composite key component"
-            " 'col1': Missing separator after composite key string component: foo>",
-            schema.DebugEncodedRowKey(Slice("foo"), Schema::START_KEY));
-  EXPECT_EQ("<invalid key: Invalid argument: Error decoding composite key component 'col2': "
-            "key too short>",
-            schema.DebugEncodedRowKey(Slice("foo\x00\x00", 5), Schema::START_KEY));
-  EXPECT_EQ("<invalid key: Invalid argument: Error decoding composite key component 'col2': "
-            "key too short: FFFF>",
-            schema.DebugEncodedRowKey(Slice("foo\x00\x00\xff\xff", 7), Schema::START_KEY));
-}
-
 TEST(TestSchema, TestCreateProjection) {
   Schema schema({ ColumnSchema("col1", STRING),
                   ColumnSchema("col2", STRING),
@@ -365,36 +234,40 @@ TEST(TestSchema, TestCreateProjection) {
 
   // By names, without IDs
   ASSERT_OK(schema.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
-  EXPECT_EQ("Schema [\n"
-            "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
-            "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
-            "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
-            "]\nproperties: contain_counters: false is_transactional: false "
-            "consistency_level: STRONG "
-            "use_mangled_column_name: false "
-            "is_ysql_catalog_table: false "
-            "retain_delete_markers: false",
+  EXPECT_EQ(Format("Schema [\n"
+                   "\tcol1[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\tcol2[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\tcol4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "]\nproperties: contain_counters: false is_transactional: false "
+                   "consistency_level: STRONG "
+                   "use_mangled_column_name: false "
+                   "is_ysql_catalog_table: false "
+                   "retain_delete_markers: false "
+                   "partitioning_version: $0",
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 
   // By names, with IDS
   ASSERT_OK(schema_with_ids.CreateProjectionByNames({ "col1", "col2", "col4" }, &partial_schema));
-  EXPECT_EQ(Substitute("Schema [\n"
-                       "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
-                       "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
-                       "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
-                       "]\nproperties: contain_counters: false is_transactional: false "
-                       "consistency_level: STRONG "
-                       "use_mangled_column_name: false "
-                       "is_ysql_catalog_table: false "
-                       "retain_delete_markers: false",
-                       schema_with_ids.column_id(0),
-                       schema_with_ids.column_id(1),
-                       schema_with_ids.column_id(3)),
+  EXPECT_EQ(Format("Schema [\n"
+                   "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "]\nproperties: contain_counters: false is_transactional: false "
+                   "consistency_level: STRONG "
+                   "use_mangled_column_name: false "
+                   "is_ysql_catalog_table: false "
+                   "retain_delete_markers: false "
+                   "partitioning_version: $3",
+                   schema_with_ids.column_id(0),
+                   schema_with_ids.column_id(1),
+                   schema_with_ids.column_id(3),
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 
   // By names, with missing names.
   Status s = schema.CreateProjectionByNames({ "foobar" }, &partial_schema);
-  EXPECT_EQ("Not found: column not found: foobar", s.ToString(/* no file/line */ false));
+  EXPECT_EQ("Not found: Column not found: foobar", s.ToString(/* no file/line */ false));
 
   // By IDs
   ASSERT_OK(schema_with_ids.CreateProjectionByIdsIgnoreMissing({ schema_with_ids.column_id(0),
@@ -402,18 +275,20 @@ TEST(TestSchema, TestCreateProjection) {
                                                                  ColumnId(1000), // missing column
                                                                  schema_with_ids.column_id(3) },
                                                                &partial_schema));
-  EXPECT_EQ(Substitute("Schema [\n"
-                       "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
-                       "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
-                       "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
-                       "]\nproperties: contain_counters: false is_transactional: false "
-                       "consistency_level: STRONG "
-                       "use_mangled_column_name: false "
-                       "is_ysql_catalog_table: false "
-                       "retain_delete_markers: false",
-                       schema_with_ids.column_id(0),
-                       schema_with_ids.column_id(1),
-                       schema_with_ids.column_id(3)),
+  EXPECT_EQ(Format("Schema [\n"
+                   "\t$0:col1[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\t$1:col2[string NOT NULL NOT A PARTITION KEY],\n"
+                   "\t$2:col4[string NOT NULL NOT A PARTITION KEY]\n"
+                   "]\nproperties: contain_counters: false is_transactional: false "
+                   "consistency_level: STRONG "
+                   "use_mangled_column_name: false "
+                   "is_ysql_catalog_table: false "
+                   "retain_delete_markers: false "
+                   "partitioning_version: $3",
+                   schema_with_ids.column_id(0),
+                   schema_with_ids.column_id(1),
+                   schema_with_ids.column_id(3),
+                   kCurrentPartitioningVersion),
             partial_schema.ToString());
 }
 
@@ -472,23 +347,6 @@ TEST(TestSchema, TestTableProperties) {
   auto properties3 = TableProperties::FromTablePropertiesPB(pb);
   ASSERT_FALSE(properties3.HasDefaultTimeToLive());
 }
-
-#ifdef NDEBUG
-TEST(TestKeyEncoder, BenchmarkSimpleKey) {
-  faststring fs;
-  Schema schema({ ColumnSchema("col1", STRING) }, 1);
-
-  RowBuilder rb(schema);
-  rb.AddString(Slice("hello world"));
-  ConstContiguousRow row(&rb.schema(), rb.data());
-
-  LOG_TIMING(INFO, "Encoding") {
-    for (int i = 0; i < 10000000; i++) {
-      schema.EncodeComparableKey(row, &fs);
-    }
-  }
-}
-#endif
 
 } // namespace tablet
 } // namespace yb

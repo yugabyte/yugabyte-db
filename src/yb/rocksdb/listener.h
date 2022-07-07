@@ -68,6 +68,8 @@ enum class CompactionReason {
   kUniversalSizeRatio,
   // [Universal] number of sorted runs > level0_file_num_compaction_trigger
   kUniversalSortedRunNum,
+  // [Universal] files have been marked for direct deletion
+  kUniversalDirectDeletion,
   // [FIFO] total size > max_table_files_size
   kFIFOMaxSize,
   // Manual compaction

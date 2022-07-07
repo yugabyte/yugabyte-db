@@ -31,30 +31,30 @@
 //
 
 #include <gtest/gtest.h>
-#include <gflags/gflags.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_queue.h"
+
 #include "yb/consensus/consensus-test-util.h"
-#include "yb/consensus/log.h"
-#include "yb/consensus/log_anchor_registry.h"
-#include "yb/consensus/log_util.h"
-#include "yb/consensus/log_reader.h"
-#include "yb/consensus/log-test-base.h"
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_queue.h"
+#include "yb/consensus/log-test-base.h"
+#include "yb/consensus/log_anchor_registry.h"
+#include "yb/consensus/log_reader.h"
+#include "yb/consensus/log_util.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/fs/fs_manager.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/metrics.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
 
 DECLARE_bool(enable_data_block_fsync);
-DECLARE_int32(consensus_max_batch_size_bytes);
+DECLARE_uint64(consensus_max_batch_size_bytes);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -81,7 +81,7 @@ class ConsensusQueueTest : public YBTest {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(log::Log::Open(log::LogOptions(),
                             kTestTablet,
@@ -89,7 +89,8 @@ class ConsensusQueueTest : public YBTest {
                             fs_manager_->uuid(),
                             schema_,
                             0, // schema_version
-                            NULL,
+                            nullptr,
+                            nullptr,
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
                             std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -136,8 +137,7 @@ class ConsensusQueueTest : public YBTest {
                                ConsensusResponsePB* response,
                                const OpIdPB& last_received,
                                const OpIdPB& last_received_current_leader,
-                               int last_committed_idx) {
-
+                               int64_t last_committed_idx) {
     queue_->TrackPeer(kPeerUuid);
     response->set_responder_uuid(kPeerUuid);
 
@@ -180,7 +180,7 @@ class ConsensusQueueTest : public YBTest {
     StatusToPB(STATUS(IllegalState, "LMP failed."), error->mutable_status());
   }
 
-  void WaitForLocalPeerToAckIndex(int index) {
+  void WaitForLocalPeerToAckIndex(int64_t index) {
     while (true) {
       PeerMessageQueue::TrackedPeer leader = queue_->GetTrackedPeerForTests(kLeaderUuid);
       if (leader.last_received.index >= index) {
@@ -194,7 +194,7 @@ class ConsensusQueueTest : public YBTest {
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
                                        const OpId& last_received,
                                        const OpId& last_received_current_leader,
-                                       int last_committed_idx) {
+                                       int64_t last_committed_idx) {
     last_received.ToPB(response->mutable_status()->mutable_last_received());
     last_received_current_leader.ToPB(
         response->mutable_status()->mutable_last_received_current_leader());
@@ -204,7 +204,7 @@ class ConsensusQueueTest : public YBTest {
   // Like the above but uses the same last_received for current term.
   void SetLastReceivedAndLastCommitted(ConsensusResponsePB* response,
                                        const OpId& last_received,
-                                       int last_committed_idx) {
+                                       int64_t last_committed_idx) {
     SetLastReceivedAndLastCommitted(response, last_received, last_received, last_committed_idx);
   }
 
@@ -216,15 +216,15 @@ class ConsensusQueueTest : public YBTest {
   }
 
  protected:
-  gscoped_ptr<TestRaftConsensusQueueIface> consensus_;
+  std::unique_ptr<TestRaftConsensusQueueIface> consensus_;
   const Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<log::Log> log_;
   std::unique_ptr<ThreadPool> raft_pool_;
-  gscoped_ptr<PeerMessageQueue> queue_;
+  std::unique_ptr<PeerMessageQueue> queue_;
   scoped_refptr<log::LogAnchorRegistry> registry_;
   scoped_refptr<server::Clock> clock_;
 };
@@ -754,14 +754,14 @@ TEST_F(ConsensusQueueTest, TestOnlyAdvancesWatermarkWhenPeerHasAPrefixOfOurLog) 
 
   for (int i = 31; i <= 53; i++) {
     if (i <= 45) {
-      AppendReplicateMsg(72, i, 1024);
+      ASSERT_OK(AppendReplicateMsg(72, i, 1024));
       continue;
     }
     if (i <= 51) {
-      AppendReplicateMsg(73, i, 1024);
+      ASSERT_OK(AppendReplicateMsg(73, i, 1024));
       continue;
     }
-    AppendReplicateMsg(76, i, 1024);
+    ASSERT_OK(AppendReplicateMsg(76, i, 1024));
   }
 
   WaitForLocalPeerToAckIndex(53);

@@ -13,10 +13,15 @@
 
 #include "yb/util/net/inetaddress.h"
 
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
+#include <string>
+
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
+
+using namespace std::literals;
 
 namespace yb {
 
@@ -24,10 +29,9 @@ class InetAddressTest : public YBTest {
  protected:
   void RunRoundTrip(const std::string& strval) {
     InetAddress addr_orig(ASSERT_RESULT(ParseIpAddress(strval)));
-    std::string bytes;
-    ASSERT_OK(addr_orig.ToBytes(&bytes));
+    std::string bytes = addr_orig.ToBytes();
     InetAddress addr_new;
-    ASSERT_OK(addr_new.FromBytes(bytes));
+    ASSERT_OK(addr_new.FromSlice(bytes));
     std::string strval_new;
     ASSERT_OK(addr_new.ToString(&strval_new));
     ASSERT_EQ(strval, strval_new);
@@ -36,13 +40,13 @@ class InetAddressTest : public YBTest {
 };
 
 TEST_F(InetAddressTest, TestRoundTrip) {
-  for (const std::string& strval : {
-      "1.2.3.4",
-      "2001:db8:a0b:12f0::1",
-      "0.0.0.0",
-      "2607:f0d0:1002:51::4",
-      "::1",
-      "255.255.255.255"}) {
+  for (auto strval : {
+      "1.2.3.4"s,
+      "2001:db8:a0b:12f0::1"s,
+      "0.0.0.0"s,
+      "2607:f0d0:1002:51::4"s,
+      "::1"s,
+      "255.255.255.255"s}) {
     RunRoundTrip(strval);
   }
 }
@@ -86,13 +90,13 @@ TEST_F(InetAddressTest, TestErrors) {
   ASSERT_FALSE(ParseIpAddress("2607:g0d0:1002:51::4").ok());
 
   std::string bytes;
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
   bytes = "0";
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
   bytes = "012345";
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
   bytes = "111111111111111111"; // 17 bytes.
-  ASSERT_FALSE(addr.FromBytes(bytes).ok());
+  ASSERT_FALSE(addr.FromSlice(bytes).ok());
 }
 
 TEST_F(InetAddressTest, FilterAddresses) {

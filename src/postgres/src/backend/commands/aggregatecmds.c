@@ -30,6 +30,7 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/extension.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
 #include "parser/parse_type.h"
@@ -38,6 +39,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 static char extractModify(DefElem *defel);
 
@@ -336,7 +339,7 @@ DefineAggregate(ParseState *pstate, List *name, List *args, bool oldstyle, List 
 	if (transTypeType == TYPTYPE_PSEUDO &&
 		!IsPolymorphicType(transTypeId))
 	{
-		if (transTypeId == INTERNALOID && superuser())
+		if (transTypeId == INTERNALOID && ((IsYbExtensionUser(GetUserId()) && creating_extension) || superuser()))
 			 /* okay */ ;
 		else
 			ereport(ERROR,

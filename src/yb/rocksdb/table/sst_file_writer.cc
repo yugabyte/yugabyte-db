@@ -20,11 +20,19 @@
 
 #include "yb/rocksdb/sst_file_writer.h"
 
+#include <stdint.h>
+
+#include <limits>
+#include <string>
+#include <utility>
 #include <vector>
+
 #include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_based_table_builder.h"
+#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
+#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/util/string_util.h"
 
@@ -149,10 +157,10 @@ Status SstFileWriter::Open(const std::string& file_path) {
     r->data_file_writer.reset(
         new WritableFileWriter(std::move(data_sst_file), r->env_options));
   }
-  r->builder.reset(r->ioptions.table_factory->NewTableBuilder(
+  r->builder = r->ioptions.table_factory->NewTableBuilder(
       table_builder_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      r->base_file_writer.get(), r->data_file_writer.get()));
+      r->base_file_writer.get(), r->data_file_writer.get());
 
   r->file_info.file_path = file_path;
   r->file_info.file_size = 0;

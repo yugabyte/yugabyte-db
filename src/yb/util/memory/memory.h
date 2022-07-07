@@ -55,18 +55,15 @@
 
 #include <boost/mpl/if.hpp>
 #include <boost/type_traits/is_const.hpp>
-
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
-#include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/singleton.h"
+#include "yb/gutil/strings/stringpiece.h"
 
 #include "yb/util/boost_mutex_utils.h"
 #include "yb/util/mutex.h"
-#include "yb/util/size_literals.h"
 
 using std::copy;
 using std::max;
@@ -651,7 +648,7 @@ class MemoryStatisticsCollectingBufferAllocator : public BufferAllocator {
   virtual void FreeInternal(Buffer* buffer) override;
 
   BufferAllocator* delegate_;
-  gscoped_ptr<MemoryStatisticsCollectorInterface>
+  std::unique_ptr<MemoryStatisticsCollectorInterface>
       memory_stats_collector_;
 };
 
@@ -773,7 +770,7 @@ class OwningThreadSafeBufferAllocator
   virtual ~OwningThreadSafeBufferAllocator() {}
 
  private:
-  gscoped_ptr<DelegateAllocatorType> delegate_owned_;
+  std::unique_ptr<DelegateAllocatorType> delegate_owned_;
 };
 
 class ThreadSafeMemoryLimit
@@ -988,6 +985,11 @@ EndOfObject(T* t) {
 template <typename U>
 std::shared_ptr<U> shared_from(U* u) {
   return std::static_pointer_cast<U>(u->shared_from_this());
+}
+
+template <class U>
+std::shared_ptr<U> FakeSharedPtr(U* u) {
+  return std::shared_ptr<U>(std::shared_ptr<U>(), u);
 }
 
 // Returns empty string if TCMalloc is not enabled.

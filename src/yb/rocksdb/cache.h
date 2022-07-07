@@ -37,11 +37,13 @@
 #define YB_ROCKSDB_CACHE_H
 
 #include <stdint.h>
+
 #include <memory>
-#include "yb/util/slice.h"
-#include "yb/rocksdb/status.h"
-#include "yb/util/cache_metrics.h"
+
 #include "yb/rocksdb/statistics.h"
+#include "yb/rocksdb/status.h"
+
+#include "yb/util/slice.h"
 
 namespace rocksdb {
 

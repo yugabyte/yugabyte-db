@@ -42,16 +42,16 @@
 #include <boost/atomic.hpp>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/consensus/consensus.pb.h"
+
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_queue.h"
 #include "yb/consensus/consensus_types.h"
 #include "yb/consensus/retryable_requests.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/leader_lease.h"
+
 #include "yb/gutil/port.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
 
 namespace yb {
@@ -68,6 +68,9 @@ YB_DEFINE_ENUM(SetMajorityReplicatedLeaseExpirationFlag,
                (kResetOldLeaderLease)(kResetOldLeaderHtLease));
 
 YB_STRONGLY_TYPED_BOOL(CouldStop);
+
+// Whether we add pending operation while running as leader or follower.
+YB_DEFINE_ENUM(OperationMode, (kLeader)(kFollower));
 
 // Class that coordinates access to the replica state (independently of Role).
 // This has a 1-1 relationship with RaftConsensus and is essentially responsible for
@@ -113,24 +116,22 @@ class ReplicaState {
 
   typedef std::unique_lock<std::mutex> UniqueLock;
 
-  // split_op_info contains parameters of Raft split operation requesting split of this tablet
-  // (could be empty if not split has been requested).
   ReplicaState(
       ConsensusOptions options, std::string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
       ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
-      RetryableRequests* retryable_requests, const SplitOpInfo& split_op_info,
+      RetryableRequests* retryable_requests,
       std::function<void(const OpIds&)> applied_ops_tracker);
 
   ~ReplicaState();
 
-  CHECKED_STATUS StartUnlocked(const OpIdPB& last_in_wal);
+  Status StartUnlocked(const OpIdPB& last_in_wal);
 
   // Should be used only to assert that the update_lock_ is held.
   bool IsLocked() const WARN_UNUSED_RESULT;
 
   // Locks a replica in preparation for StartUnlocked(). Makes
   // sure the replica is in kInitialized state.
-  CHECKED_STATUS LockForStart(UniqueLock* lock) const;
+  Status LockForStart(UniqueLock* lock) const;
 
   // Locks a replica down until the critical section of an append completes,
   // i.e. until the replicate message has been assigned an id and placed in
@@ -139,8 +140,8 @@ class ReplicaState {
   // state (role) to replicate the provided operation, that the operation
   // contains a replicate message and is of the appropriate type, and returns
   // Status::IllegalState if that is not the case.
-  CHECKED_STATUS LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const;
-  CHECKED_STATUS LockForReplicate(UniqueLock* lock) const;
+  Status LockForReplicate(UniqueLock* lock, const ReplicateMsg& msg) const;
+  Status LockForReplicate(UniqueLock* lock) const;
 
   Status CheckIsActiveLeaderAndHasLease() const;
 
@@ -149,14 +150,14 @@ class ReplicaState {
   // this completes. This also checks that the replica is in the appropriate
   // state (role) to be updated and returns Status::IllegalState if that
   // is not the case.
-  CHECKED_STATUS LockForUpdate(UniqueLock* lock) const;
+  Status LockForUpdate(UniqueLock* lock) const;
 
   // Changes the role to non-participant and returns a lock that can be
   // used to make sure no state updates come in until Shutdown() is
   // completed.
-  CHECKED_STATUS LockForShutdown(UniqueLock* lock);
+  Status LockForShutdown(UniqueLock* lock);
 
-  CHECKED_STATUS LockForConfigChange(UniqueLock* lock) const;
+  Status LockForConfigChange(UniqueLock* lock) const;
 
   // Obtains the lock for a state read, does not check state.
   UniqueLock LockForRead() const;
@@ -164,12 +165,12 @@ class ReplicaState {
   // Obtains the lock so that we can advance the majority replicated
   // index and possibly the committed index.
   // Requires that this peer is leader.
-  CHECKED_STATUS LockForMajorityReplicatedIndexUpdate(
+  Status LockForMajorityReplicatedIndexUpdate(
       UniqueLock* lock) const;
 
   // Ensure the local peer is the active leader.
   // Returns OK if leader, IllegalState otherwise.
-  CHECKED_STATUS CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const;
+  Status CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_mode) const;
 
   LeaderState GetLeaderState(bool allow_stale = false) const;
 
@@ -183,13 +184,13 @@ class ReplicaState {
   // or otherwise can happen after this point.
   // Called after the quiescing phase (started with LockForShutdown())
   // finishes.
-  CHECKED_STATUS ShutdownUnlocked();
+  Status ShutdownUnlocked();
 
   // Return current consensus state summary.
   ConsensusStatePB ConsensusStateUnlocked(ConsensusConfigType type) const;
 
   // Returns the currently active Raft role.
-  RaftPeerPB::Role GetActiveRoleUnlocked() const;
+  PeerRole GetActiveRoleUnlocked() const;
 
   // Returns true if there is a configuration change currently in-flight but not yet
   // committed.
@@ -198,7 +199,7 @@ class ReplicaState {
   // Inverse of IsConfigChangePendingUnlocked(): returns OK if there is
   // currently *no* configuration change pending, and IllegalState is there *is* a
   // configuration change pending.
-  CHECKED_STATUS CheckNoConfigChangePendingUnlocked() const;
+  Status CheckNoConfigChangePendingUnlocked() const;
 
   // Returns true if an operation is in this replica's log, namely:
   // - If the op's index is lower than or equal to our committed index
@@ -209,10 +210,13 @@ class ReplicaState {
 
   // Sets the given configuration as pending commit. Does not persist into the peers
   // metadata. In order to be persisted, SetCommittedConfigUnlocked() must be called.
-  CHECKED_STATUS SetPendingConfigUnlocked(const RaftConfigPB& new_config);
+  Status SetPendingConfigUnlocked(const RaftConfigPB& new_config, const OpId& config_op_id);
+  Status SetPendingConfigOpIdUnlocked(const OpId& config_op_id);
 
   // Clears the pending config.
-  CHECKED_STATUS ClearPendingConfigUnlocked();
+  Status ClearPendingConfigUnlocked();
+
+  OpId GetPendingConfigOpIdUnlocked() { return cmeta_->pending_config_op_id(); }
 
   // Return the pending configuration, or crash if one is not set.
   const RaftConfigPB& GetPendingConfigUnlocked() const;
@@ -220,7 +224,7 @@ class ReplicaState {
   // Changes the committed config for this replica. Checks that there is a
   // pending configuration and that it is equal to this one. Persists changes to disk.
   // Resets the pending configuration to null.
-  CHECKED_STATUS SetCommittedConfigUnlocked(const RaftConfigPB& new_config);
+  Status SetCommittedConfigUnlocked(const RaftConfigPB& new_config);
 
   // Return the persisted configuration.
   const RaftConfigPB& GetCommittedConfigUnlocked() const;
@@ -231,7 +235,7 @@ class ReplicaState {
 
   // Checks if the term change is legal. If so, sets 'current_term'
   // to 'new_term' and sets 'has voted' to no for the current term.
-  CHECKED_STATUS SetCurrentTermUnlocked(int64_t new_term);
+  Status SetCurrentTermUnlocked(int64_t new_term);
 
   // Returns the term set in the last config change round.
   const int64_t GetCurrentTermUnlocked() const;
@@ -247,7 +251,7 @@ class ReplicaState {
 
   // Record replica's vote for the current term, then flush the consensus
   // metadata to disk.
-  CHECKED_STATUS SetVotedForCurrentTermUnlocked(const std::string& uuid);
+  Status SetVotedForCurrentTermUnlocked(const std::string& uuid);
 
   // Return replica's vote for the current term.
   // The vote must be set; use HasVotedCurrentTermUnlocked() to check.
@@ -266,14 +270,14 @@ class ReplicaState {
   // Aborts pending operations after, but not including 'index'. The OpId with 'index'
   // will become our new last received id. If there are pending operations with indexes
   // higher than 'index' those operations are aborted.
-  CHECKED_STATUS AbortOpsAfterUnlocked(int64_t index);
+  Status AbortOpsAfterUnlocked(int64_t index);
 
   // Returns the ConsensusRound with the provided index, if there is any, or NULL
   // if there isn't.
   scoped_refptr<ConsensusRound> GetPendingOpByIndexOrNullUnlocked(int64_t index);
 
   // Add 'round' to the set of rounds waiting to be committed.
-  CHECKED_STATUS AddPendingOperation(const scoped_refptr<ConsensusRound>& round);
+  Status AddPendingOperation(const ConsensusRoundPtr& round, OperationMode mode);
 
   // Marks ReplicaOperations up to 'id' as majority replicated, meaning the
   // transaction may Apply() (immediately if Prepare() has completed or when Prepare()
@@ -281,7 +285,7 @@ class ReplicaState {
   // Sets last_applied_op_id to the ID of last operation applied.
   //
   // If this advanced the committed index, sets *committed_op_id_changed to true.
-  CHECKED_STATUS UpdateMajorityReplicatedUnlocked(
+  Status UpdateMajorityReplicatedUnlocked(
       const OpId& majority_replicated, OpId* committed_op_id, bool* committed_op_id_changed,
       OpId* last_applied_op_id);
 
@@ -292,28 +296,20 @@ class ReplicaState {
 
   // Initializes the committed index.
   // Function checks that we are in initial state, then updates committed index.
-  CHECKED_STATUS InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id);
+  Status InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id);
 
   // Returns the watermark below which all operations are known to
   // be committed according to consensus.
   //
   // This must be called under a lock.
-  const yb::OpId& GetCommittedOpIdUnlocked() const;
+  const OpId& GetCommittedOpIdUnlocked() const;
 
   // Returns the watermark below which all operations are known to be applied according to
   // consensus.
-  const yb::OpId& GetLastAppliedOpIdUnlocked() const {
+  const OpId& GetLastAppliedOpIdUnlocked() const {
     // See comment for last_committed_op_id_ for why we return committed op ID here.
     return GetCommittedOpIdUnlocked();
   }
-
-  // Returns the ID of the split operation requesting to split this Raft group if it has been added
-  // to Raft log and uninitialized OpId otherwise.
-  const yb::OpId& GetSplitOpIdUnlocked() const;
-
-  // Return split child tablet IDs if split operation has been added to Raft log and array of empty
-  // tablet IDs otherwise.
-  std::array<TabletId, kNumSplitParts> GetSplitChildTabletIdsUnlocked() const;
 
   // Returns true if an op from the current term has been committed.
   bool AreCommittedAndCurrentTermsSameUnlocked() const;
@@ -323,24 +319,24 @@ class ReplicaState {
   void UpdateLastReceivedOpIdUnlocked(const OpIdPB& op_id);
 
   // Returns the last received op id. This must be called under the lock.
-  const yb::OpId& GetLastReceivedOpIdUnlocked() const;
+  const OpId& GetLastReceivedOpIdUnlocked() const;
 
   // Returns the id of the last op received from the current leader.
-  const yb::OpId& GetLastReceivedOpIdCurLeaderUnlocked() const;
+  const OpId& GetLastReceivedOpIdCurLeaderUnlocked() const;
 
   // Returns the id of the latest pending transaction (i.e. the one with the
   // latest index). This must be called under the lock.
-  OpIdPB GetLastPendingOperationOpIdUnlocked() const;
+  OpId GetLastPendingOperationOpIdUnlocked() const;
 
   // Used by replicas to cancel pending transactions. Pending transaction are those
   // that have completed prepare/replicate but are waiting on the LEADER's commit
   // to complete. This does not cancel transactions being applied.
-  CHECKED_STATUS CancelPendingOperations();
+  Status CancelPendingOperations();
 
   // API to dump pending transactions. Added to debug ENG-520.
   void DumpPendingOperationsUnlocked();
 
-  yb::OpId NewIdUnlocked();
+  OpId NewIdUnlocked();
 
   // Used when, for some reason, an operation that failed before it could be considered
   // a part of the state machine. Basically restores the id gen to the state it was before
@@ -349,12 +345,12 @@ class ReplicaState {
   // the queue refused to add any more operations.
   // should_exists indicates whether we expect that this operation is already added.
   // Used for debugging purposes only.
-  void CancelPendingOperation(const OpIdPB& id, bool should_exist);
+  void CancelPendingOperation(const OpId& id, bool should_exist);
 
   // Accessors for pending election op id. These must be called under a lock.
-  const OpIdPB& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
-  void SetPendingElectionOpIdUnlocked(const OpIdPB& opid) { pending_election_opid_ = opid; }
-  void ClearPendingElectionOpIdUnlocked() { pending_election_opid_.Clear(); }
+  const OpId& GetPendingElectionOpIdUnlocked() { return pending_election_opid_; }
+  void SetPendingElectionOpIdUnlocked(const OpId& opid) { pending_election_opid_ = opid; }
+  void ClearPendingElectionOpIdUnlocked() { pending_election_opid_ = OpId(); }
 
   std::string ToString() const;
   std::string ToStringUnlocked() const;
@@ -365,7 +361,7 @@ class ReplicaState {
 
   // Checks that 'current' correctly follows 'previous'. Specifically it checks
   // that the term is the same or higher and that the index is sequential.
-  static CHECKED_STATUS CheckOpInSequence(const yb::OpId& previous, const yb::OpId& current);
+  static Status CheckOpInSequence(const yb::OpId& previous, const yb::OpId& current);
 
   // Return the current state of this object.
   // The update_lock_ must be held.
@@ -417,13 +413,19 @@ class ReplicaState {
   // The on-disk size of the consensus metadata.
   uint64_t OnDiskSize() const;
 
-  yb::OpId MinRetryableRequestOpId();
+  OpId MinRetryableRequestOpId();
+
+  Result<bool> RegisterRetryableRequest(const ConsensusRoundPtr& round);
 
   RestartSafeCoarseMonoClock& Clock();
 
   RetryableRequestsCounts TEST_CountRetryableRequests();
 
   void SetLeaderNoOpCommittedUnlocked(bool value);
+
+  void NotifyReplicationFinishedUnlocked(
+      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
+      OpIds* applied_op_ids);
 
  private:
   typedef std::deque<ConsensusRoundPtr> PendingOperations;
@@ -433,17 +435,13 @@ class ReplicaState {
 
   // Apply pending operations beginning at iter up to and including committed_op_id.
   // Updates last_committed_op_id_ to committed_op_id.
-  CHECKED_STATUS ApplyPendingOperationsUnlocked(
+  Status ApplyPendingOperationsUnlocked(
       const yb::OpId& committed_op_id, CouldStop could_stop);
 
   void SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id);
 
   // Applies committed config change.
   void ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round);
-
-  void NotifyReplicationFinishedUnlocked(
-      const ConsensusRoundPtr& round, const Status& status, int64_t leader_term,
-      OpIds* applied_op_ids);
 
   consensus::LeaderState RefreshLeaderStateCacheUnlocked(
       CoarseTimePoint* now) const ATTRIBUTE_NONNULL(2);
@@ -499,19 +497,8 @@ class ReplicaState {
   // last_committed_op_id_ are guaranteed to be already applied.
   OpId last_committed_op_id_;
 
-  // Parameters of the split operation requesting to split this tablet. This is set when split
-  // operation is added to log and cleared if this operation is aborted.
-  // Apply of tablet split operation does not change split_op_info_.
-  //
-  // Note: In tablets created as a result of split operation split_op_info_ is uninitialized
-  // until split operation requesting to split them will be added to their Raft log.
-  // After n-th split the latest after-split tablet created could have n split operations in its
-  // Raft log, but split_op_info_ will be uninitialized, because all these split operations are
-  // designated for "ancestors" of this tablet, but not for this tablet itself.
-  SplitOpInfo split_op_info_;
-
   // If set, a leader election is pending upon the specific op id commitment to this peer's log.
-  OpIdPB pending_election_opid_;
+  OpId pending_election_opid_;
 
   State state_ = State::kInitialized;
 

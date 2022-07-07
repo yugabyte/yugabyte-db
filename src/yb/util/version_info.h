@@ -32,19 +32,19 @@
 #ifndef YB_UTIL_VERSION_INFO_H
 #define YB_UTIL_VERSION_INFO_H
 
-#include <atomic>
 #include <mutex>
 #include <string>
 
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/version_info.pb.h"
 
 namespace yb {
 
 struct VersionData {
   VersionInfoPB pb;
-  string json;
+  std::string json;
 };
 
 // Static functions related to fetching information about the current build.
@@ -63,7 +63,7 @@ class VersionInfo {
   static void GetVersionInfoPB(VersionInfoPB* pb);
 
   // Init version data.
-  static CHECKED_STATUS Init();
+  static Status Init();
 
  private:
   // Get the git hash for this build. If the working directory was dirty when
@@ -71,7 +71,7 @@ class VersionInfo {
   static std::string GetGitHash();
 
   static std::shared_ptr<const VersionData> GetVersionData();
-  static CHECKED_STATUS ReadVersionDataFromFile();
+  static Status ReadVersionDataFromFile();
 
   // Performs the initialization and stores its status into the given variable.
   static void InitInternal(Status* status);

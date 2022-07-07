@@ -40,8 +40,8 @@ package yb;
 
 option java_package = "org.yb";
 
-import "yb/common/common.proto";
-import "yb/consensus/metadata.proto";
+import "yb/common/common_net.proto";
+import "yb/common/common_types.proto";
 
 // Error status returned by any RPC method.
 // Every RPC method which could generate an application-level error
@@ -83,6 +83,7 @@ message AppStatusPB {
     MERGE_IN_PROGRESS = 28;
     COMBINED_ERROR = 29;
     SNAPSHOT_TOO_OLD = 30;
+    DEPRECATED_HOST_UNREACHABLE = 31;
   }
 
   required ErrorCode code = 1;
@@ -117,6 +118,8 @@ message NodeInstancePB {
   // On a freshly initialized server, the first sequence number
   // should be 0.
   required int64 instance_seqno = 2;
+  // The time point when tserver/master starts up, it is derived from Env::NowMicros()
+  optional uint64 start_time_us = 3;
 }
 
 // RPC and HTTP addresses for each server, as well as cloud related information.
@@ -124,6 +127,7 @@ message ServerRegistrationPB {
   repeated HostPortPB private_rpc_addresses = 1;
   repeated HostPortPB broadcast_addresses = 5;
   repeated HostPortPB http_addresses = 2;
+  optional uint32 pg_port = 6 [default = 5433];
 
   optional CloudInfoPB cloud_info = 3;
   // Placement uuid of the tserver's cluster.
@@ -142,7 +146,7 @@ message ServerEntryPB {
   optional NodeInstancePB instance_id = 2;
   optional ServerRegistrationPB registration = 3;
 
-  // If an error has occured earlier in the RPC call, the role
+  // If an error has occurred earlier in the RPC call, the role
   // may be not be set.
-  optional consensus.RaftPeerPB.Role role = 4;
+  optional PeerRole role = 4;
 }

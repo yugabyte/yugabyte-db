@@ -19,7 +19,8 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/util/decimal.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 namespace pggate {
@@ -99,6 +100,8 @@ Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
       // Postgres does not have these datatypes.
       return STATUS_FORMAT(Corruption,
           "Unexpected data was read from database: col_value.type()=$0", col_value.value_case());
+    case InternalType::kGinNullValue:
+      PgWire::WriteUint8(col_value.gin_null_value(), buffer);
   }
 
   return Status::OK();
@@ -108,9 +111,7 @@ Status WriteColumn(const QLValuePB& col_value, faststring *buffer) {
 // Read Tuple Routine in DocDB Format (wire_protocol).
 //--------------------------------------------------------------------------------------------------
 
-void PgDocData::LoadCache(const string& cache, int64_t *total_row_count, Slice *cursor) {
-  // Setup the buffer to read the next set of tuples.
-  CHECK(cursor->empty()) << "Existing cache is not yet fully read";
+void PgDocData::LoadCache(const Slice& cache, int64_t *total_row_count, Slice *cursor) {
   *cursor = cache;
 
   // Read the number row_count in this set.

@@ -4,16 +4,11 @@ headerTitle: CREATE INDEX
 linkTitle: CREATE INDEX
 summary: Create a new index on a table
 description: Use the CREATE INDEX statement to create a new index on a table.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1225
-aliases:
-  - /stable/api/cassandra/ddl_create_index
-  - /stable/api/ycql/ddl_create_index
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -26,7 +21,7 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 #### create_index
 
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="587" height="150" viewbox="0 0 587 150"><path class="connector" d="M0 22h15m68 0h10m59 0h30m32 0h10m46 0h10m64 0h20m-197 0q5 0 5 5v8q0 5 5 5h172q5 0 5-5v-8q0-5 5-5m5 0h10m97 0h10m39 0h7m2 0h2m2 0h2m-535 50h2m2 0h2m2 0h7m95 0h10m25 0h10m162 0h30m170 0h20m-205 0q5 0 5 5v8q0 5 5 5h180q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h7m2 0h2m2 0h2m-587 50h2m2 0h2m2 0h27m224 0h20m-259 0q5 0 5 5v8q0 5 5 5h234q5 0 5-5v-8q0-5 5-5m5 0h30m132 0h20m-167 0q5 0 5 5v8q0 5 5 5h142q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="68" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="93" y="5" width="59" height="25" rx="7"/><text class="text" x="103" y="22">INDEX</text><rect class="literal" x="182" y="5" width="32" height="25" rx="7"/><text class="text" x="192" y="22">IF</text><rect class="literal" x="224" y="5" width="46" height="25" rx="7"/><text class="text" x="234" y="22">NOT</text><rect class="literal" x="280" y="5" width="64" height="25" rx="7"/><text class="text" x="290" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="374" y="5" width="97" height="25"/><text class="text" x="384" y="22">index_name</text></a><rect class="literal" x="481" y="5" width="39" height="25" rx="7"/><text class="text" x="491" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="55" width="95" height="25"/><text class="text" x="25" y="72">table_name</text></a><rect class="literal" x="120" y="55" width="25" height="25" rx="7"/><text class="text" x="130" y="72">(</text><a xlink:href="../grammar_diagrams#partition-key-columns"><rect class="rule" x="155" y="55" width="162" height="25"/><text class="text" x="165" y="72">partition_key_columns</text></a><a xlink:href="../grammar_diagrams#clustering-key-columns"><rect class="rule" x="347" y="55" width="170" height="25"/><text class="text" x="357" y="72">clustering_key_columns</text></a><rect class="literal" x="547" y="55" width="25" height="25" rx="7"/><text class="text" x="557" y="72">)</text><a xlink:href="../grammar_diagrams#clustering-key-column-ordering"><rect class="rule" x="35" y="105" width="224" height="25"/><text class="text" x="45" y="122">clustering_key_column_ordering</text></a><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="309" y="105" width="132" height="25"/><text class="text" x="319" y="122">covering_columns</text></a><polygon points="472,129 476,129 476,115 472,115" style="fill:black;stroke-width:0"/></svg>
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="703" height="150" viewbox="0 0 703 150"><path class="connector" d="M0 22h15m67 0h10m59 0h30m32 0h10m45 0h10m64 0h20m-196 0q5 0 5 5v8q0 5 5 5h171q5 0 5-5v-8q0-5 5-5m5 0h10m94 0h10m38 0h7m2 0h2m2 0h2m-529 50h2m2 0h2m2 0h7m91 0h10m25 0h10m157 0h30m165 0h20m-200 0q5 0 5 5v8q0 5 5 5h175q5 0 5-5v-8q0-5 5-5m5 0h10m25 0h7m2 0h2m2 0h2m-573 50h2m2 0h2m2 0h27m216 0h20m-251 0q5 0 5 5v8q0 5 5 5h226q5 0 5-5v-8q0-5 5-5m5 0h30m128 0h20m-163 0q5 0 5 5v8q0 5 5 5h138q5 0 5-5v-8q0-5 5-5m5 0h30m65 0h10m114 0h20m-224 0q5 0 5 5v8q0 5 5 5h199q5 0 5-5v-8q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="67" height="25" rx="7"/><text class="text" x="25" y="22">CREATE</text><rect class="literal" x="92" y="5" width="59" height="25" rx="7"/><text class="text" x="102" y="22">INDEX</text><rect class="literal" x="181" y="5" width="32" height="25" rx="7"/><text class="text" x="191" y="22">IF</text><rect class="literal" x="223" y="5" width="45" height="25" rx="7"/><text class="text" x="233" y="22">NOT</text><rect class="literal" x="278" y="5" width="64" height="25" rx="7"/><text class="text" x="288" y="22">EXISTS</text><a xlink:href="../grammar_diagrams#index-name"><rect class="rule" x="372" y="5" width="94" height="25"/><text class="text" x="382" y="22">index_name</text></a><rect class="literal" x="476" y="5" width="38" height="25" rx="7"/><text class="text" x="486" y="22">ON</text><a xlink:href="../grammar_diagrams#table-name"><rect class="rule" x="15" y="55" width="91" height="25"/><text class="text" x="25" y="72">table_name</text></a><rect class="literal" x="116" y="55" width="25" height="25" rx="7"/><text class="text" x="126" y="72">(</text><a xlink:href="../grammar_diagrams#partition-key-columns"><rect class="rule" x="151" y="55" width="157" height="25"/><text class="text" x="161" y="72">partition_key_columns</text></a><a xlink:href="../grammar_diagrams#clustering-key-columns"><rect class="rule" x="338" y="55" width="165" height="25"/><text class="text" x="348" y="72">clustering_key_columns</text></a><rect class="literal" x="533" y="55" width="25" height="25" rx="7"/><text class="text" x="543" y="72">)</text><a xlink:href="../grammar_diagrams#clustering-key-column-ordering"><rect class="rule" x="35" y="105" width="216" height="25"/><text class="text" x="45" y="122">clustering_key_column_ordering</text></a><a xlink:href="../grammar_diagrams#covering-columns"><rect class="rule" x="301" y="105" width="128" height="25"/><text class="text" x="311" y="122">covering_columns</text></a><rect class="literal" x="479" y="105" width="65" height="25" rx="7"/><text class="text" x="489" y="122">WHERE</text><a xlink:href="../grammar_diagrams#index-predicate"><rect class="rule" x="554" y="105" width="114" height="25"/><text class="text" x="564" y="122">index_predicate</text></a><polygon points="699,129 703,129 703,115 699,115" style="fill:black;stroke-width:0"/></svg>
 
 #### partition_key_columns
 
@@ -52,12 +47,16 @@ Use the `CREATE INDEX` statement to create a new index on a table. It defines th
 
 <svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="383" height="95" viewbox="0 0 383 95"><path class="connector" d="M0 52h35m86 0h20m-121 0q5 0 5 5v20q0 5 5 5h5m76 0h15q5 0 5-5v-20q0-5 5-5m5 0h10m25 0h30m-5 0q-5 0-5-5v-20q0-5 5-5h46m24 0h47q5 0 5 5v20q0 5-5 5m-5 0h30m25 0h15"/><polygon points="0,59 5,52 0,45" style="fill:black;stroke-width:0"/><rect class="literal" x="35" y="35" width="86" height="25" rx="7"/><text class="text" x="45" y="52">COVERING</text><rect class="literal" x="35" y="65" width="76" height="25" rx="7"/><text class="text" x="45" y="82">INCLUDE</text><rect class="literal" x="151" y="35" width="25" height="25" rx="7"/><text class="text" x="161" y="52">(</text><rect class="literal" x="247" y="5" width="24" height="25" rx="7"/><text class="text" x="257" y="22">,</text><a xlink:href="../grammar_diagrams#column-name"><rect class="rule" x="206" y="35" width="107" height="25"/><text class="text" x="216" y="52">column_name</text></a><rect class="literal" x="343" y="35" width="25" height="25" rx="7"/><text class="text" x="353" y="52">)</text><polygon points="379,59 383,59 383,45 379,45" style="fill:black;stroke-width:0"/></svg>
 
+#### index_predicate
+
+<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="158" height="35" viewbox="0 0 158 35"><path class="connector" d="M0 22h15m128 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><a xlink:href="../grammar_diagrams#where-expression"><rect class="rule" x="15" y="5" width="128" height="25"/><text class="text" x="25" y="22">where_expression</text></a><polygon points="154,29 158,29 158,15 154,15" style="fill:black;stroke-width:0"/></svg>
+
 ### Grammar
 
-```
+```ebnf
 create_index ::= CREATE INDEX [ IF NOT EXISTS ] index_name
-                     ON table_name ( partition_key_columns [ clustering_key_columns ] )  
-                     [ clustering_key_column_ordering ] [ covering_columns ]
+                     ON table_name ( partition_key_columns [ clustering_key_columns ] )
+                     [ clustering_key_column_ordering ] [ covering_columns ] [ 'WHERE' index_predicate ]
 
 partition_key_columns ::= index_column | ( index_column [ , ... ] )
 
@@ -71,6 +70,7 @@ jsonb_attribute ::= column_name [ -> 'attribute_name' [ ... ] ] ->> 'attribute_n
 
 covering_columns ::= { COVERING | INCLUDE } ( column_name [ , ... ] )
 
+index_predicate ::= where_expression
 ```
 
 Where
@@ -82,7 +82,6 @@ Where
 - An error is raised if transactions have not be enabled using the `WITH transactions = { 'enabled' : true }` clause on the table to be indexed. This is because secondary indexes internally use distributed transactions to ensure ACID guarantees in the updates to the secondary index and the associated primary key. More details [here](https://blog.yugabyte.com/yugabyte-db-1-1-new-feature-speeding-up-queries-with-secondary-indexes/).
 - An error is raised if `index_name` already exists in the associated keyspace unless the `IF NOT EXISTS` option is used.
 - Indexes do not support TTL. An error is raised if data is inserted with TTL into a table with indexes.
-
 
 {{< note title="Note" >}}
 
@@ -104,9 +103,92 @@ When an index is created on an existing table, YugabyteDB will automatically bac
 
 - Included columns are optional table columns whose values are copied into the index in addition to storing them in the table. When additional columns are included in the index, they can be used to respond to queries directly from the index without querying the table.
 
+- The following can't be added to an index's included columns: static columns of a table, expressions, and table columns with the following types: frozen, map, set, list, tuple, jsonb, and user defined.
+
 ### UNIQUE INDEX
 
 - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
+
+### PARTIAL INDEX
+
+- If a `WHERE` clause is specified, only rows which satisfy the `index_predicate` are indexed.
+- An `index_predicate` can have sub-expressions on columns of these data types: `TINYINT`, `SMALLINT`, `INT/INTEGER`, `BIGINT`, `VARINT`, `BOOLEAN` and `TEXT` along with these operators (when applicable): `=, !=, >, <, >=, <=`.
+- Partial indexes can be `UNIQUE`. A UNIQUE partial index enforces the constraint that for each possible tuple of indexed columns, only one row that satisfies the `index_predicate` is allowed in the table.
+- `SELECT` queries can use a partial index for scanning if the `SELECT` statement's `where_expression` => (logically implies) `index_predicate`.
+
+    {{< note title="Note" >}}
+
+- A partial index might not be chosen even if the implication holds in case there are better query plans.
+- The logical implication holds if all sub-expressions of the `index_predicate` are present as is in the `where_expression`. For example, assume `where_expression = A AND B AND C`, `index_predicate_1 = A AND B`, `index_predicate_2 = A AND B AND D`, `index_predicate_3 = A AND B AND C AND D`. Then `where_expression` only implies `index_predicate_1`
+
+- Currently, valid mathematical implications are not taken into account when checking for logical implication. For example, even if `where_expression = x > 5` and `index_predicate = x > 4`, the `SELECT` query will not use the index for scanning. This is because the two sub-expressions `x > 5` and `x > 4` differ.
+
+    {{< /note >}}
+
+- When using a prepared statement, the logical implication check (to decide if a partial index is usable), will only consider those sub-expressions of `where_expression` that don't have a bind variable. This is because the query plan is decided before execution (i.e., when a statement is prepared).
+
+```sql
+ycqlsh:example> CREATE TABLE orders (customer_id INT,
+                                    order_date TIMESTAMP,
+                                    product JSONB,
+                                    warehouse_id INT,
+                                    amount DOUBLE,
+                                    PRIMARY KEY ((customer_id), order_date))
+                WITH transactions = { 'enabled' : true };
+
+ycqlsh:example> CREATE INDEX idx ON orders (warehouse_id)
+                WHERE warehouse_id < 100;
+
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id < 100 AND order_date >= ?; // Idx can be used
+```
+
+```output
+ QUERY PLAN
+------------------------------------------
+ Index Scan using temp.idx on temp.orders
+   Filter: (order_date >= :order_date)
+```
+
+```sql
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id < ? and order_date >= ?; // Idx cannot be used
+```
+
+```output
+ QUERY PLAN
+--------------------------------------------------------------------------
+ Seq Scan on temp.orders
+   Filter: (warehouse_id < :warehouse_id) AND (order_date >= :order_date)
+```
+
+- Without partial indexes, we do not allow many combinations of operators together on the same column in a `SELECT`'s where expression e.g.: `WHERE v1 != NULL and v1 = 5`. But if there was a partial index that subsumes some clauses of the `SELECT`'s where expression, two or more operators otherwise not supported together, might be supported.
+
+```sql
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id != NULL AND warehouse_id = ?;
+```
+
+```output
+SyntaxException: Invalid CQL Statement. Illogical condition for where clause
+EXPLAIN SELECT product from orders where warehouse_id != NULL and warehouse_id = ?;
+                                                                  ^^^^^^^^^^^^
+ (ql error -12)
+```
+
+```sql
+ycqlsh:example> CREATE INDEX warehouse_idx ON orders (warehouse_id)
+                WHERE warehouse_id != NULL;
+ycqlsh:example> EXPLAIN SELECT product FROM orders
+                WHERE warehouse_id != NULL AND warehouse_id = ?; // warehouse_idx can be used
+```
+
+```output
+ QUERY PLAN
+----------------------------------------------------
+ Index Scan using temp.warehouse_idx on temp.orders
+   Key Conditions: (warehouse_id = :warehouse_id)
+```
 
 ## Examples
 
@@ -121,7 +203,7 @@ ycqlsh:example> CREATE TABLE orders (customer_id INT,
                                     warehouse_id INT,
                                     amount DOUBLE,
                                     PRIMARY KEY ((customer_id), order_date))
-               WITH transactions = { 'enabled' : true };
+                WITH transactions = { 'enabled' : true };
 ```
 
 ### Create an index for query by the `order_date` column
@@ -133,35 +215,38 @@ ycqlsh:example> CREATE INDEX orders_by_date ON orders (order_date) INCLUDE (amou
 ### Create an index for query by the JSONB attribute `product->>'name'`
 
 ```sql
-ycqlsh:example> CREATE INDEX product_name ON orders (product->>'name') INCLUDE (amount);
+ycqlsh:example> CREATE INDEX product_name
+                ON orders (product->>'name') INCLUDE (amount);
 ```
 
 ### Create an index for query by the `warehouse_id` column
 
 ```sql
-ycqlsh:example> CREATE INDEX orders_by_warehouse ON orders (warehouse_id, order_date) INCLUDE (amount);
+ycqlsh:example> CREATE INDEX orders_by_warehouse
+                ON orders (warehouse_id, order_date) INCLUDE (amount);
 ```
 
 ### Insert some data
 
 ```sql
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1001, '2018-01-10', '{ "name":"desk" }', 107, 100.30);
+                VALUES (1001, '2018-01-10', '{ "name":"desk" }', 107, 100.30);
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1002, '2018-01-11', '{ "name":"chair" }', 102, 50.45);
+                VALUES (1002, '2018-01-11', '{ "name":"chair" }', 102, 50.45);
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1001, '2018-04-09', '{ "name":"pen" }', 102, 20.25);
+                VALUES (1001, '2018-04-09', '{ "name":"pen" }', 102, 20.25);
 ycqlsh:example> INSERT INTO orders (customer_id, order_date, product, warehouse_id, amount)
-               VALUES (1003, '2018-04-09', '{ "name":"pencil" }', 108, 200.80);
+                VALUES (1003, '2018-04-09', '{ "name":"pencil" }', 108, 200.80);
 ```
 
 ### Query by the partition column `customer_id` in the table
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND order_date >= '2018-01-01';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE customer_id = 1001 AND order_date >= '2018-01-01';
 ```
 
-```
+```output
   sum(amount)
 -------------
       120.55
@@ -170,10 +255,11 @@ ycqlsh:example> SELECT SUM(amount) FROM orders WHERE customer_id = 1001 AND orde
 ### Query by the partition column `order_date` in the index `orders_by_date`
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE order_date = '2018-04-09';
 ```
 
-```
+```output
  sum(amount)
 -------------
       221.05
@@ -182,10 +268,11 @@ ycqlsh:example> SELECT SUM(amount) FROM orders WHERE order_date = '2018-04-09';
 ### Query by the partition column `product->>'name'` in the index `product_name`
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE product->>'name' = 'desk';
 ```
 
-```
+```output
  sum(amount)
 -------------
       100.30
@@ -194,10 +281,11 @@ ycqlsh:example> SELECT SUM(amount) FROM orders WHERE product->>'name' = 'desk';
 ### Query by the partition column `warehouse_id` column in the index `orders_by_warehouse`
 
 ```sql
-ycqlsh:example> SELECT SUM(amount) FROM orders WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
+ycqlsh:example> SELECT SUM(amount) FROM orders
+                WHERE warehouse_id = 102 AND order_date >= '2018-01-01';
 ```
 
-```
+```output
  sum(amount)
 -------------
         70.7
@@ -220,23 +308,26 @@ ycqlsh:example> CREATE UNIQUE INDEX emp_by_userid ON emp (userid);
 
 ```sql
 ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
-               VALUES (1001, 'Smith', 'John', 'jsmith');
+                VALUES (1001, 'Smith', 'John', 'jsmith');
 ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
-               VALUES (1002, 'Smith', 'Jason', 'jsmith');
+                VALUES (1002, 'Smith', 'Jason', 'jsmith');
+```
+
+```output
 InvalidRequest: Error from server: code=2200 [Invalid query] message="SQL error: Execution Error. Duplicate value disallowed by unique index emp_by_userid
 INSERT INTO emp (enum, lastname, firstname, userid)
        ^^^^
 VALUES (1002, 'Smith', 'Jason', 'jsmith');
  (error -300)"
-ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
-               VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ```
 
 ```sql
+ycqlsh:example> INSERT INTO emp (enum, lastname, firstname, userid)
+                VALUES (1002, 'Smith', 'Jason', 'jasmith');
 ycqlsh:example> SELECT * FROM emp;
 ```
 
-```
+```output
  enum | lastname | firstname | userid
 ------+----------+-----------+---------
  1002 |    Smith |     Jason | jasmith

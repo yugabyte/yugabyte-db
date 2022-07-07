@@ -3,27 +3,25 @@ title: ACID transactions in YCQL
 headerTitle: ACID transactions
 linkTitle: 4. ACID transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: acid-transactions-1-ycql
     parent: learn
     weight: 566
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/develop/learn/acid-transactions-ysql" class="nav-link">
+    <a href="/preview/develop/learn/acid-transactions-ysql" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/develop/learn/acid-transactions-ycql" class="nav-link active">
+    <a href="/preview/develop/learn/acid-transactions-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -37,7 +35,7 @@ A transaction is a sequence of operations performed as a single logical unit of 
 
 - **Consistency** A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
 
-- **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (i.e. as if they occur in a completely isolated fashion). YugabyteDB supports both *Snapshot Isolation*, and *Serializable* isolation levels. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
+- **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (i.e. as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot*, *Serializable* and *Read Committed* isolation levels. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
@@ -77,7 +75,7 @@ Here is a code snippet of how you would insert data into this table.
 
 ```java
 // Insert two key values, (key1, value1) and (key2, value2) as a transaction.
-String create_stmt = 
+String create_stmt =
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
                 "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
@@ -93,7 +91,7 @@ You can prepare statements with transactions and bind variables to the prepared 
 ### Java example
 
 ```java
-String create_stmt = 
+String create_stmt =
   String.format("BEGIN TRANSACTION" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
                 "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
@@ -114,7 +112,7 @@ ResultSet resultSet = client.execute(txn1);
 
 ## Sample Java Application
 
-You can find a working example of using transactions with YugabyteDB in our [sample applications](../../../quick-start/run-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
+You can find a working example of using transactions with YugabyteDB in our [sample applications](../../../develop/explore-sample-apps/). This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
 
 Here is how you can try out this sample application.
 
@@ -263,7 +261,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
 Further, the checking and savings account balances for John should have been written at the same write timestamp.
 
 ```sql
-ycqlsh> select account_name, account_type, balance, writetime(balance) 
+ycqlsh> select account_name, account_type, balance, writetime(balance)
 from banking.accounts where account_name='John';
 ```
 

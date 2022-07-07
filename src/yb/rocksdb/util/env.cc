@@ -23,12 +23,11 @@
 #include "yb/rocksdb/env.h"
 
 #include <thread>
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/port/sys_time.h"
 
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/autovector.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 
@@ -388,6 +387,111 @@ Status ReadFileToString(Env* env, const std::string& fname, std::string* data) {
   return s;
 }
 
+Status EnvWrapper::NewSequentialFile(const std::string& f, std::unique_ptr<SequentialFile>* r,
+                                     const EnvOptions& options) {
+  return target_->NewSequentialFile(f, r, options);
+}
+
+Status EnvWrapper::NewRandomAccessFile(const std::string& f,
+                                       unique_ptr<RandomAccessFile>* r,
+                                       const EnvOptions& options) {
+  return target_->NewRandomAccessFile(f, r, options);
+}
+
+Status EnvWrapper::NewWritableFile(const std::string& f, unique_ptr<WritableFile>* r,
+                                   const EnvOptions& options) {
+  return target_->NewWritableFile(f, r, options);
+}
+
+Status EnvWrapper::ReuseWritableFile(const std::string& fname,
+                                     const std::string& old_fname,
+                                     unique_ptr<WritableFile>* r,
+                                     const EnvOptions& options) {
+  return target_->ReuseWritableFile(fname, old_fname, r, options);
+}
+
+Status EnvWrapper::NewDirectory(const std::string& name,
+                                unique_ptr<Directory>* result) {
+  return target_->NewDirectory(name, result);
+}
+
+Status EnvWrapper::FileExists(const std::string& f) {
+  return target_->FileExists(f);
+}
+
+Status EnvWrapper::GetChildren(const std::string& dir,
+                               std::vector<std::string>* r) {
+  return target_->GetChildren(dir, r);
+}
+
+Status EnvWrapper::GetChildrenFileAttributes(
+    const std::string& dir, std::vector<FileAttributes>* result) {
+  return target_->GetChildrenFileAttributes(dir, result);
+}
+
+Status EnvWrapper::DeleteFile(const std::string& f) {
+  return target_->DeleteFile(f);
+}
+
+Status EnvWrapper::CreateDir(const std::string& d) {
+  return target_->CreateDir(d);
+}
+
+Status EnvWrapper::CreateDirIfMissing(const std::string& d) {
+  return target_->CreateDirIfMissing(d);
+}
+
+Status EnvWrapper::DeleteDir(const std::string& d) {
+  return target_->DeleteDir(d);
+}
+
+Status EnvWrapper::GetFileSize(const std::string& f, uint64_t* s) {
+  return target_->GetFileSize(f, s);
+}
+
+Status EnvWrapper::GetFileModificationTime(const std::string& fname,
+                               uint64_t* file_mtime) {
+  return target_->GetFileModificationTime(fname, file_mtime);
+}
+
+Status EnvWrapper::RenameFile(const std::string& s, const std::string& t) {
+  return target_->RenameFile(s, t);
+}
+
+Status EnvWrapper::LinkFile(const std::string& s, const std::string& t) {
+  return target_->LinkFile(s, t);
+}
+
+Status EnvWrapper::LockFile(const std::string& f, FileLock** l) {
+  return target_->LockFile(f, l);
+}
+
+Status EnvWrapper::UnlockFile(FileLock* l) {
+  return target_->UnlockFile(l);
+}
+
+Status EnvWrapper::GetTestDirectory(std::string* path) {
+  return target_->GetTestDirectory(path);
+}
+
+Status EnvWrapper::NewLogger(const std::string& fname,
+                             shared_ptr<Logger>* result) {
+  return target_->NewLogger(fname, result);
+}
+
+Status EnvWrapper::GetHostName(char* name, uint64_t len) {
+  return target_->GetHostName(name, len);
+}
+
+Status EnvWrapper::GetCurrentTime(int64_t* unix_time) {
+  return target_->GetCurrentTime(unix_time);
+}
+
+Status EnvWrapper::GetAbsolutePath(const std::string& db_path,
+                                   std::string* output_path) {
+  return target_->GetAbsolutePath(db_path, output_path);
+}
+
 EnvWrapper::~EnvWrapper() {
 }
 
@@ -421,6 +525,10 @@ EnvOptions Env::OptimizeForManifestWrite(const EnvOptions& env_options) const {
   return env_options;
 }
 
+Status Env::LinkFile(const std::string& src, const std::string& target) {
+  return STATUS(NotSupported, "LinkFile is not supported for this Env");
+}
+
 EnvOptions::EnvOptions(const DBOptions& options) {
   AssignEnvOptions(this, options);
 }
@@ -428,6 +536,122 @@ EnvOptions::EnvOptions(const DBOptions& options) {
 EnvOptions::EnvOptions() {
   DBOptions options;
   AssignEnvOptions(this, options);
+}
+
+void WritableFile::PrepareWrite(size_t offset, size_t len) {
+  if (preallocation_block_size_ == 0) {
+    return;
+  }
+  // If this write would cross one or more preallocation blocks,
+  // determine what the last preallocation block necesessary to
+  // cover this write would be and Allocate to that point.
+  const auto block_size = preallocation_block_size_;
+  size_t new_last_preallocated_block =
+    (offset + len + block_size - 1) / block_size;
+  if (new_last_preallocated_block > last_preallocated_block_) {
+    size_t num_spanned_blocks =
+      new_last_preallocated_block - last_preallocated_block_;
+    WARN_NOT_OK(
+        Allocate(block_size * last_preallocated_block_, block_size * num_spanned_blocks),
+        "Failed to pre-allocate space for a file");
+    last_preallocated_block_ = new_last_preallocated_block;
+  }
+}
+
+Status WritableFile::PositionedAppend(const Slice& /* data */, uint64_t /* offset */) {
+  return STATUS(NotSupported, "PositionedAppend not supported");
+}
+
+// Truncate is necessary to trim the file to the correct size
+// before closing. It is not always possible to keep track of the file
+// size due to whole pages writes. The behavior is undefined if called
+// with other writes to follow.
+Status WritableFile::Truncate(uint64_t size) {
+  return Status::OK();
+}
+
+Status WritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
+  return Status::OK();
+}
+
+Status WritableFile::Fsync() {
+  return Sync();
+}
+
+Status WritableFile::InvalidateCache(size_t offset, size_t length) {
+  return STATUS(NotSupported, "InvalidateCache not supported.");
+}
+
+Status WritableFile::Allocate(uint64_t offset, uint64_t len) {
+  return Status::OK();
+}
+
+Status RocksDBFileFactoryWrapper::NewSequentialFile(
+    const std::string& f, unique_ptr<SequentialFile>* r,
+    const rocksdb::EnvOptions& options) {
+  return target_->NewSequentialFile(f, r, options);
+}
+Status RocksDBFileFactoryWrapper::NewRandomAccessFile(const std::string& f,
+                                                      unique_ptr <rocksdb::RandomAccessFile>* r,
+                                                      const EnvOptions& options) {
+  return target_->NewRandomAccessFile(f, r, options);
+}
+
+Status RocksDBFileFactoryWrapper::NewWritableFile(
+    const std::string& f, unique_ptr <rocksdb::WritableFile>* r,
+    const EnvOptions& options) {
+  return target_->NewWritableFile(f, r, options);
+}
+
+Status RocksDBFileFactoryWrapper::ReuseWritableFile(const std::string& fname,
+                                                    const std::string& old_fname,
+                                                    unique_ptr<WritableFile>* result,
+                                                    const EnvOptions& options) {
+  return target_->ReuseWritableFile(fname, old_fname, result, options);
+}
+
+Status RocksDBFileFactoryWrapper::GetFileSize(const std::string& fname, uint64_t* size) {
+  return target_->GetFileSize(fname, size);
+}
+
+Status WritableFileWrapper::Append(const Slice& data) {
+  return target_->Append(data);
+}
+
+Status WritableFileWrapper::PositionedAppend(const Slice& data, uint64_t offset) {
+  return target_->PositionedAppend(data, offset);
+}
+
+Status WritableFileWrapper::Truncate(uint64_t size) {
+  return target_->Truncate(size);
+}
+
+Status WritableFileWrapper::Close() {
+  return target_->Close();
+}
+
+Status WritableFileWrapper::Flush() {
+  return target_->Flush();
+}
+
+Status WritableFileWrapper::Sync() {
+  return target_->Sync();
+}
+
+Status WritableFileWrapper::Fsync() {
+  return target_->Fsync();
+}
+
+Status WritableFileWrapper::InvalidateCache(size_t offset, size_t length) {
+  return target_->InvalidateCache(offset, length);
+}
+
+Status WritableFileWrapper::Allocate(uint64_t offset, uint64_t len) {
+  return target_->Allocate(offset, len);
+}
+
+Status WritableFileWrapper::RangeSync(uint64_t offset, uint64_t nbytes) {
+  return target_->RangeSync(offset, nbytes);
 }
 
 }  // namespace rocksdb

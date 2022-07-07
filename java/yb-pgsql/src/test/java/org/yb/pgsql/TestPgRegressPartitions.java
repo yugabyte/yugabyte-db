@@ -23,11 +23,26 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestPgRegressPartitions extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
-    return 1800;
+    return getPerfMaxRuntime(500, 1000, 1200, 1200, 1200);
   }
 
   @Test
-  public void testPgRegressPartitions() throws Exception {
-    runPgRegressTest("yb_pg_partitions");
+  public void misc() throws Exception {
+    runPgRegressTest("yb_pg_partitions_misc_schedule");
+  }
+
+  @Test
+  public void partitionwiseJoin() throws Exception {
+    runPgRegressTest("yb_pg_partition_join_schedule");
+  }
+
+  @Test
+  public void pruning() throws Exception {
+    runPgRegressTest("yb_pg_partition_prune_schedule");
+  }
+
+  @Test
+  public void yb_partitions_tests() throws Exception {
+    runPgRegressTest("yb_partitions_schedule");
   }
 }

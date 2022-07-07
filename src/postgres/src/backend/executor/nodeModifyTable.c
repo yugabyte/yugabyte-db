@@ -68,6 +68,7 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
+#include "utils/typcache.h"
 
 /*  YB includes. */
 #include "access/sysattr.h"
@@ -122,6 +123,9 @@ ExecCheckPlanOutput(Relation resultRel, List *targetList)
 
 		if (tle->resjunk)
 			continue;			/* ignore junk tlist items */
+
+		if (IsYsqlUpgrade && tle->resno == ObjectIdAttributeNumber)
+			continue;			/* ignore oid system column used in YSQL upgrade */
 
 		if (attno >= resultDesc->natts)
 			ereport(ERROR,
@@ -328,9 +332,22 @@ ExecInsert(ModifyTableState *mtstate,
 	 * rows, this'd be the place to do it.  For the moment, we make a point of
 	 * doing this before calling triggers, so that a user-supplied trigger
 	 * could hack the OID if desired.
+	 *
+	 * YB note:
+	 * --------
+	 * YSQL upgrade introduces a hacky way for INSERT to set OID implemented
+	 * via tts_yb_insert_oid. It would become obsolete after upgrade to PG 12
+	 * which would make oid a regular column.
 	 */
 	if (resultRelationDesc->rd_rel->relhasoids)
-		HeapTupleSetOid(tuple, InvalidOid);
+	{
+		Oid tuple_oid = InvalidOid;
+
+		if (IsYsqlUpgrade && IsYBRelation(resultRelationDesc))
+			tuple_oid = slot->tts_yb_insert_oid;
+
+		HeapTupleSetOid(tuple, tuple_oid);
+	}
 
 	/*
 	 * BEFORE ROW INSERT Triggers.
@@ -600,7 +617,7 @@ ExecInsert(ModifyTableState *mtstate,
 		}
 	}
 
-  if (canSetTag)
+	if (canSetTag)
 	{
 		(estate->es_processed)++;
 		estate->es_lastoid = newId;
@@ -773,7 +790,8 @@ ExecDelete(ModifyTableState *mtstate,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate, mtstate);
+		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate,
+										  mtstate, changingPart);
 		if (!row_found)
 		{
 			/*
@@ -1010,6 +1028,235 @@ ldelete:;
 }
 
 /* ----------------------------------------------------------------
+ * YBEqualDatums
+ *
+ * Function compares values of lhs and rhs datums with respect to value type and collation.
+ *
+ * Returns true in case value of lhs and rhs datums match.
+ * ----------------------------------------------------------------
+ */
+static bool
+YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
+{
+	TypeCacheEntry *typentry = lookup_type_cache(atttypid, TYPECACHE_CMP_PROC_FINFO);
+	if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
+		ereport(ERROR,
+		        (errcode(ERRCODE_UNDEFINED_FUNCTION),
+		         errmsg("could not identify a comparison function for type %s",
+		                format_type_be(typentry->type_id))));
+
+	FunctionCallInfoData locfcinfo;
+	InitFunctionCallInfoData(locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
+	locfcinfo.arg[0] = lhs;
+	locfcinfo.arg[1] = rhs;
+	locfcinfo.argnull[0] = false;
+	locfcinfo.argnull[1] = false;
+	return DatumGetInt32(FunctionCallInvoke(&locfcinfo)) == 0;
+}
+
+/* ----------------------------------------------------------------
+ * YBBuildExtraUpdatedCols
+ *
+ * Function compares attribute value in oldtuple and newtuple for attributes which are not in the
+ * updatedCols set. Returns set of changed attributes or NULL.
+ * ----------------------------------------------------------------
+ */
+static Bitmapset*
+YBBuildExtraUpdatedCols(Relation rel,
+                        HeapTuple oldtuple,
+                        HeapTuple newtuple,
+                        Bitmapset *updatedCols)
+{
+	if (bms_is_member(InvalidAttrNumber, updatedCols))
+		/* No extra work required in case the whore row is changed */
+		return NULL;
+
+	Bitmapset *result = NULL;
+	AttrNumber firstLowInvalidAttributeNumber = YBGetFirstLowInvalidAttributeNumber(rel);
+	TupleDesc tupleDesc = RelationGetDescr(rel);
+	for (int idx = 0; idx < tupleDesc->natts; ++idx)
+	{
+		FormData_pg_attribute *att_desc = TupleDescAttr(tupleDesc, idx);
+
+		AttrNumber attnum = att_desc->attnum;
+
+		/* Skip virtual (system) and dropped columns */
+		if (!IsRealYBColumn(rel, attnum))
+			continue;
+
+		int bms_idx = attnum - firstLowInvalidAttributeNumber;
+		if (bms_is_member(bms_idx, updatedCols))
+			continue;
+
+		bool old_is_null = false;
+		bool new_is_null = false;
+		Datum old_value = heap_getattr(oldtuple, attnum, tupleDesc, &old_is_null);
+		Datum new_value = heap_getattr(newtuple, attnum, tupleDesc, &new_is_null);
+		if (old_is_null != new_is_null ||
+		    (!new_is_null && !YBEqualDatums(old_value,
+		                                    new_value,
+		                                    att_desc->atttypid,
+		                                    att_desc->attcollation)))
+		{
+			result = bms_add_member(result, bms_idx);
+		}
+	}
+	return result;
+}
+
+
+/*
+ * ExecCrossPartitionUpdate --- Move an updated tuple to another partition.
+ *
+ * This works by first deleting the old tuple from the current partition,
+ * followed by inserting the new tuple into the root parent table, that is,
+ * mtstate->rootResultRelInfo.  It will be re-routed from there to the
+ * correct partition.
+ *
+ * Returns true if the tuple has been successfully moved, or if it's found
+ * that the tuple was concurrently deleted so there's nothing more to do
+ * for the caller.
+ *
+ * False is returned if the tuple we're trying to move is found to have been
+ * concurrently updated.  In that case, the caller must to check if the
+ * updated tuple that's returned in *retry_slot still needs to be re-routed,
+ * and call this function again or perform a regular update accordingly.
+ */
+static bool
+ExecCrossPartitionUpdate(ModifyTableState *mtstate,
+						 ResultRelInfo *resultRelInfo,
+						 ItemPointer tupleid, HeapTuple oldtuple,
+						 TupleTableSlot *slot, TupleTableSlot *planSlot,
+						 EPQState *epqstate, bool canSetTag,
+						 TupleTableSlot **retry_slot,
+						 TupleTableSlot **inserted_tuple)
+{
+	EState	   *estate = mtstate->ps.state;
+	PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
+	int			map_index;
+	TupleConversionMap *tupconv_map;
+	TupleConversionMap *saved_tcs_map = NULL;
+	bool		tuple_deleted;
+	TupleTableSlot *epqslot = NULL;
+	bool    prev_yb_is_single_row_modify_txn =
+		estate->yb_es_is_single_row_modify_txn;
+
+	*inserted_tuple = NULL;
+	*retry_slot = NULL;
+
+	/*
+	 * Disallow an INSERT ON CONFLICT DO UPDATE that causes the original row
+	 * to migrate to a different partition.  Maybe this can be implemented
+	 * some day, but it seems a fringe feature with little redeeming value.
+	 */
+	if (((ModifyTable *) mtstate->ps.plan)->onConflictAction == ONCONFLICT_UPDATE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("invalid ON UPDATE specification"),
+				 errdetail("The result tuple would appear in a different partition than the original tuple.")));
+
+	/*
+	 * When an UPDATE is run on a leaf partition, we will not have partition
+	 * tuple routing set up.  In that case, fail with partition constraint
+	 * violation error.
+	 */
+	if (proute == NULL)
+		ExecPartitionCheckEmitError(resultRelInfo, slot, estate);
+
+	/*
+	 * Row movement, part 1.  Delete the tuple, but skip RETURNING processing.
+	 * We want to return rows from INSERT.
+	 */
+	ExecDelete(mtstate, tupleid, oldtuple, planSlot,
+			   epqstate, estate,
+			   false,			/* processReturning */
+			   false,			/* canSetTag */
+			   true,			/* changingPart */
+			   &tuple_deleted, &epqslot);
+
+	/*
+	 * For some reason if DELETE didn't happen (e.g. trigger prevented it, or
+	 * it was already deleted by self, or it was concurrently deleted by
+	 * another transaction), then we should skip the insert as well;
+	 * otherwise, an UPDATE could cause an increase in the total number of
+	 * rows across all partitions, which is clearly wrong.
+	 *
+	 * For a normal UPDATE, the case where the tuple has been the subject of a
+	 * concurrent UPDATE or DELETE would be handled by the EvalPlanQual
+	 * machinery, but for an UPDATE that we've translated into a DELETE from
+	 * this partition and an INSERT into some other partition, that's not
+	 * available, because CTID chains can't span relation boundaries.  We
+	 * mimic the semantics to a limited extent by skipping the INSERT if the
+	 * DELETE fails to find a tuple.  This ensures that two concurrent
+	 * attempts to UPDATE the same tuple at the same time can't turn one tuple
+	 * into two, and that an UPDATE of a just-deleted tuple can't resurrect
+	 * it.
+	 */
+	if (!tuple_deleted)
+	{
+		/*
+		 * epqslot will be typically NULL.  But when ExecDelete() finds that
+		 * another transaction has concurrently updated the same row, it
+		 * re-fetches the row, skips the delete, and epqslot is set to the
+		 * re-fetched tuple slot.  In that case, we need to do all the checks
+		 * again.
+		 */
+		if (TupIsNull(epqslot))
+			return true;
+		else
+		{
+			*retry_slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, epqslot);
+			return false;
+		}
+	}
+
+	/*
+	 * resultRelInfo is one of the per-subplan resultRelInfos.  So we should
+	 * convert the tuple into root's tuple descriptor, since ExecInsert()
+	 * starts the search from root.  The tuple conversion map list is in the
+	 * order of mtstate->resultRelInfo[], so to retrieve the one for this
+	 * resultRel, we need to know the position of the resultRel in
+	 * mtstate->resultRelInfo[].
+	 */
+	map_index = resultRelInfo - mtstate->resultRelInfo;
+	Assert(map_index >= 0 && map_index < mtstate->mt_nplans);
+	tupconv_map = tupconv_map_for_subplan(mtstate, map_index);
+	if (tupconv_map != NULL)
+		slot = execute_attr_map_slot(tupconv_map->attrMap,
+									 slot,
+									 proute->root_tuple_slot);
+
+	/*
+	 * ExecInsert() may scribble on mtstate->mt_transition_capture, so save
+	 * the currently active map.
+ 	*/
+	if (mtstate->mt_transition_capture)
+ 		saved_tcs_map = mtstate->mt_transition_capture->tcs_map;
+
+	/*
+	 * Prepare for tuple routing, making it look like we're inserting
+	 * into the root.
+	 */
+	Assert(mtstate->rootResultRelInfo != NULL);
+	slot = ExecPrepareTupleRouting(mtstate, estate, proute,
+								   mtstate->rootResultRelInfo, slot);
+
+	*inserted_tuple = ExecInsert(mtstate, slot, planSlot, estate, canSetTag);
+
+	/* Revert ExecPrepareTupleRouting's node change. */
+	estate->es_result_relation_info = resultRelInfo;
+	estate->yb_es_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
+	if (mtstate->mt_transition_capture)
+	{
+		mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
+		mtstate->mt_transition_capture->tcs_map = saved_tcs_map;
+	}
+
+	/* We're done moving. */
+	return true;
+}
+
+/* ----------------------------------------------------------------
  *		ExecUpdate
  *
  *		note: we can't run UPDATE queries with transactions
@@ -1047,7 +1294,6 @@ ExecUpdate(ModifyTableState *mtstate,
 	HTSU_Result result;
 	HeapUpdateFailureData hufd;
 	List	   *recheckIndexes = NIL;
-	TupleConversionMap *saved_tcs_map = NULL;
 
 	/*
 	 * abort the operation if not running transactions
@@ -1067,6 +1313,8 @@ ExecUpdate(ModifyTableState *mtstate,
 	resultRelInfo = estate->es_result_relation_info;
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
+	bool beforeRowUpdateTriggerFired = false;
+
 	/* BEFORE ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->trig_update_before_row)
@@ -1079,6 +1327,7 @@ ExecUpdate(ModifyTableState *mtstate,
 
 		/* trigger might have changed tuple */
 		tuple = ExecMaterializeSlot(slot);
+		beforeRowUpdateTriggerFired = true;
 	}
 
 	/* INSTEAD OF ROW UPDATE Triggers */
@@ -1120,9 +1369,7 @@ ExecUpdate(ModifyTableState *mtstate,
 	{
 		bool		partition_constraint_failed;
 
-		if (resultRelInfo->ri_WithCheckOptions != NIL)
-			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
-
+		yb_lreplace:;
 		/*
 		 * Check the constraints of the tuple.
 		 */
@@ -1136,21 +1383,68 @@ ExecUpdate(ModifyTableState *mtstate,
 			resultRelInfo->ri_PartitionCheck &&
 			!ExecPartitionCheck(resultRelInfo, slot, estate, false /* emitError */);
 
+		if (!partition_constraint_failed && resultRelInfo->ri_WithCheckOptions != NIL)
+		{
+			/*
+			 * ExecWithCheckOptions() will skip any WCOs which are not of the
+			 * kind we are looking for at this point.
+			 */
+			ExecWithCheckOptions(WCO_RLS_UPDATE_CHECK, resultRelInfo, slot, estate);
+		}
+
+
+		/*
+		 * If a partition check failed, try to move the row into the right
+		 * partition.
+		 */
 		if (partition_constraint_failed)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("This operation would cause a row to change the partition, "
-							"this is not yet supported"),
-					 errhint("See https://github.com/YugaByte/yugabyte-db/issues/%d. "
-							 "Click '+' on the description to raise its priority", 5310)));
+		{
+			TupleTableSlot *inserted_tuple, *retry_slot;
+			bool            retry;
+
+
+			/*
+			 * ExecCrossPartitionUpdate will first DELETE the row from the
+			 * partition it's currently in and then insert it back into the
+			 * root table, which will re-route it to the correct partition.
+			 * The first part may have to be repeated if it is detected that
+			 * the tuple we're trying to move has been concurrently updated.
+ 			 */
+
+			retry = !ExecCrossPartitionUpdate(mtstate, resultRelInfo, tupleid,
+											  oldtuple, slot, planSlot,
+											  epqstate, canSetTag,
+											  &retry_slot, &inserted_tuple);
+			if (retry)
+			{
+				slot = retry_slot;
+				tuple = ExecMaterializeSlot(slot);
+				goto yb_lreplace;
+ 			}
+
+			return inserted_tuple;
+ 		}
 
 		RangeTblEntry *rte = rt_fetch(resultRelInfo->ri_RangeTableIndex,
 									  estate->es_range_table);
 
 		bool row_found = false;
 
+		Bitmapset *actualUpdatedCols = rte->updatedCols;
+		Bitmapset *extraUpdatedCols = NULL;
+		if (beforeRowUpdateTriggerFired)
+		{
+			/* trigger might have changed tuple */
+			extraUpdatedCols = YBBuildExtraUpdatedCols(
+				resultRelationDesc, oldtuple, tuple, rte->updatedCols);
+			if (extraUpdatedCols)
+			{
+				extraUpdatedCols = bms_add_members(extraUpdatedCols, rte->updatedCols);
+				actualUpdatedCols = extraUpdatedCols;
+			}
+		}
 		bool is_pk_updated =
-			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), rte->updatedCols);
+			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), actualUpdatedCols);
 
 		if (is_pk_updated)
 		{
@@ -1159,9 +1453,16 @@ ExecUpdate(ModifyTableState *mtstate,
 		}
 		else
 		{
-			row_found = YBCExecuteUpdate(resultRelationDesc, planSlot, tuple, estate, mtstate, rte->updatedCols);
+			row_found = YBCExecuteUpdate(resultRelationDesc,
+										 planSlot,
+										 tuple,
+										 estate,
+										 mtstate,
+										 actualUpdatedCols,
+										 canSetTag);
 		}
 
+		bms_free(extraUpdatedCols);
 		if (!row_found)
 		{
 			/*
@@ -1171,7 +1472,7 @@ ExecUpdate(ModifyTableState *mtstate,
 			return NULL;
 		}
 
-		/* Update indices selectively if necessary, Single row updates do not affect indeces */
+		/* Update indices selectively if necessary, Single row updates do not affect indices */
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
 		    !mtstate->yb_mt_is_single_row_update_or_delete)
 		{
@@ -1236,128 +1537,31 @@ lreplace:;
 		 */
 		if (partition_constraint_failed)
 		{
-			bool		tuple_deleted;
-			TupleTableSlot *ret_slot;
-			TupleTableSlot *epqslot = NULL;
-			PartitionTupleRouting *proute = mtstate->mt_partition_tuple_routing;
-			int			map_index;
-			TupleConversionMap *tupconv_map;
-			bool		prev_yb_is_single_row_modify_txn = estate->es_yb_is_single_row_modify_txn;
+			TupleTableSlot *inserted_tuple, *retry_slot;
+			bool            retry;
+
 
 			/*
-			 * Disallow an INSERT ON CONFLICT DO UPDATE that causes the
-			 * original row to migrate to a different partition.  Maybe this
-			 * can be implemented some day, but it seems a fringe feature with
-			 * little redeeming value.
-			 */
-			if (((ModifyTable *) mtstate->ps.plan)->onConflictAction == ONCONFLICT_UPDATE)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("invalid ON UPDATE specification"),
-						 errdetail("The result tuple would appear in a different partition than the original tuple.")));
+			 * ExecCrossPartitionUpdate will first DELETE the row from the
+			 * partition it's currently in and then insert it back into the
+			 * root table, which will re-route it to the correct partition.
+			 * The first part may have to be repeated if it is detected that
+			 * the tuple we're trying to move has been concurrently updated.
+ 			 */
 
-			/*
-			 * When an UPDATE is run on a leaf partition, we will not have
-			 * partition tuple routing set up. In that case, fail with
-			 * partition constraint violation error.
-			 */
-			if (proute == NULL)
-				ExecPartitionCheckEmitError(resultRelInfo, slot, estate);
-
-			/*
-			 * Row movement, part 1.  Delete the tuple, but skip RETURNING
-			 * processing. We want to return rows from INSERT.
-			 */
-			ExecDelete(mtstate, tupleid, oldtuple, planSlot, epqstate,
-					   estate, false, false /* canSetTag */ ,
-					   true /* changingPart */ , &tuple_deleted, &epqslot);
-
-			/*
-			 * For some reason if DELETE didn't happen (e.g. trigger prevented
-			 * it, or it was already deleted by self, or it was concurrently
-			 * deleted by another transaction), then we should skip the insert
-			 * as well; otherwise, an UPDATE could cause an increase in the
-			 * total number of rows across all partitions, which is clearly
-			 * wrong.
-			 *
-			 * For a normal UPDATE, the case where the tuple has been the
-			 * subject of a concurrent UPDATE or DELETE would be handled by
-			 * the EvalPlanQual machinery, but for an UPDATE that we've
-			 * translated into a DELETE from this partition and an INSERT into
-			 * some other partition, that's not available, because CTID chains
-			 * can't span relation boundaries.  We mimic the semantics to a
-			 * limited extent by skipping the INSERT if the DELETE fails to
-			 * find a tuple. This ensures that two concurrent attempts to
-			 * UPDATE the same tuple at the same time can't turn one tuple
-			 * into two, and that an UPDATE of a just-deleted tuple can't
-			 * resurrect it.
-			 */
-			if (!tuple_deleted)
+			retry = !ExecCrossPartitionUpdate(mtstate, resultRelInfo, tupleid,
+											  oldtuple, slot, planSlot,
+											  epqstate, canSetTag,
+											  &retry_slot, &inserted_tuple);
+			if (retry)
 			{
-				/*
-				 * epqslot will be typically NULL.  But when ExecDelete()
-				 * finds that another transaction has concurrently updated the
-				 * same row, it re-fetches the row, skips the delete, and
-				 * epqslot is set to the re-fetched tuple slot. In that case,
-				 * we need to do all the checks again.
-				 */
-				if (TupIsNull(epqslot))
-					return NULL;
-				else
-				{
-					slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, epqslot);
-					tuple = ExecMaterializeSlot(slot);
-					goto lreplace;
-				}
-			}
+				slot = retry_slot;
+				tuple = ExecMaterializeSlot(slot);
+				goto lreplace;
+ 			}
 
-			/*
-			 * Updates set the transition capture map only when a new subplan
-			 * is chosen.  But for inserts, it is set for each row. So after
-			 * INSERT, we need to revert back to the map created for UPDATE;
-			 * otherwise the next UPDATE will incorrectly use the one created
-			 * for INSERT.  So first save the one created for UPDATE.
-			 */
-			if (mtstate->mt_transition_capture)
-				saved_tcs_map = mtstate->mt_transition_capture->tcs_map;
-
-			/*
-			 * resultRelInfo is one of the per-subplan resultRelInfos.  So we
-			 * should convert the tuple into root's tuple descriptor, since
-			 * ExecInsert() starts the search from root.  The tuple conversion
-			 * map list is in the order of mtstate->resultRelInfo[], so to
-			 * retrieve the one for this resultRel, we need to know the
-			 * position of the resultRel in mtstate->resultRelInfo[].
-			 */
-			map_index = resultRelInfo - mtstate->resultRelInfo;
-			Assert(map_index >= 0 && map_index < mtstate->mt_nplans);
-			tupconv_map = tupconv_map_for_subplan(mtstate, map_index);
-			if (tupconv_map != NULL)
-				slot = execute_attr_map_slot(tupconv_map->attrMap,
-											  slot, proute->root_tuple_slot);
-
-			/*
-			 * Prepare for tuple routing, making it look like we're inserting
-			 * into the root.
-			 */
-			Assert(mtstate->rootResultRelInfo != NULL);
-			slot = ExecPrepareTupleRouting(mtstate, estate, proute,
-										   mtstate->rootResultRelInfo, slot);
-
-			ret_slot = ExecInsert(mtstate, slot, planSlot,
-								  estate, canSetTag);
-
-			/* Revert ExecPrepareTupleRouting's node change. */
-			estate->es_result_relation_info = resultRelInfo;
-			estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
-			if (mtstate->mt_transition_capture)
-			{
-				mtstate->mt_transition_capture->tcs_original_insert_tuple = NULL;
-				mtstate->mt_transition_capture->tcs_map = saved_tcs_map;
-			}
-
-			return ret_slot;
-		}
+			return inserted_tuple;
+ 		}
 
 		/*
 		 * Check the constraints of the tuple.  We've already checked the
@@ -2042,9 +2246,9 @@ ExecPrepareTupleRouting(ModifyTableState *mtstate,
 	 * As such, we should reevaluate single-row transaction constraints after
 	 * we determine the concrete partition.
 	 */
-	if (estate->es_yb_is_single_row_modify_txn)
+	if (estate->yb_es_is_single_row_modify_txn)
 	{
-		estate->es_yb_is_single_row_modify_txn = YBCIsSingleRowTxnCapableRel(partrel);
+		estate->yb_es_is_single_row_modify_txn = YBCIsSingleRowTxnCapableRel(partrel);
 	}
 
 	return slot;
@@ -2441,7 +2645,7 @@ ExecModifyTable(PlanState *pstate)
 				else
 				{
 					bool prev_yb_is_single_row_modify_txn =
-							estate->es_yb_is_single_row_modify_txn;
+							estate->yb_es_is_single_row_modify_txn;
 
 					/* Prepare for tuple routing. */
 					slot = ExecPrepareTupleRouting(node, estate, proute,
@@ -2452,7 +2656,7 @@ ExecModifyTable(PlanState *pstate)
 
 					/* Revert ExecPrepareTupleRouting's state change. */
 					estate->es_result_relation_info = resultRelInfo;
-					estate->es_yb_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
+					estate->yb_es_is_single_row_modify_txn = prev_yb_is_single_row_modify_txn;
 				}
 				break;
 			case CMD_UPDATE:
@@ -2676,7 +2880,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		{
 			WithCheckOption *wco = (WithCheckOption *) lfirst(ll);
 			ExprState  *wcoExpr = ExecInitQual((List *) wco->qual,
-											   mtstate->mt_plans[i]);
+											   &mtstate->ps);
 
 			wcoExprs = lappend(wcoExprs, wcoExpr);
 		}
@@ -2748,9 +2952,9 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 	 */
 	if (node->onConflictAction == ONCONFLICT_UPDATE)
 	{
+		OnConflictSetState *onconfl = makeNode(OnConflictSetState);
 		ExprContext *econtext;
 		TupleDesc	relationDesc;
-		TupleDesc	tupDesc;
 
 		/* insert may only have one plan, inheritance is not expanded */
 		Assert(nplans == 1);
@@ -2777,7 +2981,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		mtstate->mt_excludedtlist = node->exclRelTlist;
 
 		/* create state for DO UPDATE SET operation */
-		resultRelInfo->ri_onConflict = makeNode(OnConflictSetState);
+		resultRelInfo->ri_onConflict = onconfl;
 
 		/*
 		 * Create the tuple slot for the UPDATE SET projection.
@@ -2788,19 +2992,27 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 		 * the tupdesc in the parent's state: it can be reused by partitions
 		 * with an identical descriptor to the parent.
 		 */
-		tupDesc = ExecTypeFromTL((List *) node->onConflictSet,
-								 relationDesc->tdhasoid);
 		mtstate->mt_conflproj =
 			ExecInitExtraTupleSlot(mtstate->ps.state,
 								   mtstate->mt_partition_tuple_routing ?
-								   NULL : tupDesc);
-		resultRelInfo->ri_onConflict->oc_ProjTupdesc = tupDesc;
+								   NULL : relationDesc);
+		onconfl->oc_ProjTupdesc = relationDesc;
+
+		/*
+		 * The onConflictSet tlist should already have been adjusted to emit
+		 * the table's exact column list.  It could also contain resjunk
+		 * columns, which should be evaluated but not included in the
+		 * projection result.
+		 */
+		ExecCheckPlanOutput(resultRelInfo->ri_RelationDesc,
+							node->onConflictSet);
 
 		/* build UPDATE SET projection state */
-		resultRelInfo->ri_onConflict->oc_ProjInfo =
-			ExecBuildProjectionInfo(node->onConflictSet, econtext,
-									mtstate->mt_conflproj, &mtstate->ps,
-									relationDesc);
+		onconfl->oc_ProjInfo =
+			ExecBuildProjectionInfoExt(node->onConflictSet, econtext,
+									   mtstate->mt_conflproj, false,
+									   &mtstate->ps,
+									   relationDesc);
 
 		/* initialize state to evaluate the WHERE clause, if any */
 		if (node->onConflictWhere)
@@ -2809,7 +3021,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 
 			qualexpr = ExecInitQual((List *) node->onConflictWhere,
 									&mtstate->ps);
-			resultRelInfo->ri_onConflict->oc_WhereClause = qualexpr;
+			onconfl->oc_WhereClause = qualexpr;
 		}
 	}
 
@@ -2888,7 +3100,14 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 				 * initial scan to populate the ybctid, so there is no junk
 				 * attribute to extract.
 				 */
-				junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
+				if (IsYBRelation(mtstate->resultRelInfo->ri_RelationDesc))
+				{
+					junk_filter_needed = !mtstate->yb_mt_is_single_row_update_or_delete;
+				}
+				else
+				{
+					junk_filter_needed = true;
+				}
 				break;
 			default:
 				elog(ERROR, "unknown operation");

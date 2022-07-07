@@ -11,10 +11,12 @@
 // under the License.
 //
 
-#include "yb/util/string_trim.h"
+#include <string>
 
+#include <gtest/gtest.h>
+
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 namespace yb {
 namespace util {

@@ -11,20 +11,24 @@
 // under the License.
 //
 
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
+#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
+#include "yb/util/bitmap.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_transaction_sealing);
 DECLARE_bool(TEST_fail_on_replicated_batch_idx_set_in_txn_record);
+DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_write_rejection_percentage);
 DECLARE_int64(transaction_rpc_timeout_ms);
 
@@ -52,7 +56,7 @@ void SealTxnTest::TestNumBatches(bool restart) {
   size_t prev_num_non_empty = 0;
   for (auto op_type : {WriteOpType::INSERT, WriteOpType::UPDATE}) {
     ASSERT_OK(WriteRows(session, /* transaction= */ 0, op_type, Flush::kFalse));
-    ASSERT_OK(session->Flush());
+    ASSERT_OK(session->TEST_Flush());
 
     size_t num_non_empty = 0;
     auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
@@ -87,6 +91,9 @@ TEST_F(SealTxnTest, NumBatches) {
 }
 
 TEST_F(SealTxnTest, NumBatchesWithRestart) {
+  // Restarting whole cluster could result in expired transaction, that is not expected by the test.
+  // Increase transaction timeout to avoid such kind of failures.
+  FLAGS_transaction_max_missed_heartbeat_periods = 50;
   TestNumBatches(/* restart= */ true);
 }
 
@@ -117,7 +124,7 @@ TEST_F(SealTxnTest, Simple) {
   ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::INSERT, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
-  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future.get().status);
   LOG(INFO) << "Flushed: " << txn->id();
   ASSERT_OK(commit_future.get());
   LOG(INFO) << "Committed: " << txn->id();
@@ -135,7 +142,7 @@ TEST_F(SealTxnTest, Update) {
   ASSERT_OK(WriteRows(session, /* transaction = */ 0, WriteOpType::UPDATE, Flush::kFalse));
   auto flush_future = session->FlushFuture();
   auto commit_future = txn->CommitFuture(CoarseTimePoint(), SealOnly::kTrue);
-  ASSERT_OK(flush_future.get());
+  ASSERT_OK(flush_future.get().status);
   LOG(INFO) << "Flushed: " << txn->id();
   ASSERT_OK(commit_future.get());
   LOG(INFO) << "Committed: " << txn->id();

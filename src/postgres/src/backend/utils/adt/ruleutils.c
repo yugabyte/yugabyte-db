@@ -16,8 +16,9 @@
 #include "postgres.h"
 
 #include <ctype.h>
-#include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <unistd.h>
 
 #include "access/amapi.h"
 #include "access/htup_details.h"
@@ -73,6 +74,9 @@
 #include "utils/typcache.h"
 #include "utils/varlena.h"
 #include "utils/xml.h"
+
+/* YB includes. */
+#include "commands/tablegroup.h"
 
 
 /* ----------
@@ -324,7 +328,8 @@ static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool attrsOnly, bool keysOnly,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
-					   bool useNonconcurrently);
+					   bool useNonconcurrently,
+					   bool includeYbMetadata);
 static char *pg_get_statisticsobj_worker(Oid statextid, bool missing_ok);
 static char *pg_get_partkeydef_worker(Oid relid, int prettyFlags,
 						 bool attrsOnly, bool missing_ok);
@@ -1081,6 +1086,43 @@ pg_get_triggerdef_worker(Oid trigid, bool pretty)
 	return buf.data;
 }
 
+/*
+ * If an index has options, append " WITH (options)" clause to the buffer.
+ * This includes "hidden" reloptions like colocation_id.
+ */
+static void
+YbAppendIndexReloptions(StringInfoData buf,
+						Oid index_oid,
+						YbTableProperties yb_table_properties)
+{
+	char *str = flatten_reloptions(index_oid);
+
+	bool has_reloptions	=
+		str && strcmp(str, "") != 0;
+	bool has_colocation_id =
+		yb_table_properties && OidIsValid(yb_table_properties->colocation_id);
+
+	if (has_reloptions || has_colocation_id)
+	{
+		appendStringInfo(&buf, " WITH (");
+
+		if (has_reloptions)
+		{
+			appendStringInfo(&buf, "%s", str);
+			pfree(str);
+		}
+
+		if (has_reloptions && has_colocation_id)
+			appendStringInfo(&buf, ", ");
+
+		if (has_colocation_id)
+			appendStringInfo(&buf, "colocation_id=%u", yb_table_properties->colocation_id);
+
+		appendStringInfo(&buf, ")");
+	}
+
+}
+
 /* ----------
  * get_indexdef			- Get the definition of an index
  *
@@ -1106,7 +1148,7 @@ pg_get_indexdef(PG_FUNCTION_ARGS)
 								 false, false,
 								 false, false,
 								 prettyFlags, true,
-								 false);
+								 false, yb_format_funcs_include_yb_metadata);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1129,7 +1171,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 								 colno != 0, false,
 								 false, false,
 								 prettyFlags, true,
-								 false);
+								 false, yb_format_funcs_include_yb_metadata);
 
 	if (res == NULL)
 		PG_RETURN_NULL();
@@ -1139,9 +1181,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 
 /*
  * Internal version for use by ALTER TABLE.
- * Includes a tablespace clause in the result, unless YugaByte is enabled, in which case
- * we do not include this clause.
- * TODO - Remove the IsYugaByteEnabled check once Tablespaces are implemented.
+ * Includes a tablespace clause in the result.
  * TODO - We also currently add NONCONCURRENTLY here, but this can be removed with #6703.
  *
  * Returns a palloc'd C string; no pretty-printing.
@@ -1151,9 +1191,10 @@ pg_get_indexdef_string(Oid indexrelid)
 {
 	return pg_get_indexdef_worker(indexrelid, 0, NULL,
 								  false, false,
-								  !IsYugaByteEnabled(), true,
+								  true, true,
 								  0, false,
-								  IsYugaByteEnabled() /* useNonconcurrently */);
+								  IsYugaByteEnabled() /* useNonconcurrently */,
+								  yb_format_funcs_include_yb_metadata);
 }
 
 /* Internal version that just reports the key-column definitions */
@@ -1168,7 +1209,7 @@ pg_get_indexdef_columns(Oid indexrelid, bool pretty)
 								  true, true,
 								  false, false,
 								  prettyFlags, false,
-								  false);
+								  false, false);
 }
 
 /*
@@ -1185,7 +1226,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					   bool attrsOnly, bool keysOnly,
 					   bool showTblSpc, bool inherits,
 					   int prettyFlags, bool missing_ok,
-					   bool useNonconcurrently)
+					   bool useNonconcurrently,
+					   bool includeYbMetadata)
 {
 	/* might want a separate isConstraint parameter later */
 	bool		isConstraint = (excludeOps != NULL);
@@ -1413,8 +1455,10 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 					if (!(opt & INDOPTION_NULLS_FIRST))
 						appendStringInfoString(&buf, " NULLS LAST");
 				}
-				else
+				else if (!(opt & INDOPTION_HASH)) // ASC
 				{
+					appendStringInfoString(&buf, " ASC");
+					/* NULLS LAST is the default in this case */
 					if (opt & INDOPTION_NULLS_FIRST)
 						appendStringInfoString(&buf, " NULLS FIRST");
 				}
@@ -1440,16 +1484,14 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 
 	if (!attrsOnly)
 	{
+		Relation indexrel = index_open(indexrelid, AccessShareLock);
+
 		appendStringInfoChar(&buf, ')');
 
-		/*
-		 * If it has options, append "WITH (options)"
-		 */
-		str = flatten_reloptions(indexrelid);
-		if (str && strcmp(str,"") != 0)
+		if (includeYbMetadata && IsYBRelation(indexrel) &&
+			!idxrec->indisprimary)
 		{
-			appendStringInfo(&buf, " WITH (%s)", str);
-			pfree(str);
+			YbAppendIndexReloptions(buf, indexrelid, YbGetTableProperties(indexrel));
 		}
 
 		/*
@@ -1459,13 +1501,63 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		{
 			Oid			tblspc;
 
-			tblspc = get_rel_tablespace(indexrelid);
+			tblspc = indexrel->rd_rel->reltablespace;
 			if (!OidIsValid(tblspc))
 				tblspc = MyDatabaseTableSpace;
 			if (isConstraint)
 				appendStringInfoString(&buf, " USING INDEX");
 			appendStringInfo(&buf, " TABLESPACE %s",
 							 quote_identifier(get_tablespace_name(tblspc)));
+		}
+
+		/*
+		 * Print SPLIT INTO/AT clause.
+		 */
+		if (includeYbMetadata && indexrel->yb_table_properties)
+		{
+			if (indexrel->yb_table_properties->num_hash_key_columns > 0)
+			{
+				/* For hash-partitioned tables */
+				appendStringInfo(&buf, " SPLIT INTO %" PRIu64 " TABLETS",
+								 indexrel->yb_table_properties->num_tablets);
+			}
+			else
+			{
+				/* For range-partitioned tables */
+				if (indexrel->yb_table_properties->num_tablets > 1)
+				{
+					ereport(WARNING,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("exporting SPLIT clause for range-split relations is not yet "
+									"supported"),
+							 errdetail("Index '%s' will be created with default (1) tablets "
+									   "instead of %" PRIu64 ".",
+									   generate_relation_name(indrelid, NIL),
+									   indexrel->yb_table_properties->num_tablets),
+							 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4873."
+									 " Click '+' on the description to raise its priority.")));
+				}
+			}
+
+			Relation indrel = heap_open(indrelid, AccessShareLock);
+
+			/*
+			 * If the indexed table's tablegroup mismatches that of an
+			 * index table, this is a leftover from beta days of tablegroup
+			 * feature. We cannot replicate this via DDL statement anymore.
+			 */
+			if (YbGetTableProperties(indexrel)->tablegroup_oid !=
+				YbGetTableProperties(indrel)->tablegroup_oid)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("tablegroup of an index %s does not match its "
+								"indexed table, this is no longer supported",
+								NameStr(idxrelrec->relname)),
+						 errhint("Please drop and re-create the index.")));
+			}
+
+			heap_close(indrel, AccessShareLock);
 		}
 
 		/*
@@ -1494,6 +1586,8 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 			else
 				appendStringInfo(&buf, " WHERE %s", str);
 		}
+
+		index_close(indexrel, AccessShareLock);
 	}
 
 	/* Clean up */
@@ -2156,19 +2250,19 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				/* XXX why do we only print these bits if fullCommand? */
 				if (fullCommand && OidIsValid(indexId))
 				{
-					char	   *options = flatten_reloptions(indexId);
+					Relation indexrel = index_open(indexId, AccessShareLock);
+
+					if (IsYBRelation(indexrel) && conForm->contype != CONSTRAINT_PRIMARY)
+						YbAppendIndexReloptions(buf, indexId, YbGetTableProperties(indexrel));
+
 					Oid			tblspc;
 
-					if (options)
-					{
-						appendStringInfo(&buf, " WITH (%s)", options);
-						pfree(options);
-					}
-
-					tblspc = get_rel_tablespace(indexId);
+					tblspc = indexrel->rd_rel->reltablespace;
 					if (OidIsValid(tblspc))
 						appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
 										 quote_identifier(get_tablespace_name(tblspc)));
+
+					index_close(indexrel, AccessShareLock);
 				}
 
 				break;
@@ -2272,6 +2366,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 															  false,
 															  false,
 															  prettyFlags,
+															  false,
 															  false,
 															  false));
 				break;
@@ -7409,12 +7504,13 @@ get_parameter(Param *param, deparse_context *context)
 		context->varprefix = true;
 
 		/*
-		 * A Param's expansion is typically a Var, Aggref, or upper-level
-		 * Param, which wouldn't need extra parentheses.  Otherwise, insert
-		 * parens to ensure the expression looks atomic.
+		 * A Param's expansion is typically a Var, Aggref, GroupingFunc, or
+		 * upper-level Param, which wouldn't need extra parentheses.
+		 * Otherwise, insert parens to ensure the expression looks atomic.
 		 */
 		need_paren = !(IsA(expr, Var) ||
 					   IsA(expr, Aggref) ||
+					   IsA(expr, GroupingFunc) ||
 					   IsA(expr, Param));
 		if (need_paren)
 			appendStringInfoChar(context->buf, '(');
@@ -7496,6 +7592,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_NextValueExpr:
 		case T_NullIfExpr:
 		case T_Aggref:
+		case T_GroupingFunc:
 		case T_WindowFunc:
 		case T_FuncExpr:
 			/* function-like: name(..) or name[..] */
@@ -7612,6 +7709,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_XmlExpr: /* own parentheses */
 				case T_NullIfExpr:	/* other separators */
 				case T_Aggref:	/* own parentheses */
+				case T_GroupingFunc:	/* own parentheses */
 				case T_WindowFunc:	/* own parentheses */
 				case T_CaseExpr:	/* other separators */
 					return true;
@@ -7662,6 +7760,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_XmlExpr: /* own parentheses */
 				case T_NullIfExpr:	/* other separators */
 				case T_Aggref:	/* own parentheses */
+				case T_GroupingFunc:	/* own parentheses */
 				case T_WindowFunc:	/* own parentheses */
 				case T_CaseExpr:	/* other separators */
 					return true;
@@ -11194,16 +11293,16 @@ flatten_reloptions(Oid relid)
 				value = "";
 
 			/*
-			 * We ignore the reloption for tablegroup.
+			 * We ignore the reloption for tablegroup_oid.
 			 * It is parsed seperately in describe.c.
 			 */
-			if (strcmp(name, "tablegroup") == 0)
+			if (strcmp(name, "tablegroup_oid") == 0)
 			{
 				pfree(option);
 				continue;
 			}
 
-			if (i > 0)
+			if (buf.len > 0)
 				appendStringInfoString(&buf, ", ");
 			appendStringInfo(&buf, "%s=", quote_identifier(name));
 

@@ -122,6 +122,13 @@ typedef enum DependencyType
  * a role mentioned in a policy object.  The referenced object must be a
  * pg_authid entry.
  *
+ * (e) a SHARED_DEPENDENCY_TABLESPACE entry means that the referenced
+ * object is a tablespace mentioned in a relation without Postgres storage
+ * (Yugabyte relations and relations with no files).  The referenced object
+ * must be a pg_tablespace entry.  (Relations that have storage don't need
+ * this: they are protected by the existence of a physical file in the
+ * tablespace.)
+ *
  * SHARED_DEPENDENCY_INVALID is a value used as a parameter in internal
  * routines, and is not valid in the catalog itself.
  */
@@ -131,6 +138,7 @@ typedef enum SharedDependencyType
 	SHARED_DEPENDENCY_OWNER = 'o',
 	SHARED_DEPENDENCY_ACL = 'a',
 	SHARED_DEPENDENCY_POLICY = 'r',
+	SHARED_DEPENDENCY_TABLESPACE = 't',
 	SHARED_DEPENDENCY_INVALID = 0
 } SharedDependencyType;
 
@@ -169,7 +177,7 @@ typedef enum ObjectClass
 	OCLASS_TSCONFIG,			/* pg_ts_config */
 	OCLASS_ROLE,				/* pg_authid */
 	OCLASS_DATABASE,			/* pg_database */
-	OCLASS_TBLGROUP, 			/* pg_tablegroup */
+	OCLASS_TBLGROUP, 			/* pg_yb_tablegroup */
 	OCLASS_TBLSPACE,			/* pg_tablespace */
 	OCLASS_FDW,					/* pg_foreign_data_wrapper */
 	OCLASS_FOREIGN_SERVER,		/* pg_foreign_server */
@@ -242,6 +250,8 @@ extern void recordMultipleDependencies(const ObjectAddress *depender,
 extern void recordDependencyOnCurrentExtension(const ObjectAddress *object,
 								   bool isReplace);
 
+extern void YBRecordPinDependency(const ObjectAddress *referenced, bool shared_insert);
+
 extern long deleteDependencyRecordsFor(Oid classId, Oid objectId,
 						   bool skipExtensionDeps);
 
@@ -276,10 +286,19 @@ extern void recordDependencyOnOwner(Oid classId, Oid objectId, Oid owner);
 extern void changeDependencyOnOwner(Oid classId, Oid objectId,
 						Oid newOwnerId);
 
+extern void recordDependencyOnTablespace(Oid classId, Oid objectId,
+										 Oid tablespace);
+
+extern void changeDependencyOnTablespace(Oid classId, Oid objectId,
+										 Oid newTablespaceId);
+
 extern void updateAclDependencies(Oid classId, Oid objectId, int32 objectSubId,
 					  Oid ownerId,
 					  int noldmembers, Oid *oldmembers,
 					  int nnewmembers, Oid *newmembers);
+
+extern void recordDependencyOnTablespace(Oid classId, Oid objectId,
+						Oid tablespaceOid);
 
 extern bool checkSharedDependencies(Oid classId, Oid objectId,
 						char **detail_msg, char **detail_log_msg);

@@ -3,13 +3,10 @@
 --
 -- Based on "alter_generic" test.
 -- The following sections are missing as they are not supported yet:
--- * ALTER FUNCTION / AGGREGATE
 -- * ALTER CONVERSION
--- * ALTER FOREIGN DATA
 -- * ALTER LANGUAGE
 -- * ALTER OPERATOR CLASS
 -- * ALTER STATISTICS
--- * ALTER TEXT SEARCH DICTIONARY / CONFIGURATION / TEMPLATE / PARSER
 --
 
 -- Clean up in case a prior regression run failed
@@ -31,6 +28,89 @@ CREATE SCHEMA alt_nsp2;
 GRANT ALL ON SCHEMA alt_nsp1, alt_nsp2 TO public;
 
 SET search_path = alt_nsp1, public;
+
+--
+-- Function and Aggregate
+--
+SET SESSION AUTHORIZATION regress_alter_generic_user1;
+CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 + 1';
+CREATE FUNCTION alt_func2(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 - 1';
+CREATE AGGREGATE alt_agg1 (
+  sfunc1 = int4pl, basetype = int4, stype1 = int4, initcond = 0
+);
+CREATE AGGREGATE alt_agg2 (
+  sfunc1 = int4mi, basetype = int4, stype1 = int4, initcond = 0
+);
+ALTER AGGREGATE alt_func1(int) RENAME TO alt_func3;  -- failed (not aggregate)
+ALTER AGGREGATE alt_func1(int) OWNER TO regress_alter_generic_user3;  -- failed (not aggregate)
+ALTER AGGREGATE alt_func1(int) SET SCHEMA alt_nsp2;  -- failed (not aggregate)
+
+ALTER FUNCTION alt_func1(int) RENAME TO alt_func2;  -- failed (name conflict)
+ALTER FUNCTION alt_func1(int) RENAME TO alt_func3;  -- OK
+ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user3;  -- OK
+ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp1;  -- OK, already there
+ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp2;  -- OK
+
+ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg2;   -- failed (name conflict)
+ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg3;   -- OK
+ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- OK
+ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- OK
+
+SET SESSION AUTHORIZATION regress_alter_generic_user2;
+CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 + 2';
+CREATE FUNCTION alt_func2(int) RETURNS int LANGUAGE sql
+  AS 'SELECT $1 - 2';
+CREATE AGGREGATE alt_agg1 (
+  sfunc1 = int4pl, basetype = int4, stype1 = int4, initcond = 100
+);
+CREATE AGGREGATE alt_agg2 (
+  sfunc1 = int4mi, basetype = int4, stype1 = int4, initcond = -100
+);
+
+ALTER FUNCTION alt_func3(int) RENAME TO alt_func4;	-- failed (not owner)
+ALTER FUNCTION alt_func1(int) RENAME TO alt_func4;	-- OK
+ALTER FUNCTION alt_func3(int) OWNER TO regress_alter_generic_user2;	-- failed (not owner)
+ALTER FUNCTION alt_func2(int) OWNER TO regress_alter_generic_user3;	-- failed (no role membership)
+ALTER FUNCTION alt_func3(int) SET SCHEMA alt_nsp2;      -- failed (not owner)
+ALTER FUNCTION alt_func2(int) SET SCHEMA alt_nsp2;	-- failed (name conflicts)
+
+ALTER AGGREGATE alt_agg3(int) RENAME TO alt_agg4;   -- failed (not owner)
+ALTER AGGREGATE alt_agg1(int) RENAME TO alt_agg4;   -- OK
+ALTER AGGREGATE alt_agg3(int) OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+ALTER AGGREGATE alt_agg2(int) OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+ALTER AGGREGATE alt_agg3(int) SET SCHEMA alt_nsp2;  -- failed (not owner)
+ALTER AGGREGATE alt_agg2(int) SET SCHEMA alt_nsp2;  -- failed (name conflict)
+
+RESET SESSION AUTHORIZATION;
+
+SELECT n.nspname, proname, prorettype::regtype, prokind, a.rolname
+  FROM pg_proc p, pg_namespace n, pg_authid a
+  WHERE p.pronamespace = n.oid AND p.proowner = a.oid
+    AND n.nspname IN ('alt_nsp1', 'alt_nsp2')
+  ORDER BY nspname, proname;
+
+--
+-- Foreign Data Wrapper and Foreign Server
+--
+CREATE FOREIGN DATA WRAPPER alt_fdw1;
+CREATE FOREIGN DATA WRAPPER alt_fdw2;
+
+CREATE SERVER alt_fserv1 FOREIGN DATA WRAPPER alt_fdw1;
+CREATE SERVER alt_fserv2 FOREIGN DATA WRAPPER alt_fdw2;
+
+ALTER FOREIGN DATA WRAPPER alt_fdw1 RENAME TO alt_fdw2;  -- failed (name conflict)
+ALTER FOREIGN DATA WRAPPER alt_fdw1 RENAME TO alt_fdw3;  -- OK
+
+ALTER SERVER alt_fserv1 RENAME TO alt_fserv2;   -- failed (name conflict)
+ALTER SERVER alt_fserv1 RENAME TO alt_fserv3;   -- OK
+
+SELECT fdwname FROM pg_foreign_data_wrapper WHERE fdwname like 'alt_fdw%';
+SELECT srvname FROM pg_foreign_server WHERE srvname like 'alt_fserv%';
 
 --
 -- Operator
@@ -270,9 +350,121 @@ ALTER OPERATOR FAMILY alt_opf18 USING btree ADD
 ALTER OPERATOR FAMILY alt_opf18 USING btree DROP FUNCTION 2 (int4, int4);
 DROP OPERATOR FAMILY alt_opf18 USING btree;
 
+-- Don't enable AlterTSDictionaryStmt and AlterTSConfigurationStmt for now.
+-- Uncommet these tests once AlterTSDictionaryStmt and AlterTSConfigurationStmt are supported.
+--
+-- Text Search Dictionary
+--
+-- SET SESSION AUTHORIZATION regress_alter_generic_user1;
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
+
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict2;  -- failed (name conflict)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict3;  -- OK
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- OK
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- OK
+
+-- SET SESSION AUTHORIZATION regress_alter_generic_user2;
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict1 (template=simple);
+-- CREATE TEXT SEARCH DICTIONARY alt_ts_dict2 (template=simple);
+
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 RENAME TO alt_ts_dict4;  -- failed (not owner)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict1 RENAME TO alt_ts_dict4;  -- OK
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+-- ALTER TEXT SEARCH DICTIONARY alt_ts_dict2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+
+-- RESET SESSION AUTHORIZATION;
+
+-- SELECT nspname, dictname, rolname
+--   FROM pg_ts_dict t, pg_namespace n, pg_authid a
+--   WHERE t.dictnamespace = n.oid AND t.dictowner = a.oid
+--     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+--   ORDER BY nspname, dictname;
+
+--
+-- Text Search Configuration
+--
+-- SET SESSION AUTHORIZATION regress_alter_generic_user1;
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf2;  -- failed (name conflict)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf3;  -- OK
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user2;  -- failed (no role membership)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- OK
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- OK
+
+-- SET SESSION AUTHORIZATION regress_alter_generic_user2;
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf1 (copy=english);
+-- CREATE TEXT SEARCH CONFIGURATION alt_ts_conf2 (copy=english);
+
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 RENAME TO alt_ts_conf4;  -- failed (not owner)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf1 RENAME TO alt_ts_conf4;  -- OK
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 OWNER TO regress_alter_generic_user2;  -- failed (not owner)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 OWNER TO regress_alter_generic_user3;  -- failed (no role membership)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf3 SET SCHEMA alt_nsp2;  -- failed (not owner)
+-- ALTER TEXT SEARCH CONFIGURATION alt_ts_conf2 SET SCHEMA alt_nsp2;  -- failed (name conflict)
+
+-- RESET SESSION AUTHORIZATION;
+
+-- SELECT nspname, cfgname, rolname
+--   FROM pg_ts_config t, pg_namespace n, pg_authid a
+--   WHERE t.cfgnamespace = n.oid AND t.cfgowner = a.oid
+--     AND n.nspname in ('alt_nsp1', 'alt_nsp2')
+--   ORDER BY nspname, cfgname;
+
+--
+-- Text Search Template
+--
+CREATE TEXT SEARCH TEMPLATE alt_ts_temp1 (lexize=dsimple_lexize);
+CREATE TEXT SEARCH TEMPLATE alt_ts_temp2 (lexize=dsimple_lexize);
+
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp1 RENAME TO alt_ts_temp2; -- failed (name conflict)
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp1 RENAME TO alt_ts_temp3; -- OK
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp2 SET SCHEMA alt_nsp2;    -- OK
+
+CREATE TEXT SEARCH TEMPLATE alt_ts_temp2 (lexize=dsimple_lexize);
+ALTER TEXT SEARCH TEMPLATE alt_ts_temp2 SET SCHEMA alt_nsp2;    -- failed (name conflict)
+
+-- invalid: non-lowercase quoted identifiers
+CREATE TEXT SEARCH TEMPLATE tstemp_case ("Init" = init_function);
+
+SELECT nspname, tmplname
+  FROM pg_ts_template t, pg_namespace n
+  WHERE t.tmplnamespace = n.oid AND nspname like 'alt_nsp%'
+  ORDER BY nspname, tmplname;
+
+--
+-- Text Search Parser
+--
+
+CREATE TEXT SEARCH PARSER alt_ts_prs1
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+CREATE TEXT SEARCH PARSER alt_ts_prs2
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+
+ALTER TEXT SEARCH PARSER alt_ts_prs1 RENAME TO alt_ts_prs2; -- failed (name conflict)
+ALTER TEXT SEARCH PARSER alt_ts_prs1 RENAME TO alt_ts_prs3; -- OK
+ALTER TEXT SEARCH PARSER alt_ts_prs2 SET SCHEMA alt_nsp2;   -- OK
+
+CREATE TEXT SEARCH PARSER alt_ts_prs2
+    (start = prsd_start, gettoken = prsd_nexttoken, end = prsd_end, lextypes = prsd_lextype);
+ALTER TEXT SEARCH PARSER alt_ts_prs2 SET SCHEMA alt_nsp2;   -- failed (name conflict)
+
+-- invalid: non-lowercase quoted identifiers
+CREATE TEXT SEARCH PARSER tspars_case ("Start" = start_function);
+
+SELECT nspname, prsname
+  FROM pg_ts_parser t, pg_namespace n
+  WHERE t.prsnamespace = n.oid AND nspname like 'alt_nsp%'
+  ORDER BY nspname, prsname;
 ---
 --- Cleanup resources
 ---
+RESET SESSION AUTHORIZATION;
 \set VERBOSITY terse \\ -- suppress cascade details
 
 DROP SCHEMA alt_nsp1 CASCADE;
@@ -281,3 +473,4 @@ DROP SCHEMA alt_nsp2 CASCADE;
 DROP USER regress_alter_generic_user1;
 DROP USER regress_alter_generic_user2;
 DROP USER regress_alter_generic_user3;
+

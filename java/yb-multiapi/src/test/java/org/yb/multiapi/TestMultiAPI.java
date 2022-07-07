@@ -12,7 +12,17 @@
 //
 package org.yb.multiapi;
 
+import static org.yb.AssertionWrappers.assertEquals;
+import static org.yb.AssertionWrappers.fail;
+
 import java.sql.Statement;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.exceptions.QueryValidationException;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
@@ -46,4 +56,34 @@ public class TestMultiAPI extends TestMultiAPIBase {
     }
     LOG.info("End test: " + getCurrentTestMethodName());
   }
+
+  protected void assertResult(ResultSet rs, Set<String> expectedRows) {
+    Set<String> actualRows = new HashSet<>();
+    for (com.datastax.driver.core.Row row : rs) {
+      actualRows.add(row.toString());
+    }
+    assertEquals(expectedRows, actualRows);
+  }
+
+  @Test
+  public void testNamespaceSeparation() throws Exception {
+    // Verify that namespaces for YSQL databases are not shown in YCQL.
+    assertResult(cqlSession.execute("select keyspace_name from system_schema.keyspaces;"),
+                 new HashSet<String>(Arrays.asList("Row[cql_test_keyspace]",
+                                                   "Row[system]",
+                                                   "Row[system_auth]",
+                                                   "Row[system_schema]")));
+
+    // Verify that YSQL table cannot be created in namespaces for YSQL databases.
+    try {
+      cqlSession.execute("create table template1.t (a int primary key);");
+      fail("YCQL table created in namespace for YSQL database");
+    } catch (QueryValidationException e) {
+      LOG.info("Expected exception", e);
+    }
+
+    // Verify that YSQL database can be created with the same name as an existing YCQL keyspace.
+    connection.createStatement().execute("create database system;");
+  }
+
 }

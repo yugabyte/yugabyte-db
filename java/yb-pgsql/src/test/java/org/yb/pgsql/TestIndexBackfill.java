@@ -1,3 +1,16 @@
+// Copyright (c) YugaByte, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+// in compliance with the License.  You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied.  See the License for the specific language governing permissions and limitations
+// under the License.
+//
+
 package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.*;
@@ -21,7 +34,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.ThreadUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -29,19 +42,20 @@ import org.yb.util.YBTestRunnerNonTsanOnly;
 public class TestIndexBackfill extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestIndexBackfill.class);
 
-  private static final int AWAIT_TIMEOUT_SEC = (int) (80 * SanitizerUtil.getTimeoutMultiplier());
-
-  @Override
-  protected Map<String, String> getMasterAndTServerFlags() {
-    Map<String, String> flagMap = super.getMasterAndTServerFlags();
-    flagMap.put("ysql_disable_index_backfill", "false");
-    return flagMap;
-  }
+  private static final int AWAIT_TIMEOUT_SEC = (int) BuildTypeUtil.adjustTimeout(80);
 
   @Override
   protected Map<String, String> getMasterFlags() {
     Map<String, String> flagMap = super.getMasterFlags();
     flagMap.put("TEST_slowdown_backfill_alter_table_rpcs_ms", "2000");
+    flagMap.put("ysql_disable_index_backfill", "false");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_disable_index_backfill", "false");
     return flagMap;
   }
 
@@ -68,7 +82,7 @@ public class TestIndexBackfill extends BasePgSQLTest {
           Statement stmt = conn.createStatement()) {
         backfillThreadStarted.countDown();
         insertDone.await(AWAIT_TIMEOUT_SEC, TimeUnit.SECONDS);
-        // This will wait for pg_index.indisready=true
+        // This will wait for pg_index.indisvalid=true
         stmt.executeUpdate("CREATE INDEX " + indexName + " ON " + tableName + "(v ASC)");
       } catch (Exception ex) {
         LOG.error("CREATE INDEX thread failed", ex);

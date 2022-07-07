@@ -21,6 +21,7 @@
   "menu": {
     "dashboard": "hidden",
     "config": "disabled",
+    "administration": "disabled",
     "metrics": "disabled"
   },
   "universes": {
@@ -36,9 +37,12 @@
         "editGFlags": "disabled",
         "readReplica": "disabled",
         "manageEncryption": "disabled",
+        "restartUniverse": "disabled",
         "metricsInterval": 15000,
         "editUniverse": "hidden",
-        "deleteUniverse": "disabled"
+        "pausedUniverse": "hidden",
+        "deleteUniverse": "disabled",
+        "systemdUpgrade": "hidden"
       }
     },
     "tableActions": "disabled"

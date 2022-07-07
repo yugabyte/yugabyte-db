@@ -16,20 +16,19 @@
 
 #include <boost/optional/optional.hpp>
 
+#include "yb/common/doc_hybrid_time.h"
 #include "yb/common/read_hybrid_time.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
 #include "yb/docdb/key_bytes.h"
+#include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 
+#include "yb/util/status_fwd.h"
+
 namespace yb {
-
-class DocHybridTime;
-class TransactionStatusManager;
-
 namespace docdb {
 
 class Value;
@@ -38,29 +37,6 @@ struct Expiration;
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 YB_DEFINE_ENUM(Direction, (kForward)(kBackward));
 YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
-
-// Caches transaction statuses fetched by single IntentAwareIterator.
-// Thread safety is not required, because IntentAwareIterator is used in a single thread only.
-class TransactionStatusCache {
- public:
-  TransactionStatusCache(TransactionStatusManager* txn_status_manager,
-                         const ReadHybridTime& read_time,
-                         CoarseTimePoint deadline)
-      : txn_status_manager_(txn_status_manager), read_time_(read_time), deadline_(deadline) {}
-
-  // Returns transaction commit time if already committed by the specified time or HybridTime::kMin
-  // otherwise.
-  Result<HybridTime> GetCommitTime(const TransactionId& transaction_id);
-
- private:
-  HybridTime GetLocalCommitTime(const TransactionId& transaction_id);
-  Result<HybridTime> DoGetCommitTime(const TransactionId& transaction_id);
-
-  TransactionStatusManager* txn_status_manager_;
-  ReadHybridTime read_time_;
-  CoarseTimePoint deadline_;
-  std::unordered_map<TransactionId, HybridTime, TransactionIdHash> cache_;
-};
 
 struct FetchKeyResult {
   Slice key;
@@ -91,7 +67,7 @@ class IntentAwareIterator {
       const rocksdb::ReadOptions& read_opts,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const TransactionOperationContextOpt& txn_op_context);
+      const TransactionOperationContext& txn_op_context);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
@@ -151,7 +127,7 @@ class IntentAwareIterator {
   //
   // If the key changes, latest_record_ht is set to the write time of the last merge record seen,
   // result_value is set to its value, and final_key is set to the key.
-  CHECKED_STATUS NextFullValue(
+  Status NextFullValue(
       DocHybridTime* latest_record_ht,
       Slice* result_value,
       Slice* final_key = nullptr);
@@ -159,7 +135,7 @@ class IntentAwareIterator {
   // Finds the latest record for a particular key after the provided max_overwrite_time, returns the
   // write time of the found record, and optionally also the result value. This latest record may
   // not be a full record, but instead a merge record (e.g. a TTL row).
-  CHECKED_STATUS FindLatestRecord(
+  Status FindLatestRecord(
       const Slice& key_without_ht,
       DocHybridTime* max_overwrite_time,
       Slice* result_value = nullptr);
@@ -177,6 +153,8 @@ class IntentAwareIterator {
   }
 
   void DebugDump();
+
+  std::string DebugPosToString();
 
  private:
   friend class IntentAwareIteratorPrefixScope;
@@ -266,7 +244,7 @@ class IntentAwareIterator {
   // Set the exclusive upperbound of the intent iterator to the current SubDocKey of the regular
   // iterator. This is necessary to avoid RocksDB iterator from scanning over the deleted intents
   // beyond the current regular key unnecessarily.
-  CHECKED_STATUS SetIntentUpperbound();
+  Status SetIntentUpperbound();
 
   // Resets the exclusive upperbound of the intent iterator to the beginning of the transaction
   // metadata and reverse index region.
@@ -310,7 +288,7 @@ class IntentAwareIterator {
   // one of the strings above.
   Slice encoded_read_time_regular_limit_;
 
-  const TransactionOperationContextOpt txn_op_context_;
+  const TransactionOperationContext txn_op_context_;
   docdb::BoundedRocksDbIterator intent_iter_;
   docdb::BoundedRocksDbIterator iter_;
   // iter_valid_ is true if and only if iter_ is positioned at key which matches top prefix from
@@ -349,7 +327,7 @@ class IntentAwareIterator {
   Slice seek_key_prefix_;
 };
 
-class IntentAwareIteratorPrefixScope {
+class NODISCARD_CLASS IntentAwareIteratorPrefixScope {
  public:
   IntentAwareIteratorPrefixScope(const Slice& prefix, IntentAwareIterator* iterator)
       : iterator_(iterator) {

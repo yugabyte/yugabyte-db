@@ -17,18 +17,15 @@
 #include <functional>
 #include <string>
 #include <vector>
-
-#include <boost/function.hpp>
+#include <unordered_set>
 
 #include "yb/client/client_fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/service_if.h"
-#include "yb/util/result.h"
 
 #include "yb/yql/redis/redisserver/redis_fwd.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
-
 
 namespace yb {
 namespace redisserver {
@@ -51,11 +48,11 @@ class RedisServiceData {
   // Used for PubSub.
   virtual void AppendToSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) = 0;
+      std::vector<size_t>* subs) = 0;
   virtual void RemoveFromSubscribers(
       AsPattern type, const std::vector<std::string>& channels, rpc::Connection* conn,
-      std::vector<int>* subs) = 0;
-  virtual int NumSubscribers(AsPattern type, const std::string& channel) = 0;
+      std::vector<size_t>* subs) = 0;
+  virtual size_t NumSubscribers(AsPattern type, const std::string& channel) = 0;
   virtual void CleanUpSubscriptions(rpc::Connection* conn) = 0;
   virtual std::unordered_set<std::string> GetSubscriptions(
       AsPattern type, rpc::Connection* conn) = 0;
@@ -64,7 +61,7 @@ class RedisServiceData {
       const std::string& channel, const std::string& message, const IntFunctor& f) = 0;
 
   // Used for Auth.
-  virtual CHECKED_STATUS GetRedisPasswords(std::vector<std::string>* passwords) = 0;
+  virtual Status GetRedisPasswords(std::vector<std::string>* passwords) = 0;
 
   // Used for Select.
   virtual yb::Result<std::shared_ptr<client::YBTable>> GetYBTableForDB(

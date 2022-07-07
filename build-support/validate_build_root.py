@@ -25,7 +25,7 @@ if __name__ == '__main__':
 
     if not build_root.startswith(internal_build_root_parent_dir) and \
        not build_root.startswith(external_build_root_parent_dir):
-        print ("Build root '{}' is not within either '{}' or '{}'".format(
+        print("Build root '{}' is not within either '{}' or '{}'".format(
             build_root,
             internal_build_root_parent_dir,
             internal_build_root_parent_dir), file=sys.stderr)

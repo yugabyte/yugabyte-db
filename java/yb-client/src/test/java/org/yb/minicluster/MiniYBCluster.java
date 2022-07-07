@@ -76,6 +76,8 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int[] TSERVER_CLIENT_FIXED_API_PORTS = new int[] { CQL_PORT,
       REDIS_PORT};
 
+  private static final String YSQL_SNAPSHOTS_DIR = "/opt/yb-build/ysql-sys-catalog-snapshots";
+
   // How often to push node list refresh events to CQL clients (in seconds)
   public static int CQL_NODE_LIST_REFRESH_SECS = 5;
 
@@ -94,8 +96,7 @@ public class MiniYBCluster implements AutoCloseable {
   private static final int YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC = 120;
 
   // Timeout for waiting process to terminate.
-  private static final long PROCESS_TERMINATE_TIMEOUT_MS =
-      (long) (180 * 1000 * SanitizerUtil.getTimeoutMultiplier());
+  private static final long PROCESS_TERMINATE_TIMEOUT_MS = BuildTypeUtil.adjustTimeout(180 * 1000);
 
   // List of threads that print log messages.
   private final List<LogPrinter> logPrinters = new ArrayList<>();
@@ -144,43 +145,60 @@ public class MiniYBCluster implements AutoCloseable {
 
   private String certFile = null;
 
+  // The client cert files for mTLS.
+  private String clientCertFile = null;
+  private String clientKeyFile = null;
+
+  // This is used as the default bind address (Used only for mTLS verification).
+  private String clientHost = null;
+  private int clientPort = 0;
+
   /**
    * Not to be invoked directly, but through a {@link MiniYBClusterBuilder}.
    */
   MiniYBCluster(MiniYBClusterParameters clusterParameters,
-                List<String> masterArgs,
-                List<List<String>> tserverArgs,
-                List<String> commonTServerArgs,
+                Map<String, String> masterFlags,
+                Map<String, String> commonTserverFlags,
+                List<Map<String, String>> perTserverFlags,
                 Map<String, String> tserverEnvVars,
                 String testClassName,
-                String certFile) throws Exception {
+                String certFile,
+                String clientCertFile,
+                String clientKeyFile,
+                String clientHost,
+                int clientPort) throws Exception {
     this.clusterParameters = clusterParameters;
     this.testClassName = testClassName;
     this.certFile = certFile;
-    if (clusterParameters.pgTransactionsEnabled && !clusterParameters.startPgSqlProxy) {
+    this.clientCertFile = clientCertFile;
+    this.clientKeyFile = clientKeyFile;
+    if (clusterParameters.pgTransactionsEnabled && !clusterParameters.startYsqlProxy) {
       throw new AssertionError(
-          "Attempting to enable PostgreSQL transactions without enabling PostgreSQL API");
+          "Attempting to enable YSQL transactions without enabling YSQL API");
     }
+    this.clientHost = clientHost;
+    this.clientPort = clientPort;
 
     startCluster(
-        clusterParameters.numMasters, clusterParameters.numTservers, masterArgs, tserverArgs,
-        commonTServerArgs, tserverEnvVars);
-    startSyncClient();
+        clusterParameters.numMasters, clusterParameters.numTservers, masterFlags,
+        commonTserverFlags, perTserverFlags, tserverEnvVars);
   }
 
-  public void startSyncClient() throws Exception {
-    startSyncClient(true);
+  public void startSyncClientAndWaitForMasterLeader() throws Exception {
+    startSyncClient(/* waitForMasterLeader */ true);
   }
 
   public void startSyncClient(boolean waitForMasterLeader) throws Exception {
     syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
-        .defaultAdminOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
+        .defaultAdminOperationTimeoutMs(clusterParameters.defaultAdminOperationTimeoutMs)
         .defaultOperationTimeoutMs(clusterParameters.defaultTimeoutMs)
         .sslCertFile(certFile)
+        .sslClientCertFiles(clientCertFile, clientKeyFile)
+        .bindHostAddress(clientHost, clientPort)
         .build();
 
     if (waitForMasterLeader) {
-      syncClient.waitForMasterLeader(clusterParameters.defaultTimeoutMs);
+      syncClient.waitForMasterLeader(clusterParameters.defaultAdminOperationTimeoutMs);
     }
   }
 
@@ -215,7 +233,7 @@ public class MiniYBCluster implements AutoCloseable {
       commonFlags.add("--yb_test_name=" + testClassName);
     }
 
-    final long memoryLimit = SanitizerUtil.nonTsanVsTsan(
+    final long memoryLimit = BuildTypeUtil.nonTsanVsTsan(
         DAEMON_MEMORY_LIMIT_HARD_BYTES_NON_TSAN,
         DAEMON_MEMORY_LIMIT_HARD_BYTES_TSAN);
     commonFlags.add("--memory_limit_hard_bytes=" + memoryLimit);
@@ -233,16 +251,7 @@ public class MiniYBCluster implements AutoCloseable {
 
     commonFlags.add("--yb_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
     commonFlags.add("--ysql_num_shards_per_tserver=" + clusterParameters.numShardsPerTServer);
-
-    if (clusterParameters.replicationFactor > 0) {
-      commonFlags.add("--replication_factor=" + clusterParameters.replicationFactor);
-    }
-
-    if (clusterParameters.startPgSqlProxy) {
-      commonFlags.add("--enable_ysql=true");
-    } else {
-      commonFlags.add("--enable_ysql=false");
-    }
+    commonFlags.add("--enable_ysql=" + clusterParameters.startYsqlProxy);
 
     return commonFlags;
   }
@@ -405,21 +414,22 @@ public class MiniYBCluster implements AutoCloseable {
    *
    * @param numMasters how many masters to start
    * @param numTservers how many tablet servers to start
-   * @param masterArgs extra master arguments
-   * @param perTServerArgs per-tablet server arguments
+   * @param masterFlags extra master flags
+   * @param commonTserverFlags extra tablet server flags
+   * @param perTserverFlags extra per-tablet server flags (higher priority)
    */
   private void startCluster(int numMasters,
                             int numTservers,
-                            List<String> masterArgs,
-                            List<List<String>> perTServerArgs,
-                            List<String> commonTServerArgs,
+                            Map<String, String> masterFlags,
+                            Map<String, String> commonTserverFlags,
+                            List<Map<String, String>> perTserverFlags,
                             Map<String, String> tserverEnvVars) throws Exception {
     Preconditions.checkArgument(numMasters > 0, "Need at least one master");
     Preconditions.checkArgument(numTservers > 0, "Need at least one tablet server");
-    Preconditions.checkNotNull(perTServerArgs);
-    if (perTServerArgs.size() != numTservers) {
+    Preconditions.checkNotNull(perTserverFlags);
+    if (!perTserverFlags.isEmpty() && perTserverFlags.size() != numTservers) {
       throw new AssertionError("numTservers=" + numTservers + " but (perTServerArgs has " +
-          perTServerArgs.size() + " elements");
+          perTserverFlags.size() + " elements");
     }
     // The following props are set via yb-client's pom.
     String baseDirPath = TestUtils.getBaseTmpDir();
@@ -432,28 +442,61 @@ public class MiniYBCluster implements AutoCloseable {
                (envVarValue == null ? "not set" : envVarValue));
     }
     LOG.info("Starting {} masters...", numMasters);
-    startMasters(numMasters, baseDirPath, masterArgs);
+
+    if (clusterParameters.startYsqlProxy) {
+      applyYsqlSnapshot(clusterParameters.ysqlSnapshotVersion, masterFlags);
+    }
+
+    startMasters(numMasters, baseDirPath, masterFlags);
+
+    startSyncClientAndWaitForMasterLeader();
 
     LOG.info("Starting {} tablet servers...", numTservers);
-    startTabletServers(numTservers, perTServerArgs, commonTServerArgs, tserverEnvVars);
+    startTabletServers(numTservers, commonTserverFlags, perTserverFlags, tserverEnvVars);
+  }
+
+  private String getYsqlSnapshotFilePath(YsqlSnapshotVersion ver) {
+    String filenamePrefix = "initial_sys_catalog_snapshot_";
+    String filename;
+    switch (ver) {
+      case EARLIEST:
+        filename = filenamePrefix + "2.0.9.0";
+        break;
+      case LATEST:
+        throw new IllegalArgumentException("LATEST snapshot does not need a custom path");
+      default:
+        throw new IllegalArgumentException("Unknown snapshot version: " + ver);
+    }
+    filename = filename + "_" + (BuildTypeUtil.isRelease() ? "release" : "debug");
+    File file = new File(YSQL_SNAPSHOTS_DIR, filename);
+    Preconditions.checkState(file.exists(),
+        "Snapshot %s is not found in %s, should've been downloaded by the build script!",
+        filename, YSQL_SNAPSHOTS_DIR);
+    return file.getAbsolutePath();
+  }
+
+  private void applyYsqlSnapshot(YsqlSnapshotVersion ver, Map<String, String> masterFlags) {
+    // No need to set the flag for LATEST snapshot.
+    if (ver != YsqlSnapshotVersion.LATEST) {
+      String snapshotPath = getYsqlSnapshotFilePath(ver);
+      masterFlags.put("initial_sys_catalog_snapshot_path", snapshotPath);
+    }
   }
 
   private void startTabletServers(
       int numTservers,
-      List<List<String>> tserverArgs,
-      List<String> commonTServerArgs,
+      Map<String, String> commonTserverFlags,
+      List<Map<String, String>> perTserverFlags,
       Map<String, String> tserverEnvVars) throws Exception {
-    LOG.info("startTabletServers: numTServers=" + numTservers +
-        ", tserverArgs=" + tserverArgs +
-        ", commonTServerArgs=" + commonTServerArgs);
+    LOG.info("startTabletServers: numTServers={}, commonTserverFlags={}, perTserverFlags={}",
+        numTservers, commonTserverFlags, perTserverFlags);
 
     for (int i = 0; i < numTservers; i++) {
-      List<String> concatenatedArgs = new ArrayList<>();
-      if (tserverArgs.get(i) != null) {
-        concatenatedArgs.addAll(tserverArgs.get(i));
+      Map<String, String> currTserverFlags = new TreeMap<>(commonTserverFlags);
+      if (!perTserverFlags.isEmpty() && perTserverFlags.get(i) != null) {
+        currTserverFlags.putAll(perTserverFlags.get(i));
       }
-      concatenatedArgs.addAll(commonTServerArgs);
-      startTServer(concatenatedArgs, tserverEnvVars);
+      startTServer(currTserverFlags, tserverEnvVars);
     }
 
     long tserverStartupDeadlineMs = System.currentTimeMillis() + 60000;
@@ -482,27 +525,28 @@ public class MiniYBCluster implements AutoCloseable {
     LOG.info("Wrote flags file content: " + content);
   }
 
-  public void startTServer(List<String> tserverArgs) throws Exception {
-    startTServer(tserverArgs, null, null, null);
+  public void startTServer(Map<String, String> tserverFlags) throws Exception {
+    startTServer(tserverFlags, null, null, null);
   }
 
-  public void startTServer(List<String> tserverArgs,
+  public void startTServer(Map<String, String> tserverFlags,
                            Map<String, String> tserverEnvVars) throws Exception {
-    startTServer(tserverArgs, null, null, tserverEnvVars);
+    startTServer(tserverFlags, null, null, tserverEnvVars);
   }
 
-  public void startTServer(List<String> tserverArgs, String tserverBindAddress,
+  public void startTServer(Map<String, String> tserverFlags,
+                           String tserverBindAddress,
                            Integer tserverRpcPort) throws Exception {
-    startTServer(tserverArgs, tserverBindAddress, tserverRpcPort, null);
+    startTServer(tserverFlags, tserverBindAddress, tserverRpcPort, null);
   }
 
-  public void startTServer(List<String> tserverArgs, String tserverBindAddress,
+  public void startTServer(Map<String, String> tserverFlags,
+                           String tserverBindAddress,
                            Integer tserverRpcPort,
                            Map<String, String> tserverEnvVars) throws Exception {
     LOG.info("Starting a tablet server: " +
-        "tserverArgs=" + tserverArgs +
-        ", tserverBindAddress=" + tserverBindAddress +
-        ", tserverRpcPort=" + tserverRpcPort);
+        "tserverFlags={}, tserverBindAddress={}, tserverRpcPort={}",
+        tserverFlags, tserverBindAddress, tserverRpcPort);
     String baseDirPath = TestUtils.getBaseTmpDir();
     long now = System.currentTimeMillis();
     if (tserverBindAddress == null) {
@@ -541,10 +585,11 @@ public class MiniYBCluster implements AutoCloseable {
         "--pgsql_proxy_webserver_port=" + pgsqlWebPort,
         "--yb_client_admin_operation_timeout_sec=" + YB_CLIENT_ADMIN_OPERATION_TIMEOUT_SEC,
         "--callhome_enabled=false",
-        "--TEST_process_info_dir=" + getProcessInfoDir());
+        "--TEST_process_info_dir=" + getProcessInfoDir(),
+        "--never_fsync=true");
     addFlagsFromEnv(tsCmdLine, "YB_EXTRA_TSERVER_FLAGS");
 
-    if (clusterParameters.startPgSqlProxy) {
+    if (clusterParameters.startYsqlProxy) {
       tsCmdLine.addAll(Lists.newArrayList(
           "--pgsql_proxy_bind_address=" + tserverBindAddress + ":" + postgresPort
       ));
@@ -553,10 +598,8 @@ public class MiniYBCluster implements AutoCloseable {
       }
     }
 
-    if (tserverArgs != null) {
-      for (String arg : tserverArgs) {
-        tsCmdLine.add(arg);
-      }
+    if (tserverFlags != null) {
+      tsCmdLine.addAll(CommandUtil.flagsToArgs(tserverFlags));
     }
 
     final MiniYBDaemon daemon = configureAndStartProcess(MiniYBDaemonType.TSERVER,
@@ -594,17 +637,24 @@ public class MiniYBCluster implements AutoCloseable {
       "--rpc_slow_query_threshold_ms=" + RPC_SLOW_QUERY_THRESHOLD,
       "--webserver_port=" + masterWebPort,
       "--callhome_enabled=false",
-      "--TEST_process_info_dir=" + getProcessInfoDir());
+      "--TEST_process_info_dir=" + getProcessInfoDir(),
+      "--never_fsync=true");
     if (clusterParameters.tserverHeartbeatTimeoutMsOpt.isPresent()) {
       masterCmdLine.add(
           "--tserver_unresponsive_timeout_ms=" +
           clusterParameters.tserverHeartbeatTimeoutMsOpt.get());
     }
+
     if (clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt.isPresent()) {
       masterCmdLine.add(
           "--partitions_vtable_cache_refresh_secs=" +
           clusterParameters.yqlSystemPartitionsVtableRefreshSecsOpt.get());
     }
+
+    if (clusterParameters.replicationFactor > 0) {
+      masterCmdLine.add("--replication_factor=" + clusterParameters.replicationFactor);
+    }
+
     addFlagsFromEnv(masterCmdLine, "YB_EXTRA_MASTER_FLAGS");
     return masterCmdLine;
   }
@@ -676,13 +726,13 @@ public class MiniYBCluster implements AutoCloseable {
    *
    * @param numMasters number of masters to start
    * @param baseDirPath  the base directory where the mini cluster stores its data
-   * @param extraMasterArgs common command-line arguments to pass to all masters
+   * @param extraMasterFlags common command-line flags to pass to all masters
    * @throws Exception if we are unable to start the masters
    */
   private void startMasters(
       int numMasters,
       String baseDirPath,
-      List<String> extraMasterArgs) throws Exception {
+      Map<String, String> extraMasterFlags) throws Exception {
     assert(masterHostPorts.isEmpty());
 
     // Get the list of web and RPC ports to use for the master consensus configuration:
@@ -710,10 +760,10 @@ public class MiniYBCluster implements AutoCloseable {
       List<String> masterCmdLine = getCommonMasterCmdLine(flagsPath, dataDirPath,
         masterBindAddress, masterRpcPort, masterWebPort);
       masterCmdLine.add("--master_addresses=" + masterAddresses);
-      if (extraMasterArgs != null) {
-        masterCmdLine.addAll(extraMasterArgs);
+      if (extraMasterFlags != null) {
+        masterCmdLine.addAll(CommandUtil.flagsToArgs(extraMasterFlags));
       }
-      if (clusterParameters.startPgSqlProxy) {
+      if (clusterParameters.startYsqlProxy) {
         masterCmdLine.add("--master_auto_run_initdb");
       }
       final HostAndPort masterHostAndPort = HostAndPort.fromParts(masterBindAddress, masterRpcPort);
@@ -847,12 +897,13 @@ public class MiniYBCluster implements AutoCloseable {
       master = restart(master);
       masterProcesses.put(master.getHostAndPort(), master);
     }
+
+    startSyncClient(waitForMasterLeader);
+
     for (MiniYBDaemon tserver : tservers) {
       tserver = restart(tserver);
       tserverProcesses.put(tserver.getHostAndPort(), tserver);
     }
-
-    startSyncClient(waitForMasterLeader);
 
     LOG.info("Restarted mini cluster");
   }
@@ -948,40 +999,76 @@ public class MiniYBCluster implements AutoCloseable {
   }
 
   /**
-   * Stops all the processes and deletes the folders used to store data and the flagfile.
+   * Stops all the processes and deletes the paths used to store data and the flagfile.
    */
   public void shutdown() throws Exception {
     LOG.info("Shutting down mini cluster");
+
+    // Before shutdownDaemons, collect postgres coreFileDirs if needed.
+    List<File> coreFileDirs;
+    if (CoreFileUtil.IS_MAC) {
+      // Use default dir specified in CoreFileUtil.processCoreFile.
+      coreFileDirs = Collections.<File>singletonList(null);
+    } else {
+      // Unlike master and tserver, postgres processes have working directory in their pg_data
+      // directory.  Simply check all tserver pg_data directories since we don't readily know which
+      // one this postgres process belonged to.
+      // TODO(#11753): handle tservers that were removed from the list using
+      //               killTabletServerOnHostPort
+      // TODO(#11754): don't assume core files are put in the current working directory of the
+      //               process
+      coreFileDirs = new ArrayList<>(tserverProcesses.size());
+      for (MiniYBDaemon tserverProcess : tserverProcesses.values()) {
+        coreFileDirs.add(Paths.get(tserverProcess.getDataDirPath()).resolve("pg_data").toFile());
+      }
+    }
+
     shutdownDaemons();
+
     String processInfoDir = getProcessInfoDir();
-    processCoreFiles(processInfoDir);
+    processCoreFiles(processInfoDir, coreFileDirs);
     pathsToDelete.add(processInfoDir);
-    for (String path : pathsToDelete) {
-      try {
-        File f = new File(path);
-        LOG.info("Deleting path: " + path);
-        if (f.isDirectory()) {
-          FileUtils.deleteDirectory(f);
-        } else {
-          f.delete();
+
+    if (ConfForTesting.keepData()) {
+      LOG.info("Skipping deletion of data paths");
+    } else {
+      for (String path : pathsToDelete) {
+        try {
+          File f = new File(path);
+          LOG.info("Deleting path: " + path);
+          if (f.isDirectory()) {
+            FileUtils.deleteDirectory(f);
+          } else {
+            f.delete();
+          }
+        } catch (Exception e) {
+          LOG.warn("Could not delete path {}", path, e);
         }
-      } catch (Exception e) {
-        LOG.warn("Could not delete path {}", path, e);
       }
     }
     LOG.info("Mini cluster shutdown finished");
   }
 
-  private void processCoreFiles(String folder) {
-    File[] files = (new File(folder)).listFiles();
+  /**
+   * Process core files for processes listed in processInfoDir.  For now, only postgres processes
+   * are listed.  More specifically, for now, only postgres backend processes are listed, not
+   * postmaster or background workers.  Those core files need to be inspected manually.
+   * TODO(#11755): inspect other postgres processes
+   * Hint: To manually inspect core files, make sure the core files aren't deleted.  By default,
+   *       data directories are deleted when the test is over.  If core files are dumped into the
+   *       pg_data directory, use YB_JAVATEST_KEEPDATA to keep the data directories.
+   */
+  private void processCoreFiles(String processInfoDir, List<File> coreFileDirs) {
+    File[] files = (new File(processInfoDir)).listFiles();
     for (File file : files == null ? new File[]{} : files) {
       String fileName = file.getAbsolutePath();
       try {
         String exeFile = new String(Files.readAllBytes(Paths.get(fileName)));
         int pid = Integer.parseInt(file.getName());
-        CoreFileUtil.processCoreFile(
-            pid, exeFile, exeFile, null /* coreFileDir */,
-            CoreFileUtil.CoreFileMatchMode.EXACT_PID);
+        for (File coreFileDir : coreFileDirs) {
+          CoreFileUtil.processCoreFile(
+              pid, exeFile, exeFile, coreFileDir, CoreFileUtil.CoreFileMatchMode.EXACT_PID);
+        }
       } catch (Exception e) {
         LOG.warn("Failed to analyze PID from '{}' file", fileName, e);
       }

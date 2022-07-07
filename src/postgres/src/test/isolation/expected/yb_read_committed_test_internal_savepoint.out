@@ -1,0 +1,14 @@
+Parsed test spec with 2 sessions
+
+starting permutation: update_k2_in_s2 update_k1_in_s1 update_k2_in_s1 c2 select c1
+step update_k2_in_s2: update test set v=40 where k=2;
+step update_k1_in_s1: update test set v=10 where k=1;
+step update_k2_in_s1: update test set v=20 where k=2; <waiting ...>
+step c2: commit;
+step update_k2_in_s1: <... completed>
+step select: select * from test;
+k              v
+
+1              10
+2              20
+step c1: commit;

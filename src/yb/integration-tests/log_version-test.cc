@@ -16,15 +16,14 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
-
 #include <glog/logging.h>
 
-#include "yb/gutil/strings/util.h"
+#include "yb/client/client.h"
 
-#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -86,7 +85,7 @@ TEST_F(LogRollingTest, Rolling) {
   version = util::TrimStr(version);
   ASSERT_TRUE(std::regex_match(
       version, std::regex(R"(version \S+ build \S+ revision \S+ build_type \S+ built at .+)")));
-  const auto log_path = JoinPathSegments(master->GetFullDataDir(), "logs", BaseName(exe) + ".INFO");
+  const auto log_path = JoinPathSegments(master->GetDataDirs()[0], "logs", BaseName(exe) + ".INFO");
   const auto fingerprint = "Application fingerprint: " + version;
   const LogHeader header(log_path);
   ASSERT_NE(header.GetByPrefix(fingerprint), "");
@@ -95,14 +94,14 @@ TEST_F(LogRollingTest, Rolling) {
   // In case of log rolling log_path link will be pointed to newly created file
   const auto initial_target = ASSERT_RESULT(env_->ReadLink(log_path));
   auto prev_size = ASSERT_RESULT(env_->GetFileSize(log_path));
-  auto master_proxy = cluster_->master_proxy();
+  auto master_proxy = cluster_->GetMasterProxy<master::MasterDdlProxy>();
   while(initial_target == ASSERT_RESULT(env_->ReadLink(log_path))) {
     // Call rpc functions to generate logs in master
     for(int i = 0; i < 20; ++i) {
       master::TruncateTableRequestPB req;
       master::TruncateTableResponsePB resp;
       rpc::RpcController rpc;
-      ASSERT_OK(master_proxy->TruncateTable(req, &resp, &rpc));
+      ASSERT_OK(master_proxy.TruncateTable(req, &resp, &rpc));
     }
     const auto current_size = ASSERT_RESULT(env_->GetFileSize(log_path));
     // Make sure log size is changed and it is not much than 2Mb

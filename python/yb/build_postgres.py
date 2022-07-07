@@ -27,10 +27,13 @@ import subprocess
 import json
 import hashlib
 import time
+import semantic_version  # type: ignore
+import shlex
+import pathlib
 
 from subprocess import check_call
 
-from yugabyte_pycommon import (
+from yugabyte_pycommon import (  # type: ignore
     init_logging,
     run_program,
     WorkDirContext,
@@ -39,7 +42,6 @@ from yugabyte_pycommon import (
     is_verbose_mode
 )
 
-from yb import common_util
 from yb.tool_base import YbBuildToolBase
 from yb.common_util import (
     YB_SRC_ROOT,
@@ -49,14 +51,15 @@ from yb.common_util import (
     read_json_file,
     get_absolute_path_aliases,
     EnvVarContext,
+    shlex_join,
+    check_arch,
+    is_macos_arm64,
 )
+from yb import compile_commands
 from yb.compile_commands import (
-    COMBINED_POSTPROCESSED_COMPILE_COMMANDS_FILE_NAME,
-    COMBINED_RAW_COMPILE_COMMANDS_FILE_NAME,
-    create_compile_commands_symlink,
-    CompileCommandProcessor,
-)
+    create_compile_commands_symlink, CompileCommandProcessor, get_compile_commands_file_path)
 from overrides import overrides
+from typing import List, Dict, Optional, Any, Set
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -75,13 +78,36 @@ CONFIG_ENV_VARS = [
     'YB_THIRDPARTY_DIR'
 ]
 REMOVE_CONFIG_CACHE_MSG_RE = re.compile(r'error: run.*\brm config[.]cache\b.*and start over')
+TRANSIENT_BUILD_ERRORS = ['missing separator.  Stop.']
+TRANSIENT_BUILD_RETRIES = 3
 
 
-def sha256(s):
-    return hashlib.sha256(s).hexdigest()
+# These files include generated files from the same directory as the including file itself, so their
+# directory need to be added to the list of include directories when we generate compilation
+# commands.
+#
+# E.g. guc.c includes guc-file.c using the line
+#
+# #include "guc-file.c"
+#
+# which works during the build because guc-file.c is located at
+#
+# $BUILD_ROOT/postgres_build/src/backend/utils/misc/guc-file.c
+#
+# and the file we are compiling is in the same directory.
+#
+# However, when we rewrite the compilation command to refer to refer to the guc.c file as
+# src/postgres/src/backend/utils/misc/guc.c instead, there is no correspoinding guc-file.c in the
+# same directory, so we have to add -I$BUILD_ROOT/postgres_build/src/backend/utils/misc to the
+# command in compile_commands.json.
+FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR = ['guc.c', 'tuplesort.c']
 
 
-def adjust_error_on_warning_flag(flag, step, language):
+def sha256(s: str) -> str:
+    return hashlib.sha256(s.encode('utf-8')).hexdigest()
+
+
+def adjust_error_on_warning_flag(flag: str, step: str, language: str) -> Optional[str]:
     """
     Adjust a given compiler flag according to the build step and language.
     """
@@ -96,12 +122,6 @@ def adjust_error_on_warning_flag(flag, step, language):
             # Skip this flag altogether during the configure step.
             return None
 
-        if flag == '-fsanitize=thread':
-            # Don't actually enable TSAN in the configure step, otherwise configure will think that
-            # our pthread library is not working properly.
-            # https://gist.githubusercontent.com/mbautin/366970ac55c9d3579816d5e8563e70b4/raw
-            return None
-
     if step == 'make':
         # No changes.
         return flag
@@ -113,7 +133,7 @@ def adjust_error_on_warning_flag(flag, step, language):
     return flag
 
 
-def filter_compiler_flags(compiler_flags, step, language):
+def filter_compiler_flags(compiler_flags: str, step: str, language: str) -> str:
     """
     This function optionaly removes flags that turn warnings into errors.
     """
@@ -129,14 +149,17 @@ def filter_compiler_flags(compiler_flags, step, language):
 
 
 class PostgresBuilder(YbBuildToolBase):
-    def __init__(self):
+    build_root: str
+    pg_build_root: str
+    pg_prefix: str
+    build_type: str
+    postgres_src_dir: str
+    pg_config_path: str
+    compiler_type: str
+    env_vars_for_build_stamp: Set[str]
+
+    def __init__(self) -> None:
         super().__init__()
-        self.build_root = None
-        self.pg_build_root = None
-        self.pg_prefix = None
-        self.build_type = None
-        self.postgres_src_dir = None
-        self.compiler_type = None
         self.env_vars_for_build_stamp = set()
 
         # Check if the outer build is using runs the compiler on build workers.
@@ -145,11 +168,11 @@ class PostgresBuilder(YbBuildToolBase):
             raise RuntimeError(
                 "No 'auto' value is allowed for YB_REMOTE_COMPILATION at this point")
 
-    def get_yb_version(self):
+    def get_yb_version(self) -> str:
         with open(os.path.join(YB_SRC_ROOT, 'version.txt'), "r") as version_file:
             return version_file.read().strip()
 
-    def set_env_var(self, name, value):
+    def set_env_var(self, name: str, value: Optional[str]) -> None:
         if value is None:
             if name in os.environ:
                 del os.environ[name]
@@ -157,18 +180,18 @@ class PostgresBuilder(YbBuildToolBase):
             os.environ[name] = value
         self.env_vars_for_build_stamp.add(name)
 
-    def append_to_env_var(self, name, to_append, separator=' '):
+    def append_to_env_var(self, name: str, to_append: str, separator: str = ' ') -> None:
         if name in os.environ and os.environ[name]:
             self.set_env_var(name, os.environ[name] + separator + to_append)
         else:
             self.set_env_var(name, to_append)
 
     @overrides
-    def get_description(self):
+    def get_description(self) -> str:
         return __doc__
 
     @overrides
-    def add_command_line_args(self):
+    def add_command_line_args(self) -> None:
         parser = self.arg_parser
         parser.add_argument('--cflags', help='C compiler flags')
         parser.add_argument('--clean',
@@ -185,9 +208,18 @@ class PostgresBuilder(YbBuildToolBase):
         parser.add_argument('--step',
                             choices=BUILD_STEPS,
                             help='Run a specific step of the build process')
+        parser.add_argument('--compiler_version',
+                            help='Compiler version (e.g. 14.0.3)')
+        parser.add_argument('--compiler_family',
+                            choices=['gcc', 'clang'],
+                            help='Compiler family (e.g. clang or gcc)')
+        parser.add_argument(
+            '--shared_library_suffix',
+            help='Shared library suffix used on the current platform. Used to set DLSUFFIX '
+                 'in compile_commands.json.')
 
     @overrides
-    def validate_and_process_args(self):
+    def validate_and_process_args(self) -> None:
         if not self.args.build_root:
             raise RuntimeError("Neither BUILD_ROOT or --build-root specified")
 
@@ -198,6 +230,7 @@ class PostgresBuilder(YbBuildToolBase):
         self.build_stamp_path = os.path.join(self.pg_build_root, 'build_stamp')
         self.pg_prefix = os.path.join(self.build_root, 'postgres')
         self.postgres_src_dir = os.path.join(YB_SRC_ROOT, 'src', 'postgres')
+        self.pg_config_path = os.path.join(self.build_root, 'postgres', 'bin', 'pg_config')
         self.compiler_type = self.args.compiler_type
         self.openssl_include_dir = self.args.openssl_include_dir
         self.openssl_lib_dir = self.args.openssl_lib_dir
@@ -207,12 +240,24 @@ class PostgresBuilder(YbBuildToolBase):
                 "Compiler type not specified using either --compiler_type or YB_COMPILER_TYPE")
 
         self.export_compile_commands = os.environ.get('YB_EXPORT_COMPILE_COMMANDS') == '1'
+        self.skip_pg_compile_commands = os.environ.get('YB_SKIP_PG_COMPILE_COMMANDS') == '1'
         self.should_configure = self.args.step is None or self.args.step == 'configure'
         self.should_make = self.args.step is None or self.args.step == 'make'
         self.thirdparty_dir = self.args.thirdparty_dir
-        self.original_path = os.getenv('PATH').split(':')
 
-    def adjust_cflags_in_makefile(self):
+        path_env_var_value: Optional[str] = os.getenv('PATH')
+        if path_env_var_value is None:
+            self.original_path = []
+            logging.warning("PATH is not set")
+        else:
+            self.original_path = path_env_var_value.split(':')
+            if not self.original_path:
+                logging.warning("PATH is empty")
+
+        self.compiler_family = self.args.compiler_family
+        self.compiler_version = self.args.compiler_version
+
+    def adjust_cflags_in_makefile(self) -> None:
         makefile_global_path = os.path.join(self.pg_build_root, 'src/Makefile.global')
         new_makefile_lines = []
         new_cflags = os.environ['CFLAGS'].strip()
@@ -237,7 +282,13 @@ class PostgresBuilder(YbBuildToolBase):
             with open(makefile_global_path, 'w') as makefile_global_out_f:
                 makefile_global_out_f.write("\n".join(new_makefile_lines) + "\n")
 
-    def set_env_vars(self, step):
+    def is_clang(self) -> bool:
+        return self.compiler_family == 'clang'
+
+    def is_gcc(self) -> bool:
+        return self.compiler_family == 'gcc'
+
+    def set_env_vars(self, step: str) -> None:
         if step not in BUILD_STEPS:
             raise RuntimeError(
                 ("Invalid step specified for setting env vars: must be in {}")
@@ -245,7 +296,6 @@ class PostgresBuilder(YbBuildToolBase):
         is_make_step = step == 'make'
 
         self.set_env_var('YB_PG_BUILD_STEP', step)
-        self.set_env_var('YB_BUILD_ROOT', self.build_root)
         self.set_env_var('YB_THIRDPARTY_DIR', self.thirdparty_dir)
         self.set_env_var('YB_SRC_ROOT', YB_SRC_ROOT)
 
@@ -257,15 +307,15 @@ class PostgresBuilder(YbBuildToolBase):
             '-Wimplicit-function-declaration',
             '-Wno-error=unused-function',
             '-DHAVE__BUILTIN_CONSTANT_P=1',
-            '-DUSE_SSE42_CRC32C=1',
             '-std=c11',
             '-Werror=implicit-function-declaration',
             '-Werror=int-conversion',
         ]
 
-        if self.compiler_type == 'clang':
+        if self.is_clang():
             additional_c_cxx_flags += [
-                '-Wno-builtin-requires-header'
+                '-Wno-builtin-requires-header',
+                '-Wno-shorten-64-to-32',
             ]
 
         if is_make_step:
@@ -276,13 +326,14 @@ class PostgresBuilder(YbBuildToolBase):
             ]
 
             if self.build_type == 'release':
-                if self.compiler_type == 'clang':
+                if self.is_clang():
                     additional_c_cxx_flags += [
                         '-Wno-error=array-bounds',
-                        '-Wno-error=gnu-designator'
+                        '-Wno-error=gnu-designator',
                     ]
-                if self.compiler_type == 'gcc':
+                if self.is_gcc():
                     additional_c_cxx_flags += ['-Wno-error=strict-overflow']
+
             if self.build_type == 'asan':
                 additional_c_cxx_flags += [
                     '-fsanitize-recover=signed-integer-overflow',
@@ -298,7 +349,7 @@ class PostgresBuilder(YbBuildToolBase):
             for source_path in get_absolute_path_aliases(self.postgres_src_dir)
         ]
 
-        if self.compiler_type == 'gcc':
+        if self.is_gcc():
             additional_c_cxx_flags.append('-Wno-error=maybe-uninitialized')
 
         for var_name in ['CFLAGS', 'CXXFLAGS']:
@@ -326,8 +377,9 @@ class PostgresBuilder(YbBuildToolBase):
             'LDFLAGS',
             '-Wl,-rpath,' + os.path.join(self.build_root, 'lib'))
 
-        for ldflags_var_name in ['LDFLAGS', 'LDFLAGS_EX']:
-            self.append_to_env_var(ldflags_var_name, '-lm')
+        if sys.platform != 'darwin':
+            for ldflags_var_name in ['LDFLAGS', 'LDFLAGS_EX']:
+                self.append_to_env_var(ldflags_var_name, '-lm')
 
         if is_verbose_mode():
             # CPPFLAGS are C preprocessor flags, CXXFLAGS are C++ flags.
@@ -348,16 +400,17 @@ class PostgresBuilder(YbBuildToolBase):
 
         # Do not try to make rpaths relative during the configure step, as that may slow it down.
         self.set_env_var('YB_DISABLE_RELATIVE_RPATH', '1' if step == 'configure' else '0')
-        if self.build_type == 'compilecmds':
-            self.set_env_var('YB_SKIP_LINKING', '1')
 
         # We need to add this directory to PATH so Postgres build could find Bison.
         thirdparty_installed_common_bin_path = os.path.join(
             self.thirdparty_dir, 'installed', 'common', 'bin')
-        new_path_str = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
-        self.set_env_var('PATH', new_path_str)
+        os.environ['PATH'] = ':'.join([thirdparty_installed_common_bin_path] + self.original_path)
 
-    def sync_postgres_source(self):
+        if self.build_type == 'tsan':
+            self.set_env_var('TSAN_OPTIONS', os.getenv('TSAN_OPTIONS', '') + ' report_bugs=0')
+            logging.info("TSAN_OPTIONS for Postgres build: %s", os.getenv('TSAN_OPTIONS'))
+
+    def sync_postgres_source(self) -> None:
         logging.info("Syncing postgres source code")
         # Remove source code files from the build directory that have been removed from the
         # source directory.
@@ -386,14 +439,14 @@ class PostgresBuilder(YbBuildToolBase):
         if is_verbose_mode():
             logging.info("Successfully synced postgres source code")
 
-    def clean_postgres(self):
+    def clean_postgres(self) -> None:
         logging.info("Removing the postgres build and installation directories")
         for dir_to_delete in [self.pg_build_root, self.pg_prefix]:
             logging.info("Deleting the directory '%s'", dir_to_delete)
             # rm -rf is much faster than Python's rmtree.
             run_program(['rm', '-rf', dir_to_delete], capture_output=False)
 
-    def configure_postgres(self):
+    def configure_postgres(self) -> None:
         if is_verbose_mode():
             logging.info("Running configure in the postgres build directory")
         # Don't enable -Werror when running configure -- that can affect the resulting
@@ -403,8 +456,10 @@ class PostgresBuilder(YbBuildToolBase):
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
                 '--enable-depend',
+                '--with-icu',
                 '--with-ldap',
                 '--with-openssl',
+                '--with-gssapi',
                 # Options are ossp (original/old implementation), bsd (BSD) and e2fs
                 # (libuuid-based for Unix/Mac).
                 '--with-uuid=e2fs',
@@ -413,6 +468,9 @@ class PostgresBuilder(YbBuildToolBase):
                 '--with-libraries=' + self.openssl_lib_dir,
                 # We're enabling debug symbols for all types of builds.
                 '--enable-debug']
+        if is_macos_arm64():
+            configure_cmd_line.insert(0, '/opt/homebrew/bin/bash')
+
         if not get_bool_env_var('YB_NO_PG_CONFIG_CACHE'):
             configure_cmd_line.append('--config-cache')
 
@@ -438,6 +496,14 @@ class PostgresBuilder(YbBuildToolBase):
 
             if not rerun_configure:
                 logging.error("Standard error from configure:\n" + configure_result.stderr)
+                config_log_path = os.path.join(self.pg_build_root, "config.log")
+                if os.path.exists(config_log_path):
+                    with open(config_log_path) as config_log_file:
+                        config_log_str = config_log_file.read()
+                    logging.info(f"Contents of {config_log_path}:")
+                    sys.stderr.write(config_log_str + "\n")
+                else:
+                    logging.warning(f"File not found: {config_log_path}")
                 raise RuntimeError("configure failed")
 
             configure_result = run_program(
@@ -450,14 +516,27 @@ class PostgresBuilder(YbBuildToolBase):
 
         logging.info("Successfully ran configure in the postgres build directory")
 
-    def get_env_vars_str(self, env_var_names):
+    def get_env_vars_str(self, env_var_names: Set[str]) -> str:
         return "\n".join(
             "%s=%s" % (k, os.environ[k])
             for k in sorted(env_var_names)
             if k in os.environ
         )
 
-    def get_build_stamp(self, include_env_vars):
+    def get_git_version(self) -> Optional[str]:
+        """Get the semantic version of git.  Assume git exists.  Return None if the version cannot
+        be parsed.
+        """
+        version_string = subprocess.check_output(('git', '--version')).decode('utf-8').strip()
+        match = re.match(r'git version (\S+)', version_string)
+        assert match, f"Failed to extract git version from string: {version_string}"
+        try:
+            return semantic_version.Version.coerce(match.group(1))
+        except ValueError as e:
+            logging.warning(f"Failed to interpret git version: {e}")
+            return None
+
+    def get_build_stamp(self, include_env_vars: bool) -> str:
         """
         Creates a "build stamp" that tries to capture all inputs that might affect the PostgreSQL
         code. This is needed to avoid needlessly rebuilding PostgreSQL, as it takes ~10 seconds
@@ -465,23 +544,41 @@ class PostgresBuilder(YbBuildToolBase):
         """
 
         with WorkDirContext(YB_SRC_ROOT):
-            code_subset = [
+            # Postgres files.
+            pathspec = [
                 'src/postgres',
                 'src/yb/yql/pggate',
                 'python/yb/build_postgres.py',
                 'build-support/build_postgres',
-                'CMakeLists.txt'
+                'CMakeLists.txt',
             ]
+            git_version = self.get_git_version()
+            if git_version and git_version >= semantic_version.Version('1.9.0'):
+                # Git version 1.8.5 allows specifying glob pathspec, and Git version 1.9.0 allows
+                # specifying negative pathspec.  Use them to exclude changes to regress test files
+                # not needed for build.
+                pathspec.extend([
+                    ':(glob,exclude)src/postgres/**/*_schedule',
+                    ':(glob,exclude)src/postgres/**/data/*.csv',
+                    ':(glob,exclude)src/postgres/**/data/*.data',
+                    ':(glob,exclude)src/postgres/**/expected/*.out',
+                    ':(glob,exclude)src/postgres/**/input/*.source',
+                    ':(glob,exclude)src/postgres/**/output/*.source',
+                    ':(glob,exclude)src/postgres/**/specs/*.spec',
+                    ':(glob,exclude)src/postgres/**/sql/*.sql',
+                    ':(glob,exclude)src/postgres/.clang-format',
+                ])
+            # Get the most recent commit that touched postgres files.
             git_hash = subprocess.check_output(
-                ['git', '--no-pager', 'log', '-n', '1', '--pretty=%H'] + code_subset).strip()
-            git_diff = subprocess.check_output(['git', 'diff'] + code_subset)
-            git_diff_cached = subprocess.check_output(['git', 'diff', '--cached'] + code_subset)
+                ['git', '--no-pager', 'log', '-n', '1', '--format=%H', '--'] + pathspec
+            ).decode('utf-8').strip()
+            # Get uncommitted changes to tracked postgres files.
+            git_diff = subprocess.check_output(['git', 'diff', 'HEAD', '--'] + pathspec)
 
         env_vars_str = self.get_env_vars_str(self.env_vars_for_build_stamp)
         build_stamp = "\n".join([
             "git_commit_sha1=%s" % git_hash,
-            "git_diff_sha256=%s" % sha256(git_diff),
-            "git_diff_cached_sha256=%s" % sha256(git_diff_cached)
+            "git_diff_sha256=%s" % hashlib.sha256(git_diff).hexdigest(),
             ])
 
         if include_env_vars:
@@ -490,20 +587,24 @@ class PostgresBuilder(YbBuildToolBase):
 
         return build_stamp.strip()
 
-    def get_saved_build_stamp(self):
+    def get_saved_build_stamp(self) -> Optional[str]:
         if os.path.exists(self.build_stamp_path):
             with open(self.build_stamp_path) as build_stamp_file:
                 return build_stamp_file.read().strip()
+        return None
 
-    def make_postgres(self):
+    def make_postgres(self) -> None:
         self.set_env_vars('make')
         # Postgresql requires MAKELEVEL to be 0 or non-set when calling its make.
         # But in case YB project is built with make, MAKELEVEL is not 0 at this point.
         make_cmd = ['make', 'MAKELEVEL=0']
+        if is_macos_arm64():
+            make_cmd = ['arch', '-arm64'] + make_cmd
 
-        make_parallelism = os.environ.get('YB_MAKE_PARALLELISM')
-        if make_parallelism:
-            make_parallelism = int(make_parallelism)
+        make_parallelism_str: Optional[str] = os.environ.get('YB_MAKE_PARALLELISM')
+        make_parallelism: Optional[int] = None
+        if make_parallelism_str is not None:
+            make_parallelism = int(make_parallelism_str)
         if self.build_uses_remote_compilation and not self.remote_compilation_allowed:
             # Since we're building everything locally in this case, and YB_MAKE_PARALLELISM is
             # likely specified for distributed compilation, cap it at some factor times the number
@@ -528,9 +629,14 @@ class PostgresBuilder(YbBuildToolBase):
                 raise RuntimeError("Expected env var %s to be set" % env_var_name)
             env_script_content += "export %s=%s\n" % (env_var_name, quote_for_bash(env_var_value))
 
-        compile_commands_files = []
+        pg_compile_commands_paths = []
 
-        work_dirs = [self.pg_build_root, os.path.join(self.pg_build_root, 'contrib')]
+        third_party_extensions_dir = os.path.join(self.pg_build_root, 'third-party-extensions')
+        work_dirs = [
+            self.pg_build_root,
+            os.path.join(self.pg_build_root, 'contrib'),
+            third_party_extensions_dir
+        ]
 
         for work_dir in work_dirs:
             with WorkDirContext(work_dir):
@@ -546,104 +652,173 @@ class PostgresBuilder(YbBuildToolBase):
 
                 run_program(['chmod', 'u+x', make_script_path])
 
+                make_cmd_suffix = []
+                if work_dir == third_party_extensions_dir:
+                    make_cmd_suffix = ['PG_CONFIG=' + self.pg_config_path]
+
                 # Actually run Make.
                 if is_verbose_mode():
                     logging.info("Running make in the %s directory", work_dir)
 
-                make_result = run_program(
-                    make_cmd, stdout_stderr_prefix='make', cwd=work_dir, shell=True, error_ok=True
-                )
-                if make_result.failure():
-                    make_result.print_output_to_stdout()
-                    raise RuntimeError("PostgreSQL compilation failed")
-
-                if self.build_type == 'compilecmds':
-                    logging.info(
-                            "Not running make install in the %s directory since we are only "
-                            "generating the compilation database", work_dir)
+                complete_make_cmd = make_cmd + make_cmd_suffix
+                complete_make_cmd_str = shlex_join(complete_make_cmd)
+                complete_make_install_cmd = make_cmd + ['install'] + make_cmd_suffix
+                attempt = 0
+                while attempt <= TRANSIENT_BUILD_RETRIES:
+                    attempt += 1
+                    make_result = run_program(
+                        complete_make_cmd_str,
+                        stdout_stderr_prefix='make',
+                        cwd=work_dir,
+                        error_ok=True,
+                        shell=True  # TODO: get rid of shell=True.
+                    )
+                    if make_result.failure():
+                        transient_err = False
+                        stderr_lines = make_result.get_stderr().split('\n')
+                        for line in stderr_lines:
+                            if any(transient_error_pattern in line
+                                   for transient_error_pattern in TRANSIENT_BUILD_ERRORS):
+                                transient_err = True
+                                logging.info(f'Transient error: {line}')
+                                break
+                        if transient_err:
+                            logging.info(
+                                f"Transient error during build attempt {attempt}. "
+                                f"Re-trying make command: {complete_make_cmd_str}.")
+                        else:
+                            make_result.print_output_to_stdout()
+                            raise RuntimeError("PostgreSQL compilation failed")
+                    else:
+                        logging.info("Successfully ran 'make' in the %s directory", work_dir)
+                        break  # No error, break out of retry loop
                 else:
-                    run_program(
-                        'make install', stdout_stderr_prefix='make_install',
-                        cwd=work_dir, shell=True, error_ok=True
-                    ).print_output_and_raise_error_if_failed()
-                    logging.info("Successfully ran make in the %s directory", work_dir)
+                    raise RuntimeError(
+                        f"Maximum build attempts reached ({TRANSIENT_BUILD_RETRIES} attempts).")
 
-                if self.export_compile_commands:
+                if self.build_type != 'compilecmds' or work_dir == self.pg_build_root:
+                    run_program(
+                        ' '.join(shlex.quote(arg) for arg in complete_make_install_cmd),
+                        stdout_stderr_prefix='make_install',
+                        cwd=work_dir,
+                        error_ok=True,
+                        shell=True  # TODO: get rid of shell=True.
+                    ).print_output_and_raise_error_if_failed()
+                    logging.info("Successfully ran 'make install' in the %s directory", work_dir)
+                else:
+                    logging.info(
+                            "Not running 'make install' in the %s directory since we are only "
+                            "generating the compilation database", work_dir)
+
+                if self.export_compile_commands and not self.skip_pg_compile_commands:
                     logging.info("Generating the compilation database in directory '%s'", work_dir)
 
                     compile_commands_path = os.path.join(work_dir, 'compile_commands.json')
                     self.set_env_var('YB_PG_SKIP_CONFIG_STATUS', '1')
                     if not os.path.exists(compile_commands_path):
-                        run_program(['compiledb', 'make', '-n'], capture_output=False)
+                        run_program(
+                            ['compiledb', 'make', '-n'] + make_cmd_suffix, capture_output=False)
                     del os.environ['YB_PG_SKIP_CONFIG_STATUS']
 
                     if not os.path.exists(compile_commands_path):
                         raise RuntimeError("Failed to generate compilation database at: %s" %
                                            compile_commands_path)
-                    compile_commands_files.append(compile_commands_path)
+                    pg_compile_commands_paths.append(compile_commands_path)
 
         if self.export_compile_commands:
-            self.combine_compile_commands(compile_commands_files)
+            self.write_compile_commands_files(pg_compile_commands_paths)
 
-    def combine_compile_commands(self, compile_commands_files):
-        """
-        Combine compilation commands files from main and contrib subtrees of PostgreSQL, patch them
-        so that they point to the original source directory, and concatenate with the main
-        compilation commands file.
-        """
-        all_compile_commands_paths = compile_commands_files + [
-            os.path.join(self.build_root, 'compile_commands.json')
-        ]
-
-        # -----------------------------------------------------------------------------------------
-        # Combine raw compilation commands in a single file.
-        # -----------------------------------------------------------------------------------------
-
-        combined_raw_compile_commands = []
-        for compile_commands_path in all_compile_commands_paths:
-            combined_raw_compile_commands += read_json_file(compile_commands_path)
-
+    def write_compile_commands_file(
+            self,
+            compile_commands: List[Dict[str, Any]],
+            subdir_name: str) -> str:
+        out_path = get_compile_commands_file_path(self.build_root, subdir_name)
+        pathlib.Path(os.path.dirname(out_path)).mkdir(parents=True, exist_ok=True)
         write_json_file(
-            combined_raw_compile_commands,
-            os.path.join(self.build_root, COMBINED_RAW_COMPILE_COMMANDS_FILE_NAME),
-            description_for_log='combined raw compilation commands file')
+            json_data=compile_commands,
+            output_path=out_path,
+            description_for_log=f'{subdir_name} compilation commands')
+        return out_path
 
-        # -----------------------------------------------------------------------------------------
-        # Combine post-processed compilation commands in a single file.
-        # -----------------------------------------------------------------------------------------
+    def write_compile_commands_files(self, pg_compile_commands_paths: List[str]) -> None:
+        """
+        Write various types of compilation command files across the following dimensions:
+        - YugabyteDB distributed system C++ code ("YB") vs. PostgreSQL C code ("PG")
+        - Raw vs. postprocessed. Postprocessed means the paths are adjusted to refer to the original
+          source directory as opposed to equivalent files in the build directory, and the format is
+          unified.
+        """
 
-        compile_command_processor = CompileCommandProcessor(self.build_root)
-        combined_postprocessed_compile_commands = [
+        # Write files with raw compilation commands
+
+        yb_compile_commands_path = os.path.join(self.build_root, 'compile_commands.json')
+        yb_raw_compile_commands = read_json_file(yb_compile_commands_path)
+        self.write_compile_commands_file(
+            yb_raw_compile_commands, compile_commands.YB_RAW_DIR_NAME)
+
+        pg_raw_compile_commands = []
+        for compile_commands_path in pg_compile_commands_paths:
+            pg_raw_compile_commands += read_json_file(compile_commands_path)
+
+        self.write_compile_commands_file(pg_raw_compile_commands, compile_commands.PG_RAW_DIR_NAME)
+
+        combined_raw_compile_commands = yb_raw_compile_commands + pg_raw_compile_commands
+        self.write_compile_commands_file(
+            combined_raw_compile_commands, compile_commands.COMBINED_RAW_DIR_NAME)
+
+        # Write similar files with postprocessed compilation commands.
+        compile_command_processor = CompileCommandProcessor(
+            self.build_root,
+            extra_args=[
+                f'-DDLSUFFIX="{self.args.shared_library_suffix}"'
+            ],
+            add_original_dir_to_path_for_files=set(FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR))
+
+        yb_postprocessed_compile_commands = [
             compile_command_processor.postprocess_compile_command(item)
-            for item in combined_raw_compile_commands
+            for item in yb_raw_compile_commands
         ]
+        self.write_compile_commands_file(
+            yb_postprocessed_compile_commands,
+            compile_commands.YB_POSTPROCESSED_DIR_NAME)
 
-        combined_postprocessed_compile_commands_path = os.path.join(
-            self.build_root, COMBINED_POSTPROCESSED_COMPILE_COMMANDS_FILE_NAME)
+        pg_postprocessed_compile_commands = [
+            compile_command_processor.postprocess_compile_command(item)
+            for item in pg_raw_compile_commands
+        ]
+        self.write_compile_commands_file(
+            pg_postprocessed_compile_commands,
+            compile_commands.PG_POSTPROCESSED_DIR_NAME)
 
-        write_json_file(
+        combined_postprocessed_compile_commands = (
+            yb_postprocessed_compile_commands + pg_postprocessed_compile_commands)
+        combined_postprocessed_compile_commands_path = self.write_compile_commands_file(
             combined_postprocessed_compile_commands,
-            combined_postprocessed_compile_commands_path,
-            description_for_log='combined postprocessed compilation commands file')
+            compile_commands.COMBINED_POSTPROCESSED_DIR_NAME)
 
-        create_compile_commands_symlink(
-            combined_postprocessed_compile_commands_path, self.build_type)
+        create_compile_commands_symlink(combined_postprocessed_compile_commands_path)
 
     @overrides
-    def run_impl(self):
+    def run_impl(self) -> None:
         self.build_postgres()
 
-    def steps_description(self):
+    def steps_description(self) -> str:
         if self.args.step is None:
             return "all steps in {}".format(BUILD_STEPS)
         return "the '%s' step" % (self.args.step)
 
-    def build_postgres(self):
+    def build_postgres(self) -> None:
         start_time_sec = time.time()
         if self.args.clean:
             self.clean_postgres()
 
         mkdir_p(self.pg_build_root)
+        if self.should_configure:
+            # Regardless of build stamp, the postgres code in src should be synced to the code in
+            # build.  It's fine to do this only for the configure step because the make step depends
+            # on the configure step as defined in src/postgres/CMakeLists.txt.
+            with WorkDirContext(self.pg_build_root):
+                self.sync_postgres_source()
 
         self.set_env_vars('configure')
         saved_build_stamp = self.get_saved_build_stamp()
@@ -652,7 +827,7 @@ class PostgresBuilder(YbBuildToolBase):
         logging.info("PostgreSQL build stamp:\n%s", initial_build_stamp)
 
         if initial_build_stamp == saved_build_stamp:
-            if self.export_compile_commands:
+            if self.export_compile_commands and not self.skip_pg_compile_commands:
                 logging.info(
                     "Even though PostgreSQL is already up-to-date in directory %s, we still need "
                     "to create compile_commands.json, so proceeding with %s",
@@ -665,7 +840,6 @@ class PostgresBuilder(YbBuildToolBase):
 
         with WorkDirContext(self.pg_build_root):
             if self.should_configure:
-                self.sync_postgres_source()
                 configure_start_time_sec = time.time()
                 self.configure_postgres()
                 logging.info("The configure step of building PostgreSQL took %.1f sec",
@@ -691,8 +865,9 @@ class PostgresBuilder(YbBuildToolBase):
             self.steps_description(), time.time() - start_time_sec)
 
 
-def main():
+def main() -> None:
     init_logging()
+    check_arch()
     if get_bool_env_var('YB_SKIP_POSTGRES_BUILD'):
         logging.info("Skipping PostgreSQL build (YB_SKIP_POSTGRES_BUILD is set)")
         return

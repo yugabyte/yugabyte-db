@@ -27,9 +27,12 @@ import java.util.*;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestReturnsClause extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestReturnsClause.class);
 
 
   private String getExpectedResultColumns(Map<String, String> columns) {
@@ -93,8 +96,7 @@ public class TestReturnsClause extends BaseCQLTest {
     checkReturnStatus("UPDATE test_returns_status SET vl[2] = 'a' where h = 1 and r = 1",
                       columns,
                       false /* applied */,
-                      "Unable to replace items into list, expecting index 2, " +
-                          "reached end of list with size 0",
+                      "Unable to replace items in empty list.",
                       "NULL", "NULL", "NULL", "NULL");
 
     // Test success statement.

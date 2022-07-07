@@ -7,30 +7,58 @@ on:
     branches:
       - master
     paths-ignore:
+      # TODO: how to avoid duplicating this list?
       - README.md
+      - 'docs/**'
+      - 'architecture/**'
+      - 'managed/**'
+      - '.gitignore'
+      - '.github/vale-styles/**'
 
   pull_request:
     branches:
       - master
     paths-ignore:
+      # TODO: how to avoid duplicating this list?
       - README.md
       - 'docs/**'
+      - 'architecture/**'
+      - 'managed/**'
+      - '.gitignore'
+      - '.github/vale-styles/**'
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-20.04
+    name: ${{ matrix.name }}
+
+    # Grab the latest CentOS 7 image from here:
+    # https://hub.docker.com/r/yugabyteci/yb_build_infra_centos7/tags?page=1&ordering=last_updated
 
     strategy:
+      fail-fast: false
       matrix:
-        name:
-          - "CentOS 7"
         include:
-          - name: "CentOS 7"
-            os: ubuntu-latest
-            docker_image: yugabyteci/yb_build_infra_centos7:v2020-05-24T22_16_17
-
+          - name: "Clang 12, debug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --clang12 debug --no-linuxbrew
+          - name: "Clang 12, fastdebug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --clang12 fastdebug --no-linuxbrew
+          - name: "Clang 12, release, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --clang12 release --no-linuxbrew
+          - name: "GCC 11, debug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 debug --no-linuxbrew
+          - name: "GCC 11, fastdebug, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 fastdebug --no-linuxbrew
+          - name: "GCC 11, release, CentOS 7"
+            os: ubuntu-20.04
+            yb_build_args: --gcc11 release --no-linuxbrew
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
@@ -40,7 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Build code without tests
+      - name: Build YugabyteDB
         run: |
           echo "OSTYPE (outside Docker): $OSTYPE"
           echo "Build name: ${{ matrix.name }}"
@@ -51,7 +79,7 @@ jobs:
               -i \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
-              "${{ matrix.docker_image }}" \
+              "yugabyteci/yb_build_infra_centos7:v2022-05-05T04_49_22" \
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"
@@ -60,15 +88,19 @@ jobs:
                 ( set -x; ls -l /usr/local/bin )
                 set +e
                 ( set -x; which ninja )
-                ( set -x; which cmake ) 
+                ( set -x; which cmake )
                 set -e
                 chown -R yugabyteci .
                 sudo -u yugabyteci bash -c "
                   set -euo pipefail
                   export PATH=/usr/local/bin:\$PATH
                   df -H /
-                  echo ::group::Building the code without tests
-                  ./yb_build.sh release packaged --download-thirdparty --ninja
+                  echo ::group::Building YugabyteDB
+                  ./yb_build.sh release \
+                    --download-thirdparty \
+                    --ninja \
+                    --shellcheck \
+                    ${{ matrix.yb_build_args }}
                   echo ::endgroup::
                   df -H /
                 "
@@ -76,5 +108,5 @@ jobs:
           elif [[ $OSTYPE == darwin* ]]; then
             system_profiler SPSoftwareDataType
             sw_vers
-            ./yb_build.sh release
+            ./yb_build.sh release --shellcheck
           fi

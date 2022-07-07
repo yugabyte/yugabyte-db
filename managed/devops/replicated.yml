@@ -11,12 +11,44 @@ name: "yugaware"
 properties:
   app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
-  console_title: YugaByte Data Platform
+  console_title: YugaByte Platform Deployment Console
 backup:
   enabled: false
 monitors:
   cpuacct: []
   memory: []
+custom_requirements:
+  - id: check_free_space
+    message: Ensure there is sufficient space for platform installation.
+    details: Must have at least 16 GB space available.
+    results:
+      - status: success
+        message:
+          default_message: Directory {{.directory}} has enough space available.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+        condition:
+          status_code: 0
+          bool_expr: '{{repl Trim .Result | ParseFloat | lt 16e9 }}'
+      - status: error
+        message:
+          default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 16 GB.
+          args:
+            directory: '{{repl ConfigOption "storage_path"}}'
+            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+        condition:
+          status_code: 0
+      - status: warn
+        message:
+          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          args:
+            status: '{{repl .StatusCode }}'
+            error: '{{repl .Error }}'
+    command:
+      id: disk_space_available
+      data:
+        cluster: false
+        dir: '{{repl ConfigOption "storage_path"}}'
 cmds:
   - name: dbpass_cmd
     cmd: random
@@ -76,17 +108,32 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.2.1
+        version: v2.27.1
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
             permission: "0777"
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
+            container_path: /prometheus_configs
+            permission: "0777"
         ports:
           - private_port: "9090"
             public_port: "9090"
-        cmd: '["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}}", "--web.enable-admin-api"]'
+        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && \
+          cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && \
+          exec /bin/prometheus \
+          --config.file=/prometheus_configs/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} \
+          --query.max-concurrency={{repl ConfigOption \"prometheus_query_concurrency\"}} \
+          --query.max-samples={{repl ConfigOption \"prometheus_query_max_samples\"}} \
+          --query.timeout={{repl ConfigOption \"prometheus_query_timeout\"}} \
+          --web.enable-admin-api \
+          --web.enable-lifecycle"]
         publish_events:
           - name: Prometheus started
             trigger: container-start
@@ -95,24 +142,109 @@ components:
                 container: postgres
                 action: start
         config_files:
-          - filename: /etc/prometheus/prometheus.yml
+          - filename: /prometheus_configs/default_prometheus.yml
             contents: |
               global:
                   scrape_interval:     {{repl ConfigOption "prometheus_scrape_interval"}}
                   evaluation_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   external_labels:
                       monitor: 'swamper'
+              rule_files:
+                - '/opt/yugabyte/prometheus/rules/yugaware.ad.*.yml'
+                - '/opt/yugabyte/prometheus/rules/yugaware.recording-rules.yml'
               scrape_configs:
                 - job_name: 'prometheus'
-                  scrape_interval: {{repl ConfigOption "prometheus_scrape_interval"}}
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
                   static_configs:
                       - targets: ['{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9090']
+
+                - job_name: 'platform'
+                  scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
+                  metrics_path: "/api/v1/prometheus_metrics"
+                  static_configs:
+                    - targets: [
+                      '{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9000'
+                    ]
+
                 - job_name: "node"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/node.*.json'
                   metric_relabel_configs:
+                    # Below relabels are required for smooth migration from node_exporter
+                    # 0.13.0 to the latest
+                    - source_labels: ["__name__"]
+                      regex: "node_cpu"
+                      target_label: "__name__"
+                      replacement: "node_cpu_seconds_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_filesystem_free"
+                      target_label: "__name__"
+                      replacement: "node_filesystem_free_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_filesystem_size"
+                      target_label: "__name__"
+                      replacement: "node_filesystem_size_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_reads_completed"
+                      target_label: "__name__"
+                      replacement: "node_disk_reads_completed_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_writes_completed"
+                      target_label: "__name__"
+                      replacement: "node_disk_writes_completed_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_MemTotal"
+                      target_label: "__name__"
+                      replacement: "node_memory_MemTotal_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_Slab"
+                      target_label: "__name__"
+                      replacement: "node_memory_Slab_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_Cached"
+                      target_label: "__name__"
+                      replacement: "node_memory_Cached_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_Buffers"
+                      target_label: "__name__"
+                      replacement: "node_memory_Buffers_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_memory_MemFree"
+                      target_label: "__name__"
+                      replacement: "node_memory_MemFree_bytes"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_receive_bytes"
+                      target_label: "__name__"
+                      replacement: "node_network_receive_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_transmit_bytes"
+                      target_label: "__name__"
+                      replacement: "node_network_transmit_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_receive_packets"
+                      target_label: "__name__"
+                      replacement: "node_network_receive_packets_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_transmit_packets"
+                      target_label: "__name__"
+                      replacement: "node_network_transmit_packets_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_receive_errs"
+                      target_label: "__name__"
+                      replacement: "node_network_receive_errs_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_network_transmit_errs"
+                      target_label: "__name__"
+                      replacement: "node_network_transmit_errs_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_bytes_read"
+                      target_label: "__name__"
+                      replacement: "node_disk_read_bytes_total"
+                    - source_labels: ["__name__"]
+                      regex: "node_disk_bytes_written"
+                      target_label: "__name__"
+                      replacement: "node_disk_written_bytes_total"
                     # Save the name of the metric so we can group_by since we cannot by __name__ directly...
                     - source_labels: ["__name__"]
                       regex: "(.*)"
@@ -121,6 +253,23 @@ components:
 
                 - job_name: "yugabyte"
                   metrics_path: "/prometheus-metrics"
+                  params:
+                    # Enable priority regex on all tables
+                    # URL encoding done by prometheus
+                    priority_regex:
+                      - "rocksdb_(number_db_(next|seek)\
+                      |block_cache_(add|single_touch_add|multi_touch_add)\
+                      |current_version_(sst_files_size|num_sst_files)\
+                      |db_([^_]+_micros_[^_]+|mutex_wait_micros)|block_cache_(hit|miss)\
+                      |bloom_filter_(checked|useful)|stall_micros|flush_write_bytes\
+                      |compact_[^_]+_bytes|compaction_times_micros_[^_]+\
+                      |numfiles_in_singlecompaction_[^_]+)\
+                      |async_replication_[^_]+_lag_micros|transaction_conflicts\
+                      |majority_sst_files_rejections|expired_transactions\
+                      |log_(sync_latency_[^_]+|group_commit_latency_[^_]+\
+                      |append_latency_[^_]+|bytes_logged|reader_bytes_read\
+                      |append_latency_count|sync_latency_count|cache_size|cache_num_ops)\
+                      |glog_[^_]+_messages|follower_lag_ms"
                   file_sd_configs:
                     - files:
                       - '/opt/yugabyte/prometheus/targets/yugabyte.*.json'
@@ -157,15 +306,28 @@ components:
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_targets'
             container_path: /opt/yugabyte/prometheus/targets
+          - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/swamper_rules'
+            container_path: /opt/yugabyte/prometheus/rules
           - host_path: '{{repl ConfigOption "storage_path"}}/yugaware/data'
             container_path: /opt/yugabyte/yugaware/data
           - host_path: '{{repl ConfigOption "storage_path"}}/releases'
             container_path: /opt/yugabyte/releases
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
+            container_path: /prometheus_configs
         env_vars:
           - name: JAVA_OPTS
             static_val: '-XX:PermSize=1024m -XX:MaxPermSize=1024m'
+          - name: HTTP_PROXY
+            value: '{{repl ConfigOption "http_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: HTTPS_PROXY
+            value: '{{repl ConfigOption "https_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
+          - name: NO_PROXY
+            value: '{{repl ConfigOption "no_proxy"}}'
+            when: '{{repl ConfigOptionEquals "enable_proxy" "1"}}'
         ports:
           - private_port: "9000"
             public_port: "9000"
@@ -179,15 +341,14 @@ components:
         config_files:
           - filename: /opt/yugabyte/yugaware/conf/application.docker.conf
             contents: |
+              include classpath("application.common.conf")
               play.crypto.secret="{{repl ConfigOption "app_secret"}}"
+              play.http.forwarded.trustedProxies = ["172.17.0.1"]
               play.i18n.langs = [ "en" ]
               pidfile.path = "/dev/null"
-              play.evolutions.enabled = false
-              play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               db {
-                default.url="jdbc:postgresql://{{repl HostPrivateIpAddress "db" "postgres" }}:5432/yugaware"
-                default.driver=org.postgresql.Driver
+                default.host="{{repl HostPrivateIpAddress "db" "postgres" }}"
                 default.username="postgres"
                 default.password="{{repl ConfigOption "dbpass"}}"
                 default.logStatements=true
@@ -197,8 +358,6 @@ components:
               ebean {
                 default = ["com.yugabyte.yw.models.*"]
               }
-
-              play.modules.enabled += "org.flywaydb.play.PlayModule"
 
               play.filters {
                 # CSRF config
@@ -221,7 +380,9 @@ components:
                 # CORS config
                 cors {
                   pathPrefixes = ["/"]
-                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}"]
+                  allowedOrigins = ["{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}",
+                    "{{repl ConfigOption "support_origin_url"}}"
+                  ]
                   supportsCredentials=true
                   allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
                   allowedHttpHeaders = ["Accept", "Origin", "Content-Type", "X-Auth-Token", "X-AUTH-YW-API-TOKEN", ${play.filters.csrf.header.name}]
@@ -230,23 +391,25 @@ components:
 
               yb {
                 devops.home = /opt/yugabyte/devops
-                metrics.url = "http://{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:9090/api/v1"
+                metrics.host="{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}"
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
                 swamper.targetPath = /opt/yugabyte/prometheus/targets
+                swamper.rulesPath = /opt/yugabyte/prometheus/rules
                 multiTenant = false
                 releases.path = "/opt/yugabyte/releases"
                 docker.release = "/opt/yugabyte/release"
                 thirdparty.packagePath = /opt/third-party
-                helm.package = "/opt/yugabyte/helm/yugabyte-latest.tgz"
+                helm.packagePath = "/opt/yugabyte/helm"
                 health.check_interval_ms = 300000
                 health.status_interval_ms = 43200000
                 health.default_email = "YB_ALERTS_EMAIL_REPLACE"
                 health.ses_email_username = "YB_ALERTS_USERNAME_REPLACE"
                 health.ses_email_password = "YB_ALERTS_PASSWORD_REPLACE"
-                taskGC.gc_check_interval = 1 day
-                taskGC.task_retention_duration = 30 days
+                url = "{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl else}}http://{{repl end}}{{repl ConfigOption "hostname"}}{{repl if and (ConfigOptionNotEquals "nginx_external_port" "80") (ConfigOptionNotEquals "nginx_external_port" "443")}}:{{repl ConfigOption "nginx_external_port"}}{{repl end}}"
+                security.custom_hooks.enable_custom_hooks = {{repl if ConfigOptionEquals "enable_custom_hooks" "1"}}true{{repl else}}false{{repl end}}
+                security.custom_hooks.enable_sudo = {{repl if ConfigOptionEquals "enable_sudo" "1"}}true{{repl else}}false{{repl end}}
               }
 
   - name: nginx
@@ -261,7 +424,6 @@ components:
             trigger: container-start
             data: ""
             subscriptions: []
-        volumes_from: [yugaware]
         customer_files: []
         config_files:
           - filename: /opt/certs/server.key
@@ -275,6 +437,7 @@ components:
                   listen       443 ssl;
                   server_name  {{repl ConfigOption "hostname" }};
 
+                  ssl_protocols {{repl ConfigOption "tls_version" }};
                   ssl_certificate /opt/certs/server.cert;
                   ssl_certificate_key /opt/certs/server.key;
                 {{repl else}}
@@ -282,13 +445,20 @@ components:
                   server_name  {{repl ConfigOption "hostname" }};
                 {{repl end}}
 
-                proxy_http_version 1.1;
-                proxy_set_header X-Real-IP  $remote_addr;
-                proxy_set_header X-Forwarded-For $remote_addr;
-                proxy_set_header Host $host;
+                  proxy_http_version 1.1;
+                  proxy_set_header X-Real-IP  $remote_addr;
+                  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto $scheme;
+                  proxy_set_header Host $host;
 
                 location / {
                   proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                }
+                location ~ /settings/ha/internal/upload$ {
+                  proxy_pass http://{{repl HostPrivateIpAddress "app" "yugabyte/yugaware" }}:{{repl ContainerExposedPort "app" "yugabyte/yugaware" "9000" }};
+                  # HA backp upload endpoint needs to allow bigger request size
+                  # Broaden the location match regex to cover more endpoints as needed
+                  client_max_body_size {{repl ConfigOption "upload_size"}};
                 }
               }
         ports:
@@ -339,6 +509,12 @@ config:
           name: host_ip
           value_at: 0
         required: true
+      - name: support_origin_url
+        title: Support Origin URL
+        type: text
+        value: ""
+        default: http://localhost:9000
+        help_text: Specify protocol-host-port to be whitelisted in the CORS filter. Omit port if default
       - name: nginx_external_port
         title: Yugaware UI Port
         type: text
@@ -349,6 +525,52 @@ config:
         help_text: When enabled we will listen to https
         type: bool
         default: "0"
+      - name: upload_size
+        title: Maximum Request Size
+        help_text: Maximum size of the file uploads allowed by Yugabyte Platform.
+        type: text
+        default: "10G"
+      - name: enable_proxy
+        title: Enable Proxy
+        help_text: When enabled pass the following settings for web proxy
+        type: bool
+        default: '{{repl ConsoleSetting "http.proxy.enabled"}}'
+      - name: http_proxy
+        title: HTTP Proxy setting
+        help_text: Specify the setting for HTTP_PROXY
+        type: text
+        default: '{{repl ConsoleSetting "http.proxy"}}'
+      - name: https_proxy
+        title: HTTPS Proxy setting
+        help_text: Specify the setting for HTTPS_PROXY
+        type: text
+        default: '{{repl ConsoleSetting "http.proxy"}}'
+      - name: no_proxy
+        title: HTTP no proxy setting
+        help_text: Specify the setting for NO_PROXY
+        type: text
+        default: ""
+      - name: tls_version
+        title: TLS Versions
+        help_text: TLS version support for Platform HTTPS frontend
+        type: text
+        default: "TLSv1 TLSv1.1 TLSv1.2"
+        test_proc:
+          display_name: Check TLS version list is valid
+          command: regex_match
+          args:
+            - '^((TLSv(1|1\.[1-3]))(?: ){1}){0,3}(TLSv(1|1\.[1-3])){1}$'
+            - "The argument provided to TLS Versions isn't valid"
+      - name: enable_custom_hooks
+        title: Enable Custom Hooks
+        help_text: Enable the use of custom hooks on Platform
+        type: bool
+        default: false
+      - name: enable_sudo
+        title: Enable Superuser Privilege for Executing Custom Hooks
+        help_text: Enable the use of sudo when executing custom hooks on Platform
+        type: bool
+        default: false
 
   - name: metrics
     title: Metrics config
@@ -366,3 +588,15 @@ config:
         title: How long until a scrape request times out, default to 10 seconds
         type: text
         default: "10s"
+      - name: prometheus_query_concurrency
+        title: How many queries to execute concurrently, default to 20 queries
+        type: text
+        default: "20"
+      - name: prometheus_query_max_samples
+        title: How many samples can Prometheus load to process single query, default to 5M samples
+        type: text
+        default: "5000000"
+      - name: prometheus_query_timeout
+        title: How long until query execution times out, default to 30s
+        type: text
+        default: "30s"

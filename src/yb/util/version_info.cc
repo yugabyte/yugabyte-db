@@ -32,19 +32,18 @@
 
 #include "yb/util/version_info.h"
 
-#include <atomic>
 #include <fstream>
 #include <string>
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 #include <rapidjson/istreamwrapper.h>
-#include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 DEFINE_string(version_file_json_path, "",
               "Path to directory containing JSON file with version info.");

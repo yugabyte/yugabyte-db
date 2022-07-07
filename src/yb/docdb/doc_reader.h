@@ -24,87 +24,20 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/doc_reader_redis.h"
+#include "yb/docdb/deadline_info.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/expiration.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value.h"
 #include "yb/docdb/subdocument.h"
+#include "yb/docdb/value.h"
 
-#include "yb/util/status.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
 
-// Pass data to GetSubDocument function.
-struct GetSubDocumentData {
-  GetSubDocumentData(
-    const Slice& subdoc_key,
-    SubDocument* result_,
-    bool* doc_found_ = nullptr,
-    MonoDelta default_ttl = Value::kMaxTtl,
-    DocHybridTime* table_tombstone_time_ = nullptr)
-      : subdocument_key(subdoc_key),
-        result(result_),
-        doc_found(doc_found_),
-        exp(default_ttl),
-        table_tombstone_time(table_tombstone_time_) {}
-
-  Slice subdocument_key;
-  SubDocument* result;
-  bool* doc_found;
-
-  DeadlineInfo* deadline_info = nullptr;
-
-  // The TTL and hybrid time are return values external to the SubDocument
-  // which occasionally need to be accessed for TTL calculation.
-  mutable Expiration exp;
-  bool return_type_only = false;
-
-  // Represent bounds on the first and last subkey to be considered.
-  const SliceKeyBound* low_subkey = &SliceKeyBound::Invalid();
-  const SliceKeyBound* high_subkey = &SliceKeyBound::Invalid();
-
-  // Represent bounds on the first and last ranks to be considered.
-  const IndexBound* low_index = &IndexBound::Empty();
-  const IndexBound* high_index = &IndexBound::Empty();
-  // Maximum number of children to add for this subdocument (0 means no limit).
-  int32_t limit = 0;
-  // Only store a count of the number of records found, but don't store the records themselves.
-  bool count_only = false;
-  // Stores the count of records found, if count_only option is set.
-  mutable size_t record_count = 0;
-  // Hybrid time of latest table tombstone.  Used by colocated tables to compare with the write
-  // times of records belonging to the table.
-  DocHybridTime* table_tombstone_time;
-
-  GetSubDocumentData Adjusted(
-      const Slice& subdoc_key, SubDocument* result_, bool* doc_found_ = nullptr) const {
-    GetSubDocumentData result(subdoc_key, result_, doc_found_);
-    result.deadline_info = deadline_info;
-    result.exp = exp;
-    result.return_type_only = return_type_only;
-    result.low_subkey = low_subkey;
-    result.high_subkey = high_subkey;
-    result.low_index = low_index;
-    result.high_index = high_index;
-    result.limit = limit;
-    return result;
-  }
-
-  std::string ToString() const {
-    return Format("{ subdocument_key: $0 exp.ttl: $1 exp.write_time: $2 return_type_only: $3 "
-                      "low_subkey: $4 high_subkey: $5 table_tombstone_time: $6 }",
-                  SubDocKey::DebugSliceToString(subdocument_key), exp.ttl,
-                  exp.write_ht, return_type_only, low_subkey, high_subkey, table_tombstone_time);
-  }
-};
-
-inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& data) {
-  return out << data.ToString();
-}
+class IntentAwareIterator;
 
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
@@ -118,21 +51,63 @@ inline std::ostream& operator<<(std::ostream& out, const GetSubDocumentData& dat
 // behavior.
 // The projection, if set, restricts the scan to a subset of keys in the first level.
 // The projection is used for QL selects to get only a subset of columns.
-yb::Status GetSubDocument(
-    IntentAwareIterator *db_iter,
-    const GetSubDocumentData& data,
-    const std::vector<PrimitiveValue>* projection = nullptr,
-    SeekFwdSuffices seek_fwd_suffices = SeekFwdSuffices::kTrue);
 
 // This version of GetSubDocument creates a new iterator every time. This is not recommended for
 // multiple calls to subdocs that are sequential or near each other, in e.g. doc_rowwise_iterator.
-yb::Status GetSubDocument(
+Result<boost::optional<SubDocument>> TEST_GetSubDocument(
+    const Slice& sub_doc_key,
     const DocDB& doc_db,
-    const GetSubDocumentData& data,
     const rocksdb::QueryId query_id,
-    const TransactionOperationContextOpt& txn_op_context,
+    const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
-    const ReadHybridTime& read_time = ReadHybridTime::Max());
+    const ReadHybridTime& read_time = ReadHybridTime::Max(),
+    const std::vector<KeyEntryValue>* projection = nullptr);
+
+// This class reads SubDocument instances for a given table. The caller should initialize with
+// UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
+// of DocDBTableReader assume, for the lifetime of the instance, that the provided
+// IntentAwareIterator is either pointed to a requested row, or before it, or that row does not
+// exist. Care should be taken to ensure this assumption is not broken for callers independently
+// modifying the provided IntentAwareIterator.
+// projection - contains list of subkeys that should be read. Unlisted columns are skipped during
+// scan.
+class DocDBTableReader {
+ public:
+  DocDBTableReader(
+      IntentAwareIterator* iter, CoarseTimePoint deadline,
+      const std::vector<KeyEntryValue>* projection,
+      std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
+
+  // Updates expiration/overwrite data based on table tombstone time. If the table is not a
+  // colocated table as indicated by the provided root_doc_key, this method is a no-op.
+  Status UpdateTableTombstoneTime(const Slice& root_doc_key);
+
+  // Determine based on the provided schema if there is a table-level TTL and use the computed value
+  // in any subsequently read SubDocuments. This call also turns on row-level TTL tracking for
+  // subsequently read SubDocuments.
+  void SetTableTtl(const Schema& table_schema);
+
+  // Read value (i.e. row), identified by root_doc_key to result.
+  // Returns true if value was found, false otherwise.
+  Result<bool> Get(const Slice& root_doc_key, SubDocument* result);
+
+ private:
+  // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
+  // at that row.
+  Status InitForKey(const Slice& sub_doc_key);
+
+  class GetHelper;
+
+  // Owned by caller.
+  IntentAwareIterator* iter_;
+  DeadlineInfo deadline_info_;
+  const std::vector<KeyEntryValue>* projection_;
+  const SchemaPackingStorage& schema_packing_storage_;
+
+  std::vector<KeyBytes> encoded_projection_;
+  DocHybridTime table_tombstone_time_ = DocHybridTime::kMin;
+  Expiration table_expiration_;
+};
 
 }  // namespace docdb
 }  // namespace yb

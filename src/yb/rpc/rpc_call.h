@@ -14,12 +14,17 @@
 #ifndef YB_RPC_RPC_CALL_H
 #define YB_RPC_RPC_CALL_H
 
-#include "yb/gutil/ref_counted.h"
+#include <stdint.h>
 
-#include "yb/util/enums.h"
+#include <type_traits>
+
+#include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/outbound_data.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
 
 namespace yb {
 

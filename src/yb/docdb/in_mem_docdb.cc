@@ -15,16 +15,21 @@
 
 #include <sstream>
 
-#include "yb/rocksdb/db.h"
-
 #include "yb/common/hybrid_time.h"
+
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_test_util.h"
+
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
+
+#include "yb/rocksdb/db.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 
 using std::endl;
 using std::string;
@@ -36,8 +41,8 @@ namespace docdb {
 
 Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveValue& value) {
   VLOG(2) << __func__ << ": doc_path=" << doc_path.ToString() << ", value=" << value.ToString();
-  const PrimitiveValue encoded_doc_key_as_primitive(doc_path.encoded_doc_key().AsSlice());
-  const bool is_deletion = value.value_type() == ValueType::kTombstone;
+  const KeyEntryValue encoded_doc_key_as_primitive(doc_path.encoded_doc_key().AsSlice());
+  const bool is_deletion = value.value_type() == ValueEntryType::kTombstone;
   if (doc_path.num_subkeys() == 0) {
     if (is_deletion) {
       root_.DeleteChild(encoded_doc_key_as_primitive);
@@ -59,15 +64,16 @@ Status InMemDocDbState::SetPrimitive(const DocPath& doc_path, const PrimitiveVal
     current_subdoc = root_.GetOrAddChild(encoded_doc_key_as_primitive).first;
   }
 
-  const int num_subkeys = doc_path.num_subkeys();
-  for (int subkey_index = 0; subkey_index < num_subkeys - 1; ++subkey_index) {
-    const PrimitiveValue& subkey = doc_path.subkey(subkey_index);
-    if (subkey.value_type() == ValueType::kArrayIndex) {
+  const auto num_subkeys = doc_path.num_subkeys();
+  for (size_t subkey_index = 0; subkey_index < num_subkeys - 1; ++subkey_index) {
+    const auto& subkey = doc_path.subkey(subkey_index);
+    if (subkey.type() == KeyEntryType::kArrayIndex) {
       return STATUS(NotSupported, "Setting values at a given array index is not supported yet.");
     }
 
-    if (current_subdoc->value_type() != ValueType::kObject) {
-      return STATUS_FORMAT(IllegalState,
+    if (current_subdoc->value_type() != ValueEntryType::kObject) {
+      return STATUS_FORMAT(
+          IllegalState,
           "Cannot set or delete values inside a subdocument of type $0",
           current_subdoc->value_type());
     }
@@ -97,12 +103,12 @@ Status InMemDocDbState::DeleteSubDoc(const DocPath &doc_path) {
 }
 
 void InMemDocDbState::SetDocument(const KeyBytes& encoded_doc_key, SubDocument&& doc) {
-  root_.SetChild(PrimitiveValue(encoded_doc_key.AsSlice()), std::move(doc));
+  root_.SetChild(KeyEntryValue(encoded_doc_key.AsSlice()), std::move(doc));
 }
 
 const SubDocument* InMemDocDbState::GetSubDocument(const SubDocKey& subdoc_key) const {
-  const SubDocument* current =
-      root_.GetChild(PrimitiveValue(subdoc_key.doc_key().Encode().AsSlice()));
+  const SubDocument* current = root_.GetChild(
+      KeyEntryValue(subdoc_key.doc_key().Encode().AsSlice()));
   for (const auto& subkey : subdoc_key.subkeys()) {
     if (current == nullptr) {
       return nullptr;
@@ -134,8 +140,6 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
         << "but found " << subdoc_key.num_subkeys() << " subkeys: " << subdoc_key.ToString();
     subdoc_key.remove_hybrid_time();
 
-    bool doc_found = false;
-    SubDocument subdoc;
     // TODO: It would be good to be able to refer to a slice of the original key whenever we need
     //       to extract document key out of a subdocument key.
     auto encoded_doc_key = subdoc_key.doc_key().Encode();
@@ -144,20 +148,12 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
     // For now passing kNonTransactionalOperationContext in order to fail if there are any intents,
     // since this is not supported.
     auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
-    GetSubDocumentData data = { encoded_subdoc_key, &subdoc, &doc_found };
-    const Status get_doc_status = yb::docdb::GetSubDocument(
-        doc_db, data, query_id, kNonTransactionalOperationContext,
-        CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time));
-    if (!get_doc_status.ok()) {
-      // This will help with debugging the GetSubDocument failure.
-      LOG(WARNING)
-          << "DocDB state:\n"
-          << DocDBDebugDumpToStr(doc_db.regular, StorageDbType::kRegular, IncludeBinary::kTrue);
-    }
-    CHECK_OK(get_doc_status);
+    auto doc_from_rocksdb_opt = ASSERT_RESULT(yb::docdb::TEST_GetSubDocument(
+        encoded_subdoc_key, doc_db, query_id, kNonTransactionalOperationContext,
+        CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(hybrid_time)));
     // doc_found can be false for deleted documents, and that is perfectly valid.
-    if (doc_found) {
-      SetDocument(encoded_doc_key, std::move(subdoc));
+    if (doc_from_rocksdb_opt) {
+      SetDocument(encoded_doc_key, std::move(*doc_from_rocksdb_opt));
     }
     // Go to the next top-level document key.
     ROCKSDB_SEEK(&rocksdb_iter, subdoc_key.AdvanceOutOfSubDoc().AsSlice());
@@ -178,7 +174,7 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
   captured_at_ = hybrid_time;
 
   // Ensure we don't get any funny value types in the root node (had a test failure like this).
-  CHECK_EQ(root_.value_type(), ValueType::kObject);
+  CHECK_EQ(root_.value_type(), ValueEntryType::kObject);
 }
 
 void InMemDocDbState::SetCaptureHybridTime(HybridTime hybrid_time) {
@@ -271,7 +267,11 @@ HybridTime InMemDocDbState::captured_at() const {
 }
 
 void InMemDocDbState::SanityCheck() const {
-  CHECK_EQ(root_.value_type(), ValueType::kObject);
+  CHECK_EQ(root_.value_type(), ValueEntryType::kObject);
+}
+
+const SubDocument* InMemDocDbState::GetDocument(const DocKey& doc_key) const {
+  return GetSubDocument(SubDocKey(doc_key));
 }
 
 }  // namespace docdb

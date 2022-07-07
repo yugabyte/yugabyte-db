@@ -10,91 +10,208 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.common.Util.doubleToString;
+import static com.yugabyte.yw.models.helpers.CommonUtils.appendInClause;
+import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValue;
+import static com.yugabyte.yw.models.helpers.CommonUtils.setUniqueListValues;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
+import com.yugabyte.yw.models.helpers.KnownAlertLabels;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import play.data.validation.Constraints;
-
-import javax.persistence.*;
-import java.util.Set;
+import io.ebean.PersistenceContextScope;
+import java.text.DecimalFormat;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.CascadeType;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.OneToMany;
+import javax.persistence.Version;
+import javax.validation.Valid;
+import javax.validation.constraints.NotNull;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
 
 @Entity
+@Data
+@Accessors(chain = true)
+@EqualsAndHashCode(callSuper = false)
 public class AlertDefinition extends Model {
-  @Constraints.Required
+
+  private static final String QUERY_THRESHOLD_PLACEHOLDER = "{{ query_threshold }}";
+  private static final String QUERY_CONDITION_PLACEHOLDER = "{{ query_condition }}";
+  private static final DecimalFormat THRESHOLD_FORMAT = new DecimalFormat("0.#");
+
   @Id
   @Column(nullable = false, unique = true)
-  public UUID uuid;
+  private UUID uuid;
 
-  @Constraints.Required
+  @NotNull
   @Column(columnDefinition = "Text", nullable = false)
-  public String name;
+  private String query;
 
-  @Constraints.Required
-  @Column(columnDefinition = "Text", nullable = false)
-  public UUID universeUUID;
-
-  @Constraints.Required
-  @Column(columnDefinition = "Text", nullable = false)
-  public String query;
-
-  @Constraints.Required
-  public boolean isActive;
-
-  @Constraints.Required
+  @NotNull
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
+
+  @NotNull
+  @Column(nullable = false)
+  private UUID configurationUUID;
+
+  @NotNull
+  @Column(nullable = false)
+  @JsonIgnore
+  private boolean configWritten = false;
+
+  @NotNull
+  @Column(nullable = false)
+  @JsonIgnore
+  private boolean active = true;
+
+  @Version
+  @Column(nullable = false)
+  private int version;
+
+  @OneToMany(mappedBy = "definition", cascade = CascadeType.ALL, orphanRemoval = true)
+  @Valid
+  private List<AlertDefinitionLabel> labels;
 
   private static final Finder<UUID, AlertDefinition> find =
-    new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
+      new Finder<UUID, AlertDefinition>(AlertDefinition.class) {};
 
-  public static AlertDefinition create(
-    UUID customerUUID,
-    UUID universeUUID,
-    String name,
-    String query,
-    boolean isActive
-  ) {
-    AlertDefinition definition = new AlertDefinition();
-    definition.uuid = UUID.randomUUID();
-    definition.name = name;
-    definition.customerUUID = customerUUID;
-    definition.universeUUID = universeUUID;
-    definition.query = query;
-    definition.isActive = isActive;
-    definition.save();
-
-    return definition;
+  public static ExpressionList<AlertDefinition> createQueryByFilter(AlertDefinitionFilter filter) {
+    ExpressionList<AlertDefinition> query =
+        find.query()
+            .setPersistenceContextScope(PersistenceContextScope.QUERY)
+            .fetch("labels")
+            .where();
+    appendInClause(query, "uuid", filter.getUuids());
+    if (filter.getCustomerUuid() != null) {
+      query.eq("customerUUID", filter.getCustomerUuid());
+    }
+    appendInClause(query, "configurationUUID", filter.getConfigurationUuids());
+    if (filter.getConfigWritten() != null) {
+      query.eq("configWritten", filter.getConfigWritten());
+    }
+    if (filter.getLabel() != null) {
+      query
+          .eq("labels.key.name", filter.getLabel().getName())
+          .eq("labels.value", filter.getLabel().getValue());
+    }
+    return query;
   }
 
-  public static AlertDefinition get(UUID alertDefinitionUUID) {
-    return find.query().where().idEq(alertDefinitionUUID).findOne();
+  public AlertDefinition generateUUID() {
+    this.uuid = UUID.randomUUID();
+    this.labels.forEach(label -> label.setDefinition(this));
+    return this;
   }
 
-  public static AlertDefinition get(UUID customerUUID, UUID universeUUID, String name) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("universe_uuid", universeUUID)
-      .eq("name", name)
-      .findOne();
+  @JsonIgnore
+  public boolean isNew() {
+    return uuid == null;
   }
 
-  public static AlertDefinition update(
-    UUID alertDefinitionUUID,
-    String query,
-    boolean isActive
-  ) {
-    AlertDefinition alertDefinition = get(alertDefinitionUUID);
-    alertDefinition.query = query;
-    alertDefinition.isActive = isActive;
-    alertDefinition.save();
-
-    return alertDefinition;
+  public List<AlertDefinitionLabel> getEffectiveLabels(
+      AlertConfiguration configuration, AlertConfiguration.Severity severity) {
+    List<AlertDefinitionLabel> effectiveLabels = new ArrayList<>();
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this, KnownAlertLabels.CONFIGURATION_UUID, configuration.getUuid().toString()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this, KnownAlertLabels.CONFIGURATION_TYPE, configuration.getTargetType().name()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_UUID, uuid.toString()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.DEFINITION_NAME, configuration.getName()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(this, KnownAlertLabels.CUSTOMER_UUID, customerUUID.toString()));
+    effectiveLabels.add(new AlertDefinitionLabel(this, KnownAlertLabels.SEVERITY, severity.name()));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this,
+            KnownAlertLabels.THRESHOLD,
+            doubleToString(configuration.getThresholds().get(severity).getThreshold())));
+    effectiveLabels.add(
+        new AlertDefinitionLabel(
+            this,
+            KnownAlertLabels.ALERT_EXPRESSION,
+            getQueryWithThreshold(configuration.getThresholds().get(severity))));
+    effectiveLabels.addAll(labels);
+    return effectiveLabels;
   }
 
-  public static Set<AlertDefinition> listActive(UUID customerUUID) {
-    return find.query().where()
-      .eq("customer_uuid", customerUUID)
-      .eq("is_active", true)
-      .findSet();
+  public UUID getUniverseUUID() {
+    return Optional.ofNullable(getLabelValue(KnownAlertLabels.UNIVERSE_UUID))
+        .map(UUID::fromString)
+        .orElseThrow(
+            () -> new IllegalStateException("Definition " + uuid + " does not have universe UUID"));
+  }
+
+  public String getLabelValue(KnownAlertLabels knownLabel) {
+    return getLabelValue(knownLabel.labelName());
+  }
+
+  public String getLabelValue(String name) {
+    return getLabels()
+        .stream()
+        .filter(label -> name.equals(label.getName()))
+        .map(AlertDefinitionLabel::getValue)
+        .findFirst()
+        .orElse(null);
+  }
+
+  public AlertDefinition setLabel(KnownAlertLabels label, String value) {
+    return setLabel(label.labelName(), value);
+  }
+
+  public AlertDefinition setLabel(String name, String value) {
+    AlertDefinitionLabel toAdd = new AlertDefinitionLabel(this, name, value);
+    this.labels = setUniqueListValue(labels, toAdd);
+    return this;
+  }
+
+  public AlertDefinition setLabels(List<AlertDefinitionLabel> labels) {
+    this.labels = setUniqueListValues(this.labels, labels);
+    this.labels.forEach(label -> label.setDefinition(this));
+    return this;
+  }
+
+  public AlertDefinition removeLabel(KnownAlertLabels labelName) {
+    AlertDefinitionLabel toRemove =
+        labels
+            .stream()
+            .filter(label -> label.getName().equals(labelName.labelName()))
+            .findFirst()
+            .orElse(null);
+    if (toRemove == null) {
+      return this;
+    }
+
+    this.labels.remove(toRemove);
+    return this;
+  }
+
+  public List<AlertDefinitionLabel> getLabels() {
+    return labels
+        .stream()
+        .sorted(Comparator.comparing(AlertDefinitionLabel::getName))
+        .collect(Collectors.toList());
+  }
+
+  public String getQueryWithThreshold(AlertConfigurationThreshold threshold) {
+    return query
+        .replace(QUERY_THRESHOLD_PLACEHOLDER, THRESHOLD_FORMAT.format(threshold.getThreshold()))
+        .replace(QUERY_CONDITION_PLACEHOLDER, threshold.getCondition().getValue());
   }
 }

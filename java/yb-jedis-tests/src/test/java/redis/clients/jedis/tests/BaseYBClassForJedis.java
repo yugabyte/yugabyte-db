@@ -1,15 +1,16 @@
 package redis.clients.jedis.tests;
 
-import com.yugabyte.jedis.BaseJedisTest;
-
-import org.junit.Before;
-import org.junit.BeforeClass;
-import redis.clients.jedis.HostAndPort;
-import redis.clients.jedis.Jedis;
-
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+
+import org.junit.Before;
+
+import com.yugabyte.jedis.BaseJedisTest;
+
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.Jedis;
 
 public abstract class BaseYBClassForJedis extends BaseJedisTest {
 
@@ -17,9 +18,11 @@ public abstract class BaseYBClassForJedis extends BaseJedisTest {
     super(JedisClientType.JEDIS);
   }
 
-  @BeforeClass
-  public static void disablePasswordCachingOnTServers() {
-    tserverArgs.add("--redis_password_caching_duration_ms=0");
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("redis_password_caching_duration_ms", "0");
+    return flagMap;
   }
 
   @Before

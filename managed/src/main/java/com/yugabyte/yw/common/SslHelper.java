@@ -2,20 +2,16 @@
 
 package com.yugabyte.yw.common;
 
-import com.datastax.driver.core.SSLOptions;
 import com.datastax.driver.core.JdkSSLOptions;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import com.datastax.driver.core.SSLOptions;
 import java.io.FileInputStream;
-
+import java.security.KeyStore;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.KeyStore;
-
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class SslHelper {
 

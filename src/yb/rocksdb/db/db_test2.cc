@@ -20,7 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#include <cstdlib>
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
@@ -32,7 +31,7 @@ class DBTest2 : public DBTestBase {
 };
 
 TEST_F(DBTest2, IteratorPropertyVersionNumber) {
-  Put("", "");
+  ASSERT_OK(Put("", ""));
   Iterator* iter1 = db_->NewIterator(ReadOptions());
   std::string prop_value;
   ASSERT_OK(
@@ -40,8 +39,8 @@ TEST_F(DBTest2, IteratorPropertyVersionNumber) {
   uint64_t version_number1 =
       static_cast<uint64_t>(std::atoi(prop_value.c_str()));
 
-  Put("", "");
-  Flush();
+  ASSERT_OK(Put("", ""));
+  ASSERT_OK(Flush());
 
   Iterator* iter2 = db_->NewIterator(ReadOptions());
   ASSERT_OK(
@@ -51,7 +50,7 @@ TEST_F(DBTest2, IteratorPropertyVersionNumber) {
 
   ASSERT_GT(version_number2, version_number1);
 
-  Put("", "");
+  ASSERT_OK(Put("", ""));
 
   Iterator* iter3 = db_->NewIterator(ReadOptions());
   ASSERT_OK(

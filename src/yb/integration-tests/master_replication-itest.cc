@@ -30,21 +30,42 @@
 // under the License.
 //
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include <boost/optional/optional.hpp>
+#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
-#include "yb/common/schema.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/common/column_id.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/hybrid_time.h"
+#include "yb/common/partition.h"
+
+#include "yb/gutil/algorithm.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/catalog_manager.h"
+
 #include "yb/master/master.h"
 #include "yb/master/mini_master.h"
+
+#include "yb/util/memory/arena_fwd.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/uuid.h"
 
 using std::vector;
 
@@ -76,7 +97,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void SetUp() override {
     YBMiniClusterTestBase::SetUp();
-    cluster_.reset(new MiniCluster(env_.get(), opts_));
+    cluster_.reset(new MiniCluster(opts_));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
   }

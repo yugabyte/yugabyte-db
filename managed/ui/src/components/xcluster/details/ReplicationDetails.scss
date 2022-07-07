@@ -1,0 +1,127 @@
+@import '../../../_style/colors.scss';
+
+.replication-details {
+  .content-title {
+    .subtext {
+      opacity: 0.5;
+      color: black !important;
+
+      a {
+        color: black !important;
+      }
+    }
+  }
+  .graph-container {
+    .plot-container.plotly {
+      background: $YB_BG_WHITE_3;
+    }
+  }
+  .replication-label {
+    opacity: 0.5;
+    color: black;
+  }
+
+  .lag-text {
+    color: green;
+    font-size: 16px;
+  }
+
+  .lag-value {
+    font-size: 16px;
+  }
+
+  .details-canvas {
+    padding: 30px;
+
+    .replication-actions {
+      .more-actions-button {
+        margin-left: 10px;
+      }
+
+      .replication-status-button {
+        margin-right: 10px;
+      }
+    }
+
+    .replication-status {
+      background: $YB_WHITE;
+      padding: 12px;
+      border: 1px solid #dde1e6;
+      border-radius: 8px;
+      margin-top: 30px;
+      display: flex;
+      align-items: center;
+    }
+
+    .replication-details-panel {
+      margin-top: 30px;
+
+      .replication-overview {
+        padding: 20px;
+      }
+
+      .replication-target-universe {
+        margin-left: 35px;
+        padding: 20px 5px;
+        background: $YB_WHITE;
+        border: 1px solid #e8e8e8;
+      }
+    }
+
+    .lag-status-graph {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      white-space: nowrap;
+      .lag-text,
+      .lag-value {
+        margin-left: 10px;
+      }
+      .lag-stats {
+        min-width: 300px;
+        margin-right: 30px;
+      }
+    }
+  }
+
+  .noLeftPadding {
+    padding-left: 0;
+  }
+  .noPadding {
+    padding: 0;
+  }
+  .replication-divider {
+    margin-bottom: 10px;
+  }
+  .target-universe-link {
+    text-decoration: underline;
+  }
+  .target-universe-subText {
+    font-size: 10px;
+    padding-top: 3px;
+    text-align: center;
+    color: #0b1117;
+    background: #e9eef2;
+    border-radius: 4px;
+    width: 50px;
+    height: 20px;
+    display: inline-block;
+    margin-left: 10px;
+  }
+
+  .details-actions-button {
+    display: flex;
+    justify-content: flex-end;
+  }
+}
+
+.alertMsg {
+  * {
+    margin-right: 5px;
+  }
+
+  a {
+    text-decoration: underline;
+    color: #fff;
+  }
+}

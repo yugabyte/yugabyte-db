@@ -37,11 +37,17 @@
 #include <glog/logging.h>
 
 #include "yb/client/schema-internal.h"
-#include "yb/client/value-internal.h"
+
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using std::shared_ptr;
 using std::unordered_map;
@@ -74,7 +80,7 @@ YBColumnSpec* YBColumnSpec::Order(int32_t order) {
   return this;
 }
 
-YBColumnSpec* YBColumnSpec::SetSortingType(ColumnSchema::SortingType sorting_type) {
+YBColumnSpec* YBColumnSpec::SetSortingType(SortingType sorting_type) {
   data_->sorting_type = sorting_type;
   return this;
 }
@@ -113,6 +119,12 @@ YBColumnSpec* YBColumnSpec::Counter() {
   return this;
 }
 
+YBColumnSpec* YBColumnSpec::PgTypeOid(int32_t oid) {
+  data_->has_pg_type_oid = true;
+  data_->pg_type_oid = oid;
+  return this;
+}
+
 YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   data_->has_rename_to = true;
   data_->rename_to = new_name;
@@ -137,9 +149,13 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
   *col = YBColumnSchema(data_->name, data_->type, nullable, data_->hash_primary_key,
                         data_->static_column, data_->is_counter, data_->order,
-                        data_->sorting_type);
+                        data_->sorting_type, data_->pg_type_oid);
 
   return Status::OK();
+}
+
+YBColumnSpec* YBColumnSpec::Type(DataType type) {
+  return Type(QLType::Create(type));
 }
 
 ////////////////////////////////////////////////////////////
@@ -148,11 +164,6 @@ Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
 
 class YBSchemaBuilder::Data {
  public:
-  Data()
-      : has_key_col_names(false),
-        key_hash_col_count(0) {
-  }
-
   ~Data() {
     // Rather than delete the specs here, we have to do it in
     // ~YBSchemaBuilder(), to avoid a circular dependency in the
@@ -161,12 +172,13 @@ class YBSchemaBuilder::Data {
 
   // These members can be used to specify a subset of columns are primary or hash primary keys.
   // NOTE: "key_col_names" and "key_hash_col_count" are not used unless "has_key_col_names" is true.
-  bool has_key_col_names;
+  bool has_key_col_names = false;
   vector<string> key_col_names;
-  int key_hash_col_count;
+  size_t key_hash_col_count = 0;
 
   vector<YBColumnSpec*> specs;
   TableProperties table_properties;
+  std::string schema_name;
 };
 
 YBSchemaBuilder::YBSchemaBuilder()
@@ -191,7 +203,7 @@ YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
 
 YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
     const std::vector<std::string>& key_col_names,
-    int key_hash_col_count) {
+    size_t key_hash_col_count) {
   data_->has_key_col_names = true;
   data_->key_col_names = key_col_names;
   data_->key_hash_col_count = key_hash_col_count;
@@ -203,14 +215,22 @@ YBSchemaBuilder* YBSchemaBuilder::SetTableProperties(const TableProperties& tabl
   return this;
 }
 
+YBSchemaBuilder* YBSchemaBuilder::SetSchemaName(const std::string& pgschema_name) {
+  data_->schema_name = pgschema_name;
+  return this;
+}
+
+std::string YBSchemaBuilder::SchemaName() {
+  return data_->schema_name;
+}
+
 Status YBSchemaBuilder::Build(YBSchema* schema) {
-  vector<YBColumnSchema> cols;
-  cols.resize(data_->specs.size(), YBColumnSchema());
-  for (int i = 0; i < cols.size(); i++) {
+  std::vector<YBColumnSchema> cols(data_->specs.size(), YBColumnSchema());
+  for (size_t i = 0; i < cols.size(); i++) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
 
-  int num_key_cols = 0;
+  size_t num_key_cols = 0;
   if (!data_->has_key_col_names) {
     // Change the API to allow specifying each column individually as part of a primary key.
     // Previously, we must pass an extra list of columns if the key is a compound of columns.
@@ -218,49 +238,49 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // Removing the following restriction from Kudu:
     //   If they didn't explicitly pass the column names for key,
     //   then they should have set it on exactly one column.
-    bool has_order_error = false;
-    bool reached_regular_column = false;
-    bool reached_primary_column = false;
-    for (int i = 0; i < cols.size(); i++) {
-      if (data_->specs[i]->data_->hash_primary_key) {
+    const YBColumnSpec::Data* reached_primary_column = nullptr;
+    const YBColumnSpec::Data* reached_regular_column = nullptr;
+    for (size_t i = 0; i < cols.size(); i++) {
+      auto& column_data = *data_->specs[i]->data_;
+      if (column_data.hash_primary_key) {
         num_key_cols++;
-        if (reached_primary_column || reached_regular_column) {
-          has_order_error = true;
-          break;
+        if (reached_primary_column) {
+          return STATUS_FORMAT(
+              InvalidArgument, "Hash primary key column '$0' should be before primary key '$1'",
+              column_data.name, reached_primary_column->name);
+        }
+        if (reached_regular_column) {
+          return STATUS_FORMAT(
+              InvalidArgument, "Hash primary key column '$0' should be before regular column '$1'",
+              column_data.name, reached_regular_column->name);
         }
 
-      } else if (data_->specs[i]->data_->primary_key) {
+      } else if (column_data.primary_key) {
         num_key_cols++;
         if (reached_regular_column) {
-          has_order_error = true;
-          break;
+          return STATUS_FORMAT(
+              InvalidArgument, "Primary key column '$0' should be before regular column '$1'",
+              column_data.name, reached_regular_column->name);
         }
-        reached_primary_column = true;
 
+        reached_primary_column = &column_data;
       } else {
-        reached_regular_column = true;
+        reached_regular_column = &column_data;
       }
     }
 
     if (num_key_cols <= 0) {
-      return STATUS(InvalidArgument, "no primary key specified");
+      return STATUS(InvalidArgument, "No primary key specified");
     }
-
-    if (has_order_error) {
-      return STATUS(InvalidArgument,
-                    "The given columns in a schema must be ordered as hash primary key columns "
-                    "then primary key columns and then regular columns");
-    }
-
   } else {
     // Build a map from name to index of all of the columns.
-    unordered_map<string, int> name_to_idx_map;
-    int i = 0;
+    unordered_map<string, size_t> name_to_idx_map;
+    size_t i = 0;
     for (YBColumnSpec* spec : data_->specs) {
       // If they did pass the key column names, then we should not have explicitly
       // set it on any columns.
       if (spec->data_->primary_key) {
-        return STATUS(InvalidArgument, "primary key specified by both SetPrimaryKey() and on a "
+        return STATUS(InvalidArgument, "Primary key specified by both SetPrimaryKey() and on a "
                                        "specific column", spec->data_->name);
       }
 
@@ -278,11 +298,11 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     }
 
     // Convert the key column names to a set of indexes.
-    vector<int> key_col_indexes;
+    vector<size_t> key_col_indexes;
     for (const string& key_col_name : data_->key_col_names) {
-      int idx;
+      size_t idx;
       if (!FindCopy(name_to_idx_map, key_col_name, &idx)) {
-        return STATUS(InvalidArgument, "primary key column not defined", key_col_name);
+        return STATUS(InvalidArgument, "Primary key column not defined", key_col_name);
       }
       key_col_indexes.push_back(idx);
     }
@@ -290,9 +310,9 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // Currently we require that the key columns be contiguous at the front
     // of the schema. We'll lift this restriction later -- hence the more
     // flexible user-facing API.
-    for (int i = 0; i < key_col_indexes.size(); i++) {
+    for (size_t i = 0; i < key_col_indexes.size(); i++) {
       if (key_col_indexes[i] != i) {
-        return STATUS(InvalidArgument, "primary key columns must be listed first in the schema",
+        return STATUS(InvalidArgument, "Primary key columns must be listed first in the schema",
                                        data_->key_col_names[i]);
       }
     }
@@ -302,6 +322,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
   }
 
   RETURN_NOT_OK(schema->Reset(cols, num_key_cols, data_->table_properties));
+  internal::GetSchema(schema).SetSchemaName(data_->schema_name);
 
   return Status::OK();
 }
@@ -321,22 +342,19 @@ YBColumnSchema::YBColumnSchema(const std::string &name,
                                bool is_static,
                                bool is_counter,
                                int32_t order,
-                               ColumnSchema::SortingType sorting_type) {
-  col_ = new ColumnSchema(name, type, is_nullable, is_hash_key, is_static, is_counter, order,
-                          sorting_type);
+                               SortingType sorting_type,
+                               int32_t pg_type_oid) {
+  col_ = std::make_unique<ColumnSchema>(name, type, is_nullable, is_hash_key, is_static, is_counter,
+                                        order, sorting_type, pg_type_oid);
 }
 
-YBColumnSchema::YBColumnSchema(const YBColumnSchema& other)
-  : col_(nullptr) {
+YBColumnSchema::YBColumnSchema(const YBColumnSchema& other) {
   CopyFrom(other);
 }
 
-YBColumnSchema::YBColumnSchema() : col_(nullptr) {
-}
+YBColumnSchema::YBColumnSchema() = default;
 
-YBColumnSchema::~YBColumnSchema() {
-  delete col_;
-}
+YBColumnSchema::~YBColumnSchema() = default;
 
 YBColumnSchema& YBColumnSchema::operator=(const YBColumnSchema& other) {
   if (&other != this) {
@@ -346,11 +364,9 @@ YBColumnSchema& YBColumnSchema::operator=(const YBColumnSchema& other) {
 }
 
 void YBColumnSchema::CopyFrom(const YBColumnSchema& other) {
-  delete col_;
+  col_.reset();
   if (other.col_) {
-    col_ = new ColumnSchema(*other.col_);
-  } else {
-    col_ = nullptr;
+    col_ = std::make_unique<ColumnSchema>(*other.col_);
   }
 }
 
@@ -378,7 +394,7 @@ const shared_ptr<QLType>& YBColumnSchema::type() const {
   return DCHECK_NOTNULL(col_)->type();
 }
 
-ColumnSchema::SortingType YBColumnSchema::sorting_type() const {
+SortingType YBColumnSchema::sorting_type() const {
   return DCHECK_NOTNULL(col_)->sorting_type();
 }
 
@@ -388,6 +404,78 @@ bool YBColumnSchema::is_counter() const {
 
 int32_t YBColumnSchema::order() const {
   return DCHECK_NOTNULL(col_)->order();
+}
+
+int32_t YBColumnSchema::pg_type_oid() const {
+  return DCHECK_NOTNULL(col_)->pg_type_oid();
+}
+
+InternalType YBColumnSchema::ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
+  switch (ql_type->main()) {
+    case INT8:
+      return InternalType::kInt8Value;
+    case INT16:
+      return InternalType::kInt16Value;
+    case INT32:
+      return InternalType::kInt32Value;
+    case INT64:
+      return InternalType::kInt64Value;
+    case UINT32:
+      return InternalType::kUint32Value;
+    case UINT64:
+      return InternalType::kUint64Value;
+    case FLOAT:
+      return InternalType::kFloatValue;
+    case DOUBLE:
+      return InternalType::kDoubleValue;
+    case DECIMAL:
+      return InternalType::kDecimalValue;
+    case STRING:
+      return InternalType::kStringValue;
+    case TIMESTAMP:
+      return InternalType::kTimestampValue;
+    case DATE:
+      return InternalType::kDateValue;
+    case TIME:
+      return InternalType::kTimeValue;
+    case INET:
+      return InternalType::kInetaddressValue;
+    case JSONB:
+      return InternalType::kJsonbValue;
+    case UUID:
+      return InternalType::kUuidValue;
+    case TIMEUUID:
+      return InternalType::kTimeuuidValue;
+    case BOOL:
+      return InternalType::kBoolValue;
+    case BINARY:
+      return InternalType::kBinaryValue;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case MAP:
+      return InternalType::kMapValue;
+    case SET:
+      return InternalType::kSetValue;
+    case LIST:
+      return InternalType::kListValue;
+    case VARINT:
+      return InternalType::kVarintValue;
+    case FROZEN:
+      return InternalType::kFrozenValue;
+    case GIN_NULL:
+      return InternalType::kGinNullValue;
+
+    case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      return InternalType::VALUE_NOT_SET;
+
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+    case UINT8: FALLTHROUGH_INTENDED;
+    case UINT16:
+      break;
+  }
+  LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
+  return InternalType::VALUE_NOT_SET;
 }
 
 ////////////////////////////////////////////////////////////
@@ -440,18 +528,20 @@ YBSchema& YBSchema::operator=(YBSchema&& other) {
 void YBSchema::CopyFrom(const YBSchema& other) {
   schema_.reset(new Schema(*other.schema_));
   version_ = other.version();
+  is_compatible_with_previous_version_ = other.is_compatible_with_previous_version();
 }
 
 void YBSchema::MoveFrom(YBSchema&& other) {
   schema_ = std::move(other.schema_);
   version_ = other.version();
+  is_compatible_with_previous_version_ = other.is_compatible_with_previous_version();
 }
 
 void YBSchema::Reset(std::unique_ptr<Schema> schema) {
   schema_ = std::move(schema);
 }
 
-Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns,
+Status YBSchema::Reset(const vector<YBColumnSchema>& columns, size_t key_columns,
                        const TableProperties& table_properties) {
   vector<ColumnSchema> cols_private;
   for (const YBColumnSchema& col : columns) {
@@ -508,8 +598,8 @@ int32_t YBSchema::ColumnId(size_t idx) const {
   return schema_->column_id(idx);
 }
 
-YBPartialRow* YBSchema::NewRow() const {
-  return new YBPartialRow(schema_.get());
+std::unique_ptr<YBPartialRow> YBSchema::NewRow() const {
+  return std::make_unique<YBPartialRow>(schema_.get());
 }
 
 const std::vector<ColumnSchema>& YBSchema::columns() const {
@@ -532,6 +622,22 @@ size_t YBSchema::num_range_key_columns() const {
   return schema_->num_range_key_columns();
 }
 
+bool YBSchema::has_colocation_id() const {
+  return schema_->has_colocation_id();
+}
+
+ColocationId YBSchema::colocation_id() const {
+  return schema_->colocation_id();
+}
+
+bool YBSchema::is_compatible_with_previous_version() const {
+  return is_compatible_with_previous_version_;
+}
+
+void YBSchema::set_is_compatible_with_previous_version(bool is_compatible) {
+  is_compatible_with_previous_version_ = is_compatible;
+}
+
 uint32_t YBSchema::version() const {
   return version_;
 }
@@ -540,16 +646,20 @@ void YBSchema::set_version(uint32_t version) {
   version_ = version;
 }
 
-void YBSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
-  indexes->clear();
-  indexes->resize(num_key_columns());
-  for (int i = 0; i < num_key_columns(); i++) {
-    (*indexes)[i] = i;
+std::vector<size_t> YBSchema::GetPrimaryKeyColumnIndexes() const {
+  std::vector<size_t> result(num_key_columns());
+  for (size_t i = 0; i < num_key_columns(); i++) {
+    result[i] = i;
   }
+  return result;
 }
 
 string YBSchema::ToString() const {
   return schema_->ToString();
+}
+
+ssize_t YBSchema::FindColumn(const GStringPiece& name) const {
+  return schema_->find_column(name);
 }
 
 } // namespace client

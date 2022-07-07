@@ -12,6 +12,9 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.BatchStatement;
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.TransportException;
@@ -30,14 +33,25 @@ import static org.yb.AssertionWrappers.assertEquals;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestInsertValues extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestInsertValues.class);
 
   @Override
   public int getTestMethodTimeoutSec() {
     // No need to adjust for TSAN vs. non-TSAN here, it will be done automatically.
     return 240;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    // testLargeInsert needs more memory than the default of 5%.
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("read_buffer_memory_limit", "-100");
+    return flagMap;
   }
 
   @Test
@@ -459,5 +473,51 @@ public class TestInsertValues extends BaseCQLTest {
     // Verify the value.
     Row row = runSelect("SELECT * FROM tab;").next();
     assertEquals("\n", row.getString(0));
+  }
+
+  @Test
+  public void testInsertUnset() throws Exception {
+    session.execute("create table t (k int primary key, v1 int, v2 int);");
+
+    // First insert a key value
+    String insertPos = "insert into t (k, v1, v2) values (?, ?, ?);";
+    String insertNamed = "insert into t (k, v1, v2) values (:k, :v1, :v2);";
+    PreparedStatement insertPosStmt = session.prepare(insertPos);
+    session.execute(insertPosStmt.bind(1, 1, 1));
+    session.execute(insertPosStmt.bind(2, 2, 2));
+    session.execute(insertPosStmt.bind(3, 3, 3));
+    session.execute(insertPosStmt.bind(4, 4, 4));
+
+    // Then, insert the same PK with an unset value using positional binding
+    BoundStatement bstmt = insertPosStmt.bind().setInt(0, 1);
+    bstmt = bstmt.setInt(1, 100);
+    bstmt.unset(2);
+    session.execute(bstmt);
+
+    // Test that the originally inserted value remains unchanged
+    assertQuery("select k, v1, v2 from t where k = 1;", "Row[1, 100, 1]");
+
+    // Now, insert the same PK with an unset value using named binding
+    PreparedStatement insertNamedStmt = session.prepare(insertNamed);
+    BoundStatement bstmt1 = insertNamedStmt.bind().setInt("k", 2);
+    bstmt1 = bstmt1.setInt("v1", 200);
+    bstmt1.unset("v2");
+    session.execute(bstmt1);
+
+    // Test that the originally inserted value remains unchanged
+    assertQuery("select k, v1, v2 from t where k = 2;", "Row[2, 200, 2]");
+
+    // test if unset works within BatchStatement as well
+    BatchStatement batch = new BatchStatement();
+    BoundStatement bstmt2 = insertPosStmt.bind(3, 3, 3);
+    batch.add(bstmt2);
+    BoundStatement bstmt3 = insertPosStmt.bind().setInt(0, 4);
+    bstmt3.unset(1);
+    bstmt3 = bstmt3.setInt(2, 400);
+    batch.add(bstmt3);
+    session.execute(batch);
+
+    // Test that the originally inserted value remains unchanged
+    assertQuery("select k, v1, v2 from t where k in (3, 4);", "Row[3, 3, 3]Row[4, 4, 400]");
   }
 }

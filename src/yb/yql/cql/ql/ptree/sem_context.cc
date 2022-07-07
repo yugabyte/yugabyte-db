@@ -12,23 +12,33 @@
 // under the License.
 //
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/ptree/sem_context.h"
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
-
 #include "yb/common/roles_permissions.h"
+#include "yb/common/schema.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/parse_tree.h"
+#include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_create_index.h"
+#include "yb/yql/cql/ql/ptree/pt_create_type.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/ql_env.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
-namespace yb {
-namespace ql {
-
 DEFINE_bool(allow_index_table_read_write, false, "Allow direct read and write of index tables");
 TAG_FLAG(allow_index_table_read_write, hidden);
+
+namespace yb {
+namespace ql {
 
 using std::shared_ptr;
 using client::YBTable;
@@ -38,7 +48,7 @@ using client::YBSchema;
 
 //--------------------------------------------------------------------------------------------------
 
-SemContext::SemContext(ParseTree::UniPtr parse_tree, QLEnv *ql_env)
+SemContext::SemContext(ParseTreePtr parse_tree, QLEnv *ql_env)
     : ProcessContext(std::move(parse_tree)),
       symtab_(PTempMem()),
       ql_env_(ql_env) {
@@ -49,16 +59,38 @@ SemContext::~SemContext() {
 
 //--------------------------------------------------------------------------------------------------
 
+MemoryContext *SemContext::PSemMem() const {
+  return parse_tree_->PSemMem();
+}
+
+PTCreateIndex *SemContext::current_create_index_stmt() {
+  PTCreateTable* const table = current_create_table_stmt();
+  return (table != nullptr && table->opcode() == TreeNodeOpcode::kPTCreateIndex)
+      ? static_cast<PTCreateIndex*>(table) : nullptr;
+}
+
+void SemContext::set_current_create_index_stmt(PTCreateIndex *index) {
+  set_current_create_table_stmt(index);
+}
+
+std::string SemContext::CurrentKeyspace() const {
+  return ql_env_->CurrentKeyspace();
+}
+
+std::string SemContext::CurrentRoleName() const {
+  return ql_env_->CurrentRoleName();
+}
+
 Status SemContext::LoadSchema(const shared_ptr<YBTable>& table,
                               MCVector<ColumnDesc>* col_descs) {
   const YBSchema& schema = table->schema();
-  const int num_columns = schema.num_columns();
-  const int num_key_columns = schema.num_key_columns();
-  const int num_hash_key_columns = schema.num_hash_key_columns();
+  const auto num_columns = schema.num_columns();
+  const auto num_key_columns = schema.num_key_columns();
+  const auto num_hash_key_columns = schema.num_hash_key_columns();
 
   if (col_descs != nullptr) {
     col_descs->reserve(num_columns);
-    for (int idx = 0; idx < num_columns; idx++) {
+    for (size_t idx = 0; idx < num_columns; idx++) {
       // Find the column descriptor.
       const YBColumnSchema col = schema.Column(idx);
       col_descs->emplace_back(idx,
@@ -214,12 +246,13 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
     return nullptr;
   }
 
-  if (current_dml_stmt_ != nullptr) {
+  PTDmlStmt *dml_stmt = current_dml_stmt();
+  if (dml_stmt != nullptr) {
     // To indicate that DocDB must read a columm value to execute an expression, the column is added
     // to the column_refs list.
     bool reading_column = false;
 
-    switch (current_dml_stmt_->opcode()) {
+    switch (dml_stmt->opcode()) {
       case TreeNodeOpcode::kPTSelectStmt:
         reading_column = true;
         break;
@@ -247,13 +280,18 @@ const ColumnDesc *SemContext::GetColumnDesc(const MCString& col_name) const {
       // use MCList instead.
 
       // Indicate that this column must be read for the statement execution.
-      current_dml_stmt_->AddColumnRef(*entry->column_desc_);
+      dml_stmt->AddColumnRef(*entry->column_desc_);
     }
   }
 
   // Setup the column to which the INDEX column is referencing.
-  if (sem_state_) {
+  if (sem_state_ && sem_state_->is_processing_index_column()) {
     sem_state_->add_index_column_ref(entry->column_desc_->id());
+  }
+
+  if (sem_state_ && sem_state_->idx_predicate_state()) {
+    // We are in CREATE INDEX path of a partial index. Save column ids referenced in the predicate.
+    sem_state_->idx_predicate_state()->column_refs()->insert(entry->column_desc_->id());
   }
 
   return entry->column_desc_;
@@ -265,7 +303,7 @@ Status SemContext::HasKeyspacePermission(PermissionType permission,
   DFATAL_OR_RETURN_ERROR_IF(keyspace_name.empty(),
                             STATUS(InvalidArgument, "Invalid empty keyspace"));
   return ql_env_->HasResourcePermission(get_canonical_keyspace(keyspace_name),
-                                        ObjectType::OBJECT_SCHEMA, permission, keyspace_name);
+                                        ObjectType::SCHEMA, permission, keyspace_name);
 }
 
 Status SemContext::CheckHasKeyspacePermission(const YBLocation& loc,
@@ -316,7 +354,7 @@ Status SemContext::CheckHasRolePermission(const YBLocation& loc,
 Status SemContext::CheckHasAllKeyspacesPermission(const YBLocation& loc,
                                                   PermissionType permission) {
 
-  auto s = ql_env_->HasResourcePermission(kRolesDataResource, ObjectType::OBJECT_SCHEMA,
+  auto s = ql_env_->HasResourcePermission(kRolesDataResource, ObjectType::SCHEMA,
                                           permission);
   if (!s.ok()) {
     return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
@@ -327,7 +365,7 @@ Status SemContext::CheckHasAllKeyspacesPermission(const YBLocation& loc,
 Status SemContext::CheckHasAllRolesPermission(const YBLocation& loc,
                                               PermissionType permission) {
 
-  auto s = ql_env_->HasResourcePermission(kRolesRoleResource, ObjectType::OBJECT_ROLE, permission);
+  auto s = ql_env_->HasResourcePermission(kRolesRoleResource, ObjectType::ROLE, permission);
   if (!s.ok()) {
     return Error(loc, s.message().ToBuffer().c_str(), ErrorCode::UNAUTHORIZED);
   }
@@ -343,6 +381,127 @@ bool SemContext::IsConvertible(const std::shared_ptr<QLType>& lhs_type,
 
 bool SemContext::IsComparable(DataType lhs_type, DataType rhs_type) const {
   return QLType::IsComparable(lhs_type, rhs_type);
+}
+
+const std::shared_ptr<QLType>& SemContext::expr_expected_ql_type() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->expected_ql_type();
+}
+
+NullIsAllowed SemContext::expected_ql_type_accepts_null() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->expected_ql_type_accepts_null();
+}
+
+InternalType SemContext::expr_expected_internal_type() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->expected_internal_type();
+}
+
+SelectScanInfo *SemContext::scan_state() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->scan_state();
+}
+
+bool SemContext::void_primary_key_condition() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->void_primary_key_condition();
+}
+
+WhereExprState *SemContext::where_state() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->where_state();
+}
+
+IfExprState *SemContext::if_state() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->if_state();
+}
+
+bool SemContext::validate_orderby_expr() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->validate_orderby_expr();
+}
+
+IdxPredicateState *SemContext::idx_predicate_state() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->idx_predicate_state();
+}
+
+bool SemContext::selecting_from_index() const {
+  DCHECK(sem_state_) << "State variable is not set";
+  return sem_state_->selecting_from_index();
+}
+
+size_t SemContext::index_select_prefix_length() const {
+  DCHECK(sem_state_) << "State variable is not set";
+  return sem_state_->index_select_prefix_length();
+}
+
+bool SemContext::processing_column_definition() const {
+  DCHECK(sem_state_) << "State variable is not set";
+  return sem_state_->processing_column_definition();
+}
+
+const MCSharedPtr<MCString>& SemContext::bindvar_name() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->bindvar_name();
+}
+
+const ColumnDesc *SemContext::hash_col() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->hash_col();
+}
+
+const ColumnDesc *SemContext::lhs_col() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->lhs_col();
+}
+
+bool SemContext::processing_set_clause() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->processing_set_clause();
+}
+
+bool SemContext::processing_assignee() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->processing_assignee();
+}
+
+bool SemContext::processing_if_clause() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->processing_if_clause();
+}
+
+bool SemContext::allowing_aggregate() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->allowing_aggregate();
+}
+
+bool SemContext::allowing_column_refs() const {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  return sem_state_->allowing_column_refs();
+}
+
+PTDmlStmt *SemContext::current_dml_stmt() const {
+  return sem_state_->current_dml_stmt();
+}
+
+void SemContext::set_current_dml_stmt(PTDmlStmt *stmt) {
+  sem_state_->set_current_dml_stmt(stmt);
+}
+
+void SemContext::set_void_primary_key_condition(bool val) {
+  DCHECK(sem_state_) << "State variable is not set for the expression";
+  sem_state_->set_void_primary_key_condition(val);
+}
+
+bool SemContext::IsUncoveredIndexSelect() const {
+  return sem_state_->is_uncovered_index_select();
+}
+
+bool SemContext::IsPartialIndexSelect() const {
+  return sem_state_->is_partial_index_select();
 }
 
 }  // namespace ql

@@ -28,6 +28,10 @@
 #include "utils/index_selfuncs.h"
 #include "utils/typcache.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+#include "utils/lsyscache.h"
+
 
 /*
  * GIN handler function: return IndexAmRoutine with access method parameters
@@ -202,9 +206,27 @@ initGinState(GinState *state, Relation index)
 		 * alternatively call get_typcollation, but that seems like expensive
 		 * overkill --- there aren't going to be any cases where a GIN storage
 		 * type has a nondefault collation.)
+		 *
+		 * For Yugabyte, _do_ use get_typcollation (through type_is_collatable)
+		 * because we do care that collation is invalid rather than default for
+		 * later assertion purposes.  Assuming the index is not created with
+		 * explicit collation, expect the following:
+		 * - int array: indexed type is _int and index type is int.  Since both
+		 *   aren't collatable, set to InvalidOid (else if).
+		 * - text array: indexed type is _text and index type is text.  Since
+		 *   _text is collatable, set to collation of the indexed column (if).
+		 * - yb_hstore: indexed type is hstore and index type is text.  Since
+		 *   only text is collatable, set to default collation (else).
+		 * - yb_pg_trgm: indexed type is text and index type is int.  Since
+		 *   text is collatable, set to collation of the indexed column (if).
+		 *   This valid collation is needed later for regex, for example.
+		 *   TODO(#9595): fix interaction between this and the "if != STRING"
+		 *   Assert in YBGetCollationInfo.
 		 */
 		if (OidIsValid(index->rd_indcollation[i]))
 			state->supportCollation[i] = index->rd_indcollation[i];
+		else if (IsYBRelation(index) && !type_is_collatable(attr->atttypid))
+			state->supportCollation[i] = InvalidOid;
 		else
 			state->supportCollation[i] = DEFAULT_COLLATION_OID;
 	}
@@ -639,6 +661,11 @@ ginGetStats(Relation index, GinStatsData *stats)
 	Buffer		metabuffer;
 	Page		metapage;
 	GinMetaPageData *metadata;
+
+	if (IsYBBackedRelation(index))
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("cannot get stats on Yugabyte-backed gin index")));
 
 	metabuffer = ReadBuffer(index, GIN_METAPAGE_BLKNO);
 	LockBuffer(metabuffer, GIN_SHARE);

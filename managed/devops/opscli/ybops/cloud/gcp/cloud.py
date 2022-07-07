@@ -10,12 +10,14 @@
 
 import json
 import logging
+import time
 
-from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.common.cloud import AbstractCloud
-from ybops.cloud.gcp.command import GcpInstanceCommand, GcpQueryCommand, GcpAccessCommand, \
-    GcpNetworkCommand
-from ybops.cloud.gcp.utils import GCP_PERSISTENT, GCP_SCRATCH, GoogleCloudAdmin, GcpMetadata
+from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
+                                     GcpQueryCommand)
+from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin,
+                                   GCP_INTERNAL_INSTANCE_PREFIXES)
+from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 
 
 class GcpCloud(AbstractCloud):
@@ -26,6 +28,9 @@ class GcpCloud(AbstractCloud):
     def __init__(self):
         super(GcpCloud, self).__init__("gcp")
         self.admin = None
+        self._wait_for_startup_script_command = \
+            "while ps -ef | grep 'google_metadata_script_runner startup' | " \
+            "grep -v grep ; do sleep 1 ; done"
 
     def get_admin(self):
         if self.admin is None:
@@ -59,21 +64,86 @@ class GcpCloud(AbstractCloud):
             result[region]["default_image"] = self.get_image(region)["selfLink"]
         return result
 
-    def create_instance(self, args, body):
-        self.get_admin().create_instance(args.zone, body)
+    def get_subnet_cidr(self, args, subnet_id):
+        subnet = self.get_admin().get_subnetwork_by_name(args.region,
+                                                         subnet_id)
+        return subnet['ipCidrRange']
+
+    def create_instance(self, args, server_type, can_ip_forward, machine_image, ssh_keys):
+        # If we are configuring second NIC, ensure that this only happens for a
+        # centOS AMI right now.
+        if args.cloud_subnet_secondary:
+            # GCP machine image for centos is of the form:
+            # https://www.googleapis.com/compute/beta/projects/centos-cloud/global/images/*
+            if 'centos' not in machine_image:
+                raise YBOpsRuntimeError("Second NIC can only be configured for CentOS right now")
+
+        self.get_admin().create_instance(
+            args.region, args.zone, args.cloud_subnet, args.search_pattern, args.instance_type,
+            server_type, args.use_preemptible, can_ip_forward, machine_image, args.num_volumes,
+            args.volume_type, args.volume_size, args.boot_disk_size_gb, args.assign_public_ip,
+            args.assign_static_public_ip, ssh_keys, boot_script=args.boot_script,
+            auto_delete_boot_disk=args.auto_delete_boot_disk, tags=args.instance_tags,
+            cloud_subnet_secondary=args.cloud_subnet_secondary)
 
     def create_disk(self, args, body):
-        self.get_admin().create_disk(args.zone, body)
+        self.get_admin().create_disk(args.zone, args.instance_tags, body)
 
-    def mount_disk(self, args, instance, body):
-        self.get_admin().mount_disk(args.zone, instance, body)
+    def clone_disk(self, args, volume_id, num_disks):
+        output = []
+        # disk names must match regex https://cloud.google.com/compute/docs/reference/rest/v1/disks
+        name = args.search_pattern[:58] if len(args.search_pattern) > 58 else args.search_pattern
+        for x in range(num_disks):
+            res = self.get_admin().create_disk(args.zone, args.instance_tags, body={
+                "name": "{}-d{}".format(name, x),
+                "sizeGb": args.boot_disk_size_gb,
+                "sourceDisk": volume_id})
+            output.append(res["targetLink"])
 
-    def delete_instance(self, args):
-        host_info = self.get_host_info(args)
-        if args.node_ip is None or host_info['private_ip'] != args.node_ip:
+            # GCP throttles disk cloning operations
+            # https://cloud.google.com/compute/docs/disks/create-disk-from-source#restrictions
+            if x != num_disks - 1:
+                time.sleep(30)
+
+        return output
+
+    def mount_disk(self, args, body):
+        self.get_admin().mount_disk(args['zone'], args['search_pattern'], body)
+
+    def unmount_disk(self, args, name):
+        self.get_admin().unmount_disk(args['zone'], args['search_pattern'], name)
+
+    def stop_instance(self, args):
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
+                                                  filters="(status = \"RUNNING\")")
+        if not instance:
+            logging.error("Host {} does not exist or not running".format(args['search_pattern']))
+            return
+        self.admin.stop_instance(instance['zone'], instance['name'])
+
+    def start_instance(self, args, ssh_ports):
+        instance = self.get_admin().get_instances(args['zone'], args['search_pattern'],
+                                                  filters="(status = \"TERMINATED\")")
+        if not instance:
+            logging.error("Host {} does not exist or not stopped".format(args['search_pattern']))
+            return
+        self.admin.start_instance(instance['zone'], instance['name'])
+        self.wait_for_ssh_ports(instance['private_ip'], instance['name'], ssh_ports)
+
+    def delete_instance(self, args, filters=None):
+        host_info = self.get_host_info(args, filters=filters)
+        if host_info is None:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+        if args.node_ip is None:
+            if args.node_uuid is None or host_info['node_uuid'] != args.node_uuid:
+                logging.error("Host {} UUID does not match.".format(args.search_pattern))
+                return
+        elif host_info['private_ip'] != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
-        self.get_admin().delete_instance(args.zone, args.search_pattern)
+        self.get_admin().delete_instance(
+            args.region, args.zone, args.search_pattern, has_static_ip=args.delete_static_public_ip)
 
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()
@@ -106,7 +176,7 @@ class GcpCloud(AbstractCloud):
         try:
             return GoogleCloudAdmin.get_current_host_info()
         except YBOpsRuntimeError as e:
-            return {"error": get_exception_message(e)}
+            return get_exception_message(e)
 
     def get_instance_types_map(self, args):
         """This method returns a dictionary mapping regions to a dictionary of zones
@@ -172,6 +242,16 @@ class GcpCloud(AbstractCloud):
                     name = instance["name"]
                     if name not in result:
                         compute_image_name = self.get_compute_image(name)
+                        if (args.gcp_internal):
+                            # For internal instances (n2) we don't consider the pricing map
+                            if name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES):
+                                result[name] = {
+                                    "prices": {},
+                                    "numCores": instance["guestCpus"],
+                                    "isShared": instance["isSharedCpu"],
+                                    "description": instance["description"],
+                                    "memSizeGb": float(instance["memoryMb"]/1000.0)
+                                }
                         if compute_image_name not in pricing_map:
                             continue
                         if "memory" not in pricing_map[compute_image_name]:
@@ -185,12 +265,16 @@ class GcpCloud(AbstractCloud):
                         }
                     if region in result[name]["prices"]:
                         continue
+                    if (args.gcp_internal):
+                        # Set internal testing instances to be free so Platform handles it
+                        if (name.upper().startswith(GCP_INTERNAL_INSTANCE_PREFIXES)):
+                            result[name]['prices'][region] = [{'os': 'Linux', 'price': 0.00}]
+                            continue
                     result[name]["prices"][region] = self.get_os_price_map(pricing_map,
                                                                            name,
                                                                            region,
                                                                            result[name]["numCores"],
                                                                            result[name]["isShared"])
-
         to_delete_instance_types = []
         for name in result:
             to_delete_regions = []
@@ -223,7 +307,7 @@ class GcpCloud(AbstractCloud):
             dest_vpc_id, host_vpc_id, per_region_meta=self.get_per_region_meta(args)).cleanup()
         return {"success": "VPC deleted."}
 
-    def get_host_info(self, args, get_all=False):
+    def get_host_info(self, args, get_all=False, filters=None):
         """Override to call the respective GCP specific API for returning hosts by name.
 
         Required fields in args:
@@ -232,7 +316,7 @@ class GcpCloud(AbstractCloud):
         """
         zone = args.zone
         search_pattern = args.search_pattern
-        return self.get_admin().get_instances(zone, search_pattern, get_all)
+        return self.get_admin().get_instances(zone, search_pattern, get_all, filters=filters)
 
     def get_device_names(self, args):
         # Boot disk is also a persistent disk, so add persistent disks starting at index 1
@@ -249,9 +333,19 @@ class GcpCloud(AbstractCloud):
         instance = self.get_host_info(args)
         self.get_admin().update_disk(args, instance['id'])
 
+    def change_instance_type(self, args, newInstanceType):
+        self.get_admin().change_instance_type(args['zone'], args['search_pattern'], newInstanceType)
+
     def get_per_region_meta(self, args):
         if hasattr(args, "custom_payload") and args.custom_payload:
             metadata = json.loads(args.custom_payload).get("perRegionMetadata")
             if metadata:
                 return metadata
         return {}
+
+    def get_console_output(self, args):
+        return self.get_admin().get_console_output(args.zone, args.search_pattern)
+
+    def delete_volumes(self, args):
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        return self.get_admin().delete_disks(args.zone, tags)

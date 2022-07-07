@@ -3,39 +3,54 @@ title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the Yugabyte Java Driver for YCQL.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Java
-    identifier: java-3
+    identifier: java-4
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-yb-jdbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
   <li >
-    <a href="/stable/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="../ysql-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/stable/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
+    <a href="../ysql-jdbc-ssl/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
+   <li>
+    <a href="../ysql-ebeans/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebeans
+    </a>
+  </li>
   <li>
-    <a href="/stable/quick-start/build-apps/java/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/java/ycql-4.6" class="nav-link">
+    <a href="../ycql-4.6/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL (4.6)
     </a>
@@ -46,12 +61,12 @@ showAsideToc: true
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
-```mvn
+```xml
    <dependencies>
     <dependency>
       <groupId>com.yugabyte</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>3.8.0-yb-5</version>
+      <version>3.10.3-yb-2</version>
     </dependency>
   </dependencies>
 ```
@@ -62,7 +77,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 
@@ -70,7 +85,7 @@ This tutorial assumes that you have:
 
 Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project.
 
-```mvn
+```xml
 <?xml version="1.0"?>
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
@@ -161,7 +176,7 @@ public class YBCqlHelloWorld {
 
       // Insert a row.
       String insert = "INSERT INTO ybdemo.employee (id, name, age, language)" +
-                                          " VALUES (1, 'John', 35, 'Java');"; 
+                                          " VALUES (1, 'John', 35, 'Java');";
       ResultSet insertResult = session.execute(insert);
       System.out.println("Inserted data: " + insert);
 
@@ -205,7 +220,7 @@ $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YB
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');

@@ -13,6 +13,7 @@
 #ifndef YB_TABLET_TABLET_OPTIONS_H
 #define YB_TABLET_TABLET_OPTIONS_H
 
+#include <future>
 #include <memory>
 #include <vector>
 
@@ -20,6 +21,8 @@
 #include "yb/rocksdb/env.h"
 
 #include "yb/client/client_fwd.h"
+
+#include "yb/consensus/log_fwd.h"
 
 #include "yb/server/server_fwd.h"
 
@@ -35,25 +38,22 @@ class Env;
 namespace yb {
 
 class Env;
+class MemTracker;
 class MetricRegistry;
-
-namespace log {
-
-class LogAnchorRegistry;
-
-}
 
 namespace tablet {
 
-YB_STRONGLY_TYPED_BOOL(IsDropTable);
-
+// Common for all tablets within TabletManager.
 struct TabletOptions {
   std::shared_ptr<rocksdb::Cache> block_cache;
   std::shared_ptr<rocksdb::MemoryMonitor> memory_monitor;
   std::vector<std::shared_ptr<rocksdb::EventListener>> listeners;
   yb::Env* env = Env::Default();
   rocksdb::Env* rocksdb_env = rocksdb::Env::Default();
+  std::shared_ptr<rocksdb::RateLimiter> rate_limiter;
 };
+
+using TransactionManagerProvider = std::function<client::TransactionManager&()>;
 
 struct TabletInitData {
   RaftGroupMetadataPtr metadata;
@@ -62,8 +62,8 @@ struct TabletInitData {
   std::shared_ptr<MemTracker> parent_mem_tracker;
   std::shared_ptr<MemTracker> block_based_table_mem_tracker;
   MetricRegistry* metric_registry = nullptr;
-  scoped_refptr<log::LogAnchorRegistry> log_anchor_registry;
-  TabletOptions tablet_options;
+  log::LogAnchorRegistryPtr log_anchor_registry;
+  const TabletOptions tablet_options;
   std::string log_prefix_suffix;
   TransactionParticipantContext* transaction_participant_context = nullptr;
   client::LocalTabletFilter local_tablet_filter;
@@ -72,6 +72,8 @@ struct TabletInitData {
   IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
+  std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  TransactionManagerProvider transaction_manager_provider;
 };
 
 } // namespace tablet

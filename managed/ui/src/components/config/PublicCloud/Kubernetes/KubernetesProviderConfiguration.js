@@ -2,7 +2,7 @@
 
 import React, { Component } from 'react';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
-import { YBLoadingCircleIcon } from '../../../common/indicators';
+import { YBLoading } from '../../../common/indicators';
 import { withRouter } from 'react-router';
 import { isNonEmptyArray, isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import ListKubernetesConfigurations from './ListKubernetesConfigurations';
@@ -17,6 +17,12 @@ class KubernetesProviderConfiguration extends Component {
     this.state = {
       listView: true
     };
+  }
+
+  componentDidMount() {
+    if (!getPromiseState(this.props.universeList).isSuccess()) {
+      this.props.fetchUniverseList();
+    }
   }
 
   toggleListView = (value) => {
@@ -36,8 +42,12 @@ class KubernetesProviderConfiguration extends Component {
       params: { uuid }
     } = this.props;
 
-    if (getPromiseState(providers).isLoading() || getPromiseState(providers).isInit()) {
-      return <YBLoadingCircleIcon size="medium" />;
+    if (
+      getPromiseState(providers).isLoading() || getPromiseState(providers).isInit() ||
+      getPromiseState(regions).isLoading() || getPromiseState(regions).isInit() ||
+      getPromiseState(universeList).isLoading() || getPromiseState(universeList).isInit()
+    ) {
+      return <YBLoading />;
     }
 
     const kubernetesRegions = regions.data.filter(
@@ -48,11 +58,13 @@ class KubernetesProviderConfiguration extends Component {
       .map((region) => {
         const providerData = providers.data.find((p) => p.uuid === region.provider.uuid);
 
-        // If the type is Tanzu we don't want to include other k8s configs and vice versa.
+        // If the type has a dedicated tab, we don't want to include
+        // other k8s configs and vice versa.
+        const dedicatedK8sTabs = ['tanzu', 'openshift'];
         if (
           !isDefinedNotNull(providerData) ||
-          (type === 'tanzu' && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
-          (type === 'k8s' && providerData.config['KUBECONFIG_PROVIDER'] === 'tanzu')
+          (dedicatedK8sTabs.includes(type) && providerData.config['KUBECONFIG_PROVIDER'] !== type) ||
+          (type === 'k8s' && dedicatedK8sTabs.includes(providerData.config['KUBECONFIG_PROVIDER']))
         ) {
           return null;
         }
@@ -63,7 +75,7 @@ class KubernetesProviderConfiguration extends Component {
           uuid: region.provider.uuid,
           name: region.provider.name,
           region: region.name,
-          zones: region.zones.map((zone) => zone.name).join(', '),
+          zones: region.zones,
           configPath: providerData.config['KUBECONFIG'],
           namespace: providerData.config['KUBECONFIG_NAMESPACE'],
           serviceAccount: providerData.config['KUBECONFIG_SERVICE_ACCOUNT'],

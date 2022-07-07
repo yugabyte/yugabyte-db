@@ -12,13 +12,14 @@
 
 #include "yb/util/logging_test_util.h"
 
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
 
 const char* StringWaiterLogSink::kWaitingMessage = "Waiting for log record";
 
-CHECKED_STATUS StringWaiterLogSink::WaitFor(MonoDelta timeout) {
+Status StringWaiterLogSink::WaitFor(MonoDelta timeout) {
   constexpr auto kInitialWaitPeriod = 100ms;
   const auto message = Format("$0 '$1'...", kWaitingMessage, string_to_wait_);
   LOG(INFO) << message;

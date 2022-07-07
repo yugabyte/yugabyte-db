@@ -9,14 +9,13 @@ import { YBButton, YBTextInput } from '../../../components/common/forms/fields';
 import { TableAction } from '../../../components/tables';
 import { YBLoadingCircleIcon } from '../../../components/common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
-import { isAvailable } from '../../../utils/LayoutUtils';
-import { showOrRedirect } from '../../../utils/LayoutUtils';
+import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
 import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
 // Sort descending
-const sortVersion = (a, b) => {
+export const sortVersion = (a, b) => {
   const matchA = versionReg.exec(a);
   const matchB = versionReg.exec(b);
 
@@ -94,7 +93,7 @@ export default class ReleaseList extends Component {
       default:
         return <div className="state-pill state-pill--secondary">{item}</div>;
     }
-  }
+  };
 
   render() {
     const {
@@ -114,11 +113,13 @@ export default class ReleaseList extends Component {
     } else if (releases.data) {
       releaseStrList = Object.keys(releases.data).sort(sortVersion);
     }
-    const releaseInfos = releaseStrList.map((version) => {
-      const releaseInfo = releases.data[version];
-      releaseInfo.version = version;
-      return releaseInfo;
-    });
+    const releaseInfos = releaseStrList
+      .filter((version) => releases.data && releases.data[version])
+      .map((version) => {
+        const releaseInfo = releases.data[version];
+        releaseInfo.version = version;
+        return releaseInfo;
+      });
 
     const rowClassNameFormat = function (row, rowIdx) {
       return 'td-column-' + row.state.toLowerCase();
@@ -207,6 +208,7 @@ export default class ReleaseList extends Component {
             <TableHeaderColumn
               dataField="version"
               isKey={true}
+              tdStyle={{ whiteSpace: 'normal' }}
               columnClassName="no-border name-column"
               className="no-border"
               width="120px"
@@ -218,9 +220,18 @@ export default class ReleaseList extends Component {
               tdStyle={{ whiteSpace: 'normal' }}
               columnClassName="no-border name-column"
               className="no-border"
-              width="550px"
+              width="225px"
             >
               File Path
+            </TableHeaderColumn>
+            <TableHeaderColumn
+              dataField="chartPath"
+              tdStyle={{ whiteSpace: 'normal' }}
+              columnClassName="no-border name-column"
+              className="no-border"
+              width="225px"
+            >
+              Chart Path
             </TableHeaderColumn>
             <TableHeaderColumn
               dataField="imageTag"

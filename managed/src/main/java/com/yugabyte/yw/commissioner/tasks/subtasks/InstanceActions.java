@@ -10,44 +10,40 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class InstanceActions extends NodeTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(InstanceActions.class);
 
-  public NodeManager.NodeCommandType type;
+  @Inject
+  protected InstanceActions(BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
   // Additional parameters for this task.
   public static class Params extends NodeTaskParams {
+    public NodeManager.NodeCommandType type;
     // CSV of tag keys to be deleted.
     public String deleteTags = "";
   }
 
-  public InstanceActions(){
-    this(NodeManager.NodeCommandType.Tags);
-  }
-
-  public InstanceActions(NodeManager.NodeCommandType tasktype){
-    type = tasktype;
-  }
-
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Running Instance action {} type {} against node {}",
-            getName(), this.type.toString(), taskParams().nodeName);
+    log.info(
+        "Running Instance action {} type {} against node {}",
+        getName(),
+        taskParams().type.toString(),
+        taskParams().nodeName);
 
-    ShellResponse response = getNodeManager().nodeCommand(
-        type, taskParams());
-    processShellResponse(response);
+    getNodeManager().nodeCommand(taskParams().type, taskParams()).processErrors();
   }
 }

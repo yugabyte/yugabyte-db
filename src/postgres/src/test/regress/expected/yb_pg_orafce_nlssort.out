@@ -1,0 +1,40 @@
+-- Tests for nlssort
+-- YB: we do not support SQL_ASCII encoding
+\set ECHO none
+  name
+--------
+ Purple
+ brown
+ red
+ yellow
+(4 rows)
+
+  name
+--------
+ Purple
+ brown
+ red
+ yellow
+(4 rows)
+
+ set_nls_sort
+--------------
+
+(1 row)
+
+ERROR:  failed to set the requested LC_COLLATE value [invalid]
+CONTEXT:  SQL function "nlssort" statement 1
+ set_nls_sort
+--------------
+
+(1 row)
+
+  name
+--------
+ Purple
+ brown
+ red
+ yellow
+(4 rows)
+
+WARNING:  there is no transaction in progress

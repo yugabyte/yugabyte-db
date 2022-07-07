@@ -76,5 +76,6 @@ class ProviderBootstrapView extends Component {
 }
 
 export default reduxForm({
-  form: 'deleteProvider'
+  form: 'deleteProvider',
+  touchOnChange: true
 })(ProviderBootstrapView);

@@ -30,6 +30,7 @@
 
 #include "yb/util/slice.h"
 #include "yb/rocksdb/metadata.h"
+#include "yb/rocksdb/db/version_edit.h"
 
 namespace rocksdb {
 
@@ -123,6 +124,9 @@ class CompactionFilter {
     return false;
   }
 
+  virtual void CompactionFinished() {
+  }
+
   // By default, compaction will only call Filter() on keys written after the
   // most recent call to GetSnapshot(). However, if the compaction filter
   // overrides IgnoreSnapshots to make it return false, the compaction filter
@@ -133,24 +137,9 @@ class CompactionFilter {
   // using a snapshot.
   virtual bool IgnoreSnapshots() const { return false; }
 
-  // Gives the compaction filter an opportunity to return a "user frontier" that will be used to
-  // update the frontier stored in the version edit metadata when the compaction result is
-  // installed.
-  //
-  // As a concrete use case, we use this to pass the history cutoff timestamp from the DocDB
-  // compaction filter into the version edit metadata. See DocDBCompactionFilter.
-  virtual UserFrontierPtr GetLargestUserFrontier() const { return nullptr; }
-
   // Returns a name that identifies this compaction filter.
   // The name will be printed to LOG file on start up for diagnosis.
   virtual const char* Name() const = 0;
-
-  // These methods specify any known lower or upper bounds on the tablet's active keyspace. By
-  // overriding these methods, a compaction filter implementation is instructing the compaction job
-  // that it can assume these bounds to be accurate for the sake of optimizing I/O during
-  // compaction.
-  virtual Slice DropKeysLessThan() const { return Slice(); }
-  virtual Slice DropKeysGreaterOrEqual() const { return Slice(); }
 };
 
 // Each compaction will create a new CompactionFilter allowing the
@@ -161,6 +150,34 @@ class CompactionFilterFactory {
 
   virtual std::unique_ptr<CompactionFilter> CreateCompactionFilter(
       const CompactionFilter::Context& context) = 0;
+
+  // Returns a name that identifies this compaction filter factory.
+  virtual const char* Name() const = 0;
+};
+
+// Makes a decision about whether or not to exclude a file in a compaction based on whether
+// or not the file has expired.  If expired, file will be removed at the end of compaction.
+class CompactionFileFilter {
+ public:
+  virtual ~CompactionFileFilter() = default;
+
+  // Determines whether to keep or discard a file based on the file's metadata.
+  virtual FilterDecision Filter(const FileMetaData* file) = 0;
+
+  // Returns a name that identifies this compaction filter.
+  // The name will be printed to LOG file on start up for diagnosis.
+  virtual const char* Name() const = 0;
+};
+
+// Each compaction will create a new CompactionFileFilter allowing each
+// filter to have unique state when making expiration decisions.
+class CompactionFileFilterFactory {
+ public:
+  virtual ~CompactionFileFilterFactory() { }
+
+  // Creates a unique pointer to a new CompactionFileFilter.
+  virtual std::unique_ptr<CompactionFileFilter> CreateCompactionFileFilter(
+      const std::vector<FileMetaData*>& input_files) = 0;
 
   // Returns a name that identifies this compaction filter factory.
   virtual const char* Name() const = 0;

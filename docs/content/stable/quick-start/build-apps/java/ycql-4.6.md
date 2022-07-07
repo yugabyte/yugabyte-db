@@ -3,56 +3,65 @@ title: Build a Java application that uses YCQL
 headerTitle: Build a Java application
 linkTitle: Java
 description: Build a sample Java application with the Yugabyte Java Driver for YCQL v4.6.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Java
     identifier: java-46
     weight: 550
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+ <li >
+    <a href="../ysql-yb-jdbc/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - YB - JDBC
+    </a>
+  </li>
   <li >
-    <a href="/stable/quick-start/build-apps/java/ysql-jdbc" class="nav-link">
+    <a href="../ysql-jdbc/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - JDBC
     </a>
   </li>
   <li >
-    <a href="/stable/quick-start/build-apps/java/ysql-spring-data" class="nav-link">
+    <a href="../ysql-jdbc-ssl/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - JDBC SSL/TLS
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-spring-data/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - Spring Data JPA
     </a>
   </li>
+   <li>
+    <a href="../ysql-ebeans/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Ebeans
+    </a>
+  </li>
   <li>
-    <a href="/stable/quick-start/build-apps/java/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/java/ycql-4.6" class="nav-link active">
+    <a href="../ycql-4.6/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL (4.6) [BETA]
+      YCQL (4.6)
     </a>
   </li>
 </ul>
-
-{{< note title="Note" >}}
-
-The Yugabyte Java Driver for YCQL used in this tutorial is currently a release candidate and is not recommended yet for production environments.
-
-{{< /note >}}
 
 ## Maven
 
 To build a sample Java application with the [Yugabyte Java Driver for YCQL](https://github.com/yugabyte/cassandra-java-driver), add the following Maven dependency to your application:
 
-```mvn
+```xml
  <dependency>
    <groupId>com.yugabyte</groupId>
    <artifactId>java-driver-core</artifactId>
@@ -66,7 +75,7 @@ To build a sample Java application with the [Yugabyte Java Driver for YCQL](http
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 - installed JDK version 1.8 or later.
 - installed Maven 3.3 or later.
 
@@ -74,7 +83,7 @@ This tutorial assumes that you have:
 
 Create a file, named `pom.xml`, and then copy the following content into it. The Project Object Model (POM) includes configuration information required to build the project.
 
-```mvn
+```xml
 <?xml version="1.0"?>
 <project
   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
@@ -86,12 +95,18 @@ Create a file, named `pom.xml`, and then copy the following content into it. The
   <artifactId>hello-world</artifactId>
   <version>1.0</version>
   <packaging>jar</packaging>
+  <properties>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
+  </properties>
 
- <dependency>
-   <groupId>com.yugabyte</groupId>
-   <artifactId>java-driver-core</artifactId>
-   <version>4.6.0-yb-6</version>
- </dependency>
+  <dependencies>
+    <dependency>
+      <groupId>com.yugabyte</groupId>
+      <artifactId>java-driver-core</artifactId>
+      <version>4.6.0-yb-6</version>
+    </dependency>
+  </dependencies>
 
   <build>
     <plugins>
@@ -198,7 +213,7 @@ $ java -cp "target/hello-world-1.0.jar:target/lib/*" com.yugabyte.sample.apps.YB
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted data: INSERT INTO ybdemo.employee (id, name, age, language) VALUES (1, 'John', 35, 'Java');

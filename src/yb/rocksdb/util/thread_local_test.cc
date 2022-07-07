@@ -26,14 +26,14 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/testutil.h"
+#include <gtest/gtest.h>
 #include "yb/rocksdb/util/thread_local.h"
+#include "yb/rocksdb/util/testutil.h"
 #include "yb/util/tostring.h"
 
 namespace rocksdb {
 
-class ThreadLocalTest : public testing::Test {
+class ThreadLocalTest : public RocksDBTest {
  public:
   ThreadLocalTest() : env_(Env::Default()) {}
 

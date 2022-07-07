@@ -10,87 +10,98 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.Collection;
-import java.util.Set;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import static com.yugabyte.yw.forms.UniverseTaskParams.isFirstTryForTask;
+
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.Collections;
+import java.util.Set;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Tracks the read only cluster create intent within an existing universe.
+@Slf4j
+@Abortable
+@Retryable
 public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ReadOnlyClusterCreate.class);
+
+  @Inject
+  protected ReadOnlyClusterCreate(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
 
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
-      // Set the correct node names for all to-be-added nodes.
-      setNodeNames(UniverseOpType.CREATE, universe);
-
-      // Update the user intent.
-      writeUserIntentToUniverse(true /* isReadOnly */);
+      Universe universe =
+          lockUniverseForUpdate(
+              taskParams().expectedUniverseVersion,
+              u -> {
+                if (isFirstTryForTask(taskParams())) {
+                  preTaskActions(u);
+                  // Set all the in-memory node names.
+                  setNodeNames(u);
+                  // Set non on-prem node UUIDs.
+                  setCloudNodeUuids(u);
+                  // Update on-prem node UUIDs.
+                  updateOnPremNodeUuidsOnTaskParams();
+                  // Set the prepared data to universe in-memory.
+                  setUserIntentToUniverse(u, taskParams(), true);
+                  // There is a rare possibility that this succeeds and
+                  // saving the Universe fails. It is ok because the retry
+                  // will just fail.
+                  updateTaskDetailsInDB(taskParams());
+                }
+              });
 
       // Sanity checks for clusters list validity are performed in the controller.
       Cluster cluster = taskParams().getReadOnlyClusters().get(0);
       Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(cluster.uuid);
+      boolean ignoreUseCustomImageConfig = !readOnlyNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 
       // There should be no masters in read only clusters.
       if (!PlacementInfoUtil.getMastersToProvision(readOnlyNodes).isEmpty()) {
         String errMsg = "Cannot have master nodes in read-only cluster.";
-        LOG.error(errMsg + "Nodes : " + readOnlyNodes);
+        log.error("{} Nodes: {}", errMsg, readOnlyNodes);
         throw new IllegalArgumentException(errMsg);
       }
 
-      Collection<NodeDetails> nodesToProvision =
-        PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
+      Set<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(readOnlyNodes);
 
       if (nodesToProvision.isEmpty()) {
         String errMsg = "Cannot have empty nodes to provision in read-only cluster.";
-        LOG.error(errMsg);
+        log.error(errMsg);
         throw new IllegalArgumentException(errMsg);
       }
 
-      createPrecheckTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
+      // Create preflight node check tasks for on-prem nodes.
+      createPreflightNodeCheckTasks(universe, Collections.singletonList(cluster));
 
-      // Create the required number of nodes in the appropriate locations.
-      createSetupServerTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Get all information about the nodes of the cluster. for ex., private ip address.
-      createServerInfoTasks(nodesToProvision)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-      // Configures and deploys software on all the nodes (masters and tservers).
-      createConfigureServerTasks(nodesToProvision, true /* isShell */)
-          .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
+      // Provision the nodes.
+      // State checking is enabled because the subtasks are not idempotent.
+      createProvisionNodeTasks(
+          universe,
+          nodesToProvision,
+          true /* isShell */,
+          false /* ignore node status check */,
+          ignoreUseCustomImageConfig);
 
       // Set of processes to be started, note that in this case it is same as nodes provisioned.
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
-      // Set default gflags
-      addDefaultGFlags(cluster.userIntent);
-      createGFlagsOverrideTasks(newTservers, ServerType.TSERVER);
-
       // Start the tservers in the clusters.
-      createStartTServersTasks(newTservers)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Wait for all tablet servers to be responsive.
-      createWaitForServersTasks(newTservers, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createStartTserverProcessTasks(newTservers);
 
       // Set the node state to live.
       createSetNodeStateTasks(newTservers, NodeDetails.NodeState.Live)
@@ -108,15 +119,26 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      unlockUniverseForUpdate();
+      Universe universe = unlockUniverseForUpdate();
+      if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    universe
+                        .getUniverseDetails()
+                        .nodeDetailsSet
+                        .stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+      }
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

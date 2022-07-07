@@ -34,17 +34,18 @@
 #define YB_COMMON_TYPES_H
 
 #include <stdint.h>
+
 #include <string>
+#include <type_traits>
 
 #include <glog/logging.h>
 
-#include "yb/common/common.pb.h"
+#include "yb/common/value.pb.h"
+
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/util/net/inetaddress.h"
-#include "yb/util/uuid.h"
-#include "yb/util/debug-util.h"
+
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -63,33 +64,34 @@ extern const TypeInfo* GetTypeInfo(DataType type);
 // This is a runtime equivalent of the TypeTraits template below.
 class TypeInfo {
  public:
-  // Returns the type mentioned in the schema.
-  DataType type() const { return type_; }
-  // Returns the type used to actually store the data.
-  DataType physical_type() const { return physical_type_; }
-  const std::string& name() const { return name_; }
-  const size_t size() const { return size_; }
-  void AppendDebugStringForValue(const void *ptr, std::string *str) const;
-  int Compare(const void *lhs, const void *rhs) const;
-  void CopyMinValue(void* dst) const {
-    memcpy(dst, min_value_, size_);
+  using AppendDebugFunc = void (*)(const void*, std::string*);
+  using CompareFunc = int (*)(const void*, const void*);
+
+  DataType type;
+  DataType physical_type;
+  std::string name;
+  size_t size;
+  const void* min_value;
+  AppendDebugFunc append_func;
+  CompareFunc compare_func;
+
+  bool var_length() const {
+    return physical_type == DataType::BINARY;
   }
 
- private:
-  friend class TypeInfoResolver;
-  template<typename Type> TypeInfo(Type t);
+  int Compare(const void* lhs, const void* rhs) const {
+    return compare_func(lhs, rhs);
+  }
 
-  const DataType type_;
-  const DataType physical_type_;
-  const std::string name_;
-  const size_t size_;
-  const void* const min_value_;
+  void AppendDebugStringForValue(const void* value, std::string* out) const {
+    append_func(value, out);
+  }
 
-  typedef void (*AppendDebugFunc)(const void *, std::string *);
-  const AppendDebugFunc append_func_;
+  void CopyMinValue(void* dst) const {
+    memcpy(dst, min_value, size);
+  }
 
-  typedef int (*CompareFunc)(const void *, const void *);
-  const CompareFunc compare_func_;
+  bool is_collection() const;
 };
 
 template<DataType Type> struct DataTypeTraits {};
@@ -363,16 +365,12 @@ struct DataTypeTraits<STRING> : public DerivedTypeTraits<BINARY>{
 };
 
 template<>
-struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY>{
+struct DataTypeTraits<INET> : public DerivedTypeTraits<BINARY> {
   static const char* name() {
     return "inet";
   }
-  static void AppendDebugStringForValue(const void *val, std::string *str) {
-    const Slice *s = reinterpret_cast<const Slice *>(val);
-    InetAddress addr;
-    DCHECK(addr.FromSlice(*s).ok());
-    str->append(addr.ToString());
-  }
+
+  static void AppendDebugStringForValue(const void *val, std::string *str);
 };
 
 template<>
@@ -391,12 +389,7 @@ struct DataTypeTraits<UUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "uuid";
   }
-  static void AppendDebugStringForValue(const void *val, std::string *str) {
-    const Slice *s = reinterpret_cast<const Slice *>(val);
-    Uuid uuid;
-    DCHECK(uuid.FromSlice(*s).ok());
-    str->append(uuid.ToString());
-  }
+  static void AppendDebugStringForValue(const void *val, std::string *str);
 };
 
 template<>
@@ -404,12 +397,8 @@ struct DataTypeTraits<TIMEUUID> : public DerivedTypeTraits<BINARY>{
   static const char* name() {
     return "timeuuid";
   }
-  static void AppendDebugStringForValue(const void *val, std::string *str) {
-    const Slice *s = reinterpret_cast<const Slice *>(val);
-    Uuid uuid;
-    DCHECK(uuid.FromSlice(*s).ok());
-    str->append(uuid.ToString());
-  }
+
+  static void AppendDebugStringForValue(const void *val, std::string *str);
 };
 
 template<>
@@ -542,6 +531,7 @@ struct TypeTraits : public DataTypeTraits<datatype> {
 
   static const DataType type = datatype;
   static const size_t size = sizeof(cpp_type);
+  static const bool fixed_length = !std::is_same<cpp_type, Slice>::value;
 };
 
 class Variant {

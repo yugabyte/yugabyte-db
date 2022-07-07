@@ -4,11 +4,8 @@
 
 #include "yb/gutil/sysinfo.h"
 
-#include <gflags/gflags.h>
-#include <gtest/gtest.h>
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
 #include "yb/util/logging.h"
+#include "yb/util/test_util.h"
 
 DECLARE_int32(num_cpus);
 

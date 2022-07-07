@@ -37,7 +37,9 @@ int main() {
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/rocksdb/util/arena.h"
+
 #include "yb/util/enums.h"
+#include "yb/util/test_util.h"
 
 using GFLAGS::ParseCommandLineFlags;
 
@@ -65,7 +67,7 @@ static size_t NextLength(size_t length) {
   return length;
 }
 
-class BloomTest : public testing::Test {
+class BloomTest : public RocksDBTest {
  private:
   const FilterPolicy* policy_;
   std::string filter_;
@@ -250,7 +252,7 @@ std::unique_ptr<const BloomTestContext> CreateContext(BuilderReaderBloomTestType
 
 } // namespace
 
-class BuilderReaderBloomTest : public testing::Test,
+class BuilderReaderBloomTest : public RocksDBTest,
     public ::testing::WithParamInterface<BuilderReaderBloomTestType> {
  protected:
   std::unique_ptr<const BloomTestContext> context_;

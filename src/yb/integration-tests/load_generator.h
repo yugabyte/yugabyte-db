@@ -14,19 +14,29 @@
 #ifndef YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 #define YB_INTEGRATION_TESTS_LOAD_GENERATOR_H_
 
+#include <dirent.h>
+#include <signal.h>
+#include <spawn.h>
+
 #include <atomic>
 #include <iostream>
+#include <map>
 #include <memory>
-#include <mutex>
 #include <random>
 #include <set>
 #include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/client/client_fwd.h"
-#include "yb/gutil/stl_util.h"
-#include "yb/util/threadpool.h"
+
 #include "yb/util/countdown_latch.h"
-#include "yb/util/test_util.h"
+#include "yb/util/status.h"
+#include "yb/util/threadpool.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
@@ -47,7 +57,7 @@ std::string FormatHexForLoadTestKey(uint64_t x);
 
 class KeyIndexSet {
  public:
-  int NumElements() const;
+  size_t NumElements() const;
   void Insert(int64_t key);
   bool Contains(int64_t key) const;
   bool RemoveIfContains(int64_t key);
@@ -166,7 +176,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   // object's lifetime.
   MultiThreadedWriter(
       int64_t num_keys, int64_t start_key, int num_writer_threads, SessionFactory* session_factory,
-      std::atomic_bool* stop_flag, int value_size, int max_num_write_errors);
+      std::atomic_bool* stop_flag, int value_size, size_t max_num_write_errors);
 
   void Start() override;
   std::atomic<int64_t>* InsertionPoint() { return &inserted_up_to_inclusive_; }
@@ -174,7 +184,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
 
   int64_t num_writes() { return next_key_.load() - start_key_; }
-  int num_write_errors() { return failed_keys_.NumElements(); }
+  size_t num_write_errors() { return failed_keys_.NumElements(); }
   void AssertSucceeded() { ASSERT_EQ(num_write_errors(), 0); }
 
   void set_pause_flag(std::atomic<bool>* pause_flag) { pause_flag_ = pause_flag; }
@@ -197,7 +207,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   std::atomic<int64_t> next_key_;
   std::atomic<int64_t> inserted_up_to_inclusive_;
 
-  int max_num_write_errors_ = 0;
+  size_t max_num_write_errors_ = 0;
   std::atomic<bool>* pause_flag_ = nullptr;
 };
 
@@ -297,7 +307,9 @@ class SingleThreadedScanner {
 // MultiThreadedReader
 // ------------------------------------------------------------------------------------------------
 
-enum class ReadStatus { OK, NO_ROWS, OTHER_ERROR };
+YB_DEFINE_ENUM(ReadStatus, (kOk)(kNoRows)(kInvalidRead)(kExtraRows)(kOtherError));
+YB_DEFINE_ENUM(MultiThreadedReaderOption, (kStopOnEmptyRead)(kStopOnExtraRead)(kStopOnInvalidRead));
+using MultiThreadedReaderOptions = EnumBitSet<MultiThreadedReaderOption>;
 
 class MultiThreadedReader : public MultiThreadedAction {
  public:
@@ -307,12 +319,20 @@ class MultiThreadedReader : public MultiThreadedAction {
                       const KeyIndexSet* inserted_keys,
                       const KeyIndexSet* failed_keys,
                       std::atomic_bool* stop_flag, int value_size,
-                      int max_num_read_errors, bool stop_on_empty_read);
+                      int max_num_read_errors,
+                      MultiThreadedReaderOptions options = MultiThreadedReaderOptions{
+                          MultiThreadedReaderOption::kStopOnEmptyRead,
+                          MultiThreadedReaderOption::kStopOnExtraRead,
+                          MultiThreadedReaderOption::kStopOnInvalidRead});
 
   void IncrementReadErrorCount(ReadStatus read_status);
 
   int64_t num_reads() { return num_reads_; }
   int64_t num_read_errors() { return num_read_errors_.load(); }
+
+  // Returns read status that caused stop of the reader.
+  ReadStatus read_status_stopped() { return read_status_stopped_; }
+
   void AssertSucceeded() { ASSERT_EQ(num_read_errors(), 0); }
 
  protected:
@@ -331,7 +351,8 @@ class MultiThreadedReader : public MultiThreadedAction {
   std::atomic<int64_t> num_reads_;
   std::atomic<int64_t> num_read_errors_;
   const int max_num_read_errors_;
-  const bool stop_on_empty_read_;
+  MultiThreadedReaderOptions options_;
+  ReadStatus read_status_stopped_ = ReadStatus::kOk;
 };
 
 class SingleThreadedReader {

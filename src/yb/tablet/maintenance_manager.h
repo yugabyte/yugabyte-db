@@ -34,6 +34,7 @@
 
 #include <stdint.h>
 
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <set>
@@ -41,12 +42,13 @@
 #include <vector>
 
 #include "yb/gutil/macros.h"
+#include "yb/gutil/thread_annotations.h"
+
 #include "yb/tablet/tablet.pb.h"
+
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
 namespace yb {
@@ -142,6 +144,8 @@ class MaintenanceOpStats {
   MonoTime last_modified_;
 };
 
+class ScopedMaintenanceOpRun;
+
 // MaintenanceOp objects represent background operations that the
 // MaintenanceManager can schedule.  Once a MaintenanceOp is registered, the
 // manager will periodically poll it for statistics.  The registrant is
@@ -193,17 +197,19 @@ class MaintenanceOp {
   IOUsage io_usage() const { return io_usage_; }
 
  private:
+  friend class ScopedMaintenanceOpRun;
+
   // The name of the operation.  Op names must be unique.
   const std::string name_;
 
   // The number of times that this op is currently running.
-  uint32_t running_;
+  uint32_t running_ = 0;
 
   // Condition variable which the UnregisterOp function can wait on.
   //
   // Note: 'cond_' is used with the MaintenanceManager's mutex. As such,
   // it only exists when the op is registered.
-  gscoped_ptr<ConditionVariable> cond_;
+  std::condition_variable cond_;
 
   // The MaintenanceManager with which this op is registered, or null
   // if it is not registered.
@@ -244,7 +250,7 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   explicit MaintenanceManager(const Options& options);
   ~MaintenanceManager();
 
-  CHECKED_STATUS Init();
+  Status Init();
   void Shutdown();
 
   // Register an op with the manager.
@@ -260,33 +266,57 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   static const Options DEFAULT_OPTIONS;
 
  private:
+  friend class ScopedMaintenanceOpRun;
+
   FRIEND_TEST(MaintenanceManagerTest, TestLogRetentionPrioritization);
-  typedef std::map<MaintenanceOp*, MaintenanceOpStats,
-          MaintenanceOpComparator> OpMapTy;
+  typedef std::map<MaintenanceOp*, MaintenanceOpStats, MaintenanceOpComparator> OpMapTy;
 
   void RunSchedulerThread();
 
   // find the best op, or null if there is nothing we want to run
-  MaintenanceOp* FindBestOp();
+  MaintenanceOp* FindBestOp() REQUIRES(mutex_);
 
-  void LaunchOp(MaintenanceOp* op);
+  void LaunchOp(const ScopedMaintenanceOpRun& op);
 
+  std::mutex mutex_;
   const int32_t num_threads_;
-  OpMapTy ops_; // registered operations
-  Mutex lock_;
+  const int32_t polling_interval_ms_;
+  const std::shared_ptr<MemTracker> parent_mem_tracker_;
+
+  OpMapTy ops_ GUARDED_BY(mutex_); // registered operations
   scoped_refptr<yb::Thread> monitor_thread_;
-  gscoped_ptr<ThreadPool> thread_pool_;
-  ConditionVariable cond_;
-  bool shutdown_;
-  uint64_t running_ops_;
-  int32_t polling_interval_ms_;
+  std::unique_ptr<ThreadPool> thread_pool_;
+  std::condition_variable cond_;
+  bool shutdown_ GUARDED_BY(mutex_) = false;
+  uint64_t running_ops_ = 0;
   // Vector used as a circular buffer for recently completed ops. Elements need to be added at
   // the completed_ops_count_ % the vector's size and then the count needs to be incremented.
-  std::vector<CompletedOp> completed_ops_;
-  int64_t completed_ops_count_;
-  std::shared_ptr<MemTracker> parent_mem_tracker_;
+  std::vector<CompletedOp> completed_ops_ GUARDED_BY(mutex_);
+  int64_t completed_ops_count_ GUARDED_BY(mutex_) = 0;
 
   DISALLOW_COPY_AND_ASSIGN(MaintenanceManager);
+};
+
+class ScopedMaintenanceOpRun {
+ public:
+  explicit ScopedMaintenanceOpRun(MaintenanceOp* op);
+
+  ScopedMaintenanceOpRun(const ScopedMaintenanceOpRun& rhs);
+  void operator=(const ScopedMaintenanceOpRun& rhs);
+
+  ScopedMaintenanceOpRun(ScopedMaintenanceOpRun&& rhs);
+  void operator=(ScopedMaintenanceOpRun&& rhs);
+
+  ~ScopedMaintenanceOpRun();
+
+  void Reset();
+
+  MaintenanceOp* get() const;
+
+ private:
+  void Assign(MaintenanceOp* op);
+
+  MaintenanceOp* op_;
 };
 
 } // namespace yb

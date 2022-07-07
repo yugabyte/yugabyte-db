@@ -30,26 +30,58 @@
 // under the License.
 //
 
+#include "yb/util/oid_generator.h"
+
 #include <mutex>
 #include <string>
 
+#include <boost/uuid/uuid_generators.hpp>
+
 #include "yb/gutil/strings/escaping.h"
 #include "yb/util/cast.h"
-#include "yb/util/oid_generator.h"
+#include "yb/util/locks.h"
 #include "yb/util/thread.h"
 
 namespace yb {
 
-string ObjectIdGenerator::Next(const bool binary_id) {
+namespace {
 
-  // Use the thread id to select a random oid generator.
-  const int idx = yb::Thread::UniqueThreadId() % kNumOidGenerators;
-  std::unique_lock<LockType> lck(oid_lock_[idx]);
-  boost::uuids::uuid oid = oid_generator_[idx]();
-  lck.unlock();
+class Generator {
+ public:
+  std::string Next(bool binary_id) {
+    // Use the thread id to select a random oid generator.
+    auto& entry = entries_[yb::Thread::UniqueThreadId() % kNumOidGenerators];
+    boost::uuids::uuid oid;
+    {
+      std::lock_guard<LockType> lock(entry.lock);
+      oid = entry.generator();
+    }
 
-  return binary_id ? string(util::to_char_ptr(oid.data), sizeof(oid.data))
-                   : b2a_hex(util::to_char_ptr(oid.data), sizeof(oid.data));
+    return binary_id ? string(to_char_ptr(oid.data), sizeof(oid.data))
+                     : b2a_hex(to_char_ptr(oid.data), sizeof(oid.data));
+  }
+
+ private:
+  typedef simple_spinlock LockType;
+
+  // Multiple instances of OID generators with corresponding locks are used to
+  // avoid bottlenecking on a single lock.
+  static const int kNumOidGenerators = 17;
+  struct Entry {
+    LockType lock;
+    boost::uuids::random_generator generator;
+  };
+  Entry entries_[kNumOidGenerators];
+};
+
+} // namespace
+
+// Generates a unique 32byte id, based on uuid v4.
+// This class is thread safe
+
+std::string GenerateObjectId(bool binary_id) {
+  static Generator generator;
+  return generator.Next(binary_id);
 }
 
 } // namespace yb

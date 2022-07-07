@@ -33,10 +33,12 @@
 #define YB_UTIL_MUTEX_H
 
 #include <pthread.h>
-#include <glog/logging.h>
 #include <sys/types.h>
 
-#include "yb/gutil/gscoped_ptr.h"
+#include <memory>
+
+#include <glog/logging.h>
+
 #include "yb/gutil/macros.h"
 
 namespace yb {
@@ -80,8 +82,8 @@ class Mutex {
 
   // All private data is implicitly protected by native_handle_.
   // Be VERY careful to only access members under that lock.
-  pid_t owning_tid_;
-  gscoped_ptr<StackTrace> stack_trace_;
+  uint64_t owning_tid_;
+  std::unique_ptr<StackTrace> stack_trace_;
 #endif
 
   DISALLOW_COPY_AND_ASSIGN(Mutex);
@@ -99,7 +101,7 @@ class MutexLock {
   //   MutexLock l(lock_); // acquired
   //   ...
   // } // released
-  explicit MutexLock(Mutex& lock)
+  explicit MutexLock(Mutex& lock) // NOLINT
     : lock_(&lock),
       owned_(true) {
     lock_->Acquire();
@@ -114,7 +116,7 @@ class MutexLock {
   //   MutexLock l(lock_, AlreadyAcquired());
   //   ...
   // } // released
-  MutexLock(Mutex& lock, const AlreadyAcquired&)
+  MutexLock(Mutex& lock, const AlreadyAcquired&) // NOLINT
     : lock_(&lock),
       owned_(true) {
     lock_->AssertAcquired();

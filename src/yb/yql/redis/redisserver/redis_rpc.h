@@ -16,14 +16,23 @@
 #ifndef YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 #define YB_YQL_REDIS_REDISSERVER_REDIS_RPC_H
 
-#include <boost/container/small_vector.hpp>
+#include <stdint.h>
 
-#include "yb/yql/redis/redisserver/redis_fwd.h"
+#include <type_traits>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/version.hpp>
+
 #include "yb/common/redis_protocol.pb.h"
 
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_with_queue.h"
+
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/size_literals.h"
+
+#include "yb/yql/redis/redisserver/redis_fwd.h"
 
 namespace yb {
 
@@ -67,7 +76,7 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
   // Shutdown this context. Clean up the subscriptions if any.
   void Shutdown(const Status& status) override;
 
-  CHECKED_STATUS ReportPendingWriteBytes(size_t bytes_in_queue) override;
+  Status ReportPendingWriteBytes(size_t bytes_in_queue) override;
 
  private:
   void Connected(const rpc::ConnectionPtr& connection) override {}
@@ -76,16 +85,16 @@ class RedisConnectionContext : public rpc::ConnectionContextWithQueue {
     return rpc::RpcConnectionPB::OPEN;
   }
 
-  Result<rpc::ProcessDataResult> ProcessCalls(const rpc::ConnectionPtr& connection,
-                                              const IoVecs& bytes_to_process,
-                                              rpc::ReadBufferFull read_buffer_full) override;
+  Result<rpc::ProcessCallsResult> ProcessCalls(const rpc::ConnectionPtr& connection,
+                                               const IoVecs& bytes_to_process,
+                                               rpc::ReadBufferFull read_buffer_full) override;
 
   rpc::StreamReadBuffer& ReadBuffer() override {
     return read_buffer_;
   }
 
   // Takes ownership of data content.
-  CHECKED_STATUS HandleInboundCall(const rpc::ConnectionPtr& connection,
+  Status HandleInboundCall(const rpc::ConnectionPtr& connection,
                                    size_t commands_in_batch,
                                    rpc::CallData* data);
 
@@ -107,15 +116,15 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   explicit RedisInboundCall(
      rpc::ConnectionPtr conn,
      size_t weight_in_bytes,
-     CallProcessedListener call_processed_listener);
+     CallProcessedListener* call_processed_listener);
 
   ~RedisInboundCall();
   // Takes ownership of data content.
-  CHECKED_STATUS ParseFrom(const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data);
+  Status ParseFrom(const MemTrackerPtr& mem_tracker, size_t commands, rpc::CallData* data);
 
   // Serialize the response packet for the finished call.
   // The resulting slices refer to memory in this object.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
   void GetCallDetails(rpc::RpcCallInProgressPB *call_in_progress_pb) const;
   void LogTrace() const override;
   std::string ToString() const override;
@@ -126,8 +135,10 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   RedisClientBatch& client_batch() { return client_batch_; }
   RedisConnectionContext& connection_context() const;
 
-  const std::string& service_name() const override;
-  const std::string& method_name() const override;
+  Slice serialized_remote_method() const override;
+  Slice method_name() const override;
+
+  static Slice static_serialized_remote_method();
 
   void Respond(size_t idx, bool is_success, RedisResponsePB* resp);
 
@@ -151,7 +162,7 @@ class RedisInboundCall : public rpc::QueueableInboundCall {
   // The connection on which this inbound call arrived.
   static constexpr size_t batch_capacity = RedisClientBatch::static_capacity;
   boost::container::small_vector<RedisResponsePB, batch_capacity> responses_;
-  boost::container::small_vector<std::atomic<size_t>, batch_capacity> ready_;
+  boost::container::small_vector<Atomic64, batch_capacity> ready_;
   std::atomic<size_t> ready_count_{0};
   std::atomic<bool> had_failures_{false};
   RedisClientBatch client_batch_;

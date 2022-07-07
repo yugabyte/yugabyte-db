@@ -19,9 +19,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.pgsql.cleaners.ClusterCleaner;
-import org.yb.pgsql.cleaners.DatabaseCleaner;
-import org.yb.pgsql.cleaners.RoleCleaner;
 import org.yb.util.MiscUtil.ThrowingRunnable;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -72,14 +69,6 @@ public class TestPgAuthorization extends BasePgSQLTest {
     return flags;
   }
 
-  @Override
-  protected List<ClusterCleaner> getCleaners() {
-    List<ClusterCleaner> cleaners = super.getCleaners();
-    cleaners.add(0, new DatabaseCleaner());
-    cleaners.add(1, new RoleCleaner());
-    return cleaners;
-  }
-
   @Test
   public void testDefaultAuthorization() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -97,6 +86,8 @@ public class TestPgAuthorization extends BasePgSQLTest {
       statement.execute("CREATE ROLE su LOGIN SUPERUSER");
       statement.execute("CREATE ROLE some_role LOGIN");
       statement.execute("CREATE ROLE some_group ROLE some_role");
+      statement.execute("CREATE ROLE yb_db_admin_member LOGIN");
+      statement.execute("GRANT yb_db_admin TO yb_db_admin_member");
     }
 
     try (Connection connection = getConnectionBuilder().withUser("su").connect();
@@ -183,6 +174,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
       // Non-superuser cannot set session authorization to other roles.
       runInvalidQuery(statement, "SET SESSION AUTHORIZATION some_group", PERMISSION_DENIED);
       runInvalidQuery(statement, "SET SESSION AUTHORIZATION unprivileged", PERMISSION_DENIED);
+      runInvalidQuery(statement, "SET SESSION AUTHORIZATION yb_db_admin", PERMISSION_DENIED);
 
       assertEquals("some_role", getSessionUser(statement));
       assertEquals("some_role", getCurrentUser(statement));
@@ -197,6 +189,22 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
       assertEquals("some_role", getSessionUser(statement));
       assertEquals("some_role", getCurrentUser(statement));
+    }
+
+    // Test yb_db_admin members can set session authorization.
+    try (Connection connection = getConnectionBuilder().withUser("yb_db_admin_member").connect();
+         Statement statement = connection.createStatement()) {
+      // Users have been reset, since this is a new session.
+      statement.execute("SET SESSION AUTHORIZATION unprivileged");
+      assertEquals("unprivileged", getSessionUser(statement));
+      assertEquals("unprivileged", getCurrentUser(statement));
+    }
+
+    // Test yb_db_admin members cannot set session authorization to a superuser.
+    try (Connection connection = getConnectionBuilder().withUser("yb_db_admin_member").connect();
+        Statement statement = connection.createStatement()) {
+      // yb_db_admin members cannot set session authorization to superuser role.
+      runInvalidQuery(statement, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
     }
 
     final AtomicInteger state = new AtomicInteger(0);
@@ -2732,6 +2740,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
          Statement statement1 = connection1.createStatement()) {
 
       statement1.execute("CREATE ROLE test_role LOGIN");
+      statement1.execute("CREATE ROLE test_role2 LOGIN");
 
       try (Connection connection2 = getConnectionBuilder().withTServer(1)
           .withUser("test_role").connect();
@@ -2739,6 +2748,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         runInvalidQuery(statement2, "CREATE ROLE tr", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE DATABASE tdb", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2",PERMISSION_DENIED);
 
         // Grant CREATEROLE from connection 1.
         statement1.execute("ALTER ROLE test_role CREATEROLE");
@@ -2749,6 +2759,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         statement2.execute("CREATE ROLE tr");
         runInvalidQuery(statement2, "CREATE DATABASE tdb", PERMISSION_DENIED);
         runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
 
         // Grant CREATEDB from connection 1.
         statement1.execute("ALTER ROLE test_role CREATEDB");
@@ -2758,6 +2769,7 @@ public class TestPgAuthorization extends BasePgSQLTest {
         // New attribute observed on connection 2 after heartbeat.
         statement2.execute("CREATE DATABASE tdb");
         runInvalidQuery(statement2, "CREATE ROLE su SUPERUSER", "must be superuser");
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
 
         // Grant SUPERUSER from connection 1.
         statement1.execute("ALTER ROLE test_role SUPERUSER");
@@ -2766,9 +2778,22 @@ public class TestPgAuthorization extends BasePgSQLTest {
 
         // New attribute observed on connection 2 after heartbeat.
         statement2.execute("CREATE ROLE su SUPERUSER");
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION test_role2", PERMISSION_DENIED);
 
         // "test_role" still cannot set their session authorization, despite having
         // superuser privileges.
+        runInvalidQuery(statement2, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
+
+        // Grant yb_db_admin from connection 1.
+        statement1.execute("GRANT yb_db_admin TO test_role");
+
+        waitForTServerHeartbeat();
+
+        // New attribute observed on connection 2 after heartbeat.
+        statement2.execute("SET SESSION AUTHORIZATION test_role2");
+
+        // "test_role" still cannot set their session authorization to a superuser,
+        // despite having yb_db_admin privileges.
         runInvalidQuery(statement2, "SET SESSION AUTHORIZATION su", PERMISSION_DENIED);
       }
     }

@@ -137,6 +137,18 @@ CREATE TABLE aggtest (
 	b			float4
 );
 
+CREATE TABLE array_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
+CREATE TABLE array_index_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
 CREATE TABLE testjsonb (
        j jsonb
 );
@@ -149,3 +161,27 @@ CREATE TABLE testjsonb (
 CREATE TYPE unknown_comptype AS (
 	u unknown    -- fail
 );
+
+CREATE TABLE IF NOT EXISTS test_tsvector(
+	t text,
+	a tsvector
+);
+
+CREATE TABLE IF NOT EXISTS test_tsvector(
+	t text
+);
+
+-- invalid: non-lowercase quoted reloptions identifiers
+CREATE TABLE tas_case WITH ("Fillfactor" = 10) AS SELECT 1 a;
+CREATE TABLE tas_case (a text) WITH ("Oids" = true);
+
+CREATE UNLOGGED TABLE unlogged1 (a int primary key);			-- OK
+CREATE TEMPORARY TABLE unlogged2 (a int primary key);			-- OK
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged\d' ORDER BY relname;
+REINDEX INDEX unlogged2_pkey;
+SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged\d' ORDER BY relname;
+DROP TABLE unlogged2;
+CREATE TABLE pg_temp.implicitly_temp (a int primary key);		-- OK
+CREATE TEMP TABLE explicitly_temp (a int primary key);			-- also OK
+CREATE TEMP TABLE pg_temp.doubly_temp (a int primary key);		-- also OK
+CREATE TEMP TABLE public.temp_to_perm (a int primary key);		-- not OK

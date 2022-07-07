@@ -39,9 +39,11 @@
 
 #include "yb/gutil/bits.h"
 
-#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
 
 // Return the number of bytes necessary to store the given number of bits.
 inline size_t BitmapSize(size_t num_bits) {
@@ -254,7 +256,7 @@ class OneWayBitmap {
   static Result<OneWayBitmap> Decode(Slice* slice);
 
   // Removes encoded bitmap from slice prefix, w/o decoding slice.
-  static CHECKED_STATUS Skip(Slice* slice);
+  static Status Skip(Slice* slice);
 
  private:
   typedef uint8_t ElementType;

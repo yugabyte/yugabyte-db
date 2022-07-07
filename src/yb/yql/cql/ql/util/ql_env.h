@@ -21,22 +21,21 @@
 #ifndef YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 #define YB_YQL_CQL_QL_UTIL_QL_ENV_H_
 
-#include "yb/client/callbacks.h"
-#include "yb/client/client.h"
-#include "yb/client/transaction.h"
-#include "yb/client/transaction_manager.h"
-#include "yb/common/common.pb.h"
-#include "yb/gutil/callback.h"
-#include "yb/rpc/rpc_fwd.h"
+#include "yb/client/client_fwd.h"
+
+#include "yb/common/common_types.pb.h"
+#include "yb/common/transaction.pb.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/enums.h"
+
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 #include "yb/yql/cql/ql/ql_session.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
 
 namespace yb {
 namespace ql {
-
-typedef std::function<client::TransactionPool*()> TransactionPoolProvider;
 
 class QLEnv {
  public:
@@ -61,14 +60,14 @@ class QLEnv {
   virtual std::unique_ptr<client::YBTableAlterer> NewTableAlterer(
       const client::YBTableName& table_name);
 
-  virtual CHECKED_STATUS TruncateTable(const std::string& table_id);
+  virtual Status TruncateTable(const std::string& table_id);
 
-  virtual CHECKED_STATUS DeleteTable(const client::YBTableName& name);
+  virtual Status DeleteTable(const client::YBTableName& name);
 
-  virtual CHECKED_STATUS DeleteIndexTable(const client::YBTableName& name,
+  virtual Status DeleteIndexTable(const client::YBTableName& name,
                                           client::YBTableName* indexed_table_name);
 
-  virtual CHECKED_STATUS GetUpToDateTableSchemaVersion(const client::YBTableName& table_name,
+  virtual Status GetUpToDateTableSchemaVersion(const client::YBTableName& table_name,
                                                        uint32_t* ver);
 
   virtual std::shared_ptr<client::YBTable> GetTableDesc(const client::YBTableName& table_name,
@@ -86,13 +85,14 @@ class QLEnv {
 
   // Create a new transaction.
   Result<client::YBTransactionPtr> NewTransaction(const client::YBTransactionPtr& transaction,
-                                                  IsolationLevel isolation_level);
+                                                  IsolationLevel isolation_level,
+                                                  CoarseTimePoint deadline);
 
   //------------------------------------------------------------------------------------------------
   // Permission related methods.
 
   // Grant/Revoke a permission with the given arguments.
-  virtual CHECKED_STATUS GrantRevokePermission(GrantRevokeStatementType statement_type,
+  virtual Status GrantRevokePermission(client::GrantRevokeStatementType statement_type,
                                                const PermissionType& permission,
                                                const ResourceType& resource_type,
                                                const std::string& canonical_resource,
@@ -104,16 +104,16 @@ class QLEnv {
   // Keyspace related methods.
 
   // Create a new keyspace with the given name.
-  virtual CHECKED_STATUS CreateKeyspace(const std::string& keyspace_name);
+  virtual Status CreateKeyspace(const std::string& keyspace_name);
 
   // Delete keyspace with the given name.
-  virtual CHECKED_STATUS DeleteKeyspace(const std::string& keyspace_name);
+  virtual Status DeleteKeyspace(const std::string& keyspace_name);
 
   // Use keyspace with the given name.
-  virtual CHECKED_STATUS UseKeyspace(const std::string& keyspace_name);
+  virtual Status UseKeyspace(const std::string& keyspace_name);
 
   // Alter keyspace with the given name.
-  virtual CHECKED_STATUS AlterKeyspace(const std::string& keyspace_name);
+  virtual Status AlterKeyspace(const std::string& keyspace_name);
 
   virtual std::string CurrentKeyspace() const {
     return ql_session()->current_keyspace();
@@ -123,20 +123,20 @@ class QLEnv {
   // Role related methods.
 
   // Create role with the given arguments.
-  virtual CHECKED_STATUS CreateRole(const std::string& role_name,
+  virtual Status CreateRole(const std::string& role_name,
                                     const std::string& salted_hash,
                                     const bool login, const bool superuser);
 
   // Alter an existing role with the given arguments.
-  virtual CHECKED_STATUS AlterRole(const std::string& role_name,
+  virtual Status AlterRole(const std::string& role_name,
                                    const boost::optional<std::string>& salted_hash,
                                    const boost::optional<bool> login,
                                    const boost::optional<bool> superuser);
 
   // Delete role by name.
-  virtual CHECKED_STATUS DeleteRole(const std::string& role_name);
+  virtual Status DeleteRole(const std::string& role_name);
 
-  virtual CHECKED_STATUS GrantRevokeRole(GrantRevokeStatementType statement_type,
+  virtual Status GrantRevokeRole(client::GrantRevokeStatementType statement_type,
                                          const std::string& granted_role_name,
                                          const std::string& recipient_role_name);
 
@@ -148,7 +148,7 @@ class QLEnv {
   // canonical resource.
   // keyspace and table are only used to generate the error message.
   // If the permission is not found, the client will refresh the cache from the master once.
-  virtual CHECKED_STATUS HasResourcePermission(const string& canonical_name,
+  virtual Status HasResourcePermission(const string& canonical_name,
                                                const ql::ObjectType& object_type,
                                                const PermissionType permission,
                                                const NamespaceName& keyspace = "",
@@ -158,16 +158,16 @@ class QLEnv {
   // given table.
   // These method call YBMetaDataCache::HasTablePermissionWithRetry which first checks if the
   // keyspace has the permission. Otherwise, it checks whether the table has the permission.
-  virtual CHECKED_STATUS HasTablePermission(const NamespaceName& keyspace_name,
+  virtual Status HasTablePermission(const NamespaceName& keyspace_name,
                                             const TableName& table_name,
                                             const PermissionType permission);
 
-  virtual CHECKED_STATUS HasTablePermission(const client::YBTableName table_name,
+  virtual Status HasTablePermission(const client::YBTableName table_name,
                                             const PermissionType permission);
 
   // Convenience method to check whether the current role has the specified permission on the given
   // role.
-  virtual CHECKED_STATUS HasRolePermission(const RoleName& role_name,
+  virtual Status HasRolePermission(const RoleName& role_name,
                                            const PermissionType permission);
 
   Result<std::string> RoleSaltedHash(const RoleName& role_name);
@@ -178,13 +178,13 @@ class QLEnv {
   // (User-defined) Type related methods.
 
   // Create (user-defined) type with the given arguments.
-  CHECKED_STATUS CreateUDType(const std::string& keyspace_name,
+  Status CreateUDType(const std::string& keyspace_name,
                               const std::string& type_name,
                               const std::vector<std::string>& field_names,
                               const std::vector<std::shared_ptr<QLType>>& field_types);
 
   // Delete (user-defined) type by name.
-  virtual CHECKED_STATUS DeleteUDType(const std::string& keyspace_name,
+  virtual Status DeleteUDType(const std::string& keyspace_name,
                                       const std::string& type_name);
 
   // Retrieve (user-defined) type by name.

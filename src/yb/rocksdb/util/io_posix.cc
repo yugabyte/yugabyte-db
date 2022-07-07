@@ -47,9 +47,14 @@
 
 #include "yb/util/file_system_posix.h"
 #include "yb/util/malloc.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
+
+DECLARE_bool(never_fsync);
 
 namespace rocksdb {
 
@@ -111,6 +116,10 @@ Status PosixMmapReadableFile::InvalidateCache(size_t offset, size_t length) {
   }
   return STATUS_IO_ERROR(filename_, errno);
 #endif
+}
+
+yb::Result<uint64_t> PosixMmapReadableFile::Size() const {
+  return length_;
 }
 
 yb::Result<uint64_t> PosixMmapReadableFile::INode() const {
@@ -208,6 +217,10 @@ Status PosixMmapFile::Msync() {
   return Status::OK();
 }
 
+Status PosixMmapFile::Truncate(uint64_t size) {
+  return Status::OK();
+}
+
 PosixMmapFile::PosixMmapFile(const std::string& fname, int fd, size_t page_size,
                              const EnvOptions& options)
     : filename_(fname),
@@ -290,6 +303,9 @@ Status PosixMmapFile::Close() {
 Status PosixMmapFile::Flush() { return Status::OK(); }
 
 Status PosixMmapFile::Sync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fdatasync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -301,6 +317,9 @@ Status PosixMmapFile::Sync() {
  * Flush data as well as metadata to stable storage.
  */
 Status PosixMmapFile::Fsync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -333,8 +352,8 @@ Status PosixMmapFile::InvalidateCache(size_t offset, size_t length) {
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 Status PosixMmapFile::Allocate(uint64_t offset, uint64_t len) {
-  assert(offset <= std::numeric_limits<off_t>::max());
-  assert(len <= std::numeric_limits<off_t>::max());
+  assert(yb::std_util::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
+  assert(yb::std_util::cmp_less_equal(len, std::numeric_limits<off_t>::max()));
   TEST_KILL_RANDOM("PosixMmapFile::Allocate:0", rocksdb_kill_odds);
   int alloc_status = 0;
   if (allow_fallocate_) {
@@ -389,6 +408,10 @@ Status PosixWritableFile::Append(const Slice& data) {
   return Status::OK();
 }
 
+Status PosixWritableFile::Truncate(uint64_t size) {
+  return Status::OK();
+}
+
 Status PosixWritableFile::Close() {
   Status s;
 
@@ -439,6 +462,9 @@ Status PosixWritableFile::Sync() {
 }
 
 Status PosixWritableFile::Fsync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fsync(fd_) < 0) {
     return STATUS_IO_ERROR(filename_, errno);
   }
@@ -464,8 +490,8 @@ Status PosixWritableFile::InvalidateCache(size_t offset, size_t length) {
 
 #ifdef ROCKSDB_FALLOCATE_PRESENT
 Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
-  assert(offset <= std::numeric_limits<off_t>::max());
-  assert(len <= std::numeric_limits<off_t>::max());
+  assert(yb::std_util::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
+  assert(yb::std_util::cmp_less_equal(len, std::numeric_limits<off_t>::max()));
   TEST_KILL_RANDOM("PosixWritableFile::Allocate:0", rocksdb_kill_odds);
   IOSTATS_TIMER_GUARD(allocate_nanos);
   int alloc_status = 0;
@@ -482,8 +508,8 @@ Status PosixWritableFile::Allocate(uint64_t offset, uint64_t len) {
 }
 
 Status PosixWritableFile::RangeSync(uint64_t offset, uint64_t nbytes) {
-  assert(offset <= std::numeric_limits<off_t>::max());
-  assert(nbytes <= std::numeric_limits<off_t>::max());
+  assert(yb::std_util::cmp_less_equal(offset, std::numeric_limits<off_t>::max()));
+  assert(yb::std_util::cmp_less_equal(nbytes, std::numeric_limits<off_t>::max()));
   if (sync_file_range(fd_, static_cast<off_t>(offset),
       static_cast<off_t>(nbytes), SYNC_FILE_RANGE_WRITE) == 0) {
     return Status::OK();
@@ -500,6 +526,9 @@ size_t PosixWritableFile::GetUniqueId(char* id) const {
 PosixDirectory::~PosixDirectory() { close(fd_); }
 
 Status PosixDirectory::Fsync() {
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (fsync(fd_) == -1) {
     return STATUS_IO_ERROR("directory", errno);
   }

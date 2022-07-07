@@ -12,7 +12,7 @@
 //
 
 #include "yb/util/decimal.h"
-
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -182,17 +182,17 @@ TEST_F(DecimalTest, TestDoubleConversions) {
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::epsilon()));
   EXPECT_OK(dbl = decimal.ToDouble());
-  EXPECT_EQ(std::numeric_limits<double>::epsilon(), *dbl);
+  EXPECT_EQ(std::numeric_limits<double>::epsilon(), static_cast<double>(*dbl));
   EXPECT_EQ("2.2204460492503130808e-16", decimal.ToString());
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::lowest()));
   EXPECT_OK(dbl = decimal.ToDouble());
-  EXPECT_EQ(std::numeric_limits<double>::lowest(), *dbl);
+  EXPECT_EQ(std::numeric_limits<double>::lowest(), static_cast<double>(*dbl));
   EXPECT_EQ("-1.7976931348623157081e+308", decimal.ToString());
 
   EXPECT_OK(decimal.FromDouble(std::numeric_limits<double>::max()));
   EXPECT_OK(dbl = decimal.ToDouble());
-  EXPECT_EQ(std::numeric_limits<double>::max(), *dbl);
+  EXPECT_EQ(std::numeric_limits<double>::max(), static_cast<double>(*dbl));
   EXPECT_EQ("1.7976931348623157081e+308", decimal.ToString());
 
   // Can convert from denorm values.
@@ -211,7 +211,7 @@ TEST_F(DecimalTest, TestComparableEncoding) {
   std::vector<Decimal> test_decimals;
   std::vector<std::string> encoded_strings;
   std::vector<Decimal> decoded_decimals;
-  for (int i = 0; i < test_cases.size(); i++) {
+  for (size_t i = 0; i < test_cases.size(); i++) {
     SCOPED_TRACE(Format("Index: $0, value: $1", i, test_cases[i]));
     test_decimals.emplace_back(test_cases[i]);
     encoded_strings.push_back(test_decimals[i].EncodeToComparable());
@@ -236,7 +236,7 @@ TEST_F(DecimalTest, TestBigDecimalEncoding) {
   std::vector<std::string> encoded_strings;
   std::vector<Decimal> decoded_decimals;
   bool is_out_of_range = false;
-  for (int i = 0; i < test_cases.size(); i++) {
+  for (size_t i = 0; i < test_cases.size(); i++) {
     SCOPED_TRACE(Format("Index: $0, value: $1", i, test_cases[i]));
     test_decimals.emplace_back(test_cases[i]);
     encoded_strings.push_back(test_decimals[i].EncodeToSerializedBigDecimal(&is_out_of_range));

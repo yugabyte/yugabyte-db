@@ -40,13 +40,14 @@
 
 #include "yb/gutil/walltime.h"
 
-#include <stdio.h>
-#include <string.h>
-
 #if defined(__APPLE__)
 #include <mach/clock.h>
 #include <mach/mach.h>
 #endif  // defined(__APPLE__)
+
+#include <memory>
+
+#include <glog/logging.h>
 
 #if defined(__APPLE__)
 namespace walltime_internal {
@@ -76,28 +77,25 @@ void StringAppendStrftime(std::string* dst,
                           const struct tm* tm) {
   char space[1024];
 
-  int result = strftime(space, sizeof(space), format, tm);
+  size_t result = strftime(space, sizeof(space), format, tm);
 
-  if ((result >= 0) && (result < sizeof(space))) {
+  if (result > 0) {
     // It fit
     dst->append(space, result);
     return;
   }
 
-  int length = sizeof(space);
+  size_t length = sizeof(space);
   for (int sanity = 0; sanity < 5; ++sanity) {
     length *= 2;
-    auto buf = new char[length];
+    std::unique_ptr<char[]> buf(new char[length]);
 
-    result = strftime(buf, length, format, tm);
-    if ((result >= 0) && (result < length)) {
+    result = strftime(buf.get(), length, format, tm);
+    if (result > 0) {
       // It fit
-      dst->append(buf, result);
-      delete[] buf;
+      dst->append(buf.get(), result);
       return;
     }
-
-    delete[] buf;
   }
 
   // sanity failure
@@ -219,4 +217,46 @@ std::string LocalTimeAsString() {
   std::string ret;
   StringAppendStrftime(&ret, "%Y-%m-%d %H:%M:%S %Z", time(nullptr), true);
   return ret;
+}
+
+void GetThreadUserAndSysCpuTimeMicros(MicrosecondsInt64 *user, MicrosecondsInt64 *sys) {
+#if defined(__APPLE__)
+  // See https://www.gnu.org/software/hurd/gnumach-doc/Thread-Information.html
+  // and Chromium base/time/time_mac.cc.
+  task_t thread = mach_thread_self();
+  if (thread == MACH_PORT_NULL) {
+    LOG(WARNING) << "Failed to get mach_thread_self()";
+    return;
+  }
+
+  mach_msg_type_number_t thread_info_count = THREAD_BASIC_INFO_COUNT;
+  thread_basic_info_data_t thread_info_data;
+
+  kern_return_t result = thread_info(
+      thread,
+      THREAD_BASIC_INFO,
+      reinterpret_cast<thread_info_t>(&thread_info_data),
+      &thread_info_count);
+
+  if (result != KERN_SUCCESS) {
+    LOG(WARNING) << "Failed to get thread_info()";
+    return;
+  }
+
+  if (user) {
+    *user = thread_info_data.user_time.seconds * 1e6L + thread_info_data.user_time.microseconds;
+  }
+  if (sys) {
+    *sys = thread_info_data.system_time.seconds * 1e6L + thread_info_data.system_time.microseconds;
+  }
+#else
+  struct rusage usage;
+  CHECK_EQ(0, getrusage(RUSAGE_THREAD, &usage));
+  if (user) {
+    *user = usage.ru_utime.tv_sec * 1e6L + usage.ru_utime.tv_usec;
+  }
+  if (sys) {
+    *sys = usage.ru_stime.tv_sec * 1e6L + usage.ru_stime.tv_usec;
+  }
+#endif
 }

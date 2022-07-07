@@ -22,6 +22,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/ntp_clock.h"
+#include "yb/util/result.h"
 
 DEFINE_int32(master_backup_svc_queue_length, 50,
              "RPC queue length for master backup service");
@@ -59,19 +60,28 @@ Status Master::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   RETURN_NOT_OK(super::SetupMessengerBuilder(builder));
   if (!FLAGS_cert_node_filename.empty()) {
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        server::DefaultRootDir(*fs_manager_),
+        fs_manager_->GetDefaultRootDir(),
         FLAGS_cert_node_filename,
-        server::SecureContextType::kServerToServer,
+        server::SecureContextType::kInternal,
         builder));
   } else {
-    const string &hosts = !options_.server_broadcast_addresses.empty()
-                        ? options_.server_broadcast_addresses
-                        : options_.rpc_opts.rpc_bind_addresses;
     secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-        hosts, *fs_manager_, server::SecureContextType::kServerToServer, builder));
+        options_.HostsString(), *fs_manager_, server::SecureContextType::kInternal, builder));
   }
 
   return Status::OK();
+}
+
+Status Master::ReloadKeysAndCertificates() {
+  if (!secure_context_) {
+    return Status::OK();
+  }
+
+  return server::ReloadSecureContextKeysAndCertificates(
+        secure_context_.get(),
+        fs_manager_->GetDefaultRootDir(),
+        server::SecureContextType::kInternal,
+        options_.HostsString());
 }
 
 } // namespace enterprise

@@ -32,12 +32,12 @@
 #ifndef YB_UTIL_ROLLING_LOG_H
 #define YB_UTIL_ROLLING_LOG_H
 
+#include <memory>
 #include <string>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -75,13 +75,13 @@ class RollingLog {
   // Open the log.
   // It is optional to call this function. Append() will automatically open
   // the log as necessary if it is not open.
-  CHECKED_STATUS Open();
+  Status Open();
 
   // Set the size limit for the current and any future log files.
   //
   // There is no limit on the total number of previous log segments. We rely
   // on system utilities to clean up old logs to maintain some size limit.
-  void SetSizeLimitBytes(int64_t bytes);
+  void SetSizeLimitBytes(size_t bytes);
 
   // If compression is enabled, log files are compressed.
   // NOTE: this requires that the passed-in Env instance is the local file system.
@@ -95,22 +95,22 @@ class RollingLog {
   // Note that this is a synchronous API and causes potentially-blocking IO on the
   // current thread. However, this does not fsync() or otherwise ensure durability
   // of the appended data.
-  CHECKED_STATUS Append(GStringPiece data);
+  Status Append(GStringPiece data);
 
   // Close the log.
-  CHECKED_STATUS Close();
+  Status Close();
 
  private:
   std::string GetLogFileName(int sequence) const;
 
   // Compress the given path, writing a new file '<path>.gz'.
-  CHECKED_STATUS CompressFile(const std::string& path) const;
+  Status CompressFile(const std::string& path) const;
 
   Env* const env_;
   const std::string log_dir_;
   const std::string log_name_;
 
-  int64_t size_limit_bytes_;
+  size_t size_limit_bytes_;
 
   std::unique_ptr<WritableFile> file_;
   bool compress_after_close_;

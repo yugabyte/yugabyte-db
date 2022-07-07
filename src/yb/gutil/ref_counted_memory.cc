@@ -19,7 +19,6 @@
 
 #include "yb/gutil/ref_counted_memory.h"
 
-#include <stdlib.h>
 
 #include <glog/logging.h>
 

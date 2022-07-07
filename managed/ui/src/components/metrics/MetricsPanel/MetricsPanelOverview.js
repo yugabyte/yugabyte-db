@@ -2,11 +2,12 @@
 
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import { isNonEmptyObject, isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyArray, timeFormatXAxis } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import Measure from 'react-measure';
 import _ from 'lodash';
 import { METRIC_FONT } from '../MetricsConfig';
+import moment from 'moment';
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -30,7 +31,10 @@ export default class MetricsPanelOverview extends Component {
   }
 
   componentDidMount() {
-    const { metricKey } = this.props;
+    const {
+      metricKey,
+      customer: { currentUser }
+    } = this.props;
     const metric = _.cloneDeep(this.props.metric);
     if (isNonEmptyObject(metric)) {
       // TODO: send this data from backend.
@@ -43,7 +47,11 @@ export default class MetricsPanelOverview extends Component {
           });
         }
       });
-      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
+      metric.data = timeFormatXAxis(metric.data, currentUser.data.timezone);
+      metric.layout.xaxis.hoverformat = currentUser.data.timezone
+        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+        : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
+
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
       metric.layout.width = this.state.dimensions.width || 300;
@@ -120,12 +128,16 @@ export default class MetricsPanelOverview extends Component {
   }
 
   componentDidUpdate(prevProps, prevState) {
-    const { metricKey } = this.props;
+    const {
+      metricKey,
+      customer: { currentUser }
+    } = this.props;
     const metric = _.cloneDeep(this.props.metric);
     let max = 0;
     if (isNonEmptyObject(metric)) {
       // TODO: send this data from backend.
       metric.data.forEach(function (data) {
+        data.hovertemplate = '%{data.name}: %{y} at %{x} <extra></extra>';
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
@@ -133,6 +145,7 @@ export default class MetricsPanelOverview extends Component {
           });
         }
       });
+      metric.data = timeFormatXAxis(metric.data, currentUser.data.timezone);
     }
     if (max === 0) max = 1.01;
     if (!isNonEmptyArray(metric.data)) {

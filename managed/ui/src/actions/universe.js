@@ -2,6 +2,7 @@
 
 import axios from 'axios';
 import { ROOT_URL } from '../config';
+import Cookies from 'js-cookie';
 import { getCustomerEndpoint } from './common';
 
 // Create Universe
@@ -29,6 +30,14 @@ export const RESET_UNIVERSE_LIST = 'RESET_UNIVERSE_LIST';
 // Delete Universe
 export const DELETE_UNIVERSE = 'DELETE_UNIVERSE';
 export const DELETE_UNIVERSE_RESPONSE = 'DELETE_UNIVERSE_RESPONSE';
+
+// Pause Universe
+export const PAUSE_UNIVERSE = 'PAUSE_UNIVERSE';
+export const PAUSE_UNIVERSE_RESPONSE = 'PAUSE_UNIVERSE_RESPONSE';
+
+// Restart Universe
+export const RESTART_UNIVERSE = 'RESTART_UNIVERSE';
+export const RESTART_UNIVERSE_RESPONSE = 'RESTART_UNIVERSE_RESPONSE';
 
 // Read replicas
 export const ADD_READ_REPLICA = 'ADD_READ_REPLICA';
@@ -113,6 +122,16 @@ export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
 export const UPDATE_BACKUP_STATE = 'UPDATE_BACKUP_STATE';
 export const UPDATE_BACKUP_STATE_RESPONSE = 'UPDATE_BACKUP_STATE_RESPONSE';
 
+export const FETCH_SUPPORTED_RELEASES = 'FETCH_SUPPORTED_RELEASES';
+export const FETCH_SUPPORTED_RELEASES_RESPONSE = 'FETCH_SUPPORTED_RELEASES_RESPONSE';
+
+/**
+ *  Mapping from taskType to api route
+ * */
+const UPGRADE_TASKS = {
+  VMImage: 'vm'
+};
+
 export function createUniverse(formValues) {
   const customerUUID = localStorage.getItem('customerId');
   const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes`, formValues);
@@ -165,6 +184,22 @@ export function fetchUniverseInfoResponse(response) {
   };
 }
 
+export function fetchReleasesByProvider(pUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
+  return {
+    type: FETCH_SUPPORTED_RELEASES,
+    payload: request
+  };
+}
+
+export function fetchReleasesResponse(response) {
+  return {
+    type: FETCH_SUPPORTED_RELEASES_RESPONSE,
+    payload: response
+  };
+}
+
 export function fetchUniverseList() {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
@@ -202,9 +237,12 @@ export function resetUniverseList() {
   };
 }
 
-export function deleteUniverse(universeUUID, isForceDelete) {
+export function deleteUniverse(universeUUID, isForceDelete, isDeleteBackups) {
   const customerUUID = localStorage.getItem('customerId');
-  const deleteRequestPayload = { isForceDelete: isForceDelete };
+  const deleteRequestPayload = {
+    isForceDelete,
+    isDeleteBackups
+  };
   const request = axios.delete(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}`, {
     params: deleteRequestPayload
   });
@@ -217,6 +255,42 @@ export function deleteUniverse(universeUUID, isForceDelete) {
 export function deleteUniverseResponse(response) {
   return {
     type: DELETE_UNIVERSE_RESPONSE,
+    payload: response
+  };
+}
+
+export function pauseUniverse(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/pause`
+  );
+  return {
+    type: PAUSE_UNIVERSE,
+    payload: request
+  };
+}
+
+export function pauseUniverseResponse(response) {
+  return {
+    type: PAUSE_UNIVERSE_RESPONSE,
+    payload: response
+  };
+}
+
+export function restartUniverse(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
+  const request = axios.post(
+    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/resume`
+  );
+  return {
+    type: RESTART_UNIVERSE,
+    payload: request
+  };
+}
+
+export function restartUniverseResponse(response) {
+  return {
+    type: RESTART_UNIVERSE_RESPONSE,
     payload: response
   };
 }
@@ -324,10 +398,27 @@ export function closeUniverseDialog() {
 
 export function rollingUpgrade(values, universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
-  const request = axios.post(
-    `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade`,
-    values
-  );
+  const taskEndPoint = values.taskType.toLowerCase();
+
+  let request;
+  if (values.taskType === 'Certs') {
+    // This is to enable cert rotation for kubernetes universes
+    // For kubernetes universes we fallback to old modal
+    // But as we need to call the update_tls API we update the request accordingly
+    request = axios.post(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/update_tls`,
+      values
+    );
+  } else {
+    request = axios.post(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/upgrade/${
+        UPGRADE_TASKS[values.taskType] ?? taskEndPoint
+      }`,
+      values
+    );
+  }
+  delete values.taskType;
+
   return {
     type: ROLLING_UPGRADE,
     payload: request
@@ -457,7 +548,7 @@ export function resetMasterLeader() {
 
 export function checkIfUniverseExists(universeName) {
   const customerUUID = localStorage.getItem('customerId');
-  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find/${universeName}`;
+  const requestUrl = `${ROOT_URL}/customers/${customerUUID}/universes/find?name=${universeName}`;
   const request = axios.get(requestUrl);
   return {
     type: CHECK_IF_UNIVERSE_EXISTS,
@@ -636,9 +727,15 @@ export function updateBackupStateResponse(response) {
   };
 }
 
-export function fetchLiveQueries(universeUUID, cancelFn) {
-  const customerUUID = localStorage.getItem("customerId");
+export function fetchLiveQueries(universeUUID) {
+  const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/live_queries`;
+  return axios.get(endpoint);
+}
+
+export function fetchSlowQueries(universeUUID, cancelFn) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
   let request;
   if (cancelFn) {
     const CancelToken = axios.CancelToken;
@@ -652,20 +749,88 @@ export function fetchLiveQueries(universeUUID, cancelFn) {
   return request;
 }
 
-export function createAlertDefinition(universeUUID, data) {
+export function resetSlowQueries(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/alert_definitions`;
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
+  return axios.delete(endpoint);
+}
+
+export function getAlertTemplates(filter) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_templates`;
+  return axios.post(endpoint, filter).then((resp) => resp.data);
+}
+
+export function getAlertConfigurations(filter) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations/list`;
+  return axios.post(endpoint, filter).then((resp) => resp.data);
+}
+
+export function createAlertConfiguration(data) {
+  const customerUUID = localStorage.getItem('customerId');
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations`;
   return axios.post(endpoint, data);
 }
 
-export function getAlertDefinition(universeUUID, alertName) {
+export function updateAlertConfiguration(data) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${universeUUID}/${alertName}`;
-  return axios.get(endpoint).then(resp => resp.data);
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_configurations/${data.uuid}`;
+  return axios.put(endpoint, data);
 }
 
-export function updateAlertDefinition(alertDefinitionUUID, data) {
+export function downloadLogs(universeUUID, nodeName) {
   const customerUUID = localStorage.getItem('customerId');
-  const endpoint = `${ROOT_URL}/customers/${customerUUID}/alert_definitions/${alertDefinitionUUID}`;
-  return axios.put(endpoint, data);
+  const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/${nodeName}/download_logs`;
+  window.open(endpoint, '_blank');
+}
+
+//G-Flags
+export async function fetchGFlags(dbVersion, params) {
+  try {
+    const request = await axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/list_gflags`, {
+      params
+    });
+    return request;
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+export async function fetchParticularFlag(dbVersion, params) {
+  try {
+    const request = await axios.get(`${ROOT_URL}/metadata/version/${dbVersion}/gflag`, {
+      params
+    });
+    return request;
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+export async function validateGFlags(dbVersion, payload) {
+  try {
+    const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+    if (apiToken && apiToken !== '') {
+      axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
+    }
+    axios.defaults.headers.common['Csrf-Token'] = Cookies.get('csrfCookie');
+    const request = await axios.post(
+      `${ROOT_URL}/metadata/version/${dbVersion}/validate_gflags`,
+      payload
+    );
+    return request;
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+//Fetch releases by provider
+export async function fetchSupportedReleases(pUUID) {
+  const cUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
+  } catch (e) {
+    throw e.response.data;
+  }
 }

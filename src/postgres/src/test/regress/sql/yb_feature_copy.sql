@@ -33,6 +33,9 @@ COPY x (a, b, c, d, e) from stdin;
 10005	26	36	46	56
 \.
 
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+
 -- non-existent column in column list: should fail
 COPY x (xyz) from stdin;
 
@@ -195,6 +198,9 @@ COPY t FROM stdin;
 4	4
 \.
 
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
+
 -- should fail, non unique index
 COPY t FROM stdin;
 1	1
@@ -202,6 +208,9 @@ COPY t FROM stdin;
 3	2
 4	4
 \.
+
+SELECT relid::regclass, command, yb_status, type, bytes_processed, bytes_total,
+          tuples_processed, tuples_excluded FROM pg_stat_progress_copy;
 
 SELECT COUNT(*) FROM t;
 
@@ -227,6 +236,7 @@ copy q from stdin;
 copy q from stdin;
 3	0
 \.
+select * from q ORDER BY a,b;
 
 -- Test before and after row insert trigger on multiple partition tables
 create table s (a int not null, b int) partition by list (a);
@@ -252,6 +262,8 @@ copy s from stdin;
 6	10
 \.
 
+select * from s ORDER BY a,b;
+
 -- Test before and after row insert trigger on nested partition with depth 2 and constraint
 create table r (a int check (a > 0), b int) partition by range(a);
 create table r1 partition of r for values from (1) to (5) partition by list (b);
@@ -269,6 +281,8 @@ copy r from stdin;
 copy r from stdin;
 5	3
 \.
+
+select * from r ORDER BY a,b;
 
 -- Test before and after row insert trigger on nested partition with depth 3 and constraint
 create table w (a int check (a > 0), b int) partition by list (a);
@@ -298,6 +312,8 @@ copy w from stdin;
 2	6
 \.
 
+select * from w ORDER BY a,b;
+
 -- Test before row insert trigger with check constraint on partition table
 create table p (a int check (a > 0), b int) partition by list (a);
 create table p1 partition of p for values in (1);
@@ -311,6 +327,8 @@ copy p from stdin;
 copy p from stdin;
 0	1
 \.
+
+select * from p ORDER BY a,b;
 
 -- Test index and auto generated column on partition table
 create table u (a serial, b int) partition by list (a);
@@ -330,6 +348,8 @@ copy u (b) from stdin;
 copy u from stdin;
 1	9
 \.
+
+select * from u ORDER BY a,b;
 
 -- Test after row insert trigger with check constraint, index, and auto generated column on partition table
 create table v (a int default 1 check (a > 0), b serial) partition by list (a);
@@ -353,6 +373,63 @@ copy v (b) from stdin;
 5
 \.
 
+select * from v ORDER BY a,b;
+
+-- Test various copy options
+create table copy_options (a int primary key, b int);
+
+-- skip
+copy copy_options from stdin with (format csv, skip 2);
+1,1
+2,2
+3,3
+4,4
+5,5
+\.
+
+select * from copy_options order by a;
+
+-- skip with invalid rows being included
+truncate copy_options;
+copy copy_options from stdin with (format csv, skip 3);
+1
+2
+##,##
+4,4
+5,5
+\.
+
+select * from copy_options order by a;
+
+-- replace
+truncate copy_options;
+insert into copy_options (a, b) values (1, 0), (2, 1), (3, 2);
+select a, b from copy_options order by a;
+
+copy copy_options from stdin with (format csv, replace);
+1,1
+2,2
+3,3
+4,4
+5,5
+\.
+
+select * from copy_options order by a;
+
+-- DISABLE_FK_CHECK
+create table ref_table(a int primary key);
+insert into ref_table(a) values (1), (2), (3);
+create table main_table(a int references ref_table, b int);
+copy main_table from stdin with (format csv, disable_fk_check);
+1,1
+2,2
+3,3
+4,4
+5,5
+\.
+
+select * from main_table order by a;
+
 -- clean up
 DROP TABLE forcetest;
 DROP TABLE x;
@@ -368,3 +445,6 @@ DROP TABLE w;
 DROP TABLE p;
 DROP TABLE u;
 DROP TABLE v;
+DROP TABLE copy_options;
+DROP TABLE main_table;
+DROP TABLE ref_table;

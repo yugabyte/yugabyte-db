@@ -1,18 +1,18 @@
 import React, { useRef, useState } from 'react';
-import { useQuery } from 'react-query';
+import { useQuery, useQueryClient } from 'react-query';
 import * as Yup from 'yup';
 import { Field } from 'formik';
 import { YBButton, YBFormInput, YBFormToggle } from '../../common/forms/fields';
 import { YBModalForm } from '../../common/forms';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import {
-  createAlertDefinition,
-  getAlertDefinition,
-  updateAlertDefinition
+  createAlertConfiguration,
+  getAlertConfigurations,
+  getAlertTemplates,
+  updateAlertConfiguration
 } from '../../../actions/universe';
 
-const ALERT_NAME = 'Replication Lag Alert';
-const ALERT_TEMPLATE = 'REPLICATION_LAG';
+const ALERT_NAME = 'Replication Lag';
 const DEFAULT_THRESHOLD = 180000;
 
 const DEFAULT_FORM_VALUE = {
@@ -29,33 +29,34 @@ const validationSchema = Yup.object().shape({
   })
 });
 
-const parseThresholdFromQuery = (query) => {
-  const threshold = query.split('>').pop().trim();
-  return isNaN(threshold) ? DEFAULT_THRESHOLD : threshold;
-};
-
 export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
   const formik = useRef();
   const [isModalVisible, setModalVisible] = useState(false);
-  const [alertDefinitionUUID, setAlertDefinitionUUID] = useState(null);
+  const [alertConfigurationUUID, setAlertConfigurationUUID] = useState(null);
   const [submissionError, setSubmissionError] = useState();
-
+  const configurationFilter = {
+      name: ALERT_NAME,
+      targetUuid: universeUUID
+  }
+  const queryClient = useQueryClient();
   const { isFetching } = useQuery(
-    ['getAlertDefinition', universeUUID, ALERT_NAME],
-    () => getAlertDefinition(universeUUID, ALERT_NAME),
+    ['getAlertConfigurations', configurationFilter],
+    () => getAlertConfigurations(configurationFilter),
     {
-      retry: false, // no need to retry a failed query as 400 response is OK when there's no alert definition yet
-      refetchOnWindowFocus: false,
       enabled: isModalVisible,
       onSuccess: (data) => {
-        setAlertDefinitionUUID(data.uuid);
+        if(Array.isArray(data) && data.length > 0) {
+           const configuration = data[0];
+           setAlertConfigurationUUID(configuration.uuid);
 
-        // update form value via workaround as initial form value inside <YBModalForm> is set when
-        // it rendered for the first time and we don't have an API response at that time yet
-        formik.current.setValues({
-          enableAlert: data.isActive,
-          lagThreshold: parseThresholdFromQuery(data.query)
-        });
+           // update form value via workaround as initial form value inside <YBModalForm> is set when
+           // it rendered for the first time and we don't have an API response at that time yet
+           formik.current.setValues({
+             enableAlert: configuration.active,
+             lagThreshold: configuration.thresholds.SEVERE.threshold
+           });
+
+        }
       }
     }
   );
@@ -73,22 +74,29 @@ export const ReplicationAlertModalBtn = ({ universeUUID, disabled }) => {
   };
 
   const submit = async (values, formikBag) => {
-    const payload = {
-      name: ALERT_NAME,
-      template: ALERT_TEMPLATE,
-      isActive: values.enableAlert,
-      value: values.lagThreshold
+    const templateFilter = {
+       name: ALERT_NAME
+    };
+    const alertTemplates = await getAlertTemplates(templateFilter);
+    const template = alertTemplates[0]
+    template.active = values.enableAlert;
+    template.thresholds.SEVERE.threshold = values.lagThreshold;
+    template.target = {
+      all: false,
+      uuids: [universeUUID]
     };
 
     try {
-      if (alertDefinitionUUID) {
-        await updateAlertDefinition(alertDefinitionUUID, payload);
+      if (alertConfigurationUUID) {
+        template.uuid = alertConfigurationUUID;
+        await updateAlertConfiguration(template);
       } else {
-        await createAlertDefinition(universeUUID, payload);
+        await createAlertConfiguration(template);
       }
 
       formikBag.setSubmitting(false);
       toggleModalVisibility();
+      queryClient.invalidateQueries(['getConfiguredThreshold',configurationFilter]);
     } catch (error) {
       setSubmissionError(error.message);
       formikBag.setSubmitting(false);

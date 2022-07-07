@@ -3,17 +3,13 @@ title: Explore YugabyteDB sample applications
 headerTitle: Explore sample applications
 linkTitle: Explore sample apps
 description: Explore sample applications running on YugabyteDB.
-headcontent: 
 image: /images/section_icons/index/develop.png
-aliases:
-  - /stable/quick-start/run-sample-apps/
-  - /quick-start/run-sample-apps/
-block_indexing: true
 menu:
   stable:
     identifier: explore-sample-apps
     parent: develop
     weight: 581
+type: docs
 ---
 
 After [creating a local cluster](../../quick-start/create-local-cluster/), follow the instructions below to run the Yugastore application.
@@ -49,15 +45,15 @@ After running Yugastore, Yugabyte recommend running the [IoT Fleet Management](.
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/run-sample-apps.md" /%}}
+  {{% includeMarkdown "binary/run-sample-apps.md" %}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/run-sample-apps.md" /%}}
+  {{% includeMarkdown "binary/run-sample-apps.md" %}}
   </div>
    <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/run-sample-apps.md" /%}}
+  {{% includeMarkdown "docker/run-sample-apps.md" %}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/run-sample-apps.md" /%}}
+  {{% includeMarkdown "kubernetes/run-sample-apps.md" %}}
   </div>
 </div>

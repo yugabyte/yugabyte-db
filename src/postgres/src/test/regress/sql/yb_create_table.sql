@@ -519,14 +519,16 @@ set yb_enable_create_with_table_oid=1;
 create table with_invalid_table_oid (a int) with (table_oid = 0);
 create table with_invalid_table_oid (a int) with (table_oid = -1);
 create table with_invalid_table_oid (a int) with (table_oid = 123);
+create table with_invalid_table_oid (a int) with (table_oid = 4294967296);
 create table with_invalid_table_oid (a int) with (table_oid = 'test');
 
-create table with_table_oid (a int) with (table_oid = 1234567);
+create table with_table_oid (a int) with (table_oid = 4294967295);
 select relname, oid from pg_class where relname = 'with_table_oid';
 
-create table with_table_oid_duplicate (a int) with (table_oid = 1234567);
+create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
 
 -- Test temp tables with (table_oid = x)
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 begin;
 create temp table with_table_oid_temp (a int) with (table_oid = 1234568) on commit drop;
 select relname, oid from pg_class where relname = 'with_table_oid_temp';
@@ -540,3 +542,53 @@ select relname, oid from pg_class where relname = 'with_table_oid_2';
 -- Test with session variable off
 set yb_enable_create_with_table_oid=0;
 create table with_table_oid_variable_false (a int) with (table_oid = 55555);
+RESET yb_enable_create_with_table_oid;
+
+-- CREATE TABLE with implicit UNIQUE INDEX shouldn't spout a notice about it
+-- being nonconcurrent.
+BEGIN;
+CREATE TABLE tab_with_unique (i int, UNIQUE (i));
+COMMIT;
+
+-- Test temp table/view are automatically dropped.
+\c yugabyte
+create temporary table temp_tab(a int);
+create temporary view temp_view as select * from temp_tab;
+select count(*) from pg_class where relname = 'temp_tab';
+select count(*) from pg_class where relname = 'temp_view';
+\c yugabyte
+-- Wait some time for the last session to finish dropping temp table/view automatically.
+select pg_sleep(5);
+select count(*) from pg_class where relname = 'temp_tab';
+select count(*) from pg_class where relname = 'temp_view';
+
+-- Test EXPLAIN ANALYZE + CREATE TABLE AS. Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
+END$$;
+
+SELECT * FROM tbl_as_1;
+
+-- Test EXPLAIN ANALYZE on a table containing secondary index with a wide column.
+-- Use EXECUTE to hide the output since it won't be stable.
+CREATE TABLE wide_table (id INT, data TEXT);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+
+DROP TABLE wide_table;
+
+-- Apply the same check for varchar column
+CREATE TABLE wide_table (id INT, data VARCHAR);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+
+DROP TABLE wide_table;

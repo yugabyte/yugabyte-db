@@ -31,7 +31,7 @@
 //
 package org.yb.client;
 
-import static org.yb.Common.TableType;
+import static org.yb.CommonTypes.TableType;
 
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;

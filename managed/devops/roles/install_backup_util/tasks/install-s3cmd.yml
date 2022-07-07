@@ -6,64 +6,128 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-- block:
-    - name: s3cmd | Copy setuptools from {{ package_path }}
-      synchronize:
-        src: "{{ package_path }}/setuptools-44.1.1"
-        dest: "/usr"
-      when: remote_package_path is not defined or remote_package_path == ''
+- set_fact:
+    s3cmd_cur_version: "{{ util_cur_version.stdout | regex_search('s3cmd version (.+)', '\\1')\
+      | first }}"
+  when: util_exists.rc == 0
 
+- debug:
+    msg: "s3cmd current version {{ s3cmd_cur_version }} new version {{ s3cmd_version }}"
+  when: util_exists.rc == 0
+
+- block:
+    - set_fact:
+        setuptools_package_path: "/usr/local/setuptools-44.1.1"
+
+    - set_fact:
+        prefix: "--prefix /usr"
+      when: ansible_os_family != "Debian"
+
+    - set_fact:
+        prefix: ""
+      when: ansible_os_family == "Debian"
+
+    - set_fact:
+        python_interpreter: "python2"
+
+    # in case of changed dependencies - create purging tasks for reprovisioning
     - name: s3cmd | Copy and unarchive setuptools from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/setuptools-44.1.1.tar.gz"
-        dest: "/usr"
+        dest: "/usr/local"
+        creates: "{{ setuptools_package_path }}"
         remote_src: "{{ is_remote }}"
-      when: remote_package_path is defined and remote_package_path != ''
 
     - set_fact:
-        python_magic_package_path: "/usr/python-magic-0.4.18"
+        python_magic_package_path: "/usr/local/python-magic-0.4.18"
 
     - name: s3cmd | Copy and unarchive python magic from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/python-magic-0.4.18.tar.gz"
-        dest: "/usr"
+        dest: "/usr/local"
         creates: "{{ python_magic_package_path }}"
         remote_src: "{{ is_remote }}"
 
     - set_fact:
-        python_dateutil_package_path: "/usr/python-dateutil-2.8.1"
+        python_dateutil_package_path: "/usr/local/python-dateutil-2.8.1"
 
     - name: s3cmd | Copy and unarchive dateutil from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/python-dateutil-2.8.1.tar.gz"
-        dest: "/usr"
+        dest: "/usr/local"
         creates: "{{ python_dateutil_package_path }}"
         remote_src: "{{ is_remote }}"
 
     - set_fact:
-        s3cmd_package_path: "/usr/{{ s3cmd_package_name }}"
+        s3cmd_package_path: "/usr/local/{{ s3cmd_package_name }}"
 
     - name: s3cmd | Copy and unarchive {{ s3cmd_package }} from {{ package_path }}
       unarchive:
         src: "{{ package_path }}/{{ s3cmd_package }}"
-        dest: "/usr"
+        dest: "/usr/local"
         creates: "{{ s3cmd_package_path }}"
         remote_src: "{{ is_remote }}"
 
+    - set_fact:
+        setuptools_scm_package_path: "/usr/local/setuptools_scm-1.17.0"
+
+    - name: s3cmd | Copy and unarchive setuptools_scm from {{ package_path }}
+      unarchive:
+        src: "{{ package_path }}/setuptools_scm-1.17.0.tar.gz"
+        dest: "/usr/local"
+        creates: "{{ setuptools_scm_package_path }}"
+        remote_src: "{{ is_remote }}"
+
+    - name: Extract the installed python version on the host machine
+      raw: 'which python2 2> /dev/null || which python3 2> /dev/null'
+      register: py_interpreter
+      changed_when: py_interpreter.stdout != ""
+
+    - name: set python interpreter as python 3 if python2 is not present.
+      set_fact:
+        python_interpreter: "python3"
+      when: py_interpreter.stdout.find("python3") != -1
+
+    - name: Extract the current python version on db host.
+      raw: '{{ python_interpreter }} --version'
+      register: py_version
+      changed_when: py_version.stdout != ""
+
+    - name: Download python3-distutils required for setup.py on python3 installed OS
+      ansible.builtin.package:
+        name: python3-distutils
+        state: present
+      when: py_version.stdout is match("Python 3.") and ansible_os_family == "Debian"
+
     - name: s3cmd | Install setuptools
-      command: "chdir=/usr/setuptools-44.1.1 python setup.py install"
+      raw: "cd {{ setuptools_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Install python magic
-      command: "chdir={{ python_magic_package_path }} python setup.py install"
+      raw: "cd {{ python_magic_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
+
+    - name: s3cmd | Install setuptools_scm
+      raw: "cd {{ setuptools_scm_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
 
     - name: s3cmd | Build dateutil
-      command: "chdir={{ python_dateutil_package_path }} python setup.py build"
+      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py build"
 
     - name: s3cmd | Install dateutil
-      command: "chdir={{ python_dateutil_package_path }} python setup.py install"
+      raw: "cd {{ python_dateutil_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
+      environment:
+        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
+                      {{ setuptools_scm_package_path }}"
 
     - name: s3cmd | Install s3cmd
-      command: "chdir={{ s3cmd_package_path }} python setup.py install"
+      raw: "cd {{ s3cmd_package_path }} && umask 0022 && {{ python_interpreter }} \
+             setup.py install {{ prefix }}"
+      environment:
+        PYTHONPATH: "{{ setuptools_package_path }}:{{ python_magic_package_path }}:\
+                     {{ setuptools_scm_package_path }}:{{ python_dateutil_package_path }}"
 
     - name: s3cmd | Create symlinks to {{ bin_path }}
       file:
@@ -71,3 +135,6 @@
         path: "{{ bin_path }}/s3cmd"
         state: link
         force: yes
+      # We don't want to symlink on db hosts on which python3 is used rather than python2.
+      when: py_version.stdout is match("Python 2.")
+  when: util_exists.rc != 0 or s3cmd_version != s3cmd_cur_version

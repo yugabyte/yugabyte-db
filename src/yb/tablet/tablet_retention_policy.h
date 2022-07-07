@@ -14,7 +14,8 @@
 #ifndef YB_TABLET_TABLET_RETENTION_POLICY_H_
 #define YB_TABLET_TABLET_RETENTION_POLICY_H_
 
-#include "yb/docdb/docdb_compaction_filter.h"
+#include "yb/docdb/docdb_compaction_context.h"
+
 #include "yb/server/clock.h"
 
 #include "yb/tablet/tablet_fwd.h"
@@ -22,11 +23,15 @@
 namespace yb {
 namespace tablet {
 
+using AllowedHistoryCutoffProvider = std::function<HybridTime(RaftGroupMetadata*)>;
+
 // History retention policy used by a tablet. It is based on pending reads and a fixed retention
 // interval configured by the user.
 class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
  public:
-  explicit TabletRetentionPolicy(server::ClockPtr clock, const RaftGroupMetadata* metadata);
+  explicit TabletRetentionPolicy(
+      server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
+      RaftGroupMetadata* metadata);
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
 
@@ -43,7 +48,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
-  CHECKED_STATUS RegisterReaderTimestamp(HybridTime timestamp);
+  Status RegisterReaderTimestamp(HybridTime timestamp);
   void UnregisterReaderTimestamp(HybridTime timestamp);
 
   void EnableHistoryCutoffPropagation(bool value);
@@ -53,7 +58,7 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   HybridTime EffectiveHistoryCutoff() REQUIRES(mutex_);
 
   // Check proposed history cutoff against other restrictions (for instance min reading timestamp),
-  // and returns most close value that satisfy them.
+  // and returns most close value that satisfies them.
   HybridTime SanitizeHistoryCutoff(HybridTime proposed_history_cutoff) REQUIRES(mutex_);
 
   const std::string& LogPrefix() const {
@@ -61,7 +66,8 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   }
 
   const server::ClockPtr clock_;
-  const RaftGroupMetadata& metadata_;
+  const AllowedHistoryCutoffProvider allowed_history_cutoff_provider_;
+  RaftGroupMetadata& metadata_;
   const std::string log_prefix_;
 
   mutable std::mutex mutex_;

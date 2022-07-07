@@ -26,12 +26,20 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/common/ql_rowblock.h"
+
+#include "yb/gutil/bind.h"
+
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
+
 #include "yb/util/async_util.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/result.h"
 #include "yb/util/string_util.h"
+
+#include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_service.h"
 #include "yb/yql/cql/ql/util/statement_params.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -101,7 +109,8 @@ const char* SYSTEM_QUERIES[] = {
   "SELECT peer, data_center, rack, release_version, rpc_address FROM system.peers",
   "SELECT peer, data_center, rack, release_version, rpc_address, tokens FROM system.peers",
   "SELECT data_center, rack, release_version FROM system.local WHERE key='local'",
-  "SELECT data_center, rack, release_version, partitioner, tokens FROM system.local WHERE key='local'",
+  ("SELECT data_center, rack, release_version, partitioner, tokens FROM "
+       "system.local WHERE key='local'"),
   "SELECT keyspace_name, table_name, start_key, end_key, replica_addresses FROM system.partitions",
 
   "SELECT * FROM system.local WHERE key='local'",

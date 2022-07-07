@@ -30,6 +30,7 @@
 #include "nodes/parsenodes.h"
 #include "storage/lock.h"
 #include "utils/relcache.h"
+#include "tcop/utility.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
@@ -44,7 +45,7 @@ extern void YBCReserveOids(Oid dboid, Oid next_oid, uint32 count, Oid *begin_oid
 
 /*  Tablegroup Functions ------------------------------------------------------------------------ */
 
-extern void YBCCreateTablegroup(Oid grpoid);
+extern void YBCCreateTablegroup(Oid grpoid, Oid tablespace_oid);
 
 extern void YBCDropTablegroup(Oid grpoid);
 
@@ -55,11 +56,14 @@ extern void YBCCreateTable(CreateStmt *stmt,
 						   TupleDesc desc,
 						   Oid relationId,
 						   Oid namespaceId,
-						   Oid tablegroupId);
+						   Oid tablegroupId,
+						   Oid colocationId,
+						   Oid tablespaceId,
+						   Oid matviewPgTableId);
 
-extern void YBCDropTable(Oid relationId);
+extern void YBCDropTable(Relation rel);
 
-extern void YBCTruncateTable(Relation rel);
+extern void YbTruncate(Relation rel);
 
 extern void YBCCreateIndex(const char *indexName,
 						   IndexInfo *indexInfo,
@@ -70,14 +74,29 @@ extern void YBCCreateIndex(const char *indexName,
 						   Relation rel,
 						   OptSplit *split_options,
 						   const bool skip_index_backfill,
-						   Oid tablegroupId);
+						   Oid tablegroupId,
+						   Oid colocationId,
+						   Oid tablespaceId);
 
-extern void YBCDropIndex(Oid relationId);
+extern void YBCDropIndex(Relation index);
 
-extern YBCPgStatement YBCPrepareAlterTable(AlterTableStmt* stmt, Relation rel, Oid relationId);
+extern YBCPgStatement YBCPrepareAlterTable(List** subcmds,
+										   int subcmds_size,
+										   Oid relationId,
+										   YBCPgStatement *rollbackHandle,
+										   bool isPartitionOfAlteredTable);
 
 extern void YBCExecAlterTable(YBCPgStatement handle, Oid relationId);
 
 extern void YBCRename(RenameStmt* stmt, Oid relationId);
+
+extern void YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest);
+
+extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
+
+extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
+
+/*  System Validation -------------------------------------------------------------------------- */
+extern void YBCValidatePlacement(const char *placement_info);
 
 #endif

@@ -21,13 +21,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <cstdlib>
+#include <math.h>
 
 #include "yb/rocksdb/filter_policy.h"
 
-#include "yb/rocksdb/table/block_based_filter_block.h"
-#include "yb/rocksdb/table/full_filter_block.h"
-#include "yb/rocksdb/table/fixed_size_filter_block.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/util/slice.h"
@@ -43,19 +40,19 @@ typedef FilterPolicy::FilterType FilterType;
 namespace {
 static const double LOG2 = log(2);
 
-inline void AddHash(uint32_t h, char* data, uint32_t num_lines, uint32_t total_bits,
+inline void AddHash(uint32_t h, char* data, size_t num_lines, size_t total_bits,
     size_t num_probes) {
   DCHECK_GT(num_lines, 0);
   DCHECK_GT(total_bits, 0);
   DCHECK_EQ(num_lines % 2, 1);
 
   const uint32_t delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
-  uint32_t b = (h % num_lines) * (CACHE_LINE_SIZE * 8);
+  size_t b = (h % num_lines) * (CACHE_LINE_SIZE * 8);
 
   for (uint32_t i = 0; i < num_probes; ++i) {
     // Since CACHE_LINE_SIZE is defined as 2^n, this line will be optimized
     // to a simple operation by compiler.
-    const uint32_t bitpos = b + (h % (CACHE_LINE_SIZE * 8));
+    const size_t bitpos = b + (h % (CACHE_LINE_SIZE * 8));
     assert(bitpos < total_bits);
     data[bitpos / 8] |= (1 << (bitpos % 8));
 
@@ -416,11 +413,11 @@ class FixedSizeFilterBitsBuilder : public FilterBitsBuilder {
   FixedSizeFilterBitsBuilder(const FixedSizeFilterBitsBuilder&) = delete;
   void operator=(const FixedSizeFilterBitsBuilder&) = delete;
 
-  FixedSizeFilterBitsBuilder(uint32_t total_bits, double error_rate)
+  FixedSizeFilterBitsBuilder(size_t total_bits, double error_rate)
       : error_rate_(error_rate) {
     DCHECK_GT(error_rate, 0);
     DCHECK_GT(total_bits, 0);
-    num_lines_ = yb::ceil_div(total_bits, CACHE_LINE_SIZE * 8);
+    num_lines_ = yb::ceil_div<size_t>(total_bits, CACHE_LINE_SIZE * 8);
     // AddHash implementation gives much higher false positive rate when num_lines_ is even, so
     // make sure it is odd.
     if (num_lines_ % 2 == 0) {
@@ -475,8 +472,8 @@ class FixedSizeFilterBitsBuilder : public FilterBitsBuilder {
   std::unique_ptr<char[]> data_;
   size_t max_keys_;
   size_t keys_added_;
-  uint32_t total_bits_; // total number of bits used for filter (excluding metadata)
-  uint32_t num_lines_;
+  size_t total_bits_; // total number of bits used for filter (excluding metadata)
+  size_t num_lines_;
   double error_rate_;
   size_t num_probes_; // number of hash functions
 };
@@ -492,7 +489,7 @@ class FixedSizeFilterBitsReader : public FullFilterBitsReader {
 
 class FixedSizeFilterPolicy : public FilterPolicy {
  public:
-  explicit FixedSizeFilterPolicy(uint32_t total_bits, double error_rate, Logger* logger)
+  explicit FixedSizeFilterPolicy(size_t total_bits, double error_rate, Logger* logger)
       : total_bits_(total_bits),
         error_rate_(error_rate),
         logger_(logger) {
@@ -528,8 +525,7 @@ class FixedSizeFilterPolicy : public FilterPolicy {
 
 
  private:
-
-  uint32_t total_bits_;
+  size_t total_bits_;
   double error_rate_;
   Logger* logger_;
 };
@@ -542,7 +538,7 @@ const FilterPolicy* NewBloomFilterPolicy(int bits_per_key,
   // TODO - replace by NewFixedSizeFilterPolicy and check tests.
 }
 
-const FilterPolicy* NewFixedSizeFilterPolicy(uint32_t total_bits,
+const FilterPolicy* NewFixedSizeFilterPolicy(size_t total_bits,
                                              double error_rate,
                                              Logger* logger) {
   return new FixedSizeFilterPolicy(total_bits, error_rate, logger);

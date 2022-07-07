@@ -12,6 +12,8 @@
 //
 package com.yugabyte.jedis;
 
+import static org.yb.AssertionWrappers.*;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -20,13 +22,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.List;
-
-import static junit.framework.TestCase.assertEquals;
-import static junit.framework.TestCase.assertFalse;
-import static junit.framework.TestCase.assertNotNull;
-import static junit.framework.TestCase.assertNull;
-import static junit.framework.TestCase.assertTrue;
-import static org.yb.AssertionWrappers.fail;
 
 import org.yb.YBParameterizedTestRunner;
 
@@ -41,7 +36,7 @@ public class TestYBJedisTSRevRangeByTime extends BaseJedisTest {
 
   // Run each test with Jedis, JedisCluster, and YBJedis clients.
   @Parameterized.Parameters
-  public static Collection jedisClients() {
+  public static List<JedisClientType> jedisClients() {
     return Arrays.asList(JedisClientType.JEDIS, JedisClientType.JEDISCLUSTER,
         JedisClientType.YBJEDIS);
   }

@@ -16,71 +16,73 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/rocksdb/db.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
-#include "yb/common/ql_storage_interface.h"
-
-#include "yb/docdb/doc_key.h"
+#include "yb/docdb/key_bounds.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
+#include "yb/docdb/ql_storage_interface.h"
 
 namespace yb {
 namespace docdb {
 
 // Implementation of YQLStorageIf with rocksdb as a backend. This is what all of our QL tables use.
-class QLRocksDBStorage : public common::YQLStorageIf {
+class QLRocksDBStorage : public YQLStorageIf {
  public:
   explicit QLRocksDBStorage(const DocDB& doc_db);
 
   //------------------------------------------------------------------------------------------------
   // CQL Support.
-  CHECKED_STATUS GetIterator(const QLReadRequestPB& request,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const common::QLScanSpec& spec,
-                             std::unique_ptr<common::YQLRowwiseIteratorIf> *iter) const override;
+  Status GetIterator(
+      const QLReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLScanSpec& spec,
+      std::unique_ptr<YQLRowwiseIteratorIf> *iter) const override;
 
-  CHECKED_STATUS BuildYQLScanSpec(
+  Status BuildYQLScanSpec(
       const QLReadRequestPB& request,
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<common::QLScanSpec>* spec,
-      std::unique_ptr<common::QLScanSpec>* static_row_spec) const override;
+      std::unique_ptr<QLScanSpec>* spec,
+      std::unique_ptr<QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
-  CHECKED_STATUS CreateIterator(const Schema& projection,
-                                const Schema& schema,
-                                const TransactionOperationContextOpt& txn_op_context,
-                                CoarseTimePoint deadline,
-                                const ReadHybridTime& read_time,
-                                common::YQLRowwiseIteratorIf::UniPtr* iter) const override;
+  Status CreateIterator(
+      const Schema& projection,
+      std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  CHECKED_STATUS InitIterator(common::YQLRowwiseIteratorIf* doc_iter,
+  Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
                               const PgsqlReadRequestPB& request,
                               const Schema& schema,
                               const QLValuePB& ybctid) const override;
 
-  CHECKED_STATUS GetIterator(const PgsqlReadRequestPB& request,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const DocKey& start_doc_key,
-                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override;
+  Status GetIterator(
+      const PgsqlReadRequestPB& request,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const DocKey& start_doc_key,
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
-  CHECKED_STATUS GetIterator(uint64 stmt_id,
-                             const Schema& projection,
-                             const Schema& schema,
-                             const TransactionOperationContextOpt& txn_op_context,
-                             CoarseTimePoint deadline,
-                             const ReadHybridTime& read_time,
-                             const QLValuePB& ybctid,
-                             common::YQLRowwiseIteratorIf::UniPtr* iter) const override;
+  Status GetIterator(
+      uint64 stmt_id,
+      const Schema& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
+      const TransactionOperationContext& txn_op_context,
+      CoarseTimePoint deadline,
+      const ReadHybridTime& read_time,
+      const QLValuePB& ybctid,
+      YQLRowwiseIteratorIf::UniPtr* iter) const override;
 
  private:
   const DocDB doc_db_;

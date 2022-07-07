@@ -2,12 +2,11 @@
 
 package com.yugabyte.yw.models;
 
+import java.io.Serializable;
 import java.util.Date;
 import java.util.UUID;
-
-import java.io.Serializable;
-import javax.persistence.Entity;
 import javax.persistence.Embeddable;
+import javax.persistence.Entity;
 
 @Entity
 @Embeddable

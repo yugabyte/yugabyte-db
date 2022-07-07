@@ -1,1 +1,0 @@
-https://github.com/yugabyte/yugabyte-db-thirdparty/releases/download/v20201111063103-7047513803-macos/yugabyte-db-thirdparty-v20201111063103-7047513803-macos.tar.gz

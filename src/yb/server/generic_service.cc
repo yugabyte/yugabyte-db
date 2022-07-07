@@ -29,23 +29,43 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/server/generic_service.h"
 
+#include <functional>
+#include <map>
+#include <mutex>
+#include <set>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 #include <gflags/gflags.h>
+#include <gflags/gflags_declare.h>
+#include <glog/logging.h>
 
+#include "yb/gutil/atomicops.h"
+#include "yb/gutil/callback_forward.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/macros.h"
 #include "yb/gutil/map-util.h"
+#include "yb/gutil/port.h"
 #include "yb/rpc/rpc_context.h"
 #include "yb/server/clock.h"
-#include "yb/server/hybrid_clock.h"
 #include "yb/server/server_base.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_fwd.h"
 
 using std::string;
 using std::unordered_set;
+
+DECLARE_string(flagfile);
 
 #ifdef COVERAGE_BUILD
 extern "C" void __gcov_flush(void);
@@ -77,9 +97,9 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
   }
 
   // Validate that the flag is runtime-changeable.
-  unordered_set<string> tags;
+  unordered_set<FlagTag> tags;
   GetFlagTags(req->flag(), &tags);
-  if (!ContainsKey(tags, "runtime")) {
+  if (!ContainsKey(tags, FlagTag::kRuntime)) {
     if (req->force()) {
       LOG(WARNING) << rpc.requestor_string() << " forcing change of "
                    << "non-runtime-safe flag " << req->flag();
@@ -106,14 +126,26 @@ void GenericServiceImpl::SetFlag(const SetFlagRequestPB* req,
     resp->set_result(SetFlagResponsePB::BAD_VALUE);
     resp->set_msg("Unable to set flag: bad value");
   } else {
+    bool is_sensitive = ContainsKey(tags, FlagTag::kSensitive_info);
     LOG(INFO) << rpc.requestor_string() << " changed flags via RPC: "
-              << req->flag() << " from '" << old_val << "' to '"
-              << req->value() << "'";
+              << req->flag() << " from '" << (is_sensitive ? "***" : old_val)
+              << "' to '" << (is_sensitive ? "***" : req->value()) << "'";
     resp->set_result(SetFlagResponsePB::SUCCESS);
     resp->set_msg(ret);
   }
 
   rpc.RespondSuccess();
+}
+
+void GenericServiceImpl::RefreshFlags(const RefreshFlagsRequestPB* req,
+                                      RefreshFlagsResponsePB* resp,
+                                      rpc::RpcContext rpc) {
+  if (yb::RefreshFlagsFile(FLAGS_flagfile)) {
+    rpc.RespondSuccess();
+  } else {
+    rpc.RespondFailure(STATUS_SUBSTITUTE(InternalError,
+                                         "Unable to refresh flagsfile: $0", FLAGS_flagfile));
+  }
 }
 
 void GenericServiceImpl::GetFlag(const GetFlagRequestPB* req,
@@ -161,6 +193,20 @@ void GenericServiceImpl::GetStatus(const GetStatusRequestPB* req,
 
 void GenericServiceImpl::Ping(
     const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext rpc) {
+  rpc.RespondSuccess();
+}
+
+void GenericServiceImpl::ReloadCertificates(
+    const ReloadCertificatesRequestPB* req, ReloadCertificatesResponsePB* resp,
+    rpc::RpcContext rpc) {
+  const auto status = server_->ReloadKeysAndCertificates();
+  if (!status.ok()) {
+    LOG(ERROR) << "Reloading certificates failed: " << status;
+    rpc.RespondFailure(status);
+    return;
+  }
+
+  LOG(INFO) << "Reloading certificates was successful";
   rpc.RespondSuccess();
 }
 

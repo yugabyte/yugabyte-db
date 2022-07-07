@@ -61,7 +61,6 @@
 // tools/write_stress_runner.py should only take one parameter -- runtime_sec
 // and it should figure out everything else on its own.
 
-#include <cstdio>
 
 #ifndef GFLAGS
 int main() {
@@ -138,14 +137,14 @@ class WriteStress {
     // Choose a location for the test database if none given with --db=<path>
     if (FLAGS_db.empty()) {
       std::string default_db_path;
-      Env::Default()->GetTestDirectory(&default_db_path);
+      CHECK_OK(Env::Default()->GetTestDirectory(&default_db_path));
       default_db_path += "/write_stress";
       FLAGS_db = default_db_path;
     }
 
     Options options;
     if (FLAGS_destroy_db) {
-      DestroyDB(FLAGS_db, options);  // ignore
+      CHECK_OK(DestroyDB(FLAGS_db, options));
     }
 
     // make the LSM tree deep, so that we have many concurrent flushes and
@@ -262,23 +261,16 @@ class WriteStress {
 // function GetLiveFilesMetaData
 #ifndef ROCKSDB_LITE
     // let's see if we leaked some files
-    db_->PauseBackgroundWork();
+    CHECK_OK(db_->PauseBackgroundWork());
     std::vector<LiveFileMetaData> metadata;
     db_->GetLiveFilesMetaData(&metadata);
     std::set<uint64_t> sst_file_numbers;
     for (const auto& file : metadata) {
-      uint64_t number;
-      FileType type;
-      if (!ParseFileName(file.name, &number, "LOG", &type)) {
-        continue;
-      }
-      if (type == kTableFile) {
-        sst_file_numbers.insert(number);
-      }
+      sst_file_numbers.insert(file.name_id);
     }
 
     std::vector<std::string> children;
-    Env::Default()->GetChildren(FLAGS_db, &children);
+    CHECK_OK(Env::Default()->GetChildren(FLAGS_db, &children));
     for (const auto& child : children) {
       uint64_t number;
       FileType type;
@@ -295,7 +287,7 @@ class WriteStress {
         }
       }
     }
-    db_->ContinueBackgroundWork();
+    CHECK_OK(db_->ContinueBackgroundWork());
 #endif  // !ROCKSDB_LITE
 
     return 0;

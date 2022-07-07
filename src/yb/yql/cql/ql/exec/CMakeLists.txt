@@ -11,23 +11,10 @@
 # under the License.
 #
 
-add_library(ql_exec
-            eval_bcall.cc
-            eval_const.cc
-            eval_expr.cc
-            eval_logic.cc
-            eval_op.cc
-            eval_col.cc
-            eval_where.cc
-            eval_misc.cc
-            eval_aggr.cc
-            eval_json.cc
-            exec_context.cc
-            executor.cc)
+ADD_YB_LIBRARY(
+    ql_exec
+    SRCS eval_bcall.cc eval_const.cc eval_expr.cc eval_logic.cc eval_op.cc eval_col.cc
+         eval_where.cc eval_misc.cc eval_aggr.cc eval_json.cc exec_context.cc executor.cc
+    DEPS ql_parser ql_audit yb_client yb_util)
 
-target_link_libraries(ql_exec
-                      ql_parser
-                      ql_audit
-                      yb_client
-                      yb_util)
-add_dependencies(ql_exec ql_parser ql_audit)
+yb_use_pch(ql_exec ql)

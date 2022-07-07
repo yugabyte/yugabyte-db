@@ -14,6 +14,7 @@ package org.yb.cql;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
+import com.google.common.collect.ImmutableList;
 import org.junit.Test;
 import org.yb.client.TestUtils;
 
@@ -26,9 +27,12 @@ import static org.yb.AssertionWrappers.assertEquals;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestCollectionTypes extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestCollectionTypes.class);
 
   private String createTableStmt(String tableName, String keyType, String elemType)
       throws Exception {
@@ -473,6 +477,16 @@ public class TestCollectionTypes extends BaseCQLTest {
         "{'a', 'b'}", "[1.0, 'y', 3.0]");
     runInvalidStmt(insert_stmt6);
 
+    // testing NULL in collections
+    for (List<String> values : Arrays.asList(Arrays.asList("{null : 'a'}", "{'a'}", "[1.0]"),
+                                             Arrays.asList("{1 : null}", "{'a'}", "[1.0]"),
+                                             Arrays.asList("{1 : 'a'}", "{null}", "[1.0]"),
+                                             Arrays.asList("{1 : 'a'}", "{'a'}", "[null]"))) {
+      runInvalidStmt(
+          String.format(insert_template, 1, 2, values.get(0), values.get(1), values.get(2)),
+          "null is not supported inside collections");
+    }
+
     //------------------------------------------------------------------------------------------
     // Testing Invalid Updates
     //------------------------------------------------------------------------------------------
@@ -507,6 +521,39 @@ public class TestCollectionTypes extends BaseCQLTest {
     String update_stmt7 = String.format(update_template, "vs", "{'x', 'y'}") +
         " IF vl < [1.0, 2.0, 4.0]";
     runInvalidStmt(update_stmt7);
+
+    // testing NULL in collections
+    update_template = "UPDATE " + tableName + " SET %s WHERE h = 1 and r = 1";
+    String update_template2 = "UPDATE " + tableName + " SET vm = {1:'a'} WHERE %s";
+
+    for (String expr : ImmutableList.of(
+        "vm = {null : 'a'}", "vm = {1 : null}", "vs = {null}", "vl = [null]")) {
+      runInvalidStmt(String.format(update_template, expr),
+                     "null is not supported inside collections");
+
+      runInvalidStmt(String.format(update_template2, expr),
+                     "null is not supported inside collections");
+    }
+
+    runInvalidStmt("UPDATE " + tableName + " SET vm = {1 : 'a'} WHERE h IN (1)",
+                   "Operator not supported for write operations");
+
+    runInvalidStmt("UPDATE " + tableName + " SET vs = { } IF vm = {}",
+                   "Missing partition key");
+
+    //------------------------------------------------------------------------------------------
+    // Testing Invalid Deletes
+    //------------------------------------------------------------------------------------------
+    String delete_stmt = "DELETE FROM " + tableName + " WHERE %s";
+
+    for (String expr : ImmutableList.of(
+        "vm = {null : 'a'}", "vm = {1 : null}", "vs = {null}", "vl = [null]")) {
+      runInvalidStmt(String.format(delete_stmt, expr),
+                     "null is not supported inside collections");
+    }
+
+    runInvalidStmt("DELETE FROM " + tableName + " IF h = 1",
+                   "syntax error, unexpected IF_P");
 
     // Done -- cleaning up
     dropTable(tableName);
@@ -684,4 +731,117 @@ public class TestCollectionTypes extends BaseCQLTest {
     //------------------------------------------------------------------------------------------
   }
 
+  @Test
+  public void TestCollectionLiterals() throws Exception {
+    String tableNameIntBlob = "test_collection_literals_int_blob";
+    String tableNameBlobBlob = "test_collection_literals_blob_blob";
+
+    createCollectionTable(tableNameIntBlob, "int", "blob");
+    createCollectionTable(tableNameBlobBlob, "blob", "blob");
+
+    String insertTemplateIntBlob = "INSERT INTO " + tableNameIntBlob +
+        " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s);";
+    String insertTemplateBlobBlob = "INSERT INTO " + tableNameBlobBlob +
+        " (h, r, vm, vs, vl) VALUES (%d, %d, %s, %s, %s);";
+
+    // Insert with valid literals.
+    String insertStmt;
+    insertStmt = String.format(insertTemplateIntBlob, 1, 1,
+                                "{ 1 : 0x01, 2 : textAsBlob('2'), 3 : intAsBlob(3) }",
+                                "{ 1, 2, 3 }",
+                                "[ 0x01, textAsBlob('a'), intAsBlob(3) ]");
+    execute(insertStmt);
+
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 1,
+                                "{ 0x01 : 0x01, 0x02 : textAsBlob('2'), 0x03 : intAsBlob(3) }",
+                                "{ 0x01, textAsBlob('a'), intAsBlob(3) }",
+                                "[ 0x01, textAsBlob('a'), intAsBlob(3) ]");
+    execute(insertStmt);
+
+    // Incorrect use of collection literals in SELECT fields.
+    runInvalidQuery(String.format("SELECT { 1 : 1 } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { 1 : r } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { r : 1 } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT [ 1 ] FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT [ r ] FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { 1 } FROM %s", tableNameIntBlob));
+    runInvalidQuery(String.format("SELECT { r } FROM %s", tableNameIntBlob));
+
+    // Incorrect use of collection literals in WHERE clause.
+    String selectTemplate = "SELECT * FROM %s WHERE %s IN (%s)";
+    runInvalidQuery(String.format(selectTemplate, tableNameIntBlob, "vm",
+                                  "{ 1 : 0x01, 2 : textAsBlob('2'), 3 : intAsBlob(3) }"));
+    runInvalidQuery(String.format(selectTemplate, tableNameBlobBlob, "vs",
+                                  "{ 0x01, textAsBlob('a'), intAsBlob(3) }"));
+    runInvalidQuery(String.format(selectTemplate, tableNameIntBlob, "vl",
+                                  "[ 0x01, textAsBlob('a'), intAsBlob(3) ]"));
+
+    // Insert with invalid MAP literals.
+    insertStmt = String.format(insertTemplateIntBlob, 1, 2,
+                               "{ 1 : 1 }", null, null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 3,
+                               "{ r : 0x01 }", null, null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 4,
+                               "{ 1 : intAsBlob(r) }", null, null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 5,
+                               "{ 1 : cast(1 as blob) }", null, null);
+    runInvalidStmt(insertStmt);
+
+    // Insert with invalid SET literals.
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 6,
+                               null, "{ 1 }", null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 7,
+                               null, "{ r }", null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 8,
+                               null, "{ intAsBlob(r) }", null);
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateBlobBlob, 1, 9,
+                               null, "{ cast(1 as blob) }", null);
+    runInvalidStmt(insertStmt);
+
+    // Insert with invalid LIST literals.
+    insertStmt = String.format(insertTemplateIntBlob, 1, 10,
+                               null, null, "[ 1 ]");
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 11,
+                               null, null, "[ r ]");
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 12,
+                               null, null, "[ intAsBlob(r) ]");
+    runInvalidStmt(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 1, 13,
+                               null, null, "[ cast(r as blob) ]");
+    runInvalidStmt(insertStmt);
+
+    // Insert with mismatch datatype.
+    insertStmt = String.format(insertTemplateIntBlob, 2, 1,
+                               "{ textAsBlob('2') : 2 }", null, null);
+    runInvalidQuery(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 2, 2,
+                               "{ intAsBlob(3) : 3 }", null, null);
+    runInvalidQuery(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 2, 3,
+                               null, "{ textAsBlob('a') }", null);
+    runInvalidQuery(insertStmt);
+
+    insertStmt = String.format(insertTemplateIntBlob, 2, 4,
+                               null, "{ intAsBlob(3) }", null);
+    runInvalidQuery(insertStmt);
+  }
 }

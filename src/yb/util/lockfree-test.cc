@@ -13,31 +13,27 @@
 //
 //
 
+#include <atomic>
+#include <string>
 #include <thread>
 
 #include <boost/lockfree/queue.hpp>
-
-#include <boost/thread/tss.hpp>
-
-#include <cds/init.h>
-
 #include <cds/container/basket_queue.h>
-#include <cds/container/fcqueue.h>
-#include <cds/container/msqueue.h>
 #include <cds/container/moir_queue.h>
 #include <cds/container/optimistic_queue.h>
 #include <cds/container/rwqueue.h>
 #include <cds/container/segmented_queue.h>
 #include <cds/container/vyukov_mpmc_cycle_queue.h>
-
 #include <cds/gc/dhp.h>
-#include <cds/gc/hp.h>
+#include <gtest/gtest.h>
 
 #include "yb/util/lockfree.h"
 #include "yb/util/logging.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
-#include "yb/util/test_util.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -51,7 +47,7 @@ struct TestEntry : public MPSCQueueEntry<TestEntry> {
 TEST(LockfreeTest, MPSCQueueSimple) {
   const size_t kTotalEntries = 10;
   std::vector<TestEntry> entries(kTotalEntries);
-  for (int i = 0; i != entries.size(); ++i) {
+  for (size_t i = 0; i != entries.size(); ++i) {
     entries[i].index = i;
   }
   MPSCQueue<TestEntry> queue;
@@ -153,14 +149,14 @@ template <class T, class Allocator = std::allocator<T>>
 struct BlockAllocator {
   template <class U>
   struct rebind {
-    typedef BlockAllocator<U, typename Allocator::template rebind<U>::other> other;
+    using other = BlockAllocator<
+        U, typename std::allocator_traits<Allocator>::template rebind_alloc<U>>;
   };
 
-  typedef typename Allocator::value_type value_type;
-  typedef typename Allocator::pointer pointer;
-  typedef typename Allocator::size_type size_type;
+  using value_type = typename Allocator::value_type;
+  using size_type = typename Allocator::size_type;
 
-  void deallocate(pointer p, size_type n) {
+  void deallocate(T* p, size_type n) {
     BlockEntry* entry = OBJECT_FROM_MEMBER(BlockEntry, value, p);
     if (entry->counter->fetch_sub(1, std::memory_order_acq_rel) == 1) {
       Block* block = OBJECT_FROM_MEMBER(Block, counter, entry->counter);
@@ -194,7 +190,7 @@ struct BlockAllocator {
 
   static thread_local std::unique_ptr<TSS> tss_;
 
-  pointer allocate(size_type n) {
+  T* allocate(size_type n) {
     TSS* tss = tss_.get();
     if (PREDICT_FALSE(!tss)) {
       tss_.reset(new TSS);
@@ -210,7 +206,7 @@ struct BlockAllocator {
     return &entry.value;
   }
 
-  typedef typename Allocator::template rebind<Block>::other Impl;
+  using Impl = typename std::allocator_traits<Allocator>::template rebind_alloc<Block>;
   Impl impl_;
 };
 
@@ -307,7 +303,7 @@ class QueuePerformanceHelper {
       kBoth,
     };
 
-    for (int i = 0; i != workers_; ++i) {
+    for (size_t i = 0; i != workers_; ++i) {
       Role role = mixed_mode_ ? Role::kBoth : (i & 1 ? Role::kReader : Role::kWriter);
       threads.emplace_back([queue, &start_latch, &finish_latch, &pushes, &pops, role] {
         CDSAttacher attacher;

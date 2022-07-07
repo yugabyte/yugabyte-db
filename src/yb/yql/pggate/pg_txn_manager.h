@@ -19,102 +19,119 @@
 #include <mutex>
 
 #include "yb/client/client_fwd.h"
-#include "yb/client/transaction_manager.h"
-#include "yb/client/async_initializer.h"
+#include "yb/client/transaction.h"
 #include "yb/common/clock.h"
+#include "yb/common/transaction.h"
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
+#include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
-#include "yb/util/result.h"
+
+#include "yb/util/enums.h"
+
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_callbacks.h"
 
 namespace yb {
-namespace tserver {
-
-class TabletServerServiceProxy;
-
-} // namespace tserver
-
 namespace pggate {
 
 // These should match XACT_READ_UNCOMMITED, XACT_READ_COMMITED, XACT_REPEATABLE_READ,
-// XACT_SERIALIZABLE from xact.h.
-enum class PgIsolationLevel {
-  READ_UNCOMMITED = 0,
-  READ_COMMITED = 1,
-  REPEATABLE_READ = 2,
-  SERIALIZABLE = 3,
-};
+// XACT_SERIALIZABLE from xact.h. Please do not change this enum.
+YB_DEFINE_ENUM(
+  PgIsolationLevel,
+  ((READ_UNCOMMITED, 0))
+  ((READ_COMMITTED, 1))
+  ((REPEATABLE_READ, 2))
+  ((SERIALIZABLE, 3))
+);
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
-  PgTxnManager(client::AsyncClientInitialiser* async_client_init,
+  PgTxnManager(PgClient* pg_client,
                scoped_refptr<ClockBase> clock,
-               const tserver::TServerSharedObject* tserver_shared_object);
+               const tserver::TServerSharedObject* tserver_shared_object,
+               PgCallbacks pg_callbacks);
 
   virtual ~PgTxnManager();
 
-  CHECKED_STATUS BeginTransaction();
-  CHECKED_STATUS RecreateTransaction();
-  CHECKED_STATUS RestartTransaction();
-  CHECKED_STATUS CommitTransaction();
-  CHECKED_STATUS AbortTransaction();
-  CHECKED_STATUS SetIsolationLevel(int isolation);
-  CHECKED_STATUS SetReadOnly(bool read_only);
-  CHECKED_STATUS SetDeferrable(bool deferrable);
-  CHECKED_STATUS EnterSeparateDdlTxnMode();
-  CHECKED_STATUS ExitSeparateDdlTxnMode(bool success);
+  Status BeginTransaction();
+  Status CalculateIsolation(bool read_only_op,
+                                    TxnPriorityRequirement txn_priority_requirement,
+                                    uint64_t* in_txn_limit = nullptr);
+  Status RecreateTransaction();
+  Status RestartTransaction();
+  Status ResetTransactionReadPoint();
+  Status RestartReadPoint();
+  Status CommitTransaction();
+  Status AbortTransaction();
+  Status SetPgIsolationLevel(int isolation);
+  PgIsolationLevel GetPgIsolationLevel();
+  Status SetReadOnly(bool read_only);
+  Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
+  Status SetDeferrable(bool deferrable);
+  Status EnterSeparateDdlTxnMode();
+  Status ExitSeparateDdlTxnMode(Commit commit);
 
-  // Returns the transactional session, starting a new transaction if necessary.
-  yb::Result<client::YBSession*> GetTransactionalSession();
+  bool IsDdlMode() const { return ddl_mode_; }
+  bool IsTxnInProgress() const { return txn_in_progress_; }
+  IsolationLevel GetIsolationLevel() const { return isolation_level_; }
+  bool ShouldUseFollowerReads() const { return read_time_for_follower_reads_.is_valid(); }
 
-  std::shared_future<Result<TransactionMetadata>> GetDdlTxnMetadata() const;
+  void SetupPerformOptions(tserver::PgPerformOptionsPB* options);
 
-  CHECKED_STATUS BeginWriteTransactionIfNecessary(bool read_only_op,
-                                                  bool needs_pessimistic_locking = false);
-
-  bool CanRestart() { return can_restart_.load(std::memory_order_acquire); }
-
-  bool IsDdlMode() const { return ddl_session_.get() != nullptr; }
+  double GetTransactionPriority() const;
+  TxnPriorityRequirement GetTransactionPriorityType() const;
 
  private:
-  YB_STRONGLY_TYPED_BOOL(NeedsPessimisticLocking);
+  YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
   YB_STRONGLY_TYPED_BOOL(SavePriority);
 
-  client::TransactionManager* GetOrCreateTransactionManager();
   void ResetTxnAndSession();
   void StartNewSession();
+  Status UpdateReadTimeForFollowerReadsIfRequired();
   Status RecreateTransaction(SavePriority save_priority);
 
-  uint64_t GetPriority(NeedsPessimisticLocking needs_pessimistic_locking);
+  static uint64_t NewPriority(TxnPriorityRequirement txn_priority_requirement);
 
-  client::AsyncClientInitialiser* async_client_init_ = nullptr;
+  std::string TxnStateDebugStr() const;
+
+  Status FinishTransaction(Commit commit);
+
+  // ----------------------------------------------------------------------------------------------
+
+  PgClient* client_;
   scoped_refptr<ClockBase> clock_;
   const tserver::TServerSharedObject* const tserver_shared_object_;
 
   bool txn_in_progress_ = false;
-  client::YBTransactionPtr txn_;
-  client::YBSessionPtr session_;
-
-  std::atomic<client::TransactionManager*> transaction_manager_{nullptr};
-  std::mutex transaction_manager_mutex_;
-  std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
+  IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
+  uint64_t txn_serial_no_ = 0;
+  bool need_restart_ = false;
+  bool need_defer_read_point_ = false;
+  tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
 
   // Postgres transaction characteristics.
-  PgIsolationLevel isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
+  PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
+  bool enable_follower_reads_ = false;
+  uint64_t follower_read_staleness_ms_ = 0;
+  HybridTime read_time_for_follower_reads_;
   bool deferrable_ = false;
 
-  client::YBTransactionPtr ddl_txn_;
-  client::YBSessionPtr ddl_session_;
-
-  std::atomic<bool> can_restart_{true};
+  bool ddl_mode_ = false;
 
   // On a transaction conflict error we want to recreate the transaction with the same priority as
   // the last transaction. This avoids the case where the current transaction gets a higher priority
   // and cancels the other transaction.
-  uint64_t saved_priority_ = 0;
+  uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
+  HybridTime in_txn_limit_;
 
   std::unique_ptr<tserver::TabletServerServiceProxy> tablet_server_proxy_;
+
+  PgCallbacks pg_callbacks_;
 
   DISALLOW_COPY_AND_ASSIGN(PgTxnManager);
 };

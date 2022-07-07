@@ -1,0 +1,42 @@
+{
+  "docVersions":
+  [
+    {
+      "series": "v2.15",
+      "display": "v2.15 (Preview)",
+      "version": "2.15.0.0",
+      "versionShort": "2.15.0",
+      "appVersion": "2.15.0.0-b11",
+      "alias": "preview"
+    },
+    {
+      "series": "v2.12",
+      "display": "v2.12 (Stable)",
+      "version": "2.12.8.0",
+      "versionShort": "2.12.8",
+      "appVersion": "2.12.8.0-b5",
+      "alias": "stable"
+    },
+    {
+      "series": "v2.8",
+      "display": "v2.8",
+      "version": "2.8.7.0",
+      "versionShort": "2.8.7",
+      "appVersion": "2.8.7.0-b14"
+    },
+    {
+      "series": "v2.6",
+      "display": "v2.6",
+      "version": "2.6.18.0",
+      "versionShort": "2.6.18",
+      "appVersion": "2.6.18.0-b3"
+    },
+    {
+      "series": "v2.4",
+      "display": "v2.4",
+      "version": "2.4.8.0",
+      "versionShort": "2.4.8",
+      "appVersion": "2.4.8.0-b16"
+    }
+  ]
+}

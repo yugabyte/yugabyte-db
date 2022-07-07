@@ -15,11 +15,7 @@
 #define YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H
 
 #include <cstring>
-#include <map>
-#include <limits>
-#include <set>
-#include <utility>
-#include "yb/common/common.pb.h"
+
 #include "yb/util/monotime.h"
 #include "yb/util/string_case.h"
 

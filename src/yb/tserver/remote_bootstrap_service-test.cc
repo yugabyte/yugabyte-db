@@ -34,20 +34,23 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/tserver/remote_bootstrap-test-base.h"
-#include "yb/consensus/log.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/remote_bootstrap-test-base.h"
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
-#include "yb/tserver/tserver_service.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/crc.h"
 #include "yb/util/env_util.h"
 #include "yb/util/monotime.h"
@@ -201,7 +204,7 @@ class RemoteBootstrapServiceTest : public RemoteBootstrapTest {
     return data_id;
   }
 
-  gscoped_ptr<RemoteBootstrapServiceProxy> remote_bootstrap_proxy_;
+  std::unique_ptr<RemoteBootstrapServiceProxy> remote_bootstrap_proxy_;
 };
 
 // Test beginning and ending a remote bootstrap session.
@@ -362,7 +365,7 @@ TEST_F(RemoteBootstrapServiceTest, TestFetchLog) {
   ASSERT_EQ(segment_seqno, first_seg_seqno)
       << "Expected equal sequence numbers: " << segment_seqno
       << " and " << first_seg_seqno;
-  const scoped_refptr<ReadableLogSegment>& segment = local_segments[0];
+  const scoped_refptr<ReadableLogSegment>& segment = ASSERT_RESULT(local_segments.front());
   faststring scratch;
   int64_t size = ASSERT_RESULT(segment->readable_file_checkpoint()->Size());
   scratch.resize(size);

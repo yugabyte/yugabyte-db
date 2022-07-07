@@ -33,29 +33,31 @@
 #ifndef YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
 #define YB_TABLET_OPERATIONS_OPERATION_DRIVER_H
 
+#include <condition_variable>
 #include <string>
 
 #include <boost/atomic.hpp>
 
-#include "yb/consensus/consensus_types.h"
+#include "yb/common/common_types.pb.h"
+
+#include "yb/consensus/log_fwd.h"
+#include "yb/consensus/consensus_round.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/opid.h"
-#include "yb/util/status.h"
 #include "yb/util/trace.h"
 
 namespace yb {
 class ThreadPool;
 
-namespace log {
-class Log;
-} // namespace log
-
 namespace tablet {
 class MvccManager;
-class OperationOrderVerifier;
 class OperationTracker;
 class OperationDriver;
 class Preparer;
@@ -107,7 +109,7 @@ class Preparer;
 //
 // This class is thread safe.
 class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
-                        public consensus::ConsensusAppendCallback,
+                        public consensus::ConsensusRoundCallback,
                         public MPSCQueueEntry<OperationDriver> {
 
  public:
@@ -115,16 +117,14 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // of any of the objects pointed to in the constructor's arguments.
   OperationDriver(OperationTracker* operation_tracker,
                   consensus::Consensus* consensus,
-                  log::Log* log,
                   Preparer* preparer,
-                  OperationOrderVerifier* order_verifier,
                   TableType table_type_);
 
   // Perform any non-constructor initialization. Sets the operation
   // that will be executed.
   // if term == kUnknownTerm then we launch this operation as replica, otherwise
   // we are leader and operation should be bound to this term.
-  CHECKED_STATUS Init(std::unique_ptr<Operation>* operation, int64_t term);
+  Status Init(std::unique_ptr<Operation>* operation, int64_t term);
 
   // Returns the OpId of the operation being executed or an uninitialized
   // OpId if none has been assigned. Returns a copy and thus should not
@@ -140,7 +140,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // multiple stages by multiple executors it might not be possible to stop
   // the operation immediately, but this will make sure it is aborted
   // at the next synchronization point.
-  void Abort(const Status& status);
+  void TEST_Abort(const Status& status);
 
   // Callback from Consensus when replication is complete, and thus the operation
   // is considered "committed" from the consensus perspective (ie it will be
@@ -149,7 +149,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   //
   // see comment in the interface for an important TODO.
   void ReplicationFinished(
-      const Status& status, int64_t leader_term, OpIds* applied_op_ids);
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids) override;
 
   std::string ToString() const;
 
@@ -161,13 +161,13 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   OperationType operation_type() const;
 
   // Returns the state of the operation being executed by this driver.
-  const OperationState* state() const;
+  const Operation* operation() const;
 
   const MonoTime& start_time() const { return start_time_; }
 
   Trace* trace() { return trace_.get(); }
 
-  void HandleConsensusAppend(const yb::OpId& op_id, const yb::OpId& committed_op_id) override;
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
 
   bool is_leader_side() {
     // TODO: switch state to an atomic.
@@ -178,7 +178,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Actually prepare and start. In case of leader-side operations, this stops short of calling
   // Consensus::Replicate, which is the responsibility of the caller. This is being done so that
   // we can append multiple rounds to the consensus queue together.
-  CHECKED_STATUS PrepareAndStart();
+  Status PrepareAndStart();
 
   // The task used to be submitted to the prepare threadpool to prepare and start the operation.
   // If PrepareAndStart() fails, calls HandleFailure. Since 07/07/2017 this is being used for
@@ -186,18 +186,15 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // is a bit more complicated due to batching.
   void PrepareAndStartTask();
 
-  // This should be called in case of a failure to submit the operation for replication.
-  void ReplicationFailed(const Status& replication_status);
-
   // Handle a failure in any of the stages of the operation.
   // In some cases, this will end the operation and call its callback.
   // In others, where we can't recover, this will FATAL.
-  void HandleFailure(Status status = Status::OK());
+  void HandleFailure(const Status& status);
 
   consensus::Consensus* consensus() { return consensus_; }
 
   consensus::ConsensusRound* consensus_round() {
-    return mutable_state()->consensus_round();
+    return mutable_operation()->consensus_round();
   }
 
   void SetPropagatedSafeTime(HybridTime safe_time, MvccManager* mvcc) {
@@ -236,16 +233,13 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   // Starts operation, returns false is we should NOT continue processing the operation.
   bool StartOperation();
 
-  // Performs status checks and calls ApplyTask.
-  CHECKED_STATUS ApplyOperation(int64_t leader_term, OpIds* applied_op_ids);
-
   // Calls Operation::Apply() followed by Consensus::Commit() with the
   // results from the Apply().
   void ApplyTask(int64_t leader_term, OpIds* applied_op_ids);
 
   // Returns the mutable state of the operation being executed by
   // this driver.
-  OperationState* mutable_state();
+  Operation* mutable_operation();
 
   // Return a short string indicating where the operation currently is in the
   // state machine.
@@ -254,19 +248,15 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   OperationTracker* const operation_tracker_;
   consensus::Consensus* const consensus_;
-  log::Log* const log_;
   Preparer* const preparer_;
-  OperationOrderVerifier* const order_verifier_;
-
-  Status operation_status_;
 
   // Lock that synchronizes access to the operation's state.
   mutable simple_spinlock lock_;
 
   // A copy of the operation's OpId, set when the operation first
   // receives one from Consensus and uninitialized until then.
-  // TODO(todd): we have three separate copies of this now -- in OperationState,
-  // CommitMsg, and here... we should be able to consolidate!
+  // TODO: we have two separate copies of this now -- in Operation, and here... we should be able
+  // to consolidate!
   boost::atomic<yb::OpId> op_id_copy_{yb::OpId::Invalid()};
 
   // The operation to be executed by this driver.

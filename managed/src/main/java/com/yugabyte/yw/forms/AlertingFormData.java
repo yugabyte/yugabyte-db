@@ -2,63 +2,43 @@
 
 package com.yugabyte.yw.forms;
 
-
-import play.data.validation.Constraints;
+import com.yugabyte.yw.common.alerts.SmtpData;
+import io.swagger.annotations.ApiModel;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Map;
+import play.data.validation.Constraints;
 
-/**
- * This class will be used by the API and UI Form Elements to validate constraints are met
- */
+/** This class will be used by the API and UI Form Elements to validate constraints are met */
+@ApiModel(
+    value = "CustomerAlertData",
+    description =
+        "Format of an alert, used by the API and UI to validate data against input constraints")
 public class AlertingFormData {
-    @Constraints.MaxLength(15)
-    public String code;
+  @Constraints.MaxLength(15)
+  @ApiModelProperty(value = "Alert code")
+  public String code;
 
-    public String email;
+  @ApiModelProperty(value = "Alert email address", example = "test@example.com")
+  public String email;
 
-    public String password;
+  @ApiModelProperty(value = "Email password", example = "XurenRknsc")
+  public String password;
 
-    public String confirmPassword;
+  @ApiModelProperty(value = "Email password confirmation", example = "XurenRknsc")
+  public String confirmPassword;
 
-    public String name;
+  @ApiModelProperty(value = "Alert name", example = "Test alert")
+  public String name;
 
-    public Map features;
+  @ApiModelProperty(value = "Features")
+  public Map features;
 
-    static public class AlertingData {
-        @Constraints.Email
-        @Constraints.MinLength(5)
-        public String alertingEmail;
+  public AlertingData alertingData;
 
-        public boolean sendAlertsToYb = false;
+  public SmtpData smtpData;
 
-        public long checkIntervalMs = 0;
-
-        public long statusUpdateIntervalMs = 0;
-
-        public Boolean reportOnlyErrors = false;
-
-        public Boolean reportBackupFailures = false;
-    }
-
-    static public class SmtpData {
-        public String smtpServer = null;
-
-        public int smtpPort = -1;
-
-        public String emailFrom = null;
-
-        public String smtpUsername = null;
-
-        public String smtpPassword = null;
-
-        public boolean useSSL = true;
-
-        public boolean useTLS = false;
-      }
-
-    public AlertingData alertingData;
-    public SmtpData smtpData;
-
-    @Constraints.Pattern(message="Must be one of NONE, LOW, MEDIUM, HIGH",
-                         value="\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
-    public String callhomeLevel = "MEDIUM";
+  @Constraints.Pattern(
+      message = "Must be one of NONE, LOW, MEDIUM, HIGH",
+      value = "\\b(?:NONE|LOW|MEDIUM|HIGH)\\b")
+  public String callhomeLevel = "MEDIUM";
 }

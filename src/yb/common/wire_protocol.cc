@@ -29,28 +29,29 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/common/wire_protocol.h"
 
 #include <string>
 #include <vector>
 
-#include "yb/common/entity_ids.h"
-#include "yb/common/row.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.messages.h"
+
 #include "yb/gutil/port.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/substitute.h"
-
+#include "yb/util/enums.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/safe_math.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
-#include "yb/util/enums.h"
-
+#include "yb/util/status_format.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using google::protobuf::RepeatedPtrField;
@@ -68,6 +69,8 @@ namespace yb {
 
 namespace {
 
+YB_STRONGLY_TYPED_BOOL(PublicAddressAllowed);
+
 template <class Index, class Value>
 void SetAt(
     Index index, const Value& value, const Value& default_value, std::vector<Value>* vector) {
@@ -83,15 +86,16 @@ void SetAt(
 std::vector<AppStatusPB::ErrorCode> CreateStatusToErrorCode() {
   std::vector<AppStatusPB::ErrorCode> result;
   const auto default_value = AppStatusPB::UNKNOWN_ERROR;
-#define YB_SET_STATUS_TO_ERROR_CODE(name, pb_name, value, message) \
+  #define YB_STATUS_CODE(name, pb_name, value, message) \
     SetAt(Status::BOOST_PP_CAT(k, name), AppStatusPB::pb_name, default_value, &result); \
     static_assert( \
-        to_underlying(AppStatusPB::pb_name) == to_underlying(Status::BOOST_PP_CAT(k, name)), \
+        static_cast<int32_t>(to_underlying(AppStatusPB::pb_name)) == \
+            to_underlying(Status::BOOST_PP_CAT(k, name)), \
         "The numeric value of AppStatusPB::" BOOST_PP_STRINGIZE(pb_name) " defined in" \
             " wire_protocol.proto does not match the value of Status::k" BOOST_PP_STRINGIZE(name) \
             " defined in status.h.");
-  BOOST_PP_SEQ_FOR_EACH(YB_STATUS_FORWARD_MACRO, YB_SET_STATUS_TO_ERROR_CODE, YB_STATUS_CODES);
-#undef YB_SET_STATUS_TO_ERROR_CODe
+  #include "yb/util/status_codes.h"
+  #undef YB_STATUS_CODE
   return result;
 }
 
@@ -118,6 +122,20 @@ std::vector<Status::Code> CreateErrorCodeToStatus() {
 }
 
 const std::vector<Status::Code> kErrorCodeToStatus = CreateErrorCodeToStatus();
+
+const HostPortPB& GetHostPort(
+    const google::protobuf::RepeatedPtrField<HostPortPB>& broadcast_addresses,
+    const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
+    PublicAddressAllowed public_address_allowed) {
+  if (!broadcast_addresses.empty() && public_address_allowed) {
+    return broadcast_addresses[0];
+  }
+  if (!private_host_ports.empty()) {
+    return private_host_ports[0];
+  }
+  static const HostPortPB empty_host_port;
+  return empty_host_port;
+}
 
 } // namespace
 
@@ -181,12 +199,14 @@ struct WireProtocolTabletServerErrorTag {
 };
 
 // Backward compatibility.
-Status StatusFromOldPB(const AppStatusPB& pb) {
+template<class PB>
+Status StatusFromOldPB(const PB& pb) {
   auto code = kErrorCodeToStatus[pb.code()];
 
   auto status_factory = [code, &pb](const Slice& errors) {
     return Status(
-        code, pb.source_file().c_str(), pb.source_line(), pb.message(), errors, DupFileName::kTrue);
+        code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), errors,
+        DupFileName::kTrue);
   };
 
   #define ENCODE_ERROR_AND_RETURN_STATUS(Tag, value) \
@@ -215,12 +235,15 @@ Status StatusFromOldPB(const AppStatusPB& pb) {
     }
   }
 
-  return Status(code, pb.source_file().c_str(), pb.source_line(), pb.message(), "",
+  return Status(code, Slice(pb.source_file()).cdata(), pb.source_line(), pb.message(), "",
                 nullptr /* error */, DupFileName::kTrue);
   #undef ENCODE_ERROR_AND_RETURN_STATUS
 }
 
-Status StatusFromPB(const AppStatusPB& pb) {
+namespace {
+
+template<class PB>
+Status DoStatusFromPB(const PB& pb) {
   if (pb.code() == AppStatusPB::OK) {
     return Status::OK();
   } else if (pb.code() == AppStatusPB::UNKNOWN_ERROR ||
@@ -231,11 +254,21 @@ Status StatusFromPB(const AppStatusPB& pb) {
   }
 
   if (pb.has_errors()) {
-    return Status(kErrorCodeToStatus[pb.code()], pb.source_file().c_str(), pb.source_line(),
+    return Status(kErrorCodeToStatus[pb.code()], Slice(pb.source_file()).cdata(), pb.source_line(),
                   pb.message(), pb.errors(), DupFileName::kTrue);
   }
 
   return StatusFromOldPB(pb);
+}
+
+} // namespace
+
+Status StatusFromPB(const AppStatusPB& pb) {
+  return DoStatusFromPB(pb);
+}
+
+Status StatusFromPB(const LWAppStatusPB& pb) {
+  return DoStatusFromPB(pb);
 }
 
 void HostPortToPB(const HostPort& host_port, HostPortPB* host_port_pb) {
@@ -314,8 +347,8 @@ Status AddHostPortPBs(const std::vector<Endpoint>& addrs,
 
 void SchemaToColocatedTableIdentifierPB(
     const Schema& schema, ColocatedTableIdentifierPB* colocated_pb) {
-  if (schema.has_pgtable_id()) {
-    colocated_pb->set_pgtable_id(schema.pgtable_id());
+  if (schema.has_colocation_id()) {
+    colocated_pb->set_colocation_id(schema.colocation_id());
   } else if (schema.has_cotable_id()) {
     colocated_pb->set_cotable_id(schema.cotable_id().ToString());
   }
@@ -327,6 +360,7 @@ void SchemaToPB(const Schema& schema, SchemaPB *pb, int flags) {
   SchemaToColocatedTableIdentifierPB(schema, pb->mutable_colocated_table_id());
   SchemaToColumnPBs(schema, pb->mutable_columns(), flags);
   schema.table_properties().ToTablePropertiesPB(pb->mutable_table_properties());
+  pb->set_pgschema_name(schema.SchemaName());
 }
 
 void SchemaToPBWithoutIds(const Schema& schema, SchemaPB *pb) {
@@ -345,16 +379,19 @@ Status SchemaFromPB(const SchemaPB& pb, Schema *schema) {
   TableProperties table_properties = TableProperties::FromTablePropertiesPB(pb.table_properties());
   RETURN_NOT_OK(schema->Reset(columns, column_ids, num_key_columns, table_properties));
 
+  if(pb.has_pgschema_name()) {
+    schema->SetSchemaName(pb.pgschema_name());
+  }
+
   if (pb.has_colocated_table_id()) {
     switch (pb.colocated_table_id().value_case()) {
       case ColocatedTableIdentifierPB::kCotableId: {
-        Uuid cotable_id;
-        RETURN_NOT_OK(cotable_id.FromString(pb.colocated_table_id().cotable_id()));
-        schema->set_cotable_id(cotable_id);
+        schema->set_cotable_id(
+            VERIFY_RESULT(Uuid::FromString(pb.colocated_table_id().cotable_id())));
         break;
       }
-      case ColocatedTableIdentifierPB::kPgtableId:
-        schema->set_pgtable_id(pb.colocated_table_id().pgtable_id());
+      case ColocatedTableIdentifierPB::kColocationId:
+        schema->set_colocation_id(pb.colocated_table_id().colocation_id());
         break;
       case ColocatedTableIdentifierPB::VALUE_NOT_SET:
         break;
@@ -372,6 +409,7 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
   pb->set_is_counter(col_schema.is_counter());
   pb->set_order(col_schema.order());
   pb->set_sorting_type(col_schema.sorting_type());
+  pb->set_pg_type_oid(col_schema.pg_type_oid());
   // We only need to process the *hash* primary key here. The regular primary key is set by the
   // conversion for SchemaPB. The reason is that ColumnSchema and ColumnSchemaPB are not matching
   // 1 to 1 as ColumnSchema doesn't have "is_key" field. That was Kudu's code, and we keep it that
@@ -388,10 +426,10 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
   // processing SchemaPB.
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), pb.is_nullable(),
                       pb.is_hash_key(), pb.is_static(), pb.is_counter(), pb.order(),
-                      ColumnSchema::SortingType(pb.sorting_type()));
+                      SortingType(pb.sorting_type()), pb.pg_type_oid());
 }
 
-CHECKED_STATUS ColumnPBsToColumnTuple(
+Status ColumnPBsToColumnTuple(
     const RepeatedPtrField<ColumnSchemaPB>& column_pbs,
     vector<ColumnSchema>* columns , vector<ColumnId>* column_ids, int* num_key_columns) {
   columns->reserve(column_pbs.size());
@@ -434,7 +472,7 @@ void SchemaToColumnPBs(const Schema& schema,
                        RepeatedPtrField<ColumnSchemaPB>* cols,
                        int flags) {
   cols->Clear();
-  int idx = 0;
+  size_t idx = 0;
   for (const ColumnSchema& col : schema.columns()) {
     ColumnSchemaPB* col_pb = cols->Add();
     ColumnSchemaToPB(col, col_pb);
@@ -449,7 +487,7 @@ void SchemaToColumnPBs(const Schema& schema,
 }
 
 Result<UsePrivateIpMode> GetPrivateIpMode() {
-  for (auto i : kUsePrivateIpModeList) {
+  for (auto i : UsePrivateIpModeList()) {
     if (FLAGS_use_private_ip == ToCString(i)) {
       return i;
     }
@@ -469,29 +507,36 @@ UsePrivateIpMode GetMode() {
   return UsePrivateIpMode::never;
 }
 
-bool UsePublicIp(const CloudInfoPB& connect_to,
-                 const CloudInfoPB& connect_from) {
+PublicAddressAllowed UsePublicIp(const CloudInfoPB& connect_to, const CloudInfoPB& connect_from) {
   auto mode = GetMode();
 
   if (mode == UsePrivateIpMode::never) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (connect_to.placement_cloud() != connect_from.placement_cloud()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (mode == UsePrivateIpMode::cloud) {
-    return false;
+    return PublicAddressAllowed::kFalse;
   }
   if (connect_to.placement_region() != connect_from.placement_region()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
   if (mode == UsePrivateIpMode::region) {
-    return false;
+    return PublicAddressAllowed::kFalse;
   }
   if (connect_to.placement_zone() != connect_from.placement_zone()) {
-    return true;
+    return PublicAddressAllowed::kTrue;
   }
-  return mode != UsePrivateIpMode::zone;
+  return mode == UsePrivateIpMode::zone
+      ? PublicAddressAllowed::kFalse
+      : PublicAddressAllowed::kTrue;
+}
+
+const HostPortPB& PublicHostPort(const ServerRegistrationPB& registration) {
+  return GetHostPort(registration.broadcast_addresses(),
+                     registration.private_rpc_addresses(),
+                     PublicAddressAllowed::kTrue);
 }
 
 const HostPortPB& DesiredHostPort(
@@ -499,14 +544,9 @@ const HostPortPB& DesiredHostPort(
     const google::protobuf::RepeatedPtrField<HostPortPB>& private_host_ports,
     const CloudInfoPB& connect_to,
     const CloudInfoPB& connect_from) {
-  if (!broadcast_addresses.empty() && UsePublicIp(connect_to, connect_from)) {
-    return broadcast_addresses[0];
-  }
-  if (!private_host_ports.empty()) {
-    return private_host_ports[0];
-  }
-  static const HostPortPB empty_host_port;
-  return empty_host_port;
+  return GetHostPort(broadcast_addresses,
+                     private_host_ports,
+                     UsePublicIp(connect_to, connect_from));
 }
 
 const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
@@ -516,14 +556,13 @@ const HostPortPB& DesiredHostPort(const ServerRegistrationPB& registration,
       registration.cloud_info(), connect_from);
 }
 
-const std::string kMinRunningRequestIdCategoryName = "min running request ID";
-
-StatusCategoryRegisterer min_running_request_id_category_registerer(
-    StatusCategoryDescription::Make<MinRunningRequestIdTag>(&kMinRunningRequestIdCategoryName));
-
 static const std::string kSplitChildTabletIdsCategoryName = "split child tablet IDs";
 
 StatusCategoryRegisterer split_child_tablet_ids_category_registerer(
     StatusCategoryDescription::Make<SplitChildTabletIdsTag>(&kSplitChildTabletIdsCategoryName));
+
+std::string SplitChildTabletIdsTag::ToMessage(const Value& value) {
+  return Format("Split child tablet IDs: $0", value);
+}
 
 } // namespace yb

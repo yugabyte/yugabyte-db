@@ -35,6 +35,7 @@
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/env.h"
+#include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/merge_operator.h"
@@ -93,14 +94,15 @@ ImmutableCFOptions::ImmutableCFOptions(const Options& options)
       row_cache(options.row_cache),
       mem_tracker(options.mem_tracker),
       block_based_table_mem_tracker(options.block_based_table_mem_tracker),
-      iterator_replacer(options.iterator_replacer) {}
+      iterator_replacer(options.iterator_replacer),
+      compaction_file_filter_factory(options.compaction_file_filter_factory.get()) {}
 
 ColumnFamilyOptions::ColumnFamilyOptions()
     : comparator(BytewiseComparator()),
       merge_operator(nullptr),
       compaction_filter(nullptr),
       compaction_filter_factory(nullptr),
-      write_buffer_size(4_MB), // Option expects bytes.
+      write_buffer_size(4_MB),  // Option expects bytes.
       max_write_buffer_number(2),
       min_write_buffer_number_to_merge(1),
       max_write_buffer_number_to_maintain(0),

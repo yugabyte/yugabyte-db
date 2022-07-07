@@ -37,6 +37,7 @@
 #include "yb/util/condition_variable.h"
 #include "yb/util/monotime.h"
 #include "yb/util/mutex.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -65,7 +66,7 @@ class CountDownLatch {
   // If the count is already zero, this returns immediately.
   void Wait() const;
 
-  // Waits for the count on the latch to reach zero, or until 'until' time is reached.
+  // Waits for the count on the latch to reach zero, or until 'when' time is reached.
   // Returns true if the count became zero, false otherwise.
   bool WaitUntil(MonoTime when) const;
   bool WaitUntil(CoarseTimePoint when) const;
@@ -80,6 +81,12 @@ class CountDownLatch {
   void Reset(uint64_t count);
   uint64_t count() const;
 
+  auto CountDownCallback() {
+    return [this] {
+      this->CountDown();
+    };
+  }
+
  private:
   mutable Mutex lock_;
   ConditionVariable cond_;
@@ -90,7 +97,7 @@ class CountDownLatch {
 };
 
 // Utility class which calls latch->CountDown() in its destructor.
-class CountDownOnScopeExit {
+class NODISCARD_CLASS CountDownOnScopeExit {
  public:
   explicit CountDownOnScopeExit(CountDownLatch *latch) : latch_(latch) {}
   ~CountDownOnScopeExit() {

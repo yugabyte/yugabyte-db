@@ -14,6 +14,8 @@
 #ifndef YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
 #define YB_CONSENSUS_TEST_CONSENSUS_CONTEXT_H
 
+#include <unordered_set>
+
 #include "yb/consensus/consensus_context.h"
 
 namespace yb {
@@ -34,6 +36,11 @@ class TestConsensusContext : public ConsensusContext {
   uint64_t NumSSTFiles() override { return 0; }
 
   void ListenNumSSTFilesChanged(std::function<void()> listener) override {}
+
+  Status CheckOperationAllowed(
+      const OpId& op_id, consensus::OperationType op_type) override {
+    return Status::OK();
+  }
 };
 
 } // namespace consensus

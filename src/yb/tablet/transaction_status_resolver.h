@@ -14,25 +14,29 @@
 #ifndef YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
 #define YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
 
+#include <stdint.h>
+
 #include <memory>
+#include <type_traits>
 
 #include "yb/rpc/rpc_fwd.h"
 
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace tablet {
 
 struct TransactionStatusInfo {
-  TransactionId transaction_id;
+  TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
+  AbortedSubTransactionSet aborted_subtxn_set;
   HybridTime status_ht;
+  HybridTime coordinator_safe_time;
 
   std::string ToString() const {
-    return Format("{ transaction_id: $0 status: $1 status_ht: $2 }",
-                  transaction_id, status, status_ht);
+    return YB_STRUCT_TO_STRING(transaction_id, status, status_ht, coordinator_safe_time);
   }
 };
 
@@ -47,7 +51,7 @@ class TransactionStatusResolver {
   // If max_transactions_per_request is zero then resolution is skipped.
   TransactionStatusResolver(
       TransactionParticipantContext* participant_context, rpc::Rpcs* rpcs,
-      size_t max_transactions_per_request,
+      int max_transactions_per_request,
       TransactionStatusResolverCallback callback);
   ~TransactionStatusResolver();
 

@@ -1239,7 +1239,7 @@ _equalCreateStmt(const CreateStmt *a, const CreateStmt *b)
 	COMPARE_NODE_FIELD(options);
 	COMPARE_SCALAR_FIELD(oncommit);
 	COMPARE_STRING_FIELD(tablespacename);
-	COMPARE_NODE_FIELD(tablegroup);
+	COMPARE_STRING_FIELD(tablegroupname);
 	COMPARE_SCALAR_FIELD(if_not_exists);
 	COMPARE_NODE_FIELD(split_options);
 
@@ -1330,7 +1330,6 @@ _equalIndexStmt(const IndexStmt *a, const IndexStmt *b)
 	COMPARE_SCALAR_FIELD(relationId);
 	COMPARE_STRING_FIELD(accessMethod);
 	COMPARE_STRING_FIELD(tableSpace);
-	COMPARE_NODE_FIELD(tablegroup);
 	COMPARE_NODE_FIELD(indexParams);
 	COMPARE_NODE_FIELD(indexIncludingParams);
 	COMPARE_NODE_FIELD(options);
@@ -1664,6 +1663,7 @@ _equalDropdbStmt(const DropdbStmt *a, const DropdbStmt *b)
 {
 	COMPARE_STRING_FIELD(dbname);
 	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_NODE_FIELD(options);
 
 	return true;
 }
@@ -1790,22 +1790,9 @@ static bool
 _equalCreateTableGroupStmt(const CreateTableGroupStmt *a, const CreateTableGroupStmt *b)
 {
 	COMPARE_STRING_FIELD(tablegroupname);
+	COMPARE_STRING_FIELD(tablespacename);
+	COMPARE_NODE_FIELD(owner);
 	COMPARE_NODE_FIELD(options);
-	return true;
-}
-
-static bool
-_equalDropTableGroupStmt(const DropTableGroupStmt *a, const DropTableGroupStmt *b)
-{
-	COMPARE_STRING_FIELD(tablegroupname);
-	return true;
-}
-
-static bool
-_equalOptTableGroup(const OptTableGroup *a, const OptTableGroup *b)
-{
-	COMPARE_STRING_FIELD(tablegroup_name);
-	COMPARE_SCALAR_FIELD(has_tablegroup);
 	return true;
 }
 
@@ -2567,7 +2554,6 @@ _equalIndexElem(const IndexElem *a, const IndexElem *b)
 	COMPARE_NODE_FIELD(opclass);
 	COMPARE_SCALAR_FIELD(ordering);
 	COMPARE_SCALAR_FIELD(nulls_ordering);
-	COMPARE_NODE_FIELD(yb_name_list);
 
 	return true;
 }
@@ -3003,6 +2989,42 @@ _equalValue(const Value *a, const Value *b)
 			break;
 	}
 
+	return true;
+}
+
+static bool
+_equalBackfillIndexStmt(const BackfillIndexStmt *a, const BackfillIndexStmt *b)
+{
+	COMPARE_SCALAR_FIELD(oid_list);
+	COMPARE_NODE_FIELD(bfinfo);
+	return true;
+}
+
+static bool
+_equalYbBackfillInfo(const YbBackfillInfo *a, const YbBackfillInfo *b)
+{
+	COMPARE_STRING_FIELD(bfinstr);
+	COMPARE_SCALAR_FIELD(read_time);
+	COMPARE_NODE_FIELD(row_bounds);
+	return true;
+}
+
+static bool
+_equalRowBounds(const RowBounds *a, const RowBounds *b)
+{
+	COMPARE_STRING_FIELD(partition_key);
+	COMPARE_STRING_FIELD(row_key_start);
+	COMPARE_STRING_FIELD(row_key_end);
+	return true;
+}
+
+static bool
+_equalYbExprParamDesc(const YbExprParamDesc *a, const YbExprParamDesc *b)
+{
+	COMPARE_SCALAR_FIELD(attno);
+	COMPARE_SCALAR_FIELD(typid);
+	COMPARE_SCALAR_FIELD(typmod);
+	COMPARE_SCALAR_FIELD(collid);
 	return true;
 }
 
@@ -3451,9 +3473,6 @@ equal(const void *a, const void *b)
 		case T_CreateTableGroupStmt:
 			retval = _equalCreateTableGroupStmt(a, b);
 			break;
-		case T_DropTableGroupStmt:
-			retval = _equalDropTableGroupStmt(a, b);
-			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);
 			break;
@@ -3739,8 +3758,18 @@ equal(const void *a, const void *b)
 		case T_PartitionCmd:
 			retval = _equalPartitionCmd(a, b);
 			break;
-		case T_OptTableGroup:
-			retval = _equalOptTableGroup(a, b);
+		case T_BackfillIndexStmt:
+			retval = _equalBackfillIndexStmt(a, b);
+			break;
+		case T_YbBackfillInfo:
+			retval = _equalYbBackfillInfo(a, b);
+			break;
+		case T_RowBounds:
+			retval = _equalRowBounds(a, b);
+			break;
+
+		case T_YbExprParamDesc:
+			retval = _equalYbExprParamDesc(a, b);
 			break;
 
 		default:

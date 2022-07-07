@@ -2,110 +2,108 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+
+import com.google.inject.Inject;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.stream.Collector;
-import java.util.stream.Collectors;
-
-import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import play.mvc.Controller;
 import play.mvc.Result;
 
-
+@Api(
+    value = "Universe node metadata (metamaster)",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class MetaMasterController extends Controller {
 
   public static final Logger LOG = LoggerFactory.getLogger(MetaMasterController.class);
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  @Inject KubernetesManagerFactory kubernetesManagerFactory;
 
+  @ApiOperation(
+      value = "List a universe's master nodes",
+      response = MastersList.class,
+      nickname = "getUniverseMasterNodes")
   public Result get(UUID universeUUID) {
-    try {
-      // Lookup the entry for the instanceUUID.
-      Universe universe = Universe.get(universeUUID);
-      // Return the result.
-      MastersList masters = new MastersList();
-      for (NodeDetails node : universe.getMasters()) {
-        masters.add(MasterNode.fromUniverseNode(node));
-      }
-      return ApiResponse.success(masters);
-    } catch (RuntimeException e) {
-      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
+    // Lookup the entry for the instanceUUID.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    // Return the result.
+    MastersList masters = new MastersList();
+    for (NodeDetails node : universe.getMasters()) {
+      masters.add(MasterNode.fromUniverseNode(node));
     }
+    return PlatformResults.withData(masters);
   }
 
+  @ApiOperation(value = "List a master node's addresses", response = String.class)
   public Result getMasterAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.MASTER);
   }
 
+  @ApiOperation(value = "List a YQL server's addresses", response = String.class)
   public Result getYQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YQLSERVER);
   }
 
+  @ApiOperation(value = "List a YSQL server's addresses", response = String.class)
   public Result getYSQLServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.YSQLSERVER);
   }
 
+  @ApiOperation(value = "List a REDIS server's addresses", response = String.class)
   public Result getRedisServerAddresses(UUID customerUUID, UUID universeUUID) {
     return getServerAddresses(customerUUID, universeUUID, ServerType.REDISSERVER);
   }
 
   private Result getServerAddresses(UUID customerUUID, UUID universeUUID, ServerType type) {
     // Verify the customer with this universe is present.
-    Customer customer = Customer.get(customerUUID);
-    if (customer == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
+    Customer.getOrBadRequest(customerUUID);
+
+    // Lookup the entry for the instanceUUID.
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    // In case of Kubernetes universe we would fetch the service ip
+    // instead of the POD ip.
+    String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
+    if (serviceIPPort != null) {
+      return PlatformResults.withData(serviceIPPort);
     }
 
-    try {
-      // Lookup the entry for the instanceUUID.
-      Universe universe = Universe.get(universeUUID);
-      // In case of Kubernetes universe we would fetch the service ip
-      // instead of the POD ip.
-      String serviceIPPort = getKuberenetesServiceIPPort(type, universe);
-      if (serviceIPPort != null) {
-        return ApiResponse.success(serviceIPPort);
-      }
-
-      switch (type) {
-        case MASTER: return ApiResponse.success(universe.getMasterAddresses());
-        case YQLSERVER: return ApiResponse.success(universe.getYQLServerAddresses());
-        case YSQLSERVER: return ApiResponse.success(universe.getYSQLServerAddresses());
-        case REDISSERVER: return ApiResponse.success(universe.getRedisServerAddresses());
-        default: throw new IllegalArgumentException("Unexpected type " + type);
-      }
-    } catch (RuntimeException e) {
-      LOG.error("Error finding universe", e);
-      return ApiResponse.error(BAD_REQUEST, "Could not find universe " + universeUUID);
+    switch (type) {
+      case MASTER:
+        return PlatformResults.withData(universe.getMasterAddresses());
+      case YQLSERVER:
+        return PlatformResults.withData(universe.getYQLServerAddresses());
+      case YSQLSERVER:
+        return PlatformResults.withData(universe.getYSQLServerAddresses());
+      case REDISSERVER:
+        return PlatformResults.withData(universe.getRedisServerAddresses());
+      default:
+        throw new IllegalArgumentException("Unexpected type " + type);
     }
   }
 
   public static class MastersList {
-    public List<MasterNode> masters = new ArrayList<MasterNode>();
+    public List<MasterNode> masters = new ArrayList<>();
 
     public void add(MasterNode masterNode) {
       masters.add(masterNode);
@@ -129,9 +127,13 @@ public class MetaMasterController extends Controller {
   }
 
   private String getKuberenetesServiceIPPort(ServerType type, Universe universe) {
-    List<String> allIPs = new ArrayList<String>();
+    List<String> allIPs = new ArrayList<>();
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UniverseDefinitionTaskParams.Cluster primary = universeDetails.getPrimaryCluster();
+    // If no service is exposed, fail early.
+    if (primary.userIntent.enableExposingService == ExposingServiceState.UNEXPOSED) {
+      return null;
+    }
     Provider provider = Provider.get(UUID.fromString(primary.userIntent.provider));
 
     if (!primary.userIntent.providerType.equals(Common.CloudType.kubernetes)) {
@@ -148,18 +150,28 @@ public class MetaMasterController extends Controller {
 
         Map<String, String> config = entry.getValue();
 
-        String namespace = isMultiAz ?
-            String.format("%s-%s", universeDetails.nodePrefix, azName) :
-            universeDetails.nodePrefix;
+        String namespace =
+            PlacementInfoUtil.getKubernetesNamespace(
+                isMultiAz,
+                universeDetails.nodePrefix,
+                azName,
+                config,
+                universeDetails.useNewHelmNamingStyle,
+                false);
 
-        ShellResponse r = kubernetesManager.getServiceIPs(
-            config, namespace, type == ServerType.MASTER);
-        if (r.code != 0 || r.message == null) {
-          LOG.warn("Kubernetes getServiceIPs api failed!", r.message);
+        String ip =
+            kubernetesManagerFactory
+                .getManager()
+                .getPreferredServiceIP(
+                    config,
+                    universeDetails.nodePrefix,
+                    namespace,
+                    type == ServerType.MASTER,
+                    universeDetails.useNewHelmNamingStyle);
+        if (ip == null) {
           return null;
         }
-        List<String> ips = Arrays.stream(r.message.split("\\|"))
-            .filter((ip) -> !ip.trim().isEmpty()).collect(Collectors.toList());
+
         int rpcPort;
         switch (type) {
           case MASTER:
@@ -177,7 +189,7 @@ public class MetaMasterController extends Controller {
           default:
             throw new IllegalArgumentException("Unexpected type " + type);
         }
-        allIPs.add(String.format("%s:%d", ips.get(ips.size() - 1), rpcPort));
+        allIPs.add(String.format("%s:%d", ip, rpcPort));
       }
       return String.join(",", allIPs);
     }

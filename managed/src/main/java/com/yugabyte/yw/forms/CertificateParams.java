@@ -2,33 +2,32 @@
 
 package com.yugabyte.yw.forms;
 
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import play.data.validation.Constraints;
-import java.util.Date;
-
-import com.yugabyte.yw.models.CertificateInfo;
 
 /**
- * This class will be used by the API and UI Form Elements to validate constraints for
- * the custom certificate Data.
+ * This class will be used by the API and UI Form Elements to validate constraints for the custom
+ * certificate Data.
  */
 public class CertificateParams {
-  @Constraints.Required()
-  public String label;
+  @Constraints.Required() public String label;
 
-  @Constraints.Required()
-  public long certStart;
+  @Constraints.Required() public long certStart;
 
-  @Constraints.Required()
-  public long certExpiry;
+  @Constraints.Required() public long certExpiry;
 
-  @Constraints.Required()
-  public String certContent;
+  @Constraints.Required() public String certContent;
 
   public String keyContent;
 
-  public CertificateInfo.Type certType = CertificateInfo.Type.SelfSigned;
+  public CertConfigType certType = CertConfigType.SelfSigned;
 
-  static public class CustomCertInfo {
+  /**
+   * This is used for params for custom cert path information (on prem) provided by user while
+   * creating custom cert entry.
+   */
+  public static class CustomCertInfo {
     public String nodeCertPath;
     public String nodeKeyPath;
     public String rootCertPath;
@@ -37,4 +36,14 @@ public class CertificateParams {
   }
 
   public CustomCertInfo customCertInfo;
+
+  /** This is used for accepting custom server certificates for Node-to-client communication. */
+  public static class CustomServerCertData {
+    public String serverCertContent;
+    public String serverKeyContent;
+  }
+
+  public CustomServerCertData customServerCertData;
+
+  public HashicorpVaultConfigParams hcVaultCertParams;
 }

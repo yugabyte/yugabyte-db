@@ -15,11 +15,9 @@
 
 #include "yb/util/opid.h"
 
-#include <iostream>
+#include <algorithm>
 
 #include <boost/functional/hash.hpp>
-
-#include <glog/logging.h>
 
 #include "yb/util/stol_utils.h"
 
@@ -68,7 +66,7 @@ Result<OpId> OpId::FromString(Slice input) {
 }
 
 std::ostream& operator<<(std::ostream& out, const OpId& op_id) {
-  return out << "{ term: " << op_id.term << " index: " << op_id.index << " }";
+  return out << op_id.term << "." << op_id.index;
 }
 
 size_t hash_value(const OpId& op_id) noexcept {

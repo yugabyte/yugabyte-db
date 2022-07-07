@@ -16,9 +16,13 @@
 
 #include <atomic>
 
-#include "yb/util/shared_mem.h"
+#include <boost/asio/ip/tcp.hpp>
 
 #include "yb/tserver/tserver_util_fwd.h"
+
+#include "yb/util/atomic.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace tserver {
@@ -33,16 +37,23 @@ class TServerSharedData {
     // for shared memory! Some atomics claim to be lock-free but still require
     // read-write access for a `load()`.
     // E.g. for 128 bit objects: https://stackoverflow.com/questions/49816855.
-    LOG_IF(FATAL, !catalog_version_.is_lock_free())
+    LOG_IF(FATAL, !IsAcceptableAtomicImpl(catalog_version_))
         << "Shared memory atomics must be lock-free";
+    host_[0] = 0;
   }
 
-  void SetEndpoint(const Endpoint& value) {
+  void SetHostEndpoint(const Endpoint& value, const std::string& host) {
     endpoint_ = value;
+    strncpy(host_, host.c_str(), sizeof(host_) - 1);
+    host_[sizeof(host_) - 1] = 0;
   }
 
   const Endpoint& endpoint() const {
     return endpoint_;
+  }
+
+  Slice host() const {
+    return host_;
   }
 
   void SetYSQLCatalogVersion(uint64_t version) {
@@ -53,11 +64,21 @@ class TServerSharedData {
     return catalog_version_.load(std::memory_order_acquire);
   }
 
+  void SetPostgresAuthKey(uint64_t auth_key) {
+    postgres_auth_key_ = auth_key;
+  }
+
+  uint64_t postgres_auth_key() const {
+    return postgres_auth_key_;
+  }
+
  private:
   // Endpoint that should be used by local processes to access this tserver.
   Endpoint endpoint_;
+  char host_[255 + 1]; // DNS name max length is 255, but on linux HOST_NAME_MAX is 64.
 
   std::atomic<uint64_t> catalog_version_{0};
+  uint64_t postgres_auth_key_;
 };
 
 }  // namespace tserver

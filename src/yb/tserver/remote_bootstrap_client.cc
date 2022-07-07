@@ -32,35 +32,43 @@
 
 #include "yb/tserver/remote_bootstrap_client.h"
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
+
+#include "yb/common/index.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/metadata.pb.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
-#include "yb/rpc/messenger.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/tablet/tablet.pb.h"
-#include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/remote_bootstrap.pb.h"
 #include "yb/tserver/remote_bootstrap.proxy.h"
 #include "yb/tserver/remote_bootstrap_snapshots.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
 #include "yb/util/fault_injection.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 
 using namespace yb::size_literals;
 
@@ -98,6 +106,7 @@ DEFINE_test_flag(int32, simulate_long_remote_bootstrap_sec, 0,
                  "follower_unavailable_considered_failed_sec seconds.");
 
 DEFINE_test_flag(bool, download_partial_wal_segments, false, "");
+DEFINE_test_flag(bool, pause_rbs_before_download_wal, false, "Pause RBS before downloading WAL.");
 
 DECLARE_int32(bytes_remote_bootstrap_durable_write_mb);
 
@@ -106,6 +115,7 @@ namespace tserver {
 
 using consensus::ConsensusMetadata;
 using consensus::ConsensusStatePB;
+using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
 using consensus::RaftPeerPB;
 using env_util::CopyFile;
@@ -330,31 +340,28 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                               &data_root_dir,
                                               &wal_root_dir);
     }
-    Status create_status = RaftGroupMetadata::CreateNew(
-        &fs_manager(),
-        table_id,
-        tablet_id_,
-        table.namespace_name(),
-        table.table_name(),
-        table.table_type(),
-        schema,
-        IndexMap(table.indexes()),
-        partition_schema,
-        partition,
+    auto table_info = std::make_shared<tablet::TableInfo>(
+        tablet::Primary::kTrue, table_id, table.namespace_name(), table.table_name(),
+        table.table_type(), schema, IndexMap(table.indexes()),
         table.has_index_info() ? boost::optional<IndexInfo>(table.index_info()) : boost::none,
-        table.schema_version(),
-        tablet::TABLET_DATA_COPYING,
-        &meta_,
-        data_root_dir,
-        wal_root_dir,
-        colocated);
-    if (ts_manager != nullptr && !create_status.ok()) {
-      ts_manager->UnregisterDataWalDir(table_id,
-                                       tablet_id_,
-                                       data_root_dir,
-                                       wal_root_dir);
+        table.schema_version(), partition_schema);
+    fs_manager().SetTabletPathByDataPath(tablet_id_, data_root_dir);
+    auto create_result = RaftGroupMetadata::CreateNew(
+        tablet::RaftGroupMetadataData {
+            .fs_manager = &fs_manager(),
+            .table_info = table_info,
+            .raft_group_id = tablet_id_,
+            .partition = partition,
+            .tablet_data_state = tablet::TABLET_DATA_COPYING,
+            .colocated = colocated,
+            .snapshot_schedules = {},
+        },
+        data_root_dir, wal_root_dir);
+    if (ts_manager != nullptr && !create_result.ok()) {
+      ts_manager->UnregisterDataWalDir(table_id, tablet_id_, data_root_dir, wal_root_dir);
     }
-    RETURN_NOT_OK(create_status);
+    RETURN_NOT_OK(create_result);
+    meta_ = std::move(*create_result);
 
     vector<DeletedColumn> deleted_cols;
     for (const DeletedColumnPB& col_pb : table.deleted_cols()) {
@@ -398,6 +405,8 @@ Status RemoteBootstrapClient::FetchAll(TabletStatusListener* status_listener) {
   new_superblock_.mutable_kv_store()->set_rocksdb_dir(meta_->rocksdb_dir());
 
   RETURN_NOT_OK(DownloadRocksDBFiles());
+  TEST_PAUSE_IF_FLAG_WITH_PREFIX(
+      TEST_pause_rbs_before_download_wal, LogPrefix() + tablet_id_ + ": ");
   RETURN_NOT_OK(DownloadWALs());
   for (const auto& component : components_) {
     RETURN_NOT_OK(component->Download());
@@ -417,7 +426,7 @@ Status RemoteBootstrapClient::Finish() {
   CHECK(started_);
 
   CHECK(downloaded_wal_);
-  CHECK(downloaded_rocksdb_files_) << "files not downloaded";;
+  CHECK(downloaded_rocksdb_files_) << "files not downloaded";
 
   RETURN_NOT_OK(WriteConsensusMetadata());
 
@@ -429,7 +438,7 @@ Status RemoteBootstrapClient::Finish() {
   RETURN_NOT_OK(meta_->ReplaceSuperBlock(new_superblock_));
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string meta_path = fs_manager().GetRaftGroupMetadataPath(tablet_id_);
+    string meta_path = VERIFY_RESULT(fs_manager().GetRaftGroupMetadataPath(tablet_id_));
     string meta_copy_path = Substitute("$0.copy.$1.tmp", meta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), meta_path, meta_copy_path,
                                    WritableFileOptions()),
@@ -466,7 +475,8 @@ Status RemoteBootstrapClient::VerifyChangeRoleSucceeded(
         continue;
       }
 
-      if (peer.member_type() == RaftPeerPB::VOTER || peer.member_type() == RaftPeerPB::OBSERVER) {
+      if (peer.member_type() == PeerMemberType::VOTER ||
+          peer.member_type() == PeerMemberType::OBSERVER) {
         return Status::OK();
       } else {
         SleepFor(MonoDelta::FromMilliseconds(backoff_ms));
@@ -607,7 +617,7 @@ Status RemoteBootstrapClient::DownloadWALs() {
       }
     }
   } else {
-    int num_segments = wal_seqnos_.size();
+    auto num_segments = wal_seqnos_.size();
     LOG_WITH_PREFIX(INFO) << "Starting download of " << num_segments << " WAL segments...";
     for (uint64_t seg_seqno : wal_seqnos_) {
       UpdateStatusMessage(Substitute("Downloading WAL segment with seq. number $0 ($1/$2)",
@@ -726,7 +736,7 @@ Status RemoteBootstrapClient::WriteConsensusMetadata() {
   RETURN_NOT_OK(cmeta_->Flush());
 
   if (FLAGS_remote_bootstrap_save_downloaded_metadata) {
-    string cmeta_path = fs_manager().GetConsensusMetadataPath(tablet_id_);
+    string cmeta_path = VERIFY_RESULT(fs_manager().GetConsensusMetadataPath(tablet_id_));
     string cmeta_copy_path = Substitute("$0.copy.$1.tmp", cmeta_path, start_time_micros_);
     RETURN_NOT_OK_PREPEND(CopyFile(Env::Default(), cmeta_path, cmeta_copy_path,
                                    WritableFileOptions()),

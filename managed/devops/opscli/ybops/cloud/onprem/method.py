@@ -10,22 +10,23 @@
 
 from jinja2 import Environment, FileSystemLoader
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
-from ybops.cloud.common.method import AbstractMethod
+from ybops.cloud.common.method import AbstractAccessMethod, AbstractMethod
 from ybops.cloud.common.method import AbstractInstancesMethod
 from ybops.cloud.common.method import CreateInstancesMethod
 from ybops.cloud.common.method import DestroyInstancesMethod
 from ybops.cloud.common.method import ProvisionInstancesMethod, ListInstancesMethod
 from ybops.utils import get_ssh_host_port, validate_instance, get_datafile_path, YB_HOME_DIR, \
-                        get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp
-
+                        get_mount_roots, remote_exec_command, wait_for_ssh, scp_to_tmp, \
+                        SSH_RETRY_LIMIT_PRECHECK, DEFAULT_MASTER_HTTP_PORT, \
+                        DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
+                        DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
+from ybops.utils.remote_shell import RemoteShell
 
 import json
 import logging
 import os
-import subprocess
 import stat
 import ybops.utils as ybutils
-
 from six import iteritems
 
 
@@ -42,6 +43,7 @@ class OnPremCreateInstancesMethod(CreateInstancesMethod):
         # step purely to validate that we can access the host.
         #
         # TODO: do we still want/need to change to the custom ssh port?
+        self.update_ansible_vars_with_args(args)
         self.wait_for_host(args)
 
 
@@ -53,14 +55,9 @@ class OnPremProvisionInstancesMethod(ProvisionInstancesMethod):
     def __init__(self, base_command):
         super(OnPremProvisionInstancesMethod, self).__init__(base_command)
 
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = OnPremCreateInstancesMethod(self.base_command)
-
     def callback(self, args):
         # For onprem, we are always using pre-existing hosts!
-        args.reuse_host = True
+        args.skip_preprovision = True
         super(OnPremProvisionInstancesMethod, self).callback(args)
 
 
@@ -131,9 +128,10 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
     def __init__(self, base_command):
         super(OnPremDestroyInstancesMethod, self).__init__(base_command)
 
-    def get_ssh_user(self):
-        # Force destroy instances to use the "yugabyte" user.
-        return "yugabyte"
+    def add_extra_args(self):
+        super(OnPremDestroyInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--install_node_exporter", action="store_true",
+                                 help='Check if node exporter should be stopped.')
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -141,7 +139,18 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
             logging.error("Host {} does not exists.".format(args.search_pattern))
             return
 
-        # Force destroy instances to use the "yugabyte" user.
+        # Run non-db related tasks.
+        self.update_ansible_vars_with_args(args)
+        if args.install_node_exporter:
+            logging.info(("[app] Running control script stop " +
+                          "against thirdparty services at {}").format(host_info['name']))
+            self.cloud.run_control_script(
+                "thirdparty", "stop-services", args, self.extra_vars, host_info)
+
+        self.cloud.run_control_script(
+            "platform-services", "stop-services", args, self.extra_vars, host_info)
+
+        # Force db-related commands to use the "yugabyte" user.
         args.ssh_user = "yugabyte"
         self.update_ansible_vars_with_args(args)
         servers = ["master", "tserver"]
@@ -170,18 +179,16 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
     def wait_for_host(self, args, default_port=True):
         logging.info("Waiting for instance {}".format(args.search_pattern))
-        host_lookup_count = 0
-        # Cache the result of the cloud call outside of the loop.
-        host_info = None
-        if not host_info:
-            host_info = self.cloud.get_host_info(args)
+        host_info = self.cloud.get_host_info(args)
         if host_info:
             self.extra_vars.update(
-                get_ssh_host_port(host_info, args.custom_ssh_port, default_port=default_port))
+                get_ssh_host_port(host_info, args.custom_ssh_port))
+            # Expect onprem nodes to already exist.
             if wait_for_ssh(self.extra_vars["ssh_host"],
                             self.extra_vars["ssh_port"],
                             self.extra_vars["ssh_user"],
-                            args.private_key_file):
+                            args.private_key_file,
+                            num_retries=SSH_RETRY_LIMIT_PRECHECK):
                 return host_info
         else:
             raise YBOpsRuntimeError("Unable to find host info.")
@@ -191,6 +198,28 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
     def add_extra_args(self):
         super(OnPremPrecheckInstanceMethod, self).add_extra_args()
+        self.parser.add_argument('--master_http_port', default=DEFAULT_MASTER_HTTP_PORT)
+        self.parser.add_argument('--master_rpc_port', default=DEFAULT_MASTER_RPC_PORT)
+        self.parser.add_argument('--tserver_http_port', default=DEFAULT_TSERVER_HTTP_PORT)
+        self.parser.add_argument('--tserver_rpc_port', default=DEFAULT_TSERVER_RPC_PORT)
+        self.parser.add_argument('--cql_proxy_http_port', default=None)
+        self.parser.add_argument('--cql_proxy_rpc_port', default=None)
+        self.parser.add_argument('--ysql_proxy_http_port', default=None)
+        self.parser.add_argument('--ysql_proxy_rpc_port', default=None)
+        self.parser.add_argument('--redis_proxy_http_port', default=None)
+        self.parser.add_argument('--redis_proxy_rpc_port', default=None)
+        self.parser.add_argument('--node_exporter_http_port', default=None)
+        self.parser.add_argument('--root_cert_path', default=None)
+        self.parser.add_argument('--server_cert_path', default=None)
+        self.parser.add_argument('--server_key_path', default=None)
+        self.parser.add_argument('--root_cert_path_client_to_server', default=None)
+        self.parser.add_argument('--server_cert_path_client_to_server', default=None)
+        self.parser.add_argument('--server_key_path_client_to_server', default=None)
+        self.parser.add_argument('--certs_location_client_to_server', default=None)
+        self.parser.add_argument('--client_cert_path', default=None)
+        self.parser.add_argument('--client_key_path', default=None)
+        self.parser.add_argument('--skip_cert_validation', default=None)
+
         self.parser.add_argument("--precheck_type", required=True,
                                  choices=['provision', 'configure'],
                                  help="Preflight check to determine if instance is ready.")
@@ -198,6 +227,37 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                  help='If instances are air gapped or not.')
         self.parser.add_argument("--install_node_exporter", action="store_true",
                                  help='Check if node exporter can be installed properly.')
+        self.parser.add_argument("--skip_ntp_check", action="store_true",
+                                 help='Skip check for time synchronization.')
+
+    def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, ssh_options,
+                            skip_cert_validation, results):
+        result_var = True
+        remote_shell = RemoteShell(ssh_options)
+        if not self.test_file_readable(remote_shell, root_cert_path):
+            results["File {} is present and readable".format(root_cert_path)] = False
+            result_var = False
+        if not self.test_file_readable(remote_shell, cert_path):
+            results["File {} is present and readable".format(cert_path)] = False
+            result_var = False
+        if not self.test_file_readable(remote_shell, key_path):
+            results["File {} is present and readable".format(key_path)] = False
+            result_var = False
+        if result_var and skip_cert_validation != 'ALL':
+            try:
+                self.cloud.verify_certs(root_cert_path, cert_path, ssh_options,
+                                        skip_cert_validation != 'HOSTNAME')
+            except YBOpsRuntimeError as e:
+                result_var = False
+                results["Check {} certificate".format(cert_type)] = str(e)
+
+        if result_var:
+            results["Check {} certificate".format(cert_type)] = True
+        return result_var
+
+    def test_file_readable(self, remote_shell, path):
+        node_file_verify = remote_shell.run_command_raw("test -r {}".format(path))
+        return node_file_verify.exited == 0
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -227,13 +287,62 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
         results["SSH Connection"] = scp_result == 0
 
-        ansible_status = self.cloud.setup_ansible(args).run("test_connection.yml",
+        ssh_options = {
+            "ssh_user": "yugabyte",
+            "ssh_host": self.extra_vars["private_ip"],
+            "ssh_port": self.extra_vars["ssh_port"],
+            "private_key_file": args.private_key_file
+        }
+
+        if args.root_cert_path is not None:
+            self.verify_certificates("Server", args.root_cert_path,
+                                     args.server_cert_path,
+                                     args.server_key_path,
+                                     ssh_options,
+                                     args.skip_cert_validation,
+                                     results)
+
+        if args.root_cert_path_client_to_server is not None:
+            self.verify_certificates("Server clientRootCA", args.root_cert_path_client_to_server,
+                                     args.server_cert_path_client_to_server,
+                                     args.server_key_path_client_to_server,
+                                     ssh_options,
+                                     args.skip_cert_validation,
+                                     results)
+
+        if args.client_cert_path is not None:
+            root_cert_path = args.root_cert_path_client_to_server \
+                if args.root_cert_path_client_to_server is not None else args.root_cert_path
+            self.verify_certificates("Client", root_cert_path,
+                                     args.client_cert_path,
+                                     args.client_key_path,
+                                     ssh_options,
+                                     'HOSTNAME',  # not checking hostname for that serts
+                                     results)
+
+        sudo_pass_file = '/tmp/.yb_sudo_pass.sh'
+        self.extra_vars['sudo_pass_file'] = sudo_pass_file
+        ansible_status = self.cloud.setup_ansible(args).run("send_sudo_pass.yml",
                                                             self.extra_vars, host_info,
                                                             print_output=False)
         results["Try Ansible Command"] = ansible_status == 0
 
-        cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {}".format(
-            args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args))
+        ports_to_check = ",".join([str(p) for p in [args.master_http_port,
+                                                    args.master_rpc_port,
+                                                    args.tserver_http_port,
+                                                    args.tserver_rpc_port,
+                                                    args.cql_proxy_http_port,
+                                                    args.cql_proxy_rpc_port,
+                                                    args.ysql_proxy_http_port,
+                                                    args.ysql_proxy_rpc_port,
+                                                    args.redis_proxy_http_port,
+                                                    args.redis_proxy_rpc_port,
+                                                    args.node_exporter_http_port] if p is not None])
+
+        cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
+              "--ports_to_check {} --sudo_pass_file {} --cleanup".format(
+                args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
+                ports_to_check, sudo_pass_file)
         if args.install_node_exporter:
             cmd += " --install_node_exporter"
         if args.air_gap:
@@ -250,7 +359,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         else:
             # stdout will be returned as a list of lines, which should just be one line of json.
             stdout = json.loads(stdout[0])
-            stdout = {k: v == "true" for k, v in stdout.iteritems()}
+            stdout = {k: v == "true" for k, v in iteritems(stdout)}
             results.update(stdout)
 
         output = json.dumps(results, indent=2)
@@ -284,13 +393,18 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
                                  help='If the ssh_user has passwordless sudo access or not.')
         self.parser.add_argument("--air_gap", action="store_true",
                                  help='If instances are air gapped or not.')
-        self.parser.add_argument("--node_exporter_port", type=int, default=9300,
+        self.parser.add_argument("--node_exporter_port", type=int,
+                                 default=DEFAULT_NODE_EXPORTER_HTTP_PORT,
                                  help="The port for node_exporter to bind to")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
         self.parser.add_argument("--install_node_exporter", action="store_true")
+        self.parser.add_argument("--use_chrony", action="store_true",
+                                 help="Whether to set up chrony for NTP synchronization.")
+        self.parser.add_argument("--ntp_server", required=False, action="append", default=[],
+                                 help="NTP server to connect to.")
 
     def callback(self, args):
-        config = {'devops_home': ybutils.YB_DEVOPS_HOME, 'cloud': self.cloud.name}
+        config = {'devops_home': ybutils.YB_DEVOPS_HOME_PERM, 'cloud': self.cloud.name}
         file_name = 'provision_instance.py.j2'
         try:
             config.update(vars(args))
@@ -305,3 +419,12 @@ class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):
             logging.error(e)
             print(json.dumps(
                 {"error": "Unable to create script: {}".format(get_exception_message(e))}))
+
+
+class OnPremAccessAddKeyMethod(AbstractAccessMethod):
+    def __init__(self, base_command):
+        super(OnPremAccessAddKeyMethod, self).__init__(base_command, "add-key")
+
+    def callback(self, args):
+        (private_key_file, public_key_file) = self.validate_key_files(args)
+        print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))

@@ -24,21 +24,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <functional>
-using std::binary_function;
-using std::less;
+
 #include <limits>
-using std::numeric_limits;
 #include <string>
-using std::string;
 #include <vector>
-using std::vector;
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/stringprintf.h"
+
+using std::binary_function;
+using std::less;
+using std::numeric_limits;
+using std::string;
+using std::vector;
+
 
 
 // START DOXYGEN NumbersFunctions grouping
@@ -158,6 +160,8 @@ char* FastHexToBuffer(int i, char* buffer) MUST_USE_RESULT;
 char* FastTimeToBuffer(time_t t, char* buffer);
 char* FastHex64ToBuffer(uint64 i, char* buffer);
 char* FastHex32ToBuffer(uint32 i, char* buffer);
+
+std::string FastHex64ToString(uint64 value);
 
 // at least 22 bytes long
 inline char* FastIntToBuffer(int i, char* buffer) {

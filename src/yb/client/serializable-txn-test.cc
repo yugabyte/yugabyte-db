@@ -11,16 +11,18 @@
 // under the License.
 //
 
-#include "yb/client/txn-test-base.h"
-
+#include "yb/client/error.h"
 #include "yb/client/session.h"
 #include "yb/client/transaction.h"
+#include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
+
+#include "yb/gutil/casts.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/random_util.h"
-
-#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/util/thread.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -50,7 +52,7 @@ TEST_F(SerializableTxnTest, NonConflictingWrites) {
   struct Entry {
     YBTransactionPtr txn;
     YBqlWriteOpPtr op;
-    std::future<Status> flush_future;
+    std::future<FlushStatus> flush_future;
     std::future<Status> commit_future;
     bool done = false;
   };
@@ -69,7 +71,7 @@ TEST_F(SerializableTxnTest, NonConflictingWrites) {
     for (auto& entry : entries) {
       if (entry.flush_future.valid() && IsReady(entry.flush_future)) {
         LOG(INFO) << "Flush done";
-        RETURN_NOT_OK(entry.flush_future.get());
+        RETURN_NOT_OK(entry.flush_future.get().status);
         entry.commit_future = entry.txn->CommitFuture();
       }
     }
@@ -104,7 +106,7 @@ TEST_F(SerializableTxnTest, ReadWriteConflict) {
     auto read_txn = CreateTransaction();
     auto read_session = CreateSession(read_txn);
     auto read = ReadRow(read_session, i);
-    ASSERT_OK(read_session->Flush());
+    ASSERT_OK(read_session->TEST_Flush());
 
     auto write_txn = CreateTransaction();
     auto write_session = CreateSession(write_txn);
@@ -149,7 +151,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
     YBqlWriteOpPtr op;
     YBTransactionPtr txn;
     YBSessionPtr session;
-    std::shared_future<Status> write_future;
+    std::shared_future<FlushStatus> write_future;
     std::shared_future<Status> commit_future;
   };
 
@@ -159,7 +161,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
     Entry entry;
     entry.txn = transactional ? CreateTransaction() : nullptr;
     entry.session = CreateSession(entry.txn, clock_);
-    entry.session->SetReadPoint(Restart::kFalse);
+    entry.session->RestartNonTxnReadPoint(Restart::kFalse);
     entries.push_back(entry);
   }
 
@@ -181,8 +183,8 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
         entry.write_future = entry.session->FlushFuture();
       } else if (entry.write_future.valid()) {
         if (IsReady(entry.write_future)) {
-          auto write_status = entry.write_future.get();
-          entry.write_future = std::shared_future<Status>();
+          auto write_status = entry.write_future.get().status;
+          entry.write_future = std::shared_future<FlushStatus>();
           if (!write_status.ok()) {
             ASSERT_TRUE(write_status.IsTryAgain() ||
                         ((write_status.IsTimedOut() || write_status.IsServiceUnavailable())
@@ -195,7 +197,7 @@ void SerializableTxnTest::TestIncrement(int key, bool transactional) {
               if (transactional) {
                 entry.txn = ASSERT_RESULT(entry.txn->CreateRestartedTransaction());
               } else {
-                entry.session->SetReadPoint(Restart::kTrue);
+                entry.session->RestartNonTxnReadPoint(Restart::kTrue);
               }
               entry.op = nullptr;
             } else {
@@ -241,7 +243,7 @@ void SerializableTxnTest::TestIncrements(bool transactional) {
 
   std::vector<std::thread> threads;
   while (threads.size() != kThreads) {
-    int key = threads.size();
+    int key = narrow_cast<int>(threads.size());
     threads.emplace_back([this, key, transactional] {
       CDSAttacher attacher;
       TestIncrement(key, transactional);
@@ -286,16 +288,16 @@ void SerializableTxnTest::TestColoring() {
 
     {
       std::vector<YBqlWriteOpPtr> ops;
-      for (int i = 0; i != kKeys; ++i) {
+      for (int j = 0; j != kKeys; ++j) {
         auto color = RandomUniformInt(0, kColors - 1);
         ops.push_back(ASSERT_RESULT(WriteRow(session,
-            i,
+            j,
             color,
             WriteOpType::INSERT,
             Flush::kFalse)));
       }
 
-      ASSERT_OK(session->Flush());
+      ASSERT_OK(session->TEST_Flush());
 
       for (const auto& op : ops) {
         ASSERT_OK(CheckOp(op.get()));
@@ -306,7 +308,7 @@ void SerializableTxnTest::TestColoring() {
     std::atomic<size_t> successes(0);
 
     while (threads.size() != kColors) {
-      int32_t color = threads.size();
+      int32_t color = narrow_cast<int32_t>(threads.size());
       threads.emplace_back([this, color, &successes, kKeys] {
         CDSAttacher attacher;
         for (;;) {
@@ -334,7 +336,7 @@ void SerializableTxnTest::TestColoring() {
             break;
           }
 
-          auto flush_status = session->Flush();
+          auto flush_status = session->TEST_Flush();
           if (!flush_status.ok()) {
             ASSERT_TRUE(flush_status.IsTryAgain()) << flush_status;
             break;
@@ -365,7 +367,7 @@ void SerializableTxnTest::TestColoring() {
       continue;
     }
 
-    session->SetReadPoint(Restart::kFalse);
+    session->RestartNonTxnReadPoint(Restart::kFalse);
     auto values = ASSERT_RESULT(SelectAllRows(session));
     ASSERT_EQ(values.size(), kKeys);
     LOG(INFO) << "Values: " << yb::ToString(values);

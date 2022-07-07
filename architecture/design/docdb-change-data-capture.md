@@ -4,75 +4,63 @@
 
 ### Microservice-oriented architectures
 
-There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as Elasticsearch may be used in conjunction with the database stores the transactions. The search system requires a stream of changes made to the data in YugabyteDB. 
+There are some microservices that require a stream of changes to the data. For example, a search system powered by a service such as [Elasticsearch](https://www.elastic.co/elasticsearch/) may be used in conjunction with the database which stores the transactions. The search system requires a stream of changes made to the data in YugabyteDB.
 
 ### Asynchronous replication to remote systems
 
 Remote systems such as caches and analytics pipelines may subscribe to the stream of changes, transform them and consume these changes.
 
-### Two data center deployments
+### Two datacenter deployments
 
 Two datacenter deployments in YugabyteDB leverage change data capture at the core.
 
-> Note that in this design, the terms "data center", "cluster" and "universe" will be used interchangeably. We assume here that each YB universe is deployed in a single data-center.
+> Note that in this design, the terms "datacenter", "cluster" and "universe" will be used interchangeably. We assume here that each YB universe is deployed in a single datacenter.
 
+## Setting up CDC
 
-# Setting up a CDC
+To set up CDC we use the CDC Streams, the commands for which can be found under [yb-admin](https://docs.yugabyte.com/preview/admin/yb-admin/#change-data-capture-cdc-commands).
 
-To create a CDC stream, run the following commands on YSQL (or YCQL) APIs:
-```
-CREATE CDC
-       FOR <namespace>.<table>
-       INTO <target>
-       WITH <options>;
-```
+### Debezium
 
-Run the following command to drop an existing CDC stream:
-```
-DROP CDC FOR <namespace>.<table>;
-```
+[Debezium](https://debezium.io/) is the connector we are using to pull data out of YugabyteDB. Debezium is an open-source distributed platform at which we can point our database by providing some configuration. Debezium will start collecting the change events from the database and publish them to Kafka.
 
-Initially, `KAFKA` and `ELASTICSEARCH` will be the supported targets. The usage for each of these is shown below.
+We need to provide the configuration values in the JSON format, the important ones are explained here:
 
-### Kafka as the CDC target
+**Example:**
 
-```
-CREATE CDC FOR my_database.my_table
-           INTO KAFKA
-           WITH cluster_address = 'http://localhost:9092',
-                topic = 'my_table_topic',
-                record = AFTER;
-```
+```json
+{
+  "name": "ybconnector",
+  "config": {
+    "tasks.max":"3",
+    "connector.class": "io.debezium.connector.yugabytedb.YugabyteDBConnector",
 
-The CDC options for Kafka include:
+    // stream ID created using yb-admin
+    "database.streamid":"c15e72299560429dba8b50152cf972d7",
+    "database.hostname":"127.0.0.1", // to connect to the JDBC driver
+    "database.port":"5433", // PG port for JDBC driver
 
-| Option name       | Default       | Description   |
-| ----------------- | ------------- | ------------- |
-| `cluster_address` | -             | The `host:port` of the Kafka target cluster |
-| `topic`           | Table name    | The Kafka topic to which the stream is published |
-| `record`          | AFTER         | The type of records in the stream. Valid values are `CHANGE` (changed values only), `AFTER` (the entire row after the change is applied), ALL (the before and after value of the row). |
+    // comma separated values of master nodes i.e. host:port
+    "database.master.addresses":"127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100",
 
-### Elasticsearch as the CDC target
+    "database.user": "yugabyte", // username
+    "database.password":"yugabyte", // password
+    "database.dbname":"yugabyte", // database in which the table resides
 
-```
-CREATE CDC FOR my_database.my_table
-           INTO ELASTICSEARCH
-           WITH cluster_address = 'http://localhost:9200',
-                index = 'my_table_index';
+    // logical name of the cluster, helps in creating topic name
+    "database.server.name": "dbserver1",
+
+    // tables to be included for streaming i.e. <schemaName>.<tableName>
+    "table.include.list":"public.test_table"
+  }
+}
 ```
 
-The CDC options for Elasticsearch include:
+For a list of complete parameters that can be configured see [Debezium Connector for YugabyteDB](https://docs.yugabyte.com/preview/integrations/cdc/debezium/).
 
-| Option name       | Default       | Description   |
-| ----------------- | ------------- | ------------- |
-| `cluster_address` | -             | The `host:port` of the Elasticsearch target cluster |
-| `index`           | Table name    | The Elasticsearch index into which the search index is built |
-
-
-# Design
+## Design
 
 ### Process Architecture
-
 
 ```
                           ╔═══════════════════════════════════════════╗
@@ -84,7 +72,7 @@ The CDC options for Elasticsearch include:
              .----------->║  ║                ║ ║  ╚═════════════╝ ║  ║
              |            ║  ╚════════════════╝ ╚══════════════════╝  ║
              |            ╚═══════════════════════════════════════════╝
-             |                 
+             |
              |
              |_______________________________________________.
              |                                               |
@@ -101,48 +89,25 @@ The CDC options for Elasticsearch include:
 
 ```
 
-Creating a new CDC stream on a table returns a stream UUID. The CDC Service stores information about all streams in the system table `cdc_streams`. The schema for this table looks as follows:
+Every YB-TServer has a `CDC service` that is stateless. The main beta APIs provided by `CDC Service` are:
 
-```
-cdc_streams {
-stream_id	text,
-params	map<text, text>,
-primary key (stream_id)
-}
-```
-
-Along with creating a CDC stream, a CDC subscriber is also created for all existing tablets of the stream. A new subscriber entry is created in the `cdc_subscribers` table. The schema for this table is:
-```
-cdc_subscribers {
-stream_id		text,
-subscriber_id	text,
-tablet_id		text,
-data			map<text, text>,
-primary key (stream_id, subscriber_id, tablet_id)
-}
-```
-
-Every YB-TServer has a `CDC service` that is stateless. The main APIs provided by `CDC Service` are:
-* `SetupCDC` API for setting up CDC stream on a table.
-* `RegisterSubscriber` API for registering a subscriber that will read changes from some or all tablets for that CDC stream.
-* `GetChanges` API that will be used by subscriber to get latest set of changes.
-* `GetSnapshot` API that will be used to bootstrap subscribers and get current snapshot of the database (typically will be invoked prior to GetChanges)
+* `createCDCSDKStream` API for creating the stream on the database.
+* `getChangesCDCSDK` API that will be use by the client to get the latest set of changes.
 
 ### Pushing changes to external systems
 
-Each tserver has `cdc_subscribers` that are responsible for getting changes for all tablets for which the tserver is a leader. When a new stream and subscriber are created, the tserver `cdc_subscribers` detect this and start invoking the `cdc_service.GetChanges` API periodically to get the latest set of changes.
+We are using Debezium which uses the implementation of our APIs such as `getChangesCDCSDK` to get the change events from YugabyteDB. Debezium then publishes the data to Kafka topics when can then be consumed by external applications.
 
-While invoking `GetChanges`, the cdc subscriber needs to pass in a `from_checkpoint` which is the last OP ID that it successfully consumed. When CDC service receives a request of `GetChanges` for a tablet, it reads the changes from WAL (log cache) starting from from_checkpoint, deserializes them and returns those to CDC subscriber. It also records the `from_checkpoint` in `cdc_subscribers` table in the data column. This will be used for bootstrapping fallen subscribers who don’t know the last checkpoint or in case of tablet leader changes.
-
-When `cdc_subscribers` receive the set of changes, they then push these changes out to Kafka or Elastic Search.
-
+Now since Debezium is built on top of Kafka, we also leverage its proven resilience, scalability and handling of huge amount of data.
 
 ### CDC Guarantees
 
 #### Per-tablet ordered delivery guarantee
+
 All changes for a row (or rows in the same tablet) will be received in the order in which they happened. However, due to the distributed nature of the problem, there is no guarantee the order across tablets.
 
 For example, let us imagine the following scenario:
+
 * Two rows are being updated concurrently.
 * These two rows belong to different tablets.
 * The first row `row #1` was updated at time `t1` and the second row `row #2` was updated at time `t2`.
@@ -150,13 +115,13 @@ For example, let us imagine the following scenario:
 In this case, it is entirely possible for the CDC feature to push the later update corresponding to `row #2` change to Kafka before pushing the update corresponding to `row #1`.
 
 #### At-least once delivery
-Updates for rows will be pushed at least once. This can happen in case of tablet leader change where the old leader already pushed changes to Kafka/Elastic Search but the latest pushed op id was not updated in cdc_subscribers table. 
 
-For example, let us imagine a CDC client has received changes for a row at times t1 and t3. It is possible for the client to receive those updates again. 
+Updates for rows will be pushed at least once. This can happen in case of tablet leader change where the old leader already pushed changes to Kafka/Elastic Search but the latest pushed op id was not updated in the CDC metadata.
+
+For example, let us imagine a CDC client has received changes for a row at times t1 and t3. It is possible for the client to receive those updates again.
 
 #### No gaps in change stream
+
 Note that once you have received a change for a row for some timestamp t, you will not receive a previously unseen change for that row at a lower timestamp. Therefore, there is a guarantee at all times that receiving any change implies all older changes have been received for a row.
-
-
 
 [![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/docdb-change-data-capture.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)

@@ -3,35 +3,42 @@ title: Build a Go application that uses YCQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build a sample Go application with the Yugabyte Go Driver for YCQL.
-aliases:
-  - /stable/develop/client-drivers/cassandra/go/
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Go
-    identifier: go-3
+    identifier: go-5
     weight: 552
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-pgx/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PGX
+    </a>
+  </li>
   <li >
-    <a href="/stable/quick-start/build-apps/go/ysql-pq" class="nav-link">
+    <a href="../ysql-pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
     </a>
   </li>
   <li >
-    <a href="/stable/quick-start/build-apps/go/ysql-gorm" class="nav-link">
+    <a href="../ysql-pg/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PG
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-gorm/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - GORM
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/go/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -42,7 +49,7 @@ showAsideToc: true
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe and are able to interact with it using the YCQL shell. If not, follow these steps in [Quick start](../../../explore/ycql/).
 - installed Go version 1.13 or later.
 
 ## Install the Yugabyte Go Driver for YCQL
@@ -132,7 +139,7 @@ $ go run ybcql_hello_world.go
 
 You should see the following as the output.
 
-```
+```output
 Created keyspace ybdemo
 Created table ybdemo.employee
 Inserted data: INSERT INTO ybdemo.employee(id, name, age, language) VALUES (1, 'John', 35, 'Go')

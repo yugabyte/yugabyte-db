@@ -13,6 +13,8 @@
 
 #include "yb/util/ntp_clock.h"
 
+#include "yb/util/result.h"
+
 namespace yb {
 
 #if !defined(__APPLE__)

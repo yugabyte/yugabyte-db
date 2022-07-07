@@ -32,9 +32,48 @@ struct varlena;
  */
 extern bool yb_debug_log_docdb_requests;
 
+/*
+ * Toggles whether formatting functions exporting system catalog information
+ * include DocDB metadata (such as tablet split information).
+ */
+extern bool yb_format_funcs_include_yb_metadata;
+
+/*
+ * Guc variable to enable the use of regular transactions for operating on system catalog tables
+ * in case a DDL transaction has not been started.
+ */
+extern bool yb_non_ddl_txn_for_sys_tables_allowed;
+
+/*
+ * Toggles whether to force use of global transaction status table.
+ */
+extern bool yb_force_global_transaction;
+
+/*
+ * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
+ */
+extern bool suppress_nonpg_logs;
+
+/*
+ * Guc variable to control the max session batch size before flushing.
+ */
+extern int ysql_session_max_batch_size;
+
+/*
+ * Guc variable to control the max number of in-flight operations from YSQL to tablet server.
+ */
+extern int ysql_max_in_flight_ops;
+
+/*
+ * Guc variable to enable binary restore from a binary backup of YSQL tables. When doing binary
+ * restore, we copy the docdb SST files of those tables from the source database and reuse them
+ * for a newly created target database to restore those tables.
+ */
+extern bool yb_binary_restore;
+
 typedef struct YBCStatusStruct* YBCStatus;
 
-extern YBCStatus YBCStatusOK;
+extern YBCStatus YBCStatusOKValue;
 bool YBCStatusIsOK(YBCStatus s);
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
@@ -45,11 +84,17 @@ void YBCFreeStatus(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
 const char* YBCStatusCodeAsCString(YBCStatus s);
-char* DupYBStatusMessage(YBCStatus status, bool message_only);
+
+typedef const char* (*GetUniqueConstraintNameFn)(unsigned int);
+
+const char* BuildYBStatusMessage(YBCStatus status,
+                                 GetUniqueConstraintNameFn get_constraint_name);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
 bool YBCIsTxnConflictError(uint16_t txn_errcode);
+bool YBCIsTxnSkipLockingError(uint16_t txn_errcode);
+uint16_t YBCGetTxnConflictErrorCode();
 
 void YBCResolveHostname();
 
@@ -121,6 +166,8 @@ const char* YBCGetStackTrace();
 
 // Initializes global state needed for thread management, including CDS library initialization.
 void YBCInitThreading();
+
+double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 
 #ifdef __cplusplus
 } // extern "C"

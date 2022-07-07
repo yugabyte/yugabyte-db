@@ -22,6 +22,9 @@ import './Review.scss';
 export interface HiddenConfig {
   accessKeyCode: string | null;
   enableYSQL: boolean;
+  enableYSQLAuth: boolean;
+  enableYCQL: boolean;
+  enableYCQLAuth: boolean;
   userAZSelected: boolean;
   useTimeSync: boolean;
   installNodeExporter: boolean; // TODO: clarify, maybe it's not hidden field
@@ -76,7 +79,7 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
   // get access key for provider as we don't have such field in UI
   const { isLoading: isAccessKeyLoading } = useQuery(
     [QUERY_KEY.getAccessKeys, formData.cloudConfig.provider?.uuid],
-    api.getAccessKeys,
+    () => api.getAccessKeys(formData.cloudConfig.provider?.uuid),
     {
       // prevent query from running for edit mode or when there's no provider set
       enabled: !formData.hiddenConfig.accessKeyCode && !!formData.cloudConfig.provider?.uuid,
@@ -223,6 +226,9 @@ export const Review: FC<ReviewProps> = ({ dispatch }) => {
                           &nbsp;
                           {formData.instanceConfig.deviceInfo?.diskIops &&
                             formData.instanceConfig.deviceInfo?.diskIops + ' IOPS'}
+                          &nbsp;
+                          {formData.instanceConfig.deviceInfo?.throughput &&
+                            formData.instanceConfig.deviceInfo?.throughput + ' MiB/sec'}
                         </Col>
                       </Row>
                     )}

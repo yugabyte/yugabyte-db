@@ -3,16 +3,13 @@ title: Build a Python application that uses SQLAlchemy and YSQL
 headerTitle: Build a Python application
 linkTitle: Python
 description: Build a Python e-commerce application that uses SQLAlchemy and YSQL.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Python
     identifier: python-2
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -29,7 +26,7 @@ showAsideToc: true
     </a>
   </li>
   <li >
-    <a href="" class="nav-link active">
+    <a href="{{< relref "./ysql-sqlalchemy.md" >}}" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - SQL Alchemy
     </a>
@@ -38,6 +35,12 @@ showAsideToc: true
     <a href="{{< relref "./ycql.md" >}}" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
+    </a>
+  </li>
+  <li>
+    <a href="{{< relref "./ysql-django.md" >}}" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - Django
     </a>
   </li>
 </ul>
@@ -87,9 +90,8 @@ $ git clone https://github.com/yugabyte/orm-examples.git
 
 Update the database settings in the `src/config.py` file to match the following. If YSQL authentication is enabled, add the password (default for the `yugabyte` user is `yugabyte`).
 
-```
+```python
 import logging
-
 
 listen_port = 8080
 db_user = 'yugabyte'
@@ -120,12 +122,12 @@ The REST API server will start and listen for your requests at `http://localhost
 Create 2 users.
 
 ```sh
-$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
+$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 ```sh
-$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
+$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
@@ -165,7 +167,7 @@ $ curl \
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -176,7 +178,7 @@ yugabyte=#
 yugabyte=# SELECT count(*) FROM users;
 ```
 
-```
+```output
  count
 -------
      2
@@ -187,7 +189,7 @@ yugabyte=# SELECT count(*) FROM users;
 yugabyte=# SELECT count(*) FROM products;
 ```
 
-```
+```output
  count
 -------
      2
@@ -198,7 +200,7 @@ yugabyte=# SELECT count(*) FROM products;
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
-```
+```output
  count
 -------
      2
@@ -211,31 +213,31 @@ yugabyte=# SELECT count(*) FROM orders;
 $ curl http://localhost:8080/users
 ```
 
-```json
+```output.json
 {
   "content": [
     {
       "userId": 2,
       "firstName": "Tom",
       "lastName": "Stewart",
-      "email": "tstewart@yb.com"
+      "email": "tstewart@example.com"
     },
     {
       "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
-      "email": "jsmith@yb.com"
+      "email": "jsmith@example.com"
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
 $ curl http://localhost:8080/products
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -252,14 +254,14 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
 $ curl http://localhost:8080/orders
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -269,7 +271,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -282,7 +284,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 15,
@@ -290,7 +292,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

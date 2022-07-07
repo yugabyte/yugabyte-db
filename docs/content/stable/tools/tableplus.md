@@ -3,17 +3,12 @@ title: Use TablePlus with YugabyteDB YSQL and YCQL
 headerTitle: TablePlus
 linkTitle: TablePlus
 description: Learn how to connect TablePlus to YugabyteDB and query using YSQL, YCQL, and YEDIS.
-aliases:
-  - /develop/tools/tableplus/
-  - /stable/develop/tools/tableplus/
-block_indexing: true
 menu:
   stable:
     identifier: tableplus
     parent: tools
     weight: 2750
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [TablePlus](https://tableplus.io/) is an increasingly popular database developer console with built-in integrations with major databases including PostgreSQL, Cassandra, and Redis. It is free to get started with the option of upgrading to a [perpetual paid license](https://tableplus.io/pricing) for a small cost.

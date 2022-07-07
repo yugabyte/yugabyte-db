@@ -14,10 +14,6 @@
 #define ENT_SRC_YB_MASTER_CATALOG_ENTITY_INFO_H
 
 #include "../../../../src/yb/master/catalog_entity_info.h"
-#include "yb/master/cdc_rpc_tasks.h"
-#include "yb/master/master_backup.pb.h"
-
-#include "yb/client/table.h"
 
 #include "yb/common/snapshot.h"
 
@@ -32,9 +28,14 @@ struct TableDescription {
 
 // This wraps around the proto containing CDC stream information. It will be used for
 // CowObject managed access.
-struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB, SysRowEntry::CDC_STREAM> {
-  const TableId& table_id() const {
+struct PersistentCDCStreamInfo : public Persistent<
+    SysCDCStreamEntryPB, SysRowEntryType::CDC_STREAM> {
+  const google::protobuf::RepeatedPtrField<std::string>& table_id() const {
     return pb.table_id();
+  }
+
+  const NamespaceId& namespace_id() const {
+    return pb.namespace_id();
   }
 
   bool started_deleting() const {
@@ -50,6 +51,10 @@ struct PersistentCDCStreamInfo : public Persistent<SysCDCStreamEntryPB, SysRowEn
     return pb.state() == SysCDCStreamEntryPB::DELETED;
   }
 
+  bool is_deleting_metadata() const {
+    return pb.state() == SysCDCStreamEntryPB::DELETING_METADATA;
+  }
+
   const google::protobuf::RepeatedPtrField<CDCStreamOptionsPB> options() const {
     return pb.options();
   }
@@ -62,7 +67,9 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const CDCStreamId& id() const override { return stream_id_; }
 
-  const TableId& table_id() const;
+  const google::protobuf::RepeatedPtrField<std::string>& table_id() const;
+
+  const NamespaceId& namespace_id() const;
 
   std::string ToString() const override;
 
@@ -78,7 +85,7 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 // This wraps around the proto containing universe replication information. It will be used for
 // CowObject managed access.
 struct PersistentUniverseReplicationInfo :
-    public Persistent<SysUniverseReplicationEntryPB, SysRowEntry::UNIVERSE_REPLICATION> {
+    public Persistent<SysUniverseReplicationEntryPB, SysRowEntryType::UNIVERSE_REPLICATION> {
 
   bool is_deleted_or_failed() const {
     return pb.state() == SysUniverseReplicationEntryPB::DELETED
@@ -104,6 +111,12 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
   Result<std::shared_ptr<CDCRpcTasks>> GetOrCreateCDCRpcTasks(
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
+  // Set the Status related to errors on SetupUniverseReplication.
+  void SetSetupUniverseReplicationErrorStatus(const Status& status);
+
+  // Get the Status of the last error from the current SetupUniverseReplication.
+  Status GetSetupUniverseReplicationErrorStatus() const;
+
  private:
   friend class RefCountedThreadSafe<UniverseReplicationInfo>;
   ~UniverseReplicationInfo() = default;
@@ -112,6 +125,10 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
 
   std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
   std::string master_addrs_;
+
+  // The last error Status of the currently running SetupUniverseReplication. Will be OK, if freshly
+  // constructed object, or if the SetupUniverseReplication was successful.
+  Status setup_universe_replication_error_ = Status::OK();
 
   // Protects cdc_rpc_tasks_.
   mutable rw_spinlock lock_;
@@ -122,7 +139,7 @@ class UniverseReplicationInfo : public RefCountedThreadSafe<UniverseReplicationI
 // The data related to a snapshot which is persisted on disk.
 // This portion of SnapshotInfo is managed via CowObject.
 // It wraps the underlying protobuf to add useful accessors.
-struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntry::SNAPSHOT> {
+struct PersistentSnapshotInfo : public Persistent<SysSnapshotEntryPB, SysRowEntryType::SNAPSHOT> {
   SysSnapshotEntryPB::State state() const {
     return pb.state();
   }
@@ -187,12 +204,14 @@ class SnapshotInfo : public RefCountedThreadSafe<SnapshotInfo>,
   // Returns true if the snapshot deleting is in-progress.
   bool IsDeleteInProgress() const;
 
-  CHECKED_STATUS AddEntries(const TableDescription& table_description);
+  void AddEntries(
+      const TableDescription& table_description, std::unordered_set<NamespaceId>* added_namespaces);
 
   static void AddEntries(
       const TableDescription& table_description,
       google::protobuf::RepeatedPtrField<SysRowEntry>* out,
-      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos);
+      google::protobuf::RepeatedPtrField<SysSnapshotEntryPB::TabletSnapshotPB>* tablet_infos,
+      std::unordered_set<NamespaceId>* added_namespaces);
 
  private:
   friend class RefCountedThreadSafe<SnapshotInfo>;

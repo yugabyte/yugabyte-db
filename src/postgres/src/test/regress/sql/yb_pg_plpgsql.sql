@@ -1822,45 +1822,44 @@ insert into master values(1);
 insert into slave values(1);
 insert into slave values(2);	-- fails
 
--- TODO(dmitry) Subtransactions are not yet supported.
--- create function trap_foreign_key(int) returns int as $$
--- begin
--- 	begin	-- start a subtransaction
--- 		insert into slave values($1);
--- 	exception
--- 		when foreign_key_violation then
--- 			raise notice 'caught foreign_key_violation';
--- 			return 0;
--- 	end;
--- 	return 1;
--- end$$ language plpgsql;
+create function trap_foreign_key(int) returns int as $$
+begin
+	begin	-- start a subtransaction
+		insert into slave values($1);
+	exception
+		when foreign_key_violation then
+			raise notice 'caught foreign_key_violation';
+			return 0;
+	end;
+	return 1;
+end$$ language plpgsql;
 
--- create function trap_foreign_key_2() returns int as $$
--- begin
--- 	begin	-- start a subtransaction
--- 		set constraints all immediate;
--- 	exception
--- 		when foreign_key_violation then
--- 			raise notice 'caught foreign_key_violation';
--- 			return 0;
--- 	end;
--- 	return 1;
--- end$$ language plpgsql;
+create function trap_foreign_key_2() returns int as $$
+begin
+	begin	-- start a subtransaction
+		set constraints all immediate;
+	exception
+		when foreign_key_violation then
+			raise notice 'caught foreign_key_violation';
+			return 0;
+	end;
+	return 1;
+end$$ language plpgsql;
 
--- select trap_foreign_key(1);
--- select trap_foreign_key(2);	-- detects FK violation
+select trap_foreign_key(1);
+select trap_foreign_key(2);	-- detects FK violation
 
--- begin;
---  set constraints all deferred;
---  select trap_foreign_key(2);	-- should not detect FK violation
---  savepoint x;
---    set constraints all immediate; -- fails
---  rollback to x;
---  select trap_foreign_key_2();  -- detects FK violation
--- commit;				-- still fails
+begin;
+  set constraints all deferred;
+  select trap_foreign_key(2);	-- should not detect FK violation
+  savepoint x;
+    set constraints all immediate; -- fails
+  rollback to x;
+  select trap_foreign_key_2();  -- detects FK violation
+commit;				-- still fails
 
--- drop function trap_foreign_key(int);
--- drop function trap_foreign_key_2();
+drop function trap_foreign_key(int);
+drop function trap_foreign_key_2();
 
 --
 -- Test proper snapshot handling in simple expressions
@@ -2634,6 +2633,95 @@ create or replace function shadowtest(f1 int)
 declare f1 int; begin return 1; end $$ language plpgsql;
 
 select shadowtest(1);
+
+-- runtime extra checks
+set plpgsql.extra_warnings to 'too_many_rows';
+
+do $$
+declare x int;
+begin
+  select v from generate_series(1,2) g(v) into x;
+end;
+$$;
+
+set plpgsql.extra_errors to 'too_many_rows';
+
+do $$
+declare x int;
+begin
+  select v from generate_series(1,2) g(v) into x;
+end;
+$$;
+
+reset plpgsql.extra_errors;
+reset plpgsql.extra_warnings;
+
+set plpgsql.extra_warnings to 'strict_multi_assignment';
+
+do $$
+declare
+  x int;
+  y int;
+begin
+  select 1 into x, y;
+  select 1,2 into x, y;
+  select 1,2,3 into x, y;
+end
+$$;
+
+set plpgsql.extra_errors to 'strict_multi_assignment';
+
+do $$
+declare
+  x int;
+  y int;
+begin
+  select 1 into x, y;
+  select 1,2 into x, y;
+  select 1,2,3 into x, y;
+end
+$$;
+
+create table test_01(a int, b int, c int);
+
+alter table test_01 drop column a;
+
+-- the check is active only when source table is not empty
+insert into test_01 values(10,20);
+
+do $$
+declare
+  x int;
+  y int;
+begin
+  select * from test_01 into x, y; -- should be ok
+  raise notice 'ok';
+  select * from test_01 into x;    -- should to fail
+end;
+$$;
+
+do $$
+declare
+  t test_01;
+begin
+  select 1, 2 into t;  -- should be ok
+  raise notice 'ok';
+  select 1, 2, 3 into t; -- should fail;
+end;
+$$;
+
+do $$
+declare
+  t test_01;
+begin
+  select 1 into t; -- should fail;
+end;
+$$;
+
+drop table test_01;
+
+reset plpgsql.extra_errors;
+reset plpgsql.extra_warnings;
 
 -- test scrollable cursor support
 
@@ -4409,6 +4497,7 @@ ANALYZE transition_table_status;
 INSERT INTO transition_table_level1(level1_no)
   SELECT generate_series(201,1000);
 ANALYZE transition_table_level1;
+CHECKPOINT;
 
 -- behave reasonably if someone tries to modify a transition table
 CREATE FUNCTION transition_table_level2_bad_usage_func()
@@ -4584,3 +4673,26 @@ BEGIN
   GET DIAGNOSTICS x = ROW_COUNT;
   RETURN;
 END; $$ LANGUAGE plpgsql;
+-- inner COMMIT with output arguments
+
+CREATE PROCEDURE test_proc7c(x int, INOUT a int, INOUT b numeric)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  a := x / 10;
+  b := x / 2;
+  COMMIT;
+END;
+$$;
+
+CREATE PROCEDURE test_proc7cc(_x int)
+LANGUAGE plpgsql
+AS $$
+DECLARE _a int; _b numeric;
+BEGIN
+  CALL test_proc7c(_x, _a, _b);
+  RAISE NOTICE '_x: %,_a: %, _b: %', _x, _a, _b;
+END
+$$;
+
+CALL test_proc7cc(10);

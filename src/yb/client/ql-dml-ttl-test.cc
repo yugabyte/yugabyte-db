@@ -11,13 +11,16 @@
 // under the License.
 //
 
-#include "yb/client/ql-dml-test-base.h"
-
 #include "yb/client/client.h"
+#include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
 #include "yb/common/ql_value.h"
+
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -61,7 +64,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.AddInt32ColumnValue(req, "c1", 1);
     table_.AddStringColumnValue(req, "c2", "yuga-hello");
     req->set_ttl(2 * 1000);
-    CHECK_OK(session->ApplyAndFlush(op));
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -74,7 +77,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     table_.AddInt32ColumnValue(req, "c3", 2);
     table_.AddStringColumnValue(req, "c4", "yuga-hi");
     req->set_ttl(4 * 1000);
-    CHECK_OK(session->ApplyAndFlush(op));
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
   }
@@ -86,7 +89,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
 
-    CHECK_OK(session->ApplyAndFlush(op));
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect all 4 columns (c1, c2, c3, c4) to be valid right now.
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -110,7 +113,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
 
-    CHECK_OK(session->ApplyAndFlush(op));
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect columns (c1, c2) to be null and (c3, c4) to be valid right now.
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
@@ -134,7 +137,7 @@ TEST_F(QLDmlTTLTest, TestInsertWithTTL) {
     QLAddInt32HashValue(req, 1);
     table_.AddColumns(kAllColumns, req);
 
-    CHECK_OK(session->ApplyAndFlush(op));
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
 
     // Expect all 4 columns (c1, c2, c3, c4) to be null.
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);

@@ -40,6 +40,8 @@
 
 #include "yb/util/bitmap.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/slice.h"
 #include "yb/util/test_macros.h"
 
 namespace yb {
@@ -189,7 +191,7 @@ TEST(TestBitMap, TestFindBit) {
   }
 
   num_bits = sizeof(bm) * 8;
-  for (int i = 0; i < num_bits; ++i) {
+  for (size_t i = 0; i < num_bits; ++i) {
     BitmapChange(bm, i, i & 3);
   }
 

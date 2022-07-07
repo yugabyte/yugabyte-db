@@ -17,7 +17,6 @@
 #include <unordered_set>
 
 #include <boost/container/small_vector.hpp>
-#include <boost/function.hpp>
 
 #include "yb/rocksdb/util/mutexlock.h"
 

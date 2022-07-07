@@ -20,11 +20,12 @@
 
 #pragma once
 
+#include <stddef.h>
+
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/options.h"
+#include "yb/rocksdb/listener.h"
 
 namespace rocksdb {
 

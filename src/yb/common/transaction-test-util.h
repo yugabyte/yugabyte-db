@@ -16,18 +16,31 @@
 #ifndef YB_COMMON_TRANSACTION_TEST_UTIL_H
 #define YB_COMMON_TRANSACTION_TEST_UTIL_H
 
+#include <functional>
+#include <type_traits>
+
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/result.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 namespace yb {
 
 class TransactionStatusManagerMock : public TransactionStatusManager {
  public:
-  HybridTime LocalCommitTime(const TransactionId &id) override {
+  HybridTime LocalCommitTime(const TransactionId& id) override {
     return HybridTime::kInvalid;
+  }
+
+  boost::optional<TransactionLocalState> LocalTxnData(const TransactionId& id) override {
+    return boost::none;
   }
 
   void RequestStatusAt(const StatusRequest& request) override;
@@ -59,6 +72,15 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
 
   HybridTime MinRunningHybridTime() const override {
     return HybridTime::kMin;
+  }
+
+  Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) override {
+    return STATUS(NotSupported, "WaitForSafeTime not implemented");
+  }
+
+  const TabletId& tablet_id() const override {
+    static TabletId tablet_id;
+    return tablet_id;
   }
 
  private:

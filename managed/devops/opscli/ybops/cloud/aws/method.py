@@ -10,21 +10,34 @@
 
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
     ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
-    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod
+    AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, AccessDeleteKeyMethod, \
+    CreateRootVolumesMethod, ReplaceRootVolumeMethod, ChangeInstanceTypeMethod, \
+    UpdateMountedDisksMethod, ConsoleLoggingErrorHandler, DeleteRootVolumesMethod
 from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
 from ybops.cloud.aws.utils import get_yb_sg_name, create_dns_record_set, edit_dns_record_set, \
-    delete_dns_record_set, list_dns_record_set
+    delete_dns_record_set, list_dns_record_set, get_root_label
 
 import json
 import os
 import logging
-import glob
-import subprocess
+
+
+class AwsReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
+    def __init__(self, base_command):
+        super(AwsReplaceRootVolumeMethod, self).__init__(base_command)
+
+    def _mount_root_volume(self, host_info, volume):
+        self.cloud.mount_disk(host_info, volume,
+                              get_root_label(host_info["region"], host_info["ami"]))
+
+    def _host_info_with_current_root_volume(self, args, host_info):
+        return (host_info, host_info["root_volume"])
 
 
 class AwsListInstancesMethod(ListInstancesMethod):
     """Subclass for listing instances in AWS. Currently doesn't provide any extra functionality.
     """
+
     def __init__(self, base_command):
         super(AwsListInstancesMethod, self).__init__(base_command)
 
@@ -33,6 +46,7 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
     """Subclass for creating instances in AWS. This is responsible for taking in the AWS specific
     flags, such as VPCs, AMIs and more.
     """
+
     def __init__(self, base_command):
         super(AwsCreateInstancesMethod, self).__init__(base_command)
 
@@ -44,12 +58,16 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
                                  help="AWS Key Pair name")
         self.parser.add_argument("--security_group_id", default=None,
                                  help="AWS comma delimited security group IDs.")
-        self.parser.add_argument("--volume_type", choices=["gp2", "io1"], default="gp2",
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
                                  help="Volume type for volumes on EBS-backed instances.")
         self.parser.add_argument("--spot_price", default=None,
                                  help="Spot price for each instance (if desired)")
         self.parser.add_argument("--cmk_res_name", help="CMK arn to enable encrypted EBS volumes.")
         self.parser.add_argument("--iam_profile_arn", help="ARN string for IAM instance profile")
+        self.parser.add_argument("--disk_iops", type=int, default=1000,
+                                 help="desired iops for aws v4 instance volumes")
+        self.parser.add_argument("--disk_throughput", type=int, default=125,
+                                 help="desired throughput for aws gp3 instance volumes")
 
     def preprocess_args(self, args):
         super(AwsCreateInstancesMethod, self).preprocess_args(args)
@@ -85,8 +103,6 @@ class AwsCreateInstancesMethod(CreateInstancesMethod):
         super(AwsCreateInstancesMethod, self).callback(args)
 
     def run_ansible_create(self, args):
-        # TODO: do we need this?
-        self.update_ansible_vars(args)
         self.cloud.create_instance(args)
 
 
@@ -94,47 +110,145 @@ class AwsProvisionInstancesMethod(ProvisionInstancesMethod):
     """Subclass for provisioning instances in AWS. Setups the proper Create method to point to the
     AWS specific one.
     """
+
     def __init__(self, base_command):
         super(AwsProvisionInstancesMethod, self).__init__(base_command)
 
-    def setup_create_method(self):
-        """Override to get the wiring to the proper method.
-        """
-        self.create_method = AwsCreateInstancesMethod(self.base_command)
-
     def add_extra_args(self):
         super(AwsProvisionInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--use_chrony", action="store_true",
-                                 help="Whether to use chrony instead of NTP.")
+        self.parser.add_argument("--key_pair_name", default=os.environ.get("YB_EC2_KEY_PAIR_NAME"),
+                                 help="AWS Key Pair name")
 
     def update_ansible_vars_with_args(self, args):
         super(AwsProvisionInstancesMethod, self).update_ansible_vars_with_args(args)
-        self.extra_vars["use_chrony"] = args.use_chrony
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["mount_points"] = self.cloud.get_mount_points_csv(args)
-        self.extra_vars["cmk_res_name"] = args.cmk_res_name
+        self.extra_vars.update({"aws_key_pair_name": args.key_pair_name})
+
+
+class AwsCreateRootVolumesMethod(CreateRootVolumesMethod):
+    """Subclass for creating root volumes in AWS
+    """
+    def __init__(self, base_command):
+        super(AwsCreateRootVolumesMethod, self).__init__(base_command)
+        self.create_method = AwsCreateInstancesMethod(base_command)
+
+    def create_master_volume(self, args):
+        args.auto_delete_boot_disk = False
+        args.num_volumes = 0
+
+        self.create_method.run_ansible_create(args)
+        host_info = self.cloud.get_host_info(args)
+
+        self.delete_instance(args, host_info["id"])
+        return host_info["root_volume"]
+
+    def delete_instance(self, args, instance_id):
+        self.cloud.delete_instance(args.region, instance_id, args.assign_static_public_ip)
+
+
+class AwsDeleteRootVolumesMethod(DeleteRootVolumesMethod):
+    """Subclass for deleting root volumes in AWS.
+    """
+
+    def __init__(self, base_command):
+        super(AwsDeleteRootVolumesMethod, self).__init__(base_command)
+
+    def delete_volumes(self, args):
+        self.cloud.delete_volumes(args)
 
 
 class AwsDestroyInstancesMethod(DestroyInstancesMethod):
     """Subclass for destroying an instance in AWS, we fetch the host info and update the extra_vars
     with necessary parameters
     """
+
     def __init__(self, base_command):
         super(AwsDestroyInstancesMethod, self).__init__(base_command)
 
     def callback(self, args):
-        host_info = self.cloud.get_host_info(args, private_ip=args.node_ip)
+        filters = [
+            {
+                "Name": "instance-state-name",
+                "Values": ["stopped", "running"]
+            }
+        ]
+        host_info = self.cloud.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False,
+            private_ip=args.node_ip,
+            filters=filters
+        )
         if not host_info:
-            logging.error("Host {} does not exists.".format(args.search_pattern))
+            logging.error("Host {} does not exist.".format(args.search_pattern))
             return
 
-        self.extra_vars.update({
-            "cloud_subnet": host_info["subnet"],
-            "cloud_region": host_info["region"],
-            "private_ip": host_info['private_ip']
-        })
+        self.cloud.delete_instance(args.region, host_info['id'],
+                                   args.delete_static_public_ip)
 
-        super(AwsDestroyInstancesMethod, self).callback(args)
+
+class AwsPauseInstancesMethod(AbstractInstancesMethod):
+    """
+    Subclass for stopping an instance in AWS, we fetch the host info
+    and call the stop_instance method.
+    """
+
+    def __init__(self, base_command):
+        super(AwsPauseInstancesMethod, self).__init__(base_command, "pause")
+
+    def add_extra_args(self):
+        super(AwsPauseInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to pause.")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False,
+            private_ip=args.node_ip
+        )
+
+        if not host_info:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+
+        self.cloud.stop_instance(host_info)
+
+
+class AwsResumeInstancesMethod(AbstractInstancesMethod):
+    """
+    Subclass for resuming an instance in AWS, we fetch the host info
+    and call the start_instance method.
+    """
+
+    def __init__(self, base_command):
+        super(AwsResumeInstancesMethod, self).__init__(base_command, "resume")
+
+    def add_extra_args(self):
+        super(AwsResumeInstancesMethod, self).add_extra_args()
+        self.parser.add_argument("--node_ip", default=None,
+                                 help="The ip of the instance to resume.")
+
+    def callback(self, args):
+        filters = [
+            {
+                "Name": "instance-state-name",
+                "Values": ["stopped"]
+            }
+        ]
+        host_info = self.cloud.get_host_info_specific_args(
+            args.region,
+            args.search_pattern,
+            get_all=False,
+            private_ip=args.node_ip,
+            filters=filters
+        )
+        if not host_info:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            return
+        self.cloud.start_instance(host_info, [int(args.custom_ssh_port)])
 
 
 class AwsTagsMethod(AbstractInstancesMethod):
@@ -156,23 +270,18 @@ class AwsAccessAddKeyMethod(AbstractAccessMethod):
 
     def callback(self, args):
         (private_key_file, public_key_file) = self.validate_key_files(args)
-        self.cloud.add_key_pair(args)
-        print(json.dumps({"private_key": private_key_file, "public_key": public_key_file}))
+        delete_remote = self.cloud.add_key_pair(args)
+        print(json.dumps({"private_key": private_key_file,
+                          "public_key": public_key_file,
+                          "delete_remote": delete_remote}))
 
 
-class AwsAccessDeleteKeyMethod(AbstractAccessMethod):
+class AwsAccessDeleteKeyMethod(AccessDeleteKeyMethod):
     def __init__(self, base_command):
-        super(AwsAccessDeleteKeyMethod, self).__init__(base_command, "delete-key")
+        super(AwsAccessDeleteKeyMethod, self).__init__(base_command)
 
-    def callback(self, args):
-        try:
-            self.cloud.delete_key_pair(args)
-            for key_file in glob.glob("{}/{}.*".format(args.key_file_path, args.key_pair_name)):
-                os.remove(key_file)
-            print(json.dumps({"success": "Keypair {} deleted.".format(args.key_pair_name)}))
-        except Exception as e:
-            logging.error(e)
-            print(json.dumps({"error": "Unable to delete Keypair: {}".format(args.key_pair_name)}))
+    def _delete_key_pair(self, args):
+        self.cloud.delete_key_pair(args)
 
 
 class AwsAccessListKeysMethod(AbstractMethod):
@@ -242,7 +351,7 @@ class AwsQueryCurrentHostMethod(AbstractMethod):
         try:
             print(json.dumps(self.cloud.get_current_host_info(args)))
         except YBOpsRuntimeError as ye:
-            print(json.dumps({"error": get_exception_message(ye)}))
+            print(json.dumps(get_exception_message(ye)))
 
 
 class AwsQueryPricingMethod(AbstractMethod):
@@ -267,6 +376,26 @@ class AwsQuerySpotPricingMethod(AbstractMethod):
             if args.region is None or args.zone is None:
                 raise YBOpsRuntimeError("Must specify a region & zone to query spot price")
             print(json.dumps({'SpotPrice': self.cloud.get_spot_pricing(args)}))
+        except YBOpsRuntimeError as ye:
+            print(json.dumps({"error": get_exception_message(ye)}))
+
+
+class AwsQueryImageMethod(AbstractMethod):
+    def __init__(self, base_command):
+        super(AwsQueryImageMethod, self).__init__(base_command, "image")
+        self.error_handler = ConsoleLoggingErrorHandler(self.cloud)
+
+    def add_extra_args(self):
+        super(AwsQueryImageMethod, self).add_extra_args()
+        self.parser.add_argument("--machine_image",
+                                 required=True,
+                                 help="The machine image (e.g. an AMI on AWS) to query")
+
+    def callback(self, args):
+        try:
+            if args.region is None:
+                raise YBOpsRuntimeError("Must specify a region to query image")
+            print(json.dumps({"architecture": self.cloud.get_image_arch(args)}))
         except YBOpsRuntimeError as ye:
             print(json.dumps({"error": get_exception_message(ye)}))
 
@@ -374,3 +503,25 @@ class AwsListDnsEntryMethod(AbstractDnsMethod):
             }))
         except Exception as e:
             print(json.dumps({'error': repr(e)}))
+
+
+class AwsChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
+    def __init__(self, base_command):
+        super(AwsChangeInstanceTypeMethod, self).__init__(base_command)
+
+    def _change_instance_type(self, args, host_info):
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    # We have to use this to uniform accessing host_info for AWS and GCP
+    def _host_info(self, args, host_info):
+        return host_info
+
+
+class AwsUpdateMountedDisksMethod(UpdateMountedDisksMethod):
+    def __init__(self, base_command):
+        super(AwsUpdateMountedDisksMethod, self).__init__(base_command)
+
+    def add_extra_args(self):
+        super(AwsUpdateMountedDisksMethod, self).add_extra_args()
+        self.parser.add_argument("--volume_type", choices=["gp3", "gp2", "io1"], default="gp2",
+                                 help="Volume type for volumes on EBS-backed instances.")

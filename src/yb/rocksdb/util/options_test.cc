@@ -26,11 +26,12 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-#include <cctype>
-#include <cstring>
+#include <string>
 #include <unordered_map>
 
 #include <boost/preprocessor/stringize.hpp>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/convenience.h"
@@ -40,7 +41,8 @@
 #include "yb/rocksdb/util/options_parser.h"
 #include "yb/rocksdb/util/options_sanity_check.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 #include "yb/util/format.h"
 
@@ -88,7 +90,7 @@ Options PrintAndGetOptions(size_t total_write_buffer_limit,
   return options;
 }
 
-class OptionsTest : public testing::Test {};
+class OptionsTest : public RocksDBTest {};
 
 TEST_F(OptionsTest, LooseCondition) {
   Options options;
@@ -879,7 +881,7 @@ TEST_F(OptionsTest, ConvertOptionsTest) {
 }
 
 #ifndef ROCKSDB_LITE
-class OptionsParserTest : public testing::Test {
+class OptionsParserTest : public RocksDBTest {
  public:
   OptionsParserTest() { env_.reset(new test::StringEnv(Env::Default())); }
 
@@ -913,7 +915,7 @@ TEST_F(OptionsParserTest, Comment) {
       "  # if a section is blank, we will use the default\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_OK(parser.Parse(kTestFileName, env_.get()));
 
@@ -939,7 +941,7 @@ TEST_F(OptionsParserTest, ExtraSpace) {
       "  # if a section is blank, we will use the default\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_OK(parser.Parse(kTestFileName, env_.get()));
 }
@@ -956,7 +958,7 @@ TEST_F(OptionsParserTest, MissingDBOptions) {
       "  # if a section is blank, we will use the default\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_NOK(parser.Parse(kTestFileName, env_.get()));
 }
@@ -984,7 +986,7 @@ TEST_F(OptionsParserTest, DoubleDBOptions) {
       "  # if a section is blank, we will use the default\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_NOK(parser.Parse(kTestFileName, env_.get()));
 }
@@ -1011,7 +1013,7 @@ TEST_F(OptionsParserTest, NoDefaultCFOptions) {
       "  # if a section is blank, we will use the default\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_NOK(parser.Parse(kTestFileName, env_.get()));
 }
@@ -1040,7 +1042,7 @@ TEST_F(OptionsParserTest, DefaultCFOptionsMustBeTheFirst) {
       "  # if a section is blank, we will use the default\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_NOK(parser.Parse(kTestFileName, env_.get()));
 }
@@ -1068,7 +1070,7 @@ TEST_F(OptionsParserTest, DuplicateCFOptions) {
       "[CFOptions \"something_else\"]\n";
 
   const std::string kTestFileName = "test-rocksdb-options.ini";
-  env_->WriteToNewFile(kTestFileName, options_file_content);
+  ASSERT_OK(env_->WriteToNewFile(kTestFileName, options_file_content));
   RocksDBOptionsParser parser;
   ASSERT_NOK(parser.Parse(kTestFileName, env_.get()));
 }
@@ -1105,7 +1107,7 @@ TEST_F(OptionsParserTest, ParseVersion) {
     snprintf(buffer, kLength - 1, file_template.c_str(), iv.c_str());
 
     parser.Reset();
-    env_->WriteToNewFile(iv, buffer);
+    ASSERT_OK(env_->WriteToNewFile(iv, buffer));
     ASSERT_NOK(parser.Parse(iv, env_.get()));
   }
 
@@ -1114,7 +1116,7 @@ TEST_F(OptionsParserTest, ParseVersion) {
   for (auto vv : valid_versions) {
     snprintf(buffer, kLength - 1, file_template.c_str(), vv.c_str());
     parser.Reset();
-    env_->WriteToNewFile(vv, buffer);
+    ASSERT_OK(env_->WriteToNewFile(vv, buffer));
     ASSERT_OK(parser.Parse(vv, env_.get()));
   }
 }
@@ -1890,6 +1892,7 @@ TEST_F(OptionsParserTest, BlockBasedTableOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(BlockBasedTableOptions, flush_block_policy_factory),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache),
       BLACKLIST_ENTRY(BlockBasedTableOptions, block_cache_compressed),
+      BLACKLIST_ENTRY(BlockBasedTableOptions, data_block_key_value_encoding_format),
       BLACKLIST_ENTRY(BlockBasedTableOptions, filter_policy),
       BLACKLIST_ENTRY(BlockBasedTableOptions, supported_filter_policies),
   };
@@ -1927,11 +1930,15 @@ TEST_F(OptionsParserTest, DBOptionsAllFieldsSettable) {
       BLACKLIST_ENTRY(DBOptions, row_cache),
       BLACKLIST_ENTRY(DBOptions, wal_filter),
       BLACKLIST_ENTRY(DBOptions, boundary_extractor),
+      BLACKLIST_ENTRY(DBOptions, compaction_context_factory),
+      BLACKLIST_ENTRY(DBOptions, max_file_size_for_compaction),
       BLACKLIST_ENTRY(DBOptions, mem_table_flush_filter_factory),
       BLACKLIST_ENTRY(DBOptions, log_prefix),
       BLACKLIST_ENTRY(DBOptions, mem_tracker),
       BLACKLIST_ENTRY(DBOptions, block_based_table_mem_tracker),
       BLACKLIST_ENTRY(DBOptions, iterator_replacer),
+      BLACKLIST_ENTRY(DBOptions, compaction_file_filter_factory),
+      BLACKLIST_ENTRY(DBOptions, disk_group_no),
   };
 
   TestAllFieldsSettable<DBOptions>(kDBOptionsBlacklist);

@@ -77,6 +77,21 @@ typedef struct YbgStatus YbgStatus;
 // Memory Context
 //-----------------------------------------------------------------------------
 
+#ifdef __cplusplus
+typedef void *YbgMemoryContext;
+#else
+typedef MemoryContext YbgMemoryContext;
+#endif
+
+YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx);
+
+YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
+									 YbgMemoryContext *oldctx);
+
+YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
+								 const char *name,
+								 YbgMemoryContext *memctx);
+
 YbgStatus YbgPrepareMemoryContext();
 
 YbgStatus YbgResetMemoryContext();
@@ -102,14 +117,24 @@ typedef struct YbgTypeDesc YbgTypeDesc;
  */
 YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count);
 
+/*
+ * For non-primitive types (the ones without a corresponding YBCPgTypeEntity),
+ * get the corresponding primitive type's oid.
+ */
+YbgStatus YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype,
+								 uint32_t typbasetype,
+								 uint32_t *primitive_type_oid);
+
 //-----------------------------------------------------------------------------
 // Expression Evaluation
 //-----------------------------------------------------------------------------
 
 #ifdef __cplusplus
 typedef void* YbgExprContext;
+typedef void* YbgPreparedExpr;
 #else
 typedef struct YbgExprContextData* YbgExprContext;
+typedef struct Expr* YbgPreparedExpr;
 #endif
 
 /*
@@ -117,17 +142,84 @@ typedef struct YbgExprContextData* YbgExprContext;
  */
 YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprContext *expr_ctx);
 
+YbgStatus YbgExprContextReset(YbgExprContext expr_ctx);
+
 /*
  * Add a column value from the table row.
  * Used by expression evaluation to resolve scan variables.
  */
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx, int32_t attno, uint64_t datum, bool is_null);
 
+YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr);
+
+YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid);
+
+YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod);
+
+YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid);
+
 /*
  * Evaluate an expression, using the expression context to resolve scan variables.
  * Will filling in datum and is_null with the result.
  */
-YbgStatus YbgEvalExpr(char* expr_cstring, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
+YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null);
+
+/*
+ * Given a 'datum' of array type, split datum into individual elements of type 'type' and store
+ * the result in 'result_datum_array', with number of elements in 'nelems'. This will error out
+ * if 'type' doesn't match the type of the individual elements in 'datum'. Memory for
+ * 'result_datum_array' will be allocated in this function itself, pre-allocation is not needed.
+ */
+YbgStatus YbgSplitArrayDatum(uint64_t datum, int type, uint64_t **result_datum_array, int *nelems);
+
+//-----------------------------------------------------------------------------
+// Relation sampling
+//-----------------------------------------------------------------------------
+
+#ifdef __cplusplus
+typedef void* YbgReservoirState;
+#else
+typedef struct YbgReservoirStateData* YbgReservoirState;
+#endif
+
+/*
+ * Allocate and initialize a YbgReservoirState.
+ */
+YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirState *yb_rs);
+
+/*
+ * Allocate and initialize a YbgReservoirState.
+ */
+YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate);
+
+/*
+ * Select a random value R uniformly distributed in (0 - 1)
+ */
+YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value);
+
+/*
+ * Calculate next number of rows to skip based on current number of scanned rows
+ * and requested sample size.
+ */
+YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s);
+
+char* DecodeDatum(char const* fn_name, uintptr_t datum);
+
+char* DecodeTZDatum(char const* fn_name, uintptr_t datum, const char *timezone, bool from_YB);
+
+char* DecodeArrayDatum(char const* arr_fn_name, uintptr_t datum,
+		int16_t elem_len, bool elem_by_val, char elem_align, char elem_delim, bool from_YB,
+		char const* fn_name, const char *timezone, char option);
+
+char* DecodeRangeDatum(char const* range_fn_name, uintptr_t datum,
+		int16_t elem_len, bool elem_by_val, char elem_align, char option, bool from_YB,
+		char const* elem_fn_name, int range_type, const char *timezone);
+
+char* DecodeRangeArrayDatum(char const* arr_fn_name, uintptr_t datum,
+		int16_t elem_len, int16_t range_len, bool elem_by_val, bool range_by_val,
+		char elem_align, char range_align, char elem_delim, char option, char range_option,
+		bool from_YB, char const* elem_fn_name, char const* range_fn_name, int range_type,
+		const char *timezone);
 
 #ifdef __cplusplus
 }

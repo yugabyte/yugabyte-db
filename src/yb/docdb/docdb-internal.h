@@ -14,11 +14,26 @@
 #ifndef YB_DOCDB_DOCDB_INTERNAL_H_
 #define YB_DOCDB_DOCDB_INTERNAL_H_
 
+#include <assert.h>
+#include <inttypes.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
+#include <iosfwd>
+#include <limits>
+#include <string>
+
+#include "yb/common/doc_hybrid_time.h"
+
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/docdb.h"
-#include "yb/docdb/value_type.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/slice.h"
+
+#include "yb/gutil/endian.h"
+#include "yb/gutil/integral_types.h"
+#include "yb/gutil/strings/substitute.h" // For Substitute
+
+#include "yb/util/status_fwd.h"
 
 // This file should only be included in .cc files of the docdb subsystem. Defines some macros for
 // debugging DocDB functionality.
@@ -58,9 +73,6 @@ namespace docdb {
 
 // Infer the key type from the given slice, given whether this is regular or intents RocksDB.
 KeyType GetKeyType(const Slice& slice, StorageDbType db_type);
-
-constexpr size_t kMaxWordsPerEncodedHybridTimeWithValueType =
-    ((kMaxBytesPerEncodedHybridTime + 1) + sizeof(size_t) - 1) / sizeof(size_t);
 
 } // namespace docdb
 } // namespace yb

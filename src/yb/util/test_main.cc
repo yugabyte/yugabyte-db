@@ -30,7 +30,7 @@
 // under the License.
 //
 
-#include <signal.h>
+#include <signal.h> // For sigaction
 #include <sys/time.h>
 
 #include <gflags/gflags.h>
@@ -40,6 +40,7 @@
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/flags.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/debug-util.h"
 
 using testing::EmptyTestEventListener;

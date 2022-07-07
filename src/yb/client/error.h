@@ -16,6 +16,8 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/util/status.h"
+
 namespace yb {
 namespace client {
 
@@ -32,6 +34,7 @@ class YBError {
   // Return the operation which failed.
   const YBOperation& failed_op() const;
   YBOperation& failed_op();
+  std::shared_ptr<YBOperation> shared_failed_op() const { return failed_op_; }
 
   // In some cases, it's possible that the server did receive and successfully
   // perform the requested operation, but the client can't tell whether or not

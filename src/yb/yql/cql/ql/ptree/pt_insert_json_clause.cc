@@ -14,13 +14,13 @@
 //
 // Tree node definitions for INSERT INTO ... JSON clause.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
-#include "yb/util/flag_tags.h"
-
 #include <boost/optional.hpp>
+
+#include "yb/common/ql_type.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -37,7 +37,7 @@ PTInsertJsonClause::PTInsertJsonClause(MemoryContext* memctx,
 
 PTInsertJsonClause::~PTInsertJsonClause() = default;
 
-CHECKED_STATUS PTInsertJsonClause::Analyze(SemContext* sem_context) {
+Status PTInsertJsonClause::Analyze(SemContext* sem_context) {
   SemState sem_state(sem_context, QLType::Create(DataType::STRING), InternalType::kStringValue);
   sem_state.set_bindvar_name("json"); // To match Cassandra behaviour
   RETURN_NOT_OK(json_expr_->Analyze(sem_context));

@@ -23,8 +23,6 @@
 
 #ifndef ROCKSDB_LITE
 
-#include "yb/rocksdb/convenience.h"
-
 #include "yb/rocksdb/db/db_impl.h"
 
 namespace rocksdb {

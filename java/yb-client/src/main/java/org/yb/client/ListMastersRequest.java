@@ -14,11 +14,12 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
-import org.yb.Common.HostPortPB;
+import org.yb.CommonTypes.PeerRole;
+import org.yb.CommonNet.HostPortPB;
 import org.yb.consensus.Metadata;
 import org.yb.WireProtocol;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterClusterOuterClass;
 import org.yb.util.Pair;
 import org.yb.util.ServerInfo;
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -35,8 +36,8 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
   @Override
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
-    final Master.ListMastersRequestPB.Builder builder =
-      Master.ListMastersRequestPB.newBuilder();
+    final MasterClusterOuterClass.ListMastersRequestPB.Builder builder =
+      MasterClusterOuterClass.ListMastersRequestPB.newBuilder();
     return toChannelBuffer(header, builder.build());
   }
 
@@ -51,8 +52,8 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
   @Override
   Pair<ListMastersResponse, Object> deserialize(CallResponse callResponse,
                                                 String masterUUID) throws Exception {
-    final Master.ListMastersResponsePB.Builder respBuilder =
-      Master.ListMastersResponsePB.newBuilder();
+    final MasterClusterOuterClass.ListMastersResponsePB.Builder respBuilder =
+      MasterClusterOuterClass.ListMastersResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     List<ServerInfo> masters = new ArrayList<ServerInfo>();
     boolean hasErr = respBuilder.hasError();
@@ -72,7 +73,7 @@ class ListMastersRequest extends YRpc<ListMastersResponse> {
         master = new ServerInfo(entry.getInstanceId().getPermanentUuid().toStringUtf8(),
                                 rpc_addr != null ? rpc_addr.getHost() : "UNKNOWN",
                                 rpc_addr != null ? rpc_addr.getPort() : 0,
-                                entry.getRole() == Metadata.RaftPeerPB.Role.LEADER,
+                                entry.getRole() == PeerRole.LEADER,
                                 entry.hasError() ? entry.getError().getCode().name() : "ALIVE");
         masters.add(master);
       }

@@ -215,4 +215,5 @@ UNLISTEN *;
 -- should work, easier if there is no test for that...
 -- ALLOWED COMMANDS
 CHECKPOINT;
+WARNING:  CHECKPOINT will be ignored
 discard all;

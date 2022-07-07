@@ -17,7 +17,6 @@
 
 #include <gflags/gflags.h>
 
-#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
 #include "yb/yql/pggate/pggate_flags.h"
 
@@ -33,9 +32,6 @@ DEFINE_int32(pggate_ybclient_reactor_threads, 2,
              "The number of reactor threads to be used for processing ybclient "
              "requests originating in the PostgreSQL proxy server");
 
-DEFINE_string(pggate_proxy_bind_address, "",
-              "Address to which the PostgreSQL proxy server is bound.");
-
 DEFINE_string(pggate_master_addresses, "",
               "Addresses of the master servers to which the PostgreSQL proxy server connects.");
 
@@ -48,15 +44,16 @@ DEFINE_test_flag(bool, pggate_ignore_tserver_shm, false,
 DEFINE_int32(ysql_request_limit, 1024,
              "Maximum number of requests to be sent at once");
 
-DEFINE_int32(ysql_prefetch_limit, 1024,
-             "Maximum number of rows to prefetch");
+DEFINE_uint64(ysql_prefetch_limit, 1024,
+              "Maximum number of rows to prefetch");
 
 DEFINE_double(ysql_backward_prefetch_scale_factor, 0.0625 /* 1/16th */,
               "Scale factor to reduce ysql_prefetch_limit for backward scan");
 
-DEFINE_int32(ysql_session_max_batch_size, 512,
-             "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
-             "services");
+DEFINE_uint64(ysql_session_max_batch_size, 3072,
+              "Use session variable ysql_session_max_batch_size instead. "
+              "Maximum batch size for buffered writes between PostgreSQL server and YugaByte DocDB "
+              "services");
 
 DEFINE_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");
@@ -67,14 +64,22 @@ DEFINE_int32(ysql_max_read_restart_attempts, 20,
 DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
     "Never transparently retry commands that fail with cache version mismatch error");
 
+DEFINE_test_flag(int64, inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms, 0,
+    "Inject delay between creation and dispatch of RPC ops for testing");
+
+// TODO(dmitry): Next flag is used for testing purpose to simulate tablet splitting.
+// It is better to rewrite tests and use real tablet splitting instead of the emulation.
+// Flag should be removed after this (#13079)
+DEFINE_test_flag(bool, index_read_multiple_partitions, false,
+      "Test flag used to simulate tablet spliting by joining tables' partitions.");
+
 DEFINE_int32(ysql_output_buffer_size, 262144,
              "Size of postgres-level output buffer, in bytes. "
              "While fetched data resides within this buffer and hasn't been flushed to client yet, "
              "we're free to transparently restart operation in case of restart read error.");
 
 DEFINE_bool(ysql_enable_update_batching, true,
-            "Whether to enable batching of updates where possible. Currently update batching is "
-            "only supported for PGSQL procedures.");
+            "DEPRECATED. Feature has been removed");
 
 DEFINE_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
@@ -88,17 +93,15 @@ DEFINE_bool(ysql_beta_features, false,
 
 // Per-feature flags -- only relevant if ysql_beta_features is false.
 
-DEFINE_bool(ysql_beta_feature_extension, false,
-            "Whether to enable the 'extension' ysql beta feature");
-
 DEFINE_bool(ysql_beta_feature_tablegroup, true,
             "Whether to enable the incomplete 'tablegroup' ysql beta feature");
 
 TAG_FLAG(ysql_beta_feature_tablegroup, hidden);
 
-DEFINE_bool(ysql_enable_manual_sys_table_txn_ctl, false,
-            "Enable manual transaction control for YSQL system tables. Mostly needed for testing. "
-            "This flag should go away once full transactional DDL is implemented.");
+DEFINE_bool(ysql_beta_feature_tablespace_alteration, false,
+            "Whether to enable the incomplete 'tablespace_alteration' beta feature");
+
+TAG_FLAG(ysql_beta_feature_tablespace_alteration, hidden);
 
 DEFINE_bool(ysql_serializable_isolation_for_ddl_txn, false,
             "Whether to use serializable isolation for separate DDL-only transactions. "
@@ -115,12 +118,23 @@ DEFINE_int32(ysql_max_write_restart_attempts, 20,
 DEFINE_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
 
-// Default to a 1s delay because commits currently aren't guaranteed to be visible across tservers.
-// Commits cause master to update catalog version, but that version is _pulled_ from tservers using
-// heartbeats.  In the common case, tservers will be behind by at most one heartbeat.  However, it
-// is possible that some network delays may cause it to not successfully heartbeat for times, so use
-// 1s as a decently safe wait time without causing user frustration waiting on CREATE INDEX.
-// TODO(jason): change to 0 once commits are reliably propagated to tservers.
-DEFINE_test_flag(int32, ysql_index_state_flags_update_delay_ms, 1000,
-                 "Time to delay after changing the pg_index state flags.  Currently default 1s "
-                 "because pg_index commits need time to propagate to all tservers");
+// Flag for disabling runContext to Postgres's portal. Currently, each portal has two contexts.
+// - PortalContext whose lifetime lasts for as long as the Portal object.
+// - TmpContext whose lifetime lasts until one associated row of SELECT result set is sent out.
+//
+// We add one more context "ybRunContext".
+// - Its lifetime will begin when PortalRun() is called to process a user statement request until
+//   the end of the PortalRun() process.
+// - A SELECT might be queried in small batches, and each batch is processed by one call to
+//   PortalRun(). The "ybRunContext" is used for values that are private to one batch.
+// - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
+DEFINE_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
+
+DEFINE_bool(yb_enable_read_committed_isolation, false,
+            "Defines how READ COMMITTED (which is our default SQL-layer isolation) and"
+            "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
+            "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
+            "implementation instead.");
+
+DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
+             "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");

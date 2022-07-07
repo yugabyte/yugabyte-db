@@ -33,10 +33,11 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import org.yb.Common.PartitionSchemaPB;
-import org.yb.Common.TableType;
+import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterDdlOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -52,7 +53,7 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
   private final String name;
   private final String keyspace;
   private final TableType tableType;
-  private final Master.CreateTableRequestPB.Builder builder;
+  private final MasterDdlOuterClass.CreateTableRequestPB.Builder builder;
 
   CreateTableRequest(YBTable masterTable, String name, Schema schema,
                      CreateTableOptions tableOptions, String keyspace) {
@@ -61,7 +62,7 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
     this.name = name;
     this.keyspace = keyspace;
     this.tableType = tableOptions.getTableType();
-    Master.CreateTableRequestPB.Builder pbBuilder = tableOptions.getBuilder();
+    MasterDdlOuterClass.CreateTableRequestPB.Builder pbBuilder = tableOptions.getBuilder();
     this.builder = pbBuilder;
   }
 
@@ -69,7 +70,8 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
   ChannelBuffer serialize(Message header) {
     assert header.isInitialized();
     this.builder.setName(this.name);
-    Master.NamespaceIdentifierPB.Builder nsBuilder = Master.NamespaceIdentifierPB.newBuilder();
+    MasterTypes.NamespaceIdentifierPB.Builder nsBuilder =
+        MasterTypes.NamespaceIdentifierPB.newBuilder();
     this.builder.setNamespace(nsBuilder.setName(this.keyspace).build());
     this.builder.getSchemaBuilder().mergeFrom(ProtobufHelper.schemaToPb(this.schema));
     this.builder.setTableType(this.tableType);
@@ -87,7 +89,8 @@ class CreateTableRequest extends YRpc<CreateTableResponse> {
   @Override
   Pair<CreateTableResponse, Object> deserialize(final CallResponse callResponse,
                                                 String tsUUID) throws Exception {
-    final Master.CreateTableResponsePB.Builder builder = Master.CreateTableResponsePB.newBuilder();
+    final MasterDdlOuterClass.CreateTableResponsePB.Builder builder =
+        MasterDdlOuterClass.CreateTableResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), builder);
     CreateTableResponse response =
         new CreateTableResponse(deadlineTracker.getElapsedMillis(), tsUUID);

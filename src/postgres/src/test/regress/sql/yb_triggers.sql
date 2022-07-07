@@ -250,3 +250,48 @@ select * from self_ref_trigger;
 drop table self_ref_trigger;
 drop function self_ref_trigger_ins_func();
 drop function self_ref_trigger_del_func();
+
+CREATE TABLE incremental_key(h INT, r INT, v1 INT, v2 INT, PRIMARY KEY(h, r ASC));
+
+CREATE OR REPLACE FUNCTION increment_key() RETURNS TRIGGER
+LANGUAGE PLPGSQL AS $$
+BEGIN
+  NEW.r = NEW.r + 1;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER increment_key_trigger BEFORE UPDATE ON incremental_key
+FOR EACH ROW EXECUTE PROCEDURE increment_key();
+
+INSERT INTO incremental_key VALUES(1, 1, 1, 1);
+SELECT * FROM incremental_key;
+UPDATE incremental_key SET v1 = 10 WHERE h = 1;
+SELECT * FROM incremental_key;
+
+UPDATE incremental_key SET v1 = 10 WHERE yb_hash_code(h) = yb_hash_code(1);
+SELECT * FROM incremental_key;
+
+DROP TABLE incremental_key;
+DROP FUNCTION increment_key;
+
+CREATE TABLE incremental_value(h INT, r INT, v1 INT, v2 INT, PRIMARY KEY(h, r ASC));
+
+CREATE OR REPLACE FUNCTION increment_value() RETURNS TRIGGER
+LANGUAGE PLPGSQL AS $$
+BEGIN
+  NEW.v2 = NEW.v2 + 1;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER increment_value_trigger BEFORE UPDATE ON incremental_value
+FOR EACH ROW EXECUTE PROCEDURE increment_value();
+
+INSERT INTO incremental_value VALUES(1, 1, 1, 1);
+SELECT * FROM incremental_value;
+UPDATE incremental_value SET v1 = 10 WHERE h = 1;
+SELECT * FROM incremental_value;
+
+DROP TABLE incremental_value;
+DROP FUNCTION increment_value;

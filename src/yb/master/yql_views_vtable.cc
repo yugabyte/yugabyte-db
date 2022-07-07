@@ -10,9 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include "yb/master/master_defaults.h"
 #include "yb/master/yql_views_vtable.h"
+
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {

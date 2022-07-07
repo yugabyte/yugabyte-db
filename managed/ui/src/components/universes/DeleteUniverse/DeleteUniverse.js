@@ -4,6 +4,7 @@ import React, { Component } from 'react';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { browserHistory } from 'react-router';
+import { Alert } from 'react-bootstrap';
 import { YBModal, YBCheckBox, YBTextInput } from '../../common/forms/fields';
 import { isEmptyObject } from '../../../utils/ObjectUtils';
 import { getReadOnlyCluster } from '../../../utils/UniverseUtils';
@@ -13,12 +14,17 @@ export default class DeleteUniverse extends Component {
     super(props);
     this.state = {
       isForceDelete: false,
+      isDeleteBackups: false,
       universeName: false
     };
   }
 
   toggleForceDelete = () => {
     this.setState({ isForceDelete: !this.state.isForceDelete });
+  };
+
+  toggleDeleteBackups = () => {
+    this.setState({ isDeleteBackups: !this.state.isDeleteBackups });
   };
 
   onChangeUniverseName = (value) => {
@@ -33,15 +39,30 @@ export default class DeleteUniverse extends Component {
     const {
       body,
       universe: {
-        currentUniverse: {
-          data: { name }
-        }
-      }
+        currentUniverse: { data }
+      },
+      focusedUniverse = null
     } = this.props;
+    const { name, universeDetails } = focusedUniverse ? focusedUniverse : data;
+
+    const universePaused = universeDetails?.universePaused;
+
     return (
-      <div>
-        {body}
-        <br />
+      <>
+        {universePaused ? (
+          <>
+            Are you sure you want to delete the universe?
+            <Alert bsStyle="danger">
+              <strong>Note: </strong>Terminating paused universes won't delete backup objects. If
+              you want to delete backup objects, resume this universe and then delete it.
+            </Alert>
+          </>
+        ) : (
+          <>
+            {body}
+            <br />
+          </>
+        )}
         <br />
         <label>Enter universe name to confirm delete:</label>
         <YBTextInput
@@ -49,7 +70,7 @@ export default class DeleteUniverse extends Component {
           placeHolder={name}
           input={{ onChange: this.onChangeUniverseName, onBlur: () => {} }}
         />
-      </div>
+      </>
     );
   };
 
@@ -58,15 +79,20 @@ export default class DeleteUniverse extends Component {
       type,
       universe: {
         currentUniverse: { data }
-      }
+      },
+      focusedUniverse,
+      submitDeleteUniverse,
+      submitDeleteReadReplica
     } = this.props;
+    const { universeUUID, universeDetails } = focusedUniverse ? focusedUniverse : data;
+
     this.props.onHide();
     if (type === 'primary') {
-      this.props.submitDeleteUniverse(data.universeUUID, this.state.isForceDelete);
+      submitDeleteUniverse(universeUUID, this.state.isForceDelete, this.state.isDeleteBackups);
     } else {
-      const cluster = getReadOnlyCluster(data.universeDetails.clusters);
+      const cluster = getReadOnlyCluster(universeDetails.clusters);
       if (isEmptyObject(cluster)) return;
-      this.props.submitDeleteReadReplica(cluster.uuid, data.universeUUID, this.state.isForceDelete);
+      submitDeleteReadReplica(cluster.uuid, universeUUID, this.state.isForceDelete);
     }
   };
 
@@ -76,7 +102,9 @@ export default class DeleteUniverse extends Component {
       getPromiseState(this.props.universe.deleteUniverse).isSuccess()
     ) {
       this.props.fetchUniverseMetadata();
-      browserHistory.push('/universes');
+      if (this.props.location.pathname !== '/universes') {
+        browserHistory.push('/universes');
+      }
     }
   }
 
@@ -87,11 +115,14 @@ export default class DeleteUniverse extends Component {
       error,
       onHide,
       universe: {
-        currentUniverse: {
-          data: { name }
-        }
-      }
+        currentUniverse: { data }
+      },
+      focusedUniverse
     } = this.props;
+    const { name, universeDetails } = focusedUniverse ? focusedUniverse : data;
+
+    const universePaused = universeDetails?.universePaused;
+
     return (
       <YBModal
         visible={visible}
@@ -104,11 +135,19 @@ export default class DeleteUniverse extends Component {
         onFormSubmit={this.confirmDelete}
         error={error}
         footerAccessory={
-          <YBCheckBox
-            label={'Ignore Errors and Force Delete'}
-            className="footer-accessory"
-            input={{ checked: this.state.isForceDelete, onChange: this.toggleForceDelete }}
-          />
+          <div className="force-delete">
+            <YBCheckBox
+              label="Ignore Errors and Force Delete"
+              className="footer-accessory"
+              input={{ checked: this.state.isForceDelete, onChange: this.toggleForceDelete }}
+            />
+            <YBCheckBox
+              label="Delete Backups"
+              className="footer-accessory"
+              disabled={universePaused}
+              input={{ checked: this.state.isDeleteBackups, onChange: this.toggleDeleteBackups }}
+            />
+          </div>
         }
         asyncValidating={this.state.universeName !== name}
       >

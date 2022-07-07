@@ -59,10 +59,20 @@ public class TestTserverHealthChecks extends BaseYBClientTest {
       TestMasterFailover.class.getName() + "-" + System.currentTimeMillis();
 
   @Override
-  public void setUpBefore() throws Exception {
-    tserverArgs.add("--TEST_force_single_tablet_failure=true");
-    tserverArgs.add("--TEST_delay_removing_peer_with_failed_tablet_secs=120");
-    super.setUpBefore();
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    // Without this flag, we'll end up deleting the failed tablet, and the count of failed_tablets
+    // will be 0.
+    flagMap.put("TEST_disable_tablet_deletion", "true");
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("TEST_force_single_tablet_failure", "true");
+    flagMap.put("TEST_delay_removing_peer_with_failed_tablet_secs", "120");
+    return flagMap;
   }
 
   @Override
@@ -72,7 +82,7 @@ public class TestTserverHealthChecks extends BaseYBClientTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 1;
   }
 

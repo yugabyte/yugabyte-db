@@ -17,20 +17,25 @@
 #define YB_YQL_PGGATE_TEST_PGGATE_TEST_H_
 
 #include <dirent.h>
+#include <stdint.h>
 
-#include "yb/client/client.h"
+#include "pg_type_d.h" // NOLINT
+
+#include "yb/common/value.pb.h"
+#include "yb/common/ybc_util.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/master/mini_master.h"
 
+#include "yb/tserver/tserver_util_fwd.h"
+
+#include "yb/util/shared_mem.h"
 #include "yb/util/test_util.h"
-#include "yb/util/memory/mc_types.h"
 
-#include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 // This file comes from this directory:
 // postgres_build/src/include/catalog
 // We add a special include path to CMakeLists.txt.
-#include "pg_type_d.h" // NOLINT
 
 namespace yb {
 namespace pggate {
@@ -38,7 +43,8 @@ namespace pggate {
 //--------------------------------------------------------------------------------------------------
 // Test base class.
 //--------------------------------------------------------------------------------------------------
-#define CHECK_YBC_STATUS(s) CheckYBCStatus((s), __FILE__, __LINE__)
+#define CHECK_YBC_STATUS(s) \
+    ::yb::pggate::PggateTest::CheckYBCStatus((s), __FILE__, __LINE__)
 
 class PggateTest : public YBTest {
  public:
@@ -51,7 +57,7 @@ class PggateTest : public YBTest {
   virtual ~PggateTest();
 
   //------------------------------------------------------------------------------------------------
-  void CheckYBCStatus(YBCStatus status, const char* file_name, int line_number);
+  static void CheckYBCStatus(YBCStatus status, const char* file_name, int line_number);
 
   //------------------------------------------------------------------------------------------------
   // Test start and cleanup functions.
@@ -59,10 +65,10 @@ class PggateTest : public YBTest {
   void TearDown() override;
 
   // Init cluster for each test case.
-  CHECKED_STATUS Init(const char *test_name, int num_tablet_servers = kNumOfTablets);
+  Status Init(const char *test_name, int num_tablet_servers = kNumOfTablets);
 
   // Create simulated cluster.
-  CHECKED_STATUS CreateCluster(int num_tablet_servers);
+  Status CreateCluster(int num_tablet_servers);
 
   //------------------------------------------------------------------------------------------------
   // Setup the database for testing.
@@ -71,11 +77,15 @@ class PggateTest : public YBTest {
   void ConnectDB(const string& db_name = kDefaultDatabase);
 
  protected:
+  void BeginDDLTransaction();
+  void CommitDDLTransaction();
+  void BeginTransaction();
   void CommitTransaction();
 
   //------------------------------------------------------------------------------------------------
   // Simulated cluster.
   std::shared_ptr<ExternalMiniCluster> cluster_;
+  tserver::TServerSharedObject tserver_shared_object_;
 };
 
 //--------------------------------------------------------------------------------------------------

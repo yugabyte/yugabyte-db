@@ -3,43 +3,39 @@ title: Explore fault tolerance on Docker
 headerTitle: Fault tolerance
 linkTitle: Fault tolerance
 description: Simulate fault tolerance and resilience in a local three-node YugabyteDB cluster on Docker.
-aliases:
-  - /stable/explore/fault-tolerance-docker/
-block_indexing: true
 menu:
   stable:
     identifier: fault-tolerance-3-docker
     parent: explore
     weight: 215
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/explore/fault-tolerance/macos" class="nav-link">
+    <a href="/preview/explore/fault-tolerance/macos" class="nav-link">
       <i class="fab fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/linux" class="nav-link">
+    <a href="/preview/explore/fault-tolerance/linux" class="nav-link">
       <i class="fab fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/docker" class="nav-link active">
+    <a href="/preview/explore/fault-tolerance/docker" class="nav-link active">
       <i class="fab fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/stable/explore/fault-tolerance/kubernetes" class="nav-link">
+    <a href="/preview/explore/fault-tolerance/kubernetes" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -47,7 +43,7 @@ showAsideToc: true
 
 </ul>
 
-YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/concepts/docdb/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
+YugabyteDB can automatically handle failures and therefore provides [high availability](../../../architecture/core-functions/high-availability/). You will create YSQL tables with a replication factor of `3` that allows a [fault tolerance](../../../architecture/docdb-replication/replication/) of 1. This means the cluster will remain available for both reads and writes even if one node fails. However, if another node fails bringing the number of failures to two, then writes will become unavailable on the cluster in order to preserve data consistency.
 
 ## Prerequisite
 
@@ -76,7 +72,8 @@ $ ./yb-docker-ctl create --rf 5
 Connect to `ycqlsh` on node `1`.
 
 ```sh
-$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N1_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n1)
+$ docker exec -it yb-tserver-n1 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N1_ADDR
 ```
 
 ```sh
@@ -94,9 +91,9 @@ ycqlsh> CREATE KEYSPACE users;
 
 ```sql
 ycqlsh> CREATE TABLE users.profile (id bigint PRIMARY KEY,
-	                               email text,
-	                               password text,
-	                               profile frozen<map<text, text>>);
+                                    email text,
+                                    password text,
+                                    profile frozen<map<text, text>>);
 ```
 
 ## 2. Insert data through a node
@@ -124,7 +121,7 @@ Query all the rows.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -138,14 +135,15 @@ ycqlsh> SELECT email, profile FROM users.profile;
 Let us now query the data from node `5`.
 
 ```sh
-$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N5_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n5)
+$ docker exec -it yb-tserver-n5 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N5_ADDR
 ```
 
 ```sql
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -177,13 +175,14 @@ $ ./yb-docker-ctl status
 Now connect to node 4.
 
 ```sh
-$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N4_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n4)
+$ docker exec -it yb-tserver-n4 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N4_ADDR
 ```
 
 Let us insert some data.
 
 ```sql
-ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES 
+ycqlsh> INSERT INTO users.profile (id, email, password, profile) VALUES
   (3000, 'austin.powers@yugabyte.com', 'imGroovy',
    {'firstname': 'Austin', 'lastname': 'Powers'});
 ```
@@ -194,7 +193,7 @@ Now query the data.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
       james.bond@yugabyte.com | {'firstname': 'James', 'lastname': 'Bond', 'nickname': '007'}
@@ -221,7 +220,8 @@ $ ./yb-docker-ctl status
 Now let us connect to node `2`.
 
 ```sh
-$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/ycqlsh
+$ YB_TSERVER_N2_ADDR=$(docker container inspect -f '{{ $network := index .NetworkSettings.Networks "yb-net" }}{{ $network.IPAddress }}' yb-tserver-n2)
+$ docker exec -it yb-tserver-n2 /home/yugabyte/bin/ycqlsh $YB_TSERVER_N2_ADDR
 ```
 
 Insert some data.
@@ -238,7 +238,7 @@ Run the query.
 ycqlsh> SELECT email, profile FROM users.profile;
 ```
 
-```
+```output
  email                        | profile
 ------------------------------+---------------------------------------------------------------
         superman@yugabyte.com |                    {'firstname': 'Clark', 'lastname': 'Kent'}
@@ -251,7 +251,7 @@ ycqlsh> SELECT email, profile FROM users.profile;
 
 ## Step 6. Clean up (optional)
 
-Optionally, you can shutdown the local cluster created in Step 1.
+Optionally, you can shut down the local cluster you created earlier.
 
 ```sh
 $ ./yb-docker-ctl destroy

@@ -30,16 +30,18 @@
 // under the License.
 //
 
-#include "yb/consensus/log-test-base.h"
-
+#include "yb/common/index.h"
+#include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/consensus/log-test-base.h"
 
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master.pb.h"
-
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
 #include "yb/rpc/yb_rpc.h"
 
@@ -47,16 +49,24 @@
 #include "yb/server/server_base.pb.h"
 #include "yb/server/server_base.proxy.h"
 
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
 #include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server-test-base.h"
+#include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tablet_server_test_util.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver_admin.proxy.h"
+#include "yb/tserver/tserver_call_home.h"
+#include "yb/server/call_home-test-util.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/crc.h"
 #include "yb/util/curl_util.h"
-#include "yb/util/url-coding.h"
+#include "yb/util/metrics.h"
+#include "yb/util/status_log.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
@@ -102,6 +112,30 @@ class TabletServerTest : public TabletServerTestBase {
   void SetUp() override {
     TabletServerTestBase::SetUp();
     StartTabletServer();
+  }
+
+  Status CallDeleteTablet(const std::string& uuid,
+                    const char* tablet_id,
+                    tablet::TabletDataState state) {
+    DeleteTabletRequestPB req;
+    DeleteTabletResponsePB resp;
+    RpcController rpc;
+
+    req.set_dest_uuid(uuid);
+    req.set_tablet_id(tablet_id);
+    req.set_delete_type(state);
+
+    // Send the call
+    {
+      SCOPED_TRACE(req.DebugString());
+      RETURN_NOT_OK(admin_proxy_->DeleteTablet(req, &resp, &rpc));
+      SCOPED_TRACE(resp.DebugString());
+      if (resp.has_error()) {
+        auto status = StatusFromPB(resp.error().status());
+        RETURN_NOT_OK(status);
+      }
+    }
+    return Status::OK();
   }
 };
 
@@ -279,7 +313,7 @@ TEST_F(TabletServerTest, TestInsert) {
   std::shared_ptr<TabletPeer> tablet;
   ASSERT_TRUE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
   scoped_refptr<Counter> rows_inserted =
-    METRIC_rows_inserted.Instantiate(tablet->tablet()->GetMetricEntity());
+      METRIC_rows_inserted.Instantiate(tablet->tablet()->GetTabletMetricsEntity());
   ASSERT_EQ(0, rows_inserted->value());
   tablet.reset();
 
@@ -546,7 +580,8 @@ TEST_F(TabletServerTest, TestClientGetsErrorBackWhenRecoveryFailed) {
   // We're expecting the write to fail.
   ASSERT_OK(DCHECK_NOTNULL(proxy_.get())->Write(req, &resp, &controller));
   ASSERT_EQ(TabletServerErrorPB::TABLET_NOT_RUNNING, resp.error().code());
-  ASSERT_STR_CONTAINS(resp.error().status().message(), "Tablet not RUNNING: FAILED");
+  ASSERT_STR_CONTAINS(
+      resp.error().status().message(), Format("Tablet $0 not RUNNING: FAILED", kTabletId));
 }
 
 TEST_F(TabletServerTest, TestCreateTablet_TabletExists) {
@@ -591,21 +626,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   tablet_peer_.reset();
   tablet.reset();
 
-  DeleteTabletRequestPB req;
-  DeleteTabletResponsePB resp;
-  RpcController rpc;
-
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_tablet_id(kTabletId);
-  req.set_delete_type(tablet::TABLET_DATA_DELETED);
-
-  // Send the call
-  {
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(admin_proxy_->DeleteTablet(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_FALSE(resp.has_error());
-  }
+  ASSERT_OK(CallDeleteTablet(mini_server_->server()->fs_manager()->uuid(),
+                             kTabletId,
+                             tablet::TABLET_DATA_DELETED));
 
   // Verify that the tablet is removed from the tablet map
   ASSERT_FALSE(mini_server_->server()->tablet_manager()->LookupTablet(kTabletId, &tablet));
@@ -625,22 +648,10 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
-  DeleteTabletRequestPB req;
-  DeleteTabletResponsePB resp;
-  RpcController rpc;
-
-  req.set_dest_uuid(mini_server_->server()->fs_manager()->uuid());
-  req.set_tablet_id("NotPresentTabletId");
-  req.set_delete_type(tablet::TABLET_DATA_DELETED);
-
-  // Send the call
-  {
-    SCOPED_TRACE(req.DebugString());
-    ASSERT_OK(admin_proxy_->DeleteTablet(req, &resp, &rpc));
-    SCOPED_TRACE(resp.DebugString());
-    ASSERT_TRUE(resp.has_error());
-    ASSERT_EQ(TabletServerErrorPB::TABLET_NOT_FOUND, resp.error().code());
-  }
+  Status s = CallDeleteTablet(mini_server_->server()->fs_manager()->uuid(),
+                              "NotPresentTabletId",
+                              tablet::TABLET_DATA_DELETED);
+  ASSERT_TRUE(s.IsNotFound()) << s.ToString();
 }
 
 // Test that with concurrent requests to delete the same tablet, one wins and
@@ -684,23 +695,21 @@ TEST_F(TabletServerTest, TestConcurrentDeleteTablet) {
 
 TEST_F(TabletServerTest, TestInsertLatencyMicroBenchmark) {
   METRIC_DEFINE_entity(test);
-  METRIC_DEFINE_histogram(test, insert_latency,
+  METRIC_DEFINE_coarse_histogram(test, insert_latency,
                           "Insert Latency",
                           MetricUnit::kMicroseconds,
-                          "TabletServer single threaded insert latency.",
-                          10000000,
-                          2);
+                          "TabletServer single threaded insert latency.");
 
   scoped_refptr<Histogram> histogram = METRIC_insert_latency.Instantiate(ts_test_metric_entity_);
 
-  uint64_t warmup = AllowSlowTests() ?
+  auto warmup = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_warmup_rows : 10;
 
   for (int i = 0; i < warmup; i++) {
     InsertTestRowsRemote(0, i, 1);
   }
 
-  uint64_t max_rows = AllowSlowTests() ?
+  auto max_rows = AllowSlowTests() ?
       FLAGS_single_threaded_insert_latency_bench_insert_rows : 100;
 
   MonoTime start = MonoTime::Now();
@@ -772,7 +781,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   reg.Clear();
   tbo.fs_opts.data_paths = { GetTestPath("fake-ts") };
   tbo.rpc_opts = opts3;
-  enterprise::TabletServer server(tbo);
+  TabletServer server(tbo);
 
   ASSERT_NO_FATALS(WARN_NOT_OK(server.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
@@ -785,7 +794,7 @@ TEST_F(TabletServerTest, TestRpcServerRPCFlag) {
   FLAGS_rpc_bind_addresses = "10.20.30.40:2017,20.30.40.50:2018";
   server::RpcServerOptions opts4;
   tbo.rpc_opts = opts4;
-  enterprise::TabletServer tserver2(tbo);
+  TabletServer tserver2(tbo);
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.Init(), "Ignore"));
   // This call will fail for http binding, but this test is for rpc.
   ASSERT_NO_FATALS(WARN_NOT_OK(tserver2.GetRegistration(&reg), "Ignore"));
@@ -804,9 +813,11 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
   Partition partition;
+  auto table_info = std::make_shared<tablet::TableInfo>(
+      tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE,
+      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
-      "TestWriteOutOfBoundsTable", tabletId, partition, "test_ns", tabletId, YQL_TABLE_TYPE, schema,
-      partition_schema, boost::none /* index_info */, mini_server_->CreateLocalConfig(), nullptr));
+      table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 
   ASSERT_OK(WaitForTabletRunning(tabletId));
 
@@ -896,6 +907,21 @@ TEST_F(TabletServerTest, TestChecksumScan) {
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
   ASSERT_NE(total_crc, resp.checksum());
   ASSERT_EQ(first_crc, resp.checksum());
+}
+
+TEST_F(TabletServerTest, TestCallHome) {
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+  TestCallHome<TabletServer, TserverCallHome>(
+      webserver_dir, {} /*additional_collections*/, mini_server_->server());
+}
+
+// This tests whether the enabling/disabling of callhome is happening dynamically
+// during runtime.
+TEST_F(TabletServerTest, TestCallHomeFlag) {
+  auto webserver_dir = GetTestPath("webserver-docroot");
+  CHECK_OK(env_->CreateDir(webserver_dir));
+  TestCallHomeFlag<TabletServer, TserverCallHome>(webserver_dir, mini_server_->server());
 }
 
 } // namespace tserver

@@ -50,10 +50,15 @@
 #include <vector>
 
 #include "yb/client/client_fwd.h"
+#include "yb/common/constants.h"
 #include "yb/client/value.h"
 #include "yb/common/schema.h"
+#include "yb/common/pg_types.h"
 
-#include "yb/util/status.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/value.pb.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -72,10 +77,6 @@ class TsAdminClient;
 namespace client {
 
 namespace internal {
-class GetTableSchemaRpc;
-class GetColocatedTabletSchemaRpc;
-class LookupRpc;
-class WriteRpc;
 
 const Schema& GetSchema(const YBSchema& schema);
 Schema& GetSchema(YBSchema* schema);
@@ -89,72 +90,7 @@ class YBOperation;
 
 class YBColumnSchema {
  public:
-  static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type) {
-    switch (ql_type->main()) {
-      case INT8:
-        return InternalType::kInt8Value;
-      case INT16:
-        return InternalType::kInt16Value;
-      case INT32:
-        return InternalType::kInt32Value;
-      case INT64:
-        return InternalType::kInt64Value;
-      case UINT32:
-        return InternalType::kUint32Value;
-      case UINT64:
-        return InternalType::kUint64Value;
-      case FLOAT:
-        return InternalType::kFloatValue;
-      case DOUBLE:
-        return InternalType::kDoubleValue;
-      case DECIMAL:
-        return InternalType::kDecimalValue;
-      case STRING:
-        return InternalType::kStringValue;
-      case TIMESTAMP:
-        return InternalType::kTimestampValue;
-      case DATE:
-        return InternalType::kDateValue;
-      case TIME:
-        return InternalType::kTimeValue;
-      case INET:
-        return InternalType::kInetaddressValue;
-      case JSONB:
-        return InternalType::kJsonbValue;
-      case UUID:
-        return InternalType::kUuidValue;
-      case TIMEUUID:
-        return InternalType::kTimeuuidValue;
-      case BOOL:
-        return InternalType::kBoolValue;
-      case BINARY:
-        return InternalType::kBinaryValue;
-      case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
-      case MAP:
-        return InternalType::kMapValue;
-      case SET:
-        return InternalType::kSetValue;
-      case LIST:
-        return InternalType::kListValue;
-      case VARINT:
-        return InternalType::kVarintValue;
-      case FROZEN:
-        return InternalType::kFrozenValue;
-
-      case TUPLE: FALLTHROUGH_INTENDED; // TODO (mihnea) Tuple type not fully supported yet
-      case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
-      case UNKNOWN_DATA:
-        return InternalType::VALUE_NOT_SET;
-
-      case TYPEARGS: FALLTHROUGH_INTENDED;
-      case UINT8: FALLTHROUGH_INTENDED;
-      case UINT16:
-        break;
-    }
-    LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
-    return InternalType::VALUE_NOT_SET;
-  }
-
+  static InternalType ToInternalDataType(const std::shared_ptr<QLType>& ql_type);
   static std::string DataTypeToString(DataType type);
 
   // DEPRECATED: use YBSchemaBuilder instead.
@@ -167,7 +103,8 @@ class YBColumnSchema {
                  bool is_static = false,
                  bool is_counter = false,
                  int32_t order = 0,
-                 ColumnSchema::SortingType sorting_type = ColumnSchema::SortingType::kNotSpecified);
+                 SortingType sorting_type = SortingType::kNotSpecified,
+                 int32_t pg_type_oid = kPgInvalidOid);
   YBColumnSchema(const YBColumnSchema& other);
   ~YBColumnSchema();
 
@@ -185,7 +122,8 @@ class YBColumnSchema {
   bool is_static() const;
   bool is_counter() const;
   int32_t order() const;
-  ColumnSchema::SortingType sorting_type() const;
+  int32_t pg_type_oid() const;
+  SortingType sorting_type() const;
 
  private:
   friend class YBColumnSpec;
@@ -197,8 +135,7 @@ class YBColumnSchema {
 
   YBColumnSchema();
 
-  // Owned.
-  ColumnSchema* col_;
+  std::unique_ptr<ColumnSchema> col_;
 };
 
 // Builder API for specifying or altering a column within a table schema.
@@ -246,18 +183,19 @@ class YBColumnSpec {
   YBColumnSpec* Type(const std::shared_ptr<QLType>& type);
 
   // Convenience function for setting a simple (i.e. non-parametric) data type.
-  YBColumnSpec* Type(DataType type) {
-    return Type(QLType::Create(type));
-  }
+  YBColumnSpec* Type(DataType type);
 
   // Specify the user-defined order of the column.
   YBColumnSpec* Order(int32_t order);
 
   // Specify the user-defined sorting direction.
-  YBColumnSpec* SetSortingType(ColumnSchema::SortingType sorting_type);
+  YBColumnSpec* SetSortingType(SortingType sorting_type);
 
   // Identify this column as counter.
   YBColumnSpec* Counter();
+
+  // PgTypeOid
+  YBColumnSpec* PgTypeOid(int32_t oid);
 
   // Add JSON operation.
   YBColumnSpec* JsonOp(JsonOperatorPB op, const std::string& str_value);
@@ -274,7 +212,7 @@ class YBColumnSpec {
   friend class YBSchemaBuilder;
   friend class YBTableAlterer;
 
-  CHECKED_STATUS ToColumnSchema(YBColumnSchema* col) const;
+  Status ToColumnSchema(YBColumnSchema* col) const;
 
   YBColumnSpec* JsonOp(JsonOperatorPB op, const QLValuePB& value);
 
@@ -312,15 +250,19 @@ class YBSchemaBuilder {
   // 'key_hash_col_count' columns in the primary are hash columns whose values will be used for
   // table partitioning. This may be used to specify a compound primary key.
   YBSchemaBuilder* SetPrimaryKey(const std::vector<std::string>& key_col_names,
-                                 int key_hash_col_count = 0);
+                                 size_t key_hash_col_count = 0);
 
   YBSchemaBuilder* SetTableProperties(const TableProperties& table_properties);
+
+  YBSchemaBuilder* SetSchemaName(const std::string& pgschema_name);
+
+  std::string SchemaName();
 
   // Resets 'schema' to the result of this builder.
   //
   // If the Schema is invalid for any reason (eg missing types, duplicate column names, etc)
   // a bad Status will be returned.
-  CHECKED_STATUS Build(YBSchema* schema);
+  Status Build(YBSchema* schema);
 
  private:
   class Data;
@@ -344,7 +286,7 @@ class YBSchema {
   void MoveFrom(YBSchema&& other);
 
   // DEPRECATED: will be removed soon.
-  CHECKED_STATUS Reset(const std::vector<YBColumnSchema>& columns, int key_columns,
+  Status Reset(const std::vector<YBColumnSchema>& columns, size_t key_columns,
                        const TableProperties& table_properties) WARN_UNUSED_RESULT;
 
   void Reset(std::unique_ptr<Schema> schema);
@@ -381,14 +323,22 @@ class YBSchema {
   // Returns the total number of columns.
   size_t num_columns() const;
 
+  bool has_colocation_id() const;
+
+  // Gets the colocation ID of the non-primary table this schema belongs to in a
+  // tablet with colocated tables.
+  ColocationId colocation_id() const;
+
   uint32_t version() const;
   void set_version(uint32_t version);
+  bool is_compatible_with_previous_version() const;
+  void set_is_compatible_with_previous_version(bool is_compat);
 
   // Get the indexes of the primary key columns within this Schema.
   // In current versions of YB, these will always be contiguous column
   // indexes starting with 0. However, in future versions this assumption
   // may not hold, so callers should not assume it is the case.
-  void GetPrimaryKeyColumnIndexes(std::vector<int>* indexes) const;
+  std::vector<size_t> GetPrimaryKeyColumnIndexes() const;
 
   // Create a new row corresponding to this schema.
   //
@@ -396,15 +346,13 @@ class YBSchema {
   // the YBSchema object.
   //
   // The caller takes ownership of the created row.
-  YBPartialRow* NewRow() const;
+  std::unique_ptr<YBPartialRow> NewRow() const;
 
   const std::vector<ColumnSchema>& columns() const;
 
-  int FindColumn(const GStringPiece& name) const {
-    return schema_->find_column(name);
-  }
+  ssize_t FindColumn(const GStringPiece& name) const;
 
-  string ToString() const;
+  std::string ToString() const;
 
  private:
   friend YBSchema YBSchemaFromSchema(const Schema& schema);
@@ -413,7 +361,16 @@ class YBSchema {
 
   std::unique_ptr<Schema> schema_;
   uint32_t version_;
+  bool is_compatible_with_previous_version_ = false;
 };
+
+inline bool operator==(const YBSchema& lhs, const YBSchema& rhs) {
+  return lhs.Equals(rhs);
+}
+
+inline std::ostream& operator<<(std::ostream& out, const YBSchema& schema) {
+  return out << schema.ToString();
+}
 
 } // namespace client
 } // namespace yb

@@ -21,19 +21,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-
 #include "yb/rocksdb/table/block_based_table_factory.h"
 
 #include <stdint.h>
+
 #include <memory>
 #include <string>
 
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/cache.h"
+#include "yb/rocksdb/filter_policy.h"
+#include "yb/rocksdb/flush_block_policy.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/block_based_table_reader.h"
 #include "yb/rocksdb/table/format.h"
+
+#include "yb/util/logging.h"
 
 namespace rocksdb {
 
@@ -81,14 +84,14 @@ Status BlockBasedTableFactory::NewTableReader(
       table_reader_options.skip_filters);
 }
 
-TableBuilder* BlockBasedTableFactory::NewTableBuilder(
+std::unique_ptr<TableBuilder> BlockBasedTableFactory::NewTableBuilder(
     const TableBuilderOptions& table_builder_options, uint32_t column_family_id,
     WritableFileWriter* base_file, WritableFileWriter* data_file) const {
   // base_file should be not nullptr, data_file should either point to different file writer
   // or be nullptr in order to produce single SST file containing both data and metadata.
-  assert(base_file);
-  assert(base_file != data_file);
-  auto table_builder = new BlockBasedTableBuilder(
+  DCHECK_ONLY_NOTNULL(base_file);
+  DCHECK_NE(base_file, data_file);
+  return std::make_unique<BlockBasedTableBuilder>(
       table_builder_options.ioptions, table_options_,
       table_builder_options.internal_comparator,
       *table_builder_options.int_tbl_prop_collector_factories,
@@ -98,8 +101,6 @@ TableBuilder* BlockBasedTableFactory::NewTableBuilder(
       table_builder_options.compression_type,
       table_builder_options.compression_opts,
       table_builder_options.skip_filters);
-
-  return table_builder;
 }
 
 Status BlockBasedTableFactory::SanitizeOptions(
@@ -214,6 +215,8 @@ const char BlockBasedTablePropertyNames::kWholeKeyFiltering[] =
     "rocksdb.block.based.table.whole.key.filtering";
 const char BlockBasedTablePropertyNames::kPrefixFiltering[] =
     "rocksdb.block.based.table.prefix.filtering";
+const char BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat[] =
+    "rocksdb.block.based.table.data.block.key.value.encoding.format";
 const char kHashIndexPrefixesBlock[] = "rocksdb.hashindex.prefixes";
 const char kHashIndexPrefixesMetadataBlock[] =
     "rocksdb.hashindex.metadata";

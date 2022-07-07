@@ -29,26 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/net/sockaddr.h"
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <string>
 
-#include <boost/lexical_cast.hpp>
 #include <boost/functional/hash.hpp>
+#include <boost/lexical_cast.hpp>
 
-#include "yb/gutil/endian.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 

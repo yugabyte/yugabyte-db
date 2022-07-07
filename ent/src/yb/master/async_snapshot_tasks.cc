@@ -12,12 +12,15 @@
 
 #include "yb/master/async_snapshot_tasks.h"
 
+#include "yb/consensus/consensus_error.h"
+
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/catalog_manager.h"
 
 #include "yb/rpc/messenger.h"
 
@@ -37,23 +40,31 @@ using tserver::TabletServerErrorPB;
 // AsyncTabletSnapshotOp
 ////////////////////////////////////////////////////////////
 
+namespace {
+
+std::string SnapshotIdToString(const std::string& snapshot_id) {
+  auto uuid = TryFullyDecodeTxnSnapshotId(snapshot_id);
+  return uuid.IsNil() ? snapshot_id : uuid.ToString();
+}
+
+}
+
 AsyncTabletSnapshotOp::AsyncTabletSnapshotOp(Master *master,
                                              ThreadPool* callback_pool,
                                              const scoped_refptr<TabletInfo>& tablet,
                                              const string& snapshot_id,
                                              tserver::TabletSnapshotOpRequestPB::Operation op)
-  : enterprise::RetryingTSRpcTask(master,
-                                  callback_pool,
-                                  new PickLeaderReplica(tablet),
-                                  tablet->table().get()),
+  : RetryingTSRpcTask(
+        master, callback_pool, std::make_unique<PickLeaderReplica>(tablet), tablet->table().get()),
     tablet_(tablet),
     snapshot_id_(snapshot_id),
     operation_(op) {
 }
 
 string AsyncTabletSnapshotOp::description() const {
-  return Format("$0 Tablet Snapshot Operation $1 RPC",
-                *tablet_, tserver::TabletSnapshotOpRequestPB::Operation_Name(operation_));
+  return Format("$0 Tablet Snapshot Operation $1 RPC $2",
+                *tablet_, tserver::TabletSnapshotOpRequestPB::Operation_Name(operation_),
+                SnapshotIdToString(snapshot_id_));
 }
 
 TabletId AsyncTabletSnapshotOp::tablet_id() const {
@@ -64,43 +75,37 @@ TabletServerId AsyncTabletSnapshotOp::permanent_uuid() const {
   return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
 }
 
+bool AsyncTabletSnapshotOp::RetryAllowed(TabletServerErrorPB::Code code, const Status& status) {
+  switch (code) {
+    case TabletServerErrorPB::TABLET_NOT_FOUND:
+      return false;
+    case TabletServerErrorPB::INVALID_SNAPSHOT:
+      return operation_ != tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET;
+    default:
+      return TransactionError(status) != TransactionErrorCode::kSnapshotTooOld &&
+             consensus::ConsensusError(status) != consensus::ConsensusErrorPB::TABLET_SPLIT;
+  }
+}
+
 void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
   server::UpdateClock(resp_, master_->clock());
 
   if (resp_.has_error()) {
     Status status = StatusFromPB(resp_.error().status());
 
-    // Do not retry on a fatal error.
-    switch (resp_.error().code()) {
-      case TabletServerErrorPB::TABLET_NOT_FOUND:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << " no further retry: " << status;
-        TransitionToCompleteState();
-        break;
-      case TabletServerErrorPB::INVALID_SNAPSHOT:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << ": " << status;
-        if (operation_ == tserver::TabletSnapshotOpRequestPB::RESTORE) {
-          LOG(WARNING) << "No further retry for RESTORE snapshot operation: " << status;
-          TransitionToCompleteState();
-        }
-        break;
-      default:
-        LOG(WARNING) << "TS " << permanent_uuid() << ": snapshot failed for tablet "
-                     << tablet_->ToString() << ": " << status;
-        if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
-          TransitionToCompleteState();
-        }
-        break;
+    if (!RetryAllowed(resp_.error().code(), status)) {
+      LOG_WITH_PREFIX(WARNING) << "Failed, NO retry: " << status;
+      TransitionToCompleteState();
+    } else {
+      LOG_WITH_PREFIX(WARNING) << "Failed, will be retried: " << status;
     }
   } else {
     TransitionToCompleteState();
-    VLOG(1) << "TS " << permanent_uuid() << ": snapshot complete on tablet "
-            << tablet_->ToString();
+    VLOG_WITH_PREFIX(1) << "Complete";
   }
 
-  if (state() != MonitoredTaskState::kComplete) {
-    VLOG(1) << "TabletSnapshotOp task is not completed";
+  if (state() != server::MonitoredTaskState::kComplete) {
+    VLOG_WITH_PREFIX(1) << "TabletSnapshotOp task is not completed";
     return;
   }
 
@@ -112,7 +117,7 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
           tablet_.get(), resp_.has_error());
       return;
     }
-    case tserver::TabletSnapshotOpRequestPB::RESTORE: {
+    case tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET: {
       // TODO: this class should not know CatalogManager API,
       //       remove circular dependency between classes.
       master_->catalog_manager()->HandleRestoreTabletSnapshotResponse(
@@ -122,12 +127,19 @@ void AsyncTabletSnapshotOp::HandleResponse(int attempt) {
     case tserver::TabletSnapshotOpRequestPB::DELETE_ON_TABLET: {
       // TODO: this class should not know CatalogManager API,
       //       remove circular dependency between classes.
-      master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
-          snapshot_id_, tablet_.get(), resp_.has_error());
+      // HandleDeleteTabletSnapshotResponse handles only non transaction aware snapshots.
+      // So prevent log flooding for transaction aware snapshots.
+      if (!TryFullyDecodeTxnSnapshotId(snapshot_id_)) {
+        master_->catalog_manager()->HandleDeleteTabletSnapshotResponse(
+            snapshot_id_, tablet_.get(), resp_.has_error());
+      }
       return;
     }
+    case tserver::TabletSnapshotOpRequestPB::RESTORE_FINISHED:
+      return;
     case tserver::TabletSnapshotOpRequestPB::CREATE_ON_MASTER: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::DELETE_ON_MASTER: FALLTHROUGH_INTENDED;
+    case tserver::TabletSnapshotOpRequestPB::RESTORE_SYS_CATALOG: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32min: FALLTHROUGH_INTENDED;
     case google::protobuf::kint32max: FALLTHROUGH_INTENDED;
     case tserver::TabletSnapshotOpRequestPB::UNKNOWN: break; // Not handled.
@@ -142,15 +154,33 @@ bool AsyncTabletSnapshotOp::SendRequest(int attempt) {
   req.add_tablet_id(tablet_->tablet_id());
   req.set_snapshot_id(snapshot_id_);
   req.set_operation(operation_);
+  if (snapshot_schedule_id_) {
+    req.set_schedule_id(snapshot_schedule_id_.data(), snapshot_schedule_id_.size());
+  }
+  if (restoration_id_) {
+    req.set_restoration_id(restoration_id_.data(), restoration_id_.size());
+  }
   if (snapshot_hybrid_time_) {
     req.set_snapshot_hybrid_time(snapshot_hybrid_time_.ToUint64());
+  }
+  if (restoration_hybrid_time_) {
+    req.set_restoration_hybrid_time(restoration_hybrid_time_.ToUint64());
+  }
+  if (has_metadata_) {
+    req.set_schema_version(schema_version_);
+    *req.mutable_schema() = schema_;
+    *req.mutable_indexes() = indexes_;
+    req.set_hide(hide_);
+  }
+
+  if (db_oid_) {
+    req.set_db_oid(*db_oid_);
   }
   req.set_propagated_hybrid_time(master_->clock()->Now().ToUint64());
 
   ts_backup_proxy_->TabletSnapshotOpAsync(req, &resp_, &rpc_, BindRpcCallback());
-  VLOG(1) << "Send tablet snapshot request " << operation_ << " to " << permanent_uuid()
-          << " (attempt " << attempt << "):\n"
-          << req.DebugString();
+  VLOG_WITH_PREFIX(1) << "Sent to " << permanent_uuid() << " (attempt " << attempt << "): "
+                      << (VLOG_IS_ON(4) ? req.ShortDebugString() : "");
   return true;
 }
 
@@ -171,6 +201,13 @@ void AsyncTabletSnapshotOp::Finished(const Status& status) {
   } else {
     callback_(&resp_);
   }
+}
+
+void AsyncTabletSnapshotOp::SetMetadata(const SysTablesEntryPB& pb) {
+  has_metadata_ = true;
+  schema_version_ = pb.version();
+  schema_ = pb.schema();
+  indexes_ = pb.indexes();
 }
 
 } // namespace master

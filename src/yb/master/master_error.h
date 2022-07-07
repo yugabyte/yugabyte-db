@@ -14,9 +14,10 @@
 #ifndef YB_MASTER_MASTER_ERROR_H
 #define YB_MASTER_MASTER_ERROR_H
 
-#include "yb/master/master.pb.h"
+#include "yb/master/master_types.pb.h"
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
+#include "yb/util/status_ec.h"
 
 namespace yb {
 namespace master {

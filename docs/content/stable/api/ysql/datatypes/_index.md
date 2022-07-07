@@ -5,22 +5,19 @@ linkTitle: Data types
 description: Data types
 summary: YSQL data type overview and specification.
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
   stable:
     identifier: api-ysql-datatypes
     parent: api-ysql
     weight: 4200
-aliases:
-  - /stable/api/ysql/datatypes/
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 The following table lists the primitive and compound data types in YSQL.
 
 | Data type | Alias | Description |
 |-----------|-------|-------------|
+| [`array`](type_array) |  | One-dimensional or multidimensional rectilinear array of any data type payload |
 | [`bigint`](type_numeric) | [`int8`](type_numeric) | Signed eight-byte integer |
 | [`bigserial`](type_serial) | [`serial8`](type_serial) | Autoincrementing eight-byte integer |
 | `bit [ (n) ]` <sup>1</sup> | | Fixed-length bit string |
@@ -51,13 +48,19 @@ The following table lists the primitive and compound data types in YSQL.
 | `polygon` <sup>1</sup> | | Closed geometric path |
 | [`real`](type_numeric) | [`float4`](type_numeric) | Floating-point number (4 bytes) |
 | [`smallint`](type_numeric) | [`int2`](type_numeric) | Signed two-byte integer |
+| [`int4range`](type_range#synopsis) | | `integer` range |
+| [`int8range`](type_range#synopsis) | | `bigint` range |
+| [`numrange`](type_range#synopsis) | | `numeric` range |
+| [`tsrange`](type_range#synopsis) | | `timestamp without time zone` range |
+| [`tstzrange`](type_range#synopsis) | | `timestamp with time zone` range |
+| [`daterange`](type_range#synopsis) | | `date` range |
 | [`smallserial`](type_serial) | [`serial2`](type_serial) | Autoincrementing two-byte integer |
 | [`serial`](type_serial) | [`serial4`](type_serial) | Autoincrementing four-byte integer |
 | [`text`](type_character) | | Variable-length character string |
 | [`time [ (p) ] [ without time zone ]`](type_datetime) | | Time of day (no time zone) |
 | [`time [ (p) ] with time zone`](type_datetime) | [`timetz`](type_datetime) | Time of day, including time zone |
 | [`timestamp [ (p) ] [ without time zone ]`](type_datetime) | | Date and time (no time zone) |
-| [`timestamp [ (p) ] with time zone`](type_datetime) | [`timestampz`](type_datetime) | Date and time, including time zone |
+| [`timestamp [ (p) ] with time zone`](type_datetime) | [`timestamptz`](type_datetime) | Date and time, including time zone |
 | `tsquery` <sup>1</sup> | | Text search query |
 | `tsvector` <sup>1</sup> | | Text search document |
 | `txid_snapshot` <sup>1</sup> | | Transaction ID snapshot |

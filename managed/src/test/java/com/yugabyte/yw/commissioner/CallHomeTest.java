@@ -2,59 +2,49 @@
 
 package com.yugabyte.yw.commissioner;
 
-import akka.actor.ActorSystem;
-import akka.actor.Scheduler;
-import com.yugabyte.yw.common.CallHomeManager;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.Customer;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.runners.MockitoJUnitRunner;
-import play.Environment;
-import scala.concurrent.ExecutionContext;
-import scala.concurrent.duration.Duration;
-import scala.concurrent.duration.FiniteDuration;
-
-import java.util.concurrent.TimeUnit;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.yugabyte.yw.common.CallHomeManager;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.models.Customer;
+import java.time.Duration;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.junit.MockitoJUnitRunner;
+import play.Environment;
+
 @RunWith(MockitoJUnitRunner.class)
-public class CallHomeTest  extends FakeDBApplication {
+public class CallHomeTest extends FakeDBApplication {
 
   CallHome callHome;
 
   Environment mockEnvironment;
-  ActorSystem mockActorSystem;
-  ExecutionContext mockExecutionContext;
+  PlatformScheduler mockPlatformScheduler;
   CallHomeManager mockCallHomeManager;
-  Scheduler mockScheduler;
 
   Customer defaultCustomer;
 
   @Before
   public void setUp() {
     mockEnvironment = mock(Environment.class);
-    mockActorSystem = mock(ActorSystem.class);
-    mockExecutionContext = mock(ExecutionContext.class);
+    mockPlatformScheduler = mock(PlatformScheduler.class);
     mockCallHomeManager = mock(CallHomeManager.class);
-    mockScheduler = mock(Scheduler.class);
-    when(mockActorSystem.scheduler()).thenReturn(mockScheduler);
     defaultCustomer = ModelFactory.testCustomer();
   }
 
   @Test
   public void scheduleRunnerSingleTenant() {
-    callHome = new CallHome(mockActorSystem, mockExecutionContext,
-        mockCallHomeManager, mockEnvironment);
+    callHome = new CallHome(mockPlatformScheduler, mockCallHomeManager, mockEnvironment);
     callHome.scheduleRunner();
     verify(mockCallHomeManager, times(1)).sendDiagnostics(defaultCustomer);
   }
@@ -62,8 +52,7 @@ public class CallHomeTest  extends FakeDBApplication {
   @Test
   public void scheduleRunnerMultiTenant() {
     Customer newCustomer = ModelFactory.testCustomer("tc2", "Test Customer 2");
-    callHome = new CallHome(mockActorSystem, mockExecutionContext,
-        mockCallHomeManager, mockEnvironment);
+    callHome = new CallHome(mockPlatformScheduler, mockCallHomeManager, mockEnvironment);
     callHome.scheduleRunner();
     verify(mockCallHomeManager, times(1)).sendDiagnostics(defaultCustomer);
     verify(mockCallHomeManager, times(1)).sendDiagnostics(newCustomer);
@@ -72,31 +61,30 @@ public class CallHomeTest  extends FakeDBApplication {
   @Test
   public void testScheduleForDevEnvironment() {
     when(mockEnvironment.isDev()).thenReturn(true);
-    callHome = new CallHome(mockActorSystem, mockExecutionContext,
-        mockCallHomeManager, mockEnvironment);
-    verify(mockActorSystem, times(0)).scheduler();
+    callHome = new CallHome(mockPlatformScheduler, mockCallHomeManager, mockEnvironment);
+    callHome.start();
+    verify(mockPlatformScheduler, times(0)).schedule(any(), any(), any(), any());
   }
 
   @Test
   public void testScheduleForNonDevEnvironment() {
     when(mockEnvironment.isDev()).thenReturn(false);
-    callHome = new CallHome(mockActorSystem, mockExecutionContext,
-        mockCallHomeManager, mockEnvironment);
-    ArgumentCaptor<FiniteDuration> initialDelay = ArgumentCaptor.forClass(FiniteDuration.class);
-    ArgumentCaptor<FiniteDuration> interval = ArgumentCaptor.forClass(FiniteDuration.class);
+    callHome = new CallHome(mockPlatformScheduler, mockCallHomeManager, mockEnvironment);
+    callHome.start();
+    ArgumentCaptor<String> name = ArgumentCaptor.forClass(String.class);
+    ArgumentCaptor<Duration> initialDelay = ArgumentCaptor.forClass(Duration.class);
+    ArgumentCaptor<Duration> interval = ArgumentCaptor.forClass(Duration.class);
     ArgumentCaptor<Runnable> mockScheduleRunner = ArgumentCaptor.forClass(Runnable.class);
-    ArgumentCaptor<ExecutionContext> expectedExceutionContext = ArgumentCaptor.forClass(ExecutionContext.class);
 
-    verify(mockScheduler).schedule(
-        initialDelay.capture(),
-        interval.capture(),
-        mockScheduleRunner.capture(),
-        expectedExceutionContext.capture()
-    );
-    assertEquals(Duration.create(0, TimeUnit.MINUTES), initialDelay.getValue());
-    assertEquals(Duration.create(60, TimeUnit.MINUTES), interval.getValue());
+    verify(mockPlatformScheduler)
+        .schedule(
+            name.capture(),
+            initialDelay.capture(),
+            interval.capture(),
+            mockScheduleRunner.capture());
+    assertEquals(CallHome.class.getSimpleName(), name.getValue());
+    assertEquals(Duration.ZERO, initialDelay.getValue());
+    assertEquals(Duration.ofMinutes(60), interval.getValue());
     assertNotNull(mockScheduleRunner.getValue());
-    assertNotNull(expectedExceutionContext.getValue());
-
   }
 }

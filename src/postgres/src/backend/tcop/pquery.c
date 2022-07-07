@@ -78,6 +78,8 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 				QueryEnvironment *queryEnv,
 				int instrument_options)
 {
+	YbPgMemResetStmtConsumption();
+
 	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
 
 	qd->operation = plannedstmt->commandType;	/* operation */
@@ -162,9 +164,10 @@ ProcessQuery(PlannedStmt *plan,
 	ExecutorStart(queryDesc, 0);
 
 	/* Set whether this is a single-row, single-stmt modify, used in YB mode. */
-	queryDesc->estate->es_yb_is_single_row_modify_txn =
+	queryDesc->estate->yb_es_is_single_row_modify_txn =
 		isSingleRowModifyTxn && queryDesc->estate->es_num_result_relations == 1 &&
-		YBCIsSingleRowTxnCapableRel(&queryDesc->estate->es_result_relations[0]);
+		(plan->commandType == CMD_UPDATE ||
+		 YBCIsSingleRowTxnCapableRel(&queryDesc->estate->es_result_relations[0]));
 
 	/*
 	 * Run the plan to completion.
@@ -823,10 +826,19 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 				result = false; /* keep compiler quiet */
 				break;
 		}
+		// We flush buffered ops here to ensure that any errors in the ops can be caught by the
+		// PG_CATCH() and mark the portal failed. If some ops are not flushed here and say flushed later
+		// at a place that doesn't catch the error and mark the portal failed, it can result in spurious
+		// WARNING messages (like "Snapshot reference leak") when releasing the portal resources later
+		// (for example via a CreatePortal() call that drops existing duplicate portal of an earlier
+		// execution).
+		if (isTopLevel)
+			YBFlushBufferedOperations();
 	}
 	PG_CATCH();
 	{
 		/* Uncaught error while executing portal: mark it dead */
+		MemoryContextReset(portal->ybRunContext);
 		MarkPortalFailed(portal);
 
 		/* Restore global vars and propagate error */
@@ -854,6 +866,9 @@ PortalRun(Portal portal, long count, bool isTopLevel, bool run_once,
 		CurrentResourceOwner = TopTransactionResourceOwner;
 	else
 		CurrentResourceOwner = saveResourceOwner;
+
+	/* Clear runContext as PortalRun is completed */
+	MemoryContextReset(portal->ybRunContext);
 	PortalContext = savePortalContext;
 
 	if (log_executor_stats && portal->strategy != PORTAL_MULTI_QUERY)
@@ -1359,18 +1374,29 @@ PortalRunMulti(Portal portal,
 		}
 
 		/*
-		 * Increment command counter between queries, but not after the last
-		 * one.
-		 */
-		if (lnext(stmtlist_item) != NULL)
-			CommandCounterIncrement();
-
-		/*
 		 * Clear subsidiary contexts to recover temporary memory.
 		 */
 		Assert(portal->portalContext == GetCurrentMemoryContext());
 
 		MemoryContextDeleteChildren(portal->portalContext);
+
+		/*
+		 * Avoid crashing if portal->stmts has been reset.  This can only
+		 * occur if a CALL or DO utility statement executed an internal
+		 * COMMIT/ROLLBACK (cf PortalReleaseCachedPlan).  The CALL or DO must
+		 * have been the only statement in the portal, so there's nothing left
+		 * for us to do; but we don't want to dereference a now-dangling list
+		 * pointer.
+		 */
+		if (portal->stmts == NIL)
+			break;
+
+		/*
+		 * Increment command counter between queries, but not after the last
+		 * one.
+		 */
+		if (lnext(stmtlist_item) != NULL)
+			CommandCounterIncrement();
 	}
 
 	/* Pop the snapshot if we pushed one. */

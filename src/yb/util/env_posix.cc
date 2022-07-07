@@ -18,26 +18,21 @@
 //
 
 #include <dirent.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <fts.h>
-#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
-#include <unistd.h>
 
 #include <set>
 #include <vector>
-#include "yb/util/status.h"
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -53,20 +48,27 @@
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/alignment.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/file_system_posix.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/malloc.h"
 #include "yb/util/monotime.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread_restrictions.h"
 
@@ -95,10 +97,6 @@ DEFINE_bool(writable_file_use_fsync, false,
             "data to disk.");
 TAG_FLAG(writable_file_use_fsync, advanced);
 
-DEFINE_bool(suicide_on_eio, true,
-            "Kill the process if an I/O operation results in EIO");
-TAG_FLAG(suicide_on_eio, advanced);
-
 #ifdef __APPLE__
 // Never fsync on Mac OS X as we are getting many slow fsync errors in Jenkins and the fsync
 // implementation is very different in production (on Linux) anyway.
@@ -108,8 +106,8 @@ TAG_FLAG(suicide_on_eio, advanced);
 #endif
 
 DEFINE_bool(never_fsync, FLAGS_never_fsync_default,
-            "Never fsync() anything to disk. This is used by certain test cases to "
-            "speed up runtime. This is very unsafe to use in production.");
+            "Never fsync() anything to disk. This is used by tests to speed up runtime and improve "
+            "stability. This is very unsafe to use in production.");
 
 TAG_FLAG(never_fsync, advanced);
 TAG_FLAG(never_fsync, unsafe);
@@ -128,6 +126,9 @@ DEFINE_test_flag(bool, simulate_fs_without_fallocate, false,
 DEFINE_test_flag(int64, simulate_free_space_bytes, -1,
     "If a non-negative value, GetFreeSpaceBytes will return the specified value.");
 
+DECLARE_bool(never_fsync);
+
+using namespace std::placeholders;
 using base::subtle::Atomic64;
 using base::subtle::Barrier_AtomicIncrement;
 using std::vector;
@@ -137,25 +138,6 @@ static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;
 
 namespace yb {
-
-Status IOError(const std::string& context, int err_number, const char* file, int line) {
-  Errno err(err_number);
-  switch (err_number) {
-    case ENOENT:
-      return Status(Status::kNotFound, file, line, context, err);
-    case EEXIST:
-      return Status(Status::kAlreadyPresent, file, line, context, err);
-    case EOPNOTSUPP:
-      return Status(Status::kNotSupported, file, line, context, err);
-    case EIO:
-      if (FLAGS_suicide_on_eio) {
-        // TODO: This is very, very coarse-grained. A more comprehensive
-        // approach is described in KUDU-616.
-        LOG(FATAL) << "Fatal I/O error, context: " << context;
-      }
-  }
-  return Status(Status::kIOError, file, line, context, err);
-}
 
 namespace {
 
@@ -175,7 +157,12 @@ int fallocate(int fd, int mode, off_t offset, off_t len) {
     // The offset field seems to have no effect; the file is always allocated
     // with space from 0 to the size. This is probably because OS X does not
     // support sparse files.
-    fstore_t store = {F_ALLOCATECONTIG, F_PEOFPOSMODE, 0, size};
+    auto store = fstore_t{
+        .fst_flags = F_ALLOCATECONTIG,
+        .fst_posmode = F_PEOFPOSMODE,
+        .fst_offset = 0,
+        .fst_length = size,
+        .fst_bytesalloc = 0};
     if (fcntl(fd, F_PREALLOCATE, &store) < 0) {
       LOG(INFO) << "Unable to allocate contiguous disk space, attempting non-contiguous allocation";
       store.fst_flags = F_ALLOCATEALL;
@@ -213,11 +200,14 @@ class ScopedFdCloser {
   int fd_;
 };
 
-#define STATUS_IO_ERROR(context, err_number) IOError(context, err_number, __FILE__, __LINE__)
+#define STATUS_IO_ERROR(context, err_number) \
+    STATUS_FROM_ERRNO_SPECIAL_EIO_HANDLING(context, err_number)
 
 static Status DoSync(int fd, const string& filename) {
   ThreadRestrictions::AssertIOAllowed();
-  if (FLAGS_never_fsync) return Status::OK();
+  if (FLAGS_never_fsync) {
+    return Status::OK();
+  }
   if (FLAGS_writable_file_use_fsync) {
     if (fsync(fd) < 0) {
       return STATUS_IO_ERROR(filename, errno);
@@ -265,15 +255,61 @@ Result<uint64_t> GetFileStat(const std::string& fname, const char* event, Extrac
   return extractor(sbuf);
 }
 
+Result<struct statvfs> GetFilesystemStats(const std::string& path) {
+  struct statvfs stat;
+  auto ret = statvfs(path.c_str(), &stat);
+  if (ret != 0) {
+    if (errno == EACCES) {
+      return STATUS_SUBSTITUTE(NotAuthorized,
+          "Caller doesn't have the required permission on a component of the path $0",
+          path);
+    } else if (errno == EIO) {
+      return STATUS_SUBSTITUTE(IOError,
+          "I/O error occurred while reading from '$0' filesystem",
+          path);
+    } else if (errno == ELOOP) {
+      return STATUS_SUBSTITUTE(InternalError,
+          "Too many symbolic links while translating '$0' path",
+          path);
+    } else if (errno == ENAMETOOLONG) {
+      return STATUS_SUBSTITUTE(NotSupported,
+          "Path '$0' is too long",
+          path);
+    } else if (errno == ENOENT) {
+      return STATUS_SUBSTITUTE(NotFound,
+          "File specified by path '$0' doesn't exist",
+          path);
+    } else if (errno == ENOMEM) {
+      return STATUS(InternalError, "Insufficient memory");
+    } else if (errno == ENOSYS) {
+      return STATUS_SUBSTITUTE(NotSupported,
+          "Filesystem for path '$0' doesn't support statvfs",
+          path);
+    } else if (errno == ENOTDIR) {
+      return STATUS_SUBSTITUTE(InvalidArgument,
+          "A component of the path '$0' is not a directory",
+          path);
+    } else {
+      return STATUS_SUBSTITUTE(InternalError,
+          "Failed to read information about filesystem for path '%s': errno=$0: $1",
+          path,
+          errno,
+          ErrnoToString(errno));
+    }
+  }
+
+  return stat;
+}
+
 // Use non-memory mapped POSIX files to write data to a file.
 //
 // TODO (perf) investigate zeroing a pre-allocated allocated area in
 // order to further improve Sync() performance.
 class PosixWritableFile : public WritableFile {
  public:
-  PosixWritableFile(std::string fname, int fd, uint64_t file_size,
+  PosixWritableFile(const std::string& fname, int fd, uint64_t file_size,
                     bool sync_on_close)
-      : filename_(std::move(fname)),
+      : filename_(fname),
         fd_(fd),
         sync_on_close_(sync_on_close),
         filesize_(file_size),
@@ -292,14 +328,14 @@ class PosixWritableFile : public WritableFile {
     return AppendVector(data_vector);
   }
 
-  Status AppendVector(const vector<Slice>& data_vector) override {
+  Status AppendSlices(const Slice* slices, size_t num) override {
     ThreadRestrictions::AssertIOAllowed();
     static const size_t kIovMaxElements = IOV_MAX;
 
     Status s;
-    for (size_t i = 0; i < data_vector.size() && s.ok(); i += kIovMaxElements) {
-      size_t n = std::min(data_vector.size() - i, kIovMaxElements);
-      s = DoWritev(data_vector, i, n);
+    for (size_t i = 0; i < num && s.ok(); i += kIovMaxElements) {
+      size_t n = std::min(num - i, kIovMaxElements);
+      s = DoWritev(slices + i, n);
     }
 
     pending_sync_ = true;
@@ -366,6 +402,9 @@ class PosixWritableFile : public WritableFile {
   Status Flush(FlushMode mode) override {
     TRACE_EVENT1("io", "PosixWritableFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_never_fsync) {
+      return Status::OK();
+    }
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -409,26 +448,21 @@ class PosixWritableFile : public WritableFile {
     bool pending_sync_;
 
  private:
-
-  Status DoWritev(const vector<Slice>& data_vector,
-                  size_t offset, size_t n) {
+  Status DoWritev(const Slice* slices, size_t n) {
     ThreadRestrictions::AssertIOAllowed();
-#if defined(__linux__)
     DCHECK_LE(n, IOV_MAX);
 
     struct iovec iov[n];
-    size_t j = 0;
-    size_t nbytes = 0;
+    ssize_t nbytes = 0;
 
-    for (size_t i = offset; i < offset + n; i++) {
-      const Slice& data = data_vector[i];
-      iov[j].iov_base = const_cast<uint8_t*>(data.data());
-      iov[j].iov_len = data.size();
+    for (size_t i = 0; i < n; ++i) {
+      const Slice& data = slices[i];
+      iov[i].iov_base = const_cast<uint8_t*>(data.data());
+      iov[i].iov_len = data.size();
       nbytes += data.size();
-      ++j;
     }
 
-    ssize_t written = pwritev(fd_, iov, n, filesize_);
+    ssize_t written = writev(fd_, iov, narrow_cast<int>(n));
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
@@ -438,28 +472,10 @@ class PosixWritableFile : public WritableFile {
     filesize_ += written;
 
     if (PREDICT_FALSE(written != nbytes)) {
-      return STATUS(IOError,
-          Substitute("pwritev error: expected to write $0 bytes, wrote $1 bytes instead",
-                     nbytes, written));
+      return STATUS_FORMAT(
+          IOError, "writev error: expected to write $0 bytes, wrote $1 bytes instead",
+          nbytes, written);
     }
-#else
-    for (size_t i = offset; i < offset + n; i++) {
-      const Slice& data = data_vector[i];
-      ssize_t written = pwrite(fd_, data.data(), data.size(), filesize_);
-      if (PREDICT_FALSE(written == -1)) {
-        int err = errno;
-        return STATUS_IO_ERROR("pwrite error", err);
-      }
-
-      filesize_ += written;
-
-      if (PREDICT_FALSE(written != data.size())) {
-        return STATUS(IOError,
-            Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
-                       data.size(), written));
-      }
-    }
-#endif
 
     return Status::OK();
   }
@@ -519,10 +535,10 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     return Status::OK();
   }
 
-  Status AppendVector(const vector<Slice> &data_vector) override {
+  Status AppendSlices(const Slice* slices, size_t num) override {
     ThreadRestrictions::AssertIOAllowed();
-    for (auto const &slice : data_vector) {
-      RETURN_NOT_OK(Append(slice));
+    for (auto end = slices + num; slices != end; ++slices) {
+      RETURN_NOT_OK(Append(*slices));
     }
     return Status::OK();
   }
@@ -624,12 +640,12 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
     CHECK_LE(blocks_to_write, IOV_MAX);
 
     struct iovec iov[blocks_to_write];
-    for (int j = 0; j < blocks_to_write; j++) {
+    for (size_t j = 0; j < blocks_to_write; j++) {
       iov[j].iov_base = block_ptr_vec_[j].get();
       iov[j].iov_len = block_size_;
     }
-    auto bytes_to_write = blocks_to_write * block_size_;
-    ssize_t written = pwritev(fd_, iov, blocks_to_write, next_write_offset_);
+    ssize_t bytes_to_write = blocks_to_write * block_size_;
+    ssize_t written = pwritev(fd_, iov, narrow_cast<int>(blocks_to_write), next_write_offset_);
 
     if (PREDICT_FALSE(written == -1)) {
       int err = errno;
@@ -673,7 +689,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
 
     if (blocks_to_write > block_ptr_vec_.size()) {
       auto nblocks = blocks_to_write - block_ptr_vec_.size();
-      for (auto i = 0; i < nblocks; i++) {
+      for (size_t i = 0; i < nblocks; i++) {
         void *temp_buf = nullptr;
         auto err = posix_memalign(&temp_buf, FLAGS_o_direct_block_alignment_bytes, block_size_);
         if (err) {
@@ -693,7 +709,7 @@ class PosixDirectIOWritableFile final : public PosixWritableFile {
   vector<std::shared_ptr<uint8_t>> block_ptr_vec_;
   size_t last_block_used_bytes_;
   size_t last_block_idx_;
-  int block_size_;
+  size_t block_size_;
   bool has_new_data_;
   size_t real_size_;
 };
@@ -718,7 +734,7 @@ class PosixRWFile final : public RWFile {
   virtual Status Read(uint64_t offset, size_t length,
                       Slice* result, uint8_t* scratch) const override {
     ThreadRestrictions::AssertIOAllowed();
-    int rem = length;
+    auto rem = length;
     uint8_t* dst = scratch;
     while (rem > 0) {
       ssize_t r = pread(fd_, dst, rem, offset);
@@ -750,7 +766,7 @@ class PosixRWFile final : public RWFile {
       return STATUS_IO_ERROR(filename_, err);
     }
 
-    if (PREDICT_FALSE(written != data.size())) {
+    if (PREDICT_FALSE(written != implicit_cast<ssize_t>(data.size()))) {
       return STATUS(IOError,
           Substitute("pwrite error: expected to write $0 bytes, wrote $1 bytes instead",
                      data.size(), written));
@@ -791,6 +807,9 @@ class PosixRWFile final : public RWFile {
   Status Flush(FlushMode mode, uint64_t offset, size_t length) override {
     TRACE_EVENT1("io", "PosixRWFile::Flush", "path", filename_);
     ThreadRestrictions::AssertIOAllowed();
+    if (FLAGS_never_fsync) {
+      return Status::OK();
+    }
 #if defined(__linux__)
     int flags = SYNC_FILE_RANGE_WRITE;
     if (mode == FLUSH_SYNC) {
@@ -975,7 +994,7 @@ class PosixEnv : public Env {
     return false;
   }
 
-  CHECKED_STATUS GetChildren(const std::string& dir,
+  Status GetChildren(const std::string& dir,
                              ExcludeDots exclude_dots,
                              std::vector<std::string>* result) override {
     TRACE_EVENT1("io", "PosixEnv::GetChildren", "path", dir);
@@ -1043,8 +1062,7 @@ class PosixEnv : public Env {
   }
 
   Status DeleteRecursively(const std::string &name) override {
-    return Walk(name, POST_ORDER, Bind(&PosixEnv::DeleteRecursivelyCb,
-                                       Unretained(this)));
+    return Walk(name, POST_ORDER, std::bind(&PosixEnv::DeleteRecursivelyCb, this, _1, _2, _3));
   }
 
   Result<uint64_t> GetFileSize(const std::string& fname) override {
@@ -1073,7 +1091,7 @@ class PosixEnv : public Env {
         fname, "PosixEnv::GetBlockSize", [](const struct stat& sbuf) { return sbuf.st_blksize; });
   }
 
-  CHECKED_STATUS LinkFile(const std::string& src,
+  Status LinkFile(const std::string& src,
                           const std::string& target) override {
     if (link(src.c_str(), target.c_str()) != 0) {
       if (errno == EXDEV) {
@@ -1152,7 +1170,7 @@ class PosixEnv : public Env {
       dir = buf;
     }
     // Directory may already exist
-    ignore_result(CreateDir(dir));
+    WARN_NOT_OK(CreateDir(dir), "Create test dir failed");
     // /tmp may be a symlink, so canonicalize the path.
     return Canonicalize(dir, result);
   }
@@ -1198,11 +1216,11 @@ class PosixEnv : public Env {
 
   Status GetExecutablePath(string* path) override {
     uint32_t size = 64;
-    uint32_t len = 0;
+    size_t len = 0;
     while (true) {
       std::unique_ptr<char[]> buf(new char[size]);
 #if defined(__linux__)
-      int rc = readlink("/proc/self/exe", buf.get(), size);
+      auto rc = readlink("/proc/self/exe", buf.get(), size);
       if (rc == -1) {
         return STATUS(IOError, "Unable to determine own executable path", "", Errno(errno));
       } else if (rc >= size) {
@@ -1267,11 +1285,11 @@ class PosixEnv : public Env {
 
     // FTS requires a non-const copy of the name. strdup it and free() when
     // we leave scope.
-    gscoped_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
+    std::unique_ptr<char, FreeDeleter> name_dup(strdup(root.c_str()));
     char *paths[] = { name_dup.get(), nullptr };
 
     // FTS_NOCHDIR is important here to make this thread-safe.
-    gscoped_ptr<FTS, FtsCloser> tree(
+    std::unique_ptr<FTS, FtsCloser> tree(
         fts_open(paths, FTS_PHYSICAL | FTS_XDEV | FTS_NOCHDIR, nullptr));
     if (!tree.get()) {
       return STATUS_IO_ERROR(root, errno);
@@ -1313,7 +1331,7 @@ class PosixEnv : public Env {
           break;
       }
       if (doCb) {
-        if (!cb.Run(type, DirName(ent->fts_path), ent->fts_name).ok()) {
+        if (!cb(type, DirName(ent->fts_path), ent->fts_name).ok()) {
           had_errors = true;
         }
       }
@@ -1328,7 +1346,7 @@ class PosixEnv : public Env {
   Status Canonicalize(const string& path, string* result) override {
     TRACE_EVENT1("io", "PosixEnv::Canonicalize", "path", path);
     ThreadRestrictions::AssertIOAllowed();
-    gscoped_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
+    std::unique_ptr<char[], FreeDeleter> r(realpath(path.c_str(), nullptr));
     if (!r) {
       return STATUS_IO_ERROR(path, errno);
     }
@@ -1363,52 +1381,27 @@ class PosixEnv : public Env {
     if (PREDICT_FALSE(FLAGS_TEST_simulate_free_space_bytes >= 0)) {
       return FLAGS_TEST_simulate_free_space_bytes;
     }
-    struct statvfs stat;
-    auto ret = statvfs(path.c_str(), &stat);
-    if (ret != 0) {
-      if (errno == EACCES) {
-        return STATUS_SUBSTITUTE(NotAuthorized,
-            "Caller doesn't have the required permission on a component of the path $0",
-            path);
-      } else if (errno == EIO) {
-        return STATUS_SUBSTITUTE(IOError,
-            "I/O error occurred while reading from '$0' filesystem",
-            path);
-      } else if (errno == ELOOP) {
-        return STATUS_SUBSTITUTE(InternalError,
-            "Too many symbolic links while translating '$0' path",
-            path);
-      } else if (errno == ENAMETOOLONG) {
-        return STATUS_SUBSTITUTE(NotSupported,
-            "Path '$0' is too long",
-            path);
-      } else if (errno == ENOENT) {
-        return STATUS_SUBSTITUTE(NotFound,
-            "File specified by path '$0' doesn't exist",
-            path);
-      } else if (errno == ENOMEM) {
-        return STATUS(InternalError, "Insufficient memory");
-      } else if (errno == ENOSYS) {
-        return STATUS_SUBSTITUTE(NotSupported,
-            "Filesystem for path '$0' doesn't support statvfs",
-            path);
-      } else if (errno == ENOTDIR) {
-        return STATUS_SUBSTITUTE(InvalidArgument,
-            "A component of the path '$0' is not a directory",
-            path);
-      } else {
-        return STATUS_SUBSTITUTE(InternalError,
-            "Failed to read information about filesystem for path '%s': errno=$0: $1",
-            path,
-            errno,
-            ErrnoToString(errno));
-      }
-    }
-    uint64_t block_size = stat.f_frsize > 0 ? static_cast<uint64_t>(stat.f_frsize) :
-                                              static_cast<uint64_t>(stat.f_bsize);
-    uint64_t available_blocks = static_cast<uint64_t>(stat.f_bavail);
+
+    auto stat = GetFilesystemStats(path);
+    RETURN_NOT_OK(stat);
+    uint64_t block_size = stat->f_frsize > 0 ? static_cast<uint64_t>(stat->f_frsize) :
+                                               static_cast<uint64_t>(stat->f_bsize);
+    uint64_t available_blocks = static_cast<uint64_t>(stat->f_bavail);
 
     return available_blocks * block_size;
+  }
+
+  Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& path) override {
+    auto stat = GetFilesystemStats(path);
+    RETURN_NOT_OK(stat);
+    uint64_t block_size = stat->f_frsize > 0 ? static_cast<uint64_t>(stat->f_frsize) :
+                                               static_cast<uint64_t>(stat->f_bsize);
+    uint64_t available_blocks = static_cast<uint64_t>(stat->f_bavail);
+    uint64_t total_blocks = static_cast<uint64_t>(stat->f_blocks);
+
+    return FilesystemStats{available_blocks * block_size,
+                           (total_blocks - available_blocks) * block_size,
+                           total_blocks * block_size};
   }
 
   Result<ResourceLimits> GetUlimit(int resource) override {
@@ -1422,11 +1415,11 @@ class PosixEnv : public Env {
     return limits;
   }
 
-  CHECKED_STATUS SetUlimit(int resource, ResourceLimit value) override {
+  Status SetUlimit(int resource, ResourceLimit value) override {
     return SetUlimit(resource, value, strings::Substitute("resource no. $0", resource));
   }
 
-  CHECKED_STATUS SetUlimit(
+  Status SetUlimit(
       int resource, ResourceLimit value, const std::string& resource_name) override {
 
     auto limits = VERIFY_RESULT(GetUlimit(resource));
@@ -1452,8 +1445,12 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  bool IsEncrypted() const override {
+    return file_factory_->IsEncrypted();
+  }
+
  private:
-  // gscoped_ptr Deleter implementation for fts_close
+  // std::unique_ptr Deleter implementation for fts_close
   struct FtsCloser {
     void operator()(FTS *fts) const {
       if (fts) { fts_close(fts); }
@@ -1576,6 +1573,10 @@ class PosixFileFactory : public FileFactory {
         fname, "PosixEnv::GetFileSize", [](const struct stat& sbuf) { return sbuf.st_size; });
   }
 
+  bool IsEncrypted() const override {
+    return false;
+  }
+
  private:
   bool UseODirect(bool o_direct) {
 #if defined(__linux__)
@@ -1591,16 +1592,19 @@ class PosixFileFactory : public FileFactory {
                                     std::unique_ptr<WritableFile>* result) {
     uint64_t file_size = 0;
     if (opts.mode == PosixEnv::OPEN_EXISTING) {
-      file_size = VERIFY_RESULT(GetFileSize(fname));
+      auto lseek_result = lseek(fd, 0, SEEK_END);
+      if (lseek_result < 0) {
+        return STATUS_IO_ERROR(fname, errno);
+      }
+      file_size = lseek_result;
     }
-    PosixWritableFile *posix_writable_file;
 #if defined(__linux__)
     if (opts.o_direct)
-      posix_writable_file = new PosixDirectIOWritableFile(fname, fd, file_size, opts.sync_on_close);
+      *result = std::make_unique<PosixDirectIOWritableFile>(
+          fname, fd, file_size, opts.sync_on_close);
     else
 #endif
-    posix_writable_file = new PosixWritableFile(fname, fd, file_size, opts.sync_on_close);
-    result->reset(posix_writable_file);
+    *result = std::make_unique<PosixWritableFile>(fname, fd, file_size, opts.sync_on_close);
     return Status::OK();
   }
 };

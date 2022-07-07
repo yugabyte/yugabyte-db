@@ -31,13 +31,14 @@
 //
 #include "yb/util/hdr_histogram.h"
 
-#include <algorithm>
-#include <cmath>
+#include <math.h>
+
 #include <limits>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bits.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/status.h"
 
 using base::subtle::Atomic64;

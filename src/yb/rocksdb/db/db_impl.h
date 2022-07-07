@@ -35,10 +35,12 @@
 #include <utility>
 #include <vector>
 
+#include "yb/gutil/thread_annotations.h"
+
+#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/column_family.h"
-#include "yb/rocksdb/db/compaction_job.h"
+#include "yb/rocksdb/db/compaction.h"
 #include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/db/flush_job.h"
 #include "yb/rocksdb/db/flush_scheduler.h"
 #include "yb/rocksdb/db/internal_stats.h"
 #include "yb/rocksdb/db/log_writer.h"
@@ -49,15 +51,12 @@
 #include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/transaction_log.h"
-#include "yb/rocksdb/table/scoped_arena_iterator.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/event_logger.h"
-#include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/thread_local.h"
@@ -169,10 +168,12 @@ class DBImpl : public DB {
   using DB::SetOptions;
   Status SetOptions(
       ColumnFamilyHandle* column_family,
-      const std::unordered_map<std::string, std::string>& options_map) override;
+      const std::unordered_map<std::string, std::string>& options_map,
+      bool dump_options = true) override;
 
   // Set whether DB should be flushed on shutdown.
   void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) override;
+  void StartShutdown() override;
 
   using DB::NumberLevels;
   virtual int NumberLevels(ColumnFamilyHandle* column_family) override;
@@ -220,13 +221,16 @@ class DBImpl : public DB {
 
   UserFrontierPtr GetFlushedFrontier() override;
 
-  CHECKED_STATUS ModifyFlushedFrontier(
+  Status ModifyFlushedFrontier(
       UserFrontierPtr frontier,
       FrontierModificationMode mode) override;
 
   FlushAbility GetFlushAbility() override;
 
   UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) override;
+
+  // Calculates specified frontier_type for all mem tables (active and immutable).
+  UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType frontier_type) override;
 
   // Obtains the meta data of the specified column family of the DB.
   // STATUS(NotFound, "") will be returned if the current DB does not have
@@ -235,6 +239,12 @@ class DBImpl : public DB {
   virtual void GetColumnFamilyMetaData(
       ColumnFamilyHandle* column_family,
       ColumnFamilyMetaData* metadata) override;
+
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) override;
 
   // experimental API
   Status SuggestCompactRange(ColumnFamilyHandle* column_family,
@@ -469,12 +479,15 @@ class DBImpl : public DB {
   // Checks that source database has appropriate seqno.
   // I.e. seqno ranges of imported database does not overlap with seqno ranges of destination db.
   // And max seqno of imported database is less that active seqno of destination db.
-  CHECKED_STATUS Import(const std::string& source_dir) override;
+  Status Import(const std::string& source_dir) override;
 
   bool AreWritesStopped();
   bool NeedsDelay() override;
 
   Result<std::string> GetMiddleKey() override;
+
+  // Returns a table reader for the largest SST file.
+  Result<TableReader*> TEST_GetLargestSstTableReader() override;
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   void TEST_SwitchMemtable() override;
@@ -485,8 +498,7 @@ class DBImpl : public DB {
   const std::string dbname_;
   unique_ptr<VersionSet> versions_;
   const DBOptions db_options_;
-  Statistics* stats_;
-
+  std::shared_ptr<Statistics> stats_;
   InternalIterator* NewInternalIterator(const ReadOptions&,
                                         ColumnFamilyData* cfd,
                                         SuperVersion* super_version,
@@ -511,12 +523,6 @@ class DBImpl : public DB {
                                    Compaction *c, const Status &st,
                                    const CompactionJobStats& job_stats,
                                    int job_id);
-
-  void NewThreadStatusCfInfo(ColumnFamilyData* cfd) const;
-
-  void EraseThreadStatusCfInfo(ColumnFamilyData* cfd) const;
-
-  void EraseThreadStatusDbInfo() const;
 
   Status WriteImpl(const WriteOptions& options, WriteBatch* updates,
                    WriteCallback* callback);
@@ -596,9 +602,6 @@ class DBImpl : public DB {
   // Wait for memtable flushed
   Status WaitForFlushMemTable(ColumnFamilyData* cfd);
 
-  void RecordFlushIOStats();
-  void RecordCompactionIOStats();
-
 #ifndef ROCKSDB_LITE
   Status CompactFilesImpl(
       const CompactionOptions& compact_options, ColumnFamilyData* cfd,
@@ -632,6 +635,8 @@ class DBImpl : public DB {
 
   uint64_t GetCurrentVersionSstFilesUncompressedSize() override;
 
+  std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() override;
+
   uint64_t GetCurrentVersionDataSstFilesSize() override;
 
   uint64_t GetCurrentVersionNumSSTFiles() override;
@@ -640,11 +645,6 @@ class DBImpl : public DB {
 
   // Updates stats_ object with SST files size metrics.
   void SetSSTFileTickers();
-
-  void PrintStatistics();
-
-  // dump rocksdb.stats to LOG
-  void MaybeDumpStats();
 
   // Return the minimum empty level that could hold the total data in the
   // input level. Return the input level, if such level could not be found.
@@ -672,7 +672,7 @@ class DBImpl : public DB {
 
   const Snapshot* GetSnapshotImpl(bool is_write_conflict_boundary);
 
-  CHECKED_STATUS ApplyVersionEdit(VersionEdit* edit);
+  Status ApplyVersionEdit(VersionEdit* edit);
 
   void SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task);
 
@@ -688,6 +688,8 @@ class DBImpl : public DB {
   bool HasFilesChangedListener() const;
 
   void FilesChanged();
+
+  bool IsShuttingDown() { return shutting_down_.load(std::memory_order_acquire); }
 
   struct TaskPriorityChange {
     size_t task_serial_no;
@@ -987,7 +989,7 @@ class DBImpl : public DB {
   int64_t last_flush_at_tick_ = 0;
 
   // Whether DB should be flushed on shutdown.
-  bool disable_flush_on_shutdown_ = false;
+  std::atomic<bool> disable_flush_on_shutdown_{false};
 
   mutable std::mutex files_changed_listener_mutex_;
 
@@ -1021,6 +1023,12 @@ class DBImpl : public DB {
       ColumnFamilyHandle* column_family, const Range* range, std::size_t n,
       TablePropertiesCollection* props) override;
 
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  // REQUIREMENT: mutex_ must be held when calling this function.
+  void GetColumnFamiliesOptionsUnlocked(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options);
 #endif  // ROCKSDB_LITE
 
   // Function that Get and KeyMayExist call with no_io true or false

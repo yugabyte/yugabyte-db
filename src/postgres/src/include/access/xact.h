@@ -39,6 +39,8 @@
 #define XACT_REPEATABLE_READ	2
 #define XACT_SERIALIZABLE		3
 
+#define YB_READ_COMMITTED_INTERNAL_SUB_TXN_NAME "yb_internal_txn_for_read_committed"
+
 extern int	DefaultXactIsoLevel;
 extern PGDLLIMPORT int XactIsoLevel;
 
@@ -372,10 +374,14 @@ extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
 extern int	GetCurrentTransactionNestLevel(void);
+extern const char* GetCurrentTransactionName(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
+extern int YBGetEffectivePggateIsolationLevel();
 extern void YBInitializeTransaction(void);
+extern void YBResetTransactionReadPoint(void);
+extern void YBRestartReadPoint(void);
 extern void StartTransactionCommand(void);
 extern void YBCRestartWriteTransaction(void);
 extern void SetTxnWithPGRel(void);
@@ -392,6 +398,7 @@ extern void ReleaseSavepoint(const char *name);
 extern void DefineSavepoint(const char *name);
 extern void RollbackToSavepoint(const char *name);
 extern void BeginInternalSubTransaction(const char *name);
+extern void BeginInternalSubTransactionForReadCommittedStatement();
 extern void ReleaseCurrentSubTransaction(void);
 extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);
@@ -444,7 +451,9 @@ extern bool IsInParallelMode(void);
 
 extern void YBMarkDataSent(void);
 extern void YBMarkDataNotSent(void);
+extern void YBMarkDataNotSentForCurrQuery(void);
 extern bool YBIsDataSent(void);
+extern bool YBIsDataSentForCurrQuery(void);
 
 /*
  * Utilities for postponed pggate DDL statement handles, that can be
@@ -464,4 +473,8 @@ extern void YBSaveDdlHandle(YBCPgStatement handle);
 extern List* YBGetDdlHandles(void);
 extern void YBClearDdlHandles(void);
 
+/*
+ * Utility for clearing transaction ID.
+*/
+extern void YbClearCurrentTransactionId(void);
 #endif							/* XACT_H */

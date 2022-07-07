@@ -11,10 +11,14 @@ from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCo
 from ybops.cloud.azure.method import AzureNetworkBootstrapMethod, AzureProvisionInstancesMethod, \
     AzureCreateInstancesMethod, AzureAccessAddKeyMethod, AzureQueryVPCMethod, \
     AzureQueryRegionsMethod, AzureQueryZonesMethod, AzureDestroyInstancesMethod, \
-    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureAccessDeleteKeyMethod, \
-    AzureNetworkCleanupMethod, AzureQueryUltraMethod
+    AzureQueryInstanceTypesMethod, AzureQueryVnetMethod, AzureNetworkCleanupMethod, \
+    AzureQueryUltraMethod, AzureCreateDnsEntryMethod, AzureEditDnsEntryMethod, \
+    AzureDeleteDnsEntryMethod, AzureListDnsEntryMethod, AzureDeleteRootVolumesMethod, \
+    AzurePauseInstancesMethod, AzureResumeInstancesMethod
 from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstancesMethod, \
-    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod
+    ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
+    AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
+    VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -39,6 +43,15 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(InitYSQLMethod(self))
         self.add_method(UpdateDiskMethod(self))
         self.add_method(CronCheckMethod(self))
+        self.add_method(AzureDeleteRootVolumesMethod(self))
+        self.add_method(TransferXClusterCerts(self))
+        self.add_method(VerifySSHConnection(self))
+        self.add_method(AddAuthorizedKey(self))
+        self.add_method(RemoveAuthorizedKey(self))
+        self.add_method(AzurePauseInstancesMethod(self))
+        self.add_method(AzureResumeInstancesMethod(self))
+        self.add_method(RebootInstancesMethod(self))
+        self.add_method(RunHooks(self))
 
 
 class AzureAccessCommand(AccessCommand):
@@ -48,7 +61,8 @@ class AzureAccessCommand(AccessCommand):
     def add_methods(self):
         self.add_method(AzureAccessAddKeyMethod(self))
         self.add_method(AccessCreateVaultMethod(self))
-        self.add_method(AzureAccessDeleteKeyMethod(self))
+        self.add_method(AccessEditVaultMethod(self))
+        self.add_method(AccessDeleteKeyMethod(self))
 
 
 class AzureQueryCommand(QueryCommand):
@@ -62,3 +76,14 @@ class AzureQueryCommand(QueryCommand):
         self.add_method(AzureQueryInstanceTypesMethod(self))
         self.add_method(AzureQueryVnetMethod(self))
         self.add_method(AzureQueryUltraMethod(self))
+
+
+class AzureDnsCommand(DnsCommand):
+    def __init__(self):
+        super(AzureDnsCommand, self).__init__()
+
+    def add_methods(self):
+        self.add_method(AzureCreateDnsEntryMethod(self))
+        self.add_method(AzureEditDnsEntryMethod(self))
+        self.add_method(AzureDeleteDnsEntryMethod(self))
+        self.add_method(AzureListDnsEntryMethod(self))

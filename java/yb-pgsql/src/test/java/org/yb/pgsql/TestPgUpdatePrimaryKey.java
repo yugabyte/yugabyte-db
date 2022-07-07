@@ -20,8 +20,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -305,14 +303,14 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
         assertOneRow(stmt, String.format(countPgIndexByOidFmt, newrelid), 0);
 
         try {
-          stmt.execute(String.format(updatePgIndexOidFmt, newrelid, indexrelid));
+          executeSystemTableDml(stmt, String.format(updatePgIndexOidFmt, newrelid, indexrelid));
 
           assertOneRow(stmt, String.format(countPgIndexByOidFmt, indexrelid), 0);
           assertOneRow(stmt, String.format(countPgIndexByOidFmt, newrelid), 1);
         } finally {
           // Restore indexrelid, otherwise our cleanup code will explode
           try {
-            stmt.execute(String.format(updatePgIndexOidFmt, indexrelid, newrelid));
+            executeSystemTableDml(stmt, String.format(updatePgIndexOidFmt, indexrelid, newrelid));
           } catch (Exception ex) {
             LOG.error("Could not restore indexrelid!", ex);
           }
@@ -663,10 +661,5 @@ public class TestPgUpdatePrimaryKey extends BasePgSQLTest {
 
   private long getSingleOid(Statement stmt, String query) throws SQLException {
     return getSingleRow(stmt.executeQuery(query)).getLong(0);
-  }
-
-  @SafeVarargs
-  private final <T> Set<T> asSet(T... ts) {
-    return Stream.of(ts).collect(Collectors.toSet());
   }
 }

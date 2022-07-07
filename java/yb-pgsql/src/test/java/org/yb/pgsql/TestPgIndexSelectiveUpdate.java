@@ -51,7 +51,7 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
   private void prepareTest(Statement statement) throws Exception {
     statement.execute(String.format(
         "CREATE TABLE %s(pk int, col2 int, col3 int, col4 int, col5 int, col6 int, col7 int, "+
-        "col8 int, col9 int, PRIMARY KEY (pk ASC))", TABLE_NAME));
+        "col8 int, col9 int, PRIMARY KEY (pk ASC), CHECK (col4 != 0))", TABLE_NAME));
     statement.execute(String.format(
         "CREATE INDEX %s on %s(col3 ASC) INCLUDE (col4,col5,col6)", index_list[0], TABLE_NAME));
     statement.execute(String.format(
@@ -147,6 +147,21 @@ public class TestPgIndexSelectiveUpdate extends BasePgSQLTest {
       stmt.execute(String.format("update %s set col8=35 where pk=1", TABLE_NAME));
       updateCounter();
       checkWrites(0, 0, 0, 0, 2);
+    }
+  }
+
+  @Test
+  public void testUpdateTableAvoidTransactionSingleRowModify() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TABLE orders ( k int PRIMARY KEY, v1 text, v2 int)");
+      stmt.execute("CREATE INDEX v1_idx ON orders(v1)");
+      stmt.execute("INSERT INTO orders(k, v1, v2) values (1, 'hello', 2)");
+      long oldTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
+      // Since its a single row update, we avoid creating a distributed transaction.
+      // Hence the number of transactions remains unchanged.
+      stmt.execute("UPDATE orders SET v2 = 4 where k = 1;");
+      long newTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
+      assertEquals(oldTxnValue, newTxnValue);
     }
   }
 }

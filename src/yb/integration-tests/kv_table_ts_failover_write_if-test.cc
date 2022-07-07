@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
@@ -27,7 +28,8 @@
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
-#include "yb/util/metrics.h"
+#include "yb/util/format.h"
+#include "yb/util/status_format.h"
 #include "yb/util/test_util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
@@ -54,7 +56,7 @@ const auto kLeaderFailureMaxMissedHeartbeatPeriods = 3;
 const auto kKeyColumnName = "k";
 const auto kValueColumnName = "v";
 
-std::string TsNameForIndex(int idx) {
+std::string TsNameForIndex(size_t idx) {
   return Format("ts-$0", idx + 1);
 }
 
@@ -77,11 +79,9 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
   void SetUp() override {
     YBTableTestBase::SetUp();
-    ASSERT_OK(itest::CreateTabletServerMap(external_mini_cluster()->master_proxy().get(),
-                                           &external_mini_cluster()->proxy_cache(),
-                                           &ts_map_));
+    ts_map_ = ASSERT_RESULT(itest::CreateTabletServerMap(external_mini_cluster()));
     ts_details_.clear();
-    for (int i = 0; i < external_mini_cluster()->num_tablet_servers(); ++i) {
+    for (size_t i = 0; i < external_mini_cluster()->num_tablet_servers(); ++i) {
       std::string ts_id = external_mini_cluster()->tablet_server(i)->uuid();
       LOG(INFO) << TsNameForIndex(i) << ": " << ts_id;
       TServerDetails* ts = ts_map_[ts_id].get();
@@ -97,8 +97,9 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     table_.AddInt32ColumnValue(req, kValueColumnName, value);
     string op_str = Format("$0: $1", key, value);
     LOG(INFO) << "Sending write: " << op_str;
-    ASSERT_OK(session->Apply(insert));
-    session->FlushAsync([insert, op_str](const Status& s){
+    session->Apply(insert);
+    session->FlushAsync([insert, op_str](client::FlushStatus* flush_status) {
+      const auto& s = flush_status->status;
       ASSERT_TRUE(s.ok() || s.IsAlreadyPresent())
           << "Failed to flush write " << op_str << ". Error: " << s;
       if (s.ok()) {
@@ -125,7 +126,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
 
   boost::optional<int32_t> GetValue(const YBSessionPtr& session, int32_t key) {
     const auto op = client::CreateReadOp(key, table_, kValueColumnName);
-    Status s = session->ApplyAndFlush(op);
+    Status s = session->TEST_ApplyAndFlush(op);
     if (!s.ok()) {
       return boost::none;
     }
@@ -195,7 +196,7 @@ class KVTableTsFailoverWriteIfTest : public integration_tests::YBTableTestBase {
     return STATUS(NotFound, "No tablet server RAFT leader detected");
   }
 
-  void SetBoolFlag(int ts_idx, const std::string& flag, bool value) {
+  void SetBoolFlag(size_t ts_idx, const std::string& flag, bool value) {
     auto ts = external_mini_cluster()->tablet_server(ts_idx);
     LOG(INFO) << "Setting " << flag << " to " << value << " on " << TsNameForIndex(ts_idx);
     ASSERT_OK(external_mini_cluster()->SetFlag(ts, flag, yb::ToString(value)));
@@ -261,9 +262,9 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   });
 
   // Make sure we read initial value.
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [&last_read_value]{ return last_read_value == initial_value; }, 60s,
-      "Waiting to read initial value...", small_delay);
+      "Waiting to read initial value...", small_delay));
 
   // Prevent follower_replica_ts_idx from being elected as a new leader.
   SetBoolFlag(follower_replica_ts_idx, "TEST_follower_reject_update_consensus_requests", true);
@@ -335,18 +336,20 @@ TEST_F(KVTableTsFailoverWriteIfTest, KillTabletServerDuringReplication) {
   LOG(INFO) << "Sending CAS " << op_str;
   auto session = NewSession();
   session->SetTimeout(15s);
-  StatusFunctor callback = [&session, &op, &op_str, &cas_completed, &callback](const Status& s) {
+  client::FlushCallback callback = [&session, &op, &op_str, &cas_completed,
+                                    &callback](client::FlushStatus* flush_status) {
+    const auto& s = flush_status->status;
     if (s.ok()) {
       LOG(INFO) << "CAS operation completed: " << op_str;
       cas_completed.store(true);
     } else {
       LOG(INFO) << "Error during CAS: " << s;
       LOG(INFO) << "Retrying CAS: " << op_str;
-      ASSERT_OK(session->Apply(op));
+      session->Apply(op);
       session->FlushAsync(callback);
     }
   };
-  ASSERT_OK(session->Apply(op));
+  session->Apply(op);
   session->FlushAsync(callback);
 
   // In case of bug ENG-3471 read part of CAS will be completed before appending pending ops to log,

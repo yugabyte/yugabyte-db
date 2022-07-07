@@ -12,6 +12,11 @@
 
 #include "yb/tserver/remote_bootstrap_session-test.h"
 
+#include "yb/consensus/log.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
 #include "yb/tablet/operations/snapshot_operation.h"
 
@@ -24,23 +29,23 @@ using yb::tablet::Tablet;
 
 static const string kSnapshotId = "0123456789ABCDEF0123456789ABCDEF";
 
-class RemoteBootstrapRocksDBTest : public RemoteBootstrapTest {
+class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {
  public:
-  RemoteBootstrapRocksDBTest() : RemoteBootstrapTest(YQL_TABLE_TYPE) {}
+  RemoteBootstrapRocksDBTest() : RemoteBootstrapSessionTest(YQL_TABLE_TYPE) {}
 
   void InitSession() override {
     CreateSnapshot();
-    RemoteBootstrapTest::InitSession();
+    RemoteBootstrapSessionTest::InitSession();
   }
 
   void CreateSnapshot() {
     LOG(INFO) << "Creating Snapshot " << kSnapshotId << " ...";
     TabletSnapshotOpRequestPB request;
     request.set_snapshot_id(kSnapshotId);
-    tablet::SnapshotOperationState tx_state(tablet().get(), &request);
-    tx_state.set_hybrid_time(tablet()->clock()->Now());
-    tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
-    ASSERT_OK(tablet()->snapshots().Create(&tx_state));
+    tablet::SnapshotOperation operation(tablet().get(), &request);
+    operation.set_hybrid_time(tablet()->clock()->Now());
+    operation.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
+    ASSERT_OK(tablet()->snapshots().Create(&operation));
 
     // Create extra file to check that it will not break snapshot files collecting
     // inside RemoteBootstrapSession::InitSession().

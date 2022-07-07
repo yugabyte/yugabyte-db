@@ -1,7 +1,18 @@
 // Copyright (c) YugaByte, Inc.
+import _ from 'lodash';
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
 import { PROVIDER_TYPES, IN_DEVELOPMENT_MODE } from '../config';
+import { NodeState } from '../redesign/helpers/dtos';
+
+export const nodeInClusterStates = [
+  NodeState.Live,
+  NodeState.Stopping,
+  NodeState.Stopped,
+  NodeState.Starting,
+  NodeState.Unreachable,
+  NodeState.MetricsUnavailable
+];
 
 export function isNodeRemovable(nodeState) {
   return nodeState === 'To Be Added';
@@ -75,27 +86,18 @@ export function getClusterProviderUUIDs(clusters) {
   return providers;
 }
 
-export function getUniverseNodes(clusters) {
-  const primaryCluster = getPrimaryCluster(clusters);
-  const readOnlyCluster = getReadOnlyCluster(clusters);
-  let numNodes = 0;
-  if (
-    isNonEmptyObject(primaryCluster) &&
-    isNonEmptyObject(primaryCluster.userIntent) &&
-    isDefinedNotNull(primaryCluster.userIntent.numNodes)
-  ) {
-    numNodes += primaryCluster.userIntent.numNodes;
-  }
-  if (
-    isNonEmptyObject(readOnlyCluster) &&
-    isNonEmptyObject(readOnlyCluster.userIntent) &&
-    isDefinedNotNull(readOnlyCluster.userIntent.numNodes)
-  ) {
-    numNodes += readOnlyCluster.userIntent.numNodes;
-  }
-
-  return numNodes;
-}
+/**
+ * @returns The number of nodes in "Live" or "Stopped" state.
+ * Restricted to a particular cluster if provided.
+ */
+export const getUniverseNodeCount = (nodeDetailsSet, cluster = null) => {
+  const nodes = nodeDetailsSet ?? [];
+  return nodes.filter(
+    (node) =>
+      (cluster === null || node.placementUuid === cluster.uuid) &&
+      _.includes(nodeInClusterStates, node.state)
+  ).length;
+};
 
 export function getProviderMetadata(provider) {
   return PROVIDER_TYPES.find((providerType) => providerType.code === provider.code);
@@ -103,6 +105,10 @@ export function getProviderMetadata(provider) {
 
 export function getClusterIndex(nodeDetails, clusters) {
   const cluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
+  if (!cluster) {
+    // Move orphaned nodes to end of list
+    return Number.MAX_SAFE_INTEGER;
+  }
   return cluster.index;
 }
 
@@ -110,9 +116,9 @@ export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
   const aClusterIndex = getClusterIndex(nodeDetailsA, clusters);
   const bClusterIndex = getClusterIndex(nodeDetailsB, clusters);
   if (aClusterIndex !== bClusterIndex) {
-    return aClusterIndex > bClusterIndex;
+    return aClusterIndex - bClusterIndex;
   }
-  return nodeDetailsA.nodeIdx > nodeDetailsB.nodeIdx;
+  return nodeDetailsA.nodeIdx - nodeDetailsB.nodeIdx;
 }
 
 export function hasLiveNodes(universe) {
@@ -132,9 +138,35 @@ export function isKubernetesUniverse(currentUniverse) {
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
     getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType ===
-      'kubernetes'
+    'kubernetes'
   );
 }
+
+/**
+ * Returns an array of unique regions in the universe
+ */
+export const getUniverseRegions = (clusters) => {
+  const primaryCluster = getPrimaryCluster(clusters);
+  const readOnlyCluster = getReadOnlyCluster(clusters);
+
+  const universeRegions = getPlacementRegions(primaryCluster).concat(
+    getPlacementRegions(readOnlyCluster)
+  );
+  return _.uniqBy(universeRegions, 'uuid');
+};
+
+export const isUniverseType = (universe, type) => {
+  const cluster = getPrimaryCluster(universe?.universeDetails?.clusters);
+  return cluster?.userIntent?.providerType === type;
+};
+
+export const isOnpremUniverse = (universe) => {
+  return isUniverseType(universe, 'onprem');
+};
+
+export const isPausableUniverse = (universe) => {
+  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp') || isUniverseType(universe, 'azu');
+};
 
 // Reads file and passes content into Promise.resolve
 export const readUploadedFile = (inputFile, isRequired) => {
@@ -161,4 +193,4 @@ export const getProxyNodeAddress = (universeUUID, customer, nodeIp, nodePort) =>
     href = `/universes/${universeUUID}/proxy/${nodeIp}:${nodePort}/`;
   }
   return href;
-}
+};

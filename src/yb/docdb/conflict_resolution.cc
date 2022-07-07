@@ -10,27 +10,30 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <map>
-
 #include "yb/docdb/conflict_resolution.h"
 
+#include <atomic>
+#include <map>
+
 #include "yb/common/hybrid_time.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
+#include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
-
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
-
+#include "yb/docdb/transaction_dump.h"
+#include "yb/util/logging.h"
+#include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/yb_pg_errcodes.h"
+#include "yb/util/status_format.h"
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -40,14 +43,52 @@ namespace docdb {
 
 namespace {
 
-using TransactionIdSet = std::unordered_set<TransactionId, TransactionIdHash>;
+using SubtxnHasNonLockConflict = std::unordered_map<SubTransactionId, bool>;
+
+struct TransactionConflictInfo {
+  WaitPolicy wait_policy;
+  // Map storing subtransaction_id -> bool which tracks whether or not that subtransaction has a
+  // conflict which is not from a non-modification row lock (i.e., explicit row-level lock such as
+  // "FOR UPDATE", "FOR SHARE", etc). The map helps in 2 ways -
+  //   1. After reading all conflicts with a txn, we need the list of subtransactions with
+  //      conflicting intents so that we can ignore those which have been aborted via savepoint
+  //      rollbacks.
+  //   2. If a transaction has committed and all its live subtransactions wrote only
+  //      non-modification intents, we don't have to consider them for conflicts.
+  SubtxnHasNonLockConflict subtransactions;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(wait_policy, subtransactions);
+  }
+};
+
+using TransactionConflictInfoMap = std::unordered_map<TransactionId,
+                                                      TransactionConflictInfo,
+                                                      TransactionIdHash>;
 
 struct TransactionData {
+  TransactionData(
+      TransactionId id_, WaitPolicy wait_policy_, SubtxnHasNonLockConflict subtransactions_)
+      : id(id_), wait_policy(wait_policy_), subtransactions(subtransactions_) {}
+
   TransactionId id;
+  WaitPolicy wait_policy;
+  SubtxnHasNonLockConflict subtransactions;
   TransactionStatus status;
   HybridTime commit_time;
   uint64_t priority;
   Status failure;
+
+  void RemoveAbortedSubtransactions(const AbortedSubTransactionSet& aborted_subtxn_set) {
+    auto it = subtransactions.begin();
+    while (it != subtransactions.end()) {
+      if (aborted_subtxn_set.Test(it->first)) {
+        it = subtransactions.erase(it);
+      } else {
+        it++;
+      }
+    }
+  }
 
   void ProcessStatus(const TransactionStatusResult& result) {
     status = result.status;
@@ -55,6 +96,10 @@ struct TransactionData {
       LOG_IF(DFATAL, !result.status_time.is_valid())
           << "Status time not specified for committed transaction: " << id;
       commit_time = result.status_time;
+    }
+    if (status != TransactionStatus::ABORTED) {
+      DCHECK(status == TransactionStatus::PENDING || status == TransactionStatus::COMMITTED);
+      RemoveAbortedSubtransactions(result.aborted_subtxn_set);
     }
   }
 
@@ -64,7 +109,7 @@ struct TransactionData {
   }
 };
 
-CHECKED_STATUS MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
+Status MakeConflictStatus(const TransactionId& our_id, const TransactionId& other_id,
                                   const char* reason, Counter* conflicts_metric) {
   conflicts_metric->Increment();
   return (STATUS(TryAgain, Format("$0 Conflicts with $1 transaction: $2", our_id, reason, other_id),
@@ -76,23 +121,32 @@ class ConflictResolver;
 class ConflictResolverContext {
  public:
   // Read all conflicts for operation/transaction.
-  virtual CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) = 0;
+  virtual Status ReadConflicts(ConflictResolver* resolver) = 0;
 
   // Check priority of this one against existing transactions.
-  virtual CHECKED_STATUS CheckPriority(
+  virtual Status CheckPriority(
       ConflictResolver* resolver,
-      std::vector<TransactionData>* transactions) = 0;
+      boost::iterator_range<TransactionData*> transactions) = 0;
+
+  // Check subtransaction data of pending transaction to determine if conflict can be avoided.
+  virtual bool CheckConflictWithPending(const TransactionData& transaction_data) = 0;
 
   // Check for conflict against committed transaction.
   // Returns true if transaction could be removed from list of conflicts.
   virtual Result<bool> CheckConflictWithCommitted(
-      const TransactionId& id, HybridTime commit_time) = 0;
+      const TransactionData& transaction_data, HybridTime commit_time) = 0;
 
   virtual HybridTime GetResolutionHt() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
+  virtual TransactionId transaction_id() const = 0;
+
   virtual std::string ToString() const = 0;
+
+  std::string LogPrefix() const {
+    return ToString() + ": ";
+  }
 
   virtual ~ConflictResolverContext() = default;
 };
@@ -107,6 +161,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       : doc_db_(doc_db), status_manager_(*status_manager), request_scope_(status_manager),
         partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
         callback_(std::move(callback)) {}
+
+  virtual ~ConflictResolver() = default;
 
   PartialRangeKeyIntents partial_range_key_intents() {
     return partial_range_key_intents_;
@@ -139,18 +195,47 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     ResolveConflicts();
   }
 
+  // Reset all state to prepare for running conflict resolution again.
+  void Reset() {
+    intent_iter_.Reset();
+    DCHECK(intent_key_upperbound_.empty());
+    conflicts_.clear();
+    transactions_.clear();
+    remaining_transactions_ = 0;
+    DCHECK_EQ(pending_requests_.load(std::memory_order_acquire), 0);
+  }
+
+  Result<WaitPolicy> CombineWaitPolicy(WaitPolicy existing_policy, WaitPolicy new_policy) {
+    RSTATUS_DCHECK(
+        existing_policy != WAIT_BLOCK, InternalError, "WAIT_BLOCK isn't support yet.");
+
+    switch(new_policy) {
+      case WAIT_BLOCK:
+        return STATUS(NotSupported, "WAIT_BLOCK isn't support yet.");
+      case WAIT_ERROR:
+        // Even if some intent had a wait policy of WAIT_SKIP, WAIT_ERROR overrides that policy.
+        return new_policy;
+      case WAIT_SKIP:
+        // The existing_policy can either be WAIT_ERROR or WAIT_SKIP. In either case, we can leave
+        // it untouched.
+        return existing_policy;
+    }
+    return STATUS(NotSupported, "Unknown wait policy.");
+  }
+
   // Reads conflicts for specified intent from DB.
-  CHECKED_STATUS ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
+  Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix,
+                                     WaitPolicy wait_policy) {
     EnsureIntentIteratorCreated();
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
     KeyBytes upperbound_key(*intent_key_prefix);
-    upperbound_key.AppendValueType(ValueType::kMaxByte);
+    upperbound_key.AppendKeyEntryType(KeyEntryType::kMaxByte);
     intent_key_upperbound_ = upperbound_key.AsSlice();
 
     size_t original_size = intent_key_prefix->size();
-    intent_key_prefix->AppendValueType(ValueType::kIntentTypeSet);
+    intent_key_prefix->AppendKeyEntryType(KeyEntryType::kIntentTypeSet);
     // Have only weak intents, so could skip other weak intents.
     if (!HasStrong(type)) {
       char value = 1 << kStrongIntentFlag;
@@ -161,6 +246,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       intent_key_upperbound_.clear();
     });
     Slice prefix_slice(intent_key_prefix->AsSlice().data(), original_size);
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Check conflicts in intents DB; Seek: "
+                                 << intent_key_prefix->AsSlice().ToDebugHexString() << " for type "
+                                 << ToString(type) << " and wait_policy=" << wait_policy;
     intent_iter_.Seek(intent_key_prefix->AsSlice());
     while (intent_iter_.Valid()) {
       auto existing_key = intent_iter_.key();
@@ -178,23 +266,31 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
           !IntentValueType(existing_key[prefix_slice.size()])) {
         break;
       }
-      if (existing_value.empty() || existing_value[0] != ValueTypeAsChar::kTransactionId) {
-        return STATUS_FORMAT(Corruption,
-            "Transaction prefix expected in intent: $0 => $1",
-            existing_key.ToDebugHexString(),
-            existing_value.ToDebugHexString());
-      }
-      existing_value.consume_byte();
+
       auto existing_intent = VERIFY_RESULT(
           docdb::ParseIntentKey(intent_iter_.key(), existing_value));
 
+      VLOG_WITH_PREFIX_AND_FUNC(4) << "Found: " << existing_value.ToDebugString()
+                                   << " has intent types " << ToString(existing_intent.types);
+      auto decoded_value = VERIFY_RESULT(DecodeIntentValue(
+          existing_value, nullptr /* verify_transaction_id_slice */,
+          HasStrong(existing_intent.types)));
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
-        auto transaction_id = VERIFY_RESULT(FullyDecodeTransactionId(
-            Slice(existing_value.data(), TransactionId::StaticSize())));
+        auto transaction_id = decoded_value.transaction_id;
+        bool lock_only = decoded_value.body.starts_with(KeyEntryTypeAsChar::kRowLock);
 
         if (!context_->IgnoreConflictsWith(transaction_id)) {
-          conflicts_.insert(transaction_id);
+          auto p = conflicts_.emplace(transaction_id,
+                                      TransactionConflictInfo {
+                                        .wait_policy = wait_policy,
+                                        .subtransactions = {},
+                                      });
+          if (!p.second) {
+            p.first->second.wait_policy = VERIFY_RESULT(
+                CombineWaitPolicy(p.first->second.wait_policy, wait_policy));
+          }
+          p.first->second.subtransactions[decoded_value.subtransaction_id] |= !lock_only;
         }
       }
 
@@ -217,20 +313,27 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     }
   }
 
- private:
+ protected:
   void InvokeCallback(const Result<HybridTime>& result) {
+    YB_TRANSACTION_DUMP(
+        Conflicts, context_->transaction_id(),
+        result.ok() ? *result : HybridTime::kInvalid,
+        Slice(pointer_cast<const uint8_t*>(transactions_.data()),
+              transactions_.size() * sizeof(transactions_[0])));
     intent_iter_.Reset();
     callback_(result);
   }
 
   MUST_USE_RESULT bool CheckResolutionDone(const Result<bool>& result) {
     if (!result.ok()) {
+      TRACE("Abort: $0", result.status().ToString());
       VLOG_WITH_PREFIX(4) << "Abort: " << result.status();
       InvokeCallback(result.status());
       return true;
     }
 
     if (result.get()) {
+      TRACE("No conflicts.");
       VLOG_WITH_PREFIX(4) << "No conflicts: " << context_->GetResolutionHt();
       InvokeCallback(context_->GetResolutionHt());
       return true;
@@ -242,14 +345,20 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   void ResolveConflicts() {
     VLOG_WITH_PREFIX(3) << "Conflicts: " << yb::ToString(conflicts_);
     if (conflicts_.empty()) {
+      VTRACE(1, LogPrefix());
+      TRACE("No conflicts.");
       InvokeCallback(context_->GetResolutionHt());
       return;
     }
 
     transactions_.reserve(conflicts_.size());
-    for (const auto& transaction_id : conflicts_) {
-      transactions_.push_back({ transaction_id });
+    for (const auto& kv : conflicts_) {
+      transactions_.emplace_back(kv.first /* id */,
+                                 kv.second.wait_policy,
+                                 // TODO - avoid potential copy here.
+                                 kv.second.subtransactions);
     }
+    remaining_transactions_ = transactions_.size();
 
     DoResolveConflicts();
   }
@@ -272,81 +381,118 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     if (VERIFY_RESULT(Cleanup())) {
       return true;
     }
-
-    RETURN_NOT_OK(context_->CheckPriority(this, &transactions_));
-
-    AbortTransactions();
+    RETURN_NOT_OK(OnConflictingTransactionsFound());
     return false;
   }
 
+  virtual Status OnConflictingTransactionsFound() = 0;
+
+  // Returns true when there are no conflicts left.
   Result<bool> CheckLocalCommits() {
-    auto write_iterator = transactions_.begin();
-    for (const auto& transaction : transactions_) {
-      auto commit_time = status_manager().LocalCommitTime(transaction.id);
-      // In case of failure status, we stop the resolution process, so `transactions_` content
-      // does not content matter in this case.
-      bool allow_erase =
-          commit_time.is_valid() &&
-          VERIFY_RESULT(context_->CheckConflictWithCommitted(transaction.id, commit_time));
-      if (!allow_erase) {
-        *write_iterator = transaction;
-        ++write_iterator;
+    return DoCleanup([this](auto* transaction) -> Result<bool> {
+      return this->CheckLocalRunningTransaction(transaction);
+    });
+  }
+
+  // Check whether specified transaction was locally committed, and store this state if so.
+  // Returns true if conflict with specified transaction is resolved.
+  Result<bool> CheckLocalRunningTransaction(TransactionData* transaction) {
+    auto local_txn_data = status_manager().LocalTxnData(transaction->id);
+    if (!local_txn_data) {
+      return false;
+    }
+    transaction->RemoveAbortedSubtransactions(local_txn_data->aborted_subtxn_set);
+    auto commit_time = local_txn_data->commit_ht;
+    if (commit_time.is_valid()) {
+      transaction->commit_time = commit_time;
+      transaction->status = TransactionStatus::COMMITTED;
+      auto res = VERIFY_RESULT(context_->CheckConflictWithCommitted(*transaction, commit_time));
+      if (!res) {
+        VLOG_WITH_PREFIX(4) << "Locally committed: " << transaction->id;
+      }
+      return res;
+    }
+    return context_->CheckConflictWithPending(*transaction);
+  }
+
+  // Apply specified functor to all active (i.e. not resolved) transactions.
+  // If functor returns true, it means that transaction was resolved.
+  // So such transaction is moved out of active transactions range.
+  // Returns true if there are no active transaction left.
+  template <class F>
+  Result<bool> DoCleanup(const F& f) {
+    auto end = transactions_.begin() + remaining_transactions_;
+    for (auto transaction = transactions_.begin(); transaction != end;) {
+      if (!VERIFY_RESULT(f(&*transaction))) {
+        ++transaction;
         continue;
       }
-      VLOG_WITH_PREFIX(4) << "Locally committed: " << transaction.id << ", time: " << commit_time;
+      if (--end == transaction) {
+        break;
+      }
+      std::swap(*transaction, *end);
     }
-    transactions_.erase(write_iterator, transactions_.end());
+    remaining_transactions_ = end - transactions_.begin();
 
-    return transactions_.empty();
+    return remaining_transactions_ == 0;
   }
 
   // Removes all transactions that would not conflict with us anymore.
   // Returns failure if we conflict with transaction that cannot be aborted.
   Result<bool> Cleanup() {
-    auto write_iterator = transactions_.begin();
-    for (const auto& transaction : transactions_) {
-      RETURN_NOT_OK(transaction.failure);
-      auto status = transaction.status;
-      if (status == TransactionStatus::COMMITTED) {
-        bool allow_erase = VERIFY_RESULT(context_->CheckConflictWithCommitted(
-            transaction.id, transaction.commit_time));
-        if (allow_erase) {
-          VLOG_WITH_PREFIX(4)
-              << "Committed: " << transaction.id << ", commit time: " << transaction.commit_time;
-          continue;
-        }
-      } else if (status == TransactionStatus::ABORTED) {
-        auto commit_time = status_manager().LocalCommitTime(transaction.id);
-        if (commit_time.is_valid()) {
-          bool allow_erase = VERIFY_RESULT(context_->CheckConflictWithCommitted(
-              transaction.id, commit_time));
-          if (allow_erase) {
-            VLOG_WITH_PREFIX(4)
-                << "Locally committed: " << transaction.id << "< commit time: " << commit_time;
-            continue;
-          }
-        } else {
-          VLOG_WITH_PREFIX(4) << "Aborted: " << transaction.id;
-          continue;
-        }
-      } else if (status != TransactionStatus::PENDING && status != TransactionStatus::APPLYING) {
-        return STATUS_FORMAT(
-            IllegalState, "Unexpected transaction state: $0", TransactionStatus_Name(status));
-      }
-      *write_iterator = transaction;
-      ++write_iterator;
-    }
-    transactions_.erase(write_iterator, transactions_.end());
+    return DoCleanup([this](auto* transaction) -> Result<bool> {
+      return this->CheckCleanup(transaction);
+    });
+  }
 
-    return transactions_.empty();
+  Result<bool> CheckCleanup(TransactionData* transaction) {
+    RETURN_NOT_OK(transaction->failure);
+    auto status = transaction->status;
+    if (status == TransactionStatus::COMMITTED) {
+      if (VERIFY_RESULT(context_->CheckConflictWithCommitted(
+              *transaction, transaction->commit_time))) {
+        VLOG_WITH_PREFIX(4)
+            << "Committed: " << transaction->id << ", commit time: " << transaction->commit_time;
+        return true;
+      }
+    } else if (status == TransactionStatus::ABORTED) {
+      auto commit_time = status_manager().LocalCommitTime(transaction->id);
+      if (commit_time) {
+        if (VERIFY_RESULT(context_->CheckConflictWithCommitted(*transaction, commit_time))) {
+          VLOG_WITH_PREFIX(4)
+              << "Locally committed: " << transaction->id << "< commit time: " << commit_time;
+          return true;
+        }
+      } else {
+        VLOG_WITH_PREFIX(4) << "Aborted: " << transaction->id;
+        return true;
+      }
+    } else if (status == TransactionStatus::PENDING) {
+      if (context_->CheckConflictWithPending(*transaction)) {
+        VLOG_WITH_PREFIX(4)
+            << "Local aborted_subtxn_set indicates all discovered intents are aborted for "
+            << transaction->id << ".";
+        return true;
+      }
+    } else if (status != TransactionStatus::APPLYING) {
+      return STATUS_FORMAT(
+          IllegalState, "Unexpected transaction state: $0", TransactionStatus_Name(status));
+    }
+    return false;
+  }
+
+  boost::iterator_range<TransactionData*> RemainingTransactions() {
+    auto begin = transactions_.data();
+    return boost::make_iterator_range(begin, begin + remaining_transactions_);
   }
 
   void FetchTransactionStatuses() {
     static const std::string kRequestReason = "conflict resolution"s;
     auto self = shared_from_this();
-    pending_requests_.store(transactions_.size());
-    for (auto& i : transactions_) {
+    pending_requests_.store(remaining_transactions_);
+    for (auto& i : RemainingTransactions()) {
       auto& transaction = i;
+      TRACE("FetchingTransactionStatus for $0", yb::ToString(transaction.id));
       StatusRequest request = {
         &transaction.id,
         context_->GetResolutionHt(),
@@ -375,14 +521,69 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     }
   }
 
+  std::string LogPrefix() const {
+    return context_->LogPrefix();
+  }
+
+  DocDB doc_db_;
+  TransactionStatusManager& status_manager_;
+  RequestScope request_scope_;
+  PartialRangeKeyIntents partial_range_key_intents_;
+  std::unique_ptr<ConflictResolverContext> context_;
+  ResolutionCallback callback_;
+
+  BoundedRocksDbIterator intent_iter_;
+  Slice intent_key_upperbound_;
+  TransactionConflictInfoMap conflicts_;
+
+  // Resolution state for all transactions. Resolved transactions are moved to the end of it.
+  std::vector<TransactionData> transactions_;
+  // Number of transactions that are not yet resolved. After successful resolution should be 0.
+  size_t remaining_transactions_;
+
+  std::atomic<size_t> pending_requests_{0};
+};
+
+struct IntentData {
+  IntentTypeSet types;
+  bool full_doc_key;
+
+  std::string ToString() const {
+    return YB_STRUCT_TO_STRING(types, full_doc_key);
+  }
+};
+
+class OptimisticLockingConflictResolver : public ConflictResolver {
+ public:
+  OptimisticLockingConflictResolver(
+      const DocDB& doc_db,
+      TransactionStatusManager* status_manager,
+      PartialRangeKeyIntents partial_range_key_intents,
+      std::unique_ptr<ConflictResolverContext> context,
+      ResolutionCallback callback)
+    : ConflictResolver(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback))
+    {}
+
+  Status OnConflictingTransactionsFound() override {
+    DCHECK_GT(remaining_transactions_, 0);
+    RETURN_NOT_OK(context_->CheckPriority(this, RemainingTransactions()));
+
+    AbortTransactions();
+    return Status::OK();
+  }
+
+ private:
   void AbortTransactions() {
-    auto self = shared_from_this();
-    pending_requests_.store(transactions_.size());
-    for (auto& i : transactions_) {
+    auto self = shared_from(this);
+    pending_requests_.store(remaining_transactions_);
+    for (auto& i : RemainingTransactions()) {
       auto& transaction = i;
+      TRACE("Aborting $0", yb::ToString(transaction.id));
       status_manager().Abort(
           transaction.id,
           [self, &transaction](Result<TransactionStatusResult> result) {
+        VLOG(4) << self->LogPrefix() << "Abort received: " << AsString(result);
         if (result.ok()) {
           transaction.ProcessStatus(*result);
         } else if (result.status().IsRemoteError() || result.status().IsAborted()) {
@@ -405,28 +606,64 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
     DoResolveConflicts();
   }
-
-  std::string LogPrefix() const {
-    return context_->ToString() + ": ";
-  }
-
-  DocDB doc_db_;
-  TransactionStatusManager& status_manager_;
-  RequestScope request_scope_;
-  PartialRangeKeyIntents partial_range_key_intents_;
-  std::unique_ptr<ConflictResolverContext> context_;
-  ResolutionCallback callback_;
-
-  BoundedRocksDbIterator intent_iter_;
-  Slice intent_key_upperbound_;
-  TransactionIdSet conflicts_;
-  std::vector<TransactionData> transactions_;
-  std::atomic<int> pending_requests_{0};
 };
 
-struct IntentData {
-  IntentTypeSet types;
-  bool full_doc_key;
+class PessimisticLockingConflictResolver : public ConflictResolver {
+ public:
+  PessimisticLockingConflictResolver(
+      const DocDB& doc_db,
+      TransactionStatusManager* status_manager,
+      PartialRangeKeyIntents partial_range_key_intents,
+      std::unique_ptr<ConflictResolverContext> context,
+      ResolutionCallback callback,
+      WaitQueue* wait_queue,
+      LockBatch* lock_batch)
+        : ConflictResolver(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback)),
+      wait_queue_(wait_queue), lock_batch_(lock_batch)
+    {}
+
+  Status OnConflictingTransactionsFound() override {
+    DCHECK_GT(remaining_transactions_, 0);
+    wait_for_iters_++;
+    VTRACE(3, "Waiting on $0 transactions after $1 tries.",
+              remaining_transactions_, wait_for_iters_);
+
+    // TODO(pessimistic): include status tablet for use with deadlock detection.
+    std::vector<TransactionId> transactions;
+    transactions.reserve(remaining_transactions_);
+    for (auto& txn : RemainingTransactions()) {
+      transactions.push_back(txn.id);
+    }
+
+    return wait_queue_->WaitOn(
+        context_->transaction_id(), lock_batch_, transactions,
+        std::bind(&PessimisticLockingConflictResolver::WaitingDone, shared_from(this), _1));
+  }
+
+  // Note: we must pass in shared_this to keep the PessimisticLockingConflictResolver alive until
+  // the wait queue invokes this call.
+  void WaitingDone(const Status& status) {
+    VLOG_WITH_FUNC(4) << context_->transaction_id() << " status: " << status;
+
+    if (!status.ok()) {
+      InvokeCallback(status);
+      return;
+    }
+
+    // If status from wait_queue is OK, then all blockers read earlier are now resolved. Retry
+    // conflict resolution with all state reset.
+    // TODO(pessimistic): In case wait queue finds that a blocker was committed, and if that blocker
+    // has still-live modification conflicts with this operation (i.e. not from rolled back subtxn),
+    // we can avoid re-running conflict resolution here and just abort.
+    Reset();
+    Resolve();
+  }
+
+ private:
+  WaitQueue* wait_queue_;
+  LockBatch* lock_batch_;
+  uint32_t wait_for_iters_ = 0;
 };
 
 using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
@@ -444,7 +681,8 @@ class IntentProcessor {
     const auto& intent_type_set = is_strong ? strong_intent_types_ : weak_intent_types_;
     auto i = container_.find(intent_key->data());
     if (i == container_.end()) {
-      container_.emplace(intent_key->data(), IntentData{intent_type_set, full_doc_key});
+      container_.emplace(intent_key->data(),
+                         IntentData{intent_type_set, full_doc_key});
       return;
     }
 
@@ -498,7 +736,7 @@ class StrongConflictChecker {
         buffer_(*buffer)
   {}
 
-  CHECKED_STATUS Check(const Slice& intent_key, bool strong) {
+  Status Check(const Slice& intent_key, bool strong, WaitPolicy wait_policy) {
     const auto hash = VERIFY_RESULT(DecodeDocKeyHash(intent_key));
     if (PREDICT_FALSE(!value_iter_.Initialized() || hash != value_iter_hash_)) {
       value_iter_ = CreateRocksDBIterator(
@@ -510,7 +748,10 @@ class StrongConflictChecker {
       value_iter_hash_ = hash;
     }
     value_iter_.Seek(intent_key);
-    VLOG_WITH_PREFIX(4) << "Seek: " << intent_key.ToDebugString() << ", strong: " << strong;
+    VLOG_WITH_PREFIX_AND_FUNC(4)
+        << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
+        << SubDocKey::DebugSliceToString(intent_key) << "), strong: " << strong << ", wait_policy: "
+        << AsString(wait_policy);
     // If we are resolving conflicts for writing a strong intent, look at records in regular RocksDB
     // with the same key as the intent's key (not including hybrid time) and any child keys. This is
     // because a strong intent indicates deletion or replacement of the entire subdocument tree and
@@ -528,12 +769,12 @@ class StrongConflictChecker {
     // that entire document subtree (similar to a strong intent), so it would have the same exact
     // key as the weak intent (not including hybrid time).
     while (value_iter_.Valid() &&
-           (intent_key.starts_with(ValueTypeAsChar::kGroupEnd) ||
+           (intent_key.starts_with(KeyEntryTypeAsChar::kGroupEnd) ||
             value_iter_.key().starts_with(intent_key))) {
       auto existing_key = value_iter_.key();
       auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(&existing_key));
       if (existing_key.empty() ||
-          existing_key[existing_key.size() - 1] != ValueTypeAsChar::kHybridTime) {
+          existing_key[existing_key.size() - 1] != KeyEntryTypeAsChar::kHybridTime) {
         return STATUS_FORMAT(
             Corruption, "Hybrid time expected at end of key: $0",
             value_iter_.key().ToDebugString());
@@ -552,10 +793,15 @@ class StrongConflictChecker {
           << ", after start: " << (doc_ht.hybrid_time() >= read_time_)
           << ", value: " << value_iter_.value().ToDebugString();
       if (doc_ht.hybrid_time() >= read_time_) {
-        conflicts_metric_.Increment();
-        return STATUS_EC_FORMAT(TryAgain, TransactionError(TransactionErrorCode::kConflict),
-                                "Value write after transaction start: $0 >= $1",
-                                doc_ht.hybrid_time(), read_time_);
+        if (wait_policy == WAIT_SKIP) {
+          return STATUS(InternalError, "Skip locking since entity was modified in regular db",
+                        TransactionError(TransactionErrorCode::kSkipLocking));
+        } else {
+          conflicts_metric_.Increment();
+          return STATUS_EC_FORMAT(TryAgain, TransactionError(TransactionErrorCode::kConflict),
+                                  "Value write after transaction start: $0 >= $1",
+                                  doc_ht.hybrid_time(), read_time_);
+        }
       }
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
@@ -610,26 +856,36 @@ class ConflictResolverContextBase : public ConflictResolverContext {
   }
 
  protected:
-  CHECKED_STATUS CheckPriorityInternal(
+  Status CheckPriorityInternal(
       ConflictResolver* resolver,
-      std::vector<TransactionData>* transactions,
+      boost::iterator_range<TransactionData*> transactions,
       const TransactionId& our_transaction_id,
       uint64_t our_priority) {
 
     if (!fetched_metadata_for_transactions_) {
       boost::container::small_vector<std::pair<TransactionId, uint64_t>, 8> ids_and_priorities;
-      ids_and_priorities.reserve(transactions->size());
-      for (const auto& transaction : *transactions) {
+      ids_and_priorities.reserve(transactions.size());
+      for (const auto& transaction : transactions) {
         ids_and_priorities.emplace_back(transaction.id, 0);
       }
       resolver->FillPriorities(&ids_and_priorities);
-      for (size_t i = 0; i != transactions->size(); ++i) {
-        (*transactions)[i].priority = ids_and_priorities[i].second;
+      for (size_t i = 0; i != transactions.size(); ++i) {
+        transactions[i].priority = ids_and_priorities[i].second;
       }
     }
-    for (const auto& transaction : *transactions) {
+    for (const auto& transaction : transactions) {
       auto their_priority = transaction.priority;
-      if (our_priority < their_priority) {
+      if (transaction.wait_policy == WAIT_SKIP) {
+        return STATUS(InternalError, "Skip locking since entity is already locked",
+                      TransactionError(TransactionErrorCode::kSkipLocking));
+      }
+
+      // READ COMMITTED txns require a guarantee that no txn abort it. They can handle facing a
+      // kConflict due to another txn's conflicting intent, but can't handle aborts. To ensure
+      // these guarantees -
+      //   1. all READ COMMITTED txns are given kHighestPriority and
+      //   2. a kConflict is raised even if their_priority equals our_priority.
+      if (our_priority <= their_priority) {
         return MakeConflictStatus(
             our_transaction_id, transaction.id, "higher priority", GetConflictsMetric());
       }
@@ -667,10 +923,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
   virtual ~TransactionConflictResolverContext() {}
 
  private:
-  CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
+  Status ReadConflicts(ConflictResolver* resolver) override {
     RETURN_NOT_OK(transaction_id_);
 
-    VLOG(3) << "Resolve conflicts: " << transaction_id_;
+    VLOG_WITH_PREFIX(3) << "Resolve conflicts";
 
     metadata_ = VERIFY_RESULT(resolver->PrepareMetadata(write_batch_.transaction()));
 
@@ -691,6 +947,8 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
           GetDocPathsMode::kIntents, &paths, &ignored_isolation_level));
 
       for (const auto& path : paths) {
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Doc path: " << SubDocKey::DebugSliceToString(path.as_slice());
         RETURN_NOT_OK(EnumerateIntents(
             path.as_slice(),
             /* intent_value */ Slice(),
@@ -703,14 +961,22 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
             resolver->partial_range_key_intents()));
       }
     }
+    // Either write_batch_.read_pairs is not empty or doc_ops is non empty. Both can't be non empty
+    // together. This is because read_pairs is filled only in case of a read operation that has a
+    // row mark or is part of a serializable txn.
+    // 1. In case doc_ops are present, we use the default wait policy of WAIT_ERROR.
+    // 2. In case of a read rpc that has wait_policy, we use that.
+    auto wait_policy = WAIT_ERROR;
     const auto& pairs = write_batch_.read_pairs();
     if (!pairs.empty()) {
       IntentProcessor read_processor(
           &container,
-          GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark));
+          GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kRead, row_mark));
+      wait_policy = write_batch_.wait_policy();
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
-          [&read_processor](auto strength, FullDocKey full_doc_key, auto, auto intent_key, auto) {
+          [&read_processor] (
+              auto strength, FullDocKey full_doc_key, auto, auto intent_key, auto) {
             read_processor.Process(strength, full_doc_key, intent_key);
             return Status::OK();
           },
@@ -721,6 +987,9 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
       return Status::OK();
     }
 
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Check txn's conflicts for following intents: "
+                                 << AsString(container);
+
     StrongConflictChecker checker(
         *transaction_id_, read_time_, resolver, GetConflictsMetric(), &buffer);
     // Iterator on intents DB should be created before iterator on regular DB.
@@ -729,7 +998,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // DB where the provisional record has already been removed.
     resolver->EnsureIntentIteratorCreated();
 
-    for(const auto& i : container) {
+    for (const auto& i : container) {
       if (read_time_ != HybridTime::kMax) {
         const Slice intent_key = i.first.AsSlice();
         bool strong = HasStrong(i.second.types);
@@ -738,42 +1007,65 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
         // records in regular RocksDB. We need this because the row might have been deleted
         // concurrently by a single-shard transaction or a committed and applied transaction.
         if (strong || i.second.full_doc_key) {
-          RETURN_NOT_OK(checker.Check(intent_key, strong));
+          RETURN_NOT_OK(checker.Check(intent_key, strong, wait_policy));
         }
       }
       buffer.Reset(i.first.AsSlice());
-      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second.types, &buffer));
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second.types, &buffer, wait_policy));
     }
 
     return Status::OK();
   }
 
-  CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
-                               std::vector<TransactionData>* transactions) override {
+  Status CheckPriority(ConflictResolver* resolver,
+                               boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver, transactions, metadata_.transaction_id,
                                  metadata_.priority);
   }
 
+  bool CheckConflictWithPending(const TransactionData& transaction_data) override {
+    // We remove aborted subtransactions when processing the AbortedSubtransactionSet stored
+    // locally or returned by the status tablet. If this is now empty, then all potentially
+    // conflicting intents have been aborted and there is no longer a conflict with this
+    // transaction.
+    return transaction_data.subtransactions.empty();
+  }
+
   Result<bool> CheckConflictWithCommitted(
-      const TransactionId& id, HybridTime commit_time) override {
+      const TransactionData& transaction_data, HybridTime commit_time) override {
     RSTATUS_DCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
 
-    VLOG(4) << ToString() << ", committed: " << id << ", commit_time: " << commit_time
-            << ", read_time: " << read_time_;
+    VLOG_WITH_PREFIX(4) << "Committed: " << transaction_data.id << ", commit_time: " << commit_time
+                        << ", read_time: " << read_time_
+                        << ", transaction_data: " << transaction_data.ToString();
 
-    // commit_time equals to HybridTime::kMax means that transaction is not actually committed,
-    // but is being committed. I.e. status tablet is trying to replicate COMMITTED state.
-    // So we should always conflict with such transaction, because we are not able to read its
-    // results.
-    //
-    // read_time equals to HybridTime::kMax in case of serializable isolation or when
-    // read time was not yet picked for snapshot isolation.
-    // So it should conflict only with transactions that are being committed.
-    //
-    // In all other cases we have concrete read time and should conflict with transactions
-    // that were committed after this point.
-    if (commit_time >= read_time_) {
-      return MakeConflictStatus(*transaction_id_, id, "committed", GetConflictsMetric());
+    for (const auto& subtxn_and_data : transaction_data.subtransactions) {
+      auto has_non_lock_conflict = subtxn_and_data.second;
+      // If the intents to be written conflict with only "explicit row lock" intents of a committed
+      // transaction, we can proceed now because a committed transaction implies that the locks are
+      // released. In other words, only a committed transaction with some conflicting intent that
+      // results in a modification to data in regular db, can result in a serialization error.
+      //
+      // A commit_time of HybridTime::kMax means that the transaction is not actually committed,
+      // but is being committed. I.e. status tablet is trying to replicate COMMITTED state.
+      // So we should always conflict with such a transaction, because we are not able to read its
+      // results.
+      //
+      // read_time equals HybridTime::kMax in case of serializable isolation or when read time was
+      // not yet picked for snapshot isolation. So it should conflict only with transactions that
+      // are being committed.
+      //
+      // In all other cases we have a concrete read time and should conflict with transactions
+      // that were committed after this point.
+      if (has_non_lock_conflict && commit_time >= read_time_) {
+        if (transaction_data.wait_policy == WAIT_SKIP) {
+          return STATUS(InternalError, "Skip locking since entity was modified by a recent commit",
+                        TransactionError(TransactionErrorCode::kSkipLocking));
+        } else {
+          return MakeConflictStatus(
+            *transaction_id_, transaction_data.id, "committed", GetConflictsMetric());
+        }
+      }
     }
 
     return true;
@@ -781,6 +1073,10 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
 
   bool IgnoreConflictsWith(const TransactionId& other) override {
     return other == *transaction_id_;
+  }
+
+  TransactionId transaction_id() const override {
+    return *transaction_id_;
   }
 
   std::string ToString() const override {
@@ -812,7 +1108,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
   virtual ~OperationConflictResolverContext() {}
 
   // Reads stored intents that could conflict with our operations.
-  CHECKED_STATUS ReadConflicts(ConflictResolver* resolver) override {
+  Status ReadConflicts(ConflictResolver* resolver) override {
     boost::container::small_vector<RefCntPrefix, 8> doc_paths;
     boost::container::small_vector<size_t, 32> key_prefix_lengths;
     KeyBytes encoded_key_buffer;
@@ -825,7 +1121,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       return resolver->ReadIntentConflicts(
           intent_strength == IntentStrength::kStrong ? strong_intent_types
                                                      : StrongToWeak(strong_intent_types),
-          encoded_key_buffer);
+          encoded_key_buffer, WAIT_ERROR);
     };
 
     for (const auto& doc_op : doc_ops()) {
@@ -837,7 +1133,8 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
                                                    RowMarkType::ROW_MARK_ABSENT);
 
       for (const auto& doc_path : doc_paths) {
-        VLOG(4) << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
+        VLOG_WITH_PREFIX_AND_FUNC(4)
+            << "Doc path: " << SubDocKey::DebugSliceToString(doc_path.as_slice());
         RETURN_NOT_OK(EnumerateIntents(
             doc_path.as_slice(), Slice(), callback, &encoded_key_buffer,
             PartialRangeKeyIntents::kTrue));
@@ -847,8 +1144,8 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     return Status::OK();
   }
 
-  CHECKED_STATUS CheckPriority(ConflictResolver* resolver,
-                               std::vector<TransactionData>* transactions) override {
+  Status CheckPriority(ConflictResolver* resolver,
+                               boost::iterator_range<TransactionData*> transactions) override {
     return CheckPriorityInternal(resolver,
                                  transactions,
                                  TransactionId::Nil(),
@@ -859,12 +1156,20 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
     return false;
   }
 
+  TransactionId transaction_id() const override {
+    return TransactionId::Nil();
+  }
+
   std::string ToString() const override {
     return "Operation Context";
   }
 
+  bool CheckConflictWithPending(const TransactionData& transaction_data) override {
+    return false;
+  }
+
   Result<bool> CheckConflictWithCommitted(
-      const TransactionId& id, HybridTime commit_time) override {
+      const TransactionData& transaction_data, HybridTime commit_time) override {
     if (commit_time != HybridTime::kMax) {
       MakeResolutionAtLeast(commit_time);
       return true;
@@ -883,14 +1188,25 @@ void ResolveTransactionConflicts(const DocOperations& doc_ops,
                                  PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
                                  Counter* conflicts_metric,
+                                 LockBatch* lock_batch,
+                                 WaitQueue* wait_queue,
                                  ResolutionCallback callback) {
   DCHECK(hybrid_time.is_valid());
+  TRACE_FUNC();
   auto context = std::make_unique<TransactionConflictResolverContext>(
       doc_ops, write_batch, hybrid_time, read_time, conflicts_metric);
-  auto resolver = std::make_shared<ConflictResolver>(
-      doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
-  // Resolve takes a self reference to extend lifetime.
-  resolver->Resolve();
+  if (wait_queue) {
+    DCHECK(lock_batch);
+    auto resolver = std::make_shared<PessimisticLockingConflictResolver>(
+        doc_db, status_manager, partial_range_key_intents, std::move(context),
+        std::move(callback), wait_queue, lock_batch);
+    resolver->Resolve();
+  } else {
+    auto resolver = std::make_shared<OptimisticLockingConflictResolver>(
+        doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
+    resolver->Resolve();
+  }
+  TRACE("resolver->Resolve done");
 }
 
 void ResolveOperationConflicts(const DocOperations& doc_ops,
@@ -900,12 +1216,15 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
                                TransactionStatusManager* status_manager,
                                Counter* conflicts_metric,
                                ResolutionCallback callback) {
+  TRACE("ResolveOperationConflicts");
   auto context = std::make_unique<OperationConflictResolverContext>(&doc_ops, resolution_ht,
                                                                     conflicts_metric);
-  auto resolver = std::make_shared<ConflictResolver>(
+  // TODO(pessimistic): Integrate pessimistic locking with single-shard transactions.
+  auto resolver = std::make_shared<OptimisticLockingConflictResolver>(
       doc_db, status_manager, partial_range_key_intents, std::move(context), std::move(callback));
   // Resolve takes a self reference to extend lifetime.
   resolver->Resolve();
+  TRACE("resolver->Resolve done");
 }
 
 #define INTENT_KEY_SCHECK(lhs, op, rhs, msg) \
@@ -920,7 +1239,7 @@ void ResolveOperationConflicts(const DocOperations& doc_ops,
 // transaction_id_slice used in INTENT_KEY_SCHECK
 Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_source) {
   ParsedIntent result;
-  int doc_ht_size = 0;
+  size_t doc_ht_size = 0;
   result.doc_path = intent_key;
   // Intent is encoded as "DocPath + IntentType + DocHybridTime".
   RETURN_NOT_OK(DocHybridTime::CheckAndGetEncodedSize(result.doc_path, &doc_ht_size));
@@ -928,16 +1247,16 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   INTENT_KEY_SCHECK(result.doc_path.size(), GE, doc_ht_size + 3, "key too short");
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
-  if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentType) {
+  if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
     result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
-  } else if (intent_type_and_doc_ht[0] == ValueTypeAsChar::kObsoleteIntentTypeSet) {
+  } else if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
     result.types = ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
   } else {
-    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, ValueTypeAsChar::kIntentTypeSet,
+    INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, KeyEntryTypeAsChar::kIntentTypeSet,
         "intent type set type expected");
     result.types = IntentTypeSet(intent_type_and_doc_ht[1]);
   }
-  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, ValueTypeAsChar::kHybridTime,
+  INTENT_KEY_SCHECK(intent_type_and_doc_ht[2], EQ, KeyEntryTypeAsChar::kHybridTime,
                     "hybrid time value type expected");
   result.doc_ht = Slice(result.doc_path.end() + 2, doc_ht_size + 1);
   return result;
@@ -949,17 +1268,15 @@ std::string DebugIntentKeyToString(Slice intent_key) {
     LOG(WARNING) << "Failed to parse: " << intent_key.ToDebugHexString() << ": " << parsed.status();
     return intent_key.ToDebugHexString();
   }
-  DocHybridTime doc_ht;
-  auto status = doc_ht.DecodeFromEnd(parsed->doc_ht);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": " << status;
+  auto doc_ht = DocHybridTime::DecodeFromEnd(parsed->doc_ht);
+  if (!doc_ht.ok()) {
+    LOG(WARNING) << "Failed to decode doc ht: " << intent_key.ToDebugHexString() << ": "
+                 << doc_ht.status();
     return intent_key.ToDebugHexString();
   }
-  return Format("$0 (key: $1 type: $2 doc_ht: $3 )",
-                intent_key.ToDebugHexString(),
-                SubDocKey::DebugSliceToString(parsed->doc_path),
-                parsed->types,
-                doc_ht.ToString());
+  return Format("$0 (key: $1 type: $2 doc_ht: $3)",
+                intent_key.ToDebugHexString(), SubDocKey::DebugSliceToString(parsed->doc_path),
+                parsed->types, *doc_ht);
 }
 
 } // namespace docdb

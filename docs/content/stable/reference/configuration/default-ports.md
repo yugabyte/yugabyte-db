@@ -3,17 +3,12 @@ title: Default ports reference
 headerTitle: Default ports
 linkTitle: Default ports
 description: Default ports for YugabyteDB including client APIs, RPC communication, and monitoring.
-section: REFERENCE
-block_indexing: true
 menu:
   stable:
     identifier: default-ports
     parent: configuration
     weight: 2740
-aliases:
-  - /stable/reference/default-ports
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Client APIs
@@ -46,6 +41,18 @@ Admin web server UI can be viewed at these addresses.
 | yb-master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
 | yb-tserver | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
 
+## Firewall Rules
+
+Along with the above, include the following common ports in firewall rules.
+
+| Service     | Port
+| ------- | ------------------------- |
+| SSH    | 22 |
+| HTTP for Platform  | 80 |
+| HTTP for Platform (alternate) | 8080 |
+| HTTPS for Platform  | 443 |
+| HTTP for Replicated | 8800 |
+
 ## Prometheus monitoring
 
 YugabyteDB servers expose time-series performance metrics in the [Prometheus exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#text-based-format) on multiple HTTP endpoints. These endpoints have the following structure.
@@ -54,7 +61,7 @@ YugabyteDB servers expose time-series performance metrics in the [Prometheus exp
 <target>/prometheus-metrics
 ```
 
-Following is the list of targets available.
+You can access the Prometheus server on port `9090` of the Platform node, and you can see the list of targets at the `http://<yugaware-ip>:9090/targets`. In particular, note port `9300` for node level metrics.
 
 ### Servers
 
@@ -62,7 +69,7 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 | Server     | Target                      |
 | ---------- | --------------------------- |
-| yb-master  | `<yb-master-address>:7000`  |  
+| yb-master  | `<yb-master-address>:7000`  |
 | yb-tserver | `<yb-tserver-address>:9000` |
 
 ### APIs

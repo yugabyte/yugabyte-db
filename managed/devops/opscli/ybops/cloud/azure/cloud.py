@@ -15,8 +15,9 @@ import os
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.cloud.common.cloud import AbstractCloud
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
-    AzureAccessCommand, AzureQueryCommand
-from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, create_resource_group
+    AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
+from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, \
+    create_resource_group
 
 
 class AzureCloud(AbstractCloud):
@@ -40,6 +41,7 @@ class AzureCloud(AbstractCloud):
         self.add_subcommand(AzureNetworkCommand())
         self.add_subcommand(AzureAccessCommand())
         self.add_subcommand(AzureQueryCommand())
+        self.add_subcommand(AzureDnsCommand())
 
     def network_bootstrap(self, args):
         # Each region code maps to dictionary containing
@@ -51,7 +53,7 @@ class AzureCloud(AbstractCloud):
 
         # First, make sure the resource group exists.
         # If not, place it in arbitrary Azure region about to be bootstrapped.
-        create_resource_group(os.environ.get("AZURE_RG"), next(iter(perRegionMetadata.keys())))
+        create_resource_group(next(iter(perRegionMetadata.keys())))
 
         user_provided_vnets = 0
         # Verify that the user provided data
@@ -80,11 +82,19 @@ class AzureCloud(AbstractCloud):
         for region, metadata in perRegionMetadata.items():
             self.get_admin().network(metadata).cleanup(region)
 
-    def create_instance(self, args, adminSSH):
+    def create_or_update_instance(self, args, adminSSH, tags_to_remove=None):
         vmName = args.search_pattern
         region = args.region
-        zone = args.zone.split('-')[-1]  # last character of zone (eastus-1) relevant for template
-        logging.info("[app] About to create Azure VM {} in {}/{}.".format(vmName, region, zone))
+        zoneParts = args.zone.split('-')
+        zone = zoneParts[1] if len(zoneParts) > 1 else None
+        logging.info("[app] Creating/Updating Azure VM {} in {}/{}.".format(vmName, region, zone))
+
+        # Reject removing internal tags.
+        if tags_to_remove and "yb-server-type" in tags_to_remove.split(","):
+            raise YBOpsRuntimeError(
+                "Was asked to remove tags: {}, which contain internal tags: yb-server-type".format(
+                    tags_to_remove
+                ))
 
         subnet = args.cloud_subnet
         numVolumes = args.num_volumes
@@ -92,23 +102,35 @@ class AzureCloud(AbstractCloud):
         volType = args.volume_type
         private_key_file = args.private_key_file
         instanceType = args.instance_type
-        # machine image URN - "OpenLogic:CentOS:7_8:7.8.2020051900"
-        [pub, offer, sku, image] = args.machine_image.split(':')
+        image = args.machine_image
         nsg = args.security_group_id
         vnet = args.vpcId
         public_ip = args.assign_public_ip
-        nicId = self.get_admin().create_nic(vmName, vnet, subnet, zone, nsg, region, public_ip)
-        self.get_admin().create_vm(vmName, zone, numVolumes, private_key_file, volSize,
-                                   instanceType, adminSSH, image, nsg, pub, offer,
-                                   sku, volType, args.type, region, nicId)
-        logging.info("[app] Created Azure VM {}.".format(vmName, region, zone))
+        disk_iops = args.disk_iops
+        disk_throughput = args.disk_throughput
+        tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
+        nicId = self.get_admin().create_or_update_nic(
+            vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
+        self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file, volSize,
+                                             instanceType, adminSSH, nsg, image, volType,
+                                             args.type, region, nicId, tags, disk_iops,
+                                             disk_throughput)
+        logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
 
     def destroy_instance(self, args):
         host_info = self.get_host_info(args)
-        if args.node_ip is None or host_info['private_ip'] != args.node_ip:
+        if host_info is None:
+            logging.error("Host {} does not exist.".format(args.search_pattern))
+            self.get_admin().destroy_orphaned_resources(args.search_pattern, args.node_uuid)
+            return
+        if args.node_ip is None:
+            if args.node_uuid is None or host_info['node_uuid'] != args.node_uuid:
+                logging.error("Host {} UUID does not match.".format(args.search_pattern))
+                return
+        elif host_info['private_ip'] != args.node_ip:
             logging.error("Host {} IP does not match.".format(args.search_pattern))
             return
-        self.get_admin().destroy_instance(args.search_pattern, host_info)
+        self.get_admin().destroy_instance(args.search_pattern, args.node_uuid)
 
     def query_vpc(self, args):
         result = {}
@@ -154,3 +176,49 @@ class AzureCloud(AbstractCloud):
 
     def update_disk(self, args):
         raise YBOpsRuntimeError("Update Disk not implemented for Azure")
+
+    def list_dns_record_set(self, dns_zone_id):
+        return self.get_admin().list_dns_record_set(dns_zone_id)
+
+    def create_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().create_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def edit_dns_record_set(self, dns_zone_id, domain_name_prefix, ip_list):
+        return self.get_admin().edit_dns_record_set(dns_zone_id, domain_name_prefix, ip_list)
+
+    def delete_dns_record_set(self, dns_zone_id, domain_name_prefix):
+        return self.get_admin().delete_dns_record_set(dns_zone_id, domain_name_prefix)
+
+    def modify_tags(self, args):
+        instance = self.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
+
+    def start_instance(self, args, ssh_ports):
+        host_info = self.get_host_info(args)
+        if host_info is None:
+            raise YBOpsRuntimeError("Host {} does not exist".format(args.search_pattern))
+
+        vm_status = self.get_admin().get_vm_status(args.search_pattern)
+        if (vm_status != 'VM deallocated'):
+            raise YBOpsRuntimeError("Host {} is not stopped, VM status is {}".format(
+                args.search_pattern, vm_status))
+
+        self.get_admin().start_instance(host_info['name'])
+        # Refreshing private IP address.
+        host_info = self.get_host_info(args)
+        if not host_info:
+            logging.error("Error restarting VM {} - unable to get host info.".format(
+                args.search_pattern))
+            return
+
+        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        return host_info
+
+    def stop_instance(self, args):
+        host_info = self.get_host_info(args)
+        if host_info is None:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+
+        return self.get_admin().deallocate_instance(host_info['name'])

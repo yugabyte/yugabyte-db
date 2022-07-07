@@ -20,7 +20,7 @@
 #include "access/itup.h"
 #include "access/tupdesc.h"
 #include "storage/spin.h"
-#include "ybcam.h"
+#include "access/yb_scan.h"
 
 /*
  * Shared state for parallel heap scan.
@@ -159,6 +159,17 @@ typedef struct IndexScanDescData
 	 *   index-scan execution in YugaByte.
 	 */
 	YBCPgExecParameters *yb_exec_params;
+
+	/*
+	 * yb_scan_plan stores postgres scan plan for current index scan.
+	 * This information is used to determine target columns that must be read from DocDB
+	 * and columns which can be omitted.
+	 * TODO: Calculate set of required YB targets on plan stage and use it here
+	 *       instead of scan plan. In addition to code speedup this approach will allow to
+	 *       remove scan plan from IndexScanDescData structure. Native postgres code doesn't
+	 *       have plan information in scan state structures.
+	 */
+	Scan *yb_scan_plan;
 }			IndexScanDescData;
 
 /* Generic structure for parallel scans */

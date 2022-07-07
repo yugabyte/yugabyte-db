@@ -10,14 +10,16 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <vector>
-#include <limits>
-#include <iomanip>
-#include <glog/logging.h>
-
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/decimal.h"
+
+#include <iomanip>
+#include <limits>
+#include <vector>
+
+#include "yb/gutil/casts.h"
+
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stol_utils.h"
 
 using std::string;
@@ -25,6 +27,18 @@ using std::vector;
 
 namespace yb {
 namespace util {
+
+Decimal::Decimal(const std::string& string_val) {
+  CHECK_OK(FromString(string_val));
+}
+
+Decimal::Decimal(double double_val) {
+  CHECK_OK(FromDouble(double_val));
+}
+
+Decimal::Decimal(const VarInt& varint_val) {
+  CHECK_OK(FromVarInt(varint_val));
+}
 
 void Decimal::clear() {
   digits_ = {};
@@ -66,25 +80,25 @@ Status Decimal::ToPointString(string* string_val, const int max_length) const {
     }
     for (size_t i = 0; i < digits_.size(); i++) {
       output.push_back('0' + digits_[i]);
-      if (output.size() > max_length) {
+      if (implicit_cast<int64_t>(output.size()) > max_length) {
         return STATUS_SUBSTITUTE(InvalidArgument,
             "Max length $0 too small to encode Decimal", max_length);
       }
     }
   } else {
     for (size_t i = 0; i < digits_.size(); i++) {
-      if (exponent == i) {
+      if (implicit_cast<size_t>(exponent) == i) {
         output.push_back('.');
       }
       output.push_back('0' + digits_[i]);
-      if (output.size() > max_length) {
+      if (implicit_cast<int64_t>(output.size()) > max_length) {
         return STATUS_SUBSTITUTE(InvalidArgument,
             "Max length $0 too small to encode Decimal", max_length);
       }
     }
-    for (size_t i = digits_.size(); i < exponent; i++) {
+    for (ssize_t i = digits_.size(); i < exponent; i++) {
       output.push_back('0');
-      if (output.size() > max_length) {
+      if (implicit_cast<int64_t>(output.size()) > max_length) {
         return STATUS_SUBSTITUTE(InvalidArgument,
             "Max length $0 too small to encode Decimal", max_length);
       }
@@ -283,14 +297,14 @@ string Decimal::EncodeToComparable() const {
   output[0] |= 0xc0;
   // For negatives, everything is complemented (including the sign bits) which were set to 1 above.
   if (!is_positive_) {
-    for (int i = 0; i < output.size(); i++) {
+    for (size_t i = 0; i < output.size(); i++) {
       output[i] = ~output[i]; // Bitwise not.
     }
   }
   return output;
 }
 
-CHECKED_STATUS DecodeFromDigitPairs(
+Status DecodeFromDigitPairs(
     const Slice& slice, size_t *num_decoded_bytes, std::vector<uint8_t>* digits) {
   digits->clear();
   digits->reserve(slice.size() * 2);
@@ -347,10 +361,6 @@ Status Decimal::DecodeFromComparable(const Slice& slice, size_t *num_decoded_byt
 Status Decimal::DecodeFromComparable(const Slice& slice) {
   size_t num_decoded_bytes;
   return DecodeFromComparable(slice, &num_decoded_bytes);
-}
-
-Status Decimal::DecodeFromComparable(const string& str) {
-  return DecodeFromComparable(Slice(str));
 }
 
 string Decimal::EncodeToSerializedBigDecimal(bool* is_out_of_range) const {
@@ -484,13 +494,13 @@ Decimal Decimal::operator+(const Decimal& other) const {
   // If we need to add 0.1E+3 and 0.05E+3, we convert them to 0.10E+3 and 0.05E+3
   size_t max_digits = std::max(decimal.digits_.size(), other1.digits_.size());
   if (decimal.digits_.size() < max_digits) {
-    int increase = max_digits - decimal.digits_.size();
+    auto increase = max_digits - decimal.digits_.size();
     for (size_t i = 0; i < increase; i = i + 1) {
       decimal.digits_.push_back(0);
     }
   }
   if (other1.digits_.size() < max_digits) {
-    int increase = max_digits - other1.digits_.size();
+    auto increase = max_digits - other1.digits_.size();
     for (size_t i = 0; i < increase; i++) {
       other1.digits_.push_back(0);
     }

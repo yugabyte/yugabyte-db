@@ -3,14 +3,12 @@ title: Array concatenation functions and operators
 linkTitle: Array concatenation
 headerTitle: Array concatenation functions and operators
 description: Array concatenation functions and operators
-block_indexing: true
 menu:
   stable:
     identifier: array-concatenation
     parent: array-functions-operators
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `||` operator implements, by itself, all of the functionality that each of the `array_cat()`, `array_append()`, and `array_prepend()` functions individually implement. Yugabyte recommends that you use the `||` operator and avoid the functions. They are documented here for completeness—especially in case you find them in inherited code.
@@ -50,13 +48,13 @@ select arr as "new value of arr" from t where k = 1;
 ```
 It shows this:
 ```
- old value of arr 
+ old value of arr
 ------------------
  {3,4,5}
 ```
 and then this:
 ```
- new value of arr 
+ new value of arr
 ------------------
  {1,2,3,4,5,6}
 ```
@@ -153,7 +151,7 @@ declare
   cat_result   constant rt[] := prepend_row||prepend_arr||arr||append_row;
 
   expected_result constant rt[] :=
-    array[(0, 'z')::rt, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt, 
+    array[(0, 'z')::rt, (1, 'a')::rt, (2, 'b')::rt, (3, 'c')::rt,
          (4, 'd')::rt, (5, 'e')::rt, (6, 'f')::rt];
 
 begin
@@ -186,7 +184,7 @@ declare
     ];
 
   -- Notice that this is a 1-d array.
-  -- Its lenth is the same as as that of arr_1
+  -- Its lenth is the same as that of arr_1
   -- along arr_1's SECOND dimension.
   arr_3 constant int[] := array[31, 32, 33];
 

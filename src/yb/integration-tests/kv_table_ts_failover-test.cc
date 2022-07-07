@@ -15,14 +15,15 @@
 #include <memory>
 #include <vector>
 
-#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/test_workload.h"
-#include "yb/util/metrics.h"
-#include "yb/util/test_util.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/util/test_util.h"
 
 DEFINE_int32(test_num_iter,
              1,
@@ -56,7 +57,6 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     int value_size_bytes = 16;
     int max_write_errors = 0;
     int max_read_errors = 0;
-    bool stop_on_empty_read = true;
 
     // Create two separate clients for read and writes.
     auto write_client = CreateYBClient();
@@ -70,8 +70,7 @@ TEST_F(KVTableTsFailoverTest, KillTabletServerUnderLoad) {
     yb::load_generator::MultiThreadedReader reader(rows, reader_threads, &read_session_factory,
                                                    writer.InsertionPoint(), writer.InsertedKeys(),
                                                    writer.FailedKeys(), &stop_requested_flag,
-                                                   value_size_bytes, max_read_errors,
-                                                   stop_on_empty_read);
+                                                   value_size_bytes, max_read_errors);
 
     writer.Start();
     // Having separate write requires adding in write client id to the reader.

@@ -10,25 +10,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/client/yb_table_name.h"
 
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
-#include "yb/util/result.h"
-#include "yb/util/path_util.h"
-#include "yb/util/net/net_util.h"
-#include "yb/util/subprocess.h"
-#include "yb/util/enums.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/master/master.pb.h"
-#include "yb/master/master.proxy.h"
-#include "yb/client/client.h"
-#include "yb/client/table_handle.h"
-#include "yb/client/yb_table_name.h"
+#include "yb/master/master_admin.proxy.h"
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/rpc/rpc_controller.h"
-#include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/util/path_util.h"
+#include "yb/util/result.h"
+#include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
@@ -36,7 +29,6 @@ using yb::master::FlushTablesRequestPB;
 using yb::master::FlushTablesResponsePB;
 using yb::master::IsFlushTablesDoneRequestPB;
 using yb::master::IsFlushTablesDoneResponsePB;
-using yb::master::MasterServiceProxy;
 using yb::StatusFromPB;
 
 using std::string;
@@ -73,14 +65,14 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
  protected:
   void FlushOrCompact(string table_id, FlushOrCompaction flush_or_compaction) {
     RpcController rpc;
-    auto master_proxy = cluster_->master_proxy();
+    auto master_proxy = cluster_->GetMasterProxy<master::MasterAdminProxy>();
 
     FlushTablesResponsePB flush_tables_resp;
     FlushTablesRequestPB compaction_req;
     compaction_req.add_tables()->set_table_id(table_id);
     compaction_req.set_is_compaction(flush_or_compaction == FlushOrCompaction::kCompaction);
     LOG(INFO) << "Initiating a " << flush_or_compaction << " request for table " << table_id;
-    ASSERT_OK(master_proxy->FlushTables(compaction_req, &flush_tables_resp, &rpc));
+    ASSERT_OK(master_proxy.FlushTables(compaction_req, &flush_tables_resp, &rpc));
     LOG(INFO) << "Initiated a " << flush_or_compaction << " request for table " << table_id;
 
     if (flush_tables_resp.has_error()) {
@@ -94,7 +86,7 @@ class PgWrapperTest : public PgWrapperTestHelper<ConnectionStrategy<false, false
     ASSERT_OK(WaitFor(
         [&]() -> Result<bool> {
           rpc.Reset();
-          RETURN_NOT_OK(master_proxy->IsFlushTablesDone(wait_req, &wait_resp, &rpc));
+          RETURN_NOT_OK(master_proxy.IsFlushTablesDone(wait_req, &wait_resp, &rpc));
 
           if (wait_resp.has_error()) {
             if (wait_resp.error().status().code() == AppStatusPB::NOT_FOUND) {
@@ -138,7 +130,7 @@ TEST_F(PgWrapperTestAuth, YB_DISABLE_TEST_IN_TSAN(TestConnectionAuth)) {
   ));
 }
 
-TEST_F(PgWrapperTestSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionTSL)) {
+TEST_F(PgWrapperTestSecure, YB_DISABLE_TEST_IN_TSAN(TestConnectionTLS)) {
   ASSERT_NO_FATALS(RunPsqlCommand(
       "SELECT clientdn FROM pg_stat_ssl WHERE ssl=true",
       R"#(
@@ -265,7 +257,7 @@ TEST_F(PgWrapperTest, YB_DISABLE_TEST_IN_TSAN(InsertSelect)) {
   ASSERT_NO_FATALS(CreateTable("CREATE TABLE mytbl (k INT, v TEXT)"));
 
   ASSERT_NO_FATALS(InsertOneRow("INSERT INTO mytbl (k, v) VALUES (1, 'abc')"));
-  for (size_t i = 0; i != RegularBuildVsSanitizers(7, 1); ++i) {
+  for (size_t i = 0; i != RegularBuildVsSanitizers(7U, 1U); ++i) {
      ASSERT_NO_FATALS(InsertRows(
          "INSERT INTO mytbl SELECT * FROM mytbl", 1 << i /* expected_rows */));
   }
@@ -298,20 +290,20 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
   MonoDelta timeout = 15s;
   int tserver_count = 1;
 
-  std::string pid_file = JoinPathSegments(pg_ts_->GetDataDir(), "pg_data", "postmaster.pid");
+  std::string pid_file = JoinPathSegments(pg_ts_->GetRootDir(), "pg_data", "postmaster.pid");
   // Wait for postgres server to start and setup postmaster.pid file
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to create postmaster.pid file");
+      }, timeout, "Waiting for postgres server to create postmaster.pid file"));
   ASSERT_TRUE(env_->FileExists(pid_file));
 
   // Shutdown tserver and wait for postgres server to shut down and delete postmaster.pid file
   pg_ts_->Shutdown();
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown");
+      }, timeout, "Waiting for postgres server to shutdown"));
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create empty postmaster.pid file and ensure that tserver can start up
@@ -327,10 +319,10 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
   pg_ts_->Shutdown();
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown", 100ms);
+      }, timeout, "Waiting for postgres server to shutdown", 100ms));
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create postmaster.pid file with string pid (invalid) and ensure that tserver can start up
@@ -343,10 +335,10 @@ TEST_F(PgWrapperOneNodeClusterTest, YB_DISABLE_TEST_IN_TSAN(TestPostgresPid)) {
 
   // Shutdown tserver and wait for postgres server to shutdown and delete postmaster.pid file
   pg_ts_->Shutdown();
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, &pid_file] {
         return !env_->FileExists(pid_file);
-      }, timeout, "Waiting for postgres server to shutdown", 100ms);
+      }, timeout, "Waiting for postgres server to shutdown", 100ms));
   ASSERT_FALSE(env_->FileExists(pid_file));
 
   // Create postgres pid file with integer pid (valid) and ensure that tserver can start up

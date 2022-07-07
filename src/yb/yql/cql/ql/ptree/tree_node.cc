@@ -16,7 +16,9 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/tree_node.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -25,7 +27,7 @@ namespace ql {
 // TreeNode base class.
 //--------------------------------------------------------------------------------------------------
 
-TreeNode::TreeNode(MemoryContext *memctx, YBLocation::SharedPtr loc)
+TreeNode::TreeNode(MemoryContext *memctx, YBLocationPtr loc)
     : MCBase(memctx), loc_(loc) {
 }
 
@@ -33,7 +35,7 @@ TreeNode::~TreeNode() {
 }
 
 // Run semantics analysis on this node.
-CHECKED_STATUS TreeNode::Analyze(SemContext *sem_context) {
+Status TreeNode::Analyze(SemContext *sem_context) {
   // Raise unsupported error when a treenode does not implement this method.
   return sem_context->Error(this, ErrorCode::FEATURE_NOT_SUPPORTED);
 }

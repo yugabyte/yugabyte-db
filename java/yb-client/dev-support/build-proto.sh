@@ -46,11 +46,7 @@ fi
 
 find_or_download_thirdparty
 
-if is_mac; then
-  THIRDPARTY_BUILD_TYPE=clang_uninstrumented
-else
-  THIRDPARTY_BUILD_TYPE=uninstrumented
-fi
+THIRDPARTY_BUILD_TYPE=uninstrumented
 
 PROTOC_BIN="$YB_THIRDPARTY_DIR/installed/$THIRDPARTY_BUILD_TYPE/bin/protoc"
 if [[ ! -f $PROTOC_BIN ]]; then

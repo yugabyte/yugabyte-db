@@ -45,6 +45,12 @@ struct ReadOptions;
 // the length of the magic number in bytes.
 const int kMagicNumberLengthByte = 8;
 
+// Even that we use kKeyDeltaEncodingSharedPrefix format for index blocks, by default every key in
+// index will still have zero shared prefix length and will be stored fully, because
+// index_block_restart_interval default value is 1 (see BlockBasedTableOptions).
+constexpr auto kIndexBlockKeyValueEncodingFormat =
+    KeyValueEncodingFormat::kKeyDeltaEncodingSharedPrefix;
+
 // BlockHandle is a pointer to the extent of a file that stores a data
 // block or a meta block.
 class BlockHandle {

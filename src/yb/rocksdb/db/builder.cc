@@ -23,8 +23,13 @@
 
 #include "yb/rocksdb/db/builder.h"
 
+#include <stdint.h>
+
 #include <algorithm>
 #include <deque>
+#include <limits>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "yb/rocksdb/db/compaction_iterator.h"
@@ -34,31 +39,31 @@
 #include "yb/rocksdb/db/merge_helper.h"
 #include "yb/rocksdb/db/table_cache.h"
 #include "yb/rocksdb/db/version_edit.h"
-#include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/options.h"
+#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/block_based_table_builder.h"
 #include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/thread_status_util.h"
 
-#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/result.h"
 
 namespace rocksdb {
 
 class TableFactory;
 
-TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
-                              const InternalKeyComparatorPtr& internal_comparator,
-                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
-                              uint32_t column_family_id,
-                              WritableFileWriter* file,
-                              const CompressionType compression_type,
-                              const CompressionOptions& compression_opts,
-                              const bool skip_filters) {
+std::unique_ptr<TableBuilder> NewTableBuilder(
+    const ImmutableCFOptions& ioptions,
+    const InternalKeyComparatorPtr& internal_comparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* file,
+    const CompressionType compression_type,
+    const CompressionOptions& compression_opts,
+    const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
                           int_tbl_prop_collector_factories, compression_type,
@@ -66,15 +71,16 @@ TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
       column_family_id, file);
 }
 
-TableBuilder* NewTableBuilder(const ImmutableCFOptions& ioptions,
-                              const InternalKeyComparatorPtr& internal_comparator,
-                              const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
-                              uint32_t column_family_id,
-                              WritableFileWriter* metadata_file,
-                              WritableFileWriter* data_file,
-                              const CompressionType compression_type,
-                              const CompressionOptions& compression_opts,
-                              const bool skip_filters) {
+std::unique_ptr<TableBuilder> NewTableBuilder(
+    const ImmutableCFOptions& ioptions,
+    const InternalKeyComparatorPtr& internal_comparator,
+    const IntTblPropCollectorFactories& int_tbl_prop_collector_factories,
+    uint32_t column_family_id,
+    WritableFileWriter* metadata_file,
+    WritableFileWriter* data_file,
+    const CompressionType compression_type,
+    const CompressionOptions& compression_opts,
+    const bool skip_filters) {
   return ioptions.table_factory->NewTableBuilder(
       TableBuilderOptions(ioptions, internal_comparator,
           int_tbl_prop_collector_factories, compression_type,
@@ -154,24 +160,30 @@ Status BuildTable(const std::string& dbname,
                               earliest_write_conflict_snapshot,
                               true /* internal key corruption is not ok */);
     c_iter.SeekToFirst();
+    const bool non_empty = c_iter.Valid();
+    if (non_empty) {
+      meta->UpdateKey(c_iter.key(), UpdateBoundariesType::kSmallest);
+    }
+
+    boost::container::small_vector<UserBoundaryValueRef, 0x10> user_values;
     for (; c_iter.Valid(); c_iter.Next()) {
       const Slice& key = c_iter.key();
       const Slice& value = c_iter.value();
       builder->Add(key, value);
-      auto boundaries = MakeFileBoundaryValues(boundary_values_extractor, key, value);
-      if (!boundaries) {
-        builder->Abandon();
-        return std::move(boundaries.status());
+      meta->UpdateBoundarySeqNo(GetInternalKeySeqno(key));
+      if (boundary_values_extractor) {
+        user_values.clear();
+        auto status = boundary_values_extractor->Extract(ExtractUserKey(key), &user_values);
+        if (!status.ok()) {
+          builder->Abandon();
+          return status;
+        }
+        meta->UpdateBoundaryUserValues(user_values, UpdateBoundariesType::kAll);
       }
-      auto& boundary_values = *boundaries;
-      meta->UpdateBoundaries(std::move(boundary_values.key), boundary_values);
+    }
 
-      // TODO(noetzli): Update stats after flush, too.
-      if (io_priority == Env::IO_HIGH &&
-          IOSTATS(bytes_written) >= kReportFlushIOStatsEvery) {
-        ThreadStatusUtil::SetThreadOperationProperty(
-            ThreadStatus::FLUSH_BYTES_WRITTEN, IOSTATS(bytes_written));
-      }
+    if (non_empty) {
+      meta->UpdateKey(builder->LastKey(), UpdateBoundariesType::kLargest);
     }
 
     // Finish and check for builder errors
@@ -195,7 +207,6 @@ Status BuildTable(const std::string& dbname,
 
     // Finish and check for file errors
     if (s.ok() && !empty && !ioptions.disable_data_sync) {
-      StopWatch sw(env, ioptions.statistics, TABLE_SYNC_MICROS);
       if (is_split_sst) {
         RETURN_NOT_OK(data_file_writer->Sync(ioptions.use_fsync));
       }

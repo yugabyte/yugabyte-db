@@ -41,16 +41,16 @@
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/db/write_controller.h"
 #include "yb/rocksdb/db/writebuffer.h"
-#include "yb/rocksdb/memtable/hash_skiplist_rep.h"
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/options_helper.h"
-#include "yb/rocksdb/util/thread_status_util.h"
+#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/xfunc.h"
 
 #include "yb/util/logging.h"
+#include <glog/logging.h>
 
-DEFINE_int32(memstore_arena_size_kb, 128, "Size of each arena allocation for the memstore");
+DEFINE_int32(memstore_arena_size_kb, 64, "Size of each arena allocation for the memstore");
 
 namespace rocksdb {
 

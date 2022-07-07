@@ -89,6 +89,7 @@
 #endif
 
 #include "common/ip.h"
+#include "common/pg_yb_common.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "port/pg_bswap.h"
@@ -202,7 +203,7 @@ void
 pq_init(void)
 {
 	/* initialize state variables */
-	PqSendBufferSize = YBCGetOutputBufferSize();
+	PqSendBufferSize = YBGetYsqlOutputBufferSize();
 	PqSendBuffer = MemoryContextAlloc(TopMemoryContext, PqSendBufferSize);
 	PqSendPointer = PqSendStart = PqRecvPointer = PqRecvLength = 0;
 	PqSendYbSavedBufPos = 0;
@@ -1238,6 +1239,18 @@ pq_getstring(StringInfo s)
 							   PqRecvLength - PqRecvPointer);
 		PqRecvPointer = PqRecvLength;
 	}
+}
+
+/* --------------------------------
+ *		pq_buffer_has_data		- is any buffered data available to read?
+ *
+ * This will *not* attempt to read more data.
+ * --------------------------------
+ */
+bool
+pq_buffer_has_data(void)
+{
+	return (PqRecvPointer < PqRecvLength);
 }
 
 

@@ -14,10 +14,21 @@
 #ifndef YB_TABLET_TABLET_COMPONENT_H
 #define YB_TABLET_TABLET_COMPONENT_H
 
-#include "yb/tablet/tablet.h"
+#include <mutex>
+
+#include "yb/rocksdb/rocksdb_fwd.h"
+
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class RWOperationCounter;
+
 namespace tablet {
+
+struct TabletScopedRWOperationPauses;
 
 // Base class for Tablet components, has access to private Tablet fields.
 // For methods descriptions see comments for appropriate field or method in Tablet class.
@@ -30,11 +41,13 @@ class TabletComponent {
   }
 
  protected:
-  ScopedRWOperationPause PauseReadWriteOperations();
+  Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
+      DisableFlushOnShutdown disable_flush_on_shutdown);
 
-  CHECKED_STATUS ResetRocksDBs(Destroy destroy, DisableFlushOnShutdown disable_flush_on_shutdown);
+  Status CompleteShutdownRocksDBs(
+      Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
 
-  CHECKED_STATUS OpenRocksDBs();
+  Status OpenRocksDBs();
 
   std::string LogPrefix() const;
 
@@ -53,6 +66,8 @@ class TabletComponent {
   std::mutex& create_checkpoint_lock() const;
 
   rocksdb::Env& rocksdb_env() const;
+
+  void RefreshYBMetaDataCache();
 
  private:
   Tablet& tablet_;

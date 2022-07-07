@@ -4,15 +4,11 @@ linkTitle: Array
 headerTitle: Array data types and functionality
 description: YSQL lets you construct an array data type, of any dimensionality, of any built-in or user-defined data type. You can use this constructed data type for a table column and for a variable or formal parameter in a PL/pgSQL procedure.
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
   stable:
     identifier: api-ysql-datatypes-array
     parent: api-ysql-datatypes
-aliases:
-  - /stable/api/ysql/datatypes/type_array
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;[Synopsis](./#synopsis)<br>
@@ -25,7 +21,7 @@ showAsideToc: true
 
 ## Synopsis
 
-A multidimensional array lets you store a large composite value in a single field (row-column intersection) in a table; and it lets you assign such a value to a PL/pgSQL variable, or pass it via a procedure's, or a function's, formal parameter. 
+A multidimensional array lets you store a large composite value in a single field (row-column intersection) in a table; and it lets you assign such a value to a PL/pgSQL variable, or pass it via a procedure's, or a function's, formal parameter.
 
 You can see from the declarations below that every value in an array is non-negotiably of the same data type—either a primitive data type like `text` or `numeric`, or a user-defined scalar or composite data type (like a _"row"_ type).
 
@@ -42,7 +38,7 @@ A value within an array is specified by a tuple of _index_ values, like this (fo
 ```
 arr[13][7][5][17]
 ```
-The index is the cell number along the dimension in question. The index values along each dimension are consecutive—in other words, you cannot delete a cell within an existing array. This reflects the fact that an array is rectilinear. However, a value in a cell can, of course, be `NULL`.
+The index is the cell number along the dimension in question. The index values along each dimension are consecutive—in other words, you cannot delete a cell within a array. This reflects the fact that an array is rectilinear. However, a value in a cell can, of course, be `NULL`.
 
 The leftmost value (`13` in the example) is the index along the first dimension; the rightmost value (`17` in this example) is the index along the Nth dimension—that is, the fourth dimension in this example. The value of the index of the first cell along a particular dimension is known as the _lower bound_ for that dimension. If you take no special steps when you create an array value, then the lower bound of each dimension is `1`. But, if you find it useful, you can specify any positive or negative integer, or zero, as the lower bound of the specified dimension. The lower bounds of an array are fixed at creation time, and so is its dimensionality.
 
@@ -50,7 +46,7 @@ Correspondingly, each dimension has an upper bound. This, too, is fixed at array
 
 If you read a within-array value with a tuple of index values that put it outside of the array bounds, then you silently get `NULL`. But if you attempt to set such an out-of-bounds value, then, because this is an implicit attempt to change the array's bounds, you get the _"array subscript out of range"_ error.
 
-Notice that you can create a new array, using a single assignment, as a so-called "slice" of an existing array, by specifying desired lower and upper index values along each axis of the source array. The new array cannot have a different dimensionality than its source. You should specify the lower and upper index values for the slice, along each dimension of the source array, to lie within (or, maximally, coincide with) the bounds of that dimension. If you specify the slice with a lower bound less than the corresponding lower bound of the source array, then the new lower bound is silently interpreted as the extant corresponding source lower bound. The same is true for the upper bounds. The syntax of this method means that the lower bounds of the new array inevitably all start at `1`. Here is an example (in PL/pgSQL syntax) using a two-dimensional source array:
+Notice that you can create an array, using a single assignment, as a so-called "slice" of an array, by specifying desired lower and upper index values along each axis of the source array. The new array cannot have a different dimensionality than its source. You should specify the lower and upper index values for the slice, along each dimension of the source array, to lie within (or, maximally, coincide with) the bounds of that dimension. If you specify the slice with a lower bound less than the corresponding lower bound of the source array, then the new lower bound is silently interpreted as the extant corresponding source lower bound. The same is true for the upper bounds. The syntax of this method means that the lower bounds of the new array inevitably all start at `1`. Here is an example (in PL/pgSQL syntax) using a two-dimensional source array:
 
 ```
 new_arr := source_arr[3:4][7:9];
@@ -84,7 +80,7 @@ create table t1(k int primary key, arr text array[4]);
 ```
 This syntax conforms to the SQL Standard. Notice that `array` is a reserved word. (You cannot, for example, create a table with that name.) It appears to let you specify just a one-dimensional array and to specify how many values it holds. But both of these apparent declarations of intent are ignored and act, therefore, only as potentially misleading documentation.
 
-The following illustrates PostgreSQL's extension to the Standard that YSQL, therefore, inherits.:
+The following illustrates the PostgreSQL extension to the Standard that YSQL, therefore, inherits.:
 
 ```plpgsql
 create table t2(
@@ -94,7 +90,7 @@ create table t2(
 ```
 Notice that it appears, optionally, to let you specify how many values each dimension holds. (The Standard syntax allows the specification of the length of just one dimension.) However, these apparent declarations of intent, too, are silently ignored. Moreover, even the _dimensionality_ is ignored. The value, in a particular row, in a table column with an array data type (or its cousin, a variable in a PL/pgSQL program) can hold an array value of _any_ dimensionality. This is demonstrated by example in [Multidimensional array of `int` values](./literals/array-of-primitive-values/#multidimensional-array-of-int-values). This means that declaring an array using the reserved word `array`, which apparently lets you define only a one-dimensional array, and declaring an array using `[]`, which apparently lets you define array of any dimensionality, where one, some, or all of the dimensions are nominally constrained, are entirely equivalent.
 
-The possibility that that different rows in the same table column can hold array values of different dimensionality is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the array functions are supported only for one-dimensional arrays.
+The possibility that different rows in the same table column can hold array values of different dimensionality is explained by picturing the implementation. Array values are held, in an opaque internal representation, as a linear "ribbon" of suitably delimited values of the array's data type. The array's actual dimensionality, and the upper and lower bound of the index along each dimension, is suitably represented in a header. This information is used, in a trivial arithmetic formula, to translate an address specification like `arr[13][7][5][17]` into the position of the value, as a single integer, along the ribbon of values. Understanding this explains why, except for the special case of a one-dimensional array, the dimensionality and the bounds of an array value are fixed at creation time. It also explains why a few of the array functions are supported only for one-dimensional arrays.
 
 Yugabyte recommends that, for uniformity, you choose to declare arrays only with this syntax:
 
@@ -120,7 +116,7 @@ select k, v, array_dims(v) as dims from t order by k;
 It shows this:
 
 ```
- k |     v     |   dims    
+ k |     v     |   dims
 ---+-----------+-----------
  1 | <is null> | <is null>
  2 | {NULL}    | [1:1]
@@ -134,7 +130,7 @@ select k, v, array_dims(v) as dims from t where k = 2;
 The `||` operator is explained in [Array concatenation functions and operators](./functions-operators/concatenation/#the-160-160-160-160-operator). The query shows this:
 
 ```
- k |      v      | dims  
+ k |      v      | dims
 ---+-------------+-------
  2 | {NULL,NULL} | [1:2]
 ```
@@ -145,7 +141,7 @@ select k, v, array_dims(v) as dims from t where k = 2;
 ```
 It shows this:
 ```
- k |             v             | dims  
+ k |             v             | dims
 ---+---------------------------+-------
  2 | [0:3]={17,NULL,NULL,NULL} | [0:3]
 ```
@@ -156,7 +152,7 @@ select k, v, array_dims(v) as dims from t where k = 1;
 ```
 It shows this:
 ```
- k |  v   | dims  
+ k |  v   | dims
 ---+------+-------
  1 | {42} | [1:1]
 ```
@@ -166,7 +162,7 @@ The dimensionality of _"v"_ for this first row has now been irrevocably establis
 
 ## Type construction
 
-Arrays are not YSQL's only example of type construction. So, also, are _"row"_ types and `DOMAIN`s:
+Arrays are not the only example of type construction. So, also, are _"row"_ types and `DOMAIN`s:
 
 ```plpgsql
 create type rec_t as(f1 int, f2 text);
@@ -205,7 +201,7 @@ select v::text from t where k = 1;
 ```
 It shows this:
 ```
-            v            
+            v
 -------------------------
  {{11,12,13},{21,22,23}}
 ```
@@ -222,7 +218,7 @@ from t where k = 1;
 ```
 It shows this:
 ```
-  array_ndims | array_length | array_length | array_dims 
+  array_ndims | array_length | array_length | array_dims
 -------------+--------------+--------------+------------
            2 |            2 |            3 | [1:2][1:3]
 ```
@@ -309,7 +305,7 @@ from v;
 ```
 In this syntax, `[2:4]` says that the index runs from 2 through 4 on the first dimension; and `[5:8]` says that runs from 5 through 8 on the second dimension. The values have been chosen to illustrate this. Of course, you must provide the right number of values for each dimension. The query produces this result:
 ```
-  [0][0]   | [2][5] | [2][8] | [4][5] | [4][8] |  [9][9]   
+  [0][0]   | [2][5] | [2][8] | [4][5] | [4][8] |  [9][9]
 -----------+--------+--------+--------+--------+-----------
  <is null> |     25 |     28 |     45 |     48 | <is null>
 ```
@@ -335,7 +331,7 @@ Amateur cyclists like to record their trips using a GPS device and then to uploa
 
 The GPS device lets the cyclist split the trip into successive intervals, usually called laps, so that they can later focus their review attention on particular laps of interest like, for example, a notorious steep hill. So each trip has one or many laps. A lap is typically no more than about 100 km—and often more like 5-10 km. But it could be as large as, say, 300 km. The resolution of modern devices is typically just a few paces under good conditions—say 3m. So a lap could have as many as 100,000 GPS data points, each of which records the timestamp, position, and no end of other associated instantaneous values of facts like, for example, heart rate.
 
-This sounds like a classic three table design, with foreign key constraints to capture the notion that a GPS data point belongs to a lap and that a lap belongs to a trip. The array data type allows all of the GPS data points that belong to a lap to be recorded in a single row in the _"laps"_ table—in other words as a multivalued field, thus: 
+This sounds like a classic three table design, with foreign key constraints to capture the notion that a GPS data point belongs to a lap and that a lap belongs to a trip. The array data type allows all of the GPS data points that belong to a lap to be recorded in a single row in the _"laps"_ table—in other words as a multivalued field, thus:
 
 ```plpgsql
 create type gps_data_point_t as (
@@ -360,7 +356,7 @@ create table laps(
     references trips(trip_start_ts, userid)
     match full on delete cascade on update restrict);
 ```
-**Note:** In PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception _"program_limit_exceeded"_. In PostgreSQL, array values are stored out of line. However, in YugabyteDB's YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than PostgreSQL's limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can test this for yourself using [`array_fill()`](./functions-operators/array-fill/)) function.
+**Note:** In PostgreSQL, the maximum number of values that an array of any dimensionality can hold is `(2^27 - 1)` (about 137 million). If you exceed this limit, then you get a clear _"54000: array size exceeds the maximum allowed (134217727)"_ error. This maps to the PL/pgSQL exception _"program_limit_exceeded"_. In PostgreSQL, array values are stored out of line. However, in the YugabyteDB YSQL subsystem, they are stored in line, just like, for example, a `json` or `jsonb` value. As a consequence, the maximum number of values that a YSQL array can accommodate is smaller than the PostgreSQL limit. Moreover, the actual YSQL limit depends on circumstances—and when it's exceeded you get a "time out" error. Experiment shows that the limit is about 30 million values. You can test this for yourself using [`array_fill()`](./functions-operators/array-fill/)) function.
 
 With about 100,000 GPS data points, a 300 km trip is easily accommodated.
 

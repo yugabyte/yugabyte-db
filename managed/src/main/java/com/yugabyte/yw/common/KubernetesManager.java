@@ -3,43 +3,126 @@
 package com.yugabyte.yw.common;
 
 import com.google.common.collect.ImmutableList;
-import com.google.inject.Inject;
-import com.yugabyte.yw.models.Provider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.inject.Singleton;
+import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
+import io.fabric8.kubernetes.api.model.Node;
+import io.fabric8.kubernetes.api.model.Pod;
+import io.fabric8.kubernetes.api.model.PodCondition;
+import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Secret;
+import io.fabric8.kubernetes.api.model.Service;
+import java.io.File;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.annotation.Nullable;
+import javax.inject.Inject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-@Singleton
-public class KubernetesManager {
+public abstract class KubernetesManager {
+
+  @Inject ReleaseManager releaseManager;
+
+  @Inject ShellProcessHandler shellProcessHandler;
+
+  @Inject play.Configuration appConfig;
+
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesManager.class);
+
+  private static final String LEGACY_HELM_CHART_FILENAME = "yugabyte-2.7-helm-legacy.tar.gz";
 
   private static final long DEFAULT_TIMEOUT_SECS = 300;
 
-  @Inject
-  ShellProcessHandler shellProcessHandler;
+  /* helm interface */
 
-  @Inject
-  play.Configuration appConfig;
+  public void helmInstall(
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      UUID providerUUID,
+      String universePrefix,
+      String namespace,
+      String overridesFile) {
 
-  private static String SERVICE_INFO_JSONPATH="{.spec.clusterIP}|" +
-      "{.status.*.ingress[0].ip}|{.status.*.ingress[0].hostname}";
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
 
-  public ShellResponse createNamespace(Map<String, String> config,
-                                                           String universePrefix) {
-    List<String> commandList = ImmutableList.of("kubectl",  "create",
-        "namespace", universePrefix);
-    return execCommand(config, commandList);
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "install",
+            helmReleaseName,
+            helmPackagePath,
+            "--namespace",
+            namespace,
+            "-f",
+            overridesFile,
+            "--timeout",
+            getTimeout(),
+            "--wait");
+    LOG.info(String.join(" ", commandList));
+    ShellResponse response = execCommand(config, commandList);
+    processHelmResponse(config, universePrefix, namespace, response);
   }
 
-  public ShellResponse applySecret(Map<String, String> config,
-                                                       String universePrefix, String pullSecret) {
-    List<String> commandList = ImmutableList.of("kubectl",  "create",
-        "-f", pullSecret, "--namespace", universePrefix);
-    return execCommand(config, commandList);
+  public void helmUpgrade(
+      String ybSoftwareVersion,
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      String overridesFile) {
+
+    String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+
+    List<String> commandList =
+        ImmutableList.of(
+            "helm",
+            "upgrade",
+            helmReleaseName,
+            helmPackagePath,
+            "-f",
+            overridesFile,
+            "--namespace",
+            namespace,
+            "--timeout",
+            getTimeout(),
+            "--wait");
+    LOG.info(String.join(" ", commandList));
+    ShellResponse response = execCommand(config, commandList);
+    processHelmResponse(config, universePrefix, namespace, response);
+  }
+
+  public void helmDelete(Map<String, String> config, String universePrefix, String namespace) {
+    String helmReleaseName = Util.sanitizeHelmReleaseName(universePrefix);
+    List<String> commandList = ImmutableList.of("helm", "delete", helmReleaseName, "-n", namespace);
+    execCommand(config, commandList);
+  }
+
+  /* helm helpers */
+
+  private void processHelmResponse(
+      Map<String, String> config, String universePrefix, String namespace, ShellResponse response) {
+    if (response != null && response.code != ShellResponse.ERROR_CODE_SUCCESS) {
+      String message;
+      List<Pod> pods = getPodInfos(config, universePrefix, namespace);
+      for (Pod pod : pods) {
+        String podStatus = pod.getStatus().getPhase();
+        if (!podStatus.equals("Running")) {
+          for (PodCondition condition : pod.getStatus().getConditions()) {
+            if (condition.getStatus().equals("False")) {
+              message = condition.getMessage();
+              throw new RuntimeException(message);
+            }
+          }
+        }
+      }
+      if (pods.isEmpty()) {
+        message = "No pods even scheduled. Previous step(s) incomplete";
+      } else {
+        message = "Pods are ready. Services still not running";
+      }
+      throw new RuntimeException(message);
+    }
   }
 
   public String getTimeout() {
@@ -50,101 +133,104 @@ public class KubernetesManager {
     return String.valueOf(timeout) + "s";
   }
 
-  public ShellResponse helmInstall(Map<String, String> config,
-                                                       UUID providerUUID, String universePrefix,
-                                                       String overridesFile) {
-    String helmPackagePath = appConfig.getString("yb.helm.package");
-    if (helmPackagePath == null || helmPackagePath.isEmpty()) {
-      throw new RuntimeException("Helm Package path not provided.");
-    }
-    Provider provider = Provider.get(providerUUID);
-    Map<String, String> configProvider = provider.getConfig();
-    List<String> commandList = ImmutableList.of("helm",  "install", universePrefix,
-        helmPackagePath, "--namespace", universePrefix, "-f", overridesFile,
-        "--timeout", getTimeout(), "--wait");
-    LOG.info(String.join(" ", commandList));
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getPodInfos(Map<String, String> config,
-                                                       String universePrefix) {
-    List<String> commandList = ImmutableList.of("kubectl",  "get", "pods", "--namespace",
-        universePrefix, "-o", "json", "-l", "release=" + universePrefix);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getServices(Map<String, String> config,
-                                                       String universePrefix) {
-    List<String> commandList = ImmutableList.of("kubectl",  "get", "services", "--namespace",
-        universePrefix, "-o", "json", "-l", "release=" + universePrefix);
-    System.out.println(commandList);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getPodStatus(Map<String, String> config,
-                                                        String universePrefix, String podName) {
-    List<String> commandList = ImmutableList.of("kubectl",  "get", "pod", "--namespace",
-        universePrefix, "-o", "json", podName);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse getServiceIPs(Map<String, String> config,
-                                                         String universePrefix, boolean isMaster) {
-    String serviceName = isMaster ? "yb-master-service" : "yb-tserver-service";
-    List<String> commandList = ImmutableList.of("kubectl",  "get", "svc", serviceName,
-        "--namespace", universePrefix, "-o", "jsonpath=" + SERVICE_INFO_JSONPATH);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse helmUpgrade(Map<String, String> config,
-                                                       String universePrefix,
-                                                       String overridesFile) {
-    String helmPackagePath = appConfig.getString("yb.helm.package");
-    if (helmPackagePath == null || helmPackagePath.isEmpty()) {
-      throw new RuntimeException("Helm Package path not provided.");
-    }
-    List<String> commandList = ImmutableList.of("helm",  "upgrade",  universePrefix,
-        helmPackagePath, "-f", overridesFile, "--namespace", universePrefix);
-    LOG.info(String.join(" ", commandList));
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse updateNumNodes(Map<String, String> config,
-                                                          String universePrefix, int numNodes) {
-    List<String> commandList = ImmutableList.of("kubectl",  "--namespace", universePrefix, "scale",
-        "statefulset", "yb-tserver", "--replicas=" + numNodes);
-    return execCommand(config, commandList);
-  }
-
-  public ShellResponse helmDelete(Map<String, String> config,
-                                                      String universePrefix) {
-    List<String> commandList = ImmutableList.of("helm",  "delete", universePrefix,
-        "-n", universePrefix);
-    return execCommand(config, commandList);
-  }
-
-  public void deleteStorage(Map<String, String> config, String universePrefix) {
-    // Delete Master Volumes
-    List<String> masterCommandList = ImmutableList.of("kubectl",  "delete", "pvc",
-        "--namespace", universePrefix, "-l", "app=yb-master");
-    execCommand(config, masterCommandList);
-    // Delete TServer Volumes
-    List<String> tserverCommandList = ImmutableList.of("kubectl",  "delete", "pvc",
-        "--namespace", universePrefix, "-l", "app=yb-tserver");
-    execCommand(config, tserverCommandList);
-    // TODO: check the execCommand outputs.
-  }
-
-  public void deleteNamespace(Map<String, String> config, String universePrefix) {
-    // Delete Namespace
-    List<String> masterCommandList = ImmutableList.of("kubectl",  "delete", "namespace",
-        universePrefix);
-    execCommand(config, masterCommandList);
-  }
-
-  private ShellResponse execCommand(Map<String, String> config,
-                                                        List<String> command) {
+  private ShellResponse execCommand(Map<String, String> config, List<String> command) {
     String description = String.join(" ", command);
     return shellProcessHandler.run(command, config, description);
   }
+
+  public String getHelmPackagePath(String ybSoftwareVersion) {
+    String helmPackagePath = null;
+
+    // Get helm package filename from release metadata.
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getReleaseByVersion(ybSoftwareVersion);
+    if (releaseMetadata != null) {
+      helmPackagePath = releaseMetadata.chartPath;
+    }
+
+    if (helmPackagePath == null || helmPackagePath.isEmpty()) {
+      // TODO: The "legacy" helm chart is included in the yugaware container build to ensure that
+      // universes deployed using previous versions of the platform (that did not use versioned
+      // helm charts) will still be usable after upgrading to newer versions of the platform (that
+      // use versioned helm charts). We can (and should) remove this special case once all customers
+      // that use the k8s provider have upgraded their platforms and universes to versions > 2.7.
+      if (Util.compareYbVersions(ybSoftwareVersion, "2.8.0.0") < 0) {
+        helmPackagePath =
+            new File(appConfig.getString("yb.helm.packagePath"), LEGACY_HELM_CHART_FILENAME)
+                .toString();
+      } else {
+        throw new RuntimeException("Helm Package path not found for release: " + ybSoftwareVersion);
+      }
+    }
+
+    // Ensure helm package file actually exists.
+    File helmPackage = new File(helmPackagePath);
+    if (!helmPackage.exists()) {
+      throw new RuntimeException("Helm Package file not found: " + helmPackagePath);
+    }
+
+    return helmPackagePath;
+  }
+
+  /* kubernetes helpers */
+
+  protected static String getIp(Service service) {
+    if (service.getStatus() != null
+        && service.getStatus().getLoadBalancer() != null
+        && service.getStatus().getLoadBalancer().getIngress() != null
+        && !service.getStatus().getLoadBalancer().getIngress().isEmpty()) {
+      LoadBalancerIngress ingress = service.getStatus().getLoadBalancer().getIngress().get(0);
+      if (ingress.getHostname() != null) {
+        return ingress.getHostname();
+      }
+      if (ingress.getIp() != null) {
+        return ingress.getIp();
+      }
+    }
+
+    if (service.getSpec() != null && service.getSpec().getClusterIP() != null) {
+      return service.getSpec().getClusterIP();
+    }
+    return null;
+  }
+
+  /* kubernetes interface */
+
+  public abstract void createNamespace(Map<String, String> config, String universePrefix);
+
+  public abstract void applySecret(Map<String, String> config, String namespace, String pullSecret);
+
+  public abstract List<Pod> getPodInfos(
+      Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract List<Service> getServices(
+      Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract PodStatus getPodStatus(
+      Map<String, String> config, String namespace, String podName);
+
+  /** @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp */
+  public abstract String getPreferredServiceIP(
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      boolean isMaster,
+      boolean newNamingStyle);
+
+  public abstract List<Node> getNodeInfos(Map<String, String> config);
+
+  public abstract Secret getSecret(
+      Map<String, String> config, String secretName, @Nullable String namespace);
+
+  public abstract void updateNumNodes(
+      Map<String, String> config,
+      String universePrefix,
+      String namespace,
+      int numNodes,
+      boolean newNamingStyle);
+
+  public abstract void deleteStorage(
+      Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract void deleteNamespace(Map<String, String> config, String namespace);
 }

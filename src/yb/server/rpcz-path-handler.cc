@@ -29,19 +29,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/server/rpcz-path-handler.h"
 
-#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
 
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/numbers.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/server/webserver.h"
+#include "yb/util/jsonwriter.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 

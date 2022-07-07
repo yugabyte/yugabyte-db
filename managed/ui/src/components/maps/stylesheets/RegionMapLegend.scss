@@ -5,10 +5,13 @@
 .yb-map-legend,
 .yb-region-map-legend {
   position: absolute;
+  max-height: 29vw;
   bottom: 0;
   padding: 0 15px 5px 15px;
-  margin: 10px;
+  margin: 0.5vw;
   border-radius: 7px;
+  display: flex;
+  flex-direction: column;
   z-index: 1000;
   background: rgba(255, 255, 255, 0.55);
 
@@ -27,6 +30,7 @@
     &.rw-selectlist {
       margin-left: -15px;
       margin-right: -15px;
+      overflow-y: scroll;
 
       & > ul > li.rw-list-option {
         padding: 5px 15px;
@@ -52,6 +56,10 @@
           margin-bottom: 0;
         }
       }
+    }
+
+    &.rw-widget::-webkit-scrollbar {
+      display: none;
     }
   }
 }
@@ -115,4 +123,25 @@
   display: inline-block;
   vertical-align: top;
   padding-right: 20px;
+}
+
+.provider-list {
+  flex: 8;
+  display: flex;
+  flex-direction: 'column';
+}
+
+.provider-list {
+  flex: 8;
+  display: flex;
+  flex-direction: column;
+  overflow-y: scroll;
+}
+
+.provider-list::-webkit-scrollbar {
+  display: none;
+}
+
+.shrink-flex {
+  flex-shrink: 1;
 }

@@ -13,6 +13,10 @@ import {
   RESET_UNIVERSE_LIST,
   DELETE_UNIVERSE,
   DELETE_UNIVERSE_RESPONSE,
+  PAUSE_UNIVERSE,
+  PAUSE_UNIVERSE_RESPONSE,
+  RESTART_UNIVERSE,
+  RESTART_UNIVERSE_RESPONSE,
   FETCH_UNIVERSE_TASKS,
   FETCH_UNIVERSE_TASKS_RESPONSE,
   RESET_UNIVERSE_TASKS,
@@ -59,7 +63,9 @@ import {
   UPDATE_BACKUP_STATE,
   UPDATE_BACKUP_STATE_RESPONSE,
   SET_ALERTS_CONFIG,
-  SET_ALERTS_CONFIG_RESPONSE
+  SET_ALERTS_CONFIG_RESPONSE,
+  FETCH_SUPPORTED_RELEASES,
+  FETCH_SUPPORTED_RELEASES_RESPONSE
 } from '../actions/universe';
 import _ from 'lodash';
 import {
@@ -82,6 +88,8 @@ const INITIAL_STATE = {
   createUniverse: getInitialState({}),
   editUniverse: getInitialState({}),
   deleteUniverse: getInitialState({}),
+  pauseUniverse: getInitialState({}),
+  restartUniverse: getInitialState({}),
   universeList: getInitialState([]),
   error: null,
   formSubmitSuccess: false,
@@ -103,7 +111,8 @@ const INITIAL_STATE = {
   healthCheck: getInitialState({}),
   universeImport: getInitialState({}),
   alertsConfig: getInitialState({}),
-  backupState: getInitialState({})
+  backupState: getInitialState({}),
+  supportedReleases: getInitialState({})
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -121,6 +130,14 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'deleteUniverse', {});
     case DELETE_UNIVERSE_RESPONSE:
       return setPromiseResponse(state, 'deleteUniverse', action);
+    case PAUSE_UNIVERSE:
+      return setLoadingState(state, 'pauseUniverse', {});
+    case PAUSE_UNIVERSE_RESPONSE:
+      return setPromiseResponse(state, 'pauseUniverse', action);
+    case RESTART_UNIVERSE:
+      return setLoadingState(state, 'restartUniverse', {});
+    case RESTART_UNIVERSE_RESPONSE:
+      return setPromiseResponse(state, 'restartUniverse', action);
 
     // Co-Modal Operations
     case CLOSE_UNIVERSE_DIALOG:
@@ -149,6 +166,10 @@ export default function (state = INITIAL_STATE, action) {
       return setLoadingState(state, 'currentUniverse', {});
     case FETCH_UNIVERSE_INFO_RESPONSE:
       return setPromiseResponse(state, 'currentUniverse', action);
+    case FETCH_SUPPORTED_RELEASES:
+      return setLoadingState(state, 'supportedReleases', {});
+    case FETCH_SUPPORTED_RELEASES_RESPONSE:
+      return setPromiseResponse(state, 'supportedReleases', action);
     case RESET_UNIVERSE_INFO:
       return { ...state, currentUniverse: getInitialState({}) };
     case FETCH_UNIVERSE_LIST:

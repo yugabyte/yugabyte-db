@@ -25,9 +25,12 @@ struct IndexPath;
 /* Likewise, this file shouldn't depend on execnodes.h. */
 struct IndexInfo;
 
-/* Likewise, this file shouldn't depend on parsenodes.h */
-struct RowBounds;
-
+/*
+ * BACKFILL input and output nodes.
+ * As above, avoiding dependencies on execnodes.h and parsenodes.h.
+ */
+struct YbBackfillInfo;
+struct YbPgExecOutParam;
 
 /*
  * Properties for amproperty API.  This list covers properties known to the
@@ -86,7 +89,8 @@ typedef bool (*yb_aminsert_function) (Relation indexRelation,
 									  Datum ybctid,
 									  Relation heapRelation,
 									  IndexUniqueCheck checkUnique,
-									  struct IndexInfo *indexInfo);
+									  struct IndexInfo *indexInfo,
+									  bool shared_insert);
 
 /* delete this tuple for YugaByte-based index */
 typedef void (*yb_amdelete_function) (Relation indexRelation,
@@ -100,8 +104,8 @@ typedef void (*yb_amdelete_function) (Relation indexRelation,
 typedef IndexBuildResult *(*yb_ambackfill_function) (Relation heapRelation,
 													 Relation indexRelation,
 													 struct IndexInfo *indexInfo,
-													 uint64_t *read_time,
-													 struct RowBounds *row_bounds);
+													 struct YbBackfillInfo *bfinfo,
+													 struct YbPgExecOutParam *bfresult);
 
 /* bulk delete */
 typedef IndexBulkDeleteResult *(*ambulkdelete_function) (IndexVacuumInfo *info,

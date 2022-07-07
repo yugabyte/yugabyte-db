@@ -19,10 +19,6 @@
 //
 #pragma once
 
-#include <cstdlib>
-#include <string>
-
-#include "yb/rocksdb/options.h"
 
 namespace rocksdb {
 

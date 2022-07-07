@@ -10,34 +10,18 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.common.KubernetesManager;
-import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import play.Application;
-import play.api.Play;
-import play.libs.Json;
-import org.yaml.snakeyaml.Yaml;
-
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.HashMap;
-import java.util.HashSet;
+import io.fabric8.kubernetes.api.model.PodCondition;
+import io.fabric8.kubernetes.api.model.PodStatus;
+import java.time.Duration;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 public class KubernetesWaitForPod extends AbstractTaskBase {
   public enum CommandType {
@@ -52,11 +36,15 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
     }
   }
 
-  @Inject
-  KubernetesManager kubernetesManager;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
-  Application application;
+  protected KubernetesWaitForPod(
+      BaseTaskDependencies baseTaskDependencies,
+      KubernetesManagerFactory kubernetesManagerFactory) {
+    super(baseTaskDependencies);
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
+  }
 
   // Number of iterations to wait for the pod to come up.
   private static final int MAX_ITERS = 10;
@@ -64,26 +52,24 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   // Time to sleep on each iteration of the pod to come up.
   private static final int SLEEP_TIME = 10;
 
-  @Override
-  public void initialize(ITaskParams params) {
-    this.kubernetesManager = Play.current().injector().instanceOf(KubernetesManager.class);
-    this.application = Play.current().injector().instanceOf(Application.class);
-    super.initialize(params);
-  }
-
   public static class Params extends AbstractTaskParams {
     public UUID providerUUID;
     public CommandType commandType;
     public UUID universeUUID;
+    // TODO(bhavin192): nodePrefix can be removed as we are not doing
+    // any sort of Helm operation here. Or we might want to use it for
+    // some sort of label based selection.
+
     // We use the nodePrefix as Helm Chart's release name,
     // so we would need that for any sort helm operations.
     public String nodePrefix;
+    public String namespace;
     public String podName = null;
     public Map<String, String> config = null;
   }
 
   protected KubernetesWaitForPod.Params taskParams() {
-    return (KubernetesWaitForPod.Params)taskParams;
+    return (KubernetesWaitForPod.Params) taskParams;
   }
 
   @Override
@@ -99,11 +85,7 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
           if (status.equals("Running")) {
             break;
           }
-          try {
-            TimeUnit.SECONDS.sleep(SLEEP_TIME);
-          } catch (InterruptedException ex) {
-            // Do nothing
-          }
+          waitFor(Duration.ofSeconds(getSleepMultiplier() * SLEEP_TIME));
         } while (!status.equals("Running") && iters < MAX_ITERS);
         if (iters > MAX_ITERS) {
           throw new RuntimeException("Pod " + taskParams().podName + " creation taking too long.");
@@ -116,20 +98,15 @@ public class KubernetesWaitForPod extends AbstractTaskBase {
   private String waitForPod() {
     Map<String, String> config = taskParams().config;
     if (taskParams().config == null) {
-      config = Provider.get(taskParams().providerUUID).getConfig();
+      config = Provider.get(taskParams().providerUUID).getUnmaskedConfig();
     }
-    ShellResponse podResponse = kubernetesManager.getPodStatus(config, taskParams().nodePrefix,
-        taskParams().podName);
-    JsonNode podInfo = parseShellResponseAsJson(podResponse);
-    JsonNode statusNode = podInfo.path("status");
-    String status = statusNode.get("phase").asText();
-    JsonNode podConditions = statusNode.path("conditions");
-    ArrayList conditions = Json.fromJson(podConditions, ArrayList.class);
-    Iterator iter = conditions.iterator();
-    while (iter.hasNext()) {
-      JsonNode info = Json.toJson(iter.next());
-      String statusContainer = info.path("status").asText();
-      if (statusContainer.equals("False")) {
+    PodStatus podStatus =
+        kubernetesManagerFactory
+            .getManager()
+            .getPodStatus(config, taskParams().namespace, taskParams().podName);
+    String status = podStatus.getPhase();
+    for (PodCondition condition : podStatus.getConditions()) {
+      if (condition.getStatus().equals("False")) {
         status = "Not Ready";
       }
     }

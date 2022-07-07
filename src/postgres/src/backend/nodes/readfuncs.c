@@ -1504,6 +1504,7 @@ _readPlannedStmt(void)
 	READ_NODE_FIELD(utilityStmt);
 	READ_LOCATION_FIELD(stmt_location);
 	READ_LOCATION_FIELD(stmt_len);
+	READ_INT_FIELD(yb_num_referenced_relations);
 
 	READ_DONE();
 }
@@ -1605,6 +1606,11 @@ _readModifyTable(void)
 	READ_NODE_FIELD(onConflictWhere);
 	READ_UINT_FIELD(exclRelRTI);
 	READ_NODE_FIELD(exclRelTlist);
+	READ_NODE_FIELD(ybPushdownTlist);
+	READ_NODE_FIELD(ybReturningColumns);
+	READ_NODE_FIELD(ybColumnRefs);
+	READ_NODE_FIELD(no_update_index_list);
+	READ_BOOL_FIELD(no_row_trigger);
 
 	READ_DONE();
 }
@@ -2389,6 +2395,17 @@ _readPartitionPruneStepOp(void)
 	READ_NODE_FIELD(exprs);
 	READ_NODE_FIELD(cmpfns);
 	READ_BITMAPSET_FIELD(nullkeys);
+
+	READ_DONE();
+}
+
+static PartitionPruneStepFuncOp *
+_readPartitionPruneStepFuncOp(void)
+{
+	READ_LOCALS(PartitionPruneStepFuncOp);
+
+	READ_INT_FIELD(step.step_id);
+	READ_NODE_FIELD(exprs);
 
 	READ_DONE();
 }

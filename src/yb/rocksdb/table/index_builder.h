@@ -14,13 +14,11 @@
 #ifndef YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 #define YB_ROCKSDB_TABLE_INDEX_BUILDER_H
 
-#include <list>
-
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/util/result.h"
+
 #include "yb/util/strongly_typed_bool.h"
 
 namespace rocksdb {
@@ -81,7 +79,7 @@ class IndexBuilder {
   // may therefore perform any operation required for block finalization.
   //
   // REQUIRES: Finish() has not yet been called.
-  virtual CHECKED_STATUS Finish(IndexBlocks* index_blocks) = 0;
+  virtual Status Finish(IndexBlocks* index_blocks) = 0;
 
   // Whether it is time to flush the current index block. Overridden in MultiLevelIndexBuilder.
   // While true is returned the caller should keep calling FlushNextBlock(IndexBlocks*,
@@ -95,10 +93,7 @@ class IndexBuilder {
   // Returns true when it actually flushed entries into index_blocks.
   // Returns false when everything was already flushed by previous call to FlushNextBlock.
   virtual Result<bool> FlushNextBlock(
-      IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle) {
-    RETURN_NOT_OK(Finish(index_blocks));
-    return true;
-  }
+      IndexBlocks* index_blocks, const BlockHandle& last_partition_block_handle);
 
   // Get the estimated size for index block.
   virtual size_t EstimatedSize() const = 0;
@@ -126,7 +121,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
   explicit ShortenedIndexBuilder(const Comparator* comparator,
                                  int index_block_restart_interval)
       : IndexBuilder(comparator),
-        index_block_builder_(index_block_restart_interval) {}
+        index_block_builder_(index_block_restart_interval, kIndexBlockKeyValueEncodingFormat) {}
 
   void AddIndexEntry(
       std::string* last_key_in_current_block,
@@ -139,7 +134,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
       const std::string& block_handle_encoded,
       ShortenKeys shorten_keys);
 
-  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
+  Status Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return index_block_builder_.CurrentSizeEstimate();
@@ -195,7 +190,7 @@ class HashIndexBuilder : public IndexBuilder {
 
   void OnKeyAdded(const Slice& key) override;
 
-  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override;
+  Status Finish(IndexBlocks* index_blocks) override;
 
   size_t EstimatedSize() const override {
     return primary_index_builder_.EstimatedSize() + prefix_block_.size() +
@@ -243,7 +238,7 @@ class MultiLevelIndexBuilder : public IndexBuilder {
       const BlockHandle& block_handle,
       ShortenKeys shorten_keys);
 
-  CHECKED_STATUS Finish(IndexBlocks* index_blocks) override {
+  Status Finish(IndexBlocks* index_blocks) override {
     return STATUS(NotSupported, "Finishing as single block is not supported by multi-level index.");
   }
 
@@ -260,7 +255,7 @@ class MultiLevelIndexBuilder : public IndexBuilder {
   struct IndexBlockInfo;
 
   void EnsureCurrentLevelIndexBuilderCreated();
-  CHECKED_STATUS FlushCurrentLevel(IndexBlocks* index_blocks);
+  Status FlushCurrentLevel(IndexBlocks* index_blocks);
   void AddToNextLevelIfReady(
       IndexBlockInfo* block_info, const BlockHandle& block_handle);
 

@@ -5,14 +5,12 @@ linkTitle: Key-value workload
 description: Benchmark YSQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
 headcontent: Test YugabyteDB performance with a key-value workload.
-block_indexing: true
 menu:
   stable:
     identifier: key-value-workload-2-ysql
     parent: benchmark
     weight: 6
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">

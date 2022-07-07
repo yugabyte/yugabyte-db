@@ -4,12 +4,11 @@ headerTitle: Schedule universe YCQL data backups
 linkTitle: Schedule data backups
 description: Use Yugabyte Platform to create scheduled backups of universe YCQL data.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: schedule-data-backups-2-ycql
     parent: back-up-restore-universes
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -32,9 +31,11 @@ showAsideToc: true
 
 Use Yugabyte Platform to perform regularly scheduled backups of YugabyteDB universe data for all YCQL tables in a keyspace or only the specified YCQL tables.
 
+To back up your universe YCQL data immediately, see [Back up universe YCQL data](../../back-up-universe-data/ycql).
+
 ## Schedule a backup
 
-To schedule a backup, follow these steps:
+To schedule a backup of your universe YCQL data:
 
 1. In the Yugabyte Platform console, click **Universes** in the navigation bar.
 2. Click the name of the universe you want to schedule backups for.
@@ -52,7 +53,7 @@ To schedule a backup, follow these steps:
     - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
     - **Keyspace**: Select your keyspace from the drop-down list of predefined keyspaces.
     - **Tables to backup**: Select either **All Tables in Keyspace** or the specific tables to back up.
-    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+    - **Parallel Threads**: Enter or select the number of threads. The default is `8`.
     - **Number of Days to Retain Backup**: Default is unspecified which means to retain indefinitely.
 
 7. Click **OK**. The initial backup begins immediately.
@@ -70,6 +71,6 @@ To temporarily disable all scheduled backups:
 
 To permanently remove a scheduled backup:
 
-1. Go to the **Backups** tab for the universe. 
+1. Go to the **Backups** tab for the universe.
 2. Find the scheduled backup and click **Options**.
 3. Click **Delete schedule**. The scheduled backup is deleted.

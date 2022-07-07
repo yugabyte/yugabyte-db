@@ -1,12 +1,12 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/common/ql_resultset.h"
 
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_serialization.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
 
 namespace yb {
 // TODO(neil) All QL classes in "yb/common" needs to be group under a namespace. Doing that would
@@ -43,12 +43,12 @@ void QLResultSet::AllocateRow() {
 }
 
 void QLResultSet::AppendColumn(const size_t index, const QLValue& value) {
-  value.Serialize(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, rows_data_);
+  SerializeValue(
+      rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value.value(), rows_data_);
 }
 
 void QLResultSet::AppendColumn(const size_t index, const QLValuePB& value) {
-  QLValue::Serialize(
-      rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value, rows_data_);
+  SerializeValue(rsrow_desc_->rscol_descs()[index].ql_type(), YQL_CLIENT_CQL, value, rows_data_);
 }
 
 size_t QLResultSet::rsrow_count() const {

@@ -2,6 +2,28 @@
 
 package com.yugabyte.yw.controllers;
 
+import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
+import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
+import static com.yugabyte.yw.common.AssertHelper.assertValues;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.core.IsNull.notNullValue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.OK;
+import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -13,28 +35,27 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.InstanceType.VolumeDetails;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Users;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
-
-import java.util.*;
-import java.util.stream.Collectors;
-
-import static com.yugabyte.yw.common.AssertHelper.*;
-import static org.hamcrest.CoreMatchers.allOf;
-import static org.hamcrest.CoreMatchers.equalTo;
-import static org.hamcrest.core.IsNull.notNullValue;
-import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.OK;
-import static play.test.Helpers.contentAsString;
 
 public class InstanceTypeControllerTest extends FakeDBApplication {
   Customer customer;
@@ -49,14 +70,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     awsProvider = ModelFactory.awsProvider(customer);
-    defaultRegion = Region.create(awsProvider,
-      "default-region",
-      "Default PlacementRegion",
-      "default-image");
-    zone1 = AvailabilityZone.create(
-      defaultRegion, "zone1", "Zone One", "Subnet 1");
-    zone2 = AvailabilityZone.create(
-      defaultRegion, "zone2", "Zone Two", "Subnet 2");
+    defaultRegion =
+        Region.create(awsProvider, "default-region", "Default PlacementRegion", "default-image");
+    zone1 = AvailabilityZone.createOrThrow(defaultRegion, "zone1", "Zone One", "Subnet 1");
+    zone2 = AvailabilityZone.createOrThrow(defaultRegion, "zone2", "Zone Two", "Subnet 2");
     onPremProvider = ModelFactory.newProvider(customer, Common.CloudType.onprem);
   }
 
@@ -64,39 +81,59 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     return doListFilteredInstanceTypeAndVerify(providerUUID, status);
   }
 
-  private JsonNode doListFilteredInstanceTypeAndVerify(UUID providerUUID,
-                                                       int status,
-                                                       String... zones) {
-    String zoneParams = Arrays.stream(zones).collect(Collectors.joining(
-      "&zone=", "?zone=", ""));
-    Result result = FakeApiHelper.doRequest("GET", "/api/customers/" + customer.uuid
-      + "/providers/" + providerUUID + "/instance_types" + zoneParams);
+  private JsonNode doListFilteredInstanceTypeAndVerify(
+      UUID providerUUID, int status, String... zones) {
+    String zoneParams = Arrays.stream(zones).collect(Collectors.joining("&zone=", "?zone=", ""));
+    Result result =
+        FakeApiHelper.doRequest(
+            "GET",
+            "/api/customers/"
+                + customer.uuid
+                + "/providers/"
+                + providerUUID
+                + "/instance_types"
+                + zoneParams);
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
 
   private JsonNode doCreateInstanceTypeAndVerify(UUID providerUUID, JsonNode bodyJson, int status) {
-    Result result = FakeApiHelper.doRequestWithBody(
-      "POST",
-      "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
-      bodyJson);
+    Result result =
+        FakeApiHelper.doRequestWithBody(
+            "POST",
+            "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
+            bodyJson);
 
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode doGetInstanceTypeAndVerify(UUID providerUUID, String instanceTypeCode,
-                                              int status) {
-    Result result = FakeApiHelper.doRequest("GET", "/api/customers/" + customer.uuid
-      + "/providers/" + providerUUID + "/instance_types/" + instanceTypeCode);
+  private JsonNode doGetInstanceTypeAndVerify(
+      UUID providerUUID, String instanceTypeCode, int status) {
+    Result result =
+        FakeApiHelper.doRequest(
+            "GET",
+            "/api/customers/"
+                + customer.uuid
+                + "/providers/"
+                + providerUUID
+                + "/instance_types/"
+                + instanceTypeCode);
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
 
-  private JsonNode doDeleteInstanceTypeAndVerify(UUID providerUUID, String instanceTypeCode,
-                                                 int status) {
-    Result result = FakeApiHelper.doRequest("DELETE", "/api/customers/" + customer.uuid
-      + "/providers/" + providerUUID + "/instance_types/" + instanceTypeCode);
+  private JsonNode doDeleteInstanceTypeAndVerify(
+      UUID providerUUID, String instanceTypeCode, int status) {
+    Result result =
+        FakeApiHelper.doRequest(
+            "DELETE",
+            "/api/customers/"
+                + customer.uuid
+                + "/providers/"
+                + providerUUID
+                + "/instance_types/"
+                + instanceTypeCode);
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
@@ -111,8 +148,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       instanceDetails.volumeDetailsList.add(volDetails);
       instanceDetails.setDefaultMountPaths();
       String code = "c3.i" + i;
-      instanceTypes.put(code,
-        InstanceType.upsert(awsProvider.code, code, 2, 10.5, instanceDetails));
+      instanceTypes.put(
+          code, InstanceType.upsert(awsProvider.uuid, code, 2, 10.5, instanceDetails));
     }
     return instanceTypes;
   }
@@ -120,8 +157,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testListInstanceTypeWithInvalidProviderUUID() {
     UUID randomUUID = UUID.randomUUID();
-    JsonNode json = doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST);
-    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    Result result =
+        assertPlatformException(() -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -143,8 +182,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testListInstanceTypeWithValidProviderUUID_filtered_ignoreNoCloud() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
     when(mockCloudAPIFactory.get(any())).thenReturn(null);
-    JsonNode json = doListFilteredInstanceTypeAndVerify(
-      awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
@@ -155,8 +193,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenThrow(thrown);
-    JsonNode json = doListFilteredInstanceTypeAndVerify(
-      awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
@@ -164,68 +201,68 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testListInstanceTypeWithValidProviderUUID_filtered_allOffered() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
     ImmutableSet<String> everywhere = ImmutableSet.of("zone1", "zone2");
-    Map<String, Set<String>> allInstancesEverywhere = ImmutableMap.of(
-      "c3.i0", everywhere,
-      "c3.i1", everywhere);
+    Map<String, Set<String>> allInstancesEverywhere =
+        ImmutableMap.of(
+            "c3.i0", everywhere,
+            "c3.i1", everywhere);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any()))
-      .thenReturn(allInstancesEverywhere);
+        .thenReturn(allInstancesEverywhere);
 
-    JsonNode json = doListFilteredInstanceTypeAndVerify(
-      awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
 
-    verify(mockCloudAPI, times(1)).offeredZonesByInstanceType(
-      eq(awsProvider),
-      eq(Collections.singletonMap(defaultRegion, Sets.newHashSet("zone1", "zone2"))),
-      eq(instanceTypes.keySet()));
+    verify(mockCloudAPI, times(1))
+        .offeredZonesByInstanceType(
+            eq(awsProvider),
+            eq(Collections.singletonMap(defaultRegion, Sets.newHashSet("zone1", "zone2"))),
+            eq(instanceTypes.keySet()));
   }
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_disjointOffered() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
-    Map<String, Set<String>> cloudResponse = ImmutableMap.of(
-      "c3.i0", ImmutableSet.of("zone1"),
-      "c3.i1", ImmutableSet.of("zone2"));
+    Map<String, Set<String>> cloudResponse =
+        ImmutableMap.of(
+            "c3.i0", ImmutableSet.of("zone1"),
+            "c3.i1", ImmutableSet.of("zone2"));
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
-    when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any()))
-      .thenReturn(cloudResponse);
+    when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenReturn(cloudResponse);
 
-    JsonNode json = doListFilteredInstanceTypeAndVerify(
-      awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
     assertEquals(0, json.size());
 
-    verify(mockCloudAPI, times(1)).offeredZonesByInstanceType(
-      eq(awsProvider),
-      eq(Collections.singletonMap(defaultRegion, Sets.newHashSet("zone1", "zone2"))),
-      eq(instanceTypes.keySet()));
+    verify(mockCloudAPI, times(1))
+        .offeredZonesByInstanceType(
+            eq(awsProvider),
+            eq(Collections.singletonMap(defaultRegion, Sets.newHashSet("zone1", "zone2"))),
+            eq(instanceTypes.keySet()));
   }
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_someNotOffered() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
-    Map<String, Set<String>> cloudResponse = ImmutableMap.of(
-      "c3.i1", ImmutableSet.of("zone2", "zone1"));
+    Map<String, Set<String>> cloudResponse =
+        ImmutableMap.of("c3.i1", ImmutableSet.of("zone2", "zone1"));
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
-    when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any()))
-      .thenReturn(cloudResponse);
+    when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenReturn(cloudResponse);
 
-    JsonNode json = doListFilteredInstanceTypeAndVerify(
-      awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
     assertEquals(1, json.size());
     InstanceType expectedInstanceType = instanceTypes.get("c3.i1");
     assertValue(json.path(0), "instanceTypeCode", expectedInstanceType.getInstanceTypeCode());
 
-    verify(mockCloudAPI, times(1)).offeredZonesByInstanceType(
-      eq(awsProvider),
-      eq(Collections.singletonMap(defaultRegion, Sets.newHashSet("zone1", "zone2"))),
-      eq(instanceTypes.keySet()));
+    verify(mockCloudAPI, times(1))
+        .offeredZonesByInstanceType(
+            eq(awsProvider),
+            eq(Collections.singletonMap(defaultRegion, Sets.newHashSet("zone1", "zone2"))),
+            eq(instanceTypes.keySet()));
   }
 
   private void checkListResponse(Map<String, InstanceType> instanceTypes, JsonNode json) {
@@ -233,12 +270,14 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     for (int idx = 0; idx < json.size(); ++idx) {
       JsonNode instance = json.path(idx);
       InstanceType expectedInstanceType =
-        instanceTypes.get(instance.path("instanceTypeCode").asText());
+          instanceTypes.get(instance.path("instanceTypeCode").asText());
       assertValue(instance, "instanceTypeCode", expectedInstanceType.getInstanceTypeCode());
-      assertThat(instance.get("numCores").asDouble(),
-        allOf(notNullValue(), equalTo(expectedInstanceType.numCores)));
-      assertThat(instance.get("memSizeGB").asDouble(), allOf(notNullValue(),
-        equalTo(expectedInstanceType.memSizeGB)));
+      assertThat(
+          instance.get("numCores").asDouble(),
+          allOf(notNullValue(), equalTo(expectedInstanceType.numCores)));
+      assertThat(
+          instance.get("memSizeGB").asDouble(),
+          allOf(notNullValue(), equalTo(expectedInstanceType.memSizeGB)));
 
       InstanceTypeDetails itd = expectedInstanceType.instanceTypeDetails;
       List<VolumeDetails> detailsList = itd.volumeDetailsList;
@@ -246,8 +285,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       JsonNode itdNode = instance.get("instanceTypeDetails");
       JsonNode detailsListNode = itdNode.get("volumeDetailsList");
       JsonNode jsonDetails = detailsListNode.get(0);
-      assertThat(jsonDetails.get("volumeSizeGB").asInt(), allOf(notNullValue(),
-        equalTo(targetDetails.volumeSizeGB)));
+      assertThat(
+          jsonDetails.get("volumeSizeGB").asInt(),
+          allOf(notNullValue(), equalTo(targetDetails.volumeSizeGB)));
       assertValue(jsonDetails, "volumeType", targetDetails.volumeType.toString());
       assertValue(jsonDetails, "mountPath", targetDetails.mountPath);
     }
@@ -261,23 +301,28 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
-    idKey.put("providerCode", "aws");
     instanceTypeJson.put("memSizeGB", 10.9);
     instanceTypeJson.put("volumeCount", 1);
     instanceTypeJson.put("numCores", 3);
     instanceTypeJson.set("idKey", idKey);
     UUID randomUUID = UUID.randomUUID();
-    JsonNode json = doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST);
-    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    Result result =
+        assertPlatformException(
+            () -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testCreateInstanceTypeWithInvalidParams() {
-    JsonNode json = doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST);
-    assertErrorNodeValue(json, "idKey", "This field is required");
-    assertErrorNodeValue(json, "memSizeGB", "This field is required");
-    assertErrorNodeValue(json, "numCores", "This field is required");
+    Result result =
+        assertPlatformException(
+            () -> doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST));
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "This field is required");
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "memSizeGB", "This field is required");
+    assertErrorNodeValue(Json.parse(contentAsString(result)), "numCores", "This field is required");
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -292,7 +337,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
-    idKey.put("providerCode", "aws");
     instanceTypeJson.set("idKey", idKey);
     instanceTypeJson.put("memSizeGB", 10.9);
     instanceTypeJson.put("numCores", 3);
@@ -318,7 +362,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     volumeDetails.mountPath = "/tmp/path/";
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(onPremProvider.code, "test-i1", 3, 5.0, details);
+    InstanceType it = InstanceType.upsert(onPremProvider.uuid, "test-i1", 3, 5.0, details);
     JsonNode json = doGetInstanceTypeAndVerify(onPremProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
@@ -340,7 +384,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     details.volumeDetailsList.add(volumeDetails);
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0, details);
+    InstanceType it = InstanceType.upsert(awsProvider.uuid, "test-i1", 3, 5.0, details);
     JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
@@ -361,8 +405,11 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testGetInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
-    JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST);
-    assertErrorNodeValue(json, "Instance Type not found: " + fakeInstanceCode);
+    Result result =
+        assertPlatformException(
+            () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -370,17 +417,21 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testGetInstanceTypeWithInvalidProvider() {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
-    JsonNode json = doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
-    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    Result result =
+        assertPlatformException(
+            () -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
 
   @Test
   public void testDeleteInstanceTypeWithValidParams() {
-    InstanceType it = InstanceType.upsert(awsProvider.code, "test-i1", 3, 5.0,
-      new InstanceType.InstanceTypeDetails());
+    InstanceType it =
+        InstanceType.upsert(
+            awsProvider.uuid, "test-i1", 3, 5.0, new InstanceType.InstanceTypeDetails());
     JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
-    it = InstanceType.get(awsProvider.code, it.getInstanceTypeCode());
+    it = InstanceType.get(awsProvider.uuid, it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());
     assertFalse(it.isActive());
     assertAuditEntry(1, customer.uuid);
@@ -389,8 +440,11 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteInstanceTypeWithInvalidParams() {
     String fakeInstanceCode = "foo";
-    JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST);
-    assertErrorNodeValue(json, "Instance Type not found: " + fakeInstanceCode);
+    Result result =
+        assertPlatformException(
+            () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
     assertAuditEntry(0, customer.uuid);
   }
 
@@ -398,8 +452,11 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testDeleteInstanceTypeWithInvalidProvider() {
     String fakeInstanceCode = "foo";
     UUID randomUUID = UUID.randomUUID();
-    JsonNode json = doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST);
-    assertErrorNodeValue(json, "Invalid Provider UUID: " + randomUUID);
+    Result result =
+        assertPlatformException(
+            () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
+    assertErrorNodeValue(
+        Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
     assertAuditEntry(0, customer.uuid);
   }
 }

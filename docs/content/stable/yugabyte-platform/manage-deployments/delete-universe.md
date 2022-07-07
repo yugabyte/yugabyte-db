@@ -3,15 +3,12 @@ title: Delete a universe
 headerTitle: Delete a universe
 linkTitle: Delete a universe
 description: Use Yugabyte Platform to delete a universe.
-aliases:
-  - /stable/manage/enterprise-edition/delete-universe/
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: delete-universe
     parent: manage-deployments
-    weight: 85
-isTocNested: true
-showAsideToc: true
+    weight: 70
+type: docs
 ---
 
 To delete a universe, in the Yugabyte Platform console, select **Delete Universe** from the **More** drop-down list on the **Universe Detail** page.

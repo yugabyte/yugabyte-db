@@ -15,42 +15,69 @@
 #define YB_COMMON_COMMON_FWD_H
 
 #include <memory>
+#include <vector>
+
+#include "yb/common/common.fwd.h"
+#include "yb/common/pgsql_protocol.fwd.h"
+#include "yb/common/ql_protocol.fwd.h"
+#include "yb/common/redis_protocol.fwd.h"
+#include "yb/common/wire_protocol.fwd.h"
 
 namespace yb {
 
 class ClockBase;
+class ColumnId;
+class ColumnSchema;
+class DocHybridTime;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
+class Partition;
 class PartitionSchema;
+class PgsqlScanSpec;
+class QLResultSet;
+class QLRow;
+class QLRowBlock;
+class QLScanSpec;
+class TableProperties;
+class TransactionStatusManager;
+class TypeInfo;
 
 class Schema;
 typedef std::shared_ptr<Schema> SchemaPtr;
 
-class PgsqlBCallPB;
-class PgsqlConditionPB;
-class PgsqlExpressionPB;
-class PgsqlRSRowDescPB;
-class PgsqlWriteRequestPB;
+typedef std::string PartitionKey;
+typedef std::shared_ptr<const PartitionKey> PartitionKeyPtr;
 
 class QLExprExecutor;
 typedef std::shared_ptr<QLExprExecutor> QLExprExecutorPtr;
 
-class QLJsonColumnOperationsPB;
-class QLJsonOperationPB;
-class QLRSColDescPB;
-class QLRSRowDescPB;
 class QLTableRow;
 class QLType;
 class QLValue;
-class QLValuePB;
-class TableProperties;
 
-struct ColumnId;
+struct DeletedColumn;
+struct IndexColumn;
 struct OpId;
+struct PgObjectId;
 struct QLTableColumn;
+struct ReadHybridTime;
+struct TransactionMetadata;
+struct TransactionOperationContext;
+struct TransactionStatusResult;
+
+using ColocationId = uint32_t;
+using SchemaVersion = uint32_t;
+
+using QLTypePtr = std::shared_ptr<QLType>;
+
+using PgObjectIds = std::vector<PgObjectId>;
 
 enum class PgSystemAttrNum : int;
+enum class QLNameOption : int8_t;
+enum class YBHashSchema;
+
+enum SortingType : uint8_t;
 
 namespace common {
 

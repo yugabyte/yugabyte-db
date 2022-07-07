@@ -14,8 +14,6 @@
 #ifndef YB_DOCDB_EXPIRATION_H
 #define YB_DOCDB_EXPIRATION_H
 
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/docdb/value.h"
 
 namespace yb {
@@ -24,18 +22,22 @@ namespace docdb {
 // Useful for calculating expiration.
 struct Expiration {
   Expiration() :
-    ttl(Value::kMaxTtl) {}
+    ttl(ValueControlFields::kMaxTtl) {}
 
   explicit Expiration(MonoDelta default_ttl) :
     ttl(default_ttl) {}
 
   explicit Expiration(HybridTime new_write_ht) :
-    ttl(Value::kMaxTtl),
+    ttl(ValueControlFields::kMaxTtl),
     write_ht(new_write_ht) {}
 
   explicit Expiration(HybridTime new_write_ht, MonoDelta new_ttl) :
     ttl(new_ttl),
     write_ht(new_write_ht) {}
+
+  explicit operator bool() const {
+    return ttl != ValueControlFields::kMaxTtl;
+  }
 
   MonoDelta ttl;
   HybridTime write_ht = HybridTime::kMin;
@@ -45,22 +47,8 @@ struct Expiration {
   // the concept of default TTL when set to true.
   bool always_override = false;
 
-  Result<MonoDelta> ComputeRelativeTtl(const HybridTime& input_time) {
-    if (input_time < write_ht)
-      return STATUS(Corruption, "Read time earlier than record write time.");
-    if (ttl == Value::kMaxTtl || ttl.IsNegative())
-      return ttl;
-    MonoDelta elapsed_time = MonoDelta::FromNanoseconds(
-        server::HybridClock::GetPhysicalValueNanos(input_time) -
-        server::HybridClock::GetPhysicalValueNanos(write_ht));
-    // This way, we keep the default TTL, and all negative TTLs are expired.
-    MonoDelta new_ttl(ttl);
-    return new_ttl -= elapsed_time;
-  }
-
-  std::string ToString() const {
-    return Format("{ ttl: $0 write_ht: $1 always_override: $2 }", ttl, write_ht, always_override);
-  }
+  Result<MonoDelta> ComputeRelativeTtl(const HybridTime& input_time);
+  std::string ToString() const;
 };
 
 }  // namespace docdb

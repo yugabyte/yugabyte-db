@@ -1,15 +1,14 @@
 ---
 title: Upgrade the YugabyteDB software
 headerTitle: Upgrade the YugabyteDB software
-linkTitle: Upgrade the YugabyteDB software
+linkTitle: Upgrade YugabyteDB software
 description: Use Yugabyte Platform to upgrade the YugabyteDB software.
 menu:
-  stable:
+  stable_yugabyte-platform:
     identifier: upgrade-software
     parent: manage-deployments
     weight: 80
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YugabyteDB release that is powering a universe can be upgraded to get the new features and fixes in a release.

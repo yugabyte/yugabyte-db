@@ -3,14 +3,12 @@ title: jsonb_agg()
 headerTitle: jsonb_agg()
 linkTitle: jsonb_agg()
 description: Aggregate a SETOF values into a JSON array.
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-agg
     parent: json-functions-operators
     weight: 57
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** This is an aggregate function. (Aggregate functions compute a single result from a `SETOF` input SQL values.) It creates a JSON _array_ whose values are the JSON representations of the aggregated SQL values.

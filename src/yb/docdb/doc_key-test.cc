@@ -16,13 +16,13 @@
 #include <memory>
 
 #include "yb/rocksdb/table.h"
-#include "yb/rocksdb/table/full_filter_block.h"
 
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/rocksutil/yb_rocksdb.h"
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/decimal.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -59,31 +59,33 @@ class DocKeyTest : public YBTest {
     const int kMaxNumRangeKeys = 3;
     const int kMaxNumSubKeys = 3;
     vector<SubDocKey> sub_doc_keys;
-    Uuid cotable_id;
-    EXPECT_OK(cotable_id.FromHexString("0123456789abcdef0123456789abcdef"));
+    auto cotable_id = CHECK_RESULT(Uuid::FromHexString("0123456789abcdef0123456789abcdef"));
 
-    std::vector<std::pair<Uuid, PgTableOid>> table_id_pairs;
-    table_id_pairs.emplace_back(cotable_id, 0);
-    table_id_pairs.emplace_back(Uuid(boost::uuids::nil_uuid()), 9911);
-    table_id_pairs.emplace_back(Uuid(boost::uuids::nil_uuid()), 0);
+    std::vector<std::pair<Uuid, ColocationId>> id_pairs;
+    id_pairs.emplace_back(cotable_id, 0);
+    id_pairs.emplace_back(Uuid::Nil(), 9911);
+    id_pairs.emplace_back(Uuid::Nil(), 0);
 
-    for (const auto& table_id_pair : table_id_pairs) {
+    for (const auto& id_pair : id_pairs) {
       for (int num_hash_keys = 0; num_hash_keys <= kMaxNumHashKeys; ++num_hash_keys) {
         for (int num_range_keys = 0; num_range_keys <= kMaxNumRangeKeys; ++num_range_keys) {
           for (int num_sub_keys = 0; num_sub_keys <= kMaxNumSubKeys; ++num_sub_keys) {
             for (bool has_hybrid_time : {false, true}) {
               SubDocKey sub_doc_key;
 
-              if (!table_id_pair.first.IsNil()) {
-                sub_doc_key.doc_key().set_cotable_id(cotable_id);
-              } else if (table_id_pair.second > 0) {
-                if ((num_hash_keys == 0 && num_range_keys == 0) &&
-                    (num_sub_keys > 0 || !has_hybrid_time)) {
-                  // This key format currently cannot ever appear because colocated table tombstones
-                  // should both have no subkeys and have a hybrid time, so skip it.
-                  continue;
-                }
-                sub_doc_key.doc_key().set_pgtable_id(table_id_pair.second);
+              bool has_id = false;
+              if (!id_pair.first.IsNil()) {
+                sub_doc_key.doc_key().set_cotable_id(id_pair.first);
+                has_id = true;
+              } else if (id_pair.second != kColocationIdNotSet) {
+                sub_doc_key.doc_key().set_colocation_id(id_pair.second);
+                has_id = true;
+              }
+              if (has_id && num_hash_keys == 0 && num_range_keys == 0 &&
+                  (num_sub_keys > 0 || !has_hybrid_time)) {
+                // This key format currently cannot ever appear because table tombstones should both
+                // have no subkeys and have a hybrid time, so skip it.
+                continue;
               }
 
               if (num_hash_keys > 0) {
@@ -91,15 +93,15 @@ class DocKeyTest : public YBTest {
               }
               for (int hIndex = 0; hIndex < num_hash_keys; ++hIndex) {
                 sub_doc_key.doc_key().hashed_group().push_back(
-                    PrimitiveValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
+                    KeyEntryValue(Format("h$0_$1", hIndex, std::string(hIndex + 1, 'h'))));
               }
               for (int rIndex = 0; rIndex < num_range_keys; ++rIndex) {
                 sub_doc_key.doc_key().range_group().push_back(
-                    PrimitiveValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
+                    KeyEntryValue(Format("r$0_$1", rIndex, std::string(rIndex + 1, 'r'))));
               }
               for (int skIndex = 0; skIndex < num_sub_keys; ++skIndex) {
                 sub_doc_key.subkeys().push_back(
-                    PrimitiveValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
+                    KeyEntryValue(Format("sk$0_$1", skIndex, std::string(skIndex + 1, 's'))));
               }
               if (has_hybrid_time) {
                 sub_doc_key.set_hybrid_time(DocHybridTime(HybridTime::FromMicros(123456), 1));
@@ -219,31 +221,33 @@ void TestDocOrSubDocKeyComparison() {
 TEST_F(DocKeyTest, TestDocKeyToString) {
   ASSERT_EQ(
       "DocKey([], [10, \"foo\", 20, \"bar\"])",
-      DocKey(PrimitiveValues(10, "foo", 20, "bar")).ToString());
+      DocKey(KeyEntryValues(10, "foo", 20, "bar")).ToString());
   ASSERT_EQ(
       "DocKey(0x1234, "
       "[\"hashed_key1\", 123, \"hashed_key2\", 234], [10, \"foo\", 20, \"bar\"])",
       DocKey(0x1234,
-             PrimitiveValues("hashed_key1", 123, "hashed_key2", 234),
-             PrimitiveValues(10, "foo", 20, "bar")).ToString());
+             KeyEntryValues("hashed_key1", 123, "hashed_key2", 234),
+             KeyEntryValues(10, "foo", 20, "bar")).ToString());
 }
 
 TEST_F(DocKeyTest, TestSubDocKeyToString) {
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), [HT{ physical: 12345 }])",
-      SubDocKey(DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
+      SubDocKey(DocKey(KeyEntryValues("range_key1", 1000, "range_key_3")),
                 HybridTime::FromMicros(12345L)).ToString());
   ASSERT_EQ(
       "SubDocKey(DocKey([], [\"range_key1\", 1000, \"range_key_3\"]), "
       "[\"subkey1\"; HT{ physical: 20000 }])",
       SubDocKey(
-          DocKey(PrimitiveValues("range_key1", 1000, "range_key_3")),
-          PrimitiveValue("subkey1"), HybridTime::FromMicros(20000L)
+          DocKey(KeyEntryValues("range_key1", 1000, "range_key_3")),
+          KeyEntryValue("subkey1"), HybridTime::FromMicros(20000L)
       ).ToString());
 
 }
 
 TEST_F(DocKeyTest, TestDocKeyEncoding) {
+  constexpr int64_t kIntKey1 = 1000;
+  constexpr int64_t kIntKey2 = 2000;
   // A few points to make it easier to understand the expected binary representations here:
   // - Initial bytes such as 'S', 'I' correspond the ValueType enum.
   // - Strings are terminated with \x00\x00.
@@ -259,7 +263,8 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                I\x80\x00\x00\x00\x00\x00\x07\xd0\
                !"
           )#"),
-      FormatSliceAsStr(DocKey(PrimitiveValues("val1", 1000, "val2", 2000)).Encode().AsSlice()));
+      FormatSliceAsStr(
+          DocKey(KeyEntryValues("val1", kIntKey1, "val2", kIntKey2)).Encode().AsSlice()));
 
   InetAddress addr(ASSERT_RESULT(ParseIpAddress("1.2.3.4")));
 
@@ -279,16 +284,16 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
              !"
           )#"),
       FormatSliceAsStr(DocKey({
-          PrimitiveValue("val1", SortOrder::kDescending),
-          PrimitiveValue(1000),
-          PrimitiveValue(1000, SortOrder::kDescending),
-          PrimitiveValue(BINARY_STRING("val1""\x00"), SortOrder::kDescending),
-          PrimitiveValue(addr, SortOrder::kDescending),
-          PrimitiveValue(Timestamp(1000), SortOrder::kDescending),
-          PrimitiveValue::Decimal(util::Decimal("100.02").EncodeToComparable(),
-                                  SortOrder::kDescending),
-          PrimitiveValue::Decimal(util::Decimal("0.001").EncodeToComparable(),
-                                  SortOrder::kAscending),
+          KeyEntryValue("val1", SortOrder::kDescending),
+          KeyEntryValue::Int64(1000),
+          KeyEntryValue::Int64(1000, SortOrder::kDescending),
+          KeyEntryValue(BINARY_STRING("val1""\x00"), SortOrder::kDescending),
+          KeyEntryValue::MakeInetAddress(addr, SortOrder::kDescending),
+          KeyEntryValue::MakeTimestamp(Timestamp(1000), SortOrder::kDescending),
+          KeyEntryValue::Decimal(util::Decimal("100.02").EncodeToComparable(),
+                                 SortOrder::kDescending),
+          KeyEntryValue::Decimal(util::Decimal("0.001").EncodeToComparable(),
+                                 SortOrder::kAscending),
                               }).Encode().AsSlice()));
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -305,15 +310,15 @@ TEST_F(DocKeyTest, TestDocKeyEncoding) {
                !")#"),
       FormatSliceAsStr(DocKey(
           0xcafe,
-          PrimitiveValues("hashed1", "hashed2"),
-          PrimitiveValues("range1", 1000, "range2", 2000)).Encode().AsSlice()));
+          KeyEntryValues("hashed1", "hashed2"),
+          KeyEntryValues("range1", kIntKey1, "range2", kIntKey2)).Encode().AsSlice()));
 }
 
 TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
-  const SubDocKey subdoc_key(DocKey({PrimitiveValue("some_doc_key")}),
-                             PrimitiveValue("sk1"),
-                             PrimitiveValue("sk2"),
-                             PrimitiveValue(BINARY_STRING("sk3""\x00"), SortOrder::kDescending),
+  const SubDocKey subdoc_key(DocKey({KeyEntryValue("some_doc_key")}),
+                             KeyEntryValue("sk1"),
+                             KeyEntryValue("sk2"),
+                             KeyEntryValue(BINARY_STRING("sk3""\x00"), SortOrder::kDescending),
                              HybridTime::FromMicros(1000));
   const KeyBytes encoded_subdoc_key(subdoc_key.Encode());
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -340,15 +345,14 @@ TEST_F(DocKeyTest, TestBasicSubDocKeyEncodingDecoding) {
   ASSERT_EQ(range_group.size() + 1, size);
   --size; // the last one is time
   for (size_t i = 0; i != size; ++i) {
-    PrimitiveValue value;
+    KeyEntryValue value;
     Slice temp = slices[i];
     ASSERT_OK(value.DecodeFromKey(&temp));
     ASSERT_TRUE(temp.empty());
     ASSERT_EQ(range_group[i], value);
   }
-  DocHybridTime time;
   Slice temp = slices[size];
-  ASSERT_OK(time.DecodeFrom(&temp));
+  DocHybridTime time = ASSERT_RESULT(DocHybridTime::DecodeFrom(&temp));
   ASSERT_TRUE(temp.empty());
   ASSERT_EQ(subdoc_key.doc_hybrid_time(), time);
 }
@@ -391,9 +395,9 @@ TEST_F(DocKeyTest, TestSubDocKeyStartsWith) {
 
 std::string EncodeSubDocKey(const std::string& hash_key,
     const std::string& range_key, const std::string& sub_key, uint64_t time) {
-  DocKey dk(DocKey(0, PrimitiveValues(hash_key), PrimitiveValues(range_key)));
+  DocKey dk(DocKey(0, KeyEntryValues(hash_key), KeyEntryValues(range_key)));
   return SubDocKey(
-      dk, PrimitiveValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
+      dk, KeyEntryValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
 }
 
 std::string EncodeSimpleSubDocKey(const std::string& hash_key) {
@@ -433,7 +437,7 @@ TEST_F(DocKeyTest, TestKeyMatching) {
 }
 
 TEST_F(DocKeyTest, TestWriteId) {
-  SubDocKey subdoc_key(DocKey({PrimitiveValue("a"), PrimitiveValue(135)}),
+  SubDocKey subdoc_key(DocKey({KeyEntryValue("a"), KeyEntryValue::Int32(135)}),
                        DocHybridTime(1000000, 4091, 135));
   TestRoundTripDocOrSubDocKeyEncodingDecoding(subdoc_key);
 }
@@ -482,14 +486,14 @@ TEST_F(DocKeyTest, TestDecodePrefixLengths) {
     SubDocKey cur_key;
     boost::container::small_vector<size_t, 8> prefix_lengths;
     std::vector<size_t> expected_prefix_lengths;
-    if (doc_key.has_hash() || doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
+    if (doc_key.has_hash() || doc_key.has_cotable_id() || doc_key.has_colocation_id()) {
       if (doc_key.has_hash()) {
         cur_key.doc_key() = DocKey(doc_key.hash(), doc_key.hashed_group());
       }
       if (doc_key.has_cotable_id()) {
         cur_key.doc_key().set_cotable_id(doc_key.cotable_id());
-      } else if (doc_key.has_pgtable_id()) {
-        cur_key.doc_key().set_pgtable_id(doc_key.pgtable_id());
+      } else if (doc_key.has_colocation_id()) {
+        cur_key.doc_key().set_colocation_id(doc_key.colocation_id());
       }
 
       // Subtract one to avoid counting the final kGroupEnd, unless this is the entire key.
@@ -543,11 +547,11 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
     SCOPED_TRACE(test_description);
 
     // Find ID end.
-    if (doc_key.has_cotable_id() || doc_key.has_pgtable_id()) {
+    if (doc_key.has_cotable_id() || doc_key.has_colocation_id()) {
       if (doc_key.has_cotable_id()) {
         cur_key.doc_key().set_cotable_id(doc_key.cotable_id());
-      } else if (doc_key.has_pgtable_id()) {
-        cur_key.doc_key().set_pgtable_id(doc_key.pgtable_id());
+      } else if (doc_key.has_colocation_id()) {
+        cur_key.doc_key().set_colocation_id(doc_key.colocation_id());
       }
       // Subtract one because kGroupEnd doesn't count.
       expected_ends.push_back(cur_key.Encode().size() - 1);
@@ -558,17 +562,17 @@ TEST_F(DocKeyTest, DecodeDocKeyAndSubKeyEnds) {
     // Find whole DocKey end.
     if (doc_key.has_hash()) {
       cur_key.doc_key().set_hash(doc_key.hash());
-      for (const PrimitiveValue& hashed_group_elem : doc_key.hashed_group()) {
+      for (const auto& hashed_group_elem : doc_key.hashed_group()) {
         cur_key.doc_key().hashed_group().push_back(hashed_group_elem);
       }
     }
-    for (const PrimitiveValue& range_group_elem : doc_key.range_group()) {
+    for (const auto& range_group_elem : doc_key.range_group()) {
       cur_key.doc_key().range_group().push_back(range_group_elem);
     }
-    if (doc_key.has_pgtable_id() &&
+    if ((doc_key.has_colocation_id() || doc_key.has_cotable_id()) &&
         doc_key.hashed_group().empty() &&
         doc_key.range_group().empty()) {
-      // ...but an empty key doesn't count (for colocated table tombstones).
+      // ...but an empty key doesn't count (for table tombstones).
     } else {
       expected_ends.push_back(cur_key.Encode().size());
     }
@@ -630,12 +634,12 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
       std::vector<SubDocKey> expected_intents;
       SubDocKey current_expected_intent;
 
-      if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_pgtable_id()) {
+      if (sub_doc_key.doc_key().has_cotable_id() || sub_doc_key.doc_key().has_colocation_id()) {
         DocKey table_id_only_doc_key;
         if (sub_doc_key.doc_key().has_cotable_id()) {
           table_id_only_doc_key.set_cotable_id(sub_doc_key.doc_key().cotable_id());
         } else {
-          table_id_only_doc_key.set_pgtable_id(sub_doc_key.doc_key().pgtable_id());
+          table_id_only_doc_key.set_colocation_id(sub_doc_key.doc_key().colocation_id());
         }
         current_expected_intent = SubDocKey(table_id_only_doc_key);
         expected_intents.push_back(current_expected_intent);
@@ -651,7 +655,7 @@ TEST_F(DocKeyTest, TestEnumerateIntents) {
               sub_doc_key.doc_key().hashed_group()));
         } else {
           current_expected_intent = SubDocKey(DocKey(
-              sub_doc_key.doc_key().pgtable_id(),
+              sub_doc_key.doc_key().colocation_id(),
               sub_doc_key.doc_key().hash(),
               sub_doc_key.doc_key().hashed_group()));
         }

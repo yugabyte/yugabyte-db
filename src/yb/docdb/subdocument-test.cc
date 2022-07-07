@@ -11,12 +11,16 @@
 // under the License.
 //
 
-#include "yb/docdb/subdocument.h"
-
 #include <string>
 
+#include <gtest/gtest.h>
+
+#include "yb/docdb/subdocument.h"
+#include "yb/docdb/value_type.h"
+
+#include "yb/util/monotime.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 using std::string;
 
@@ -25,13 +29,13 @@ namespace docdb {
 
 TEST(SubDocumentTest, TestGetOrAddChild) {
   SubDocument d;
-  ASSERT_TRUE(d.GetOrAddChild(PrimitiveValue("foo")).second);
-  ASSERT_FALSE(d.GetOrAddChild(PrimitiveValue("foo")).second);  // No new subdocument created.
-  ASSERT_TRUE(d.GetOrAddChild(PrimitiveValue("bar")).second);
-  ASSERT_TRUE(d.GetOrAddChild(PrimitiveValue(100)).second);
-  ASSERT_TRUE(d.GetOrAddChild(PrimitiveValue(200)).second);
-  ASSERT_TRUE(d.GetOrAddChild(PrimitiveValue(string("\x00", 1))).second);
-  ASSERT_FALSE(d.GetOrAddChild(PrimitiveValue(string("\x00", 1))).second);  // No new subdoc added.
+  ASSERT_TRUE(d.GetOrAddChild(KeyEntryValue("foo")).second);
+  ASSERT_FALSE(d.GetOrAddChild(KeyEntryValue("foo")).second);  // No new subdocument created.
+  ASSERT_TRUE(d.GetOrAddChild(KeyEntryValue("bar")).second);
+  ASSERT_TRUE(d.GetOrAddChild(KeyEntryValue::Int32(100)).second);
+  ASSERT_TRUE(d.GetOrAddChild(KeyEntryValue::Int32(200)).second);
+  ASSERT_TRUE(d.GetOrAddChild(KeyEntryValue(string("\x00", 1))).second);
+  ASSERT_FALSE(d.GetOrAddChild(KeyEntryValue(string("\x00", 1))).second);  // No new subdoc added.
   ASSERT_STR_EQ_VERBOSE_TRIMMED(R"#(
 {
   100: {},
@@ -44,36 +48,37 @@ TEST(SubDocumentTest, TestGetOrAddChild) {
 }
 
 TEST(SubDocumentTest, TestToString) {
-  SubDocument subdoc(ValueType::kObject);
+  SubDocument subdoc(ValueEntryType::kObject);
   SubDocument mathematicians;
   SubDocument cs;
-  mathematicians.SetChildPrimitive(PrimitiveValue("Isaac Newton"), PrimitiveValue(1643));
+  mathematicians.SetChildPrimitive(KeyEntryValue("Isaac Newton"), PrimitiveValue::Int32(1643));
   ASSERT_EQ(1, mathematicians.object_num_keys());
-  mathematicians.SetChildPrimitive(PrimitiveValue("Pythagoras"), PrimitiveValue(-570));
+  mathematicians.SetChildPrimitive(KeyEntryValue("Pythagoras"), PrimitiveValue::Int32(-570));
   ASSERT_EQ(2, mathematicians.object_num_keys());
-  mathematicians.SetChildPrimitive(PrimitiveValue("Leonard Euler"), PrimitiveValue(1601));
+  mathematicians.SetChildPrimitive(KeyEntryValue("Leonard Euler"), PrimitiveValue::Int32(1601));
   ASSERT_EQ(3, mathematicians.object_num_keys());
-  mathematicians.SetChildPrimitive(PrimitiveValue("Blaise Pascal"), PrimitiveValue(1623));
+  mathematicians.SetChildPrimitive(KeyEntryValue("Blaise Pascal"), PrimitiveValue::Int32(1623));
   ASSERT_EQ(4, mathematicians.object_num_keys());
-  mathematicians.SetChildPrimitive(PrimitiveValue("Srinivasa Ramanujan"), PrimitiveValue(1887));
+  mathematicians.SetChildPrimitive(
+      KeyEntryValue("Srinivasa Ramanujan"), PrimitiveValue::Int32(1887));
   ASSERT_EQ(5, mathematicians.object_num_keys());
-  mathematicians.SetChildPrimitive(PrimitiveValue("Euclid"), PrimitiveValue("Mid-4th century BCE"));
+  mathematicians.SetChildPrimitive(KeyEntryValue("Euclid"), PrimitiveValue("Mid-4th century BCE"));
   ASSERT_EQ(6, mathematicians.object_num_keys());
 
-  cs.SetChildPrimitive(PrimitiveValue("Alan Turing"), PrimitiveValue(1912));
+  cs.SetChildPrimitive(KeyEntryValue("Alan Turing"), PrimitiveValue::Int32(1912));
   ASSERT_EQ(1, cs.object_num_keys());
-  cs.SetChildPrimitive(PrimitiveValue("Ada Lovelace"), PrimitiveValue(1815));
+  cs.SetChildPrimitive(KeyEntryValue("Ada Lovelace"), PrimitiveValue::Int32(1815));
   ASSERT_EQ(2, cs.object_num_keys());
-  cs.SetChildPrimitive(PrimitiveValue("Edsger W. Dijkstra"), PrimitiveValue(1930));
+  cs.SetChildPrimitive(KeyEntryValue("Edsger W. Dijkstra"), PrimitiveValue::Int32(1930));
   ASSERT_EQ(3, cs.object_num_keys());
-  cs.SetChildPrimitive(PrimitiveValue("John von Neumann"), PrimitiveValue(1903));
+  cs.SetChildPrimitive(KeyEntryValue("John von Neumann"), PrimitiveValue::Int32(1903));
   ASSERT_EQ(4, cs.object_num_keys());
-  cs.SetChildPrimitive(PrimitiveValue("Dennis Ritchie"), PrimitiveValue(1941));
+  cs.SetChildPrimitive(KeyEntryValue("Dennis Ritchie"), PrimitiveValue::Int32(1941));
   ASSERT_EQ(5, cs.object_num_keys());
 
-  subdoc.SetChild(PrimitiveValue("Mathematicians"), std::move(mathematicians));
+  subdoc.SetChild(KeyEntryValue("Mathematicians"), std::move(mathematicians));
   ASSERT_EQ(1, subdoc.object_num_keys());
-  subdoc.SetChild(PrimitiveValue("Computer Scientists"), std::move(cs));
+  subdoc.SetChild(KeyEntryValue("Computer Scientists"), std::move(cs));
   ASSERT_EQ(2, subdoc.object_num_keys());
 
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
@@ -97,9 +102,9 @@ TEST(SubDocumentTest, TestToString) {
 }
       )#", subdoc.ToString());
 
-  ASSERT_TRUE(subdoc.DeleteChild(PrimitiveValue("Mathematicians")));
+  ASSERT_TRUE(subdoc.DeleteChild(KeyEntryValue("Mathematicians")));
   ASSERT_EQ(1, subdoc.object_num_keys());
-  ASSERT_TRUE(subdoc.DeleteChild(PrimitiveValue("Computer Scientists")));
+  ASSERT_TRUE(subdoc.DeleteChild(KeyEntryValue("Computer Scientists")));
   ASSERT_EQ(0, subdoc.object_num_keys());
 }
 
@@ -135,7 +140,7 @@ TEST(SubDocumentTest, Equality) {
 
 TEST(SubDocumentTest, TestCopyMove) {
   // Try Copies.
-  SubDocument s1(ValueType::kObject);
+  SubDocument s1(ValueEntryType::kObject);
   s1.SetTtl(1000);
   s1.SetWriteTime(1000);
   SubDocument s2 = s1;
@@ -154,14 +159,14 @@ TEST(SubDocumentTest, TestCopyMove) {
   ASSERT_EQ(s3, s4);
   ASSERT_EQ(s3.GetTtl(), s4.GetTtl());
   ASSERT_EQ(s3.GetWriteTime(), s4.GetWriteTime());
-  ASSERT_EQ(ValueType::kNullLow, s1.value_type());
+  ASSERT_EQ(ValueEntryType::kNullLow, s1.value_type());
 
   SubDocument s5;
   s5 = std::move(s2);
   ASSERT_EQ(s3, s5);
   ASSERT_EQ(s3.GetTtl(), s5.GetTtl());
   ASSERT_EQ(s3.GetWriteTime(), s5.GetWriteTime());
-  ASSERT_EQ(ValueType::kNullLow, s2.value_type());
+  ASSERT_EQ(ValueEntryType::kNullLow, s2.value_type());
 }
 
 } // namespace docdb

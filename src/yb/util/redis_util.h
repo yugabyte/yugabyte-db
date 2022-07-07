@@ -18,15 +18,8 @@
 
 namespace yb {
 
-class RedisUtil {
- public:
-  static bool RedisPatternMatch(
-      const std::string& pattern, const std::string& string, bool ignore_case);
-
- private:
-  static bool RedisPatternMatchWithLen(
-      const char* pattern, int pattern_len, const char* string, int str_len, bool ignore_case);
-};
+bool RedisPatternMatch(
+    const std::string& pattern, const std::string& string, bool ignore_case);
 
 } // namespace yb
 

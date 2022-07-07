@@ -2,58 +2,31 @@
 
 package com.yugabyte.yw.controllers;
 
-import java.util.UUID;
-
-import org.yb.client.ListTabletServersResponse;
-
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Universe;
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.Authorization;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.client.YBClient;
-import play.libs.Json;
 import play.mvc.Result;
 
+@Api(
+    value = "Tablet server management",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class TabletServerController extends AuthenticatedController {
-  public static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
-  @Inject
-  ApiHelper apiHelper;
-  private final YBClientService ybService;
+  private static final Logger LOG = LoggerFactory.getLogger(TabletServerController.class);
+  private final ApiHelper apiHelper;
 
   @Inject
-  public TabletServerController(YBClientService service) { this.ybService = service; }
-
-  /**
-   * This API would query for all the tabletServers using YB Client and return a JSON
-   * with tablet server UUIDs
-   *
-   * @return Result tablet server uuids
-   */
-  public Result list() {
-    ObjectNode result = Json.newObject();
-    YBClient client = null;
-
-    try {
-      client = ybService.getClient(null);
-      ListTabletServersResponse response = client.listTabletServers();
-      result.put("count", response.getTabletServersCount());
-      ArrayNode tabletServers = result.putArray("servers");
-      response.getTabletServersList().forEach(tabletServer->{
-        tabletServers.add(tabletServer.getHost());
-      });
-    } catch (Exception e) {
-      return internalServerError("Error: " + e.getMessage());
-    } finally {
-      ybService.closeClient(client, null);
-    }
-
-    return ok(result);
+  public TabletServerController(ApiHelper apiHelper) {
+    this.apiHelper = apiHelper;
   }
 
   /**
@@ -61,42 +34,37 @@ public class TabletServerController extends AuthenticatedController {
    *
    * @param customerUUID UUID of the customer
    * @param universeUUID UUID of the universe
-   *
    * @return Result tablet server information
    */
+  @ApiOperation(
+      value = "List all tablet servers",
+      nickname = "listTabletServers",
+      response = Object.class,
+      responseContainer = "Map")
   public Result listTabletServers(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
-    if (Customer.get(customerUUID) == null) {
-      final String errMsg = "Invalid Customer UUID: " + customerUUID;
-      LOG.error(errMsg);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
+    Customer.getOrBadRequest(customerUUID);
+    // Validate universe UUID
+    Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    // Validate universe UUID and retrieve master leader address
-    final Universe universe = Universe.get(universeUUID);
     final String masterLeaderIPAddr = universe.getMasterLeaderHostText();
     if (masterLeaderIPAddr.isEmpty()) {
-      final String errMsg =
-              "Could not find the master leader address in universe " + universeUUID;
+      final String errMsg = "Could not find the master leader address in universe " + universeUUID;
       LOG.error(errMsg);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, errMsg);
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, errMsg);
     }
 
     JsonNode response;
     // Query master leader tablet servers endpoint
     try {
       final int masterHttpPort = universe.getUniverseDetails().communicationPorts.masterHttpPort;
-      final String masterLeaderUrl = String.format(
-        "http://%s:%s/api/v1/tablet-servers",
-        masterLeaderIPAddr,
-        masterHttpPort
-      );
-
+      final String masterLeaderUrl =
+          String.format("http://%s:%s/api/v1/tablet-servers", masterLeaderIPAddr, masterHttpPort);
       response = apiHelper.getRequest(masterLeaderUrl);
     } catch (Exception e) {
       LOG.error("Failed to get list of tablet servers in universe " + universeUUID, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, e.getMessage());
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
-    return ApiResponse.success(response);
+    return PlatformResults.withRawData(response);
   }
 }

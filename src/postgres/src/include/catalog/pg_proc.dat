@@ -958,6 +958,10 @@
 { oid => '9901', descr => 'lsm index access method handler',
   proname => 'ybcinhandler', provolatile => 'v', prorettype => 'index_am_handler',
   proargtypes => 'internal', prosrc => 'ybcinhandler' },
+{ oid => '8022', descr => 'ybgin index access method handler',
+  proname => 'ybginhandler', provolatile => 'v',
+  prorettype => 'index_am_handler', proargtypes => 'internal',
+  prosrc => 'ybginhandler' },
 
 { oid => '338', descr => 'validate an operator class',
   proname => 'amvalidate', provolatile => 'v', prorettype => 'bool',
@@ -4062,6 +4066,14 @@
 { oid => '2199', descr => 'server\'s port number for this connection',
   proname => 'inet_server_port', proisstrict => 'f', provolatile => 's',
   prorettype => 'int4', proargtypes => '', prosrc => 'inet_server_port' },
+{ oid => '8019', descr => 'list available servers for clients to connect',
+  proname => 'yb_servers', proretset => 't', provolatile => 'v',
+  prorettype => 'record',
+  proargtypes => '',
+  proallargtypes => '{text,int8,int8,text,text,text,text,text}',
+  proargmodes => '{o,o,o,o,o,o,o,o}',
+  proargnames => '{host,port,num_connections,node_type,cloud,region,zone,public_ip}',
+  prosrc => 'yb_servers' },
 
 { oid => '2627',
   proname => 'inetnot', prorettype => 'inet', proargtypes => 'inet',
@@ -10273,4 +10285,67 @@
   proisstrict => 'f', prorettype => 'bool', proargtypes => 'oid int4 int4 any',
   proargmodes => '{i,i,i,v}', prosrc => 'satisfies_hash_partition' },
 
+{ oid => '8020', descr => 'function to compute internal hash code of given values', oid_symbol => 'YB_HASH_CODE_OID',
+  proname => 'yb_hash_code', provariadic => 'any', proisstrict => 'f',
+  prorettype => 'int4', proargtypes => 'any', proallargtypes => '{any}',
+  proargmodes => '{v}', prosrc => 'yb_hash_code' },
+
+# Yugabyte system calls use OIDS starting from YB_MIN_UNUSED_OID in "catalog.h".
+# Run `src/include/catalog/unused_oids` to seek available OID values.
+
+{ oid => '8013', descr => 'system call getrusage from the current session',
+  proname => 'yb_getrusage', provolatile => 'v',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8,int8}',
+  proargmodes => '{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}',
+  proargnames => '{user_cpu,system_cpu,maxrss,ixrss,idrss,isrss,minflt,majflt,nswap,inblock,oublock,msgsnd,msgrcv,nsignals,nvcsw,nivcsw}',
+  prosrc => 'yb_getrusage' },
+
+{ oid => '8014', descr => 'get memory usage of the current session',
+  proname => 'yb_mem_usage', provolatile => 'v',
+  prorettype => 'text', proargtypes => '',
+  prosrc => 'yb_mem_usage' },
+
+{ oid => '8015', descr => 'get memory usage of the current session in kb',
+  proname => 'yb_mem_usage_kb', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_mem_usage_kb' },
+
+{ oid => '8016', descr => 'get memory usage in SQL layer of the current session',
+  proname => 'yb_mem_usage_sql', provolatile => 'v',
+  prorettype => 'text', proargtypes => '',
+  prosrc => 'yb_mem_usage_sql' },
+
+{ oid => '8017', descr => 'get memory usage in SQL layer of the current session in bytes',
+  proname => 'yb_mem_usage_sql_b', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_mem_usage_sql_b' },
+
+{ oid => '8018', descr => 'get memory usage by SQL layer of the current session in kb',
+  proname => 'yb_mem_usage_sql_kb', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_mem_usage_sql_kb' },
+
+{ oid => '8029', descr => 'get current YSQL catalog version',
+  proname => 'yb_catalog_version', provolatile => 'v',
+  prorettype => 'int8', proargtypes => '',
+  prosrc => 'yb_catalog_version' },
+
+{ oid => '8031', descr => 'is the given table stored in the local region',
+  proname => 'yb_is_local_table', prorettype => 'bool', proargtypes => 'oid',
+  prosrc => 'yb_is_local_table', provolatile => 's' },
+
+# getting YB specific objects properties functions
+{ oid => '8033', descr => 'get the YB table properties',
+  proname => 'yb_table_properties', provolatile => 's',
+  prorettype => 'record', proargtypes => 'oid',
+  proallargtypes => '{oid,int8,int8,bool,oid,oid}',
+  proargmodes => '{i,o,o,o,o,o}',
+  proargnames => '{table_oid,num_tablets,num_hash_key_columns,is_colocated,tablegroup_oid,colocation_id}',
+  prosrc => 'yb_table_properties' },
+
+{ oid => '8034', descr => 'is the database colocated in the YB server?',
+  proname => 'yb_is_database_colocated', provolatile => 's',
+  prorettype => 'bool', proargtypes => '',
+  prosrc => 'yb_is_database_colocated' },
 ]

@@ -2,18 +2,18 @@
 
 package com.yugabyte.yw.models;
 
+import static com.yugabyte.yw.models.Users.Role;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import org.junit.Before;
 import org.junit.Test;
 import play.libs.Json;
-
-import com.yugabyte.yw.common.FakeDBApplication;
-
-import javax.persistence.PersistenceException;
-
-import static com.yugabyte.yw.models.Users.Role;
-import static org.junit.Assert.*;
 
 public class UsersTest extends FakeDBApplication {
 
@@ -26,7 +26,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    Users user = Users.create("tc1@test.com","password", Role.Admin, customer.uuid);
+    Users user = Users.create("tc1@test.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(user.uuid);
     assertEquals("tc1@test.com", user.email);
     assertNotNull(user.creationDate);
@@ -34,37 +34,36 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testGet() {
-    Users user = Users.create("tc1@test.com","password", Role.Admin, customer.uuid);
+    Users user = Users.create("tc1@test.com", "password", Role.Admin, customer.uuid, false);
     Users getUser = Users.get(user.uuid);
     assertEquals("tc1@test.com", user.email);
     assertNotNull(user.creationDate);
     assertEquals(user, getUser);
   }
 
-   @Test(expected = PersistenceException.class)
-   public void testCreateWithDuplicateEmail() {
-     Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
-     Users u2 = Users.create("foo@foo.com", "password", Role.ReadOnly, customer.uuid);
-   }
-
+  @Test(expected = PlatformServiceException.class)
+  public void testCreateWithDuplicateEmail() {
+    Users u1 = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
+    Users u2 = Users.create("foo@foo.com", "password", Role.ReadOnly, customer.uuid, false);
+  }
 
   @Test
   public void authenticateWithEmailAndValidPassword() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     Users authUser = Users.authWithPassword("foo@foo.com", "password");
     assertEquals(authUser.uuid, u.uuid);
   }
 
   @Test
   public void authenticateWithEmailAndInvalidPassword() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     Users authUser = Users.authWithPassword("foo@foo.com", "password1");
     assertNull(authUser);
   }
 
   @Test
   public void testCreateAuthToken() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
 
     String authToken = u.createAuthToken();
@@ -74,9 +73,10 @@ public class UsersTest extends FakeDBApplication {
     Users authUser = Users.authWithToken(authToken);
     assertEquals(authUser.uuid, u.uuid);
   }
+
   @Test
   public void testAuthTokenExpiry() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
     String authTokenOld = u.createAuthToken();
     assertNotNull(authTokenOld);
@@ -88,7 +88,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testDeleteAuthToken() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
 
     String authToken = u.createAuthToken();
@@ -107,7 +107,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testUpsertApiToken() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
 
     String apiToken = u.upsertApiToken();
@@ -119,7 +119,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testSetRole() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
     u.setRole(Role.ReadOnly);
     u.save();
@@ -129,7 +129,7 @@ public class UsersTest extends FakeDBApplication {
 
   @Test
   public void testNoSensitiveDataInJson() {
-    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid);
+    Users u = Users.create("foo@foo.com", "password", Role.Admin, customer.uuid, false);
     assertNotNull(u.uuid);
 
     JsonNode json = Json.toJson(u);

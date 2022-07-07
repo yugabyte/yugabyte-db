@@ -17,13 +17,17 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/string_util.h"
 
 #include <regex>
-#include <boost/algorithm/string/predicate.hpp>
 
-#include "yb/util/logging.h"
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/split.hpp>
+
+#include <boost/preprocessor/cat.hpp>
+
+#include <glog/logging.h>
 
 using std::vector;
 using std::regex;
@@ -53,6 +57,11 @@ bool IsBoolean(const Slice& s) {
   return iequals(s.cdata(), "true") || iequals(s.cdata(), "false");
 }
 
+bool IsIdLikeUuid(const Slice& s) {
+  static const regex uuid_regex("[0-9a-f]{32}");
+  return regex_match(s.cdata(), uuid_regex);
+}
+
 vector<string> StringSplit(const string& arg, char delim) {
   vector<string> splits;
   stringstream ss(arg);
@@ -61,6 +70,10 @@ vector<string> StringSplit(const string& arg, char delim) {
     splits.push_back(std::move(item));
   }
   return splits;
+}
+
+bool StringStartsWithOrEquals(const string& s, const char* start, size_t start_len) {
+  return s.rfind(start, 0) == 0;
 }
 
 bool StringEndsWith(const string& s, const char* end, size_t end_len, string* left) {
@@ -92,6 +105,18 @@ void AppendWithSeparator(const char* to_append, string* dest, const char* separa
     *dest += separator;
   }
   *dest += to_append;
+}
+
+std::vector<std::string> SplitAndFlatten(
+    const std::vector<std::string>& input,
+    const char* separators) {
+  std::vector<std::string> result_vec;
+  for (const auto& dir : input) {
+    std::vector<std::string> temp;
+    boost::split(temp, dir, boost::is_any_of(separators));
+    result_vec.insert(result_vec.end(), temp.begin(), temp.end());
+  }
+  return result_vec;
 }
 
 }  // namespace yb

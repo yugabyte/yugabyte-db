@@ -15,8 +15,6 @@
 
 #include <memory>
 
-#include "yb/util/logging.h"
-
 #include "yb/rocksdb/iterator.h"
 
 namespace rocksdb {

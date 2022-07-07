@@ -15,13 +15,21 @@
 
 #include "yb/client/client.h"
 #include "yb/client/error.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/master/master.pb.h"
+#include "yb/common/partition.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/master/master_client.pb.h"
+
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using namespace std::literals; // NOLINT
 
@@ -63,6 +71,7 @@ Status TableHandle::Create(const YBTableName& table_name,
 Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
   RETURN_NOT_OK(client->OpenTable(table_name, &table_));
 
+  client_ = client;
   auto schema = table_->schema();
   for (size_t i = 0; i < schema.num_columns(); ++i) {
     yb::ColumnId col_id = yb::ColumnId(schema.ColumnId(i));
@@ -71,6 +80,10 @@ Status TableHandle::Open(const YBTableName& table_name, YBClient* client) {
   }
 
   return Status::OK();
+}
+
+Status TableHandle::Reopen() {
+  return Open(name(), client_);
 }
 
 const YBTableName& TableHandle::name() const {
@@ -99,6 +112,7 @@ auto SetupRequest(const T& op, const YBSchema& schema) {
   req->set_request_id(0);
   req->set_query_id(reinterpret_cast<int64_t>(op.get()));
   req->set_schema_version(schema.version());
+  req->set_is_compatible_with_previous_version(schema.is_compatible_with_previous_version());
   return req;
 }
 
@@ -188,12 +202,13 @@ TableIterator::TableIterator() : table_(nullptr) {}
 
 TableIterator::TableIterator(const TableHandle* table, const TableIteratorOptions& options)
     : table_(table), error_handler_(options.error_handler) {
-  auto client = (*table)->client();
+  auto client = table->client();
 
   session_ = client->NewSession();
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(table->name(), 0, &tablets));
+  REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(
+      table->name(), /* max_tablets = */ 0, &tablets, /* partition_list_version =*/nullptr));
   if (tablets.size() == 0) {
     table_ = nullptr;
     return;
@@ -237,10 +252,13 @@ bool TableIterator::ExecuteOps() {
   constexpr size_t kMaxConcurrentOps = 5;
   const size_t new_executed_ops = std::min(ops_.size(), executed_ops_ + kMaxConcurrentOps);
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
-    REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Apply(ops_[i]));
+    session_->Apply(ops_[i]);
   }
 
-  REPORT_AND_RETURN_FALSE_IF_NOT_OK(session_->Flush());
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  if (!IsFlushStatusOkOrHandleErrors(session_->TEST_FlushAndGetOpsErrors())) {
+    return false;
+  }
 
   for (size_t i = executed_ops_; i != new_executed_ops; ++i) {
     const auto& op = ops_[i];
@@ -273,7 +291,11 @@ void TableIterator::Move() {
       if (paging_state_) {
         auto& op = ops_[ops_index_];
         *op->mutable_request()->mutable_paging_state() = *paging_state_;
-        REPORT_AND_RETURN_IF_NOT_OK(session_->ApplyAndFlush(op));
+        session_->Apply(op);
+        // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+        if (!IsFlushStatusOkOrHandleErrors(session_->TEST_FlushAndGetOpsErrors())) {
+          return;
+        }
         if (QLResponsePB::YQL_STATUS_OK != op->response().status()) {
           HandleError(STATUS_FORMAT(RuntimeError, "Error for $0: $1", *op, op->response()));
         }
@@ -307,16 +329,24 @@ void TableIterator::Move() {
   }
 }
 
+bool TableIterator::IsFlushStatusOkOrHandleErrors(FlushStatus flush_status) {
+  if (flush_status.status.ok()) {
+    return true;
+  }
+  HandleError(flush_status.status);
+  if (!error_handler_) {
+    for (const auto& error : flush_status.errors) {
+      LOG(ERROR) << "Failed operation: " << error->failed_op().ToString()
+                 << ", status: " << error->status();
+    }
+  }
+  return false;
+}
+
 void TableIterator::HandleError(const Status& status) {
   if (error_handler_) {
     error_handler_(status);
   } else {
-    CollectedErrors errors = session_->GetAndClearPendingErrors();
-    for (const auto& error : errors) {
-      LOG(ERROR) << "Failed operation: " << error->failed_op().ToString()
-                 << ", status: " << error->status();
-    }
-
     LOG(FATAL) << "Failed: " << status;
   }
   // Makes this iterator == end().

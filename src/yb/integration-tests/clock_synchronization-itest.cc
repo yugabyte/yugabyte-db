@@ -12,18 +12,28 @@
 //
 
 #include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
 
+#include "yb/common/column_id.h"
+#include "yb/common/ql_protocol.pb.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+// RepeatedPtrField would NOT call dtor if class is not defined, so need this include below.
+#include "yb/master/master_client.pb.h" // for TabletLocationsPB
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/mock_hybrid_clock.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/tserver/tablet_server.h"
+
 #include "yb/util/random.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 
 DECLARE_uint64(max_clock_sync_error_usec);
 DECLARE_bool(disable_clock_sync_error);
@@ -48,7 +58,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniClusterOptions opts;
 
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client::YBSchemaBuilder b;
@@ -82,7 +92,8 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
 
   void PerformOps(int num_writes_per_tserver) {
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    ASSERT_OK(client_->GetTablets(*table_name_, 0, &tablets));
+    ASSERT_OK(
+        client_->GetTablets(*table_name_, 0, &tablets, /* partition_list_version =*/ nullptr));
     std::shared_ptr<client::YBSession> session =  client_->NewSession();
     for (int i = 0; i < num_writes_per_tserver; i++) {
       auto ql_write = std::make_shared<client::YBqlWriteOp>(table_);
@@ -96,7 +107,7 @@ class ClockSynchronizationTest : public YBMiniClusterTestBase<MiniCluster> {
       QLColumnValuePB *column = req->add_column_values();
       column->set_column_id(kFirstColumnId + 1);
       column->mutable_expr()->mutable_value()->set_int64_value(val);
-      EXPECT_OK(session->ApplyAndFlush(ql_write));
+      EXPECT_OK(session->TEST_ApplyAndFlush(ql_write));
       EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, ql_write->response().status());
     }
   }

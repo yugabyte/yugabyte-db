@@ -3,24 +3,18 @@ title: Build a C application that uses YSQL
 headerTitle: Build a C application
 linkTitle: C
 description: Build a sample C application with libpq.
-aliases:
-  - /develop/client-drivers/c/
-  - /stable/develop/client-drivers/c/
-  - /stable/quick-start/build-apps/c/
-block_indexing: true
 menu:
   stable:
     identifier: build-apps-c-1-ysql
     parent: build-apps
     weight: 557
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/build-apps/c/ysql" class="nav-link active">
+    <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -33,18 +27,18 @@ showAsideToc: true
 The tutorial assumes that you have:
 
 - installed YugabyteDB and created a universe. If not, follow the steps in [Quick start](../../../../quick-start/).
-- have a 32-bit (x86) or 64-bit (x64) architecture machine.
-- have gcc 4.1.2 or later, clang 3.4 or later installed.
+- a 32-bit (x86) or 64-bit (x64) architecture machine.
+- gcc 4.1.2 or later, clang 3.4 or later installed.
 
 ## Install the libpq C driver
 
 The `libpq` C driver is included in the YugabyteDB installation. You can use it by setting the `LD_LIBRARY_PATH` as follows :
-  
+
 ```sh
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
 
-Alternatively, you can download the PostgreSQL binaries or build the driver from source as documented [here](https://www.postgresql.org/download/).
+Alternatively, you can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
 
 ## Create the sample C application
 
@@ -76,7 +70,7 @@ main(int argc, char **argv)
   if (PQstatus(conn) != CONNECTION_OK)
   {
       fprintf(stderr, "Connection to database failed: %s",
-	      PQerrorMessage(conn));
+        PQerrorMessage(conn));
       PQfinish(conn);
       exit(1);
   }
@@ -127,7 +121,7 @@ main(int argc, char **argv)
   {
       printf("Query returned: ");
       for (j = 0; j < nFields; j++)
-	printf("%s ", PQgetvalue(res, i, j));
+        printf("%s ", PQgetvalue(res, i, j));
       printf("\n");
   }
   PQclear(res);
@@ -156,8 +150,8 @@ $ ./ybsql_hello_world
 
 You should see the following output:
 
-```
+```output
 Created table employee
 Inserted data (1, 'John', 35, 'C')
-Query returned: John 35 C 
+Query returned: John 35 C
 ```

@@ -35,26 +35,25 @@
 
 #include <iosfwd>
 #include <map>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/log_cache.h"
-#include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
-
-#include "yb/server/clock.h"
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/server/clock.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
-#include "yb/util/result.h"
 
 namespace yb {
 template<class T>
@@ -63,12 +62,8 @@ class MemTracker;
 class MetricEntity;
 class ThreadPoolToken;
 
-namespace log {
-class Log;
-class AsyncLogReader;
-}
-
 namespace consensus {
+
 class PeerMessageQueueObserver;
 struct MajorityReplicatedData;
 
@@ -110,8 +105,6 @@ struct FollowerWatermark {
 // This also takes care of pushing requests to peers as new operations are added, and notifying
 // RaftConsensus when the commit index advances.
 //
-// This class is used only on the LEADER side.
-//
 // TODO Currently this class is able to track one outstanding operation per peer. If we want to have
 // more than one outstanding RPC we need to modify it.
 class PeerMessageQueue {
@@ -119,7 +112,7 @@ class PeerMessageQueue {
   struct TrackedPeer {
     explicit TrackedPeer(std::string uuid)
         : uuid(std::move(uuid)),
-          last_known_committed_idx(MinimumOpId().index()),
+          last_known_committed_idx(OpId::Min().index),
           last_successful_communication_time(MonoTime::Now()) {}
 
     // Check that the terms seen from a given peer only increase monotonically.
@@ -181,7 +174,7 @@ class PeerMessageQueue {
     bool needs_remote_bootstrap = false;
 
     // Member type of this peer in the config.
-    RaftPeerPB::MemberType member_type = RaftPeerPB::UNKNOWN_MEMBER_TYPE;
+    PeerMemberType member_type = PeerMemberType::UNKNOWN_MEMBER_TYPE;
 
     uint64_t num_sst_files = 0;
 
@@ -239,7 +232,7 @@ class PeerMessageQueue {
   //
   // This is thread-safe against all of the read methods, but not thread-safe with concurrent Append
   // calls.
-  CHECKED_STATUS TEST_AppendOperation(const ReplicateMsgPtr& msg);
+  Status TEST_AppendOperation(const ReplicateMsgPtr& msg);
 
   // Appends a vector of messages to be replicated to the peers.  Returns OK unless the message
   // could not be added to the queue for some reason (e.g. the queue reached max size). Calls
@@ -252,7 +245,7 @@ class PeerMessageQueue {
   //
   // It is possible that this method will be invoked with empty list of messages, when
   // we update committed op id.
-  virtual CHECKED_STATUS AppendOperations(
+  virtual Status AppendOperations(
       const ReplicateMsgs& msgs, const yb::OpId& committed_op_id,
       RestartSafeCoarseTimePoint batch_mono_time);
 
@@ -271,18 +264,18 @@ class PeerMessageQueue {
   // not delete the entries. The simplest way is to pass the same instance of ConsensusRequestPB to
   // RequestForPeer(): the buffer will replace the old entries with new ones without de-allocating
   // the old ones if they are still required.
-  virtual CHECKED_STATUS RequestForPeer(
+  virtual Status RequestForPeer(
       const std::string& uuid,
       ConsensusRequestPB* request,
       ReplicateMsgsHolder* msgs_holder,
       bool* needs_remote_bootstrap,
-      RaftPeerPB::MemberType* member_type = nullptr,
+      PeerMemberType* member_type = nullptr,
       bool* last_exchange_successful = nullptr);
 
   // Fill in a StartRemoteBootstrapRequest for the specified peer.  If that peer should not remotely
   // bootstrap, returns a non-OK status.  On success, also internally resets
   // peer->needs_remote_bootstrap to false.
-  CHECKED_STATUS GetRemoteBootstrapRequestForPeer(
+  Status GetRemoteBootstrapRequestForPeer(
       const std::string& uuid,
       StartRemoteBootstrapRequestPB* req);
 
@@ -328,7 +321,7 @@ class PeerMessageQueue {
 
   void RegisterObserver(PeerMessageQueueObserver* observer);
 
-  CHECKED_STATUS UnRegisterObserver(PeerMessageQueueObserver* observer);
+  Status UnRegisterObserver(PeerMessageQueueObserver* observer);
 
   bool CanPeerBecomeLeader(const std::string& peer_uuid) const;
 
@@ -360,8 +353,10 @@ class PeerMessageQueue {
   }
 
   // Read replicated log records starting from the OpId immediately after last_op_id.
-  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(const yb::OpId& last_op_id,
-                                                     int64_t* last_replicated_opid_index = nullptr);
+  Result<ReadOpsResult> ReadReplicatedMessagesForCDC(
+    const yb::OpId& last_op_id,
+    int64_t* last_replicated_opid_index = nullptr,
+    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
   void UpdateCDCConsumerOpId(const yb::OpId& op_id);
 
@@ -371,9 +366,7 @@ class PeerMessageQueue {
   size_t LogCacheSize();
   size_t EvictLogCache(size_t bytes_to_evict);
 
-  CHECKED_STATUS FlushLogIndex();
-
-  CHECKED_STATUS CopyLogTo(const std::string& dest_dir);
+  Status FlushLogIndex();
 
   // Start memory tracking of following operations in case they are still present in our caches.
   void TrackOperationsMemory(const OpIds& op_ids);
@@ -381,6 +374,8 @@ class PeerMessageQueue {
   const server::ClockPtr& clock() const {
     return clock_;
   }
+
+  Result<OpId> TEST_GetLastOpIdWithType(int64_t max_allowed_index, OperationType op_type);
 
  private:
   FRIEND_TEST(ConsensusQueueTest, TestQueueAdvancesCommittedIndex);
@@ -410,7 +405,7 @@ class PeerMessageQueue {
   static const char* StateToStr(State state);
   friend std::ostream& operator <<(std::ostream& out, State mode);
 
-  static constexpr int kUninitializedMajoritySize = -1;
+  static constexpr ssize_t kUninitializedMajoritySize = -1;
 
   struct QueueState {
 
@@ -440,10 +435,10 @@ class PeerMessageQueue {
     // term is less than the term observed from another peer the queue owner must step down.
     // TODO: it is likely to be cleaner to get this from the ConsensusMetadata rather than by
     // snooping on what operations are appended to the queue.
-    int64_t current_term = MinimumOpId().term();
+    int64_t current_term = OpId::Min().term;
 
     // The size of the majority for the queue.
-    int majority_size_ = kUninitializedMajoritySize;
+    ssize_t majority_size_ = kUninitializedMajoritySize;
 
     State state = State::kQueueConstructed;
 
@@ -451,7 +446,7 @@ class PeerMessageQueue {
     Mode mode = Mode::NON_LEADER;
 
     // The currently-active raft config. Only set if in LEADER mode.
-    gscoped_ptr<RaftConfigPB> active_config;
+    std::unique_ptr<RaftConfigPB> active_config;
 
     std::string ToString() const;
   };
@@ -524,10 +519,12 @@ class PeerMessageQueue {
   // Reads operations from the log cache in the range (after_index, to_index].
   //
   // If 'to_index' is 0, then all operations after 'after_index' will be included.
-  Result<ReadOpsResult> ReadFromLogCache(int64_t after_index,
-                                         int64_t to_index,
-                                         int max_batch_size,
-                                         const std::string& peer_uuid);
+  Result<ReadOpsResult> ReadFromLogCache(
+    int64_t after_index,
+    int64_t to_index,
+    size_t max_batch_size,
+    const std::string& peer_uuid,
+    const CoarseTimePoint deadline = CoarseTimePoint::max());
 
   std::vector<PeerMessageQueueObserver*> observers_;
 
@@ -620,6 +617,8 @@ class PeerMessageQueueObserver {
 
   virtual ~PeerMessageQueueObserver() {}
 };
+
+Status ValidateFlags();
 
 }  // namespace consensus
 }  // namespace yb

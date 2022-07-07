@@ -1,13 +1,16 @@
 --
 -- YB_TABLEGROUP Testsuite: Testing Statments for TABLEGROUP.
 --
+\h CREATE TABLEGROUP
+\h ALTER TABLEGROUP
+\h DROP TABLEGROUP
 
 --
--- pg_catalog alterations. Validate columns of pg_tablegroup and oids.
+-- pg_catalog alterations. Validate columns of pg_yb_tablegroup and oids.
 --
-\d pg_tablegroup
-SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_tablegroup', 'pg_tablegroup_oid_index');
-SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_tablegroup';
+\d pg_yb_tablegroup
+SELECT oid, relname, reltype, relnatts FROM pg_class WHERE relname IN ('pg_yb_tablegroup', 'pg_yb_tablegroup_oid_index');
+SELECT oid, typname, typrelid FROM pg_type WHERE typname LIKE 'pg_yb_tablegroup';
 --
 -- CREATE TABLEGROUP
 --
@@ -16,21 +19,28 @@ CREATE TABLEGROUP tgroup1;
 CREATE TABLEGROUP tgroup2;
 CREATE TABLEGROUP tgroup3;
 CREATE TABLE tgroup_test1 (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE INDEX ON tgroup_test1(col2);
 CREATE TABLE tgroup_test2 (col1 int, col2 int) TABLEGROUP tgroup1;
 CREATE TABLE nogroup (col1 int) NO TABLEGROUP; -- fail
-SELECT grpname FROM pg_tablegroup;
-SELECT relname
-    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s
-    WHERE opts LIKE '%tablegroup%';
-CREATE INDEX ON tgroup_test1(col2);
+CREATE TABLE nogroup (col1 int);
+-- TODO(alex): Create a table with a primary key
+SELECT grpname FROM pg_yb_tablegroup;
+
+SELECT cl.relname, tg.grpname
+    FROM pg_class cl, yb_table_properties(cl.oid) props
+    LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+    WHERE cl.oid >= 16384
+    ORDER BY cl.relname;
+
 CREATE TABLE tgroup_test3 (col1 int, col2 int) TABLEGROUP tgroup2;
--- Index opt out - should not show up in following SELECT
-CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP;
--- Index explicitly specify tablegroup other than that of indexed table
-CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;
-SELECT s.relname, pg_tablegroup.grpname
-    FROM (SELECT relname, unnest(reloptions) AS opts FROM pg_class) s, pg_tablegroup
-    WHERE opts LIKE CONCAT('%tablegroup=', CAST(pg_tablegroup.oid AS text), '%');
+CREATE INDEX ON tgroup_test3(col1);
+
+SELECT cl.relname, tg.grpname
+    FROM pg_class cl, yb_table_properties(cl.oid) props
+    LEFT JOIN pg_yb_tablegroup tg ON tg.oid = props.tablegroup_oid
+    WHERE cl.oid >= 16384
+    ORDER BY cl.relname;
+
 -- These should fail.
 CREATE TABLEGROUP tgroup1;
 CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP bad_tgroupname;
@@ -38,17 +48,54 @@ CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROU
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=true) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP bad_tgroupname;
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
+CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1; -- fail
+CREATE INDEX ON tgroup_test3(col1) NO TABLEGROUP; -- fail
 
 --
--- Usage of WITH clause or specifying tablegroup name for CREATE INDEX. These all fail.
+-- Cannot drop dependent objects
+--
+CREATE USER alice;
+CREATE USER bob;
+
+CREATE TABLEGROUP alice_grp OWNER alice;
+CREATE TABLEGROUP alice_grp_2 OWNER alice;
+CREATE TABLEGROUP alice_grp_3 OWNER alice;
+CREATE TABLE bob_table (a INT) TABLEGROUP alice_grp;
+CREATE TABLE bob_table_2 (a INT) TABLEGROUP alice_grp_2;
+CREATE TABLE bob_table_3 (a INT) TABLEGROUP alice_grp_3;
+CREATE TABLE alice_table (a INT);
+ALTER TABLE bob_table OWNER TO bob;
+ALTER TABLE bob_table_2 OWNER TO bob;
+ALTER TABLE bob_table_3 OWNER TO bob;
+ALTER TABLE alice_table OWNER TO alice;
+
+-- Fails
+\set VERBOSITY terse \\ -- suppress dependency details.
+DROP TABLEGROUP alice_grp;  -- because bob_table depends on alice_grp
+DROP USER alice;            -- because alice still owns tablegroups
+DROP OWNED BY alice;        -- because bob's tables depend on alice's tablegroups
+\set VERBOSITY default
+
+-- Succeeds
+DROP TABLEGROUP alice_grp_3 CASCADE;
+DROP TABLE bob_table;
+
+SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
+
+DROP TABLEGROUP alice_grp;    -- bob_table is gone, so alice_grp has no deps
+DROP OWNED BY alice CASCADE;  -- CASCADE means we are allowed to drop bob's tables. We'll notify about any entities that she doesn't own.
+DROP USER alice;              -- we dropped all of alice's entities, so we can remove her
+
+SELECT relname FROM pg_class WHERE relname LIKE 'bob%';
+
+--
+-- Usage of WITH tablegroup_oid reloption, this legacy syntax no longer works.
 --
 
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123);
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123, colocated=true);
-CREATE TABLE tgroup_with (col1 int, col2 int) WITH (tablegroup=123) TABLEGROUP tgroup1;
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123, colocated=true);
-CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
+CREATE TABLE tgroup_with1 (col1 int, col2 int) WITH (tablegroup_oid=16385);
+CREATE TABLE tgroup_with3 (col1 int, col2 int) WITH (tablegroup_oid=16385) TABLEGROUP tgroup1;
+
+CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup_oid=123);
 
 --
 -- Usage of SPLIT clause with TABLEGROUP should fail
@@ -56,8 +103,7 @@ CREATE INDEX ON tgroup_test1(col1) WITH (tablegroup=123) TABLEGROUP tgroup1;
 CREATE TABLE tgroup_split (col1 int PRIMARY KEY) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
 CREATE TABLE tgroup_split (col1 int, col2 text) SPLIT INTO 3 TABLETS TABLEGROUP tgroup1;
 CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30));
-CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30)) TABLEGROUP tgroup2;
-CREATE INDEX ON tgroup_test1(col1) SPLIT AT VALUES((10), (20), (30)) NO TABLEGROUP; -- should succeed
+
 --
 -- Test describes
 --
@@ -83,25 +129,47 @@ CREATE TABLEGROUP tgroup_describe1;
 CREATE TABLEGROUP tgroup_describe2;
 CREATE TABLE tgroup_describe (col1 int) TABLEGROUP tgroup_describe1;
 CREATE INDEX ON tgroup_describe(col1);
-CREATE INDEX ON tgroup_describe(col1) NO TABLEGROUP;
-CREATE INDEX ON tgroup_describe(col1) TABLEGROUP tgroup_describe2;
 \d tgroup_describe
 --
 -- DROP TABLEGROUP
 --
 
 DROP TABLEGROUP tgroup3;
--- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_tablegroup.
+-- These should fail. CREATE TABLE is to check that the row entry was deleted from pg_yb_tablegroup.
 CREATE TABLE tgroup_test5 (col1 int, col2 int) TABLEGROUP tgroup3;
+\set VERBOSITY terse \\ -- suppress dependency details.
 DROP TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
+\set VERBOSITY default
 DROP TABLEGROUP bad_tgroupname;
 -- This drop should work now.
 DROP TABLE tgroup_test1;
 DROP TABLE tgroup_test2;
-DROP INDEX tgroup_test3_col1_idx1;
 DROP TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
 -- Create a tablegroup with the name of a dropped tablegroup.
 CREATE TABLEGROUP tgroup1;
+DROP TABLEGROUP IF EXISTS tgroup1;
+CREATE TABLEGROUP tgroup1;
+
+--
+-- Assigning a tablespace to a tablegroup
+--
+CREATE TABLESPACE tblspc WITH (replica_placement='{"num_replicas": 1, "placement_blocks": [{"cloud":"cloud1","region":"datacenter1","zone":"rack1","min_num_replicas":1}]}');
+
+-- These should fail
+CREATE TABLEGROUP grp1 TABLESPACE nonexistentspc;
+CREATE TABLEGROUP grp2 TABLESPACE pg_global;
+-- These should succeeed
+CREATE TABLEGROUP grp3 TABLESPACE tblspc;
+
+SET default_tablespace = "tblspc";
+CREATE TABLEGROUP grp4;
+SET default_tablespace = '';
+
+CREATE TABLE tgroup_test6 (col1 int, col2 int) TABLEGROUP grp3;
+\dgr+
+\dgrt+
 
 --
 -- Interactions with colocated database.
@@ -109,7 +177,5 @@ CREATE TABLEGROUP tgroup1;
 
 CREATE DATABASE db_colocated colocated=true;
 \c db_colocated
--- These should fail.
+-- This should fail.
 CREATE TABLEGROUP tgroup1;
-CREATE TABLE tgroup_test (col1 int, col2 int) TABLEGROUP tgroup1;
-CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocated=false) TABLEGROUP tgroup1;

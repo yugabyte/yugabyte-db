@@ -79,12 +79,12 @@ get_ephemeral_drives() {
   declare -i exit_code=0
 
   # Take into account xvdb or sdb
-  root_drive=$(df | awk 'NR==2{print $1}')
+  root_drive=$(lsblk | awk '$7 == "/" {print $1}' | tr -cd '[:alnum:]/')
 
-  if [[ "$root_drive" == "/dev/xvda1" ]]; then
+  if [[ "$root_drive" =~ .*xvd.* ]]; then
     echo "Detected 'xvd' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='xvd'
-  elif [[ "$root_drive" == "/dev/nvme0n1p1" ]]; then
+  elif [[ "$root_drive" =~ .*nvme.* ]]; then
     echo "Detected 'nvme' drive naming scheme (root: $root_drive)"
     DRIVE_SCHEME='nvme'
   else
@@ -124,14 +124,16 @@ get_ephemeral_drives() {
     exit_code=1
   fi
 
-  for (( i=0; i<num_devices; ++i )); do
-    e=${ephemerals[i]}
+  declare -g eph_idx=0
+  # iterate through 1 more than num_devices to skip over root volume
+  for (( i=0; i<num_devices+1; ++i )); do
+    e=${ephemerals[eph_idx]}
     echo "Probing $e ..."
     # Some instance types (C5, M5 etc) have EBS volume mounted as nvme
     # In which case we want to make the device path to match that
     # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
     if [[ "$DRIVE_SCHEME" == "nvme" ]]; then
-        device_idx=$((i+1))
+        device_idx=$((i))
         device_path="/dev/nvme${device_idx}n1"
     else
         get_device_path "$e"
@@ -144,9 +146,11 @@ get_ephemeral_drives() {
     # Test that the device actually exists since you can request more ephemeral drives than are
     # available for an instance type and the meta-data API will happily tell you it exists when it
     # really does not.
-    if [ -b $device_path ]; then
+    # Also check to make sure we don't try to mount on root volume
+    if [ -b "$device_path" ] && ! grep -q "$device_path" <<< "/dev/${root_drive}"; then
       echo "Detected ephemeral disk: $device_path"
       set +e
+      # NOTE: This does not seem to return the actual file system
       file_system=$(/sbin/blkid -o value -s TYPE -c /dev/null $device_path)
       blkid_error=$?
       set -e
@@ -167,21 +171,36 @@ get_ephemeral_drives() {
         fi
       fi
 
-      mount_path=${mounts[$i]}
+      mount_path=${mounts[$eph_idx]}
 
       mkdir -p "$mount_path"
       chmod 777 "$mount_path"
 
+      device_uuid=$(/sbin/blkid -o value -s UUID -c /dev/null $device_path)
+      echo "device uuid = $device_uuid"
+
       if grep -q "#$mount_path" /etc/fstab; then
         echo "Entry for $mount_path in fstab already exists."
+        if egrep -q "^$device_path .*" /etc/fstab; then
+          echo "Device $device_path is mounted not using UUID, need to rewrite"
+          sed -i "s|^$device_path |UUID=$device_uuid |g" /etc/fstab
+        fi
       else
         echo "Adding entry for $mount_path to fstab..."
         echo "#$mount_path" >> /etc/fstab
-        echo "$device_path $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
-              >> /etc/fstab
+        # Mounting using UUID
+        echo "UUID=$device_uuid $mount_path $file_system defaults,noatime,nofail,allocsize=4m 0 2" \
+                        >> /etc/fstab
       fi
-
-      if mount | egrep -q "^$device_path on $mount_path "; then
+      echo "checking actual path"
+      already_mounted=false
+      # Sometimes link does not exist at the time of checking
+      if test -e "/dev/disk/by-uuid/$device_uuid"; then
+        actual_path=$(readlink -eq "/dev/disk/by-uuid/$device_uuid")
+        echo "actual_path is $actual_path"
+        mount | egrep -q "^$actual_path on $mount_path " && already_mounted=true
+      fi
+      if $already_mounted; then
         echo "$device_path is already mounted on $mount_path"
       else
         echo "Mounting $device_path on $mount_path"
@@ -192,8 +211,14 @@ get_ephemeral_drives() {
       # works. For now, updating the permissions again. On subsequent mount/umounts, this problem
       # does not happen. So we are covered on that front (e.g. as might happen during a reboot).
       chmod 777 $mount_path
+      # only increment ephemeral index when mount path is used for a device
+      eph_idx=$((eph_idx+1))
+      # break when we are done with all mounts
+      if [ "$eph_idx" = "$num_devices" ]; then
+        break
+      fi
     else
-      echo "Ephemeral disk $e, $device_path is not present. Skipping."
+      echo "Ephemeral disk $e, $device_path is not present or part of root $root_drive. Skipping."
     fi
   done
 

@@ -8,8 +8,9 @@ import ModalReducer from './reducer_modal';
 import GraphReducer from './reducer_graph';
 import TasksReducer from './reducer_tasks';
 import TablesReducer from './reducer_tables';
+import { FeatureFlag } from './feature';
 import { reducer as formReducer } from 'redux-form';
-
+import {SupportBundle} from "./support_bundle";
 const rootReducer = combineReducers({
   customer: CustomerReducer,
   cloud: CloudReducer,
@@ -18,7 +19,9 @@ const rootReducer = combineReducers({
   modal: ModalReducer,
   graph: GraphReducer,
   tasks: TasksReducer,
-  tables: TablesReducer
+  tables: TablesReducer,
+  featureFlags: FeatureFlag,
+  supportBundle: SupportBundle,
 });
 
 export default rootReducer;

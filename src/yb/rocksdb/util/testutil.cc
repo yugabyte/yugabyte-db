@@ -23,9 +23,6 @@
 
 #include "yb/rocksdb/util/testutil.h"
 
-#include <cctype>
-#include <sstream>
-
 #include <boost/functional/hash.hpp>
 
 #include <gtest/gtest.h>
@@ -187,7 +184,7 @@ void RandomInitDBOptions(DBOptions* db_opt, Random* rnd) {
   db_opt->create_if_missing = rnd->Uniform(2);
   db_opt->create_missing_column_families = rnd->Uniform(2);
   db_opt->disableDataSync = rnd->Uniform(2);
-  db_opt->enable_thread_tracking = rnd->Uniform(2);
+  db_opt->enable_thread_tracking = false;
   db_opt->error_if_exists = rnd->Uniform(2);
   db_opt->is_fd_close_on_exec = rnd->Uniform(2);
   db_opt->paranoid_checks = rnd->Uniform(2);
@@ -307,89 +304,38 @@ void RandomInitCFOptions(ColumnFamilyOptions* cf_opt, Random* rnd) {
 namespace {
 
 enum TestBoundaryUserValueTag {
-  TAG_INT_VALUE,
-  TAG_STRING_VALUE,
+  TAG_LEFT_VALUE = 10,
+  TAG_RIGHT_VALUE,
 };
 
-Slice EncodeValue(const int64_t &value) {
-  return Slice(reinterpret_cast<const char *>(&value), sizeof(value));
+// Left value - just left half of the key.
+Slice ExtractLeftValue(Slice key) {
+  return key.Prefix(key.size() / 2);
 }
 
-int CompareValues(int64_t lhs, int64_t rhs) {
-  return lhs > rhs ? 1 : (lhs == rhs ? 0 : -1);
+// Right value - just right half of the key.
+Slice ExtractRightValue(Slice key) {
+  return key.WithoutPrefix(key.size() / 2);
 }
 
-int CompareValues(const std::string& lhs, const std::string& rhs) {
-  return lhs.compare(rhs);
-}
-
-Slice EncodeValue(const std::string &value) {
-  return value;
-}
-
-template<UserBoundaryTag TAG, class T>
-class TestBoundaryUserValue : public UserBoundaryValue {
- public:
-  explicit TestBoundaryUserValue(T value) : value_(value) {}
-
-  UserBoundaryTag Tag() override { return TAG; }
-
-  Slice Encode() override {
-    return EncodeValue(value_);
+template <class Cmp>
+void UpdateValue(const Slice& new_value, Cmp cmp, UserBoundaryValue::Value* value) {
+  if (cmp(value->AsSlice().compare(new_value), 0)) {
+    value->Assign(new_value);
   }
-
-  int CompareTo(const UserBoundaryValue& rhs) override {
-    return CompareValues(value_, static_cast<const TestBoundaryUserValue<TAG, T>*>(&rhs)->value_);
-  }
-
-  const T& value() const {
-    return value_;
-  }
-
-  virtual ~TestBoundaryUserValue() {}
- private:
-  T value_;
-};
-
-// Use some weird logic to extract int value from key.
-int64_t ExtractIntValue(Slice key) {
-  return boost::hash_range(key.data(), key.end());
 }
-
-// Use some weird logic to extract string value from key.
-std::string ExtractStringValue(Slice key) {
-  std::string temp = key.ToBuffer();
-  std::reverse(temp.begin(), temp.end());
-  return temp;
-}
-
-typedef TestBoundaryUserValue<TAG_INT_VALUE, int64_t> IntValue;
-typedef TestBoundaryUserValue<TAG_STRING_VALUE, std::string> StringValue;
 
 class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
  public:
-  Status Decode(UserBoundaryTag tag, Slice data, UserBoundaryValuePtr *value) override {
-    switch (static_cast<TestBoundaryUserValueTag>(tag)) {
-      case TAG_INT_VALUE: {
-        if (sizeof(int64_t) != data.size()) {
-          return STATUS(Corruption, "Invalid size of data " + std::to_string(data.size()));
-        }
-
-        int64_t temp;
-        memcpy(&temp, data.data(), sizeof(temp));
-        *value = std::make_shared<IntValue>(temp);
-        break;
-      }
-      case TAG_STRING_VALUE:
-        *value = std::make_shared<StringValue>(data.ToBuffer());
-        break;
-    }
-    return Status::OK();
-  }
-
-  Status Extract(Slice user_key, Slice value, UserBoundaryValues *values) override {
-    values->push_back(MakeIntBoundaryValue(ExtractIntValue(user_key)));
-    values->push_back(MakeStringBoundaryValue(ExtractStringValue(user_key)));
+  Status Extract(Slice user_key, UserBoundaryValueRefs *values) override {
+    values->push_back(UserBoundaryValueRef {
+      .tag = TAG_LEFT_VALUE,
+      .value = ExtractLeftValue(user_key),
+    });
+    values->push_back(UserBoundaryValueRef {
+      .tag = TAG_RIGHT_VALUE,
+      .value = ExtractRightValue(user_key),
+    });
     return Status::OK();
   }
 
@@ -403,57 +349,67 @@ class TestBoundaryValuesExtractor: public BoundaryValuesExtractor {
 
 } // namespace
 
-int64_t GetBoundaryInt(const UserBoundaryValues& values) {
-  auto value = UserValueWithTag(values, TAG_INT_VALUE);
-  EXPECT_NE(value, nullptr);
-  auto* int_value = down_cast<IntValue*>(value.get());
-  return int_value ? int_value->value() : 0;
+std::string TestUserFrontier::ToString() const {
+  return YB_CLASS_TO_STRING(value);
 }
 
-std::string GetBoundaryString(const UserBoundaryValues& values) {
-  auto value = UserValueWithTag(values, TAG_STRING_VALUE);
+Slice GetBoundaryLeft(const UserBoundaryValues& values) {
+  auto value = TEST_UserValueWithTag(values, TAG_LEFT_VALUE);
   EXPECT_NE(value, nullptr);
-  auto* string_value = down_cast<StringValue*>(value.get());
-  return string_value ? string_value->value() : std::string();
+  return value->AsSlice();
+}
+
+Slice GetBoundaryRight(const UserBoundaryValues& values) {
+  auto value = TEST_UserValueWithTag(values, TAG_RIGHT_VALUE);
+  EXPECT_NE(value, nullptr);
+  return value->AsSlice();
 }
 
 std::shared_ptr<BoundaryValuesExtractor> MakeBoundaryValuesExtractor() {
   return std::make_shared<TestBoundaryValuesExtractor>();
 }
 
-UserBoundaryValuePtr MakeIntBoundaryValue(int64_t value) {
-  return std::make_shared<TestBoundaryUserValue<TAG_INT_VALUE, int64_t>>(value);
+UserBoundaryValue MakeLeftBoundaryValue(const Slice& value) {
+  return UserBoundaryValue(UserBoundaryValueRef {
+    .tag = TAG_LEFT_VALUE,
+    .value = value,
+  });
 }
 
-UserBoundaryValuePtr MakeStringBoundaryValue(std::string value) {
-  return std::make_shared<TestBoundaryUserValue<TAG_STRING_VALUE, std::string>>(std::move(value));
+UserBoundaryValue MakeRightBoundaryValue(const Slice& value) {
+  return UserBoundaryValue(UserBoundaryValueRef {
+    .tag = TAG_RIGHT_VALUE,
+    .value = value,
+  });
 }
 
 void BoundaryTestValues::Feed(Slice key) {
-  auto int_value = ExtractIntValue(key);
-  min_int = std::min(min_int, int_value);
-  max_int = std::max(max_int, int_value);
-  auto string_value = ExtractStringValue(key);
-  if (min_string.empty()) {
-    min_string = string_value;
-    max_string = std::move(string_value);
-  } else {
-    if (string_value < min_string) {
-      min_string = std::move(string_value);
-    } else if (string_value > max_string) {
-      max_string = std::move(string_value);
-    }
+  auto left_value = ExtractLeftValue(key);
+  auto right_value = ExtractRightValue(key);
+  if (min_right.empty()) {
+    min_left.Assign(left_value);
+    max_left.Assign(left_value);
+    min_right.Assign(right_value);
+    max_right.Assign(right_value);
+    return;
   }
+  UpdateValue(left_value, std::greater<>(), &min_left);
+  UpdateValue(left_value, std::less<>(), &max_left);
+  UpdateValue(right_value, std::greater<>(), &min_right);
+  UpdateValue(right_value, std::less<>(), &max_right);
+}
+
+void AssertSlicesEq(const Slice& lhs, const Slice& rhs) {
+  ASSERT_EQ(lhs.compare(rhs), 0) << lhs.ToDebugHexString() << " vs " << rhs.ToDebugHexString();
 }
 
 void BoundaryTestValues::Check(const FileBoundaryValues<InternalKey>& smallest,
                                const FileBoundaryValues<InternalKey>& largest) {
-  ASSERT_EQ(min_int, GetBoundaryInt(smallest.user_values));
-  ASSERT_EQ(max_int, GetBoundaryInt(largest.user_values));
-  ASSERT_EQ(min_string, GetBoundaryString(smallest.user_values));
-  ASSERT_EQ(max_string, GetBoundaryString(largest.user_values));
+  AssertSlicesEq(min_left.AsSlice(), GetBoundaryLeft(smallest.user_values));
+  AssertSlicesEq(max_left.AsSlice(), GetBoundaryLeft(largest.user_values));
+  AssertSlicesEq(min_right.AsSlice(), GetBoundaryRight(smallest.user_values));
+  AssertSlicesEq(max_right.AsSlice(), GetBoundaryRight(largest.user_values));
 }
-
 
 }  // namespace test
 }  // namespace rocksdb

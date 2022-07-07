@@ -3,17 +3,22 @@ title: Northwind sample database
 headerTitle: Northwind sample database
 linkTitle: Northwind
 description: Use the Northwind sample database to explore and learn YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: northwind
     parent: sample-data
-    weight: 2752
-isTocNested: true
-showAsideToc: true
+    weight: 200
+type: docs
 ---
 
-Download and install the PostgreSQL-compatible version of the Northwind dataset on the YugabyteDB distributed SQL database.
+Install the PostgreSQL-compatible version of the Northwind dataset on the YugabyteDB distributed SQL database.
+
+You can install and use the Northwind sample database using:
+
+- A local installation of YugabyteDB. To install YugabyteDB, refer to [Quick Start](../../quick-start/).
+- Using cloud shell or a client shell to connect to a cluster in Yugabyte Cloud. Refer to [Connect to clusters in Yugabyte Cloud](../../yugabyte-cloud/cloud-connect/). To get started with Yugabyte Cloud, refer to [Quick Start](../../yugabyte-cloud/cloud-quickstart/).
+
+In either case, you use the YugabyteDB SQL shell ([ysqlsh](../../admin/ysqlsh/)) CLI to interact with YugabyteDB using [YSQL](../../api/ysql/).
 
 ## About the Northwind sample database
 
@@ -34,34 +39,24 @@ The Northwind sample database includes 14 tables and the table relationships are
 
 ## Install the Northwind sample database
 
-Follow the steps here to download and install the Northwind sample database.
-
-### Before you begin
-
-To use the Northwind sample database, you must have installed and configured YugabyteDB. To get up and running quickly, see [Quick Start](/stable/quick-start/).
-
-### 1. Download the SQL scripts
-
-You can download the Northwind database files, which are compatible with YugabyteDB, from the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). Here are the two files you’ll need.
+The Northwind SQL scripts reside in the `share` folder of your YugabyteDB or client shell installation. They can also be found in the [`sample` directory of the YugabyteDB GitHub repository](https://github.com/yugabyte/yugabyte-db/tree/master/sample). The following files will be used for this exercise:
 
 - [northwind_ddl.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_ddl.sql) — Creates tables and other database objects
 - [northwind_data.sql](https://raw.githubusercontent.com/yugabyte/yugabyte-db/master/sample/northwind_data.sql) — Loads the sample data
 
-### 2. Open the YSQL shell
+Follow the steps here to install the Northwind sample database.
 
-To open the YSQL shell, run the `ysqlsh` command from the YugabyteDB root directory.
+### Open the YSQL shell
+
+If you are using a local installation of YugabyteDB, run the `ysqlsh` command from the `yugabyte` root directory.
 
 ```sh
 $ ./bin/ysqlsh
 ```
 
-```
-ysqlsh (11.2)
-Type "help" for help.
-yugabyte=#
-```
+If you are connecting to Yugabyte Cloud, open the [ysqlsh cloud shell](../../yugabyte-cloud/cloud-connect/connect-cloud-shell/), or [run the YSQL connection string](../../yugabyte-cloud/cloud-connect/connect-client-shell/#ysqlsh) for your cluster from the `yugabyte-client` bin directory.
 
-### 3. Create the Northwind database
+### Create the Northwind database
 
 To create the Northwind database, run the following `CREATE DATABASE` statement.
 
@@ -69,13 +64,11 @@ To create the Northwind database, run the following `CREATE DATABASE` statement.
 CREATE DATABASE northwind;
 ```
 
-Confirm that you have the Northwind database by listing out the databases on your cluster.
+Confirm that you have the Northwind database by listing the databases on your cluster.
 
 ```plpgsql
 yugabyte=# \l
 ```
-
-![Northwind list of databases](/images/sample-data/northwind/northwind-list-of-dbs.png)
 
 Connect to the Northwind database.
 
@@ -83,12 +76,7 @@ Connect to the Northwind database.
 yugabyte=# \c northwind
 ```
 
-```
-You are now connected to database "northwind" as user "yugabyte".
-northwind=#
-```
-
-### 4. Build the tables and objects
+### Build the tables and objects
 
 To build the tables and database objects, execute the `northwind_ddl.sql` SQL script.
 
@@ -102,9 +90,28 @@ You can verify that all 14 tables have been created by running the `\d` command.
 northwind=# \d
 ```
 
-![Northwind list of relations](/images/sample-data/northwind/northwind-list-of-relations.png)
+```output
+                List of relations
+ Schema |          Name          | Type  | Owner
+--------+------------------------+-------+-------
+ public | categories             | table | admin
+ public | customer_customer_demo | table | admin
+ public | customer_demographics  | table | admin
+ public | customers              | table | admin
+ public | employee_territories   | table | admin
+ public | employees              | table | admin
+ public | order_details          | table | admin
+ public | orders                 | table | admin
+ public | products               | table | admin
+ public | region                 | table | admin
+ public | shippers               | table | admin
+ public | suppliers              | table | admin
+ public | territories            | table | admin
+ public | us_states              | table | admin
+(14 rows)
+```
 
-### 5. Load the sample data
+### Load the sample data
 
 To load the `northwind` database with sample data, run the `\i` command to execute commands in the `northwind_data.sql` file.
 
@@ -116,6 +123,14 @@ To verify that you have some data to work with, you can run a simple SELECT stat
 
 ```plpgsql
 northwind=# SELECT * FROM customers LIMIT 2;
+```
+
+```output
+ customer_id |       company_name        | contact_name |    contact_title    |      address       |   city    | region | postal_code | country |     phone     |     fax
+-------------+---------------------------+--------------+---------------------+--------------------+-----------+--------+-------------+---------+---------------+-------------
+ FAMIA       | Familia Arquibaldo        | Aria Cruz    | Marketing Assistant | Rua Orós, 92       | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857 |
+ VINET       | Vins et alcools Chevalier | Paul Henriot | Accounting Manager  | 59 rue de l'Abbaye | Reims     |        | 51100       | France  | 26.47.15.10   | 26.47.15.11
+(2 rows)
 ```
 
 ## Explore the Northwind database

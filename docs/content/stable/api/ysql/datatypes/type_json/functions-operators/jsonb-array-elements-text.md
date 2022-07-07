@@ -3,14 +3,12 @@ title: jsonb_array_elements_text() and json_array_elements_text()
 headerTitle: jsonb_array_elements_text() and json_array_elements_text()
 linkTitle: jsonb_array_elements_text()
 description: Transform JSON values of an JSON array into a SQL table of text values using jsonb_array_elements_text() and json_array_elements_text().
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-array-elements-text
     parent: json-functions-operators
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Transform the JSON values of JSON _array_ into a SQL table of (i.e., `SETOF`) `text` values.
@@ -26,7 +24,7 @@ return value:      SETOF text
 
 This example uses the same JSON _array_ input that was used to illustrate `jsonb_array_elements()`.
 
-Notice that the JSON value _null_ becomes a genuine SQL `NULL`. However, SQL array comparison uses `IS NOT DISTINCT FROM` semantics, and not the semantics that the comparison of scalars uses. So the simple `ASSERT` that `elements = expected_elements` is `TRUE` is sufficient. See the section [Operators for comparing two arrays](../../..//type_array/functions-operators/comparison/).
+Notice that the JSON value _null_ becomes a genuine SQL `NULL`. However, SQL array comparison uses `IS NOT DISTINCT FROM` semantics, and not the semantics that the comparison of scalars uses. So the simple `ASSERT` that `elements = expected_elements` is `TRUE` is sufficient. See the section [Operators for comparing two arrays](../../../type_array/functions-operators/comparison/).
 
 ```plpgsql
 do $body$
@@ -110,7 +108,7 @@ from jsonb_array_elements_text(
 It produces this output in `ysqlsh`:
 
 ```
- value 
+ value
 -------
  true
  false

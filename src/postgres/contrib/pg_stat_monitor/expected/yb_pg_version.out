@@ -1,0 +1,8 @@
+CREATE EXTENSION pg_stat_monitor;
+SELECT pg_stat_monitor_version();
+ pg_stat_monitor_version 
+-------------------------
+ 0.9.0
+(1 row)
+
+DROP EXTENSION pg_stat_monitor;

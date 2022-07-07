@@ -3,16 +3,19 @@
 //
 // Treenode definitions for CREATE INDEX statements.
 //--------------------------------------------------------------------------------------------------
-
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
 
-#include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
-
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/schema.h"
 #include "yb/gutil/strings/ascii_ctype.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
 
-DEFINE_bool(cql_raise_index_where_clause_error, true,
+DEFINE_bool(cql_raise_index_where_clause_error, false,
             "Raise unsupported error if where clause is specified for create index");
 
 namespace yb {
@@ -27,21 +30,26 @@ using client::YBTableName;
 //--------------------------------------------------------------------------------------------------
 
 PTCreateIndex::PTCreateIndex(MemoryContext *memctx,
-                             YBLocation::SharedPtr loc,
-                             const bool is_unique,
+                             YBLocationPtr loc,
+                             bool is_backfill_deferred,
+                             bool is_unique,
                              const MCSharedPtr<MCString>& name,
-                             const PTQualifiedName::SharedPtr& table_name,
-                             const PTListNode::SharedPtr& columns,
+                             const PTQualifiedNamePtr& table_name,
+                             const PTListNodePtr& columns,
                              const bool create_if_not_exists,
-                             const PTTablePropertyListNode::SharedPtr& ordering_list,
-                             const PTListNode::SharedPtr& covering)
+                             const PTTablePropertyListNodePtr& ordering_list,
+                             const PTListNodePtr& covering,
+                             const PTExpr::SharedPtr& where_clause)
     : PTCreateTable(memctx, loc, table_name, columns, create_if_not_exists, ordering_list),
       is_unique_(is_unique),
+      is_backfill_deferred_(is_backfill_deferred),
       name_(name),
       covering_(covering),
       is_local_(false),
       column_descs_(memctx),
-      auto_includes_(memctx) {
+      auto_includes_(memctx),
+      where_clause_(where_clause),
+      where_clause_column_refs_(nullptr) {
 }
 
 PTCreateIndex::~PTCreateIndex() {
@@ -49,17 +57,17 @@ PTCreateIndex::~PTCreateIndex() {
 
 namespace {
 
-CHECKED_STATUS SetupCoveringColumn(PTIndexColumn *node, SemContext *sem_context) {
+Status SetupCoveringColumn(PTIndexColumn *node, SemContext *sem_context) {
   RETURN_NOT_OK(node->SetupCoveringIndexColumn(sem_context));
   return Status::OK();
 }
 
 } // namespace
 
-CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
+Status PTCreateIndex::Analyze(SemContext *sem_context) {
   // Look up indexed table.
   bool is_system_ignored;
-  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, ObjectType::TABLE));
 
   RETURN_NOT_OK(sem_context->LookupTable(relation_->ToTableName(), relation_->loc(),
                                          true /* write_table */,
@@ -109,7 +117,7 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
   // to the primary key of the index table to make the non-unique values unique. For unique index,
   // they should be added as non-primary-key columns.
   const YBSchema& schema = table_->schema();
-  for (int idx = 0; idx < schema.num_key_columns(); idx++) {
+  for (size_t idx = 0; idx < schema.num_key_columns(); idx++) {
     // Not adding key-column schema.columns(idx) to the INDEX metadata if it is already referred to
     // by one of the index-columns.
     const MCString key_name(schema.Column(idx).name().c_str(), sem_context->PTempMem());
@@ -188,6 +196,16 @@ CHECKED_STATUS PTCreateIndex::Analyze(SemContext *sem_context) {
     is_local_ = false;
   }
 
+  // If partial index (i.e., where clause predicate present in CREATE INDEX), analyze the index's
+  // predicate.
+  if (where_clause_.get()) {
+    IdxPredicateState idx_predicate_state(sem_context->PTempMem(), opcode());
+    SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
+    sem_state.SetIdxPredicateState(&idx_predicate_state);
+    RETURN_NOT_OK(where_clause_->Analyze(sem_context));
+    where_clause_column_refs_ = idx_predicate_state.column_refs();
+  }
+
   // Restore the context value as we are done with this table.
   sem_context->set_current_processing_id(cached_entry);
   if (VLOG_IS_ON(3)) {
@@ -217,6 +235,16 @@ Status PTCreateIndex::ToTableProperties(TableProperties *table_properties) const
 
 const std::string& PTCreateIndex::indexed_table_id() const {
   return table_->id();
+}
+
+client::YBTableName PTCreateIndex::yb_table_name() const {
+  return client::YBTableName(YQL_DATABASE_CQL,
+                             PTCreateTable::yb_table_name().namespace_name().c_str(),
+                             name_->c_str());
+}
+
+client::YBTableName PTCreateIndex::indexed_table_name() const {
+  return PTCreateTable::yb_table_name();
 }
 
 }  // namespace ql

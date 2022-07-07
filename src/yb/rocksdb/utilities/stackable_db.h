@@ -23,6 +23,8 @@
 #include <string>
 #include "yb/rocksdb/db.h"
 
+#include "yb/util/result.h"
+
 #ifdef _WIN32
 // Windows API macro interference
 #undef DeleteFile
@@ -278,7 +280,7 @@ class StackableDB : public DB {
     return db_->GetFlushedFrontier();
   }
 
-  CHECKED_STATUS ModifyFlushedFrontier(
+  Status ModifyFlushedFrontier(
       UserFrontierPtr values,
       FrontierModificationMode mode) override {
     return db_->ModifyFlushedFrontier(std::move(values), mode);
@@ -292,6 +294,12 @@ class StackableDB : public DB {
       ColumnFamilyHandle *column_family,
       ColumnFamilyMetaData* cf_meta) override {
     db_->GetColumnFamilyMetaData(column_family, cf_meta);
+  }
+
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) override {
+    db_->GetColumnFamiliesOptions(column_family_names, column_family_options);
   }
 
 #endif  // ROCKSDB_LITE
@@ -319,9 +327,9 @@ class StackableDB : public DB {
 
   using DB::SetOptions;
   virtual Status SetOptions(ColumnFamilyHandle* column_family_handle,
-                            const std::unordered_map<std::string, std::string>&
-                                new_options) override {
-    return db_->SetOptions(column_family_handle, new_options);
+                            const std::unordered_map<std::string, std::string>& new_options,
+                            bool dump_options) override {
+    return db_->SetOptions(column_family_handle, new_options, dump_options);
   }
 
   using DB::GetPropertiesOfAllTables;

@@ -10,40 +10,49 @@
 
 package com.yugabyte.yw.common.kms.util;
 
-import io.ebean.annotation.EnumValue;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
-import com.yugabyte.yw.common.kms.services.*;
+import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
+import com.yugabyte.yw.common.kms.services.AwsEARService;
+import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
+import com.yugabyte.yw.common.kms.services.HashicorpEARService;
+import io.ebean.annotation.EnumValue;
 
 /**
- * A list of third party encryption key providers that YB currently supports and the
- * corresponding service impl and any already instantiated classes
- * (such that each impl is a singleton)
+ * A list of third party encryption key providers that YB currently supports and the corresponding
+ * service impl and any already instantiated classes (such that each impl is a singleton)
  */
 public enum KeyProvider {
-    @EnumValue("AWS")
-    AWS(AwsEARService.class),
+  @EnumValue("AWS")
+  AWS(AwsEARService.class),
 
-    @EnumValue("SMARTKEY")
-    SMARTKEY(SmartKeyEARService.class);
+  @EnumValue("SMARTKEY")
+  SMARTKEY(SmartKeyEARService.class),
 
-    private final Class<?> providerService;
+  @EnumValue("HASHICORP")
+  HASHICORP(HashicorpEARService.class);
 
-    private EncryptionAtRestService<?> instance;
+  private final Class<?> providerService;
 
-    public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>> Class<T> getProviderService() {
-        return (Class<T>) this.providerService;
-    }
+  private EncryptionAtRestService<?> instance;
 
-    public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>> T getServiceInstance() {
-      return (T) this.instance;
-    }
+  public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
+      Class<T> getProviderService() {
+    return (Class<T>) this.providerService;
+  }
 
-    public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>> void setServiceInstance(T instance) {
-        this.instance = instance;
-    }
+  public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
+      T getServiceInstance() {
+    return (T) this.instance;
+  }
 
-    <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>> KeyProvider(Class<T> providerService) {
-        this.providerService = providerService;
-        this.instance = null;
-    }
+  public <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>>
+      void setServiceInstance(T instance) {
+    this.instance = instance;
+  }
+
+  <T extends EncryptionAtRestService<? extends SupportedAlgorithmInterface>> KeyProvider(
+      Class<T> providerService) {
+    this.providerService = providerService;
+    this.instance = null;
+  }
 }

@@ -31,6 +31,7 @@ typedef enum UserAuth
 	uaPassword,
 	uaMD5,
 	uaSCRAM,
+	uaYbTserverKey,				/* For internal tserver-postgres connection */
 	uaGSS,
 	uaSSPI,
 	uaPAM,
@@ -62,6 +63,7 @@ typedef struct HbaLine
 {
 	int			linenumber;
 	char	   *rawline;
+	char       *maskedline;
 	ConnType	conntype;
 	List	   *databases;
 	List	   *roles;

@@ -14,9 +14,19 @@
 #ifndef YB_CLIENT_TRANSACTION_CLEANUP_H
 #define YB_CLIENT_TRANSACTION_CLEANUP_H
 
+#include <stdint.h>
+
+#include <functional>
 #include <memory>
+#include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
 
 #include <boost/container/stable_vector.hpp>
+#include <boost/range/iterator_range.hpp>
+#include <gflags/gflags_declare.h>
 
 #include "yb/client/client_fwd.h"
 
@@ -24,9 +34,11 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/transaction.h"
 
+#include "yb/gutil/integral_types.h"
+
 #include "yb/rpc/rpc_controller.h"
 
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/shared_lock.h"
 
 namespace yb {
 namespace client {

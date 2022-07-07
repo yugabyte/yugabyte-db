@@ -16,9 +16,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/parse_tree.h"
-#include "yb/yql/cql/ql/ptree/pt_transaction.h"
+
+#include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/sem_state.h"
 
 namespace yb {
 namespace ql {
@@ -47,11 +49,15 @@ ParseTree::~ParseTree() {
   root_ = nullptr;
 }
 
-CHECKED_STATUS ParseTree::Analyze(SemContext *sem_context) {
+Status ParseTree::Analyze(SemContext *sem_context) {
   if (root_ == nullptr) {
     LOG(INFO) << "Parse tree is NULL";
     return Status::OK();
   }
+
+  // Each analysis process needs to have state variables.
+  // Setup a base sem_state variable before traversing the statement tree.
+  SemState sem_state(sem_context);
 
   DCHECK_EQ(root_->opcode(), TreeNodeOpcode::kPTListNode) << "statement list expected";
   const auto lnode = std::static_pointer_cast<PTListNode>(root_);

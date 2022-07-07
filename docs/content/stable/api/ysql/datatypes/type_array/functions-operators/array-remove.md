@@ -3,13 +3,11 @@ title: array_remove()
 linkTitle: array_remove()
 headerTitle: array_remove()
 description: array_remove()
-block_indexing: true
 menu:
   stable:
     identifier: array-remove
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Return a new array where _every_ occurrence of the specified value has been removed from the specified input array.
@@ -37,11 +35,11 @@ select arr as "new value of arr" from t where k = 1;
 ```
 This is the result of the two queries:
 ```
- old value of arr 
+ old value of arr
 ------------------
  {1,2,2,2,5,6}
 
- new value of arr 
+ new value of arr
 ------------------
  {1,5,6}
 ```

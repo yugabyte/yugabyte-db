@@ -3,6 +3,12 @@
 --
 BEGIN;
 CREATE INDEX ON airports (type);
+NOTICE:  making create index for table "airports" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
 CREATE INDEX ON airports (name);
-COPY airports FROM '@abs_builddir@/data/airport-codes.csv' CSV HEADER;
+NOTICE:  making create index for table "airports" nonconcurrent
+DETAIL:  Create index in transaction block cannot be concurrent.
+HINT:  Consider running it outside of a transaction block. See https://github.com/yugabyte/yugabyte-db/issues/6240.
+COPY airports FROM '@abs_srcdir@/data/airport-codes.csv' CSV HEADER;
 COMMIT;

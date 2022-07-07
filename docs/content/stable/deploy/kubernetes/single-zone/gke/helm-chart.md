@@ -3,37 +3,30 @@ title: Use Helm Chart to deploy on Google Kubernetes Engine (GKE)
 headerTitle: Google Kubernetes Engine (GKE)
 linkTitle: Google Kubernetes Engine (GKE)
 description: Use Helm Chart to deploy a single-zone YugabyteDB cluster on Google Kubernetes Engine (GKE).
-block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz
     name: Google Kubernetes Engine
     identifier: k8s-gke-1
     weight: 623
-aliases:
-  - /stable/deploy/kubernetes/gke/
-  - /stable/deploy/kubernetes/gke/helm-chart/
-  - /stable/deploy/kubernetes/single-zone/gke/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/helm-chart" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
-    <a href="/stable/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (remote disk)
     </a>
   </li>
    <li >
-    <a href="/stable/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
+    <a href="/preview/deploy/kubernetes/single-zone/gke/statefulset-yaml-local-ssd" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       YAML (local disk)
     </a>
@@ -46,9 +39,9 @@ You must have a GKE cluster that has Helm configured. If you have not installed 
 
 The YugabyteDB Helm Chart has been tested with the following software versions:
 
-- GKE running Kubernetes 1.14+ with nodes such that a total of 12 CPU cores and 45 GB RAM can be allocated to YugabyteDB. This can be three nodes with 4 CPU core and 15 GB RAM allocated to YugabyteDB. `n1-standard-8` is the minimum instance type that meets these criteria.
-- Helm 3.0 or later
-- Docker image for YugabyteDB (`yugabytedb/yugabyte`) 2.1.0 or later
+- GKE running Kubernetes 1.18 (or later). The helm chart you use to install YugabyteDB creates 3 master servers and 3 tablet servers, each with 2 CPU cores, for a total of 12 CPU cores. This means you need a Kubernetes cluster with more than 12 CPU cores. If the cluster contains 3 nodes then each node should have more than 4 cores.
+
+- Helm 3.4 or later
 - For optimal performance, ensure you set the appropriate [system limits using `ulimit`](../../../../manual-deployment/system-config/#ulimits) on each node in your Kubernetes cluster.
 
 The following steps show how to meet these prerequisites.
@@ -71,11 +64,8 @@ $ gcloud config set compute/zone us-west1-b
 
 - Install `kubectl`
 
-After installing Cloud SDK, install the `kubectl` command line tool by running the following command.
+Refer to kubectl installation instructions for your specific [operating system](https://kubernetes.io/docs/tasks/tools/).
 
-```sh
-$ gcloud components install kubectl
-```
 
 Note that GKE is usually 2 or 3 major releases behind the upstream/OSS Kubernetes release. This means you have to make sure that you have the latest kubectl version that is compatible across different Kubernetes distributions if that's what you intend to.
 
@@ -89,7 +79,7 @@ $ helm version
 
 You should see something similar to the following output. Note that the `tiller` server side component has been removed in Helm 3.
 
-```
+```output
 version.BuildInfo{Version:"v3.0.3", GitCommit:"ac925eb7279f4a6955df663a0128044a8a6b7593", GitTreeState:"clean", GoVersion:"go1.13.6"}
 ```
 
@@ -124,14 +114,14 @@ $ helm repo update
 ### Validate the Chart version
 
 ```sh
-$ helm search repo yugabytedb/yugabyte
+$ helm search repo yugabytedb/yugabyte --version {{<yb-version version="stable" format="short">}}
 ```
 
 **Output:**
 
-```sh
-NAME                CHART VERSION APP VERSION DESCRIPTION                                       
-yugabytedb/yugabyte 2.1.4         2.1.4.0-b5  YugabyteDB is the high-performance distributed ...
+```output
+NAME                 CHART VERSION  APP VERSION   DESCRIPTION
+yugabytedb/yugabyte  {{<yb-version version="stable" format="short">}}          {{<yb-version version="stable" format="build">}}  YugabyteDB is the high-performance distributed ...
 ```
 
 ### Install YugabyteDB
@@ -140,7 +130,7 @@ Run the following commands to create a namespace and then install Yugabyte.
 
 ```sh
 $ kubectl create namespace yb-demo
-$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --wait
+$ helm install yb-demo yugabytedb/yugabyte --namespace yb-demo --version {{<yb-version version="stable" format="short">}} --wait
 ```
 
 ## Check the cluster status
@@ -153,7 +143,7 @@ $ helm status yb-demo -n yb-demo
 
 **Output**:
 
-```sh
+```output
 NAME: yb-demo
 LAST DEPLOYED: Thu Feb 13 13:29:13 2020
 NAMESPACE: yb-demo
@@ -189,7 +179,7 @@ Check the pods.
 $ kubectl get pods --namespace yb-demo
 ```
 
-```
+```output
 NAME           READY     STATUS    RESTARTS   AGE
 yb-master-0    1/1       Running   0          4m
 yb-master-1    1/1       Running   0          4m
@@ -205,7 +195,7 @@ Check the services.
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP    PORT(S)                                        AGE
 yb-master-ui         LoadBalancer   10.109.39.242   35.225.153.213 7000:31920/TCP                                 10s
 yb-masters           ClusterIP      None            <none>         7100/TCP,7000/TCP                              10s
@@ -221,9 +211,9 @@ $ helm history yb-demo -n yb-demo
 
 **Output:**
 
-```sh
-REVISION  UPDATED                   STATUS    CHART           APP VERSION DESCRIPTION     
-1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-2.1.4  2.1.4.0-b5  Install complete
+```output
+REVISION  UPDATED                   STATUS    CHART           APP VERSION   DESCRIPTION
+1         Tue Apr 21 17:29:01 2020  deployed  yugabyte-{{<yb-version version="stable" format="short">}}  {{<yb-version version="stable" format="build">}}  Install complete
 ```
 
 ## Connect using YugabyteDB shells
@@ -248,7 +238,7 @@ To connect an external program, get the load balancer `EXTERNAL-IP` IP address o
 $ kubectl get services --namespace yb-demo
 ```
 
-```
+```output
 NAME                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                                        AGE
 ...
 yb-tserver-service   LoadBalancer   10.98.36.163    35.225.153.214     6379:30929/TCP,9042:30975/TCP,5433:30048/TCP   10s
@@ -264,12 +254,14 @@ You can configure the cluster using the same commands and options as [Open Sourc
 By default, the YugabyteDB Helm Chart will expose the client API endpoints as well as master UI endpoint using two LoadBalancers. If you want to expose the client APIs using independent LoadBalancers, you can do the following.
 
 ```sh
-helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --wait
+$ helm install yb-demo yugabytedb/yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --version {{<yb-version version="stable" format="short">}} --wait
 ```
 
 You can also bring up an internal LoadBalancer (for either YB-Master or YB-TServer services), if required. Just specify the [annotation](https://kubernetes.io/docs/concepts/services-networking/service/#internal-load-balancer) required for your cloud provider. The following command brings up an internal LoadBalancer for the YB-TServer service in Google Cloud Platform.
 
 ```sh
 $ helm install yugabyte -f https://raw.githubusercontent.com/yugabyte/charts/master/stable/yugabyte/expose-all.yaml --namespace yb-demo --name yb-demo \
-  --set annotations.tserver.loadbalancer."cloud\.google\.com/load-balancer-type"=Internal --wait
+  --set annotations.tserver.loadbalancer."cloud\.google\.com/load-balancer-type"=Internal \
+  --version {{<yb-version version="stable" format="short">}} \
+  --wait
 ```

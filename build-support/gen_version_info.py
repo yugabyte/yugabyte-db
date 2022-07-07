@@ -94,7 +94,6 @@ def main():
     hostname = socket.gethostname()
     build_time = "%s %s" % (strftime("%d %b %Y %H:%M:%S", localtime()), time.tzname[0])
 
-    logging.info('Get user name')
     try:
         username = os.getlogin()
     except OSError as ex:
@@ -144,10 +143,10 @@ def main():
     # Add the Jenkins build ID
     build_id = os.getenv("BUILD_ID", "")
     # This will be replaced by the release process.
-    build_number = "PRE_RELEASE"
+    build_number = os.getenv("YB_RELEASE_BUILD_NUMBER") or "PRE_RELEASE"
 
     d = os.path.dirname(output_path)
-    if not os.path.exists(d):
+    if d != "" and not os.path.exists(d):
         os.makedirs(d)
     log_file_path = os.path.join(d, os.path.splitext(os.path.basename(__file__))[0] + '.log')
     file_log_handler = logging.FileHandler(log_file_path)

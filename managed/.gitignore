@@ -1,9 +1,10 @@
+/bin
 build
 logs
 target
-devops/python_virtual_env
 .idea
 .idea_modules
+jacoco.exec
 /.classpath
 /.project
 /.settings
@@ -33,12 +34,17 @@ react/npm-debug.log
 
 conf/*
 src/main/public/*
+src/main/resources/version_metadata.json
 *.pyc
 docker/yugaware/*.yml
 
 ui/.env
 ui/public/map/
+ui/coverage/
+ui/junit.xml
 
 .session.vim*
 
 src/public/*
+
+client/*/generated

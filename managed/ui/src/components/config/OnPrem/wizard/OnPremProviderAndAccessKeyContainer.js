@@ -6,6 +6,7 @@ import { OnPremProviderAndAccessKey } from '../../../config';
 import { setOnPremConfigData } from '../../../../actions/cloud';
 import { isDefinedNotNull, isNonEmptyObject, isNonEmptyArray } from '../../../../utils/ObjectUtils';
 import _ from 'lodash';
+import { NTP_TYPES } from '../../PublicCloud/views/NTPConfig';
 
 const DEFAULT_NODE_EXPORTER_PORT = 9300;
 const DEFAULT_NODE_EXPORTER_USER = 'prometheus';
@@ -23,8 +24,7 @@ const mapDispatchToProps = (dispatch, ownProps) => {
           provider: {
             name: formData.name,
             config: {
-              YB_HOME_DIR: formData.homeDir,
-              USE_HOSTNAME: _.get(formData, 'useHostnames', false).toString()
+              YB_HOME_DIR: formData.homeDir
             }
           },
           key: {
@@ -38,7 +38,9 @@ const mapDispatchToProps = (dispatch, ownProps) => {
             installNodeExporter: installNodeExporter,
             nodeExporterPort: _.get(formData, 'nodeExporterPort', DEFAULT_NODE_EXPORTER_PORT),
             nodeExporterUser: _.get(formData, 'nodeExporterUser', DEFAULT_NODE_EXPORTER_USER)
-          }
+          },
+          ntpServers: formData.ntpServers,
+          setUpChrony: formData.setUpChrony
         };
 
         dispatch(setOnPremConfigData(formSubmitVals));
@@ -50,18 +52,22 @@ const mapDispatchToProps = (dispatch, ownProps) => {
 
 const mapStateToProps = (state, ownProps) => {
   let initialFormValues = {
-    sshPort: 54422,
+    sshPort: 22,
     airGapInstall: false,
-    useHostnames: false,
     installNodeExporter: true,
     nodeExporterUser: DEFAULT_NODE_EXPORTER_USER,
     nodeExporterPort: DEFAULT_NODE_EXPORTER_PORT,
-    skipProvisioning: false
+    skipProvisioning: false,
+    ntp_option: NTP_TYPES.MANUAL,
+    ntpServers: [],
+    setUpChrony: true
   };
   const {
-    cloud: { onPremJsonFormData }
+    cloud: { onPremJsonFormData, accessKeys }
   } = state;
   if (ownProps.isEditProvider && isNonEmptyObject(onPremJsonFormData)) {
+    
+    const access_keys_of_provider = accessKeys?.data.find((ak) => ak.idKey?.providerUUID === onPremJsonFormData.provider.uuid );
     initialFormValues = {
       name: onPremJsonFormData.provider.name,
       keyCode: onPremJsonFormData.key.code,
@@ -70,7 +76,6 @@ const mapStateToProps = (state, ownProps) => {
       sshPort: onPremJsonFormData.key.sshPort,
       airGapInstall: onPremJsonFormData.key.airGapInstall,
       skipProvisioning: onPremJsonFormData.key.skipProvisioning,
-      useHostnames: _.get(onPremJsonFormData, 'provider.config.USE_HOSTNAME', 'false') === 'true',
       installNodeExporter: onPremJsonFormData.key.installNodeExporter,
       nodeExporterUser: onPremJsonFormData.key.nodeExporterUser,
       nodeExporterPort: onPremJsonFormData.key.nodeExporterPort,
@@ -84,14 +89,13 @@ const mapStateToProps = (state, ownProps) => {
             ? item.volumeDetailsList[0].volumeSizeGB
             : 0,
           mountPath: isNonEmptyArray(item.volumeDetailsList)
-            ? item.volumeDetailsList
-              .map(volItem => volItem.mountPath)
-              .join(', ')
+            ? item.volumeDetailsList.map((volItem) => volItem.mountPath).join(', ')
             : '/'
         };
       }),
       regionsZonesList: onPremJsonFormData.regions.map(function (regionZoneItem) {
         return {
+          uuid: regionZoneItem.uuid,
           code: regionZoneItem.code,
           location: Number(regionZoneItem.latitude) + ', ' + Number(regionZoneItem.longitude),
           zones: regionZoneItem.zones
@@ -100,7 +104,10 @@ const mapStateToProps = (state, ownProps) => {
             })
             .join(', ')
         };
-      })
+      }),
+      ntp_option: access_keys_of_provider?.keyInfo?.setUpChrony ? NTP_TYPES.MANUAL : NTP_TYPES.NO_NTP,
+      ntpServers: access_keys_of_provider?.keyInfo?.ntpServers ?? [],
+      setUpChrony: access_keys_of_provider?.keyInfo?.setUpChrony
     };
   }
   return {
@@ -121,6 +128,9 @@ const validate = (values) => {
   if (!isDefinedNotNull(values.privateKeyContent)) {
     errors.privateKeyContent = 'Required';
   }
+  if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
+    errors.ntpServers = 'NTP servers cannot be empty'
+  }
   return errors;
 };
 
@@ -133,7 +143,6 @@ const onPremProviderConfigForm = reduxForm({
     'privateKeyContent',
     'airGapInstall',
     'skipProvisioning',
-    'useHostnames',
     'homeDir',
     'installNodeExporter',
     'nodeExporterUser',

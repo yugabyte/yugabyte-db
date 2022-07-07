@@ -30,6 +30,9 @@
 # under the License.
 #
 
+set(YB_PCH_PREFIX util)
+set(YB_PCH_DEP_LIBS cds gmock gutil icui18n icuuc libev protoc)
+
 #######################################
 # protoc-gen-insertions
 #######################################
@@ -83,28 +86,17 @@ ADD_YB_LIBRARY(version_info_proto
 # op_id_proto
 #######################################
 
-PROTOBUF_GENERATE_CPP(
+YRPC_GENERATE(
   OP_ID_PROTO_SRCS OP_ID_PROTO_HDRS OP_ID_PROTO_TGTS
+  MESSAGES TRUE
+  SERVICE FALSE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES opid.proto)
 ADD_YB_LIBRARY(opid_proto
   SRCS ${OP_ID_PROTO_SRCS}
-  DEPS protobuf
+  DEPS protobuf yb_util yrpc
   NONLINK_DEPS ${OP_ID_PROTO_TGTS})
-
-#########################################
-# encryption_proto
-#########################################
-PROTOBUF_GENERATE_CPP(
-  ENCRYPTION_PROTO_SRCS ENCRYPTION_PROTO_HDRS ENCRYPTION_PROTO_TGTS
-  SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
-  BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
-  PROTO_FILES encryption.proto)
-ADD_YB_LIBRARY(encryption_proto
-  SRCS ${ENCRYPTION_PROTO_SRCS}
-  DEPS protobuf
-  NONLINK_DEPS ${ENCRYPTION_PROTO_TGTS})
 
 ############################################################
 # Version stamp
@@ -138,14 +130,15 @@ endif()
 set(UTIL_SRCS
   ${SEMAPHORE_CC}
   allocation_tracker.cc
+  async_task_util.cc
   atomic.cc
+  background_task.cc
   bitmap.cc
   bitmap.cc
   bloom_filter.cc
   bytes_formatter.cc
   cache_metrics.cc
   capabilities.cc
-  ctr_cipher_stream.cc
   coding.cc
   concurrent_value.cc
   condition_variable.cc
@@ -156,15 +149,14 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
   debug/trace_event_impl_constants.cc
   debug/trace_event_synthetic_delay.cc
   decimal.cc
   delayer.cc
-  encrypted_file.cc
-  encrypted_file_factory.cc
-  encryption_util.cc
+  enums.cc
   env.cc
   env_posix.cc
   env_util.cc
@@ -180,7 +172,6 @@ set(UTIL_SRCS
   flag_tags.cc
   flags.cc
   hdr_histogram.cc
-  header_manager_impl.cc
   hexdump.cc
   init.cc
   jsonreader.cc
@@ -195,7 +186,9 @@ set(UTIL_SRCS
   memory/arena.cc
   memory/mc_types.cc
   memory/memory.cc
+  metric_entity.cc
   metrics.cc
+  metrics_writer.cc
   monotime.cc
   mutex.cc
   net/dns_resolver.cc
@@ -214,6 +207,7 @@ set(UTIL_SRCS
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
+  pg_util.cc
   physical_time.cc
   port_picker.cc
   priority_thread_pool.cc
@@ -223,12 +217,14 @@ set(UTIL_SRCS
   ref_cnt_buffer.cc
   rolling_log.cc
   rw_mutex.cc
+  rw_semaphore.cc
   rwc_lock.cc
   shared_mem.cc
   signal_util.cc
   slice.cc
   spinlock_profiling.cc
   split.cc
+  stack_trace.cc
   stats/perf_level_imp.cc
   stats/iostats_context_imp.cc
   status.cc
@@ -238,7 +234,6 @@ set(UTIL_SRCS
   string_trim.cc
   string_util.cc
   striped64.cc
-  strongly_typed_uuid.cc
   subprocess.cc
   sync_point.cc
   test_graph.cc
@@ -247,22 +242,25 @@ set(UTIL_SRCS
   threadlocal.cc
   threadpool.cc
   timestamp.cc
+  tostring.cc
   trace.cc
   trilean.cc
   ulimit.cc
   ulimit_util.cc
-  universe_key_manager.cc
   url-coding.cc
   user.cc
   uuid.cc
   varint.cc
   version_info.cc
+  yb_partition.cc
+  zlib.cc
   async_util.cc
   )
 
 set(UTIL_LIBS
   boost_system
   boost_thread
+  boost_atomic
   cds
   icui18n
   icuuc
@@ -276,14 +274,9 @@ set(UTIL_LIBS
   pb_util_proto
   protobuf
   version_info_proto
-  encryption_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
   ${OPENSSL_SSL_LIBRARY})
-
-if (NOT APPLE AND NOT USING_LINUXBREW)
-  set(UTIL_LIBS ${UTIL_LIBS} atomic)
-endif()
 
 if(NOT APPLE)
   set(UTIL_LIBS
@@ -312,34 +305,22 @@ add_dependencies(yb_util gen_version_info)
 # yb_test_util
 #######################################
 
-add_library(yb_test_util
-  logging_test_util.cc
-  test_util.cc)
-target_link_libraries(yb_test_util
-  gflags
-  glog
-  gmock
-  yb_util)
-
-add_library(encryption_test_util encryption_test_util.cc header_manager_mock_impl.cc)
-target_link_libraries(encryption_test_util yb_test_util)
+ADD_YB_TEST_LIBRARY(
+  yb_test_util
+  SRCS logging_test_util.cc memory/memory_usage_test_util.cc test_util.cc test_thread_holder.cc
+       multi_drive_test_env.cc
+  DEPS gflags glog gmock yb_util)
 
 #######################################
 # yb_test_main
 #######################################
 
-add_library(yb_test_main
-  test_main.cc)
-target_link_libraries(yb_test_main
-  gflags
-  glog
-  gmock
-  yb_util
-  yb_test_util)
+ADD_YB_TEST_LIBRARY(yb_test_main
+                    SRCS test_main.cc
+                    DEPS gflags glog gmock yb_util yb_test_util)
 
 if(NOT APPLE)
-  target_link_libraries(yb_test_main
-    rt)
+  target_link_libraries(yb_test_main rt)
 endif()
 
 #######################################
@@ -348,6 +329,7 @@ endif()
 
 set(YB_TEST_LINK_LIBS yb_test_util gutil gmock ${YB_TEST_LINK_LIBS_EXTENSIONS} ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
+ADD_YB_TEST(background_task-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)
 ADD_YB_TEST(blocking_queue-test)
@@ -376,6 +358,7 @@ ADD_YB_TEST(memenv/memenv-test)
 ADD_YB_TEST(memory/arena-test)
 ADD_YB_TEST(memory/mc_types-test)
 ADD_YB_TEST(memory/memory_usage-test)
+ADD_YB_TEST(memory/tracked_shared_ptr-test)
 ADD_YB_TEST(mem_tracker-test)
 ADD_YB_TEST(metrics-test)
 ADD_YB_TEST(monotime-test)
@@ -385,6 +368,7 @@ ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
 ADD_YB_TEST(net/dns_resolver-test)
 ADD_YB_TEST(net/net_util-test)
 ADD_YB_TEST(net/rate_limiter-test)
+ADD_YB_TEST(numbered_deque-test)
 ADD_YB_TEST(object_pool-test)
 ADD_YB_TEST(once-test)
 ADD_YB_TEST(os-util-test)
@@ -396,7 +380,6 @@ ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
 ADD_YB_TEST(result-test)
-ADD_YB_TEST(rle-test)
 ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)
 ADD_YB_TEST(rw_semaphore-test)
@@ -428,6 +411,7 @@ ADD_YB_TEST(bytes_formatter-test)
 ADD_YB_TEST(string_trim-test)
 ADD_YB_TEST(varint-test)
 ADD_YB_TEST(decimal-test)
+ADD_YB_TEST(date_time-test)
 ADD_YB_TEST(net/inetaddress-test)
 ADD_YB_TEST(uuid-test)
 ADD_YB_TEST(fast_varint-test)
@@ -442,9 +426,11 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES jsonwriter_test.proto)
-add_library(jsonwriter_test_proto ${JSONWRITER_TEST_PROTO_SRCS} ${JSONWRITER_TEST_PROTO_HDRS})
-target_link_libraries(jsonwriter_test_proto
-  protobuf)
+ADD_YB_LIBRARY(
+    jsonwriter_test_proto
+    SRCS ${JSONWRITER_TEST_PROTO_SRCS} ${JSONWRITER_TEST_PROTO_HDRS})
+add_dependencies(jsonwriter_test_proto ${JSONWRITER_TEST_PROTO_TGTS})
+target_link_libraries(jsonwriter_test_proto protobuf)
 
 #######################################
 # jsonwriter-test
@@ -465,16 +451,10 @@ PROTOBUF_GENERATE_CPP(
     proto_container_test.proto
     proto_container_test2.proto
     proto_container_test3.proto)
-add_library(proto_container_test_proto
-  ${PROTO_CONTAINER_TEST_PROTO_SRCS}
-  ${PROTO_CONTAINER_TEST_PROTO_HDRS})
-add_dependencies(proto_container_test_proto
-  gen_src_yb_util_proto_container_test_proto
-  gen_src_yb_util_proto_container_test2_proto
-  gen_src_yb_util_proto_container_test3_proto
-  )
-target_link_libraries(proto_container_test_proto
-  protobuf)
+ADD_YB_LIBRARY(proto_container_test_proto
+               SRCS ${PROTO_CONTAINER_TEST_PROTO_SRCS} ${PROTO_CONTAINER_TEST_PROTO_HDRS})
+add_dependencies(proto_container_test_proto ${PROTO_CONTAINER_TEST_PROTO_TGTS})
+target_link_libraries(proto_container_test_proto protobuf)
 
 #######################################
 # pb_util-test
@@ -483,8 +463,5 @@ target_link_libraries(proto_container_test_proto
 ADD_YB_TEST(pb_util-test)
 YB_TEST_TARGET_LINK_LIBRARIES(pb_util-test proto_container_test_proto)
 
-ADD_YB_TEST(encrypted_env-test)
-YB_TEST_TARGET_LINK_LIBRARIES(encrypted_env-test encryption_test_util)
-
-ADD_YB_TEST(ctr_cipher_stream-test)
-YB_TEST_TARGET_LINK_LIBRARIES(ctr_cipher_stream-test encryption_test_util)
+ADD_YB_TEST(uint_set-test)
+YB_TEST_TARGET_LINK_LIBRARIES(uint_set-test proto_container_test_proto)

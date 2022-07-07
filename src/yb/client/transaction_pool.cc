@@ -15,6 +15,9 @@
 
 #include <deque>
 
+#include <gflags/gflags.h>
+
+#include "yb/client/batcher.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
@@ -24,7 +27,9 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/scheduler.h"
 
+#include "yb/util/flag_tags.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -36,10 +41,15 @@ DEFINE_double(transaction_pool_reserve_factor, 2,
               "During cleanup we will preserve number of transactions in pool that equals to"
                   " average number or take requests during prepration multiplied by this factor");
 
+DEFINE_bool(force_global_transactions, false,
+            "Force all transactions to be global transactions");
 
-METRIC_DEFINE_histogram(
+DEFINE_test_flag(bool, track_last_transaction, false,
+                 "Keep track of the last transaction taken from pool for testing");
+
+METRIC_DEFINE_coarse_histogram(
     server, transaction_pool_cache, "Rate of hitting transaction pool cache",
-    yb::MetricUnit::kCacheHits, "Rate of hitting transaction pool cache", 100LU, 2);
+    yb::MetricUnit::kCacheHits, "Rate of hitting transaction pool cache");
 
 METRIC_DEFINE_counter(server, transaction_pool_cache_hits,
                       "Total number of hits in transaction pool cache", yb::MetricUnit::kCacheHits,
@@ -60,10 +70,15 @@ METRIC_DEFINE_gauge_uint32(
 namespace yb {
 namespace client {
 
-class TransactionPool::Impl {
+namespace {
+
+// Transaction pool where all transactions have a specific locality (LOCAL or GLOBAL).
+class SingleLocalityPool {
  public:
-  Impl(TransactionManager* manager, MetricEntity* metric_entity)
-      : manager_(*manager) {
+  SingleLocalityPool(TransactionManager* manager,
+                     MetricEntity* metric_entity,
+                     TransactionLocality locality)
+      : manager_(*manager), locality_(locality) {
     if (metric_entity) {
       cache_histogram_ = METRIC_transaction_pool_cache.Instantiate(metric_entity);
       cache_hits_ = METRIC_transaction_pool_cache_hits.Instantiate(metric_entity);
@@ -73,7 +88,7 @@ class TransactionPool::Impl {
     }
   }
 
-  ~Impl() {
+  ~SingleLocalityPool() {
     std::unique_lock<std::mutex> lock(mutex_);
     closing_ = true;
     if (scheduled_task_ != rpc::kUninitializedScheduledTaskId) {
@@ -85,7 +100,7 @@ class TransactionPool::Impl {
     }
   }
 
-  YBTransactionPtr Take() {
+  YBTransactionPtr Take(CoarseTimePoint deadline) {
     YBTransactionPtr result, new_txn;
     uint64_t old_taken;
     IncrementCounter(cache_queries_);
@@ -99,7 +114,7 @@ class TransactionPool::Impl {
       if (transactions_.empty()) {
         // Transaction is automatically prepared when batcher is executed, so we don't have to
         // prepare newly created transaction, since it is anyway too late.
-        result = std::make_shared<YBTransaction>(&manager_);
+        result = std::make_shared<YBTransaction>(&manager_, locality_);
         IncrementHistogram(cache_histogram_, 0);
       } else {
         result = Pop();
@@ -108,14 +123,14 @@ class TransactionPool::Impl {
         IncrementHistogram(cache_histogram_, 100);
         IncrementCounter(cache_hits_);
       }
-      new_txn = std::make_shared<YBTransaction>(&manager_);
+      new_txn = std::make_shared<YBTransaction>(&manager_, locality_);
       ++preparing_transactions_;
     }
     IncrementGauge(gauge_preparing_);
-    InFlightOpsGroupsWithMetadata ops_info;
-    if (new_txn->Prepare(
-        &ops_info, ForceConsistentRead::kFalse, TransactionRpcDeadline(), Initial::kFalse,
-        std::bind(&Impl::TransactionReady, this, _1, new_txn, old_taken))) {
+    internal::InFlightOpsGroupsWithMetadata ops_info;
+    if (new_txn->batcher_if().Prepare(
+        &ops_info, ForceConsistentRead::kFalse, deadline, Initial::kFalse,
+        std::bind(&SingleLocalityPool::TransactionReady, this, _1, new_txn, old_taken))) {
       TransactionReady(Status::OK(), new_txn, old_taken);
     }
     return result;
@@ -146,7 +161,8 @@ class TransactionPool::Impl {
 
   void ScheduleCleanup() REQUIRES(mutex_) {
     scheduled_task_ = manager_.client()->messenger()->scheduler().Schedule(
-        std::bind(&Impl::Cleanup, this, _1), FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
+        std::bind(&SingleLocalityPool::Cleanup, this, _1),
+        FLAGS_transaction_pool_cleanup_interval_ms * 1ms);
   }
 
   void Cleanup(const Status& status) {
@@ -229,6 +245,7 @@ class TransactionPool::Impl {
   };
 
   TransactionManager& manager_;
+  TransactionLocality locality_;
   scoped_refptr<Histogram> cache_histogram_;
   scoped_refptr<Counter> cache_hits_;
   scoped_refptr<Counter> cache_queries_;
@@ -238,11 +255,48 @@ class TransactionPool::Impl {
   std::condition_variable cond_;
   std::deque<TransactionEntry> transactions_ GUARDED_BY(mutex_);
   bool closing_ GUARDED_BY(mutex_) = false;
-  int preparing_transactions_ GUARDED_BY(mutex_) = 0;
+  size_t preparing_transactions_ GUARDED_BY(mutex_) = 0;
   rpc::ScheduledTaskId scheduled_task_ GUARDED_BY(mutex_) = rpc::kUninitializedScheduledTaskId;
   uint64_t taken_transactions_ GUARDED_BY(mutex_) = 0;
   uint64_t taken_during_preparation_sum_ GUARDED_BY(mutex_) = 0;
   uint64_t taken_transactions_at_last_cleanup_ GUARDED_BY(mutex_) = 0;
+};
+} // namespace
+
+class TransactionPool::Impl {
+ public:
+  Impl(TransactionManager* manager, MetricEntity* metric_entity)
+      : manager_(manager),
+        global_pool_(manager, metric_entity, TransactionLocality::GLOBAL),
+        local_pool_(manager, metric_entity, TransactionLocality::LOCAL) {
+  }
+
+  ~Impl() = default;
+
+  YBTransactionPtr Take(
+      ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline) EXCLUDES(mutex_) {
+    const auto is_global = force_global_transaction ||
+                           FLAGS_force_global_transactions ||
+                           !manager_->PlacementLocalTransactionsPossible();
+    auto transaction = (is_global ? &global_pool_ : &local_pool_)->Take(deadline);
+    if (FLAGS_TEST_track_last_transaction) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      last_transaction_ = transaction;
+    }
+    return transaction;
+  }
+
+  YBTransactionPtr TEST_GetLastTransaction() EXCLUDES(mutex_) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return last_transaction_;
+  }
+ private:
+  TransactionManager* manager_;
+  SingleLocalityPool global_pool_;
+  SingleLocalityPool local_pool_;
+
+  std::mutex mutex_;
+  YBTransactionPtr last_transaction_ GUARDED_BY(mutex_);
 };
 
 TransactionPool::TransactionPool(TransactionManager* manager, MetricEntity* metric_entity)
@@ -252,21 +306,32 @@ TransactionPool::TransactionPool(TransactionManager* manager, MetricEntity* metr
 TransactionPool::~TransactionPool() {
 }
 
-YBTransactionPtr TransactionPool::Take() {
-  return impl_->Take();
+YBTransactionPtr TransactionPool::Take(
+    ForceGlobalTransaction force_global_transaction, CoarseTimePoint deadline) {
+  return impl_->Take(force_global_transaction, deadline);
 }
 
 Result<YBTransactionPtr> TransactionPool::TakeAndInit(
-    IsolationLevel isolation, const ReadHybridTime& read_time) {
-  auto result = impl_->Take();
+    IsolationLevel isolation, CoarseTimePoint deadline, const ReadHybridTime& read_time) {
+  auto result = impl_->Take(ForceGlobalTransaction::kTrue, deadline);
   RETURN_NOT_OK(result->Init(isolation, read_time));
   return result;
 }
 
-Result<YBTransactionPtr> TransactionPool::TakeRestarted(const YBTransactionPtr& source) {
-  auto result = impl_->Take();
+Result<YBTransactionPtr> TransactionPool::TakeRestarted(
+    const YBTransactionPtr& source, CoarseTimePoint deadline) {
+  const auto &metadata = source->GetMetadata(deadline).get();
+  RETURN_NOT_OK(metadata);
+  const auto force_global =
+      metadata->locality == TransactionLocality::GLOBAL ? ForceGlobalTransaction::kTrue
+                                                        : ForceGlobalTransaction::kFalse;
+  auto result = impl_->Take(force_global, deadline);
   RETURN_NOT_OK(source->FillRestartedTransaction(result));
   return result;
+}
+
+YBTransactionPtr TransactionPool::TEST_GetLastTransaction() {
+  return impl_->TEST_GetLastTransaction();
 }
 
 } // namespace client

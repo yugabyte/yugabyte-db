@@ -47,20 +47,51 @@ regex_from_list() {
   echo "^($regex)$"
 }
 
+set_python_executable() {
+  PYTHON_EXECUTABLE=""
+  executables=( "${PYTHON3_EXECUTABLES[@]}" )
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
+    executables=( "${PYTHON2_EXECUTABLES[@]}" )
+  fi
+
+  for py_executable in "${executables[@]}"; do
+    if which "$py_executable" > /dev/null 2>&1; then
+      PYTHON_EXECUTABLE="$py_executable"
+      return
+    fi
+  done
+
+  if which python > /dev/null 2>&1; then
+    if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)';  then
+      if [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "0" ]]; then
+        PYTHON_EXECUTABLE="python"
+        return
+      fi
+    elif [[ "$YB_MANAGED_DEVOPS_USE_PYTHON3" == "1" ]]; then
+      PYTHON_EXECUTABLE="python"
+      return
+    fi
+  fi
+
+  echo "Failed to find python executable."
+  exit 1
+}
+
 # -------------------------------------------------------------------------------------------------
 # Constants
 # -------------------------------------------------------------------------------------------------
-DEFAULT_USE_PY3_VALUE="1"
-if python -c 'import sys; sys.exit(1) if sys.version_info[0] != 2 else sys.exit(0)'; then
-  DEFAULT_USE_PY3_VALUE="0"
-fi
+readonly PYTHON2_EXECUTABLES=('python2' 'python2.7')
+readonly PYTHON3_EXECUTABLES=('python3.6' 'python3' 'python3.7' 'python3.8')
+PYTHON_EXECUTABLE=""
 
-readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-$DEFAULT_USE_PY3_VALUE}
+readonly YB_MANAGED_DEVOPS_USE_PYTHON3=${YB_MANAGED_DEVOPS_USE_PYTHON3:-1}
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 != "0" &&
       $YB_MANAGED_DEVOPS_USE_PYTHON3 != "1" ]]; then
   fatal "Invalid value of YB_MANAGED_DEVOPS_USE_PYTHON3: $YB_MANAGED_DEVOPS_USE_PYTHON3," \
         "expected 0 or 1"
 fi
+
+set_python_executable
 
 readonly yb_script_name=${0##*/}
 readonly yb_script_name_no_extension=${yb_script_name%.sh}
@@ -68,6 +99,10 @@ readonly yb_script_name_no_extension=${yb_script_name%.sh}
 readonly yb_devops_home=$( cd "${BASH_SOURCE%/*}"/.. && pwd )
 if [[ ! -d $yb_devops_home/roles ]]; then
   fatal "No 'roles' subdirectory found inside yb_devops_home ('$yb_devops_home')"
+fi
+
+if [ -L /opt/yugabyte/devops ]; then
+ export yb_devops_home_link="/opt/yugabyte/devops"
 fi
 
 # We need to export yb_devops_home because we rely on it in ansible.cfg.
@@ -85,15 +120,26 @@ readonly VALID_CLOUD_TYPES=(
 readonly VALID_CLOUD_TYPES_RE=$( regex_from_list "${VALID_CLOUD_TYPES[@]}" )
 readonly VALID_CLOUD_TYPES_STR="${VALID_CLOUD_TYPES[@]}"
 
+set +u
+readonly MANAGED_PYTHONPATH_ORIGINAL="${PYTHONPATH:-}"
+readonly MANAGED_PATH_ORIGINAL="${PATH:-}"
+set -u
+
 # Basename (i.e. name excluding the directory path) of our virtualenv.
 if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
   readonly YB_VIRTUALENV_BASENAME=venv
   readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python3_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python3_requirements_frozen.txt"
+  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python3_modules"
+  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python3_modules.tar.gz"
+  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python3_installed_modules"
 else
   readonly YB_VIRTUALENV_BASENAME=python_virtual_env
   readonly REQUIREMENTS_FILE_NAME="$yb_devops_home/python_requirements.txt"
   readonly FROZEN_REQUIREMENTS_FILE="$yb_devops_home/python_requirements_frozen.txt"
+  readonly YB_PYTHON_MODULES_DIR="$yb_devops_home/python2_modules"
+  readonly YB_PYTHON_MODULES_PACKAGE="$yb_devops_home/python2_modules.tar.gz"
+  readonly YB_INSTALLED_MODULES_DIR="$yb_devops_home/python2_installed_modules"
 fi
 
 readonly YBOPS_TOP_LEVEL_DIR_BASENAME=opscli
@@ -196,6 +242,13 @@ deactivate_virtualenv() {
   if ! should_use_virtual_env; then
     return
   fi
+
+  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
+    export PYTHONPATH=$MANAGED_PYTHONPATH_ORIGINAL
+    export PATH=$MANAGED_PATH_ORIGINAL
+    return
+  fi
+
   # Deactivate virtualenv if it is already activated.
   # The VIRTUAL_ENV variable is defined whenever we are using a Python virtualenv. It is set by
   # the bin/activate script.
@@ -221,11 +274,19 @@ deactivate_virtualenv() {
 
     unset VIRTUAL_ENV
     unset PYTHONPATH
+    set_python_executable
   fi
 }
 
 activate_virtualenv() {
   if ! should_use_virtual_env; then
+    return
+  fi
+
+  if [[ -d "$YB_INSTALLED_MODULES_DIR" ]]; then
+    export PYTHONPATH="${YB_INSTALLED_MODULES_DIR}:${MANAGED_PYTHONPATH_ORIGINAL}"
+    export PATH="${YB_INSTALLED_MODULES_DIR}/bin:${MANAGED_PATH_ORIGINAL}"
+    export SITE_PACKAGES="$YB_INSTALLED_MODULES_DIR"
     return
   fi
 
@@ -236,7 +297,6 @@ activate_virtualenv() {
   if [[ ! -d $virtualenv_dir ]]; then
     # We need to be using system python to install the virtualenv module or create a new virtualenv.
     deactivate_virtualenv
-
     if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
       pip_install "virtualenv<20"
     fi
@@ -245,10 +305,10 @@ activate_virtualenv() {
       set -x
       cd "${virtualenv_dir%/*}"
       if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-        python3 -m venv "$YB_VIRTUALENV_BASENAME"
+        $PYTHON_EXECUTABLE -m venv "$YB_VIRTUALENV_BASENAME"
       else
         # Assuming that the default python binary is pointing to Python 2.7.
-        python -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
+        $PYTHON_EXECUTABLE -m virtualenv --no-setuptools "$YB_VIRTUALENV_BASENAME"
       fi
     )
   elif "$is_linux"; then
@@ -262,14 +322,54 @@ activate_virtualenv() {
   set +u
   . "$virtualenv_dir"/bin/activate
   set -u
+  export SITE_PACKAGES=$(python -c "import sysconfig; print(sysconfig.get_path('purelib'))")
+  PYTHON_EXECUTABLE="python"
+  log "Using virtualenv python executable now."
 
   # We unset the pythonpath to make sure we aren't looking at the global pythonpath.
   unset PYTHONPATH
 }
 
-create_virtualenv_package() {
-  cd $yb_devops_home
-  tar -czf $virtualenv_package $YB_VIRTUALENV_BASENAME
+create_pymodules_package() {
+  rm -rf "$YB_PYTHON_MODULES_DIR"
+  mkdir -p "$YB_PYTHON_MODULES_DIR"
+  extra_install_flags=""
+  if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
+    extra_install_flags="setuptools<45"
+  fi
+  # Download the scripts necessary (i.e. ansible). Remove the modules afterwards to avoid
+  # system-specific libraries.
+  log "Downloading package scripts"
+  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+    --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --prefix="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  rm -rf "$YB_PYTHON_MODULES_DIR"/lib*
+  # Download remaining libraries.
+  log "Downloading package libraries"
+  run_pip install $extra_install_flags -r "$FROZEN_REQUIREMENTS_FILE" \
+    --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  run_pip install $extra_install_flags "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME" \
+    --target="$YB_PYTHON_MODULES_DIR" --ignore-installed
+  # Change shebangs to be path-independent.
+  current_py_exec=$(which $PYTHON_EXECUTABLE)
+  LC_ALL=C find "$YB_PYTHON_MODULES_DIR"/bin ! -name '*.pyc' -type f -exec sed -i.yb_tmp \
+    -e "1s|${current_py_exec}|/usr/bin/env ${PYTHON_EXECUTABLE}|" {} \; -exec rm {}.yb_tmp \;
+  tar -C $(dirname "$YB_PYTHON_MODULES_DIR") -czvf "$YB_PYTHON_MODULES_PACKAGE" \
+    $(basename "$YB_PYTHON_MODULES_DIR")
+  rm -rf "$YB_PYTHON_MODULES_DIR"
+}
+
+install_pymodules_package() {
+  rm -rf "$YB_INSTALLED_MODULES_DIR"
+  mkdir -p "$YB_INSTALLED_MODULES_DIR"
+  tar -C "$YB_INSTALLED_MODULES_DIR" -xvf "$YB_PYTHON_MODULES_PACKAGE" --strip-components=1
+  # Create startup script that python will execute beforehand. This is to properly add all python
+  # modules to path (e.g. google-api-core).
+  cat > "$YB_INSTALLED_MODULES_DIR"/sitecustomize.py << EOF
+import site
+site.addsitedir("$YB_INSTALLED_MODULES_DIR")
+EOF
 }
 
 # Somehow permissions got corrupted for some files in the virtualenv, possibly due to sudo
@@ -334,9 +434,9 @@ verbose_mkdir_p() {
 
 run_pip() {
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "1" ]]; then
-    pip3 "$@"
+    "$PYTHON_EXECUTABLE" -m pip "$@"
   else
-    python "$(which pip)" "$@"
+    $PYTHON_EXECUTABLE "$(which pip2.7)" "$@"
   fi
 }
 
@@ -365,7 +465,7 @@ pip_install() {
     (
       verbose_cmd run_pip install "$@"
     )
-  elif [[ -n $module_name && -n $( pip show "$module_name" ) ]]; then
+  elif [[ -n $module_name && -n $( run_pip show "$module_name" ) ]]; then
     log "Python module $module_name already installed, not upgrading."
   else
     log "Installing Python module(s) outside virtualenv, using --user."
@@ -434,8 +534,8 @@ install_ybops_package() {
   fi
   (
     cd "$yb_devops_home/$YBOPS_TOP_LEVEL_DIR_BASENAME"
-    log "Using python: $( which python )"
-    python setup.py install $user_flag
+    log "Using python: $( which $PYTHON_EXECUTABLE )"
+    $PYTHON_EXECUTABLE setup.py install $user_flag
     rm -rf build dist "$YBOPS_PACKAGE_NAME.egg-info"
   )
   virtualenv_aware_log "Installed the ybops package"
@@ -494,4 +594,3 @@ export ANSIBLE_HOST_KEY_CHECKING=False
 log_dir=$HOME/logs
 
 readonly virtualenv_dir=$yb_devops_home/$YB_VIRTUALENV_BASENAME
-readonly virtualenv_package=$yb_devops_home/yb_platform_virtualenv.tar.gz

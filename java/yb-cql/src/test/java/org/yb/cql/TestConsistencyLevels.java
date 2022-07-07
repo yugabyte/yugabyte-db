@@ -13,31 +13,40 @@
 //
 package org.yb.cql;
 
-import com.datastax.driver.core.*;
-import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
-import com.datastax.driver.core.querybuilder.QueryBuilder;
-import com.google.common.net.HostAndPort;
-import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
+import static org.yb.AssertionWrappers.*;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.*;
-import org.yb.client.*;
+
+import org.yb.ColumnSchema;
+import org.yb.CommonTypes;
+import org.yb.Schema;
+import org.yb.Type;
+import org.yb.YBTestRunner;
+import org.yb.client.CreateTableOptions;
+import org.yb.client.LocatedTablet;
+import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
 import org.yb.consensus.Metadata;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-
-import static junit.framework.TestCase.assertEquals;
-import static org.yb.AssertionWrappers.assertNotNull;
-import static org.yb.AssertionWrappers.assertTrue;
+import com.datastax.driver.core.*;
+import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
+import com.datastax.driver.core.querybuilder.QueryBuilder;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.driver.core.policies.PartitionAwarePolicy;
 
 @RunWith(value=YBTestRunner.class)
 public class TestConsistencyLevels extends BaseCQLTest {
@@ -61,11 +70,6 @@ public class TestConsistencyLevels extends BaseCQLTest {
     "handler_latency_yb_cqlserver_SQLProcessor_SelectStmt";
 
   @Override
-  public void useKeyspace() throws Exception {
-    // Use the DEFAULT_TEST_KEYSPACE for this test.
-  }
-
-  @Override
   protected void afterBaseCQLTestTearDown() throws Exception {
     // We need to destroy the mini cluster since we don't want metrics from one test to interfere
     // with another.
@@ -74,21 +78,20 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
   protected void createMiniClusterWithSameRegion() throws Exception {
     // Create a cluster with tservers in the same region.
-    List<List<String>> tserverArgs = new ArrayList<>();
-    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
-      tserverArgs.add(Arrays.asList(String.format("--placement_region=%s%d", REGION_PREFIX, 1)));
-    }
-    createMiniCluster(1, tserverArgs);
-
+    createMiniCluster(1, NUM_TABLET_SERVERS,
+        Collections.emptyMap(),
+        Collections.singletonMap("placement_region", String.format("%s%d", REGION_PREFIX, 1)));
   }
 
   protected void createMiniClusterWithPlacementRegion() throws Exception {
     // Create a cluster with tservers in different regions.
-    List<List<String>> tserverArgs = new ArrayList<>();
-    for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
-      tserverArgs.add(Arrays.asList(String.format("--placement_region=%s%d", REGION_PREFIX, i)));
-    }
-    createMiniCluster(1, tserverArgs);
+    createMiniCluster(1, NUM_TABLET_SERVERS, (builder) -> {
+      List<Map<String, String>> perTserverFlags = new ArrayList<>();
+      for (int i = 0; i < NUM_TABLET_SERVERS; i++) {
+        perTserverFlags.add(Collections.singletonMap("placement_region", REGION_PREFIX + i));
+      }
+      builder.perTServerFlags(perTserverFlags);
+    });
   }
 
   @Before
@@ -106,7 +109,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
 
     CreateTableOptions options = new CreateTableOptions();
     options.setNumTablets(1);
-    options.setTableType(Common.TableType.YQL_TABLE_TYPE);
+    options.setTableType(CommonTypes.TableType.YQL_TABLE_TYPE);
     ybTable = client.createTable(DEFAULT_TEST_KEYSPACE, TABLE_NAME, new Schema(
       Arrays.asList(hash_column.build(), range_column.build(), regular_column.build())), options);
 
@@ -142,7 +145,7 @@ public class TestConsistencyLevels extends BaseCQLTest {
       int webPort = tservers.get(HostAndPort.fromParts(host, replica.getRpcPort())).getWebPort();
       Metrics metrics = new Metrics(host, webPort, "server");
       long numOps = metrics.getHistogram(TSERVER_READ_METRIC).totalCount;
-      if (replica.getRole().equals(Metadata.RaftPeerPB.Role.LEADER.toString())) {
+      if (replica.getRole().equals(CommonTypes.PeerRole.LEADER.toString())) {
         assertEquals(NUM_OPS, numOps);
       } else {
         assertEquals(0, numOps);

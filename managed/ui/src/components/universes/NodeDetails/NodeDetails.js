@@ -1,6 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import _ from 'lodash';
+
 import { NodeDetailsTable } from '../../universes';
 import {
   isNonEmptyArray,
@@ -17,7 +19,6 @@ import {
 } from '../../../utils/UniverseUtils';
 import { hasLiveNodes } from '../../../utils/UniverseUtils';
 import { YBLoading } from '../../common/indicators';
-import _ from 'lodash';
 
 export default class NodeDetails extends Component {
   componentDidMount() {
@@ -61,7 +62,8 @@ export default class NodeDetails extends Component {
         universePerNodeMetrics,
         universeMasterLeader
       },
-      customer
+      customer,
+      providers
     } = this.props;
     const universeDetails = currentUniverse.data.universeDetails;
     const nodeDetails = universeDetails.nodeDetailsSet;
@@ -84,7 +86,8 @@ export default class NodeDetails extends Component {
 
     const nodeDetailRows = sortedNodeDetails.map((nodeDetail) => {
       let nodeStatus = '-';
-      let nodeAlive = false;
+      let masterAlive = false;
+      let tserverAlive = false;
       let isLoading = universeCreated;
       if (
         getPromiseState(universePerNodeStatus).isSuccess() &&
@@ -94,10 +97,10 @@ export default class NodeDetails extends Component {
         nodeStatus = insertSpacesFromCamelCase(
           universePerNodeStatus.data[nodeDetail.nodeName]['node_status']
         );
-        nodeAlive =
-          universePerNodeStatus.data[nodeDetail.nodeName][
-            nodeDetail.isMaster ? 'master_alive' : 'tserver_alive'
-          ];
+
+        masterAlive = universePerNodeStatus.data[nodeDetail.nodeName]['master_alive'];
+        tserverAlive = universePerNodeStatus.data[nodeDetail.nodeName]['tserver_alive'];
+
         isLoading = false;
       }
 
@@ -126,20 +129,20 @@ export default class NodeDetails extends Component {
       const metricsData = nodesMetrics
         ? nodesMetrics[`${nodeDetail.cloudInfo.private_ip}:${nodeDetail.tserverHttpPort}`]
         : {
-          active_tablets: null,
-          num_sst_files: null,
-          ram_used: null,
-          read_ops_per_sec: null,
-          system_tablets_leaders: null,
-          system_tablets_total: null,
-          time_since_hb: null,
-          total_sst_file_size: null,
-          uncompressed_sst_file_size: null,
-          uptime_seconds: null,
-          user_tablets_leaders: null,
-          user_tablets_total: null,
-          write_ops_per_sec: null
-        };
+            active_tablets: null,
+            num_sst_files: null,
+            ram_used: null,
+            read_ops_per_sec: null,
+            system_tablets_leaders: null,
+            system_tablets_total: null,
+            time_since_hb: null,
+            total_sst_file_size: null,
+            uncompressed_sst_file_size: null,
+            uptime_seconds: null,
+            user_tablets_leaders: null,
+            user_tablets_total: null,
+            write_ops_per_sec: null
+          };
       return {
         nodeIdx: nodeDetail.nodeIdx,
         name: nodeName,
@@ -158,7 +161,8 @@ export default class NodeDetails extends Component {
         allowedActions: nodeDetail.allowedActions,
         cloudInfo: nodeDetail.cloudInfo,
         isLoading: isLoading,
-        nodeAlive: nodeAlive,
+        isMasterAlive: masterAlive,
+        isTserverAlive: tserverAlive,
         placementUUID: nodeDetail.placementUuid,
         ...metricsData
       };
@@ -186,6 +190,7 @@ export default class NodeDetails extends Component {
           clusterType="primary"
           customer={customer}
           currentUniverse={currentUniverse}
+          providers={providers}
         />
         {readOnlyCluster && (
           <NodeDetailsTable
@@ -196,6 +201,7 @@ export default class NodeDetails extends Component {
             clusterType="readonly"
             customer={customer}
             currentUniverse={currentUniverse}
+            providers={providers}
           />
         )}
       </Fragment>

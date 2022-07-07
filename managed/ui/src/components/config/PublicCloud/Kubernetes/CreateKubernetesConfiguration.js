@@ -17,6 +17,8 @@ import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
+const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
+const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
@@ -63,7 +65,9 @@ class CreateKubernetesConfiguration extends Component {
           code: convertStrToCode(zone.zoneLabel),
           name: zone.zoneLabel,
           config: {
-            STORAGE_CLASS: zone.storageClasses || 'standard',
+            STORAGE_CLASS: zone.storageClasses || undefined,
+            KUBENAMESPACE: zone.namespace || undefined,
+            KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined
           }
@@ -81,8 +85,12 @@ class CreateKubernetesConfiguration extends Component {
               ? providerTypeMetadata.code
               : 'gke',
           KUBECONFIG_SERVICE_ACCOUNT: vals.serviceAccount,
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || 'quay.io/yugabyte/yugabyte'
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
+
+        if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
+          providerConfig['KUBECONFIG_IMAGE_REGISTRY'] = redhatImageRegistry;
+        }
 
         configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
           const currentZone = regionsLocInfo[regionIdx].zoneList[zoneIdx];
@@ -126,7 +134,8 @@ class CreateKubernetesConfiguration extends Component {
     } else {
       providerTypeOptions = KUBERNETES_PROVIDERS
         // skip providers with dedicated tab
-        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks')
+        .filter((provider) => provider.code !== 'tanzu' && provider.code !== 'pks'
+                && provider.code !== 'openshift')
         .map((provider) => ({ value: provider.code, label: provider.name }));
     }
 
@@ -141,6 +150,7 @@ class CreateKubernetesConfiguration extends Component {
       kubeConfig: null,
       imageRegistry: '',
       storageClasses: '',
+      kubeDomain: '',
       regionList: [],
       zoneOverrides: ''
     };
@@ -221,7 +231,7 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field
                             name="accountName"
-                            placeholder="Kube Config name"
+                            placeholder="Provider name"
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />
@@ -269,7 +279,8 @@ class CreateKubernetesConfiguration extends Component {
                         <Col lg={7}>
                           <Field
                             name="imageRegistry"
-                            placeholder="quay.io/yugabyte/yugabyte"
+                            placeholder={ providerTypeOptions.length === 1 && providerTypeOptions[0].value === 'openshift'
+                                          ? redhatImageRegistry : quayImageRegistry }
                             component={YBFormInput}
                             className={'kube-provider-input-field'}
                           />

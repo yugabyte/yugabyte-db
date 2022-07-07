@@ -26,20 +26,18 @@
 
 #include <stdint.h>
 #include <stdio.h>
+
 #include <memory>
-#include <vector>
 #include <string>
 #include <unordered_map>
-#include "yb/rocksdb/immutable_options.h"
+#include <vector>
+
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/listener.h"
 #include "yb/rocksdb/metadata.h"
 #include "yb/rocksdb/options.h"
-#include "yb/rocksdb/snapshot.h"
-#include "yb/rocksdb/thread_status.h"
 #include "yb/rocksdb/transaction_log.h"
 #include "yb/rocksdb/types.h"
-#include "yb/util/result.h"
 
 #ifdef _WIN32
 // Windows API macro interference
@@ -621,15 +619,17 @@ class DB {
 
   virtual Status SetOptions(
       ColumnFamilyHandle* /*column_family*/,
-      const std::unordered_map<std::string, std::string>& /*new_options*/) {
+      const std::unordered_map<std::string, std::string>& /*new_options*/,
+      bool dump_options = true) {
     return STATUS(NotSupported, "Not implemented");
   }
   virtual Status SetOptions(
-      const std::unordered_map<std::string, std::string>& new_options) {
-    return SetOptions(DefaultColumnFamily(), new_options);
+      const std::unordered_map<std::string, std::string>& new_options, bool dump_options = true) {
+    return SetOptions(DefaultColumnFamily(), new_options, dump_options);
   }
 
   virtual void SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {}
+  virtual void StartShutdown() {}
 
   // CompactFiles() inputs a list of files specified by file numbers and
   // compacts them to the specified level. Note that the behavior is different
@@ -795,6 +795,9 @@ class DB {
   // instance.
   virtual uint64_t GetCurrentVersionSstFilesSize() { return 0; }
   virtual uint64_t GetCurrentVersionSstFilesUncompressedSize() { return 0; }
+  virtual std::pair<uint64_t, uint64_t> GetCurrentVersionSstFilesAllSizes() {
+    return std::pair<uint64_t, uint64_t>(0, 0);
+  }
 
   // Returns total number of SST Files.
   virtual uint64_t GetCurrentVersionNumSSTFiles() { return 0; }
@@ -818,7 +821,7 @@ class DB {
 
   virtual UserFrontierPtr GetFlushedFrontier() { return nullptr; }
 
-  virtual CHECKED_STATUS ModifyFlushedFrontier(
+  virtual Status ModifyFlushedFrontier(
       UserFrontierPtr values,
       FrontierModificationMode mode) {
     return Status::OK();
@@ -827,6 +830,10 @@ class DB {
   virtual FlushAbility GetFlushAbility() { return FlushAbility::kHasNewData; }
 
   virtual UserFrontierPtr GetMutableMemTableFrontier(UpdateUserValueType type) { return nullptr; }
+
+  virtual UserFrontierPtr CalcMemTableFrontier(UpdateUserValueType type) {
+    return nullptr;
+  }
 
   virtual void ListenFilesChanged(std::function<void()> listener) {}
 
@@ -844,6 +851,12 @@ class DB {
       ColumnFamilyMetaData* metadata) {
     GetColumnFamilyMetaData(DefaultColumnFamily(), metadata);
   }
+
+  // Obtains all column family options and corresponding names,
+  // dropped columns are not included into the resulting collections.
+  virtual void GetColumnFamiliesOptions(
+      std::vector<std::string>* column_family_names,
+      std::vector<ColumnFamilyOptions>* column_family_options) = 0;
 
   // Load table file located at "file_path" into "column_family", a pointer to
   // ExternalSstFileInfo can be used instead of "file_path" to do a blind add
@@ -896,7 +909,7 @@ class DB {
   // Needed for StackableDB
   virtual DB* GetRootDB() { return this; }
 
-  virtual CHECKED_STATUS Import(const std::string& source_dir) {
+  virtual Status Import(const std::string& source_dir) {
     return STATUS(NotSupported, "");
   }
 
@@ -904,6 +917,11 @@ class DB {
 
   // Returns approximate middle key (see Version::GetMiddleKey).
   virtual yb::Result<std::string> GetMiddleKey() = 0;
+
+  // Returns a table reader for the largest SST file.
+  virtual yb::Result<TableReader*> TEST_GetLargestSstTableReader() {
+    return STATUS(NotSupported, "");
+  }
 
   // Used in testing to make the old memtable immutable and start writing to a new one.
   virtual void TEST_SwitchMemtable() {}

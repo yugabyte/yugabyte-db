@@ -16,13 +16,16 @@
 
 #include <ev++.h>
 
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/stream.h"
 
 #include "yb/util/net/socket.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
+
+class Counter;
+
 namespace rpc {
 
 struct TcpStreamSendingData {
@@ -69,19 +72,19 @@ class TcpStream : public Stream {
     bool only_heartbeats;
   };
 
-  CHECKED_STATUS Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
+  Status Start(bool connect, ev::loop_ref* loop, StreamContext* context) override;
   void Close() override;
   void Shutdown(const Status& status) override;
   Result<size_t> Send(OutboundDataPtr data) override;
-  CHECKED_STATUS TryWrite() override;
-  void Cancelled(size_t handle) override;
+  Status TryWrite() override;
+  bool Cancelled(size_t handle) override;
 
   bool Idle(std::string* reason_not_idle) override;
   bool IsConnected() override { return connected_; }
   void DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) override;
 
-  const Endpoint& Remote() override { return remote_; }
-  const Endpoint& Local() override { return local_; }
+  const Endpoint& Remote() const override { return remote_; }
+  const Endpoint& Local() const override { return local_; }
 
   const Protocol* GetProtocol() override {
     return StaticProtocol();
@@ -89,13 +92,13 @@ class TcpStream : public Stream {
 
   void ParseReceived() override;
 
-  CHECKED_STATUS DoWrite();
+  Status DoWrite();
   void HandleOutcome(const Status& status, bool enqueue);
   void ClearSending(const Status& status);
 
   void Handler(ev::io& watcher, int revents); // NOLINT
-  CHECKED_STATUS ReadHandler();
-  CHECKED_STATUS WriteHandler(bool just_connected);
+  Status ReadHandler();
+  Status WriteHandler(bool just_connected);
 
   Result<bool> Receive();
   // Try to parse received data and process it.
@@ -108,7 +111,7 @@ class TcpStream : public Stream {
 
   void DelayConnectHandler(ev::timer& watcher, int revents); // NOLINT
 
-  CHECKED_STATUS DoStart(ev::loop_ref* loop, bool connect);
+  Status DoStart(ev::loop_ref* loop, bool connect);
 
   StreamReadBuffer& ReadBuffer() {
     return context_->ReadBuffer();
@@ -148,6 +151,8 @@ class TcpStream : public Stream {
   size_t inbound_bytes_to_skip_ = 0;
   bool waiting_write_ready_ = false;
   MemTrackerPtr mem_tracker_;
+  scoped_refptr<Counter> bytes_sent_counter_;
+  scoped_refptr<Counter> bytes_received_counter_;
 };
 
 } // namespace rpc

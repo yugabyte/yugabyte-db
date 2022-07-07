@@ -3,14 +3,12 @@ title: text typecast of a value, literal for that value, and how they are relate
 linkTitle: Text typecasting and literals
 headerTitle: The text typecast of a value, the literal for that value, and how they are related
 description: The text typecast of a value, the literal for that value, and how they are related
-block_indexing: true
 menu:
   stable:
     identifier: text-typecasting-and-literals
     parent: array-literals
     weight: 5
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section establishes some basic notions that have a much broader scope of applicability than just arrays. But, because using array literals rests on these notions, they are summarized here.
@@ -34,7 +32,7 @@ $body$;
 
 It demonstrates a universal rule that YSQL inherits from PostgreSQL:
 
-- Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
+- Any value of any data type, primitive or composite, can be `::text` typecast. Similarly, there always exists a `text` value that, when properly spelled, can be typecast to a value of any desired data type, primitive or composite.
 - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
 The following `DO` block applies the pattern using a representative range of both primitive and composite data types. (The data type `text`, as the degenerate case, is not included.) It also displays the value of the `::text` typecast for each data type.
@@ -181,11 +179,11 @@ select true as "bare true", true::text as "true::text";
 ```
 This is the result:
 ```
- bare true | true::text 
+ bare true | true::text
 -----------+------------
  t         | true
 ```
-For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values denoted by the keywords `TRUE` and `FALSE` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast. 
+For all but `boolean` values, the string of characters that `ysqlsh` uses to display any value is the `::text` typecast of that value. (After all, the only feasible means of display is strings of characters.) But uniquely for the two `boolean` values denoted by the keywords `TRUE` and `FALSE` it uses the single characters `t` and `f` rather than their `::text` typecasts—unless you explicitly write the typecast.
 
 This behavior is inherited from `psql`.
 
@@ -203,7 +201,7 @@ select
 ```
 It shows the result:
 ```
-     n     | t1  |       t2        | int array 
+     n     | t1  |       t2        | int array
 -----------+-----+-----------------+-----------
  42.932771 | cat | dog's breakfast | {1,2,3}}
 ```
@@ -237,7 +235,7 @@ You see already, then, that the rules for composing a `numeric` literal and a `t
 
 - You compose a `text` literal by enquoting the bare text that specifies the intended value (however you choose to do the quoting) and by then following this with the `::text` typecast operator.
 
-(If you did enquote the bare text in a `numeric` literal, then you would _not_ see an error. Rather, you would get implicit but undesirable behavior: first, a genuine `text` value would be generated internally, and then, this, in turn, would be typecasted to the `numeric` value.)
+(If you did enquote the bare text in a `numeric` literal, then you would _not_ see an error. Rather, you would get implicit but undesirable behavior: first, a genuine `text` value would be generated internally, and then, this, in turn, would be typecast to the `numeric` value.)
 
 You've already seen, informally, some examples of array literals. Here is the rule:
 
@@ -250,7 +248,7 @@ These are three special cases of a more general rule. In some cases (for example
 Here is the general rule.
 
 - The literal for a value of any data type is the possibly enquoted bare text that specifies the intended value, followed by the typecast operator to the desired target data type.
-- This rule is applied recursively, for the literal for a composite value, but with different actual rules at different levels of nesting. For example, the literal for an array value as a whole must be typecasted. But, because the data type of every value in the array is already determined, the bare text that specifies these values is _not_ typecasted.
+- This rule is applied recursively, for the literal for a composite value, but with different actual rules at different levels of nesting. For example, the literal for an array value as a whole must be typecast. But, because the data type of every value in the array is already determined, the bare text that specifies these values is _not_ typecast.
 - The `::text` typecast of any value can always be used as the bare text of the literal that will recreate that value.
 
 You can see examples of the text of the literal that creates an array value by creating the value using the constructor and then inspecting its `::text` typecast. But the safe way to create the text of a literal for an intended value is to understand the syntax and semantics that govern its composition.

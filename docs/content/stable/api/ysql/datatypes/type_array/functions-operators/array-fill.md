@@ -3,13 +3,11 @@ title: array_fill()
 linkTitle: array_fill()
 headerTitle: array_fill()
 description: array_fill()
-block_indexing: true
 menu:
   stable:
     identifier: array-fill
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 **Signature:**
 ```
@@ -24,7 +22,7 @@ return value:      anyarray
   ```
 &#160;&#160;&#160;&#160;This is the result:
   ```
-   type of the new array 
+   type of the new array
   -----------------------
    text[]
   ```
@@ -83,7 +81,7 @@ where k = 1;
 ```
 It shows this:
 ```
- len_1 | len_2 | lb_1 | lb_2 | ndims | cardinality 
+ len_1 | len_2 | lb_1 | lb_2 | ndims | cardinality
 -------+-------+------+------+-------+-------------
      3 |     4 |    2 |    7 |     2 |          12
 ```

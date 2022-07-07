@@ -13,19 +13,27 @@
 
 #include "yb/master/ysql_transaction_ddl.h"
 
-#include "yb/client/async_initializer.h"
 #include "yb/client/transaction_rpc.h"
+
 #include "yb/common/ql_expr.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
-#include "yb/master/sys_catalog.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.pb.h"
-#include "yb/util/logging.h"
-#include "yb/util/monotime.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/master/sys_catalog.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_peer.h"
+
+#include "yb/tserver/tserver_service.pb.h"
+
+#include "yb/util/logging.h"
+#include "yb/util/monotime.h"
+#include "yb/util/net/net_fwd.h"
+#include "yb/util/status_log.h"
 
 DEFINE_int32(ysql_transaction_bg_task_wait_ms, 200,
   "Amount of time the catalog manager background task thread waits "
@@ -39,23 +47,29 @@ YsqlTransactionDdl::~YsqlTransactionDdl() {
   rpcs_.Shutdown();
 }
 
-void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
+void YsqlTransactionDdl::VerifyTransaction(
+    const TransactionMetadata& transaction_metadata,
     std::function<Status(bool)> complete_callback) {
   SleepFor(MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_bg_task_wait_ms));
 
-  LOG(INFO) << "Verifying Transaction " << transaction.ToString();
+  YB_LOG_EVERY_N_SECS(INFO, 1) << "Verifying Transaction " << transaction_metadata;
 
   tserver::GetTransactionStatusRequestPB req;
-  req.set_tablet_id(transaction.status_tablet);
-  req.add_transaction_id()->assign(pointer_cast<const char*>(transaction.transaction_id.data()),
-      transaction.transaction_id.size());
+  req.set_tablet_id(transaction_metadata.status_tablet);
+  req.add_transaction_id()->assign(
+      pointer_cast<const char*>(transaction_metadata.transaction_id.data()),
+      transaction_metadata.transaction_id.size());
 
   auto rpc_handle = rpcs_.Prepare();
   if (rpc_handle == rpcs_.InvalidHandle()) {
-    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction.ToString();
+    LOG(WARNING) << "Shutting down. Cannot send GetTransactionStatus: " << transaction_metadata;
     return;
   }
-  auto client = master_->async_client_initializer().client();
+  auto client = client_future_.get();
+  if (!client) {
+    LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << transaction_metadata;
+    return;
+  }
   // We need to query the TransactionCoordinator here.  Can't use TransactionStatusResolver in
   // TransactionParticipant since this TransactionMetadata may not have any actual data flushed yet.
   *rpc_handle = client::GetTransactionStatus(
@@ -63,19 +77,18 @@ void YsqlTransactionDdl::VerifyTransaction(TransactionMetadata transaction,
       nullptr /* tablet */,
       client,
       &req,
-      [this, rpc_handle, transaction, complete_callback]
+      [this, rpc_handle, transaction_metadata, complete_callback]
           (Status status, const tserver::GetTransactionStatusResponsePB& resp) {
         auto retained = rpcs_.Unregister(rpc_handle);
-        TransactionReceived(transaction, complete_callback, status, resp);
+        TransactionReceived(transaction_metadata, complete_callback, std::move(status), resp);
       });
   (**rpc_handle).SendRpc();
 }
 
-void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
+void YsqlTransactionDdl::TransactionReceived(
+    const TransactionMetadata& transaction,
     std::function<Status(bool)> complete_callback,
     Status txn_status, const tserver::GetTransactionStatusResponsePB& resp) {
-  LOG(INFO) << "TransactionReceived: " << txn_status.ToString() << " : " << resp.DebugString();
-
   if (!txn_status.ok()) {
     LOG(WARNING) << "Transaction Status attempt (" << transaction.ToString()
                  << ") failed with status " << txn_status;
@@ -94,7 +107,8 @@ void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
     }), "Failed to enqueue callback");
     // #5981: Maybe have the same heuristic as above?
   } else {
-    LOG(INFO) << "Got Response for " << transaction.ToString() << ": " << resp.DebugString();
+    YB_LOG_EVERY_N_SECS(INFO, 1) << "Got Response for " << transaction.ToString()
+                                 << ", resp: " << resp.ShortDebugString();
     bool is_pending = (resp.status_size() == 0);
     for (int i = 0; i < resp.status_size() && !is_pending; ++i) {
       // NOTE: COMMITTED state is also "pending" because we need APPLIED.
@@ -116,14 +130,17 @@ void YsqlTransactionDdl::TransactionReceived(TransactionMetadata transaction,
   }
 }
 
-Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint32_t> entry_oid) {
-  auto tablet_peer = catalog_manager_->sys_catalog()->tablet_peer();
+Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint32_t> entry_oid,
+                                               TableId relfilenode_oid) {
+  auto tablet_peer = sys_catalog_->tablet_peer();
   if (!tablet_peer || !tablet_peer->tablet()) {
     return STATUS(ServiceUnavailable, "SysCatalog unavailable");
   }
   const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
   const Schema& pg_database_schema =
-      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema;
+      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_table_id))->schema();
+
+  bool is_matview = relfilenode_oid.empty() ? false : true;
 
   // Use Scan to query the 'pg_database' table, filtering by our 'oid'.
   Schema projection;
@@ -131,17 +148,17 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
                 pg_database_schema.num_key_columns()));
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   auto iter = VERIFY_RESULT(catalog_tablet->NewRowIterator(
-      projection.CopyWithoutColumnIds(), boost::none /* transaction_id */,
-      {} /* read_hybrid_time */, pg_table_id));
-  auto e_oid_val = VERIFY_RESULT(entry_oid);
+      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_table_id));
+  auto e_oid_val = VERIFY_RESULT(std::move(entry_oid));
   {
     auto doc_iter = down_cast<docdb::DocRowwiseIterator*>(iter.get());
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(e_oid_val);
+    const std::vector<docdb::KeyEntryValue> empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, {} /* hashed_components */,
+        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(doc_iter->Init(spec));
   }
@@ -150,6 +167,14 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id, Result<uint3
   QLTableRow row;
   if (VERIFY_RESULT(iter->HasNext())) {
     RETURN_NOT_OK(iter->NextRow(&row));
+    if (is_matview) {
+      const auto relfilenode_col_id = VERIFY_RESULT(projection.ColumnIdByName("relfilenode")).rep();
+      const auto& relfilenode = row.GetValue(relfilenode_col_id);
+      if (relfilenode->uint32_value() != VERIFY_RESULT(GetPgsqlTableOid(relfilenode_oid))) {
+        return false;
+      }
+      return true;
+    }
     return true;
   }
   return false;

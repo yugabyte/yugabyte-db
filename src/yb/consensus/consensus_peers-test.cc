@@ -30,24 +30,27 @@
 // under the License.
 //
 
-#include <chrono>
-
 #include <gtest/gtest.h>
 
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/consensus/consensus_peers.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
-#include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/opid_util.h"
+
 #include "yb/fs/fs_manager.h"
+
 #include "yb/rpc/messenger.h"
+
 #include "yb/server/hybrid_clock.h"
+
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -89,14 +92,15 @@ class ConsensusPeersTest : public YBTest {
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
 
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(Log::Open(options_,
                        kTabletId,
                        fs_manager_->GetFirstTabletWalDirOrDie(kTableId, kTabletId),
                        fs_manager_->uuid(),
                        schema_,
                        0, // schema_version
-                       NULL,
+                       nullptr, // table_metric_entity
+                       nullptr, // tablet_metric_entity
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -140,27 +144,29 @@ class ConsensusPeersTest : public YBTest {
         raft_pool_.get(), new NoOpTestPeerProxy(raft_pool_.get(), peer_pb));
     *peer = CHECK_RESULT(Peer::NewRemotePeer(
         peer_pb, kTabletId, kLeaderUuid, PeerProxyPtr(proxy_ptr), message_queue_.get(),
-        raft_pool_token_.get(), nullptr /* consensus */, messenger_.get()));
+        nullptr /* multi raft batcher */, raft_pool_token_.get(),
+        nullptr /* consensus */, messenger_.get()));
     return proxy_ptr;
   }
 
-  void CheckLastLogEntry(int term, int index) {
-    ASSERT_EQ(log_->GetLatestEntryOpId(), yb::OpId(term, index));
+  void CheckLastLogEntry(int64_t term, int64_t index) {
+    ASSERT_EQ(log_->GetLatestEntryOpId(), OpId(term, index));
   }
 
-  void CheckLastRemoteEntry(DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int term, int index) {
-    ASSERT_EQ(yb::OpId::FromPB(proxy->proxy()->last_received()), yb::OpId(term, index));
+  void CheckLastRemoteEntry(
+      DelayablePeerProxy<NoOpTestPeerProxy>* proxy, int64_t term, int64_t index) {
+    ASSERT_EQ(OpId::FromPB(proxy->proxy()->last_received()), OpId(term, index));
   }
 
  protected:
   unique_ptr<ThreadPool> raft_pool_;
-  gscoped_ptr<TestRaftConsensusQueueIface> consensus_;
+  std::unique_ptr<TestRaftConsensusQueueIface> consensus_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
-  gscoped_ptr<PeerMessageQueue> message_queue_;
+  std::unique_ptr<PeerMessageQueue> message_queue_;
   const Schema schema_;
   LogOptions options_;
   unique_ptr<ThreadPoolToken> raft_pool_token_;
@@ -312,7 +318,8 @@ TEST_F(ConsensusPeersTest, TestCloseWhenRemotePeerDoesntMakeProgress) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, PeerProxyPtr(mock_proxy),
-      message_queue_.get(), raft_pool_token_.get(), nullptr /* consensus */,
+      message_queue_.get(), nullptr /* multi raft batcher */,
+      raft_pool_token_.get(), nullptr /* consensus */,
       messenger_.get()));
 
   // Make the peer respond without making any progress -- it always returns
@@ -341,7 +348,8 @@ TEST_F(ConsensusPeersTest, TestDontSendOneRpcPerWriteWhenPeerIsDown) {
   auto mock_proxy = new MockedPeerProxy(raft_pool_.get());
   auto peer = ASSERT_RESULT(Peer::NewRemotePeer(
       FakeRaftPeerPB(kFollowerUuid), kTabletId, kLeaderUuid, PeerProxyPtr(mock_proxy),
-      message_queue_.get(), raft_pool_token_.get(), nullptr /* consensus */,
+      message_queue_.get(), nullptr /* multi raft batcher */, raft_pool_token_.get(),
+      nullptr /* consensus */,
       messenger_.get()));
 
   auto se = ScopeExit([&peer] {

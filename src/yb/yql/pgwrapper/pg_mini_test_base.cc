@@ -13,12 +13,17 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+#include "yb/client/yb_table_name.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/master/sys_catalog_initialization.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/random_util.h"
+#include "yb/util/metrics.h"
+#include "yb/util/tsan_util.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
@@ -33,14 +38,16 @@ namespace yb {
 namespace pgwrapper {
 
 void PgMiniTestBase::DoTearDown() {
-  pg_supervisor_->Stop();
+  if (pg_supervisor_) {
+    pg_supervisor_->Stop();
+  }
   YBMiniClusterTestBase::DoTearDown();
 }
 
 void PgMiniTestBase::SetUp() {
   HybridTime::TEST_SetPrettyToString(true);
 
-  FLAGS_client_read_write_timeout_ms = 120000;
+  FLAGS_client_read_write_timeout_ms = 120000 * kTimeMultiplier;
   FLAGS_enable_ysql = true;
   FLAGS_hide_pg_catalog_table_creation_logs = true;
   FLAGS_master_auto_run_initdb = true;
@@ -52,21 +59,20 @@ void PgMiniTestBase::SetUp() {
   master::SetDefaultInitialSysCatalogSnapshotFlags();
   YBMiniClusterTestBase::SetUp();
 
-  MiniClusterOptions mini_cluster_opt(NumMasters(), NumTabletServers());
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), mini_cluster_opt);
-  ASSERT_OK(cluster_->Start());
+  MiniClusterOptions mini_cluster_opt = MiniClusterOptions {
+      .num_masters = NumMasters(),
+      .num_tablet_servers = NumTabletServers(),
+      .num_drives = 1,
+      .master_env = env_.get()
+  };
+  OverrideMiniClusterOptions(&mini_cluster_opt);
+  cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
+  ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));
 
-  auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
   auto port = cluster_->AllocateFreePort();
-  PgProcessConf pg_process_conf = ASSERT_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
-      yb::ToString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
-      pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
-      pg_ts->server()->GetSharedMemoryFd()));
-
-  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
-  pg_process_conf.force_disable_log_file = true;
+  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(port));
   FLAGS_pgsql_proxy_webserver_port = cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on "
@@ -75,12 +81,78 @@ void PgMiniTestBase::SetUp() {
             << ", pgsql webserver port: " << FLAGS_pgsql_proxy_webserver_port;
 
   BeforePgProcessStart();
-  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf);
+  pg_supervisor_ = std::make_unique<PgSupervisor>(pg_process_conf, nullptr /* tserver */);
   ASSERT_OK(pg_supervisor_->Start());
 
+  DontVerifyClusterBeforeNextTearDown();
+}
+
+Result<TableId> PgMiniTestBase::GetTableIDFromTableName(const std::string table_name) {
+  // Get YBClient handler and tablet ID. Using this we can get the number of tablets before starting
+  // the test and before the test ends. With this we can ensure that tablet splitting has occurred.
+  auto client = VERIFY_RESULT(cluster_->CreateClient());
+  const auto tables = VERIFY_RESULT(client->ListTables());
+  for (const auto& table : tables) {
+    if (table.has_table() && table.table_name() == table_name) {
+      return table.table_id();
+    }
+  }
+  return STATUS_FORMAT(NotFound, "Didn't find table with name: $0.", table_name);
+}
+
+Result<PgProcessConf> PgMiniTestBase::CreatePgProcessConf(uint16_t port) {
+  auto pg_ts = RandomElement(cluster_->mini_tablet_servers());
+  PgProcessConf pg_process_conf = VERIFY_RESULT(PgProcessConf::CreateValidateAndRunInitDb(
+      AsString(Endpoint(pg_ts->bound_rpc_addr().address(), port)),
+      pg_ts->options()->fs_opts.data_paths.front() + "/pg_data",
+      pg_ts->server()->GetSharedMemoryFd()));
+
+  pg_process_conf.master_addresses = pg_ts->options()->master_addresses_flag;
+  pg_process_conf.force_disable_log_file = true;
   pg_host_port_ = HostPort(pg_process_conf.listen_addresses, pg_process_conf.pg_port);
 
-  DontVerifyClusterBeforeNextTearDown();
+  return pg_process_conf;
+}
+
+Status PgMiniTestBase::RestartCluster() {
+  pg_supervisor_->Stop();
+  RETURN_NOT_OK(cluster_->RestartSync());
+  pg_supervisor_ = std::make_unique<PgSupervisor>(
+      VERIFY_RESULT(CreatePgProcessConf(pg_host_port_.port())), nullptr /* tserver */);
+  return pg_supervisor_->Start();
+}
+
+void PgMiniTestBase::OverrideMiniClusterOptions(MiniClusterOptions* options) {}
+
+const std::shared_ptr<tserver::MiniTabletServer> PgMiniTestBase::PickPgTabletServer(
+    const MiniCluster::MiniTabletServers& servers) {
+  return RandomElement(servers);
+}
+
+HistogramMetricWatcher::HistogramMetricWatcher(
+  const server::RpcServerBase& server, const MetricPrototype& metric)
+    : server_(server), metric_(metric) {
+}
+
+Result<size_t> HistogramMetricWatcher::Delta(const DeltaFunctor& functor) const {
+  auto initial_values = VERIFY_RESULT(GetMetricCount());
+  RETURN_NOT_OK(functor());
+  return VERIFY_RESULT(GetMetricCount()) - initial_values;
+}
+
+Result<size_t> HistogramMetricWatcher::GetMetricCount() const {
+  const auto& metric_map = server_.metric_entity()->UnsafeMetricsMapForTests();
+  auto item = metric_map.find(&metric_);
+  SCHECK(item != metric_map.end(), IllegalState, "Metric not found");
+  const auto& metric = *item->second;
+  SCHECK_EQ(
+      MetricType::kHistogram, metric.prototype()->type(),
+      IllegalState, "Histogram metric is expected");
+  return down_cast<const Histogram&>(metric).TotalCount();
+}
+
+std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {
+  return std::vector<tserver::TabletServerOptions>();
 }
 
 } // namespace pgwrapper

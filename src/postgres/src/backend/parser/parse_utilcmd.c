@@ -70,6 +70,8 @@
 #include "utils/typcache.h"
 
 // YB includes
+#include "catalog/catalog.h"
+#include "utils/guc.h"
 #include "pg_yb_utils.h"
 
 /* State shared by transformCreateStmt and its subroutines */
@@ -103,6 +105,12 @@ typedef struct
 	 *
 	 * OptSplit   *split_options;
 	 */
+
+	Oid			relOid;			/* OID of a relation, either from rel (for ALTER),
+								 * or from table_oid option (for CREATE) */
+	Oid			tablespaceOid;	/* resolved OID of a tablespace to use,
+								 * might be InvalidOid. */
+	bool		isSystem;		/* true if the relation is system relation */
 } CreateStmtContext;
 
 /* State shared by transformCreateSchemaStmt and its subroutines */
@@ -150,8 +158,6 @@ static void validateInfiniteBounds(ParseState *pstate, List *blist);
 static Const *transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 							 const char *colName, Oid colType, int32 colTypmod);
 
-static void YBTransformPrimaryKeySplitOptions(CreateStmtContext *cxt);
-
 /*
  * transformCreateStmt -
  *	  parse analysis for CREATE TABLE
@@ -179,6 +185,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	ParseCallbackState pcbstate;
 	bool		like_found = false;
 	bool		is_foreign_table = IsA(stmt, CreateForeignTableStmt);
+	bool		specifies_type_oid = false;
 
 	/*
 	 * We must not scribble on the passed-in CreateStmt, so copy it.  (This is
@@ -273,6 +280,35 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	cxt.hasoids = interpretOidsOption(stmt->options, !cxt.isforeign);
 
+	/*
+	 * YB expects system tables to be created only during YSQL cluster upgrade.
+	 * Both table_oid and row_type_oid should be specified for CREATE statment.
+	 * They should match the ones defined in pg_xxx.h headers, but I don't
+	 * see an easy way to do a sanity check.
+	 */
+	cxt.isSystem = IsSystemNamespace(namespaceid);
+	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to create \"%s.%s\"",
+						get_namespace_name(namespaceid), stmt->relation->relname),
+				 errdetail("System catalog modifications are currently disallowed.")));
+
+	cxt.relOid = InvalidOid;
+	/*
+	 * Select tablespace to use.  If not specified, use default tablespace
+	 * (which may in turn default to database's default).
+	 */
+	if (stmt->tablespacename)
+	{
+		cxt.tablespaceOid = get_tablespace_oid(stmt->tablespacename, false);
+	}
+	else
+	{
+		cxt.tablespaceOid = GetDefaultTablespace(stmt->relation->relpersistence);
+		/* note InvalidOid is OK in this case */
+	}
+
 	Assert(!stmt->ofTypename || !stmt->inhRelations);	/* grammar enforces */
 
 	if (stmt->ofTypename)
@@ -338,7 +374,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 		if (strcmp(def->defname, "oids") == 0)
 		{
 			bool oids_val = defGetBoolean(def);
-			if (oids_val)
+			if (oids_val && !cxt.isSystem)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							errmsg("OIDs are not supported for user tables.")));
@@ -349,36 +385,69 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 			if (user_cat_val)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("Users cannot create system catalog tables.")));
-		}
-		else if (strcmp(def->defname, "tablegroup") == 0)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Cannot supply tablegroup through WITH clause.")));
+							errmsg("users cannot create system catalog tables")));
 		}
 		else if (strcmp(def->defname, "colocated") == 0)
 			(void) defGetBoolean(def);
 		else if (strcmp(def->defname, "table_oid") == 0)
 		{
-			if (!yb_enable_create_with_table_oid)
+			if (!yb_enable_create_with_table_oid && !IsYsqlUpgrade)
 			{
 				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("Create table with oid is not allowed."),
+					errmsg("create table with table_oid is not allowed"),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
-			Oid table_oid = strtol(defGetString(def), NULL, 10);
-			if (table_oid < FirstNormalObjectId)
+
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &cxt.relOid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"table_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+
+			Oid max_system_relid = (yb_test_system_catalogs_creation
+									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+			if (!cxt.isSystem && cxt.relOid < FirstNormalObjectId)
 			{
-				elog(ERROR, "User tables must have an OID >= %d.",
-					 FirstNormalObjectId);
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("user tables must have an OID >= %d", FirstNormalObjectId)));
 			}
+			else if (cxt.isSystem && cxt.relOid > max_system_relid)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("system tables must have an OID <= %d "
+								"(exactly as defined in the relevant BKI header file!)",
+								max_system_relid)));
+			}
+		}
+		else if (strcmp(def->defname, "colocation_id") == 0)
+		{
+			/*
+			 * Acknowledge we recognize the reloption.
+			 * reloptions parsing will do the bounds check for us.
+			 */
+		}
+		else if (strcmp(def->defname, "row_type_oid") == 0)
+		{
+			if (!cxt.isSystem)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("only system tables may have row_type_oid set")));
+			specifies_type_oid = true;
 		}
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("Storage parameter %s is unsupported, ignoring", def->defname)));
+					 errmsg("storage parameter %s is unsupported, ignoring", def->defname)));
 	}
+
+	if (IsYsqlUpgrade && cxt.isSystem &&
+		(!OidIsValid(cxt.relOid) || !specifies_type_oid))
+		ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+			errmsg("system tables must specify both table_oid and row_type_oid "
+				   "(exactly as defined in the relevant BKI header file!)")));
 
 	/*
 	 * transformIndexConstraints wants cxt.alist to contain only index
@@ -783,7 +852,17 @@ transformColumnDefinition(CreateStmtContext *cxt, ColumnDef *column)
 
 					column->identity = constraint->generated_when;
 					saw_identity = true;
+
+					/* An identity column is implicitly NOT NULL */
+					if (saw_nullable && !column->is_not_null)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("conflicting NULL/NOT NULL declarations for column \"%s\" of table \"%s\"",
+										column->colname, cxt->relation->relname),
+								 parser_errposition(cxt->pstate,
+													constraint->location)));
 					column->is_not_null = true;
+					saw_nullable = true;
 					break;
 				}
 
@@ -1503,7 +1582,7 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 	index->unique = idxrec->indisunique;
 	index->primary = idxrec->indisprimary;
 	index->transformed = true;	/* don't need transformIndexStmt */
-	index->concurrent = false;
+	index->concurrent = YB_CONCURRENCY_DISABLED;
 	index->if_not_exists = false;
 
 	/*
@@ -1676,7 +1755,11 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 		/* Add the operator class name, if non-default */
 		iparam->opclass = get_opclass(indclass->values[keyno], keycoltype);
 
-		iparam->ordering = SORTBY_DEFAULT;
+		if (opt & INDOPTION_HASH)
+			iparam->ordering = SORTBY_HASH;
+		else
+			iparam->ordering = SORTBY_DEFAULT;
+
 		iparam->nulls_ordering = SORTBY_NULLS_DEFAULT;
 
 		/* Adjust options if necessary */
@@ -1698,6 +1781,16 @@ generateClonedIndexStmt(RangeVar *heapRel, Oid heapRelid, Relation source_idx,
 			{
 				if (opt & INDOPTION_NULLS_FIRST)
 					iparam->nulls_ordering = SORTBY_NULLS_FIRST;
+
+				/*
+				 * If the index supports ordering and it is neither
+				 * SORTBY_HASH nor SORTBY_DESC, then the source index must have
+				 * been SORTBY_ASC. If we do not set it here, during index
+				 * creation, the ordering for the first attribute will wrongly
+				 * default to SORTBY_HASH.
+				 */
+				if (iparam->ordering == SORTBY_DEFAULT)
+					iparam->ordering = SORTBY_ASC;
 			}
 		}
 
@@ -1989,12 +2082,54 @@ transformIndexConstraints(CreateStmtContext *cxt)
 		cxt->alist = list_make1(cxt->pkey);
 	}
 
+
+	Bitmapset *oids_used = NULL;
+	if (cxt->isSystem)
+	{
+		Assert(OidIsValid(cxt->relOid));
+		oids_used = bms_make_singleton(cxt->relOid);
+	}
+
 	foreach(lc, indexlist)
 	{
 		bool		keep = true;
 		ListCell   *k;
 
 		index = lfirst(lc);
+
+		if (IsYsqlUpgrade && cxt->isSystem)
+		{
+			if (index->idxname == NULL)
+				elog(ERROR, "system indexes must have an explicit name "
+							"(exactly as defined in indexing.h header file!)");
+
+			/*
+			 * For system tables, we need to check not just a presence of
+			 * table_oid option but also it's correctness.
+			 * Even though index creation would do that anyway, we do this ahead
+			 * to spare DocDB from rolling back table creation.
+			 */
+			Oid oid = GetTableOidFromRelOptions(
+				index->options,
+				cxt->tablespaceOid,
+				cxt->relation->relpersistence);
+
+			if (!OidIsValid(oid))
+				elog(ERROR, "system indexes must specify table_oid "
+							"(exactly as defined in indexing.h header file!)");
+
+			Oid max_system_relid = (yb_test_system_catalogs_creation
+									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+			if (oid > max_system_relid)
+				elog(ERROR, "system indexes must have an OID <= %d "
+							"(exactly as defined in indexing.h header file!)",
+					 max_system_relid);
+
+			if (bms_is_member(oid, oids_used))
+				elog(ERROR, "table OID %u is used multiple times", oid);
+
+			oids_used = bms_add_member(oids_used, oid);
+		}
 
 		/* if it's pkey, it's already in cxt->alist */
 		if (index == cxt->pkey)
@@ -2030,6 +2165,18 @@ transformIndexConstraints(CreateStmtContext *cxt)
 		if (keep)
 			cxt->alist = lappend(cxt->alist, index);
 	}
+
+	bms_free(oids_used);
+}
+
+static char
+ybcGetIndexedRelPersistence(IndexStmt* index, CreateStmtContext *cxt) {
+  /*
+   * Use persistence from relation info. It is available in case of 'ALTER TABLE' statement.
+   * Or use persistence from statement itself. This is a case when relation is not yet exists
+   * (i.e. 'CREATE TABLE' statement).
+   */
+  return cxt->rel ? cxt->rel->rd_rel->relpersistence : index->relation->relpersistence;
 }
 
 /*
@@ -2073,7 +2220,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 
 	index->relation = cxt->relation;
 	index->accessMethod = constraint->access_method ? constraint->access_method :
-			(IsYugaByteEnabled() && index->relation->relpersistence != RELPERSISTENCE_TEMP
+			(IsYugaByteEnabled() && ybcGetIndexedRelPersistence(index, cxt) != RELPERSISTENCE_TEMP
 					? DEFAULT_YB_INDEX_TYPE
 					: DEFAULT_INDEX_TYPE);
 	index->options = constraint->options;
@@ -2242,8 +2389,9 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 				 */
 				defopclass = GetDefaultOpClass(attform->atttypid,
 											   index_rel->rd_rel->relam);
+				int16 opt = index_rel->rd_indoption[i];
 				if (indclass->values[i] != defopclass ||
-					index_rel->rd_indoption[i] != 0)
+					(opt != 0 && (!(INDOPTION_HASH & opt) || !IsYBRelation(heap_rel))))
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 							 errmsg("index \"%s\" does not have default sorting behavior", index_name),
@@ -2314,6 +2462,14 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 			ColumnDef  *column = NULL;
 			ListCell   *columns;
 			IndexElem  *iparam;
+
+			if (index_elem->expr != NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("cannot create a primary key or unique constraint on expressions"),
+							 parser_errposition(cxt->pstate, constraint->location)));
+
+			Assert(key != NULL);
 
 			/* Make sure referenced column exist. */
 			foreach(columns, cxt->columns)
@@ -2665,6 +2821,7 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	RangeTblEntry *rte;
 	ListCell   *l;
 	Relation	rel;
+	bool		is_system;
 
 	/* Nothing to do if statement already transformed. */
 	if (stmt->transformed)
@@ -2681,44 +2838,52 @@ transformIndexStmt(Oid relid, IndexStmt *stmt, const char *queryString)
 	pstate->p_sourcetext = queryString;
 
 	/*
-	 * We must ensure that no tablegroup option was supplied in the WITH clause.
-	 * Tablegroups cannot be supplied directly for indexes. We check here instead
-	 * of ybccmds as we supply the reloption for the tablegroup of the indexed table
-	 * in DefineIndex(.) if there exists one.
+	 * Caller is responsible for locking relation, but we still need
+	 * to open it.
 	 */
+	rel = relation_open(relid, NoLock);
+
+	is_system = IsSystemNamespace(RelationGetNamespace(rel));
+
 	ListCell *cell;
 	foreach(cell, stmt->options)
 	{
 		DefElem *def = (DefElem*) lfirst(cell);
-		if (strcmp(def->defname, "tablegroup") == 0)
+		if (strcmp(def->defname, "table_oid") == 0)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("Cannot supply tablegroup through WITH clause.")));
-		}
-		else if (strcmp(def->defname, "table_oid") == 0)
-		{
-			if (!yb_enable_create_with_table_oid)
+			if (!(yb_enable_create_with_table_oid || IsYsqlUpgrade))
 			{
 				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("Create index with oid is not allowed."),
+					errmsg("create index with table_oid is not allowed"),
 					errhint("Try enabling the session variable yb_enable_create_with_table_oid.")));
 			}
+
 			Oid table_oid = strtol(defGetString(def), NULL, 10);
-			if (table_oid < FirstNormalObjectId)
+
+			Oid max_system_relid = (yb_test_system_catalogs_creation
+									? FirstNormalObjectId : YB_MIN_UNUSED_OID) - 1;
+
+			if (!is_system && table_oid < FirstNormalObjectId)
 			{
-				elog(ERROR, "User tables must have an OID >= %d.",
-					 FirstNormalObjectId);
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("user indexes must have an OID >= %d", FirstNormalObjectId)));
+			}
+			else if (is_system && table_oid > max_system_relid)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("system indexes must have an OID <= %d "
+								"(exactly as defined in the indexing.h header file!)",
+								max_system_relid)));
 			}
 		}
 	}
 
 	/*
 	 * Put the parent table into the rtable so that the expressions can refer
-	 * to its fields without qualification.  Caller is responsible for locking
-	 * relation, but we still need to open it.
+	 * to its fields without qualification.
 	 */
-	rel = relation_open(relid, NoLock);
 	rte = addRangeTableEntryForRelation(pstate, rel, NULL, false, true);
 
 	/* no to join list, yes to namespaces */
@@ -3172,6 +3337,20 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 	 */
 
 	/*
+	 * YB expects system tables to be altered only during YSQL cluster upgrade.
+	 */
+	cxt.isSystem = IsSystemNamespace(RelationGetNamespace(rel));
+	if (IsYugaByteEnabled() && cxt.isSystem && !IsYsqlUpgrade)
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to alter \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail("System catalog modifications are currently disallowed.")));
+
+	cxt.relOid = RelationGetRelid(rel);
+	cxt.tablespaceOid = rel->rd_rel->reltablespace;
+
+	/*
 	 * The only subtypes that currently require parse transformation handling
 	 * are ADD COLUMN, ADD CONSTRAINT and SET DATA TYPE.  These largely re-use
 	 * code from CREATE TABLE.
@@ -3187,6 +3366,8 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 				{
 					ColumnDef  *def = castNode(ColumnDef, cmd->def);
 
+					transformColumnDefinition(&cxt, def);
+
 					/*
 					 * Report an error for constraint types which YB does not yet support in
 					 * ALTER TABLE ... ADD COLUMN statements.
@@ -3200,17 +3381,28 @@ transformAlterTableStmt(Oid relid, AlterTableStmt *stmt,
 						{
 							case CONSTR_IDENTITY:
 							case CONSTR_PRIMARY:
-							case CONSTR_UNIQUE:
 								ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 											errmsg("This ALTER TABLE command is not yet supported.")));
+								break;
+
+							case CONSTR_UNIQUE:
+								// TODO(alex): Since we can't transactionally rollback adding column
+								//             on DocDB side yet, only support the simplest form
+								//             of this for now - the one that can't fail because of
+								//             some constraint violation.
+								//             While FKs ignore NULL values, they may still error
+								//             out if referenced column has no unique constraint
+								//             so we disallow them too.
+								if (def->is_not_null || def->raw_default
+								    || cxt.ckconstraints || cxt.fkconstraints)
+									ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+												errmsg("This ALTER TABLE command is not yet supported.")));
 								break;
 
 							default:
 								break;
 						}
 					}
-
-					transformColumnDefinition(&cxt, def);
 
 					/*
 					 * If the column has a non-null default, we can't skip

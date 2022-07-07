@@ -1,31 +1,29 @@
 ---
-title: Create YCQL roles in YugabyteDB
-headerTitle: Create roles
-linkTitle: Create roles
-description: Create YCQL roles in YugabyteDB
-headcontent: Creating roles
+title: Manage Users and Roles in YCQL
+headerTitle: Manage Users and Roles
+linkTitle: Manage Users and Roles
+description: Manage Users and Roles in YCQL
+headcontent: Manage Users and Roles
 image: /images/section_icons/secure/create-roles.png
-block_indexing: true
 menu:
   stable:
     identifier: create-roles-ycql
     parent: authorization
     weight: 717
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/secure/authorization/create-roles" class="nav-link">
+    <a href="/preview/secure/authorization/create-roles" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/secure/authorization/create-roles-ycql" class="nav-link active">
+    <a href="/preview/secure/authorization/create-roles-ycql" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -49,7 +47,7 @@ Roles that have `LOGIN` permissions are users. As an example, you can create a u
 cassandra@ycqlsh> CREATE ROLE IF NOT EXISTS john WITH PASSWORD = 'PasswdForJohn' AND LOGIN = true;
 ```
 
-Read about [how to create users in YugabyteDB](../../authentication/) in the authentication section.
+Read about [how to create users in YugabyteDB](../../enable-authentication/ycql/) in the authentication section.
 
 ## 2. Grant roles
 

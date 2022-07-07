@@ -584,23 +584,22 @@ typedef struct EState
 	 * YugaByte-specific fields
 	 */
 
-	bool es_yb_is_single_row_modify_txn; /* Is this query a single-row modify
+	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
 																				* and the only stmt in this txn. */
+	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
 																		 * we cache the conflict tuple here when processing and
 																		 * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*
-	 * Whether we can batch updates - note that enabling this will cause batched
-	 * updates to not return a correct rows_affected_count, thus cannot be used
-	 * for plpgsql (which uses this value for GET DIAGNOSTICS...ROW_COUNT and
-	 * FOUND).
-	 * Currently only enabled for PGSQL functions / procedures.
+	 *  The in txn limit used for this query. This value is initialized
+	 *  to 0, and later updated by the first read operation initiated for this
+	 *  query. All later read operations are then ensured that they will never
+	 *  read any data written past this time.
 	 */
-	bool yb_can_batch_updates;
+	uint64_t yb_es_in_txn_limit_ht;
 } EState;
-
 
 /*
  * ExecRowMark -
@@ -653,6 +652,33 @@ typedef struct ExecAuxRowMark
 	AttrNumber	toidAttNo;		/* resno of tableoid junk attribute, if any */
 	AttrNumber	wholeAttNo;		/* resno of whole-row junk attribute, if any */
 } ExecAuxRowMark;
+
+/*
+ * Yugabyte output parameter.
+ * The following parameters are not yet used.
+ * - Execution status in text. Currently, details are lost when reporting status. This OUT param
+ *   value can be used for that purpose.
+ * - Execution status code in yugabyte (This code might be different from Postgres).
+ */
+typedef struct YbPgExecOutParam {
+	NodeTag type;
+
+	/* BACKFILL output */
+	StringInfo bfoutput;
+
+	/* Not yet used */
+	StringInfo status;
+	int64_t status_code;
+} YbPgExecOutParam;
+
+typedef struct YbExprParamDesc {
+	NodeTag type;
+
+	int32_t attno;
+	int32_t typid;
+	int32_t typmod;
+	int32_t collid;
+} YbExprParamDesc;
 
 
 /* ----------------------------------------------------------------
@@ -835,7 +861,7 @@ typedef struct SetExprState
 	 * (by InitFunctionCallInfoData) if func.fn_oid is valid.  It also saves
 	 * argument values between calls, when setArgsValid is true.
 	 */
-	FunctionCallInfo fcinfo;
+	FunctionCallInfoData fcinfo_data;
 } SetExprState;
 
 /* ----------------

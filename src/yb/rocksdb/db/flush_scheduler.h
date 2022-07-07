@@ -20,7 +20,6 @@
 
 #pragma once
 
-#include <stdint.h>
 #include <atomic>
 #include <mutex>
 #include <set>

@@ -15,6 +15,7 @@
 #define YB_UTIL_BACKOFF_WAITER_H
 
 #include <chrono>
+#include <thread>
 
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -42,7 +43,7 @@ class GenericBackoffWaiter {
   }
 
   bool ExpiredAt(TimePoint time) const {
-    return time >= deadline_;
+    return deadline_ < time + ClockResolution<Clock>();
   }
 
   bool Wait() {

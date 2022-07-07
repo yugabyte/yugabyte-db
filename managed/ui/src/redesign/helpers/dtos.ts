@@ -68,6 +68,9 @@ export interface UserIntent {
   assignPublicIP: boolean;
   useTimeSync: boolean;
   enableYSQL: boolean;
+  enableYSQLAuth: boolean;
+  enableYCQL: boolean;
+  enableYCQLAuth: boolean;
   enableNodeToNodeEncrypt: boolean;
   enableClientToNodeEncrypt: boolean;
   enableVolumeEncryption: boolean;
@@ -123,6 +126,7 @@ export interface EncryptionAtRestConfig {
 export enum StorageType {
   IO1 = 'IO1',
   GP2 = 'GP2',
+  GP3 = 'GP3',
   Scratch = 'Scratch',
   Persistent = 'Persistent',
   StandardSSD_LRS = 'StandardSSD_LRS',
@@ -134,6 +138,7 @@ export interface DeviceInfo {
   volumeSize: number;
   numVolumes: number;
   diskIops: number | null;
+  throughput: number | null;
   storageClass: 'standard'; // hardcoded in DeviceInfo.java
   mountPoints: string | null;
   storageType: StorageType | null;
@@ -309,4 +314,25 @@ export interface KmsConfig {
     name: string;
     provider: string;
   };
+}
+
+export interface HAPlatformInstance {
+  uuid: string;
+  config_uuid: string;
+  address: string,
+  is_leader: boolean,
+  is_local: boolean,
+  last_backup: string | null;
+}
+
+export interface HAConfig {
+  uuid: string;
+  cluster_key: string;
+  last_failover: number;
+  instances: HAPlatformInstance[];
+}
+
+export interface HAReplicationSchedule {
+  frequency_milliseconds: number;
+  is_running: boolean;
 }

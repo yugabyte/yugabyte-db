@@ -10,128 +10,167 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.google.api.client.util.Preconditions.checkState;
+import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.NodeActionType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static com.yugabyte.yw.common.Util.areMastersUnderReplicated;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Allows the addition of a node into a universe. Spawns the necessary processes - tserver
 // and/or master and ensures the task waits for the right set of load balance primitives.
+@Slf4j
 public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(AddNodeToUniverse.class);
+
+  @Inject
+  protected AddNodeToUniverse(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   @Override
   protected NodeTaskParams taskParams() {
-    return (NodeTaskParams)taskParams;
+    return (NodeTaskParams) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for node {} in univ uuid={}", getName(),
-             taskParams().nodeName, taskParams().universeUUID);
-    NodeDetails currentNode = null;
+    log.info(
+        "Started {} task for node {} in universe {}",
+        getName(),
+        taskParams().nodeName,
+        taskParams().universeUUID);
+    String errorString = null;
+
     try {
       checkUniverseVersion();
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
-
       // Update the DB to prevent other changes from happening.
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
 
-      currentNode = universe.getNode(taskParams().nodeName);
+      final NodeDetails currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " in universe " + universe.name;
-        LOG.error(msg);
+        String msg =
+            String.format("No node %s in universe %s", taskParams().nodeName, universe.name);
+        log.error(msg);
         throw new RuntimeException(msg);
       }
 
-      if (currentNode.state != NodeState.Removed &&
-          currentNode.state != NodeState.Decommissioned) {
-        String msg = "Node " + taskParams().nodeName + " is not in removed or decommissioned state"
-                     + ", but is in " + currentNode.state + ", so cannot be added.";
-        LOG.error(msg);
-        throw new RuntimeException(msg);
-      }
+      currentNode.validateActionOnState(NodeActionType.ADD);
 
+      preTaskActions();
+
+      Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
+      UserIntent userIntent = cluster.userIntent;
+      boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
+
+      // For onprem universes, allocate an available node
+      // from the provider's node_instance table.
+      if (wasDecommissioned && userIntent.providerType.equals(CloudType.onprem)) {
+        Optional<NodeInstance> nodeInstance = NodeInstance.maybeGetByName(currentNode.nodeName);
+        if (nodeInstance.isPresent()) {
+          // Illegal state if it is unused because both node name and in-use fields are updated
+          // together.
+          checkState(nodeInstance.get().isInUse(), "Node name is set but the node is not in use");
+        } else {
+          // Reserve a node if it is not assigned yet, and persist the universe details and node
+          // reservation in transaction so that universe is aware of the reservation.
+          Map<UUID, List<String>> onpremAzToNodes =
+              Collections.singletonMap(
+                  currentNode.azUuid, Collections.singletonList(currentNode.nodeName));
+          universe =
+              saveUniverseDetails(
+                  u -> {
+                    NodeDetails node = u.getNode(taskParams().nodeName);
+                    Map<String, NodeInstance> nodeMap =
+                        NodeInstance.pickNodes(
+                            onpremAzToNodes, currentNode.cloudInfo.instance_type);
+                    node.nodeUuid = nodeMap.get(currentNode.nodeName).getNodeUuid();
+                    currentNode.nodeUuid = node.nodeUuid;
+                    // This needs to be set because DB fetch of this universe later can override the
+                    // field as the universe details object is transient and not tracked by DB.
+                    u.setUniverseDetails(u.getUniverseDetails());
+                    // Perform preflight check. If it fails, the node must not be in use,
+                    // otherwise running it second time can succeed. This check must be
+                    // performed only when a new node is picked as Add after Remove can
+                    // leave processes that require sudo access.
+                    String preflightStatus =
+                        performPreflightCheck(
+                            cluster,
+                            currentNode,
+                            EncryptionInTransitUtil.isRootCARequired(taskParams())
+                                ? taskParams().rootCA
+                                : null,
+                            EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+                                ? taskParams().clientRootCA
+                                : null);
+                    if (preflightStatus != null) {
+                      throw new RuntimeException(
+                          String.format(
+                              "Node %s (%s) failed preflight check. Error: %s",
+                              node.getNodeName(), node.getNodeUuid(), preflightStatus));
+                    }
+                  });
+        }
+      }
+      Set<NodeDetails> nodeSet = Collections.singleton(currentNode);
       // Update Node State to being added.
       createSetNodeStateTask(currentNode, NodeState.Adding)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      Cluster cluster = taskParams().getClusterByUuid(currentNode.placementUuid);
-      Collection<NodeDetails> node = new HashSet<NodeDetails>(Arrays.asList(currentNode));
-
       // First spawn an instance for Decommissioned node.
-      boolean wasDecommissioned = currentNode.state == NodeState.Decommissioned;
       if (wasDecommissioned) {
-        if (cluster.userIntent.providerType.equals(CloudType.onprem)) {
-          // For onprem universes, allocate an available node
-          // from the provider's node_instance table.
-          Map<UUID, List<String>> onpremAzToNodes = new HashMap<UUID, List<String>>();
-          List<String> nodeNameList = new ArrayList<>();
-          nodeNameList.add(currentNode.nodeName);
-          onpremAzToNodes.put(currentNode.azUuid, nodeNameList);
-          String instanceType = currentNode.cloudInfo.instance_type;
+        createCreateServerTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-          Map<String, NodeInstance> nodeMap = NodeInstance.pickNodes(onpremAzToNodes, instanceType);
-          currentNode.nodeUuid = nodeMap.get(currentNode.nodeName).nodeUuid;
-        }
+        createServerInfoTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
-        createPrecheckTasks(node)
-            .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-
-        createSetupServerTasks(node)
-            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
-
-        createServerInfoTasks(node)
-            .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+        createSetupServerTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.Provisioning);
       }
 
       // Re-install software.
       // TODO: Remove the need for version for existing instance, NodeManger needs changes.
-      createConfigureServerTasks(node, true /* isShell */)
+      createConfigureServerTasks(nodeSet, params -> params.isMasterInShellMode = true)
           .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
 
-      // Set default gflags
-      addDefaultGFlags(cluster.userIntent);
-
       // All necessary nodes are created. Data moving will coming soon.
-      createSetNodeStateTasks(node, NodeDetails.NodeState.ToJoinCluster)
+      createSetNodeStateTasks(nodeSet, NodeDetails.NodeState.ToJoinCluster)
           .setSubTaskGroupType(SubTaskGroupType.Provisioning);
 
       // Bring up any masters, as needed.
       boolean masterAdded = false;
       if (areMastersUnderReplicated(currentNode, universe)) {
-        LOG.info(
-          "Bringing up master for under replicated universe {} ({})",
-          universe.universeUUID, universe.name
-        );
+        log.info(
+            "Bringing up master for under replicated universe {} ({})",
+            universe.universeUUID,
+            universe.name);
+
         // Set gflags for master.
-        createGFlagsOverrideTasks(node, ServerType.MASTER);
+        createGFlagsOverrideTasks(
+            nodeSet,
+            ServerType.MASTER,
+            true /* isShell */,
+            VmUpgradeTaskType.None,
+            false /*ignoreUseCustomImageConfig*/);
 
         // Start a shell master process.
-        createStartMasterTasks(node)
-            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createStartMasterTasks(nodeSet).setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Mark node as a master in YW DB.
         // Do this last so that master addresses does not pick up current node.
@@ -139,7 +178,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
         // Wait for master to be responsive.
-        createWaitForServersTasks(node, ServerType.MASTER)
+        createWaitForServersTasks(nodeSet, ServerType.MASTER)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
         // Add it into the master quorum.
@@ -149,7 +188,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Set gflags for the tserver.
-      createGFlagsOverrideTasks(node, ServerType.TSERVER);
+      createGFlagsOverrideTasks(nodeSet, ServerType.TSERVER);
 
       // Add the tserver process start task.
       createTServerTaskForNode(currentNode, "start")
@@ -160,7 +199,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
       // Wait for new tablet servers to be responsive.
-      createWaitForServersTasks(node, ServerType.TSERVER)
+      createWaitForServersTasks(nodeSet, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Update the swamper target file.
@@ -168,47 +207,42 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       // Clear the host from master's blacklist.
       if (currentNode.state == NodeState.Removed) {
-        createModifyBlackListTask(Arrays.asList(currentNode), false /* isAdd */)
+        createModifyBlackListTask(nodeSet, false /* isAdd */, false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
       // Wait for load to balance.
-      createWaitForLoadBalanceTask()
-          .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
+      createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-      // Update all tserver conf files with new master information.
       if (masterAdded) {
+        // Update all tserver conf files with new master information.
         createMasterInfoUpdateTask(universe, currentNode);
+
+        // Update the master addresses on the target universes whose source universe belongs to
+        // this task.
+        createXClusterConfigUpdateMasterAddressesTask();
       }
 
       // Update node state to live.
       createSetNodeStateTask(currentNode, NodeState.Live)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
-      if (wasDecommissioned) {
-        UserIntent userIntent = universe.getUniverseDetails()
-                                        .getClusterByUuid(currentNode.placementUuid)
-                                        .userIntent;
-
-        // Update the DNS entry for this universe.
-        createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent.providerType,
-                                  userIntent.provider, userIntent.universeName)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-      }
-
-      // Mark universe task state to success.
-      createMarkUniverseUpdateSuccessTasks()
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, userIntent)
           .setSubTaskGroupType(SubTaskGroupType.StartingNode);
 
+      // Mark universe task state to success.
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StartingNode);
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      errorString = t.getMessage();
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future updates to the universe.
-      unlockUniverseForUpdate();
+      unlockUniverseForUpdate(errorString);
     }
-    LOG.info("Finished {} task.", getName());
+    log.info("Finished {} task.", getName());
   }
 }

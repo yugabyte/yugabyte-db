@@ -15,8 +15,8 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/master/async_ts_rpc_tasks.h"
-#include "yb/master/master_snapshot_coordinator.h"
+#include "yb/master/async_rpc_tasks.h"
+#include "yb/master/snapshot_coordinator_context.h"
 
 #include "yb/tserver/backup.pb.h"
 
@@ -25,12 +25,12 @@ namespace master {
 
 // Send the "Create/Restore/.. Tablet Snapshot operation" to the leader replica for the tablet.
 // Keeps retrying until we get an "ok" response.
-class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
+class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
  public:
   AsyncTabletSnapshotOp(
       Master* master,
       ThreadPool* callback_pool,
-      const scoped_refptr<TabletInfo>& tablet,
+      const TabletInfoPtr& tablet,
       const std::string& snapshot_id,
       tserver::TabletSnapshotOpRequestPB::Operation op);
 
@@ -40,12 +40,30 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
 
   std::string description() const override;
 
+  void SetSnapshotScheduleId(const SnapshotScheduleId& id) {
+    snapshot_schedule_id_ = id;
+  }
+
   void SetSnapshotHybridTime(HybridTime value) {
     snapshot_hybrid_time_ = value;
   }
 
+  void SetMetadata(const SysTablesEntryPB& pb);
+
+  void SetRestorationId(const TxnSnapshotRestorationId& id) {
+    restoration_id_ = id;
+  }
+
+  void SetRestorationTime(HybridTime value) {
+    restoration_hybrid_time_ = value;
+  }
+
   void SetCallback(TabletSnapshotOperationCallback callback) {
     callback_ = std::move(callback);
+  }
+
+  void SetDbOid(int64_t db_oid) {
+    db_oid_ = db_oid;
   }
 
  private:
@@ -55,13 +73,23 @@ class AsyncTabletSnapshotOp : public enterprise::RetryingTSRpcTask {
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
   void Finished(const Status& status) override;
+  bool RetryAllowed(tserver::TabletServerErrorPB::Code code, const Status& status);
 
-  scoped_refptr<TabletInfo> tablet_;
+  TabletInfoPtr tablet_;
   const std::string snapshot_id_;
   tserver::TabletSnapshotOpRequestPB::Operation operation_;
+  SnapshotScheduleId snapshot_schedule_id_ = SnapshotScheduleId::Nil();
   HybridTime snapshot_hybrid_time_;
+  TxnSnapshotRestorationId restoration_id_ = TxnSnapshotRestorationId::Nil();
+  HybridTime restoration_hybrid_time_;
   tserver::TabletSnapshotOpResponsePB resp_;
   TabletSnapshotOperationCallback callback_;
+  bool has_metadata_ = false;
+  uint32_t schema_version_;
+  SchemaPB schema_;
+  google::protobuf::RepeatedPtrField<IndexInfoPB> indexes_;
+  bool hide_ = false;
+  std::optional<int64_t> db_oid_ = std::nullopt;
 };
 
 } // namespace master

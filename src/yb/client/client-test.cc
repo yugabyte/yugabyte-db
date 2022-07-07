@@ -32,58 +32,68 @@
 
 #include <algorithm>
 #include <functional>
-#include <thread>
+#include <regex>
 #include <set>
+#include <thread>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include <gflags/gflags.h>
-#include <glog/stl_logging.h>
+#include <gtest/gtest.h>
 
-#include "yb/client/callbacks.h"
 #include "yb/client/async_initializer.h"
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
 #include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/client_utils.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_cache.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/table_alterer.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 #include "yb/client/value.h"
 #include "yb/client/yb_op.h"
 
 #include "yb/common/partial_row.h"
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/algorithm.h"
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master-test-util.h"
-#include "yb/master/master.proxy.h"
+
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master.h"
+#include "yb/master/master_client.pb.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_error.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/ts_descriptor.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_test_util.h"
-#include "yb/server/metadata.h"
-#include "yb/server/hybrid_clock.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/yql/pggate/pg_tabledesc.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
-#include "yb/tablet/operations/write_operation.h"
+
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
+#include "yb/tserver/tserver_service.proxy.h"
 
 #include "yb/util/capabilities.h"
 #include "yb/util/metrics.h"
@@ -91,10 +101,15 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 #include "yb/util/tostring.h"
+#include "yb/util/tsan_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_bool(enable_data_block_fsync);
 DECLARE_bool(log_inject_latency);
@@ -145,8 +160,16 @@ using std::shared_ptr;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
+namespace {
+
 constexpr int32_t kNoBound = kint32max;
 constexpr int kNumTablets = 2;
+
+const std::string kKeyspaceName = "my_keyspace";
+const std::string kPgsqlKeyspaceID = "1234567890abcdef1234567890abcdef";
+const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
+
+} // namespace
 
 class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
  public:
@@ -170,13 +193,12 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     // Start minicluster and wait for tablet servers to connect to master.
     auto opts = MiniClusterOptions();
     opts.num_tablet_servers = 3;
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    opts.num_masters = NumMasters();
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     // Connect to the cluster.
-    client_ = ASSERT_RESULT(YBClientBuilder()
-        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
-        .Build());
+    ASSERT_OK(InitClient());
 
     // Create a keyspace;
     ASSERT_OK(client_->CreateNamespace(kKeyspaceName));
@@ -195,27 +217,36 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   }
 
  protected:
-  static const string kKeyspaceName;
   static const YBTableName kTableName;
   static const YBTableName kTable2Name;
   static const YBTableName kTable3Name;
+
+  virtual int NumMasters() {
+    return 1;
+  }
+
+  virtual Status InitClient() {
+    client_ = VERIFY_RESULT(YBClientBuilder()
+        .add_master_server_addr(yb::ToString(cluster_->mini_master()->bound_rpc_addr()))
+        .Build());
+    return Status::OK();
+  }
 
   string GetFirstTabletId(YBTable* table) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
     table->name().SetIntoTableIdentifierPB(req.mutable_table());
-    CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(
-        &req, &resp));
+    CHECK_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
     CHECK_GT(resp.tablet_locations_size(), 0);
     return resp.tablet_locations(0).tablet_id();
   }
 
   void CheckNoRpcOverflow() {
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       MiniTabletServer* server = cluster_->mini_tablet_server(i);
       if (server->is_started()) {
         ASSERT_EQ(0, server->server()->rpc_server()->
-            service_pool("yb.tserver.TabletServerService")->
+            TEST_service_pool("yb.tserver.TabletServerService")->
             RpcsQueueOverflowMetric()->value());
       }
     }
@@ -226,7 +257,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       client = client_.get();
     }
     std::shared_ptr<YBSession> session = client->NewSession();
-    session->SetTimeout(10s);
+    session->SetTimeout(10s * kTimeMultiplier);
     return session;
   }
 
@@ -234,7 +265,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void InsertTestRows(YBClient* client, const TableHandle& table, int num_rows, int first_row = 0) {
     auto session = CreateSession(client);
     for (int i = first_row; i < num_rows + first_row; i++) {
-      ASSERT_OK(session->Apply(BuildTestRow(table, i)));
+      session->Apply(BuildTestRow(table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -248,7 +279,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void UpdateTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      ASSERT_OK(session->Apply(UpdateTestRow(table, i)));
+      session->Apply(UpdateTestRow(table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -257,7 +288,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void DeleteTestRows(const TableHandle& table, int lo, int hi) {
     auto session = CreateSession();
     for (int i = lo; i < hi; i++) {
-      ASSERT_OK(session->Apply(DeleteTestRow(table, i)));
+      session->Apply(DeleteTestRow(table, i));
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATALS(CheckNoRpcOverflow());
@@ -300,7 +331,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
       }
       // The sum should be the sum of the arithmetic series from
       // 0..FLAGS_test_scan_num_rows-1
-      uint64_t expected = implicit_cast<uint64_t>(FLAGS_test_scan_num_rows) *
+      uint64_t expected = FLAGS_test_scan_num_rows *
           (0 + (FLAGS_test_scan_num_rows - 1)) / 2;
       ASSERT_EQ(expected, sum);
     }
@@ -336,7 +367,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
     client_table_.AddColumns({"key"}, req);
     auto session = client_->NewSession();
     session->SetTimeout(60s);
-    ASSERT_OK(session->ApplyAndFlush(op));
+    ASSERT_OK(session->TEST_ApplyAndFlush(op));
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, op->response().status());
     auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
     for (const auto& row : rowblock->rows()) {
@@ -351,7 +382,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   void CreateTable(const YBTableName& table_name_orig,
                    int num_tablets,
                    TableHandle* table) {
-    auto num_replicas = FLAGS_replication_factor;
+    size_t num_replicas = FLAGS_replication_factor;
     // The implementation allows table name without a keyspace.
     YBTableName table_name(table_name_orig.namespace_type(), table_name_orig.has_namespace() ?
         table_name_orig.namespace_name() : kKeyspaceName, table_name_orig.table_name());
@@ -375,7 +406,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
   // finish bootstrapping.
   Status KillTServerImpl(const string& uuid, const bool restart, const bool wait_started) {
     bool ts_found = false;
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       MiniTabletServer* ts = cluster_->mini_tablet_server(i);
       if (ts->server()->instance_pb().permanent_uuid() == uuid) {
         if (restart) {
@@ -460,7 +491,7 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 
   YBSchema schema_;
 
-  gscoped_ptr<MiniCluster> cluster_;
+  std::unique_ptr<MiniCluster> cluster_;
   std::unique_ptr<YBClient> client_;
   TableHandle client_table_;
   TableHandle client_table2_;
@@ -468,7 +499,6 @@ class ClientTest: public YBMiniClusterTestBase<MiniCluster> {
 };
 
 
-const string ClientTest::kKeyspaceName("my_keyspace");
 const YBTableName ClientTest::kTableName(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb");
 const YBTableName ClientTest::kTable2Name(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb2");
 const YBTableName ClientTest::kTable3Name(YQL_DATABASE_CQL, kKeyspaceName, "client-testtb3");
@@ -490,7 +520,7 @@ TableFilter MakeFilter(int32_t lower_bound, int32_t upper_bound, std::string col
   return TableFilter();
 }
 
-int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
+size_t CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency,
                         int32_t lower_bound, int32_t upper_bound) {
   TableIteratorOptions options;
   options.consistency = consistency;
@@ -499,11 +529,11 @@ int CountRowsFromClient(const TableHandle& table, YBConsistencyLevel consistency
   return boost::size(TableRange(table, options));
 }
 
-int CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
+size_t CountRowsFromClient(const TableHandle& table, int32_t lower_bound, int32_t upper_bound) {
   return CountRowsFromClient(table, YBConsistencyLevel::STRONG, lower_bound, upper_bound);
 }
 
-int CountRowsFromClient(const TableHandle& table) {
+size_t CountRowsFromClient(const TableHandle& table) {
   return CountRowsFromClient(table, kNoBound, kNoBound);
 }
 
@@ -531,10 +561,10 @@ class ClientTestForceMasterLookup :
   }
 
 
-  void PerformManyLookups(const std::shared_ptr<const YBTable>& table, bool point_lookup) {
+  void PerformManyLookups(const std::shared_ptr<YBTable>& table, bool point_lookup) {
     for (int i = 0; i < kNumIterations; i++) {
       if (point_lookup) {
-          auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
+          auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
           ASSERT_NOTNULL(key_rt);
       } else {
         auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
@@ -553,7 +583,7 @@ TEST_P(ClientTestForceMasterLookup, TestConcurrentLookups) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto t1 = std::thread([&]() { ASSERT_NO_FATALS(
@@ -571,7 +601,7 @@ TEST_F(ClientTest, TestLookupAllTablets) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto future = client_->LookupAllTabletsFuture(
@@ -587,10 +617,10 @@ TEST_F(ClientTest, TestPointThenRangeLookup) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
-  auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(table).get());
+  auto key_rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table).get());
   ASSERT_NOTNULL(key_rt);
 
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
@@ -605,7 +635,7 @@ TEST_F(ClientTest, TestKeyRangeFiltering) {
   std::shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTable3Name, &table));
 
-  ASSERT_OK(cluster_->leader_mini_master()->master()->
+  ASSERT_OK(ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->master()->
             WaitUntilCatalogManagerIsLeaderAndReadyForTests());
 
   auto tablets = ASSERT_RESULT(client_->LookupAllTabletsFuture(
@@ -656,30 +686,33 @@ TEST_F(ClientTest, TestListTables) {
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
-  std::vector<std::unique_ptr<YBTabletServer>> tss;
-  ASSERT_OK(client_->ListTabletServers(&tss));
+  auto tss = ASSERT_RESULT(client_->ListTabletServers());
   ASSERT_EQ(3, tss.size());
   set<string> actual_ts_uuids;
   set<string> actual_ts_hostnames;
   set<string> expected_ts_uuids;
   set<string> expected_ts_hostnames;
-  for (int i = 0; i < tss.size(); ++i) {
+  for (size_t i = 0; i < tss.size(); ++i) {
     auto server = cluster_->mini_tablet_server(i)->server();
     expected_ts_uuids.insert(server->instance_pb().permanent_uuid());
-    actual_ts_uuids.insert(tss[i]->uuid());
+    actual_ts_uuids.insert(tss[i].uuid);
     expected_ts_hostnames.insert(server->options().broadcast_addresses[0].host());
-    actual_ts_hostnames.insert(tss[i]->hostname());
+    actual_ts_hostnames.insert(tss[i].hostname);
   }
   ASSERT_EQ(expected_ts_uuids, actual_ts_uuids);
   ASSERT_EQ(expected_ts_hostnames, actual_ts_hostnames);
+}
+
+bool TableNotFound(const Status& status) {
+  return status.IsNotFound()
+         && (master::MasterError(status) == master::MasterErrorPB::OBJECT_NOT_FOUND);
 }
 
 TEST_F(ClientTest, TestBadTable) {
   shared_ptr<YBTable> t;
   Status s = client_->OpenTable(
       YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "xxx-does-not-exist"), &t);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(false), "Not found: The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 // Test that, if the master is down, we experience a network error talking
@@ -750,10 +783,10 @@ TEST_F(ClientTest, TestScanMultiTablet) {
   // tablet, except the first which is empty.
     auto session = CreateSession();
   for (int i = 1; i < 5; i++) {
-    ASSERT_OK(session->Apply(BuildTestRow(table, 2 + (i * 10))));
-    ASSERT_OK(session->Apply(BuildTestRow(table, 3 + (i * 10))));
-    ASSERT_OK(session->Apply(BuildTestRow(table, 5 + (i * 10))));
-    ASSERT_OK(session->Apply(BuildTestRow(table, 7 + (i * 10))));
+    session->Apply(BuildTestRow(table, 2 + (i * 10)));
+    session->Apply(BuildTestRow(table, 3 + (i * 10)));
+    session->Apply(BuildTestRow(table, 5 + (i * 10)));
+    session->Apply(BuildTestRow(table, 7 + (i * 10)));
   }
   FlushSessionOrDie(session);
 
@@ -762,8 +795,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Update every other row
   for (int i = 1; i < 5; ++i) {
-    ASSERT_OK(session->Apply(UpdateTestRow(table, 2 + i * 10)));
-    ASSERT_OK(session->Apply(UpdateTestRow(table, 5 + i * 10)));
+    session->Apply(UpdateTestRow(table, 2 + i * 10));
+    session->Apply(UpdateTestRow(table, 5 + i * 10));
   }
   FlushSessionOrDie(session);
 
@@ -772,8 +805,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 5 + i*10)));
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 7 + i*10)));
+    session->Apply(DeleteTestRow(table, 5 + i*10));
+    session->Apply(DeleteTestRow(table, 7 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -782,8 +815,8 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 2 + i*10)));
-    ASSERT_OK(session->Apply(DeleteTestRow(table, 3 + i*10)));
+    session->Apply(DeleteTestRow(table, 2 + i*10));
+    session->Apply(DeleteTestRow(table, 3 + i*10));
   }
   FlushSessionOrDie(session);
 
@@ -857,7 +890,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   // We have to loop since some replicas may have been created slowly.
   scoped_refptr<internal::RemoteTablet> rt;
   while (true) {
-    rt = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
+    rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
     ASSERT_TRUE(rt.get() != nullptr);
     vector<internal::RemoteTabletServer*> tservers;
     rt->GetRemoteTabletServers(&tservers);
@@ -994,12 +1027,9 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   }
 }
 
-static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
-  CHECK_EQ(1, session->CountPendingErrors());
-  CollectedErrors errors = session->GetAndClearPendingErrors();
-  CHECK_EQ(1, errors.size());
-  std::unique_ptr<YBError> result = std::move(errors.front());
-  return result;
+static YBError* GetSingleErrorFromFlushStatus(const FlushStatus& flush_status) {
+  CHECK_EQ(1, flush_status.errors.size());
+  return flush_status.errors.front().get();
 }
 
 // Simplest case of inserting through the client API: a single row
@@ -1007,26 +1037,26 @@ static std::unique_ptr<YBError> GetSingleErrorFromSession(YBSession* session) {
 // TODO Actually we need to check that hash columns present during insert. But it is not done yet.
 TEST_F(ClientTest, DISABLED_TestInsertSingleRowManualBatch) {
   auto session = CreateSession();
-  ASSERT_FALSE(session->HasPendingOperations());
+  ASSERT_FALSE(session->TEST_HasPendingOperations());
 
   auto insert = client_table_.NewInsertOp();
   // Try inserting without specifying a key: should fail.
   client_table_.AddInt32ColumnValue(insert->mutable_request(), "int_val", 54321);
   client_table_.AddStringColumnValue(insert->mutable_request(), "string_val", "hello world");
-  ASSERT_OK(session->ApplyAndFlush(insert));
+  ASSERT_OK(session->TEST_ApplyAndFlush(insert));
   ASSERT_EQ(QLResponsePB::YQL_STATUS_RUNTIME_ERROR, insert->response().status());
 
   // Retry
   QLAddInt32HashValue(insert->mutable_request(), 12345);
-  ASSERT_OK(session->Apply(insert));
-  ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
+  session->Apply(insert);
+  ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
 
   FlushSessionOrDie(session, { insert });
 }
 
 namespace {
 
-CHECKED_STATUS ApplyInsertToSession(YBSession* session,
+void ApplyInsertToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key,
                                     int int_val,
@@ -1039,25 +1069,25 @@ CHECKED_STATUS ApplyInsertToSession(YBSession* session,
   if (op) {
     *op = insert;
   }
-  return session->Apply(insert);
+  session->Apply(insert);
 }
 
-CHECKED_STATUS ApplyUpdateToSession(YBSession* session,
+void ApplyUpdateToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key,
                                     int int_val) {
   auto update = table.NewUpdateOp();
   QLAddInt32HashValue(update->mutable_request(), row_key);
   table.AddInt32ColumnValue(update->mutable_request(), "int_val", int_val);
-  return session->Apply(update);
+  session->Apply(update);
 }
 
-CHECKED_STATUS ApplyDeleteToSession(YBSession* session,
+void ApplyDeleteToSession(YBSession* session,
                                     const TableHandle& table,
                                     int row_key) {
   auto del = table.NewDeleteOp();
   QLAddInt32HashValue(del->mutable_request(), row_key);
-  return session->Apply(del);
+  session->Apply(del);
 }
 
 } // namespace
@@ -1070,14 +1100,16 @@ TEST_F(ClientTest, TestWriteTimeout) {
     google::FlagSaver saver;
     FLAGS_master_inject_latency_on_tablet_lookups_ms = 110;
     session->SetTimeout(100ms);
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-    Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError()) << "unexpected status: " << s.ToString();
-    auto error = GetSingleErrorFromSession(session.get());
+    ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
+    ASSERT_TRUE(flush_status.status.IsIOError())
+        << "unexpected status: " << flush_status.status.ToString();
+    auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
-    ASSERT_STR_CONTAINS(error->status().ToString(),
-        strings::Substitute("GetTableLocations($0, hash_code: NaN, 1) failed: "
-            "timed out after deadline expired", client_table_->name().ToString()));
+    ASSERT_TRUE(std::regex_match(
+        error->status().ToString(),
+        std::regex(".*GetTableLocations \\{.*\\} timed out after deadline expired, passed.*")))
+        << error->status().ToString();
   }
 
   LOG(INFO) << "Time out the actual write on the tablet server";
@@ -1087,12 +1119,11 @@ TEST_F(ClientTest, TestWriteTimeout) {
     SetAtomicFlag(110, &FLAGS_log_inject_latency_ms_mean);
     SetAtomicFlag(0, &FLAGS_log_inject_latency_ms_stddev);
 
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-    Status s = session->Flush();
-    ASSERT_TRUE(s.IsIOError()) << s;
-    auto error = GetSingleErrorFromSession(session.get());
+    ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+    const auto flush_status = session->TEST_FlushAndGetOpsErrors();
+    ASSERT_TRUE(flush_status.status.IsIOError()) << AsString(flush_status.status.ToString());
+    auto error = GetSingleErrorFromFlushStatus(flush_status);
     ASSERT_TRUE(error->status().IsTimedOut()) << error->status().ToString();
-    ASSERT_STR_CONTAINS(error->status().ToString(), "timed out");
   }
 }
 
@@ -1100,31 +1131,31 @@ TEST_F(ClientTest, TestWriteTimeout) {
 // to the Session. This should still call the callback.
 TEST_F(ClientTest, TestAsyncFlushResponseAfterSessionDropped) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-  Synchronizer s;
-  session->FlushAsync(s.AsStatusFunctor());
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+  auto flush_future = session->FlushFuture();
   session.reset();
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(flush_future.get().status);
 
   // Try again, this time should not have an error response (to re-insert the same row).
-  s.Reset();
   session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
-  ASSERT_EQ(1, session->CountBufferedOperations());
-  session->FlushAsync(s.AsStatusFunctor());
-  ASSERT_EQ(0, session->CountBufferedOperations());
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
+  ASSERT_EQ(1, session->TEST_CountBufferedOperations());
+  ASSERT_TRUE(session->HasNotFlushedOperations());
+  flush_future = session->FlushFuture();
+  ASSERT_EQ(0, session->TEST_CountBufferedOperations());
+  ASSERT_FALSE(session->HasNotFlushedOperations());
   session.reset();
-  ASSERT_OK(s.Wait());
+  ASSERT_OK(flush_future.get().status);
 }
 
 TEST_F(ClientTest, TestSessionClose) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "row");
   // Closing the session now should return Status::IllegalState since we
   // have a pending operation.
   ASSERT_TRUE(session->Close().IsIllegalState());
 
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   ASSERT_OK(session->Close());
 }
@@ -1141,15 +1172,16 @@ TEST_F(ClientTest, TestMultipleMultiRowManualBatches) {
 
   for (int batch_num = 0; batch_num < kNumBatches; batch_num++) {
     for (int i = 0; i < kRowsPerBatch; i++) {
-      ASSERT_OK(ApplyInsertToSession(
-                         session.get(),
-                         (row_key % 2 == 0) ? client_table_ : client_table2_,
-                         row_key, row_key * 10, "hello world"));
+      ApplyInsertToSession(
+          session.get(),
+          (row_key % 2 == 0) ? client_table_ : client_table2_,
+          row_key, row_key * 10, "hello world");
       row_key++;
     }
-    ASSERT_TRUE(session->HasPendingOperations()) << "Should be pending until we Flush";
+    ASSERT_TRUE(session->TEST_HasPendingOperations()) << "Should be pending until we Flush";
     FlushSessionOrDie(session);
-    ASSERT_FALSE(session->HasPendingOperations()) << "Should have no more pending ops after flush";
+    ASSERT_FALSE(session->TEST_HasPendingOperations())
+        << "Should have no more pending ops after flush";
   }
 
   const int kNumRowsPerTablet = kNumBatches * kRowsPerBatch / 2;
@@ -1168,14 +1200,14 @@ TEST_F(ClientTest, TestBatchWithDuplicates) {
   auto session = CreateSession();
 
   // Insert a row with key "1"
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row");
   FlushSessionOrDie(session);
 
   // Now make a batch that has key "1" along with
   // key "2" which will succeed. Flushing should not return an error.
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "Attempted dup"));
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 2, 1, "Should succeed"));
-  Status s = session->Flush();
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "Attempted dup");
+  ApplyInsertToSession(session.get(), client_table_, 2, 1, "Should succeed");
+  Status s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
 
   // Verify that the other row was successfully inserted
@@ -1203,18 +1235,18 @@ void ClientTest::DoTestWriteWithDeadServer(WhichServerToKill which) {
       cluster_->mini_master()->Shutdown();
       break;
     case DEAD_TSERVER:
-      for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
         cluster_->mini_tablet_server(i)->Shutdown();
       }
       break;
   }
 
   // Try a write.
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
-  Status s = session->Flush();
-  ASSERT_TRUE(s.IsIOError()) << s.ToString();
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
+  const auto flush_status = session->TEST_FlushAndGetOpsErrors();
+  ASSERT_TRUE(flush_status.status.IsIOError()) << flush_status.status.ToString();
 
-  auto error = GetSingleErrorFromSession(session.get());
+  auto error = GetSingleErrorFromFlushStatus(flush_status);
   switch (which) {
     case DEAD_MASTER:
       // Only one master, so no retry for finding the new leader master.
@@ -1246,7 +1278,7 @@ TEST_F(ClientTest, TestWriteWithDeadTabletServer) {
 
 void ClientTest::DoApplyWithoutFlushTest(int sleep_micros) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "x"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
   SleepFor(MonoDelta::FromMicroseconds(sleep_micros));
   session.reset(); // should not crash!
 
@@ -1283,14 +1315,7 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
     bool got_expected_error = false;
     auto session = CreateSession();
     for (int i = 0; i < 1000000; i++) {
-      Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
-      if (s.IsIncomplete()) {
-        ASSERT_STR_CONTAINS(s.ToString(), "not enough space remaining in buffer");
-        got_expected_error = true;
-        break;
-      } else {
-        ASSERT_OK(s);
-      }
+      ApplyInsertToSession(session.get(), client_table_, 1, 1, "x");
     }
     ASSERT_TRUE(got_expected_error);
   }
@@ -1300,25 +1325,24 @@ TEST_F(ClientTest, DISABLED_TestApplyTooMuchWithoutFlushing) {
     string huge_string(10 * 1024 * 1024, 'x');
 
     shared_ptr<YBSession> session = client_->NewSession();
-    Status s = ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
-    ASSERT_TRUE(s.IsIncomplete()) << "got unexpected status: " << s.ToString();
+    ApplyInsertToSession(session.get(), client_table_, 1, 1, huge_string.c_str());
   }
 }
 
 // Test that update updates and delete deletes with expected use
 TEST_F(ClientTest, TestMutationsWork) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row");
   FlushSessionOrDie(session);
 
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
   FlushSessionOrDie(session);
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("{ int32:1, int32:2, string:\"original row\", null }", rows[0]);
   rows.clear();
 
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
@@ -1326,23 +1350,23 @@ TEST_F(ClientTest, TestMutationsWork) {
 
 TEST_F(ClientTest, TestMutateDeletedRow) {
   auto session = CreateSession();
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row"));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "original row");
   FlushSessionOrDie(session);
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   FlushSessionOrDie(session);
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(0, rows.size());
 
   // Attempt update deleted row
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
-  Status s = session->Flush();
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
+  Status s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete deleted row
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
-  s = session->Flush();
+  ApplyDeleteToSession(session.get(), client_table_, 1);
+  s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
@@ -1352,15 +1376,15 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
   auto session = CreateSession();
 
   // Attempt update nonexistent row
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
-  Status s = session->Flush();
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
+  Status s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
 
   // Attempt delete nonexistent row
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
-  s = session->Flush();
+  ApplyDeleteToSession(session.get(), client_table_, 1);
+  s = session->TEST_Flush();
   ASSERT_TRUE(s.ok());
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
@@ -1377,8 +1401,8 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
   // Try to do a write with the bad schema.
   auto session = CreateSession();
   std::shared_ptr<YBqlOp> op;
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 12345, 12345, "x", &op));
-  ASSERT_OK(session->Flush());
+  ApplyInsertToSession(session.get(), client_table_, 12345, 12345, "x", &op);
+  ASSERT_OK(session->TEST_Flush());
   ASSERT_EQ(QLResponsePB::YQL_STATUS_SCHEMA_VERSION_MISMATCH, op->response().status());
 }
 
@@ -1476,8 +1500,7 @@ TEST_F(ClientTest, TestDeleteTable) {
 
   // Try to open the deleted table
   Status s = client_table_.Open(kTableName, client_.get());
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 
   // Create a new table with the same name. This is to ensure that the client
   // doesn't cache anything inappropriately by table name (see KUDU-1055).
@@ -1498,8 +1521,7 @@ TEST_F(ClientTest, TestGetTableSchema) {
   // Verify that a get schema request for a missing table throws not found
   Status s = client_->GetTableSchema(
       YBTableName(YQL_DATABASE_CQL, kKeyspaceName, "MissingTableName"), &schema, &partition_schema);
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestGetTableSchemaByIdAsync) {
@@ -1517,38 +1539,29 @@ TEST_F(ClientTest, TestGetTableSchemaByIdMissingTable) {
   auto table_info = std::make_shared<YBTableInfo>();
   ASSERT_OK(client_->GetTableSchemaById("MissingTableId", table_info, sync.AsStatusCallback()));
   Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
-  ASSERT_STR_CONTAINS(s.ToString(), "The object does not exist");
-}
-
-void CreateCDCStreamCallbackSuccess(Synchronizer* sync, const Result<CDCStreamId>& stream) {
-  ASSERT_TRUE(stream.ok());
-  ASSERT_FALSE(stream->empty());
-  sync->StatusCB(Status::OK());
-}
-
-void CreateCDCStreamCallbackFailure(Synchronizer* sync, const Result<CDCStreamId>& stream) {
-  ASSERT_FALSE(stream.ok());
-  sync->StatusCB(stream.status());
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamAsync) {
-  Synchronizer sync;
+  std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       client_table_.table()->id(), options,
-      std::bind(&CreateCDCStreamCallbackSuccess, &sync, std::placeholders::_1));
-  ASSERT_OK(sync.Wait());
+      [&promise](const auto& stream) { promise.set_value(stream); });
+  auto stream = promise.get_future().get();
+  ASSERT_OK(stream);
+  ASSERT_FALSE(stream->empty());
 }
 
 TEST_F(ClientTest, TestCreateCDCStreamMissingTable) {
-  Synchronizer sync;
+  std::promise<Result<CDCStreamId>> promise;
   std::unordered_map<std::string, std::string> options;
   client_->CreateCDCStream(
       "MissingTableId", options,
-      std::bind(&CreateCDCStreamCallbackFailure, &sync, std::placeholders::_1));
-  Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
+      [&promise](const auto& stream) { promise.set_value(stream); });
+  auto stream = promise.get_future().get();
+  ASSERT_NOK(stream);
+  ASSERT_TRUE(TableNotFound(stream.status())) << stream.status();
 }
 
 TEST_F(ClientTest, TestDeleteCDCStreamAsync) {
@@ -1567,7 +1580,7 @@ TEST_F(ClientTest, TestDeleteCDCStreamMissingId) {
   Synchronizer sync;
   client_->DeleteCDCStream("MissingStreamId", sync.AsStatusCallback());
   Status s = sync.Wait();
-  ASSERT_TRUE(s.IsNotFound());
+  ASSERT_TRUE(TableNotFound(s)) << s;
 }
 
 TEST_F(ClientTest, TestStaleLocations) {
@@ -1575,37 +1588,34 @@ TEST_F(ClientTest, TestStaleLocations) {
 
   // The Tablet is up and running the location should not be stale
   master::TabletLocationsPB locs_pb;
-  ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(
                   tablet_id, &locs_pb));
   ASSERT_FALSE(locs_pb.stale());
 
   // On Master restart and no tablet report we expect the locations to be stale
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     cluster_->mini_tablet_server(i)->Shutdown();
   }
   ASSERT_OK(cluster_->mini_master()->Restart());
   ASSERT_OK(cluster_->mini_master()->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
   locs_pb.Clear();
-  ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
-                  tablet_id, &locs_pb));
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
   ASSERT_TRUE(locs_pb.stale());
 
   // Restart the TS and Wait for the tablets to be reported to the master.
-  for (int i = 0; i < cluster_->num_tablet_servers(); ++i) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
   }
   ASSERT_OK(cluster_->WaitForTabletServerCount(cluster_->num_tablet_servers()));
   locs_pb.Clear();
-  ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
-                  tablet_id, &locs_pb));
+  ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
 
   // It may take a while to bootstrap the tablet and send the location report
   // so spin until we get a non-stale location.
   int wait_time = 1000;
   for (int i = 0; i < 80; ++i) {
     locs_pb.Clear();
-    ASSERT_OK(cluster_->mini_master()->master()->catalog_manager()->GetTabletLocations(
-                    tablet_id, &locs_pb));
+    ASSERT_OK(cluster_->mini_master()->catalog_manager().GetTabletLocations(tablet_id, &locs_pb));
     if (!locs_pb.stale()) {
       break;
     }
@@ -1657,7 +1667,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   ASSERT_NO_FATALS(InsertTestRows(table, kNumRowsToWrite));
 
   // Find the leader of the first tablet.
-  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
   internal::RemoteTabletServer *remote_tablet_server = remote_tablet->LeaderTServer();
 
   // Kill the leader of the first tablet.
@@ -1667,7 +1677,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   int tries = 0;
   for (;;) {
     tries++;
-    int num_rows = CountRowsFromClient(table);
+    auto num_rows = CountRowsFromClient(table);
     if (num_rows == kNumRowsToWrite) {
       LOG(INFO) << "Found expected number of rows: " << num_rows;
       break;
@@ -1706,7 +1716,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   SleepFor(MonoDelta::FromMilliseconds(1500));
 
   // Find the leader replica
-  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(table.table()).get());
+  auto remote_tablet = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), table.table()).get());
   internal::RemoteTabletServer *remote_tablet_server;
   set<string> blacklist;
   vector<internal::RemoteTabletServer*> candidates;
@@ -1725,8 +1735,8 @@ TEST_F(ClientTest, TestReplicatedTabletWritesAndAltersWithLeaderElection) {
   // and we can just promote another replica.
   auto client_messenger = rpc::CreateAutoShutdownMessengerHolder(
       ASSERT_RESULT(CreateMessenger("client")));
-  int new_leader_idx = -1;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  ssize_t new_leader_idx = -1;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     LOG(INFO) << "GOT TS " << i << " WITH UUID ???";
     if (ts->is_started()) {
@@ -1814,7 +1824,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
 
   // First half-fill
   for (int i = 0; i < FLAGS_test_scan_num_rows/2; ++i) {
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, i, i, ""));
+    ApplyInsertToSession(session.get(), client_table_, i, i, "");
     row[i] = i;
   }
   for (int i = FLAGS_test_scan_num_rows/2; i < FLAGS_test_scan_num_rows; ++i) {
@@ -1837,7 +1847,7 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
     int change = rand_r(&seed) % FLAGS_test_scan_num_rows;
     // Insert if empty
     if (row[change] == -1) {
-      ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, change, change, ""));
+      ApplyInsertToSession(session.get(), client_table_, change, change, "");
       row[change] = change;
       ++nrows;
       VLOG(1) << "Insert " << change;
@@ -1845,10 +1855,10 @@ TEST_F(ClientTest, TestRandomWriteOperation) {
       // Update or delete otherwise
       int update = rand_r(&seed) & 1;
       if (update) {
-        ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, change, ++row[change]));
+        ApplyUpdateToSession(session.get(), client_table_, change, ++row[change]);
         VLOG(1) << "Update " << change;
       } else {
-        ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, change));
+        ApplyDeleteToSession(session.get(), client_table_, change);
         row[change] = -1;
         --nrows;
         VLOG(1) << "Delete " << change;
@@ -1867,8 +1877,8 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 
   // Test insert/update
   LOG(INFO) << "Testing insert/update in same batch, key " << 1 << ".";
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, ""));
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 2));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "");
+  ApplyUpdateToSession(session.get(), client_table_, 1, 2);
   FlushSessionOrDie(session);
   auto rows = ScanTableToStrings(client_table_);
   ASSERT_EQ(1, rows.size());
@@ -1878,8 +1888,8 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 
   LOG(INFO) << "Testing insert/delete in same batch, key " << 2 << ".";
   // Test insert/delete
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 2, 1, ""));
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 2));
+  ApplyInsertToSession(session.get(), client_table_, 2, 1, "");
+  ApplyDeleteToSession(session.get(), client_table_, 2);
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
@@ -1888,23 +1898,23 @@ TEST_F(ClientTest, TestSeveralRowMutatesPerBatch) {
 
   // Test update/delete
   LOG(INFO) << "Testing update/delete in same batch, key " << 1 << ".";
-  ASSERT_OK(ApplyUpdateToSession(session.get(), client_table_, 1, 1));
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
+  ApplyUpdateToSession(session.get(), client_table_, 1, 1);
+  ApplyDeleteToSession(session.get(), client_table_, 1);
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(0, rows.size());
 
   // Test delete/insert (insert a row first)
   LOG(INFO) << "Inserting row for delete/insert test, key " << 1 << ".";
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 1, ""));
+  ApplyInsertToSession(session.get(), client_table_, 1, 1, "");
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
   ASSERT_EQ("{ int32:1, int32:1, string:\"\", null }", rows[0]);
   rows.clear();
   LOG(INFO) << "Testing delete/insert in same batch, key " << 1 << ".";
-  ASSERT_OK(ApplyDeleteToSession(session.get(), client_table_, 1));
-  ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, 1, 2, ""));
+  ApplyDeleteToSession(session.get(), client_table_, 1);
+  ApplyInsertToSession(session.get(), client_table_, 1, 2, "");
   FlushSessionOrDie(session);
   ScanTableToStrings(client_table_, &rows);
   ASSERT_EQ(1, rows.size());
@@ -1928,8 +1938,8 @@ class DeadlockSimulationCallback {
  public:
   explicit DeadlockSimulationCallback(Atomic32* i) : i_(i) {}
 
-  void operator()(const Status& s) const {
-    CHECK_OK(s);
+  void operator()(FlushStatus* flush_status) const {
+    CHECK_OK(flush_status->status);
     NoBarrier_AtomicIncrement(i_, 1);
   }
  private:
@@ -1966,7 +1976,7 @@ shared_ptr<YBSession> LoadedSession(YBClient* client,
   session->SetTimeout(timeout);
   for (int i = 0; i < max; ++i) {
     int key = fwd ? i : max - i;
-    CHECK_OK(ApplyUpdateToSession(session.get(), tbl, key, fwd));
+    ApplyUpdateToSession(session.get(), tbl, key, fwd);
   }
   return session;
 }
@@ -1996,13 +2006,13 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
   const auto kTimeout = 60s;
   auto session = CreateSession();
   for (int i = 0; i < kNumRows; ++i)
-    ASSERT_OK(ApplyInsertToSession(session.get(), client_table_, i, i,  ""));
+    ApplyInsertToSession(session.get(), client_table_, i, i,  "");
   FlushSessionOrDie(session);
 
   // Check both clients see rows
-  int fwd = CountRowsFromClient(client_table_);
+  auto fwd = CountRowsFromClient(client_table_);
   ASSERT_EQ(kNumRows, fwd);
-  int rev = CountRowsFromClient(rev_table);
+  auto rev = CountRowsFromClient(rev_table);
   ASSERT_EQ(kNumRows, rev);
 
   // Generate sessions
@@ -2063,7 +2073,7 @@ TEST_F(ClientTest, CreateTableWithoutTservers) {
   MiniClusterOptions options;
   options.num_tablet_servers = 0;
   // Start minicluster with only master (to simulate tserver not yet heartbeating).
-  cluster_.reset(new MiniCluster(env_.get(), options));
+  cluster_.reset(new MiniCluster(options));
   ASSERT_OK(cluster_->Start());
 
   // Connect to the cluster.
@@ -2116,7 +2126,7 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
 
   // Introduce latency in each scan to increase the likelihood of
   // ERROR_SERVER_TOO_BUSY.
-  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10;
+  FLAGS_TEST_scanner_inject_latency_on_each_batch_ms = 10 * kTimeMultiplier;
 
   // Reduce the service queue length of each tablet server in order to increase
   // the likelihood of ERROR_SERVER_TOO_BUSY.
@@ -2125,31 +2135,72 @@ TEST_F(ClientTest, TestServerTooBusyRetry) {
   // amount of time.
   FLAGS_min_backoff_ms_exponent = 0;
   FLAGS_max_backoff_ms_exponent = 3;
-  for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
     MiniTabletServer* ts = cluster_->mini_tablet_server(i);
     ASSERT_OK(ts->Restart());
     ASSERT_OK(ts->WaitStarted());
   }
 
-  bool stop = false;
-  vector<scoped_refptr<yb::Thread> > threads;
-  int t = 0;
-  while (!stop) {
-    scoped_refptr<yb::Thread> thread;
-    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", t++),
-                                 &CheckRowCount, std::cref(client_table_), &thread));
-    threads.push_back(thread);
+  TestThreadHolder thread_holder;
+  std::mutex idle_threads_mutex;
+  std::vector<CountDownLatch*> idle_threads;
+  std::atomic<int> running_threads{0};
 
-    for (int i = 0; i < cluster_->num_tablet_servers(); i++) {
+  while (!thread_holder.stop_flag().load()) {
+    CountDownLatch* latch;
+    {
+      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      if (!idle_threads.empty()) {
+        latch = idle_threads.back();
+        idle_threads.pop_back();
+      } else {
+        latch = nullptr;
+      }
+    }
+    if (latch) {
+      latch->CountDown();
+    } else {
+      auto num_threads = ++running_threads;
+      LOG(INFO) << "Start " << num_threads << " thread";
+      thread_holder.AddThreadFunctor([this, &idle_threads, &idle_threads_mutex,
+                                      &stop = thread_holder.stop_flag(), &running_threads]() {
+        CountDownLatch latch(1);
+        while (!stop.load()) {
+          CheckRowCount(client_table_);
+          latch.Reset(1);
+          {
+            std::lock_guard<std::mutex> lock(idle_threads_mutex);
+            idle_threads.push_back(&latch);
+          }
+          latch.Wait();
+        }
+        --running_threads;
+      });
+      std::this_thread::sleep_for(10ms * kTimeMultiplier);
+    }
+
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
       scoped_refptr<Counter> counter = METRIC_rpcs_queue_overflow.Instantiate(
           cluster_->mini_tablet_server(i)->server()->metric_entity());
-      stop = counter->value() > 0;
+      if (counter->value() > 0) {
+        thread_holder.stop_flag().store(true, std::memory_order_release);
+        break;
+      }
     }
   }
 
-  for (const scoped_refptr<yb::Thread>& thread : threads) {
-    thread->Join();
+  while (running_threads.load() > 0) {
+    LOG(INFO) << "Left to stop " << running_threads.load() << " threads";
+    {
+      std::lock_guard<std::mutex> lock(idle_threads_mutex);
+      while (!idle_threads.empty()) {
+        idle_threads.back()->CountDown(1);
+        idle_threads.pop_back();
+      }
+    }
+    std::this_thread::sleep_for(10ms * kTimeMultiplier);
   }
+  thread_holder.JoinAll();
 }
 
 TEST_F(ClientTest, TestReadFromFollower) {
@@ -2163,14 +2214,14 @@ TEST_F(ClientTest, TestReadFromFollower) {
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
   table->name().SetIntoTableIdentifierPB(req.mutable_table());
-  CHECK_OK(cluster_->mini_master()->master()->catalog_manager()->GetTableLocations(&req, &resp));
+  CHECK_OK(cluster_->mini_master()->catalog_manager().GetTableLocations(&req, &resp));
   ASSERT_EQ(1, resp.tablet_locations_size());
   ASSERT_EQ(3, resp.tablet_locations(0).replicas_size());
   const string& tablet_id = resp.tablet_locations(0).tablet_id();
 
   vector<master::TSInfoPB> followers;
   for (const auto& replica : resp.tablet_locations(0).replicas()) {
-    if (replica.role() == consensus::RaftPeerPB_Role_FOLLOWER) {
+    if (replica.role() == PeerRole::FOLLOWER) {
       followers.push_back(replica.ts_info());
     }
   }
@@ -2196,9 +2247,9 @@ TEST_F(ClientTest, TestReadFromFollower) {
       std::shared_ptr<std::vector<ColumnSchema>> selected_cols =
           std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
       QLRSRowDescPB *rsrow_desc = ql_read->mutable_rsrow_desc();
-      for (int i = 0; i < schema_.num_columns(); i++) {
-        ql_read->add_selected_exprs()->set_column_id(yb::kFirstColumnId + i);
-        ql_read->mutable_column_refs()->add_ids(yb::kFirstColumnId + i);
+      for (size_t i = 0; i < schema_.num_columns(); i++) {
+        ql_read->add_selected_exprs()->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
+        ql_read->mutable_column_refs()->add_ids(narrow_cast<int32_t>(kFirstColumnId + i));
 
         QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
         rscol_desc->set_name((*selected_cols)[i].name());
@@ -2216,13 +2267,13 @@ TEST_F(ClientTest, TestReadFromFollower) {
 
       EXPECT_TRUE(controller.finished());
       Slice rows_data = EXPECT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
-      yb::ql::RowsResult rowsResult(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
-      row_block = rowsResult.GetRowBlock();
-      return FLAGS_test_scan_num_rows == row_block->row_count();
+      ql::RowsResult rows_result(kReadFromFollowerTable, selected_cols, rows_data.ToBuffer());
+      row_block = rows_result.GetRowBlock();
+      return implicit_cast<size_t>(FLAGS_test_scan_num_rows) == row_block->row_count();
     }, MonoDelta::FromSeconds(30), "Waiting for replication to followers"));
 
     std::vector<bool> seen_key(row_block->row_count());
-    for (int i = 0; i < row_block->row_count(); i++) {
+    for (size_t i = 0; i < row_block->row_count(); i++) {
       const QLRow& row = row_block->row(i);
       auto key = row.column(0).int32_value();
       ASSERT_LT(key, seen_key.size());
@@ -2238,7 +2289,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 TEST_F(ClientTest, Capability) {
   constexpr CapabilityId kFakeCapability = 0x9c40e9a7;
 
-  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_table_.table()).get());
+  auto rt = ASSERT_RESULT(LookupFirstTabletFuture(client_.get(), client_table_.table()).get());
   ASSERT_TRUE(rt.get() != nullptr);
   auto tservers = rt->GetRemoteTabletServers();
   ASSERT_EQ(tservers.size(), 3);
@@ -2258,8 +2309,6 @@ TEST_F(ClientTest, Capability) {
 
 TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  const std::string kPgsqlKeyspaceID = "1234";
-  const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
   const std::string kPgsqlTableName = "pgsqlrangepartitionedtable";
   const std::string kPgsqlTableId = "pgsqlrangepartitionedtableid";
   const size_t kColIdx = 1;
@@ -2283,7 +2332,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
       .table_id(kPgsqlTableId)
       .schema(&schema)
       .set_range_partition_columns({"key"})
-      .table_type(PGSQL_TABLE_TYPE)
+      .table_type(YBTableType::PGSQL_TABLE_TYPE)
       .num_tablets(1)
       .Create();
   EXPECT_OK(s);
@@ -2291,7 +2340,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // Write to the PGSQL table.
   shared_ptr<YBTable> pgsq_table;
   EXPECT_OK(client_->OpenTable(kPgsqlTableId , &pgsq_table));
-  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(pgsq_table->NewPgsqlInsert());
+  std::shared_ptr<YBPgsqlWriteOp> pgsql_write_op(client::YBPgsqlWriteOp::NewInsert(pgsq_table));
   PgsqlWriteRequestPB* psql_write_request = pgsql_write_op->mutable_request();
 
   psql_write_request->add_range_column_values()->mutable_value()->set_string_value("pgsql_key1");
@@ -2301,13 +2350,13 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   pgsql_column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
   pgsql_column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
   std::shared_ptr<YBSession> session = CreateSession(client_.get());
-  EXPECT_OK(session->Apply(pgsql_write_op));
+  session->Apply(pgsql_write_op);
 
   // Create a YQL table using range partition.
   s = table_creator->table_name(yql_table_name)
       .schema(&schema)
       .set_range_partition_columns({"key"})
-      .table_type(YQL_TABLE_TYPE)
+      .table_type(YBTableType::YQL_TABLE_TYPE)
       .num_tablets(1)
       .Create();
   EXPECT_OK(s);
@@ -2322,7 +2371,7 @@ TEST_F(ClientTest, TestCreateTableWithRangePartition) {
   // 1 is the index for column value.
   column->set_column_id(pgsq_table->schema().ColumnId(kColIdx));
   column->mutable_expr()->mutable_value()->set_int64_value(kKeyValue);
-  EXPECT_OK(session->Apply(write_op));
+  session->Apply(write_op);
 }
 
 // TODO(jason): enable the test in clang when we use clang version at least 9 (otherwise, there is a
@@ -2391,8 +2440,6 @@ TEST_F(ClientTest, FlushTable) {
 #endif  // !defined(__clang__)
 
 TEST_F(ClientTest, GetNamespaceInfo) {
-  const std::string kPgsqlKeyspaceID = "1234";
-  const std::string kPgsqlKeyspaceName = "psql" + kKeyspaceName;
   GetNamespaceInfoResponsePB resp;
 
   // Setup.
@@ -2402,7 +2449,7 @@ TEST_F(ClientTest, GetNamespaceInfo) {
                                      kPgsqlKeyspaceID,
                                      "" /* source_namespace_id */,
                                      boost::none /* next_pg_oid */,
-                                     boost::none /* txn */,
+                                     nullptr /* txn */,
                                      true /* colocated */));
 
   // CQL non-colocated.
@@ -2440,7 +2487,7 @@ TEST_F(ClientTest, BadMasterAddress) {
     opts.SetMasterAddresses(master_addr);
 
     AsyncClientInitialiser async_init(
-        "test-client", /* num_reactors= */ 1, /* timeout_seconds= */ 1, "UUID", &opts,
+        "test-client", /* timeout= */ 1s, "UUID", &opts,
         /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
     async_init.Start();
     async_init.get_client_future().wait_for(1s);
@@ -2483,9 +2530,12 @@ TEST_F(ClientTest, RefreshPartitions) {
     while(!stop_requested) {
       const auto table = client_table_.table();
       table->MarkPartitionsAsStale();
-      const auto result = table->MaybeRefreshPartitions();
-      if (!result.ok()) {
-        LOG(INFO) << AsString(result.status());
+
+      Synchronizer synchronizer;
+      table->RefreshPartitions(client_table_.client(), synchronizer.AsStdStatusCallback());
+      const auto status = synchronizer.Wait();
+      if (!status.ok()) {
+        LOG(INFO) << status;
       }
     }
   };
@@ -2514,6 +2564,195 @@ TEST_F(ClientTest, RefreshPartitions) {
   }, kLookupTimeout, "Tablet lookup responses"));
 
   LOG(INFO) << "num_lookups_done: " << num_lookups_done;
+}
+
+// There should be only one lookup RPC asking for colocated tables tablet locations.
+// When we ask for tablet lookup for other tables colocated with the first one we asked, MetaCache
+// should be able to respond without sending RPCs to master again.
+TEST_F(ClientTest, ColocatedTablesLookupTablet) {
+  const auto kTabletLookupTimeout = 10s;
+  const auto kNumTables = 10;
+
+  YBTableName common_table_name(
+      YQLDatabase::YQL_DATABASE_PGSQL, kPgsqlKeyspaceID, kPgsqlKeyspaceName, "table_name");
+  ASSERT_OK(client_->CreateNamespace(
+      common_table_name.namespace_name(),
+      common_table_name.namespace_type(),
+      /* creator_role_name =*/ "",
+      common_table_name.namespace_id(),
+      /* source_namespace_id =*/ "",
+      /* next_pg_oid =*/ boost::none,
+      /* txn =*/ nullptr,
+      /* colocated =*/ true));
+
+  YBSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("key")->PrimaryKey()->Type(yb::INT64);
+  schemaBuilder.AddColumn("value")->Type(yb::INT64);
+  YBSchema schema;
+  ASSERT_OK(schemaBuilder.Build(&schema));
+
+  std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
+  std::vector<YBTableName> table_names;
+  for (auto i = 0; i < kNumTables; ++i) {
+    const auto name = Format("table_$0", i);
+    auto table_name = common_table_name;
+    // Autogenerated ids will fail the IsPgsqlId() CHECKs so we need to generate oids.
+    table_name.set_table_id(GetPgsqlTableId(i, i));
+    table_name.set_table_name(name);
+    ASSERT_OK(table_creator->table_name(table_name)
+                  .table_id(table_name.table_id())
+                  .schema(&schema)
+                  .set_range_partition_columns({"key"})
+                  .table_type(YBTableType::PGSQL_TABLE_TYPE)
+                  .num_tablets(1)
+                  .Create());
+    table_names.push_back(table_name);
+  }
+
+  const auto lookup_serial_start = client::internal::TEST_GetLookupSerial();
+
+  TabletId colocated_tablet_id;
+  for (const auto& table_name : table_names) {
+    auto table = ASSERT_RESULT(client_->OpenTable(table_name));
+    auto tablet = ASSERT_RESULT(client_->LookupTabletByKeyFuture(
+        table, /* partition_key =*/ "",
+        CoarseMonoClock::now() + kTabletLookupTimeout).get());
+    const auto tablet_id = tablet->tablet_id();
+    if (colocated_tablet_id.empty()) {
+      colocated_tablet_id = tablet_id;
+    } else {
+      ASSERT_EQ(tablet_id, colocated_tablet_id);
+    }
+  }
+
+  const auto lookup_serial_stop = client::internal::TEST_GetLookupSerial();
+  ASSERT_EQ(lookup_serial_stop, lookup_serial_start + 1);
+}
+
+class ClientTestWithHashAndRangePk : public ClientTest {
+ public:
+  void SetUp() override {
+    YBSchemaBuilder b;
+    b.AddColumn("h")->Type(INT32)->HashPrimaryKey()->NotNull();
+    b.AddColumn("r")->Type(INT32)->PrimaryKey()->NotNull();
+    b.AddColumn("v")->Type(INT32);
+
+    CHECK_OK(b.Build(&schema_));
+
+    ClientTest::SetUp();
+  }
+
+  shared_ptr<YBqlWriteOp> BuildTestRow(const TableHandle& table, int h, int r, int v) {
+    auto insert = table.NewInsertOp();
+    auto req = insert->mutable_request();
+    QLAddInt32HashValue(req, h);
+    const auto& columns = table.schema().columns();
+    table.AddInt32ColumnValue(req, columns[1].name(), r);
+    table.AddInt32ColumnValue(req, columns[2].name(), v);
+    return insert;
+  }
+};
+
+// We concurrently execute batches of insert operations, each batch targeting the same hash
+// partition key. Concurrently we emulate table partition list version increase and meta cache
+// invalidation.
+// This tests https://github.com/yugabyte/yugabyte-db/issues/9806 with a scenario
+// when the batcher is emptied due to part of tablet lookups failing, but callback was not called.
+TEST_F_EX(ClientTest, EmptiedBatcherFlush, ClientTestWithHashAndRangePk) {
+  constexpr auto kNumRowsPerBatch = RegularBuildVsSanitizers(100, 10);
+  constexpr auto kWriters = 4;
+  const auto kTotalNumBatches = 50;
+  const auto kFlushTimeout = 10s * kTimeMultiplier;
+
+  TestThreadHolder thread_holder;
+  std::atomic<int> next_batch_hash_key{10000};
+  const auto stop_at_batch_hash_key = next_batch_hash_key.load() + kTotalNumBatches;
+
+  for (int i = 0; i != kWriters; ++i) {
+    thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag(), &next_batch_hash_key,
+                                    num_rows_per_batch = kNumRowsPerBatch, stop_at_batch_hash_key,
+                                    kFlushTimeout] {
+      SetFlagOnExit set_flag_on_exit(&stop);
+
+      while (!stop.load(std::memory_order_acquire)) {
+        auto batch_hash_key = next_batch_hash_key.fetch_add(1);
+        if (batch_hash_key >= stop_at_batch_hash_key) {
+          break;
+        }
+        auto session = CreateSession(client_.get());
+        for (int r = 0; r < num_rows_per_batch; r++) {
+          session->Apply(BuildTestRow(client_table_, batch_hash_key, r, 0));
+        }
+        auto flush_future = session->FlushFuture();
+        ASSERT_EQ(flush_future.wait_for(kFlushTimeout), std::future_status::ready)
+            << "batch_hash_key: " << batch_hash_key;
+        const auto& flush_status = flush_future.get();
+        if (!flush_status.status.ok() || !flush_status.errors.empty()) {
+          LogSessionErrorsAndDie(flush_status);
+        }
+      }
+    });
+  }
+
+  thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
+    SetFlagOnExit set_flag_on_exit(&stop);
+
+    const auto table = client_table_.table();
+
+    while (!stop.load(std::memory_order_acquire)) {
+      ASSERT_OK(cluster_->mini_master()->catalog_manager()
+          .TEST_IncrementTablePartitionListVersion(table->id()));
+      table->MarkPartitionsAsStale();
+      SleepFor(10ms * kTimeMultiplier);
+    }
+  });
+
+  thread_holder.JoinAll();
+}
+
+class ClientTestWithThreeMasters : public ClientTest {
+ protected:
+  int NumMasters() override {
+    return 3;
+  }
+
+  Status InitClient() override {
+    // Connect to the cluster using hostnames.
+    string master_addrs;
+    for (int i = 1; i <= NumMasters(); ++i) {
+      // TEST_RpcAddress is 1-indexed, but mini_master is 0-indexed.
+      master_addrs += server::TEST_RpcAddress(i, server::Private::kFalse) +
+                      ":" + yb::ToString(cluster_->mini_master(i - 1)->bound_rpc_addr().port());
+      if (i < NumMasters()) {
+        master_addrs += ",";
+      }
+    }
+
+    client_ = VERIFY_RESULT(YBClientBuilder()
+        .add_master_server_addr(master_addrs)
+        .Build());
+
+    return Status::OK();
+  }
+};
+
+TEST_F_EX(ClientTest, IsMultiMasterWithFailingHostnameResolution, ClientTestWithThreeMasters) {
+  // TEST_RpcAddress is 1-indexed.
+  string hostname = server::TEST_RpcAddress(cluster_->LeaderMasterIdx() + 1,
+                                            server::Private::kFalse);
+
+  // Shutdown the master leader, and wait for new leader to get elected.
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->Shutdown();
+  ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
+
+  // Fail resolution of the old leader master's hostname.
+  TEST_SetFailToFastResolveAddress(hostname);
+
+  // Make a client request to the leader master, since that master is no longer the leader, we will
+  // check that we have a MultiMaster setup. That check should not fail even though one of the
+  // master addresses currently doesn't resolve. Thus, we should be able to find the new master
+  // leader and complete the request.
+  ASSERT_RESULT(client_->ListTables());
 }
 
 }  // namespace client

@@ -19,7 +19,9 @@
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/gutil/macros.h"
+#include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations/operation.h"
+#include "yb/tserver/backup.pb.h"
 #include "yb/util/locks.h"
 
 namespace yb {
@@ -27,14 +29,14 @@ namespace tablet {
 
 // Operation Context for the TabletSnapshot operation.
 // Keeps track of the Operation states (request, result, ...)
-class SnapshotOperationState :
-    public ExclusiveSchemaOperationState<tserver::TabletSnapshotOpRequestPB> {
+// Executes the TabletSnapshotOp operation.
+class SnapshotOperation :
+    public ExclusiveSchemaOperation<OperationType::kSnapshot, tserver::TabletSnapshotOpRequestPB>,
+    public OperationFilter {
  public:
-  ~SnapshotOperationState() = default;
-
-  SnapshotOperationState(Tablet* tablet,
-                         const tserver::TabletSnapshotOpRequestPB* request = nullptr)
-      : ExclusiveSchemaOperationState(tablet, request) {
+  template <class... Args>
+  explicit SnapshotOperation(Args&&... args)
+      : ExclusiveSchemaOperation(std::forward<Args>(args)...) {
   }
 
   tserver::TabletSnapshotOpRequestPB::Operation operation() const {
@@ -42,48 +44,33 @@ class SnapshotOperationState :
         tserver::TabletSnapshotOpRequestPB::UNKNOWN : request()->operation();
   }
 
-  void UpdateRequestFromConsensusRound() override;
-
-  CHECKED_STATUS Apply(int64_t leader_term);
-
-  std::string ToString() const override;
-
   // Returns the snapshot directory, based on the tablet's top directory for all snapshots, and any
   // overrides for the snapshot directory this operation might have.
-  std::string GetSnapshotDir(const std::string& top_snapshots_dir) const;
+  Result<std::string> GetSnapshotDir() const;
 
   bool CheckOperationRequirements();
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(SnapshotOperationState);
-};
+  static bool ShouldAllowOpDuringRestore(consensus::OperationType op_type);
 
-// Executes the TabletSnapshotOp operation.
-class SnapshotOperation : public Operation {
- public:
-  explicit SnapshotOperation(std::unique_ptr<SnapshotOperationState> tx_state);
+  static Status RejectionStatus(OpId rejected_op_id, consensus::OperationType op_type);
 
-  SnapshotOperationState* state() override {
-    return down_cast<SnapshotOperationState*>(Operation::state());
-  }
-
-  const SnapshotOperationState* state() const override {
-    return down_cast<const SnapshotOperationState*>(Operation::state());
-  }
-
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
-
-  CHECKED_STATUS Prepare() override;
-
-  std::string ToString() const override;
+  Status Prepare() override;
 
  private:
   // Starts the TabletSnapshotOp operation by assigning it a timestamp.
-  void DoStart() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
+  Status Apply(int64_t leader_term, Status* complete_status);
 
-  DISALLOW_COPY_AND_ASSIGN(SnapshotOperation);
+  void AddedAsPending() override;
+  void RemovedFromPending() override;
+
+  bool NeedOperationFilter() const;
+
+  Status CheckOperationAllowed(
+      const OpId& id, consensus::OperationType op_type) const override;
+
+  Status DoCheckOperationRequirements();
 };
 
 }  // namespace tablet

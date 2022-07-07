@@ -11,11 +11,21 @@
 // under the License.
 //
 
-#include <boost/uuid/random_generator.hpp>
-#include <boost/uuid/detail/sha1.hpp>
 #include "yb/util/uuid.h"
-#include "yb/util/random_util.h"
+
+#include <boost/lexical_cast.hpp>
+#include <boost/uuid/detail/sha1.hpp>
+#include <boost/uuid/nil_generator.hpp>
+#include <boost/uuid/random_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
 #include "yb/gutil/endian.h"
+
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 
@@ -33,18 +43,16 @@ Uuid::Uuid(const uuid_t copy) {
   }
 }
 
-boost::uuids::uuid Uuid::Generate() {
-  boost::uuids::basic_random_generator<std::mt19937_64> generator(&ThreadLocalRandom());
-  return generator();
+Uuid Uuid::Nil() {
+  return Uuid(boost::uuids::nil_uuid());
 }
 
-CHECKED_STATUS Uuid::FromString(const std::string& strval) {
-  try {
-    boost_uuid_ = boost::lexical_cast<boost::uuids::uuid>(strval);
-  } catch (std::exception& e) {
-    return STATUS(Corruption, "Couldn't read Uuid from string!");
-  }
-  return Status::OK();
+Uuid Uuid::Generate() {
+  return Uuid::Generate(&ThreadLocalRandom());
+}
+
+Uuid Uuid::Generate(std::mt19937_64* rng) {
+  return Uuid(boost::uuids::basic_random_generator<std::mt19937_64>(rng)());
 }
 
 std::string Uuid::ToString() const {
@@ -53,7 +61,7 @@ std::string Uuid::ToString() const {
   return strval;
 }
 
-CHECKED_STATUS Uuid::ToString(std::string *strval) const {
+Status Uuid::ToString(std::string *strval) const {
   *strval = boost::uuids::to_string(boost_uuid_);
   return Status::OK();
 }
@@ -82,25 +90,21 @@ void Uuid::ToBytes(std::array<uint8_t, kUuidSize>* out) const {
   memcpy(out->data(), boost_uuid_.data, kUuidSize);
 }
 
+void Uuid::ToBytes(void* out) const {
+  memcpy(out, boost_uuid_.data, kUuidSize);
+}
+
 Slice Uuid::AsSlice() const {
   return Slice(boost_uuid_.data, boost_uuid_.size());
 }
 
-CHECKED_STATUS Uuid::FromSlice(const Slice& slice, size_t size_hint) {
-  size_t expected_size = (size_hint == 0) ? slice.size() : size_hint;
-  if (expected_size > slice.size()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice: $0 is smaller than provided "
-        "size_hint: $1", slice.size(), expected_size);
+Result<Uuid> Uuid::FromSlice(const Slice& slice) {
+  if (slice.size() != kUuidSize) {
+    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice is invalid: $0", slice.size());
   }
-  if (expected_size != kUuidSize) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice is invalid: $0", expected_size);
-  }
-  memcpy(boost_uuid_.data, slice.data(), kUuidSize);
-  return Status::OK();
-}
-
-CHECKED_STATUS Uuid::FromBytes(const std::string& bytes) {
-  return FromSlice(Slice(bytes.data(), bytes.size()));
+  Uuid result;
+  memcpy(result.boost_uuid_.data, slice.data(), kUuidSize);
+  return result;
 }
 
 std::string Uuid::ToHexString() const {
@@ -118,7 +122,7 @@ std::string Uuid::ToHexString() const {
   return std::string(buffer, sizeof(buffer) - 1);
 }
 
-CHECKED_STATUS Uuid::FromHexString(const std::string& hex_string) {
+Result<Uuid> Uuid::FromHexString(const std::string& hex_string) {
   constexpr size_t kInputLen = kUuidSize * 2;
   if (hex_string.length() != kInputLen) {
     return STATUS_SUBSTITUTE(InvalidArgument, "Size of hex_string is invalid: $0, expected: $1",
@@ -130,6 +134,7 @@ CHECKED_STATUS Uuid::FromHexString(const std::string& hex_string) {
   char buffer[kWordLen + 1];
   buffer[kWordLen] = 0;
 
+  Uuid result;
   for (size_t i = 0; i != kInputLen;) {
     memcpy(buffer, hex_string.c_str() + i, kWordLen);
     char* endptr = nullptr;
@@ -141,18 +146,15 @@ CHECKED_STATUS Uuid::FromHexString(const std::string& hex_string) {
     static_assert(sizeof(Word) == 8, "Adjust little endian conversion below");
     value = LittleEndian::FromHost64(value);
     i += kWordLen;
-    memcpy(boost_uuid_.data + boost_uuid_.size() - i / 2, &value, sizeof(value));
+    memcpy(result.boost_uuid_.data + result.boost_uuid_.size() - i / 2, &value, sizeof(value));
   }
 
-  return Status::OK();
+  return result;
 }
 
-CHECKED_STATUS Uuid::DecodeFromComparableSlice(const Slice& slice, size_t size_hint) {
-  size_t expected_size = (size_hint == 0) ? slice.size() : size_hint;
-  if (expected_size > slice.size()) {
-    return STATUS_SUBSTITUTE(InvalidArgument, "Size of slice: $0 is smaller than provided "
-        "size_hint: $1", slice.size(), expected_size);
-  }
+Result<Uuid> Uuid::FromComparable(const Slice& slice) {
+  Uuid result;
+  size_t expected_size = slice.size();
   if (expected_size != kUuidSize) {
     return STATUS_SUBSTITUTE(InvalidArgument,
                              "Decode error: Size of slice is invalid: $0", expected_size);
@@ -160,27 +162,22 @@ CHECKED_STATUS Uuid::DecodeFromComparableSlice(const Slice& slice, size_t size_h
   const uint8_t* bytes = slice.data();
   if ((bytes[0] & 0xF0) == 0x10) {
     // Check the first byte to see if it is version 1.
-    FromTimestampBytes(bytes);
+    result.FromTimestampBytes(bytes);
   } else {
-    FromVersionFirstBytes(bytes);
+    result.FromVersionFirstBytes(bytes);
   }
-  memcpy(boost_uuid_.data + kUuidMsbSize, bytes + kUuidMsbSize, kUuidLsbSize);
-  return Status::OK();
+  memcpy(result.boost_uuid_.data + kUuidMsbSize, bytes + kUuidMsbSize, kUuidLsbSize);
+  return result;
 }
 
-CHECKED_STATUS Uuid::DecodeFromComparable(const std::string& bytes) {
-  Slice slice(bytes.data(), bytes.size());
-  return DecodeFromComparableSlice(slice);
-}
-
-CHECKED_STATUS Uuid::HashMACAddress() {
+Status Uuid::HashMACAddress() {
   RETURN_NOT_OK(IsTimeUuid());
   boost::uuids::detail::sha1 sha1;
   unsigned int hash[kShaDigestSize];
   sha1.process_bytes(boost_uuid_.data + kTimeUUIDMacOffset, kTimeUUIDTotalMacBytes);
   uint8_t tmp[kTimeUUIDTotalMacBytes];
   sha1.get_digest(hash);
-  for (int i = 0; i < kTimeUUIDTotalMacBytes; i ++) {
+  for (size_t i = 0; i < kTimeUUIDTotalMacBytes; i ++) {
     tmp[i] = (hash[i % kShaDigestSize] & 255);
     hash[i % kShaDigestSize] = hash[i % kShaDigestSize] >> 8;
   }
@@ -195,7 +192,7 @@ void Uuid::FromTimestamp(int64_t ts_hnanos) {
   FromTimestampBytes(ts_bytes);
 }
 
-CHECKED_STATUS Uuid::MaxFromUnixTimestamp(int64_t timestamp_ms) {
+Status Uuid::MaxFromUnixTimestamp(int64_t timestamp_ms) {
   // Since we are converting to a finer-grained precision (milliseconds to 100's nanoseconds) the
   // input milliseconds really corresponds to a range in 100's nanoseconds precision.
   // So, to get a logically correct max timeuuid, we need to use the upper bound of that range
@@ -207,25 +204,141 @@ CHECKED_STATUS Uuid::MaxFromUnixTimestamp(int64_t timestamp_ms) {
   return Status::OK();
 }
 
-CHECKED_STATUS Uuid::MinFromUnixTimestamp(int64_t timestamp_ms) {
+Status Uuid::MinFromUnixTimestamp(int64_t timestamp_ms) {
   int64_t timestamp = (timestamp_ms - kGregorianOffsetMillis) * kMillisPerHundredNanos;
   FromTimestamp(timestamp); // Set most-significant bits (i.e. timestamp).
   memset(boost_uuid_.data + kUuidMsbSize, 0x00, kUuidLsbSize); // Set least-significant bits.
   return Status::OK();
 }
 
-CHECKED_STATUS Uuid::ToUnixTimestamp(int64_t* timestamp_ms) const {
+Status Uuid::ToUnixTimestamp(int64_t* timestamp_ms) const {
   RETURN_NOT_OK(IsTimeUuid());
   uint8_t output[kUuidMsbSize];
   ToTimestampBytes(output);
   output[0] = (output[0] & 0x0f);
   *timestamp_ms = 0;
-  for (int i = 0; i < kUuidMsbSize; i++) {
+  for (size_t i = 0; i < kUuidMsbSize; i++) {
     *timestamp_ms = (*timestamp_ms << 8) | (output[i] & 0xff);
   }
   // Convert from nano seconds since Gregorian calendar start to millis since unix epoch.
   *timestamp_ms = (*timestamp_ms / kMillisPerHundredNanos) + kGregorianOffsetMillis;
   return Status::OK();
+}
+
+Status Uuid::IsTimeUuid() const {
+  if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
+    return Status::OK();
+  }
+
+  return STATUS_SUBSTITUTE(InvalidArgument,
+                           "Not a type 1 UUID. Current type: $0", boost_uuid_.version());
+}
+
+bool Uuid::operator<(const Uuid& other) const {
+  // First compare the version, variant and then the timestamp bytes.
+  if (boost_uuid_.version() < other.boost_uuid_.version()) {
+    return true;
+  } else if (boost_uuid_.version() > other.boost_uuid_.version()) {
+    return false;
+  }
+  if (boost_uuid_.version() == boost::uuids::uuid::version_time_based) {
+    // Compare the hi timestamp bits.
+    for (size_t i = 6; i < kUuidMsbSize; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+    // Compare the mid timestamp bits.
+    for (int i = 4; i < 6; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+    // Compare the low timestamp bits.
+    for (int i = 0; i < 4; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+  } else {
+    // Compare all the other bits
+    for (size_t i = 0; i < kUuidMsbSize; i++) {
+      if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+        return true;
+      } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+        return false;
+      }
+    }
+  }
+
+  // Then compare the remaining bytes.
+  for (size_t i = kUuidMsbSize; i < kUuidSize; i++) {
+    if (boost_uuid_.data[i] < other.boost_uuid_.data[i]) {
+      return true;
+    } else if (boost_uuid_.data[i] > other.boost_uuid_.data[i]) {
+      return false;
+    }
+  }
+  return false;
+}
+
+namespace {
+
+// Makes transaction id from its binary representation.
+// If check_exact_size is true, checks that slice contains only TransactionId.
+Result<Uuid> DoDecodeUuid(
+    const Slice &slice, const bool check_exact_size, const char* name) {
+  if (check_exact_size ? slice.size() != boost::uuids::uuid::static_size()
+                       : slice.size() < boost::uuids::uuid::static_size()) {
+    if (!name) {
+      name = "UUID";
+    }
+    return STATUS_FORMAT(
+        Corruption, "Invalid length of binary data with $4 '$0': $1 (expected $2$3)",
+        slice.ToDebugHexString(), slice.size(), check_exact_size ? "" : "at least ",
+        boost::uuids::uuid::static_size(), name);
+  }
+  Uuid id;
+  memcpy(id.data(), slice.data(), boost::uuids::uuid::static_size());
+  return id;
+}
+
+} // namespace
+
+Result<Uuid> Uuid::FullyDecode(const Slice& slice, const char* name) {
+  return DoDecodeUuid(slice, /* check_exact_size= */ true, name);
+}
+
+Uuid Uuid::TryFullyDecode(const Slice& slice) {
+  if (slice.size() != boost::uuids::uuid::static_size()) {
+    return Uuid::Nil();
+  }
+  Uuid id;
+  memcpy(id.data(), slice.data(), boost::uuids::uuid::static_size());
+  return id;
+}
+
+Result<Uuid> Uuid::Decode(Slice* slice, const char* name) {
+  auto id = VERIFY_RESULT(DoDecodeUuid(*slice, /* check_exact_size= */ false, name));
+  slice->remove_prefix(boost::uuids::uuid::static_size());
+  return id;
+}
+
+Result<Uuid> Uuid::FromString(const std::string& strval) {
+  if (strval.empty()) {
+    return Uuid::Nil();
+  }
+  try {
+    return Uuid(boost::lexical_cast<boost::uuids::uuid>(strval));
+  } catch (std::exception& e) {
+    return STATUS(Corruption, "Couldn't read Uuid from string!");
+  }
 }
 
 } // namespace yb

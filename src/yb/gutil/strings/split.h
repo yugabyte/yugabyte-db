@@ -31,8 +31,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef STRINGS_SPLIT_H_
-#define STRINGS_SPLIT_H_
+#ifndef YB_GUTIL_STRINGS_SPLIT_H
+#define YB_GUTIL_STRINGS_SPLIT_H
 
 #include <stddef.h>
 #include <algorithm>
@@ -42,12 +42,6 @@ using std::min;
 using std::reverse;
 using std::sort;
 using std::swap;
-#include <ext/hash_map>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_map;
-#include <ext/hash_set>
-using __gnu_cxx::hash;
-using __gnu_cxx::hash_set;
 #include <iterator>
 using std::back_insert_iterator;
 using std::iterator_traits;
@@ -414,7 +408,7 @@ class AnyOf {
 template <typename Delimiter>
 class LimitImpl {
  public:
-  LimitImpl(Delimiter delimiter, int limit)
+  LimitImpl(Delimiter delimiter, size_t limit)
       : delimiter_(std::move(delimiter)), limit_(limit), count_(0) {}
   GStringPiece Find(GStringPiece text) {
     if (count_++ == limit_) {
@@ -425,27 +419,27 @@ class LimitImpl {
 
  private:
   Delimiter delimiter_;
-  const int limit_;
-  int count_;
+  const size_t limit_;
+  size_t count_;
 };
 
 // Overloaded Limit() function to create LimitImpl<> objects. Uses the Delimiter
 // Literal as the default if string-like objects are passed as the delimiter
 // parameter. This is similar to the overloads for Split() below.
 template <typename Delimiter>
-inline LimitImpl<Delimiter> Limit(Delimiter delim, int limit) {
+inline LimitImpl<Delimiter> Limit(Delimiter delim, size_t limit) {
   return LimitImpl<Delimiter>(delim, limit);
 }
 
-inline LimitImpl<Literal> Limit(const char* s, int limit) {
+inline LimitImpl<Literal> Limit(const char* s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
-inline LimitImpl<Literal> Limit(const string& s, int limit) {
+inline LimitImpl<Literal> Limit(const string& s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
-inline LimitImpl<Literal> Limit(GStringPiece s, int limit) {
+inline LimitImpl<Literal> Limit(GStringPiece s, size_t limit) {
   return LimitImpl<Literal>(Literal(s), limit);
 }
 
@@ -576,18 +570,18 @@ inline internal::Splitter<delimiter::Literal, Predicate> Split(
 //    webserver/util/snippets/rewriteboldtags, which considers the width
 //    of the string, not just the number of bytes.
 //
-//    TODO(user) Move ClipString back to strutil.  The problem with this is
+// TODO(user) Move ClipString back to strutil.  The problem with this is
 //    that ClipStringHelper is used behind the scenes by SplitStringToLines, but
 //    probably shouldn't be exposed in the .h files.
 // ----------------------------------------------------------------------
-void ClipString(char* str, int max_len);
+void ClipString(char* str, size_t max_len);
 
 // ----------------------------------------------------------------------
 // ClipString
 //    Version of ClipString() that uses string instead of char*.
 //    NOTE: See comment above.
 // ----------------------------------------------------------------------
-void ClipString(string* full_str, int max_len);
+void ClipString(string* full_str, size_t max_len);
 
 // ----------------------------------------------------------------------
 // SplitStringToLines() Split a string into lines of maximum length
@@ -599,8 +593,8 @@ void ClipString(string* full_str, int max_len);
 // long to fit completely into 'num_lines' lines.
 // ----------------------------------------------------------------------
 void SplitStringToLines(const char* full,
-                        int max_len,
-                        int num_lines,
+                        size_t max_len,
+                        size_t num_lines,
                         vector<string>* result);
 
 // ----------------------------------------------------------------------
@@ -692,8 +686,6 @@ void SplitGStringPieceToVector(const GStringPiece& full,
 // ----------------------------------------------------------------------
 void SplitStringUsing(const string& full, const char* delimiters,
                       vector<string>* result);
-void SplitStringToHashsetUsing(const string& full, const char* delimiters,
-                               hash_set<string>* result);
 void SplitStringToSetUsing(const string& full, const char* delimiters,
                            set<string>* result);
 // The even-positioned (0-based) components become the keys for the
@@ -703,8 +695,6 @@ void SplitStringToSetUsing(const string& full, const char* delimiters,
 // empty string if the key is a newly inserted key.
 void SplitStringToMapUsing(const string& full, const char* delim,
                            map<string, string>* result);
-void SplitStringToHashmapUsing(const string& full, const char* delim,
-                               hash_map<string, string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringAllowEmpty()
@@ -756,9 +746,6 @@ void SplitStringWithEscapingAllowEmpty(const string& full,
 void SplitStringWithEscapingToSet(const string& full,
                                   const strings::CharSet& delimiters,
                                   set<string>* result);
-void SplitStringWithEscapingToHashset(const string& full,
-                                      const strings::CharSet& delimiters,
-                                      hash_set<string>* result);
 
 // ----------------------------------------------------------------------
 // SplitStringIntoNPiecesAllowEmpty()
@@ -775,7 +762,7 @@ void SplitStringWithEscapingToHashset(const string& full,
 // ----------------------------------------------------------------------
 void SplitStringIntoNPiecesAllowEmpty(const string& full,
                                       const char* delimiters,
-                                      int pieces,
+                                      size_t pieces,
                                       vector<string>* result);
 
 // ----------------------------------------------------------------------
@@ -1220,4 +1207,4 @@ bool SplitStringAndParseToList(
 // END DOXYGEN SplitFunctions grouping
 /* @} */
 
-#endif  // STRINGS_SPLIT_H_
+#endif  // YB_GUTIL_STRINGS_SPLIT_H

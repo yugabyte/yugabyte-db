@@ -13,9 +13,13 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
-#include "yb/yql/cql/ql/test/ql-test-base.h"
+#include "yb/common/table_properties_constants.h"
+
 #include "yb/gutil/strings/substitute.h"
+
+#include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
 using strings::Substitute;
@@ -34,6 +38,33 @@ class TestQLUpdateTable : public QLTestBase {
             "AND r2 = 'r2';", ttl_msec);
   }
 };
+
+TEST_F(TestQLUpdateTable, TestQLUpdateToJson) {
+  // Init the simulated cluster.
+  ASSERT_NO_FATALS(CreateSimulatedCluster());
+
+  // Get a processor.
+  TestQLProcessor *processor = GetQLProcessor();
+  std::shared_ptr<QLRowBlock> row_block;
+
+  auto to_json_str = [](const QLValue& value) -> string {
+    common::Jsonb jsonb(value.jsonb_value());
+    string str;
+    CHECK_OK(jsonb.ToJsonString(&str));
+    return str;
+  };
+
+  // Create table with JSONB.
+  CHECK_VALID_STMT("CREATE TABLE test_json (h int PRIMARY KEY, j jsonb)");
+
+  CHECK_VALID_STMT("INSERT INTO test_json (h, j) values (1, '{\"a\":123}')");
+  CHECK_VALID_STMT("UPDATE test_json SET j->'a' = '{}', j->'a'->'b' = '6' where h = 1");
+  CHECK_VALID_STMT("SELECT * FROM test_json");
+  row_block = processor->row_block();
+  CHECK_EQ(row_block->row_count(), 1);
+  EXPECT_EQ(1, row_block->row(0).column(0).int32_value());
+  EXPECT_EQ("{\"a\":{\"b\":6}}", to_json_str(row_block->row(0).column(1)));
+}
 
 TEST_F(TestQLUpdateTable, TestQLUpdateTableSimple) {
   // Init the simulated cluster.

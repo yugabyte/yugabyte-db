@@ -116,6 +116,12 @@ double		cpu_operator_cost = DEFAULT_CPU_OPERATOR_COST;
 double		parallel_tuple_cost = DEFAULT_PARALLEL_TUPLE_COST;
 double		parallel_setup_cost = DEFAULT_PARALLEL_SETUP_COST;
 
+double		yb_intercloud_cost = YB_DEFAULT_INTERCLOUD_COST;
+double		yb_interregion_cost = YB_DEFAULT_INTERREGION_COST;
+double		yb_interzone_cost = YB_DEFAULT_INTERZONE_COST;
+
+double		yb_local_cost = YB_DEFAULT_LOCAL_COST;
+
 int			effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 
 Cost		disable_cost = 1.0e10;
@@ -139,6 +145,7 @@ bool		enable_partitionwise_aggregate = false;
 bool		enable_parallel_append = true;
 bool		enable_parallel_hash = true;
 bool		enable_partition_pruning = true;
+bool		yb_enable_geolocation_costing = true;
 
 typedef struct
 {
@@ -488,8 +495,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	Cost		indexStartupCost;
 	Cost		indexTotalCost;
 	Selectivity indexSelectivity;
-	double		indexCorrelation,
-				csquared;
+	double		indexCorrelation = 0;
+	double		csquared;
 	double		spc_seq_page_cost,
 				spc_random_page_cost;
 	Cost		min_IO_cost,
@@ -566,8 +573,8 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	/* fetch estimated page costs for tablespace containing table */
 	get_tablespace_page_costs(baserel->reltablespace,
-							  &spc_random_page_cost,
-							  &spc_seq_page_cost);
+							&spc_random_page_cost,
+							&spc_seq_page_cost);
 
 	/*----------
 	 * Estimate number of main-table pages fetched, and compute I/O cost.
@@ -2875,10 +2882,8 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * We could include disable_cost in the preliminary estimate, but that
 	 * would amount to optimizing for the case where the join method is
 	 * disabled, which doesn't seem like the way to bet.
-	 * TODO: disable merge joins in Yugabyte mode until the needed functions
-	 *       'ammarkpos' and 'amrestrpos' are implemented in 'ybcin.c'.
 	 */
-	if (!enable_mergejoin || IsYugaByteEnabled())
+	if (!enable_mergejoin)
 		startup_cost += disable_cost;
 
 	/*
@@ -3871,6 +3876,12 @@ cost_qual_eval_walker(Node *node, cost_qual_eval_context *context)
 		 * be factored into plan-node-specific costing of the Agg or WindowAgg
 		 * plan node.
 		 */
+		return false;			/* don't recurse into children */
+	}
+	else if (IsA(node, GroupingFunc))
+	{
+		/* Treat this as having cost 1 */
+		context->total.per_tuple += cpu_operator_cost;
 		return false;			/* don't recurse into children */
 	}
 	else if (IsA(node, CoerceViaIO))

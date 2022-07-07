@@ -18,16 +18,21 @@
 // under the License.
 //
 
-#include "yb/rocksdb/status.h"
-#include "yb/rocksdb/env.h"
-
+#include <string>
 #include <vector>
-#include "yb/rocksdb/util/coding.h"
+
+#include <gtest/gtest.h>
+
+#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class LockTest : public testing::Test {
+class LockTest : public RocksDBTest {
  public:
   static LockTest* current_;
   std::string file_;

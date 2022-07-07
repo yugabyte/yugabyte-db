@@ -16,15 +16,17 @@
 
 #include <memory>
 
+#include "yb/client/client_fwd.h"
 #include "yb/docdb/docdb.h"
 
 #include "yb/tablet/apply_intents_task.h"
 #include "yb/tablet/remove_intents_task.h"
 #include "yb/tablet/transaction_participant.h"
 
-#include "yb/tserver/tserver_service.pb.h"
+#include "yb/tserver/tserver_fwd.h"
 
 #include "yb/util/bitmap.h"
+#include "yb/util/operation_counter.h"
 
 namespace yb {
 namespace tablet {
@@ -55,7 +57,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   }
 
   MUST_USE_RESULT bool UpdateStatus(
-      TransactionStatus transaction_status, HybridTime time_of_status);
+      TransactionStatus transaction_status, HybridTime time_of_status,
+      HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
@@ -79,14 +82,18 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return local_commit_time_;
   }
 
-  void SetLocalCommitTime(HybridTime time);
+  const AbortedSubTransactionSet& last_known_aborted_subtxn_set() const {
+    return last_known_aborted_subtxn_set_;
+  }
+
+  void SetLocalCommitData(HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set);
   void AddReplicatedBatch(
       size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
   void BatchReplicated(const TransactionalBatchData& value);
   void RequestStatusAt(const StatusRequest& request,
                        std::unique_lock<std::mutex>* lock);
   bool WasAborted() const;
-  CHECKED_STATUS CheckAborted() const;
+  Status CheckAborted() const;
   void Aborted();
 
   void Abort(client::YBClient* client,
@@ -99,10 +106,19 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Sets apply state for this transaction.
   // If data is not null, then apply intents task will be initiated if was not previously started.
   void SetApplyData(const docdb::ApplyTransactionState& apply_state,
-                    const TransactionApplyData* data = nullptr);
+                    const TransactionApplyData* data = nullptr,
+                    ScopedRWOperation* operation = nullptr);
+
+  void SetApplyOpId(const OpId& id);
+
+  const OpId& GetApplyOpId() {
+    return apply_record_op_id_;
+  }
 
   // Whether this transactions is currently applying intents.
   bool ProcessingApply() const;
+
+  void UpdateTransactionStatusLocation(const TabletId& new_status_tablet);
 
   std::string LogPrefix() const;
 
@@ -132,6 +148,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Notify provided status waiters.
   void NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                      TransactionStatus transaction_status,
+                     const AbortedSubTransactionSet& aborted_subtxn_set,
                      const std::vector<StatusRequest>& status_waiters);
 
   static Result<TransactionStatusResult> MakeAbortResult(
@@ -151,20 +168,24 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
+  AbortedSubTransactionSet last_known_aborted_subtxn_set_;
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;
   std::vector<TransactionStatusCallback> abort_waiters_;
 
   TransactionApplyData apply_data_;
+  OpId apply_record_op_id_;
   docdb::ApplyTransactionState apply_state_;
+  // Atomic that reflects active state, required to provide concurrent access to ProcessingApply.
+  std::atomic<bool> processing_apply_{false};
   ApplyIntentsTask apply_intents_task_;
 
   // Time of the next check whether this transaction has been aborted.
   HybridTime abort_check_ht_;
 };
 
-CHECKED_STATUS MakeAbortedStatus(const TransactionId& id);
+Status MakeAbortedStatus(const TransactionId& id);
 
 } // namespace tablet
 } // namespace yb

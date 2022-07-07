@@ -4,14 +4,12 @@ headerTitle: ysql_dump
 linkTitle: ysql_dump
 description: Back up a specified YSQL database into plain-text, SQL script file.
 headcontent: Extract a YugabyteDB database into a SQL script file.
-block_indexing: true
 menu:
   stable:
     identifier: ysql-dump
     parent: admin
     weight: 2467
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 `ysql_dump` is a utility for backing up a YugabyteDB database into a plain-text, SQL script file. `ysql_dump` makes consistent backups, even if the database is being used concurrently. `ysql_dump` does not block other users accessing the database (readers or writers).
@@ -71,6 +69,9 @@ Create the dump in the specified character set encoding. By default, the dump is
 #### -f *file*, --file=*file*
 
 Send output to the specified file. This parameter can be omitted for file-based output formats, in which case the standard output is used.
+
+#### -m *addresses*, --masters=*addresses*
+Comma-separated list of YB-Master hosts and ports.
 
 #### -n *schema*, --schema=*schema*
 
@@ -218,9 +219,9 @@ Only dump the named section. The section name can be pre-data, data, or post-dat
 
 The data section contains actual table data, large-object contents, and sequence values. Post-data items include definitions of indexes, triggers, rules, and constraints other than validated check constraints. Pre-data items include all other data definition items.
 
-#### --serializable-deferrable
+#### --no-serializable-deferrable
 
-Use a `serializable` transaction for the dump to ensure that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
+Use the `--no-serializable-deferrable` flag to disable the default `serializable-deferrable` transaction mode. The `serializable-deferrable` mode ensures that the snapshot used is consistent with later database states by waiting for a point in the transaction stream at which no anomalies can be present, so that there is no risk of the dump failing or causing other transactions to roll back with a `serialization_failure`.
 
 If there are active read-write transactions, the maximum wait time until the start of the dump will be `50ms` (based on the default [`--max_clock_skew_usec`](../../reference/configuration/yb-tserver/#max-clock-skew-usec) for YB-TServer and YB-Master servers.) If there are no active read-write transactions when `ysql_dump` is started, this option will not make any difference. Once running, performance with or without the option is the same.
 
@@ -295,7 +296,7 @@ This utility also uses the environment variables supported by `libpq`.
 
 `ysql_dump` internally executes `SELECT` statements. If you have problems running `ysql_dump`, make sure you are able to select information from the database using, for example, [`ysqlsh`](../ysqlsh). Also, any default connection settings and environment variables used by the `libpq` front-end library will apply.
 
-The database activity of `ysql_dump` is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the [`ALTER USER`](../../api/ysql/commands/dcl_alter_user) statement.
+The database activity of `ysql_dump` is normally collected by the statistics collector. If this is undesirable, you can set parameter `track_counts` to `false` using `PGOPTIONS` or the [`ALTER USER`](../../api/ysql/the-sql-language/statements/dcl_alter_user) statement.
 
 ## Notes
 

@@ -1,3 +1,2 @@
-{{ $includePath := (print .Page.Dir (.Get 0)) | printf "./content/%s" }}
-{{ readFile $includePath | markdownify }}
-{{ .Inner | markdownify }}
+{{ $includePath := (print .Page.File.Dir (.Get 0)) | printf "./content/%s" }}
+{{ readFile $includePath | safeHTML }}

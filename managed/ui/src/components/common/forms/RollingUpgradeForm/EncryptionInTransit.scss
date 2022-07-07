@@ -1,0 +1,29 @@
+.encryption-in-transit {
+  .enable-universe {
+    margin-bottom: 20px;
+    padding-left: 10px;
+  }
+  .use-same-certificate {
+    padding-left: 20px;
+  }
+  .certificates-area {
+    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.15);
+    padding: 25px;
+    margin: 10px;
+  }
+  .rotate-alert-msg{
+    margin-top: 0px;
+    margin-bottom: 20px;
+  }
+  .rolling-upgrade {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    padding-left: 20px;
+  }
+  .server-delay {
+    padding-left: 20px;
+  }
+  .err-msg {
+    margin-bottom: 20px;
+  }
+}

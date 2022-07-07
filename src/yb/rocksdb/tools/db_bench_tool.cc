@@ -57,12 +57,11 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/memtablerep.h"
 #include "yb/rocksdb/write_batch.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/perf_context.h"
-#include "yb/rocksdb/utilities/flashcache.h"
+#include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/utilities/transaction.h"
 #include "yb/rocksdb/utilities/transaction_db.h"
 #include "yb/rocksdb/utilities/optimistic_transaction_db.h"
@@ -79,6 +78,9 @@
 #include "yb/rocksdb/util/xxhash.h"
 #include "yb/rocksdb/hdfs/env_hdfs.h"
 #include "yb/rocksdb/utilities/merge_operators.h"
+
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
 
 #ifdef OS_WIN
 #include <io.h>  // open/close
@@ -710,11 +712,6 @@ DEFINE_string(compaction_fadvice, "NORMAL",
 static auto FLAGS_compaction_fadvice_e =
   rocksdb::Options().access_hint_on_compaction_start;
 
-DEFINE_bool(disable_flashcache_for_background_threads, false,
-            "Disable flashcache for background threads");
-
-DEFINE_string(flashcache_dev, "", "Path to flashcache device");
-
 DEFINE_bool(use_tailing_iterator, false,
             "Use tailing iterator to access a series of keys instead of get");
 
@@ -1283,36 +1280,6 @@ class Stats {
   void SetId(int id) { id_ = id; }
   void SetExcludeFromMerge() { exclude_from_merge_ = true; }
 
-  void PrintThreadStatus() {
-    std::vector<ThreadStatus> thread_list;
-    CHECK_OK(FLAGS_env->GetThreadList(&thread_list));
-
-    fprintf(stderr, "\n%18s %10s %12s %20s %13s %45s %12s %s\n",
-        "ThreadID", "ThreadType", "cfName", "Operation",
-        "ElapsedTime", "Stage", "State", "OperationProperties");
-
-    int64_t current_time = 0;
-    CHECK_OK(Env::Default()->GetCurrentTime(&current_time));
-    for (auto ts : thread_list) {
-      fprintf(stderr, "%18" PRIu64 " %10s %12s %20s %13s %45s %12s",
-          ts.thread_id,
-          ThreadStatus::GetThreadTypeName(ts.thread_type).c_str(),
-          ts.cf_name.c_str(),
-          ThreadStatus::GetOperationName(ts.operation_type).c_str(),
-          ThreadStatus::MicrosToString(ts.op_elapsed_micros).c_str(),
-          ThreadStatus::GetOperationStageName(ts.operation_stage).c_str(),
-          ThreadStatus::GetStateName(ts.state_type).c_str());
-
-      auto op_properties = ThreadStatus::InterpretOperationProperties(
-          ts.operation_type, ts.op_properties);
-      for (const auto& op_prop : op_properties) {
-        fprintf(stderr, " %s %" PRIu64" |",
-            op_prop.first.c_str(), op_prop.second);
-      }
-      fprintf(stderr, "\n");
-    }
-  }
-
   void ResetLastOpTime() {
     // Set to now to avoid latency from calls to SleepForMicroseconds
     last_op_finish_ = FLAGS_env->NowMicros();
@@ -1423,9 +1390,6 @@ class Stats {
           last_report_finish_ = now;
           last_report_done_ = done_;
         }
-      }
-      if (id_ == 0 && FLAGS_thread_status_per_interval) {
-        PrintThreadStatus();
       }
       fflush(stderr);
     }
@@ -1579,7 +1543,6 @@ class Benchmark {
   int64_t readwrites_;
   int64_t merge_keys_;
   bool report_file_operations_;
-  int cachedev_fd_;
 
   bool SanityCheck() {
     if (FLAGS_compression_ratio > 1) {
@@ -1787,8 +1750,7 @@ class Benchmark {
                 ? FLAGS_num
                 : ((FLAGS_writes > FLAGS_reads) ? FLAGS_writes : FLAGS_reads)),
         merge_keys_(FLAGS_merge_keys < 0 ? FLAGS_num : FLAGS_merge_keys),
-        report_file_operations_(FLAGS_report_file_operations),
-        cachedev_fd_(-1) {
+        report_file_operations_(FLAGS_report_file_operations) {
     if (report_file_operations_) {
       if (!FLAGS_hdfs.empty()) {
         fprintf(stderr,
@@ -1826,11 +1788,6 @@ class Benchmark {
     if (cache_.get() != nullptr) {
       // this will leak, but we're shutting down so nobody cares
       cache_->DisownData();
-    }
-    if (FLAGS_disable_flashcache_for_background_threads && cachedev_fd_ != -1) {
-      // Dtor for this env should run before cachedev_fd_ is closed
-      flashcache_aware_env_ = nullptr;
-      close(cachedev_fd_);
     }
   }
 
@@ -2085,8 +2042,6 @@ class Benchmark {
   }
 
  private:
-  std::unique_ptr<Env> flashcache_aware_env_;
-
   struct ThreadArg {
     Benchmark* bm;
     SharedState* shared;
@@ -2385,24 +2340,7 @@ class Benchmark {
       FLAGS_env->LowerThreadPoolIOPriority(Env::LOW);
       FLAGS_env->LowerThreadPoolIOPriority(Env::HIGH);
     }
-    if (FLAGS_disable_flashcache_for_background_threads &&
-        cachedev_fd_ == -1) {
-      // Avoid creating the env twice when an use_existing_db is true
-      cachedev_fd_ = open(FLAGS_flashcache_dev.c_str(), O_RDONLY);
-      if (cachedev_fd_ < 0) {
-        fprintf(stderr, "Open flash device failed\n");
-        exit(1);
-      }
-      flashcache_aware_env_ = NewFlashcacheAwareEnv(FLAGS_env, cachedev_fd_);
-      if (flashcache_aware_env_.get() == nullptr) {
-        fprintf(stderr, "Failed to open flashcache device at %s\n",
-                FLAGS_flashcache_dev.c_str());
-        std::abort();
-      }
-      options.env = flashcache_aware_env_.get();
-    } else {
-      options.env = FLAGS_env;
-    }
+    options.env = FLAGS_env;
     options.disableDataSync = FLAGS_disable_data_sync;
     options.use_fsync = FLAGS_use_fsync;
     options.wal_dir = FLAGS_wal_dir;
@@ -4060,7 +3998,7 @@ int db_bench_tool(int argc, char** argv) {
 
   FLAGS_compaction_style_e = (rocksdb::CompactionStyle) FLAGS_compaction_style;
   if (FLAGS_statistics) {
-    dbstats = rocksdb::CreateDBStatistics();
+    dbstats = rocksdb::CreateDBStatisticsForTests();
   }
   FLAGS_compaction_pri_e = (rocksdb::CompactionPri)FLAGS_compaction_pri;
 

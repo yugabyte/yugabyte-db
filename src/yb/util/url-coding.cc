@@ -43,11 +43,6 @@
 
 #include "yb/util/url-coding.h"
 
-#include <algorithm>
-#include <exception>
-#include <functional>
-#include <sstream>
-
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
@@ -61,21 +56,23 @@ using namespace boost::archive::iterators; // NOLINT(*)
 
 namespace yb {
 
+namespace {
+
 // Hive selectively encodes characters. This is the whitelist of
 // characters it will encode.
 // See common/src/java/org/apache/hadoop/hive/common/FileUtils.java
 // in the Hive source code for the source of this list.
-static std::function<bool(char)> HiveShouldEscape =
+std::function<bool(char)> HiveShouldEscape =
     boost::is_any_of("\"#%\\*/:=?\u00FF"); // NOLINT(*)
 
 // It is more convenient to maintain the complement of the set of
 // characters to escape when not in Hive-compat mode.
-static std::function<bool(char)> ShouldNotEscape = boost::is_any_of("-_.~"); // NOLINT(*)
+std::function<bool(char)> ShouldNotEscape = boost::is_any_of("-_.~"); // NOLINT(*)
 
-static inline void UrlEncode(const char* in, int in_len, string* out, bool hive_compat) {
+inline void UrlEncode(const char* in, size_t in_len, string* out, bool hive_compat) {
   (*out).reserve(in_len);
   std::stringstream ss;
-  for (int i = 0; i < in_len; ++i) {
+  for (size_t i = 0; i < in_len; ++i) {
     const char ch = in[i];
     // Escape the character iff a) we are in Hive-compat mode and the
     // character is in the Hive whitelist or b) we are not in
@@ -91,6 +88,8 @@ static inline void UrlEncode(const char* in, int in_len, string* out, bool hive_
 
   (*out) = ss.str();
 }
+
+} // namespace
 
 void UrlEncode(const vector<uint8_t>& in, string* out, bool hive_compat) {
   if (in.empty()) {
@@ -140,12 +139,12 @@ bool UrlDecode(const string& in, string* out, bool hive_compat) {
   return true;
 }
 
-static inline void Base64Encode(const char* in, int in_len, std::stringstream* out) {
+static inline void Base64Encode(const char* in, size_t in_len, std::stringstream* out) {
   typedef base64_from_binary<transform_width<const char*, 6, 8> > base64_encode;
   // Base64 encodes 8 byte chars as 6 bit values.
   std::stringstream::pos_type len_before = out->tellp();
   copy(base64_encode(in), base64_encode(in + in_len), std::ostream_iterator<char>(*out));
-  int bytes_written = out->tellp() - len_before;
+  auto bytes_written = out->tellp() - len_before;
   // Pad with = to make it valid base64 encoded string
   int num_pad = bytes_written % 4;
   if (num_pad != 0) {
@@ -199,7 +198,8 @@ bool Base64Decode(const string& in, string* out) {
   // Remove trailing '\0' that were added as padding.  Since \0 is special,
   // the boost functions get confused so do this manually.
   int num_padded_chars = 0;
-  for (int i = out->size() - 1; i >= 0; --i) {
+  for (size_t i = out->size(); i > 0;) {
+    --i;
     if ((*out)[i] != '\0') break;
     ++num_padded_chars;
   }

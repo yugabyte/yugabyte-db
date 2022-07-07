@@ -14,9 +14,10 @@
 #ifndef ENT_SRC_YB_SERVER_SECURE_H
 #define ENT_SRC_YB_SERVER_SECURE_H
 
+#include <gflags/gflags_declare.h>
+
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/util/result.h"
 #include "yb/util/enums.h"
 
 DECLARE_string(cert_node_filename);
@@ -33,11 +34,9 @@ class SecureContext;
 
 namespace server {
 
-YB_DEFINE_ENUM(SecureContextType, (kServerToServer)(kClientToServer));
+YB_DEFINE_ENUM(SecureContextType, (kInternal)(kExternal));
 
-string DefaultRootDir(const FsManager& fs_manager);
-
-string DefaultCertsDir(const FsManager& fs_manager);
+std::string DefaultCertsDir(const FsManager& fs_manager);
 
 // Creates secure context and sets up messenger builder to use it.
 Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
@@ -52,10 +51,25 @@ Result<std::unique_ptr<rpc::SecureContext>> SetupSecureContext(
     const std::string& cert_dir, const std::string& root_dir, const std::string& name,
     SecureContextType type, rpc::MessengerBuilder* builder);
 
-Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
-    const std::string& certs_dir, const std::string& name = std::string());
+YB_STRONGLY_TYPED_BOOL(UseClientCerts);
 
-void ApplySecureContext(rpc::SecureContext* context, rpc::MessengerBuilder* builder);
+Result<std::unique_ptr<rpc::SecureContext>> CreateSecureContext(
+    const std::string& certs_dir, UseClientCerts use_client_certs,
+    const std::string& node_name = std::string(),
+    const std::string& required_uid = std::string());
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& root_dir, SecureContextType type,
+    const std::string& hosts);
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& node_name, const std::string& root_dir,
+    SecureContextType type);
+
+Status ReloadSecureContextKeysAndCertificates(
+    rpc::SecureContext* context, const std::string& certs_dir, const std::string& node_name);
+
+void ApplySecureContext(const rpc::SecureContext* context, rpc::MessengerBuilder* builder);
 
 } // namespace server
 } // namespace yb

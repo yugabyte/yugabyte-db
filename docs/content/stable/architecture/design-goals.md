@@ -3,16 +3,12 @@ title: Design goals
 headerTitle: Design goals
 linkTitle: Design goals
 description: Learn the design goals that drive the building of YugabyteDB.
-aliases:
-  - /stable/architecture/design-goals/
-block_indexing: true
 menu:
   stable:
     identifier: architecture-design-goals
     parent: architecture
     weight: 1105
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This page outlines the design goals with which YugabyteDB has been built.
@@ -21,30 +17,40 @@ This page outlines the design goals with which YugabyteDB has been built.
 
 YugabyteDB offers strong consistency guarantees in the face of a variety of failures. It supports distributed transactions.
 
-### CAP theorem
+### CAP theorem and split-brain
 
 In terms of the [CAP theorem](https://en.wikipedia.org/wiki/CAP_theorem), YugabyteDB is a CP database (consistent and partition tolerant), but achieves very high availability. The architectural design of YugabyteDB is similar to Google Cloud Spanner, which is also a CP system. The description about [Spanner](https://cloudplatform.googleblog.com/2017/02/inside-Cloud-Spanner-and-the-CAP-Theorem.html) is just as valid for YugabyteDB. The key takeaway is that no system provides 100% availability, so the pragmatic question is whether or not the system delivers availability that is so high that most users no longer have to be concerned about outages. For example, given there are many sources of outages for an application, if YugabyteDB is an insignificant contributor to its downtime, then users are correct to not worry about it.
 
+Split-brain is a computing scenario in which data and availability inconsistencies arise when a distributed system incurs a network partition. For YugabyteDB, when a network partition occurs, the remaining (majority for write acknowledgement purposes) RAFT group peers elect a new tablet leader. YugabyteDB implements _leader leases_, which ensures that a single tablet leader exists throughout the entire distributed system including when network partitions occur. Leader leases have a default value of two seconds, and can be configured to use a different value. This architecture ensures that YugabyteDB's distributed database is not susceptible to the split-brain condition.
+
 ### Single-row linearizability
 
-YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row: 
+YugabyteDB supports single-row linearizable writes. Linearizability is one of the strongest single-row consistency models, and implies that every operation appears to take place atomically and in some total linear order that is consistent with the real-time ordering of those operations. In other words, the following should be true of operations on a single row:
 
 - Operations can execute concurrently, but the state of the database at any point in time must appear to be the result of some totally ordered, sequential execution of operations.
 - If operation A completes before operation B begins, then B should logically take effect after A.
 
 ### Multi-row ACID transactions
 
-YugabyteDB supports multi-row transactions with both Serializable and Snapshot isolation.
+YugabyteDB supports multi-row transactions with three isolation levels: `Serializable`, `Snapshot` (same as "repeatable read") and `Read Committed` isolation.
 
-- The [YSQL](../../api/ysql/) API supports both Serializable and Snapshot Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE` and `REPEATABLE READS` (default) respectively. 
-- The [YCQL](../../api/ycql/dml_transaction/) API supports only Snapshot Isolation using the `BEGIN TRANSACTION` syntax.
+- The [YSQL](../../api/ysql/) API supports `Serializable`, `Snapshot` (default<sup>$</sup>) and `Read Committed` Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively.
+- The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
+
+<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If the tserver gflag `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default the tserver gflag `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
+{{< tip title="YSQL vs PostgreSQL isolation levels" >}}
+
+Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL's isolation levels map to the levels defined by PostgreSQL.
+
+{{< /tip >}}
 
 {{< tip title="Read more about consistency" >}}
 
-- Achieving [consistency with Raft consensus](../docdb/replication/).
+- Achieving [consistency with Raft consensus](../docdb-replication/replication/).
 - How [fault tolerance and high availability](../core-functions/high-availability/) are achieved.
 - [Single-row linearizable transactions](../transactions/single-row-transactions/) in YugabyteDB.
-- The architecture of [distributed transactions](../transactions/single-row-transactions/).
+- The architecture of [distributed transactions](../transactions/distributed-txns/).
 
 {{< /tip >}}
 
@@ -66,14 +72,14 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
   - Joins (inner join, outer join, full outer join, cross join, natural join)
   - Constraints (primary key, foreign key, unique, not null, check)
   - Secondary indexes (including multi-column and covering columns)
-  - Distributed transactions (Serializable and Snapshot Isolation)
+  - Distributed transactions (Serializable, Snapshot, and Read Committed Isolation)
   - Views
   - Stored procedures
   - Triggers
 
 ### YCQL
 
-[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language. 
+[YCQL](../../api/ycql/) is a semi-relational SQL API that is best fit for internet-scale OLTP and HTAP apps needing massive write scalability as well as blazing-fast queries. It supports distributed transactions, strongly consistent secondary indexes and a native JSON column type. YCQL has its roots in the Cassandra Query Language.
 
 {{< tip title="Read more" >}}
 

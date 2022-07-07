@@ -10,13 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/fast_varint.h"
 
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/debug/leakcheck_disabler.h"
+#include <array>
+
 #include "yb/util/cast.h"
-#include "yb/util/debug-util.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 
@@ -157,7 +157,8 @@ const uint64_t kVarIntMasks[] = {
     0xffffffffffffffffULL,
 };
 
-Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(const uint8_t* src, size_t src_size) {
+inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(
+    const uint8_t* const src, size_t src_size, const uint8_t* read_allowed_from) {
   typedef std::pair<int64_t, size_t> ResultType;
   if (src_size == 0) {
     return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");
@@ -189,55 +190,79 @@ Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(const uint8_t* src, si
     return NotEnoughEncodedBytes(n_bytes, src_size);
   }
   auto mask = kVarIntMasks[n_bytes];
+
+  const auto* const read_start = src - 8 + n_bytes;
+
 #if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-  uint64_t temp = 0;
-  for (const uint8_t* i = std::max(src - 8 + n_bytes, src); i != src + n_bytes; ++i) {
-    temp = (temp << 8) | *i;
-  }
-  return ResultType(((temp & mask) | (~mask & negative)) - negative, n_bytes);
+  if (false) {
 #else
-  // We are interested in range [src, src+n_bytes), so we use 64bit number that ends at src+n_bytes.
-  // Then we use mask to drop header and bytes out of range.
-  // Suppose we have negative number -a (where a > 0). Then at this point we would have ~a & mask.
-  // To get -a, we should fill it with zeros to 64bits: "| (~mask & negative)".
-  // And add one: "- negative".
-  // In case of non negative number, negative == 0.
-  // So number will be unchanged by those manipulations.
-  return ResultType(
-        ((__builtin_bswap64(*reinterpret_cast<const uint64_t*>(src - 8 + n_bytes)) & mask) |
-            (~mask & negative)) - negative,
-        n_bytes);
+  if (PREDICT_TRUE(read_start >= read_allowed_from)) {
 #endif
+
+    // We are interested in range [src, src+n_bytes), so we use 64bit number that ends at
+    // src+n_bytes.
+    // Then we use mask to drop header and bytes out of range.
+    // Suppose we have negative number -a (where a > 0). Then at this point we would have ~a & mask.
+    // To get -a, we should fill it with zeros to 64bits: "| (~mask & negative)".
+    // And add one: "- negative".
+    // In case of non negative number, negative == 0.
+    // So number will be unchanged by those manipulations.
+    return ResultType(
+          ((__builtin_bswap64(*reinterpret_cast<const uint64_t*>(read_start)) & mask) |
+              (~mask & negative)) - negative,
+          n_bytes);
+  } else {
+    uint64_t temp = 0;
+    const auto* end = src + n_bytes;
+    for (const uint8_t* i = std::max(read_start, src); i != end; ++i) {
+      temp = (temp << 8) | *i;
+    }
+    return ResultType(((temp & mask) | (~mask & negative)) - negative, n_bytes);
+  }
 }
 
 Status FastDecodeSignedVarInt(
-    const uint8_t* src, size_t src_size, int64_t* v, size_t* decoded_size) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(src, src_size));
+    const uint8_t* src, size_t src_size, const uint8_t* read_allowed_from, int64_t* v,
+    size_t* decoded_size) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(src, src_size, read_allowed_from));
   *v = temp.first;
   *decoded_size = temp.second;
   return Status::OK();
 }
 
-Result<int64_t> FastDecodeSignedVarInt(Slice* slice) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
+inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarIntUnsafe(
+    const uint8_t* const src, size_t src_size) {
+  return FastDecodeSignedVarInt(src, src_size, nullptr);
+}
+
+Status FastDecodeSignedVarIntUnsafe(
+    const uint8_t* src, size_t src_size, int64_t* v, size_t* decoded_size) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(src, src_size));
+  *v = temp.first;
+  *decoded_size = temp.second;
+  return Status::OK();
+}
+
+Result<int64_t> FastDecodeSignedVarIntUnsafe(Slice* slice) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice->data(), slice->size()));
   slice->remove_prefix(temp.second);
   return temp.first;
 }
 
-Status FastDecodeSignedVarInt(const std::string& encoded, int64_t* v, size_t* decoded_size) {
-  return FastDecodeSignedVarInt(
-      util::to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
+Status FastDecodeSignedVarIntUnsafe(const std::string& encoded, int64_t* v, size_t* decoded_size) {
+  return FastDecodeSignedVarIntUnsafe(
+      to_uchar_ptr(encoded.c_str()), encoded.size(), v, decoded_size);
 }
 
-Status FastDecodeDescendingSignedVarInt(yb::Slice *slice, int64_t *dest) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
+Status FastDecodeDescendingSignedVarIntUnsafe(yb::Slice *slice, int64_t *dest) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice->data(), slice->size()));
   *dest = -temp.first;
   slice->remove_prefix(temp.second);
   return Status::OK();
 }
 
-Result<int64_t> FastDecodeDescendingSignedVarInt(Slice* slice) {
-  auto temp = VERIFY_RESULT(FastDecodeSignedVarInt(slice->data(), slice->size()));
+Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice) {
+  auto temp = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(slice->data(), slice->size()));
   slice->remove_prefix(temp.second);
   return -temp.first;
 }
@@ -252,19 +277,8 @@ size_t UnsignedVarIntLength(uint64_t v) {
   return result;
 }
 
-void FastAppendUnsignedVarIntToStr(uint64_t v, std::string* dest) {
-  char buf[kMaxVarIntBufferSize];
-  size_t len = 0;
-  FastEncodeUnsignedVarInt(v, to_uchar_ptr(buf), &len);
-  DCHECK_LE(len, 10);
-  dest->append(buf, len);
-}
-
-void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size) {
+size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest) {
   const size_t n = UnsignedVarIntLength(v);
-  if (size)
-    *size = n;
-
   size_t i;
   if (n == 10) {
     dest[0] = 0xff;
@@ -286,9 +300,10 @@ void FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest, size_t *size) {
   for (; i < n; ++i) {
     dest[i] = v >> (8 * (n - 1 - i));
   }
+  return n;
 }
 
-CHECKED_STATUS FastDecodeUnsignedVarInt(
+Status FastDecodeUnsignedVarInt(
     const uint8_t* src, size_t src_size, uint64_t* v, size_t* decoded_size) {
   if (src_size == 0) {
     return STATUS(Corruption, "Cannot decode a variable-length integer of zero size");
@@ -307,7 +322,7 @@ CHECKED_STATUS FastDecodeUnsignedVarInt(
   }
 
   uint64_t result = 0;
-  int i = 0;
+  size_t i = 0;
   if (n_bytes == 9) {
     if (src[1] & 0x80) {
       n_bytes = 10;

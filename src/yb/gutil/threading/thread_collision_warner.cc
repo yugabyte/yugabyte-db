@@ -16,12 +16,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/gutil/threading/thread_collision_warner.h"
 
 #include <glog/logging.h>
 
+#ifdef __linux__
 #include "yb/gutil/linux_syscall_support.h"
+#endif
 
 namespace base {
 

@@ -16,9 +16,11 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
-#include "yb/yql/cql/ql/ptree/sem_context.h"
 
 #include "yb/common/redis_constants_common.h"
+
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
@@ -39,7 +41,7 @@ PTAlterKeyspace::PTAlterKeyspace(MemoryContext *memctx,
 PTAlterKeyspace::~PTAlterKeyspace() {
 }
 
-CHECKED_STATUS PTAlterKeyspace::Analyze(SemContext *sem_context) {
+Status PTAlterKeyspace::Analyze(SemContext *sem_context) {
   if (*name_ == common::kRedisKeyspaceName) {
     return sem_context->Error(loc(),
                               strings::Substitute("$0 is a reserved keyspace name",

@@ -426,7 +426,8 @@ ExecInsertIndexTuplesOptimized(TupleTableSlot *slot,
 						 tuple,		/* heap tuple */
 						 heapRelation,	/* heap relation */
 						 checkUnique,	/* type of uniqueness check to do */
-						 indexInfo);	/* index AM may need this */
+						 indexInfo,		/* index AM may need this */
+						 false);	/* yb_shared_insert */
 
 		/*
 		 * If the index has an associated exclusion constraint, check that.
@@ -584,14 +585,13 @@ ExecDeleteIndexTuplesOptimized(Datum ybctid,
 		 * If the index is not ready for deletes and index backfill is enabled,
 		 * ignore it
 		 */
-		if (!YBCGetDisableIndexBackfill()
-				&& !indexRelation->rd_index->indislive)
+		if (!*YBCGetGFlags()->ysql_disable_index_backfill && !indexRelation->rd_index->indislive)
 			continue;
 		/*
 		 * If the index is marked as read-only and index backfill is disabled,
 		 * ignore it
 		 */
-		if (YBCGetDisableIndexBackfill() && !indexInfo->ii_ReadyForInserts)
+		if (*YBCGetGFlags()->ysql_disable_index_backfill && !indexInfo->ii_ReadyForInserts)
 			continue;
 
 		/* Check for partial index */

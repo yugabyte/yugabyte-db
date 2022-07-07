@@ -1,0 +1,25 @@
+# Copyright (c) YugaByte, Inc.
+
+global:
+ # Down sample granularity for federated metrics.
+ scrape_interval:     30s
+ evaluation_interval: 30s
+
+ external_labels:
+   monitor: 'swamper'
+
+# A list of scrape configurations.
+scrape_configs:
+ - job_name: "federate"
+   scrape_interval: 30s
+   honor_labels: true
+   metrics_path: '/federate'
+
+   params:
+     'match[]':
+       - '{job="yugabyte"}'
+       - '{job="node"}'
+
+   static_configs:
+     - targets:
+       - '$address'

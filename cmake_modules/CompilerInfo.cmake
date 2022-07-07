@@ -76,6 +76,9 @@ elseif("${COMPILER_VERSION_FULL}" MATCHES ".*clang-700\\..*")
   set(COMPILER_VERSION "3.7.0svn")
 
 # a different version of clang
+elseif("${COMPILER_VERSION_FULL}" MATCHES "Apple LLVM version ([0-9]+([.][0-9]+)*) .*")
+  set(COMPILER_FAMILY "clang")
+  set(COMPILER_VERSION "${CMAKE_MATCH_1}")
 elseif("${COMPILER_VERSION_FULL}" MATCHES ".*[(]clang-[0-9.]+[)].*")
   set(COMPILER_FAMILY "clang")
   string(REGEX REPLACE ".*[(]clang-([0-9.]+)[)].*" "\\1"
@@ -94,3 +97,13 @@ else()
   message(FATAL_ERROR "Unknown compiler. Version info:\n${COMPILER_VERSION_FULL}")
 endif()
 message("Selected compiler family '${COMPILER_FAMILY}', version '${COMPILER_VERSION}'")
+
+set(IS_CLANG FALSE)
+if("${COMPILER_FAMILY}" STREQUAL "clang")
+  set(IS_CLANG TRUE)
+endif()
+
+set(IS_GCC FALSE)
+if("${COMPILER_FAMILY}" STREQUAL "gcc")
+  set(IS_GCC TRUE)
+endif()

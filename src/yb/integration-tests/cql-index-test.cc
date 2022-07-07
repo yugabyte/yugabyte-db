@@ -12,16 +12,20 @@
 //
 
 #include "yb/integration-tests/cql_test_base.h"
-
-#include "yb/consensus/raft_consensus.h"
-
 #include "yb/integration-tests/mini_cluster_utils.h"
 
+#include "yb/util/atomic.h"
+#include "yb/util/logging.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
+DECLARE_bool(allow_index_table_read_write);
+DECLARE_int32(cql_prepare_child_threshold_ms);
 DECLARE_bool(disable_index_backfill);
 DECLARE_bool(transactions_poll_check_aborted);
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
@@ -33,16 +37,17 @@ DECLARE_int64(transaction_abort_check_interval_ms);
 
 namespace yb {
 
-class CqlIndexTest : public CqlTestBase {
+class CqlIndexTest : public CqlTestBase<MiniCluster> {
  public:
   virtual ~CqlIndexTest() = default;
 
   void TestTxnCleanup(size_t max_remaining_txns_per_tablet);
+  void TestConcurrentModify2Columns(const std::string& expr);
 };
 
 YB_STRONGLY_TYPED_BOOL(UniqueIndex);
 
-CHECKED_STATUS CreateIndexedTable(
+Status CreateIndexedTable(
     CassandraSession* session, UniqueIndex unique_index = UniqueIndex::kFalse) {
   RETURN_NOT_OK(
       session->ExecuteQuery("CREATE TABLE IF NOT EXISTS t (key INT PRIMARY KEY, value INT) WITH "
@@ -110,18 +115,18 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   constexpr cass_int32_t kValues = kKeys;
   constexpr int kNumInserts = kThreads * 5;
 
-  FLAGS_client_read_write_timeout_ms = 10000;
+  FLAGS_client_read_write_timeout_ms = 10000 * kTimeMultiplier;
   SetAtomicFlag(1000, &FLAGS_TEST_inject_txn_get_status_delay_ms);
   FLAGS_transaction_abort_check_interval_ms = 100000;
 
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
 
-  AssertLoggedWaitFor(
-      [&session]() { return CreateIndexedTable(&session).ok(); }, 60s, "create table", 12s);
+  ASSERT_OK(LoggedWaitFor(
+      [&session]() { return CreateIndexedTable(&session).ok(); }, 60s, "create table", 12s));
   constexpr auto kNamespace = "test";
   const client::YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "t");
   const client::YBTableName index_table_name(YQL_DATABASE_CQL, kNamespace, "idx");
-  AssertLoggedWaitFor(
+  ASSERT_OK(LoggedWaitFor(
       [this, table_name, index_table_name]() {
         auto result = client_->WaitUntilIndexPermissionsAtLeast(
             table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
@@ -129,7 +134,7 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
       },
       90s,
       "wait for create index to complete",
-      12s);
+      12s));
 
   TestThreadHolder thread_holder;
   std::atomic<int> inserts(0);
@@ -163,6 +168,40 @@ TEST_F_EX(CqlIndexTest, ConcurrentIndexUpdate, CqlIndexSmallWorkersTest) {
   thread_holder.Stop();
 
   SetAtomicFlag(0, &FLAGS_TEST_inject_txn_get_status_delay_ms);
+}
+
+TEST_F(CqlIndexTest, TestSaturatedWorkers) {
+  /*
+   * (#11258) We set a very short timeout to force failure if child transaction
+   * is not created quickly enough.
+
+   * TODO: when switching to a fully asynchronous model, this failure will disappear.
+   */
+  FLAGS_cql_prepare_child_threshold_ms = 1;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH "
+      "transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE INDEX i1 ON t(key, v1) WITH "
+      "transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE INDEX i2 ON t(key, v2) WITH "
+      "transactions = { 'enabled' : true }"));
+
+  constexpr int kKeys = 10000;
+  std::string expr = "BEGIN TRANSACTION ";
+  for (int i = 0; i < kKeys; i++) {
+    expr += Format("INSERT INTO t (key, v1, v2) VALUES ($0, $1, $2); ", i, i, i);
+  }
+  expr += "END TRANSACTION;";
+
+  // We should expect to see timed out error
+  auto status = session.ExecuteQuery(expr);
+  ASSERT_FALSE(status.ok());
+  ASSERT_NE(status.message().ToBuffer().find("Timed out waiting for prepare child status"),
+            std::string::npos) << status;
 }
 
 YB_STRONGLY_TYPED_BOOL(CheckReady);
@@ -215,6 +254,74 @@ TEST_F(CqlIndexTest, TxnPollCleanup) {
   FLAGS_transaction_abort_check_interval_ms = 1000;
 
   TestTxnCleanup(/* max_remaining_txns_per_tablet= */ 0);
+}
+
+void CqlIndexTest::TestConcurrentModify2Columns(const std::string& expr) {
+  FLAGS_allow_index_table_read_write = true;
+
+  constexpr int kKeys = RegularBuildVsSanitizers(50, 10);
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH "
+      "transactions = { 'enabled' : true }"));
+  ASSERT_OK(session.ExecuteQuery("CREATE INDEX v1_idx ON t (v1)"));
+
+  auto prepared1 = ASSERT_RESULT(session.Prepare(Format(expr, "v1")));
+  auto prepared2 = ASSERT_RESULT(session.Prepare(Format(expr, "v2")));
+
+  std::vector<CassandraFuture> futures;
+
+  for (int i = 0; i != kKeys; ++i) {
+    for (auto* prepared : {&prepared1, &prepared2}) {
+      auto statement = prepared->Bind();
+      statement.Bind(0, i);
+      statement.Bind(1, i);
+      futures.push_back(session.ExecuteGetFuture(statement));
+    }
+  }
+
+  int good = 0;
+  int bad = 0;
+  for (auto& future : futures) {
+    auto status = future.Wait();
+    if (status.ok()) {
+      ++good;
+    } else {
+      ASSERT_TRUE(status.IsTimedOut()) << status;
+      ++bad;
+    }
+  }
+
+  ASSERT_GE(good, bad * 4);
+
+  std::vector<bool> present(kKeys);
+
+  int read_keys = 0;
+  auto result = ASSERT_RESULT(session.ExecuteWithResult("SELECT * FROM v1_idx"));
+  auto iter = result.CreateIterator();
+  while (iter.Next()) {
+    auto row = iter.Row();
+    auto key = row.Value(0).As<int32_t>();
+    auto value = row.Value(1);
+    LOG(INFO) << key << ", " << value.ToString();
+
+    ASSERT_FALSE(present[key]) << key;
+    present[key] = true;
+    ++read_keys;
+    ASSERT_FALSE(value.IsNull());
+    ASSERT_EQ(key, value.As<int32_t>());
+  }
+
+  ASSERT_EQ(read_keys, kKeys);
+}
+
+TEST_F(CqlIndexTest, ConcurrentInsert2Columns) {
+  TestConcurrentModify2Columns("INSERT INTO t ($0, key) VALUES (?, ?)");
+}
+
+TEST_F(CqlIndexTest, ConcurrentUpdate2Columns) {
+  TestConcurrentModify2Columns("UPDATE t SET $0 = ? WHERE key = ?");
 }
 
 } // namespace yb

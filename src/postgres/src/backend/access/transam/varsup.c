@@ -26,7 +26,13 @@
 #include "storage/proc.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "access/htup_details.h"
+#include "access/sysattr.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_namespace.h"
 #include "commands/ybccmds.h"
+#include "utils/fmgroids.h"
 #include "pg_yb_utils.h"
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
@@ -41,6 +47,9 @@
 
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
+
+/* next OID to assign during YSQL upgrade */
+Oid ysql_upgrade_next_oid = InvalidOid;
 
 
 /*
@@ -461,6 +470,81 @@ ForceTransactionIdLimitUpdate(void)
 	return false;
 }
 
+/*
+ * Scan all system tables with OIDs to determine the maximum
+ * system-allocated OID.
+ * Naturally, this function is expensive.
+ */
+static Oid
+YbGetMaxAllocatedSystemOid()
+{
+	Oid				result = InvalidOid;
+
+	Relation		pg_class,
+					sys_rel;
+
+	ScanKeyData		key[2];
+	HeapScanDesc	scan;
+	HeapTuple		tuple;
+
+	List		   *sys_rel_oids = NIL;
+	ListCell	   *lc;
+
+	pg_class = heap_open(RelationRelationId, AccessShareLock);
+
+	/*
+	 * SELECT * FROM pg_class
+	 * WHERE relnamespace = 'pg_catalog'::regnamespace
+	 * AND relhasoids = true
+	 */
+	ScanKeyInit(&key[0],
+				Anum_pg_class_relnamespace,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(PG_CATALOG_NAMESPACE));
+	ScanKeyInit(&key[1],
+				Anum_pg_class_relhasoids,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
+
+	scan = heap_beginscan_catalog(pg_class, 2, key);
+
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		sys_rel_oids = lappend_oid(sys_rel_oids, HeapTupleGetOid(tuple));
+	}
+
+	heap_endscan(scan);
+	heap_close(pg_class, AccessShareLock);
+
+	foreach(lc, sys_rel_oids)
+	{
+		/* SELECT * FROM x WHERE oid >= 10000 AND oid < 16384 */
+		ScanKeyInit(&key[0],
+					ObjectIdAttributeNumber,
+					BTGreaterEqualStrategyNumber, F_OIDGE,
+					ObjectIdGetDatum((Oid) FirstBootstrapObjectId));
+		ScanKeyInit(&key[1],
+					ObjectIdAttributeNumber,
+					BTLessStrategyNumber, F_OIDLT,
+					ObjectIdGetDatum((Oid) FirstNormalObjectId));
+
+		sys_rel = heap_open(lfirst_oid(lc), AccessShareLock);
+		scan = heap_beginscan_catalog(sys_rel, 2, key);
+
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			Oid oid = HeapTupleGetOid(tuple);
+
+			if (result < oid)
+				result = oid;
+		}
+
+		heap_endscan(scan);
+		heap_close(sys_rel, AccessShareLock);
+	}
+
+	return result;
+}
 
 /*
  * GetNewObjectId -- allocate a new OID
@@ -482,6 +566,22 @@ GetNewObjectId(void)
 		elog(ERROR, "cannot assign OIDs during recovery");
 
 	LWLockAcquire(OidGenLock, LW_EXCLUSIVE);
+
+	/*
+	 * In YSQL upgrade mode, we continue OID sequence where initdb left off.
+	 * We don't expect concurrent upgrade, so we don't need to reserve OIDs.
+	 */
+	if (IsYsqlUpgrade)
+	{
+		if (!OidIsValid(ysql_upgrade_next_oid))
+			ysql_upgrade_next_oid = YbGetMaxAllocatedSystemOid() + 1;
+
+		result = ysql_upgrade_next_oid;
+		ysql_upgrade_next_oid++;
+
+		LWLockRelease(OidGenLock);
+		return result;
+	}
 
 	/*
 	 * Check for wraparound of the OID counter.  We *must* not return 0

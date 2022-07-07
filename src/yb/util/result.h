@@ -19,12 +19,16 @@
 #include <string>
 #include <type_traits>
 
+#include "yb/gutil/dynamic_annotations.h"
+
 #include "yb/util/status.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 
 template<class TValue>
 struct ResultTraits {
+  typedef TValue ValueType;
   typedef TValue Stored;
   typedef const TValue* ConstPointer;
   typedef TValue* Pointer;
@@ -39,6 +43,7 @@ struct ResultTraits {
 
 template<class TValue>
 struct ResultTraits<TValue&> {
+  typedef TValue& ValueType;
   typedef TValue* Stored;
   typedef const TValue* ConstPointer;
   typedef TValue* Pointer;
@@ -50,10 +55,13 @@ struct ResultTraits<TValue&> {
   static TValue* GetPtr(const Stored* value) { return *value; }
 };
 
+void StatusCheck(bool);
+
 template<class TValue>
 class NODISCARD_CLASS Result {
  public:
-  typedef ResultTraits<TValue> Traits;
+  using Traits = ResultTraits<TValue>;
+  using ValueType = typename Traits::ValueType;
 
   Result(const Result& rhs) : success_(rhs.success_) {
     if (success_) {
@@ -85,11 +93,11 @@ class NODISCARD_CLASS Result {
   Result(Status::OK&&) = delete; // NOLINT
 
   Result(const Status& status) : success_(false), status_(status) { // NOLINT
-    CHECK(!status_.ok());
+    StatusCheck(!status_.ok());
   }
 
   Result(Status&& status) : success_(false), status_(std::move(status)) { // NOLINT
-    CHECK(!status_.ok());
+    StatusCheck(!status_.ok());
   }
 
   Result(const TValue& value) : success_(true), value_(Traits::ToStored(value)) {} // NOLINT
@@ -128,13 +136,13 @@ class NODISCARD_CLASS Result {
   }
 
   Result& operator=(const Status& status) {
-    CHECK(!status.ok());
+    StatusCheck(!status.ok());
     this->~Result();
     return *new (this) Result(status);
   }
 
   Result& operator=(Status&& status) {
-    CHECK(!status.ok());
+    StatusCheck(!status.ok());
     this->~Result();
     return *new (this) Result(std::move(status));
   }
@@ -150,15 +158,15 @@ class NODISCARD_CLASS Result {
     return *new (this) Result(std::move(value));
   }
 
-  explicit operator bool() const {
+  MUST_USE_RESULT explicit operator bool() const {
     return ok();
   }
 
-  bool operator!() const {
+  MUST_USE_RESULT bool operator!() const {
     return !ok();
   }
 
-  bool ok() const {
+  MUST_USE_RESULT bool ok() const {
 #ifndef NDEBUG
     ANNOTATE_IGNORE_WRITES_BEGIN();
     success_checked_ = true;
@@ -169,25 +177,25 @@ class NODISCARD_CLASS Result {
 
   const Status& status() const& {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(!success_);
+    StatusCheck(!success_);
     return status_;
   }
 
   Status& status() & {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(!success_);
+    StatusCheck(!success_);
     return status_;
   }
 
   Status&& status() && {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(!success_);
+    StatusCheck(!success_);
     return std::move(status_);
   }
 
@@ -197,9 +205,9 @@ class NODISCARD_CLASS Result {
 
   TValue&& operator*() && {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(success_);
+    StatusCheck(success_);
     return value_;
   }
 
@@ -208,21 +216,21 @@ class NODISCARD_CLASS Result {
 
   auto get_ptr() const {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(success_);
+    StatusCheck(success_);
     return Traits::GetPtr(&value_);
   }
 
   auto get_ptr() {
 #ifndef NDEBUG
-    CHECK(ANNOTATE_UNPROTECTED_READ(success_checked_));
+    StatusCheck(ANNOTATE_UNPROTECTED_READ(success_checked_));
 #endif
-    CHECK(success_);
+    StatusCheck(success_);
     return Traits::GetPtr(&value_);
   }
 
-  CHECKED_STATUS MoveTo(typename Traits::Pointer value) {
+  Status MoveTo(typename Traits::Pointer value) {
     if (!ok()) {
       return status();
     }
@@ -287,7 +295,7 @@ class ResultToStatusAdaptor {
   explicit ResultToStatusAdaptor(const Functor& functor) : functor_(functor) {}
 
   template <class Output, class... Args>
-  CHECKED_STATUS operator()(Output* output, Args&&... args) {
+  Status operator()(Output* output, Args&&... args) {
     auto result = functor_(std::forward<Args>(args)...);
     RETURN_NOT_OK(result);
     *output = std::move(*result);
@@ -303,7 +311,7 @@ ResultToStatusAdaptor<Functor> ResultToStatus(const Functor& functor) {
 }
 
 template<class TValue>
-CHECKED_STATUS ResultToStatus(const Result<TValue>& result) {
+Status ResultToStatus(const Result<TValue>& result) {
   return result.ok() ? Status::OK() : result.status();
 }
 
@@ -321,31 +329,40 @@ T&& WrapMove(Result<T>&& result) {
 }
 
 template<class T>
-const T& WrapMove(const Result<T>& result) {
-  return *result;
-}
-
-template<class T>
 std::reference_wrapper<T> WrapMove(Result<T&>&& result) {
   return std::reference_wrapper<T>(*result);
 }
 
 template<class T>
-std::reference_wrapper<T> WrapMove(const Result<T&>& result) {
-  return std::reference_wrapper<T>(*result);
+Result<T> Copy(const Result<T>& src) {
+  return src;
 }
 
-#define RESULT_CHECKER_HELPER(expr, checker) \
-  __extension__ ({ auto&& __result = (expr); checker; WrapMove(std::move(__result)); })
+template<class T>
+struct IsNonConstResultRvalue : std::false_type {};
 
-// Checks that result is ok, extracts result value is case of success.
-#define CHECK_RESULT(expr) \
-  RESULT_CHECKER_HELPER(expr, CHECK_OK(__result))
+template<class T>
+struct IsNonConstResultRvalue<Result<T>&&> : std::true_type {};
+
+// TODO(dmitry): Subsitute __static_assert array with real static_assert when
+//               old compilers (gcc 5.5) will not be used.
+//               static_assert(yb::IsNonConstResultRvalue<decltype(__result)>::value,
+//                             "only non const Result<T> rvalue reference is allowed");
+#define RESULT_CHECKER_HELPER(expr, checker) \
+  __extension__ ({ \
+    auto&& __result = (expr); \
+    __attribute__((unused)) constexpr char __static_assert[ \
+        ::yb::IsNonConstResultRvalue<decltype(__result)>::value ? 1 : -1] = {0}; \
+    checker; \
+    WrapMove(std::move(__result)); })
 
 // Returns if result is not ok, extracts result value in case of success.
 #define VERIFY_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK(__result))
 
+// Returns if result is not ok, extracts result value in case of success.
+#define VERIFY_RESULT_OR_SET_CODE(expr, code) \
+  RESULT_CHECKER_HELPER(expr, RETURN_NOT_OK_SET_CODE(__result, code))
 
 // Helper version of VERIFY_RESULT which returns reference instead of std::reference_wrapper.
 #define VERIFY_RESULT_REF(expr) \

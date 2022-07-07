@@ -34,9 +34,8 @@
 
 #include <inttypes.h>
 
-#include <string>
+#include <memory>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 
 namespace google {
@@ -102,7 +101,7 @@ class JsonWriter {
                              const google::protobuf::FieldDescriptor* field,
                              int index);
 
-  gscoped_ptr<JsonWriterIf> impl_;
+  std::unique_ptr<JsonWriterIf> impl_;
   DISALLOW_COPY_AND_ASSIGN(JsonWriter);
 };
 

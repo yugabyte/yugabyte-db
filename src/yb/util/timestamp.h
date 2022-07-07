@@ -16,7 +16,7 @@
 
 #include <inttypes.h>
 #include <string>
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -26,11 +26,15 @@ class Timestamp {
   explicit Timestamp(int64_t value) : value_(value) {}
   Timestamp() : value_(0) {}
   int64_t ToInt64() const;
-  CHECKED_STATUS FromInt64(int64_t value);
+  Status FromInt64(int64_t value);
 
   std::string ToString() const;
 
   std::string ToFormattedString() const;
+
+  // Return date in human readable format (in local time zone).
+  // For example, 2021-Jan-10 22:29:35.776000.
+  std::string ToHumanReadableTime() const;
 
   val_type value() const { return value_; }
   void set_value(int64_t value) {value_ = value;}

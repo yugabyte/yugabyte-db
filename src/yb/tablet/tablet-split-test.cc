@@ -15,15 +15,23 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/common/partition.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/docdb.h"
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
+#include "yb/docdb/packed_row.h"
 
-#include "yb/tablet/tablet-test-util.h"
-#include "yb/tablet/tablet.h"
+#include "yb/rocksdb/db.h"
+
 #include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/read_result.h"
+#include "yb/tablet/tablet-test-util.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet.h"
+
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 
@@ -119,7 +127,8 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   VLOG(1) << "Source tablet:" << std::endl
-          << docdb::DocDBDebugDumpToStr(tablet()->doc_db(), docdb::IncludeBinary::kTrue);
+          << docdb::DocDBDebugDumpToStr(tablet()->doc_db(), docdb::SchemaPackingStorage(),
+                                        docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
   tablet()->TEST_DocDBDumpToContainer(IncludeIntents::kTrue, &source_docdb_dump);
@@ -145,7 +154,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
       docdb::KeyBytes encoded_doc_key;
       docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-          split_hash_code, std::vector<docdb::PrimitiveValue>());
+          split_hash_code, std::vector<docdb::KeyEntryValue>());
       partition->set_partition_key_end(partition_key);
       key_bounds.upper = encoded_doc_key;
     } else {
@@ -163,6 +172,11 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   for (auto split_tablet : split_tablets) {
+    {
+      RaftGroupReplicaSuperBlockPB super_block;
+      split_tablet->metadata()->ToSuperBlock(&super_block);
+      ASSERT_EQ(split_tablet->tablet_id(), super_block.kv_store().kv_store_id());
+    }
     const auto split_docdb_dump_str = split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);
 
     // Before compaction underlying DocDB dump should be the same.
@@ -184,7 +198,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
       ASSERT_EQ(source_rows.erase(row.ToString()), 1);
     }
 
-    split_tablet->ForceRocksDBCompactInTest();
+    split_tablet->TEST_ForceRocksDBCompact();
 
     VLOG(1) << split_tablet->tablet_id() << " compacted:" << std::endl
             << split_tablet->TEST_DocDBDumpStr(IncludeIntents::kTrue);

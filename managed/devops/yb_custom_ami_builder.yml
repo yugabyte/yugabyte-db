@@ -1,0 +1,39 @@
+# Todo: Make cloud_type dynamic when we come to GCP VM image phase.
+
+- name: "preprovision"
+  import_playbook: preprovision.yml
+  vars:
+    yb_ansible_host: "default"
+
+- name: "Use custom ssh port"
+  import_playbook: use_custom_ssh_port.yml
+  vars:
+    yb_ansible_host: "default"
+
+- name: "YB Server Provision"
+  import_playbook: yb-server-provision.yml
+  vars:
+    node_exporter_port: "9300"
+    server_type: "cluster-server"
+    yb_prebuilt_ami_host: "default"
+
+- name: "Configure cluster server"
+  import_playbook: configure-cluster-server.yml
+  vars:
+    yb_prebuilt_ami_host: "default"
+    ansible_user: "{{ user_name }}"
+    ansible_port: "{{ custom_ssh_port }}"
+    num_releases_to_keep: 1 # this variable has default on the Platform code level
+
+- name: "Cleanup Yugabyte auth"
+  hosts: "default"
+  vars:
+    ansible_user: "{{ user_name }}"
+    ansible_port: "{{ custom_ssh_port }}"
+  gather_facts: no
+  tasks:
+    - name: "Clean up SSH keys"
+      file:
+        path: "/home/{{ user_name }}/.ssh/authorized_keys"
+        state: absent
+      tags: yb-prebuilt-ami

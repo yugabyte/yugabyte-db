@@ -2,16 +2,14 @@
 
 package com.yugabyte.yw.commissioner.tasks.params;
 
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.AvailabilityZone;
+import io.ebean.annotation.JsonIgnore;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-
-public class NodeTaskParams extends UniverseDefinitionTaskParams {
+public class NodeTaskParams extends UniverseDefinitionTaskParams implements INodeTaskParams {
   // The AZ in which the node should be. This can be used to find the region.
   public UUID azUuid;
 
@@ -29,30 +27,40 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams {
   // TODO: currently only used for onprem cloud.
   public String instanceType;
 
+  public boolean useSystemd;
+
+  @JsonIgnore private AvailabilityZone zone;
+
+  @Override
+  public String getNodeName() {
+    return nodeName;
+  }
+
+  @Override
+  public UUID getAzUuid() {
+    return azUuid;
+  }
+
+  @Override
   public AvailabilityZone getAZ() {
-    if (azUuid != null) {
-      return AvailabilityZone.find.query().fetch("region").where().idEq(azUuid).findOne();
+    if (zone == null) {
+      zone = INodeTaskParams.super.getAZ();
     }
-    return null;
-  }
-
-  public Region getRegion() {
-    if (getAZ() != null) {
-      return getAZ().region;
-    }
-    return null;
-  }
-
-  public Provider getProvider() {
-    if (getAZ() != null) {
-      return getAZ().getProvider();
-    }
-    return null;
+    return zone;
   }
 
   // Less prominent params can be added to properties variable
   private Map<String, String> properties = new HashMap<>();
-  public Map<String, String> getProperties() { return properties; }
-  public void setProperty(String key, String value) { properties.put(key, value); }
-  public String getProperty(String key) { return properties.getOrDefault(key, null); }
+
+  public Map<String, String> getProperties() {
+    return properties;
+  }
+
+  public void setProperty(String key, String value) {
+    properties.put(key, value);
+  }
+
+  public String getProperty(String key) {
+    return properties.getOrDefault(key, null);
+  }
 }

@@ -12,7 +12,7 @@ export const regionsData = [
   // },
   {
     destVpcRegion: 'ap-south-1',
-    zones: ['ap-south-1a', 'ap-south-1b']
+    zones: ['ap-south-1a', 'ap-south-1b', 'ap-south-1c']
   },
   {
     destVpcRegion: 'ap-southeast-1',

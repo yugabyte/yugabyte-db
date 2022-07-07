@@ -31,28 +31,35 @@
 //
 package org.yb.client;
 
+import com.google.common.net.HostAndPort;
+import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
-
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.ColumnSchema;
-import org.yb.Common.TableType;
-import org.yb.Common.YQLDatabase;
+import org.yb.CommonNet;
+import org.yb.CommonTypes;
+import org.yb.CommonTypes.TableType;
+import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.Type;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
-import org.yb.consensus.Metadata;
-import org.yb.master.Master;
-import org.yb.tserver.Tserver;
-
-import com.google.common.net.HostAndPort;
-import com.stumbleupon.async.Deferred;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterReplicationOuterClass;
+import org.yb.tserver.TserverTypes;
 import org.yb.util.Pair;
 
 /**
@@ -60,7 +67,7 @@ import org.yb.util.Pair;
  * <p>
  * This class acts as a wrapper around {@link AsyncYBClient}. The {@link Deferred} objects are
  * joined against using the default admin operation timeout
- * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
+ * (see {@link org.yb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)}(long)}).
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
@@ -117,18 +124,54 @@ public class YBClient implements AutoCloseable {
     return cto;
   }
 
+  /**
+   * Creates the redis namespace "system_redis".
+   *
+   * @throws Exception if the namespace already exists or creation fails.
+   */
   public void createRedisNamespace() throws Exception {
-    CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
-                                                      YQLDatabase.YQL_DATABASE_REDIS);
-    if (resp.hasError()) {
-      throw new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
-                                 ". Error :" + resp.errorMessage());
+    createRedisNamespace(false);
+  }
+
+  /**
+   * Creates the redis namespace "system_redis".
+   *
+   * @param ifNotExist if true, error is ignored if the namespace already exists.
+   * @return true if created, false if already exists.
+   * @throws Exception throws exception on creation failure.
+   */
+  public boolean createRedisNamespace(boolean ifNotExist) throws Exception {
+    Exception exception = null;
+    try {
+      // TODO As there is no way to get an existing namespace or create if it does not exist,
+      // the RPC call is made first that may fail.
+      // Change this when we have better support for namespace.
+      CreateKeyspaceResponse resp = this.createKeyspace(REDIS_KEYSPACE_NAME,
+          YQLDatabase.YQL_DATABASE_REDIS);
+      if (resp.hasError()) {
+        exception = new RuntimeException("Could not create keyspace " + REDIS_KEYSPACE_NAME +
+            ". Error: " + resp.errorMessage());
+      }
+    } catch (YBServerException e) {
+      // The RPC call also throws exception on conflict.
+      exception = e;
     }
+    if (exception != null) {
+      String errMsg = exception.getMessage();
+      if (ifNotExist && errMsg != null && errMsg.contains("ALREADY_PRESENT")) {
+        LOG.info("Redis namespace {} already exists.", REDIS_KEYSPACE_NAME);
+        return false;
+      }
+      throw exception;
+    }
+    return true;
   }
 
   /**
    * Create a redis table on the cluster with the specified name and tablet count.
-   * @param name Tables name
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name
    * @param numTablets number of pre-split tablets
    * @return an object to communicate with the created table.
    */
@@ -140,17 +183,62 @@ public class YBClient implements AutoCloseable {
 
   /**
    * Create a redis table on the cluster with the specified name.
-   * @param name Table name
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name
    * @return an object to communicate with the created table.
    */
   public YBTable createRedisTable(String name) throws Exception {
-    createRedisNamespace();
-    return createRedisTableOnly(name);
+    return createRedisTable(name, false);
   }
 
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * It also creates the redis namespace 'system_redis'.
+   *
+   * @param name the table name.
+   * @param ifNotExist if true, table is not created if it already exists.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
+  public YBTable createRedisTable(String name, boolean ifNotExist) throws Exception {
+    if (createRedisNamespace(ifNotExist)) {
+      // Namespace is just created, so there is no redis table.
+      return createRedisTableOnly(name, false);
+    }
+    return createRedisTableOnly(name, ifNotExist);
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * The redis namespace 'system_redis' must already be existing.
+   *
+   * @param name the table name.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
   public YBTable createRedisTableOnly(String name) throws Exception {
+    return createRedisTableOnly(name, false);
+  }
+
+  /**
+   * Create a redis table on the cluster with the specified name.
+   * The redis namespace 'system_redis' must already be existing.
+   *
+   * @param name the table name.
+   * @param ifNotExist if true, table is not created if it already exists.
+   * @return an object to communicate with the created table if it is created.
+   * @throws Exception throws exception on creation failure.
+   */
+  public YBTable createRedisTableOnly(String name, boolean ifNotExist) throws Exception {
+    if (ifNotExist) {
+      ListTablesResponse response = getTablesList(name);
+      if (response.getTablesList().stream().anyMatch(n -> n.equals(name))) {
+        return openTable(REDIS_KEYSPACE_NAME, name);
+      }
+    }
     return createTable(REDIS_KEYSPACE_NAME, name, getRedisSchema(),
-                       new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
+        new CreateTableOptions().setTableType(TableType.REDIS_TABLE_TYPE));
   }
 
   /**
@@ -304,7 +392,7 @@ public class YBClient implements AutoCloseable {
    * @return the configuration
    */
   public ChangeMasterClusterConfigResponse changeMasterClusterConfig(
-      Master.SysClusterConfigEntryPB config) throws Exception {
+      CatalogEntityInfo.SysClusterConfigEntryPB config) throws Exception {
     Deferred<ChangeMasterClusterConfigResponse> d = asyncClient.changeMasterClusterConfig(config);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
@@ -451,7 +539,7 @@ public class YBClient implements AutoCloseable {
         d = asyncClient.getMasterRegistration(clientForHostAndPort);
         try {
           GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
+          if (resp.getRole() == CommonTypes.PeerRole.LEADER) {
             return resp.getInstanceId().getPermanentUuid().toStringUtf8();
           }
         } catch (Exception e) {
@@ -469,26 +557,60 @@ public class YBClient implements AutoCloseable {
    * @return The host and port of the leader master, or null if no leader found.
    */
   public HostAndPort getLeaderMasterHostAndPort() {
-    for (HostAndPort hostAndPort : asyncClient.getMasterAddresses()) {
-      Deferred<GetMasterRegistrationResponse> d;
+    List<HostAndPort> masterAddresses = asyncClient.getMasterAddresses();
+    Map<HostAndPort, TabletClient> clients = new HashMap<>();
+    for (HostAndPort hostAndPort : masterAddresses) {
       TabletClient clientForHostAndPort = asyncClient.newMasterClient(hostAndPort);
       if (clientForHostAndPort == null) {
         String message = "Couldn't resolve this master's host/port " + hostAndPort.toString();
         LOG.warn(message);
-      } else {
-        d = asyncClient.getMasterRegistration(clientForHostAndPort);
-        try {
-          GetMasterRegistrationResponse resp = d.join(getDefaultAdminOperationTimeoutMs());
-          if (resp.getRole() == Metadata.RaftPeerPB.Role.LEADER) {
-            return hostAndPort;
-          }
-        } catch (Exception e) {
-          LOG.warn("Couldn't get registration info for master " + hostAndPort.toString());
-        }
       }
+      clients.put(hostAndPort, clientForHostAndPort);
     }
 
-    return null;
+    CountDownLatch finished = new CountDownLatch(1);
+    AtomicInteger workersLeft = new AtomicInteger(clients.entrySet().size());
+
+    AtomicReference<HostAndPort> result = new AtomicReference<>(null);
+    for (Entry<HostAndPort, TabletClient> entry : clients.entrySet()) {
+      asyncClient.getMasterRegistration(entry.getValue())
+          .addCallback(new Callback<Object, GetMasterRegistrationResponse>() {
+            @Override
+            public Object call(GetMasterRegistrationResponse response) throws Exception {
+              if (response.getRole() == CommonTypes.PeerRole.LEADER) {
+                boolean wasNullResult = result.compareAndSet(null, entry.getKey());
+                if (!wasNullResult) {
+                  LOG.warn(
+                      "More than one node reported they are master-leaders ({} and {})",
+                      result.get().toString(), entry.getKey().toString());
+                }
+                finished.countDown();
+              } else if (workersLeft.decrementAndGet() == 0) {
+                finished.countDown();
+              }
+              return null;
+            }
+          }).addErrback(new Callback<Exception, Exception>() {
+            @Override
+            public Exception call(final Exception e) {
+              // If finished == 0 then we are here because of closeClient() and the master is
+              // already found.
+              if (finished.getCount() != 0) {
+                LOG.warn("Couldn't get registration info for master " + entry.getKey().toString());
+                if (workersLeft.decrementAndGet() == 0) {
+                  finished.countDown();
+                }
+              }
+              return null;
+            }
+          });
+    }
+
+    try {
+      finished.await(getDefaultAdminOperationTimeoutMs(), TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+    }
+    return result.get();
   }
 
   /**
@@ -499,14 +621,17 @@ public class YBClient implements AutoCloseable {
    * @return Master leader uuid on success, null otherwise.
    */
   private String waitAndGetLeaderMasterUUID(long timeoutMs) throws Exception {
+    LOG.info("Waiting for master leader (timeout: " + timeoutMs + " ms)");
     long start = System.currentTimeMillis();
-
     // Retry till we get a valid UUID (or timeout) for the new leader.
     do {
       String leaderUuid = getLeaderMasterUUID();
 
+      long elapsedTimeMs = System.currentTimeMillis() - start;
       // Done if we got a valid one.
       if (leaderUuid != null) {
+        LOG.info("Fininshed waiting for master leader in " + elapsedTimeMs + " ms. Leader UUID: " +
+                 leaderUuid);
         return leaderUuid;
       }
 
@@ -595,6 +720,8 @@ public class YBClient implements AutoCloseable {
    * @param port RPC port of the host being added or removed.
    * @param isAdd true if we are adding a server to the master configuration, false if removing.
    * @param useHost if caller wants to use host/port instead of uuid of server being removed.
+   * @param hostAddrToAdd if caller wants to use a different address for the master
+   *                      for the config update
    *
    * @return The change config response object.
    */
@@ -605,6 +732,12 @@ public class YBClient implements AutoCloseable {
 
   public ChangeConfigResponse changeMasterConfig(
       String host, int port, boolean isAdd, boolean useHost) throws Exception {
+    return changeMasterConfig(host, port, isAdd, useHost, null /* hostAddrToAdd */);
+  }
+
+  public ChangeConfigResponse changeMasterConfig(String host, int port,
+                                                 boolean isAdd, boolean useHost,
+                                                 String hostAddrToAdd) throws Exception {
     String masterUuid = null;
 
     if (isAdd || !useHost) {
@@ -621,11 +754,16 @@ public class YBClient implements AutoCloseable {
     long timeout = getDefaultAdminOperationTimeoutMs();
     ChangeConfigResponse resp = null;
     boolean changeConfigDone;
+
+    // It is possible that we might need different addresses for reaching from the client
+    // than the one the DB nodes use to communicate. If the client provides an address
+    // to add to the config explicitly, use that.
+    String hostAddr = hostAddrToAdd == null ? host : hostAddrToAdd;
     do {
       changeConfigDone = true;
       try {
         Deferred<ChangeConfigResponse> d =
-            asyncClient.changeMasterConfig(host, port, masterUuid, isAdd, useHost);
+            asyncClient.changeMasterConfig(hostAddr, port, masterUuid, isAdd, useHost);
         resp = d.join(timeout);
         if (!resp.hasError()) {
           asyncClient.updateMasterAdresses(host, port, isAdd);
@@ -635,7 +773,7 @@ public class YBClient implements AutoCloseable {
         LOG.info("Hit tserver error {}, leader is {}.",
                  tsee.getTServerError().toString(), leaderUuid);
         if (tsee.getTServerError().getCode() ==
-            Tserver.TabletServerErrorPB.Code.LEADER_NEEDS_STEP_DOWN) {
+            TserverTypes.TabletServerErrorPB.Code.LEADER_NEEDS_STEP_DOWN) {
           stepDownMasterLeaderAndWaitForNewLeader(leaderUuid);
           changeConfigDone = false;
           LOG.info("Retrying changeConfig because it received LEADER_NEEDS_STEP_DOWN error code.");
@@ -677,7 +815,8 @@ public class YBClient implements AutoCloseable {
     String leaderUuid = waitAndGetLeaderMasterUUID(timeoutMs);
 
     if (leaderUuid == null) {
-      throw new RuntimeException("Timed out waiting for Master Leader.");
+      throw new RuntimeException(
+          "Timed out waiting for Master Leader after " + timeoutMs + " ms");
     }
   }
 
@@ -821,6 +960,36 @@ public class YBClient implements AutoCloseable {
     boolean get() throws Exception;
   }
 
+  private class ReplicaCountCondition implements Condition {
+    private int numReplicas;
+    private YBTable table;
+    public ReplicaCountCondition(YBTable table, int numReplicas) {
+      this.numReplicas = numReplicas;
+      this.table = table;
+    }
+    @Override
+    public boolean get() throws Exception {
+      for (LocatedTablet tablet : table.getTabletsLocations(getDefaultAdminOperationTimeoutMs())) {
+        if (tablet.getReplicas().size() != numReplicas) {
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+
+  private class TableDoesNotExistCondition implements Condition {
+    private String nameFilter;
+    public TableDoesNotExistCondition(String nameFilter) {
+      this.nameFilter = nameFilter;
+    }
+    @Override
+    public boolean get() throws Exception {
+      ListTablesResponse tl = getTablesList(nameFilter);
+      return tl.getTablesList().isEmpty();
+    }
+  }
+
   /**
    * Checks the ping of the given ip and port.
    */
@@ -862,6 +1031,27 @@ public class YBClient implements AutoCloseable {
       return !resp.hasError();
     }
   }
+
+  /**
+   * Checks whether the LoadBalancer is currently running.
+   */
+  private class LoadBalancerActiveCondition implements Condition {
+    public LoadBalancerActiveCondition() {
+    }
+    @Override
+    public boolean get() throws Exception {
+      try {
+        IsLoadBalancerIdleResponse resp = getIsLoadBalancerIdle();
+      } catch (MasterErrorException e) {
+        // TODO (deepthi.srinivasan) Instead of writing if-else
+        // with Exceptions, find a way to receive the error code
+        // neatly.
+        return e.toString().contains("LOAD_BALANCER_RECENTLY_ACTIVE");
+      }
+      return false;
+    }
+  }
+
 
   private class AreLeadersOnPreferredOnlyCondition implements Condition {
     @Override
@@ -975,6 +1165,19 @@ public class YBClient implements AutoCloseable {
   }
 
   /**
+  * Wait for the table to have a specific number of replicas.
+  * @param table the table to check the condition on
+  * @param numReplicas the number of replicas we expect the table to have
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the table the expected number of replicas, false otherwise
+  */
+  public boolean waitForReplicaCount(final YBTable table, final int numReplicas,
+                                     final long timeoutMs) {
+    Condition replicaCountCondition = new ReplicaCountCondition(table, numReplicas);
+    return waitForCondition(replicaCountCondition, timeoutMs);
+  }
+
+  /**
   * Wait for the specific server to come online.
   * @param hp the HostAndPort of the server
   * @param timeoutMs the amount of time, in MS, to wait
@@ -994,6 +1197,16 @@ public class YBClient implements AutoCloseable {
   public boolean waitForLoadBalance(final long timeoutMs, int numServers) {
     Condition loadBalanceCondition = new LoadBalanceCondition(numServers);
     return waitForCondition(loadBalanceCondition, timeoutMs);
+  }
+
+  /**
+  * Wait for the Load Balancer to become active.
+  * @param timeoutMs the amount of time, in MS, to wait
+  * @return true if the load balancer is currently running.
+  */
+  public boolean waitForLoadBalancerActive(final long timeoutMs) {
+    Condition loadBalancerActiveCondition = new LoadBalancerActiveCondition();
+    return waitForCondition(loadBalancerActiveCondition, timeoutMs);
   }
 
   /**
@@ -1102,9 +1315,29 @@ public class YBClient implements AutoCloseable {
    * @return a deferred object for the response from server.
    */
   public CreateCDCStreamResponse createCDCStream(
-          final HostAndPort hp, String tableId) throws Exception{
-    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp, tableId);
+          final HostAndPort hp, String tableId,
+          String nameSpaceName, String format,
+          String checkpointType) throws Exception{
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(hp,
+      tableId,
+      nameSpaceName,
+      format,
+      checkpointType);
     return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public CreateCDCStreamResponse createCDCStream(YBTable table,
+                                                  String nameSpaceName,
+                                                  String format,
+                                                  String checkpointType) throws Exception {
+    Deferred<CreateCDCStreamResponse> d = asyncClient.createCDCStream(table,
+      nameSpaceName, format, checkpointType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public boolean waitForTableRemoval(final long timeoutMs, String name) {
+    Condition TableDoesNotExistCondition = new TableDoesNotExistCondition(name);
+    return waitForCondition(TableDoesNotExistCondition, timeoutMs);
   }
 
   /**
@@ -1202,6 +1435,222 @@ public class YBClient implements AutoCloseable {
    */
   public YBTable openTableByUUID(final String tableUUID) throws Exception {
     Deferred<YBTable> d = asyncClient.openTableByUUID(tableUUID);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It is the same as {@link AsyncYBClient#setupUniverseReplication(String, Map, Set)}
+   * except that it is synchronous.
+   *
+   * @see AsyncYBClient#setupUniverseReplication(String, Map, Set)
+   */
+  public SetupUniverseReplicationResponse setupUniverseReplication(
+    String replicationGroupName,
+    Map<String, String> sourceTableIdsBootstrapIdMap,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    Deferred<SetupUniverseReplicationResponse> d =
+      asyncClient.setupUniverseReplication(
+        replicationGroupName,
+        sourceTableIdsBootstrapIdMap,
+        sourceMasterAddresses);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public IsSetupUniverseReplicationDoneResponse isSetupUniverseReplicationDone(
+    String replicationGroupName) throws Exception {
+    Deferred<IsSetupUniverseReplicationDoneResponse> d =
+      asyncClient.isSetupUniverseReplicationDone(replicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetUniverseReplicationEnabledResponse setUniverseReplicationEnabled(
+    String replicationGroupName, boolean active) throws Exception {
+    Deferred<SetUniverseReplicationEnabledResponse> d =
+      asyncClient.setUniverseReplicationEnabled(replicationGroupName, active);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationAddTables(
+    String replicationGroupName,
+    Map<String, String> sourceTableIdsToAddBootstrapIdMap) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationAddTables(
+        replicationGroupName, sourceTableIdsToAddBootstrapIdMap);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationRemoveTables(
+    String replicationGroupName,
+    Set<String> sourceTableIdsToRemove) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationRemoveTables(
+        replicationGroupName, sourceTableIdsToRemove);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationSourceMasterAddresses(
+    String replicationGroupName,
+    Set<CommonNet.HostPortPB> sourceMasterAddresses) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationSourceMasterAddresses(
+        replicationGroupName, sourceMasterAddresses);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public AlterUniverseReplicationResponse alterUniverseReplicationName(
+    String replicationGroupName,
+    String newReplicationGroupName) throws Exception {
+    Deferred<AlterUniverseReplicationResponse> d =
+      asyncClient.alterUniverseReplicationName(
+        replicationGroupName, newReplicationGroupName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public IsSetupUniverseReplicationDoneResponse isAlterUniverseReplicationDone(
+    String replicationGroupName) throws Exception {
+    Deferred<IsSetupUniverseReplicationDoneResponse> d =
+      asyncClient.isSetupUniverseReplicationDone(replicationGroupName + ".ALTER");
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetChangesResponse getChangesCDCSDK(YBTable table, String streamId,
+                                             String tabletId, long term,
+                                             long index, byte[] key,
+                                             int write_id, long time,
+                                             boolean needSchemaInfo) throws Exception {
+    Deferred<GetChangesResponse> d = asyncClient.getChangesCDCSDK(
+      table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetCheckpointResponse getCheckpoint(YBTable table, String streamId,
+                                              String tabletId) throws Exception {
+    Deferred<GetCheckpointResponse> d = asyncClient
+      .getCheckpoint(table, streamId, tabletId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public GetDBStreamInfoResponse getDBStreamInfo(String streamId) throws Exception {
+    Deferred<GetDBStreamInfoResponse> d = asyncClient
+      .getDBStreamInfo(streamId);
+    return d.join(2*getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse commitCheckpoint(YBTable table, String streamId,
+                                                String tabletId,
+                                                long term,
+                                                long index,
+                                                boolean initialCheckpoint) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpoint(table, streamId, tabletId, term,
+      index, initialCheckpoint);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public SetCheckpointResponse bootstrapTablet(YBTable table, String streamId,
+                                               String tabletId,
+                                               long term,
+                                               long index,
+                                               boolean initialCheckpoint,
+                                               boolean bootstrap) throws Exception {
+    Deferred<SetCheckpointResponse> d = asyncClient.setCheckpointWithBootstrap(table, streamId,
+        tabletId, term, index, initialCheckpoint, bootstrap);
+    d.addErrback(new Callback<Exception, Exception>() {
+      @Override
+      public Exception call(Exception o) throws Exception {
+        o.printStackTrace();
+        throw o;
+      }
+    });
+    d.addCallback(setCheckpointResponse -> {
+      return setCheckpointResponse;
+    });
+    return d.join(2 * getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteUniverseReplicationResponse deleteUniverseReplication(
+    String replicationGroupName, boolean ignoreErrors) throws Exception {
+    Deferred<DeleteUniverseReplicationResponse> d =
+        asyncClient.deleteUniverseReplication(replicationGroupName, ignoreErrors);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public DeleteUniverseReplicationResponse deleteUniverseReplication(
+    String replicationGroupName) throws Exception {
+    return deleteUniverseReplication(replicationGroupName, false /* ignoreErrors */);
+  }
+
+  public GetUniverseReplicationResponse getUniverseReplication(
+    String replicationGrouopName) throws Exception {
+    Deferred<GetUniverseReplicationResponse> d =
+      asyncClient.getUniverseReplication(replicationGrouopName);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  public BootstrapUniverseResponse bootstrapUniverse(
+    final HostAndPort hostAndPort, List<String> tableIds) throws Exception {
+    Deferred<BootstrapUniverseResponse> d =
+      asyncClient.bootstrapUniverse(hostAndPort, tableIds);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It checks whether a bootstrap flow is required to set up replication or in case an existing
+   * stream has fallen far behind.
+   *
+   * @param tabletIds List of tablet IDs to check if the log for the next operation is available
+   * @param streamId  The optional stream id refers to an existing stream containing the passed
+   *                  tablet ids
+   *
+   * @return {@link IsBootstrapRequiredResponse} which contains a boolean showing whether a
+   * bootstrap is required
+   */
+  public IsBootstrapRequiredResponse isBootstrapRequired(
+    List<String> tabletIds, String streamId) throws Exception {
+    Deferred<IsBootstrapRequiredResponse> d =
+      asyncClient.isBootstrapRequired(tabletIds, streamId);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * It is the same as {@link #isBootstrapRequired(List, String)} except that
+   * {@code streamId} is null.
+   *
+   * @see #isBootstrapRequired(List, String)
+   */
+  public IsBootstrapRequiredResponse isBootstrapRequired(List<String> tabletIds) throws Exception {
+    return isBootstrapRequired(tabletIds, null);
+  }
+
+  /**
+   * @see AsyncYBClient#listCDCStreams(String, String, MasterReplicationOuterClass.IdTypePB)
+   */
+  public ListCDCStreamsResponse listCDCStreams(
+      String tableId,
+      String namespaceId,
+      MasterReplicationOuterClass.IdTypePB idType) throws Exception {
+    Deferred<ListCDCStreamsResponse> d =
+        asyncClient.listCDCStreams(tableId, namespaceId, idType);
+    return d.join(getDefaultAdminOperationTimeoutMs());
+  }
+
+  /**
+   * @see AsyncYBClient#deleteCDCStream(Set, boolean, boolean)
+   */
+  public DeleteCDCStreamResponse deleteCDCStream(Set<String> streamIds,
+                                                 boolean ignoreErrors,
+                                                 boolean forceDelete) throws Exception {
+    Deferred<DeleteCDCStreamResponse> d =
+      asyncClient.deleteCDCStream(streamIds, ignoreErrors, forceDelete);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -1323,6 +1772,33 @@ public class YBClient implements AutoCloseable {
      */
     public YBClientBuilder sslCertFile(String certFile) {
       clientBuilder.sslCertFile(certFile);
+      return this;
+    }
+
+    /**
+     * Sets the client cert and key files if mutual auth is enabled.
+     * Optional.
+     * If not provided, defaults to null.
+     * A value of null disables an mTLS connection.
+     * @param certFile the path to the client certificate.
+     * @param keyFile the path to the client private key file.
+     * @return this builder
+     */
+    public YBClientBuilder sslClientCertFiles(String certFile, String keyFile) {
+      clientBuilder.sslClientCertFiles(certFile, keyFile);
+      return this;
+    }
+
+    /**
+     * Sets the outbound client host:port on which the socket binds.
+     * Optional.
+     * If not provided, defaults to null.
+     * @param host the address to bind to.
+     * @param port the port to bind to (0 means any free port).
+     * @return this builder
+     */
+    public YBClientBuilder bindHostAddress(String host, int port) {
+      clientBuilder.bindHostAddress(host, port);
       return this;
     }
 

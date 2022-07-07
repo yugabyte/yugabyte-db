@@ -14,8 +14,8 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The different encryption algorithms allowed and a mapping of
- * encryption algorithm -> valid encryption key sizes (bits)
+ * The different encryption algorithms allowed and a mapping of encryption algorithm -> valid
+ * encryption key sizes (bits)
  */
 public enum SmartKeyAlgorithm implements SupportedAlgorithmInterface {
   AES(Arrays.asList(128, 192, 256));

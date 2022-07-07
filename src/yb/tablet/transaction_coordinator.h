@@ -22,42 +22,29 @@
 #include "yb/client/client_fwd.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/transaction.h"
-
-#include "yb/consensus/consensus_fwd.h"
-#include "yb/consensus/opid_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/rpc/rpc_fwd.h"
-
 #include "yb/server/server_fwd.h"
 
+#include "yb/tablet/tablet_fwd.h"
+
+#include "yb/tserver/tserver_fwd.h"
+
+#include "yb/util/metrics_fwd.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
-#include "yb/util/metrics.h"
-#include "yb/util/opid.h"
-#include "yb/util/status.h"
+
+namespace google {
+namespace protobuf {
+template <class T>
+class RepeatedPtrField;
+}
+}
+
 
 namespace yb {
-
-namespace server {
-
-class Clock;
-
-}
-
-namespace tserver {
-
-class AbortTransactionResponsePB;
-class GetTransactionStatusResponsePB;
-class TransactionStatePB;
-
-}
-
 namespace tablet {
-
-class TransactionIntentApplier;
-class UpdateTxnOperationState;
 
 // Get current transaction timeout.
 std::chrono::microseconds GetTransactionTimeout();
@@ -70,16 +57,17 @@ class TransactionCoordinatorContext {
   virtual const std::shared_future<client::YBClient*>& client_future() const = 0;
   virtual int64_t LeaderTerm() const = 0;
   virtual const server::ClockPtr& clock_ptr() const = 0;
+  virtual Result<HybridTime> LeaderSafeTime() const = 0;
 
   // Returns current hybrid time lease expiration.
   // Valid only if we are leader.
   virtual HybridTime HtLeaseExpiration() const = 0;
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
-  virtual std::unique_ptr<UpdateTxnOperationState> CreateUpdateTransactionState(
-      tserver::TransactionStatePB* request) = 0;
+  virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
+      TransactionStatePB* request) = 0;
   virtual void SubmitUpdateTransaction(
-      std::unique_ptr<UpdateTxnOperationState> state, int64_t term) = 0;
+      std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {
     return *clock_ptr();
@@ -105,26 +93,28 @@ class TransactionCoordinator {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term;
-    const tserver::TransactionStatePB& state;
-    const OpIdPB& op_id;
+    const TransactionStatePB& state;
+    const OpId& op_id;
     HybridTime hybrid_time;
 
     std::string ToString() const;
   };
 
   // Process new transaction state.
-  CHECKED_STATUS ProcessReplicated(const ReplicatedData& data);
+  Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    const tserver::TransactionStatePB& state;
-    const OpIdPB& op_id;
+    const TransactionStatePB& state;
+    const OpId& op_id;
+
+    std::string ToString() const;
   };
 
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
 
   // Handles new request for transaction update.
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperationState> request, int64_t term);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC(std::string* details = nullptr);
@@ -136,7 +126,7 @@ class TransactionCoordinator {
   // And like most of other Shutdowns in our codebase it wait until shutdown completes.
   void Shutdown();
 
-  CHECKED_STATUS GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
+  Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
                            CoarseTimePoint deadline,
                            tserver::GetTransactionStatusResponsePB* response);
 

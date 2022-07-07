@@ -44,10 +44,10 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     LOG(INFO) << "Creating Snapshot " << snapshot_id << " ...";
     TabletSnapshotOpRequestPB request;
     request.set_snapshot_id(snapshot_id);
-    tablet::SnapshotOperationState tx_state(tablet_peer_->tablet(), &request);
-    tx_state.set_hybrid_time(tablet_peer_->clock().Now());
-    tablet_peer_->log()->GetLatestEntryOpId().ToPB(tx_state.mutable_op_id());
-    ASSERT_OK(tablet_peer_->tablet()->snapshots().Create(&tx_state));
+    tablet::SnapshotOperation operation(tablet_peer_->tablet(), &request);
+    operation.set_hybrid_time(tablet_peer_->clock().Now());
+    operation.set_op_id(tablet_peer_->log()->GetLatestEntryOpId());
+    ASSERT_OK(tablet_peer_->tablet()->snapshots().Create(&operation));
   }
 
   void CheckSnapshotsInSrc() {
@@ -77,7 +77,7 @@ class RemoteBootstrapRocksDBClientTest : public RemoteBootstrapClientTest {
     std::sort(src_snapshot_files.begin(), src_snapshot_files.end());
     std::sort(dst_snapshot_files.begin(), dst_snapshot_files.end());
 
-    for (int i = 0; i < src_snapshot_files.size(); ++i) {
+    for (size_t i = 0; i < src_snapshot_files.size(); ++i) {
       // Verify that client has the same files that leader has.
       const string dst_snapshot_file = dst_snapshot_files[i];
       const string src_snapshot_file = src_snapshot_files[i];

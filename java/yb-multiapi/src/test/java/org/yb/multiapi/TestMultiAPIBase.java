@@ -36,7 +36,7 @@ public class TestMultiAPIBase extends BasePgSQLTest {
   @Override
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
-    flagMap.put("start_cql_proxy", Boolean.toString(true));
+    flagMap.put("start_cql_proxy", "true");
     return flagMap;
   }
 

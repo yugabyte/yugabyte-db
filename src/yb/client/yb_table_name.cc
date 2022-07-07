@@ -13,17 +13,20 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include <boost/functional/hash/hash.hpp>
+#include <boost/functional/hash.hpp>
+
+#include <glog/logging.h>
 
 #include "yb/common/redis_constants_common.h"
 
-#include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
+#include "yb/util/flag_tags.h"
 
 namespace yb {
 namespace client {
 
 DEFINE_bool(yb_system_namespace_readonly, true, "Set system keyspace read-only.");
+TAG_FLAG(yb_system_namespace_readonly, runtime);
 
 using std::string;
 
@@ -94,6 +97,38 @@ size_t hash_value(const YBTableName& table_name) {
   boost::hash_combine(seed, table_name.table_name());
 
   return seed;
+}
+
+const std::string& YBTableName::resolved_namespace_name() const {
+  DCHECK(has_namespace()); // At the moment the namespace name must NEVER be empty.
+                           // It must be set by set_namespace_name() before this call.
+                           // If the check fails - you forgot to call set_namespace_name().
+  return namespace_name_;
+}
+
+void YBTableName::set_namespace_id(const std::string& namespace_id) {
+  DCHECK(!namespace_id.empty());
+  namespace_id_ = namespace_id;
+}
+
+void YBTableName::set_namespace_name(const std::string& namespace_name) {
+  DCHECK(!namespace_name.empty());
+  namespace_name_ = namespace_name;
+  check_db_type();
+}
+
+void YBTableName::set_table_name(const std::string& table_name) {
+  DCHECK(!table_name.empty());
+  table_name_ = table_name;
+}
+
+void YBTableName::set_table_id(const std::string& table_id) {
+  DCHECK(!table_id.empty());
+  table_id_ = table_id;
+}
+
+void YBTableName::set_pgschema_name(const std::string& pgschema_name) {
+  pgschema_name_ = pgschema_name;
 }
 
 } // namespace client

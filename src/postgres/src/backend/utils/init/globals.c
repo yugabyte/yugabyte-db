@@ -87,7 +87,7 @@ Oid			MyDatabaseTableSpace = InvalidOid;
 
 bool		MyDatabaseColocated = false;
 
-bool		TablegroupCatalogExists = false;
+bool		YbTablegroupCatalogExists = false;
 
 /*
  * DatabasePath is the path (relative to DataDir) of my database's
@@ -112,6 +112,8 @@ bool		IsPostmasterEnvironment = false;
 bool		IsUnderPostmaster = false;
 bool		IsBinaryUpgrade = false;
 bool		IsBackgroundWorker = false;
+
+bool		IsYsqlUpgrade = false;
 
 bool		ExitOnAnyError = false;
 

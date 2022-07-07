@@ -27,16 +27,17 @@
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table/internal_iterator.h"
 #include "yb/rocksdb/table/iter_heap.h"
 #include "yb/rocksdb/table/iterator_wrapper.h"
 #include "yb/rocksdb/util/arena.h"
-#include "yb/rocksdb/util/heap.h"
-#include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
-#include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/util/heap.h"
+#include "yb/rocksdb/util/perf_context_imp.h"
+#include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes

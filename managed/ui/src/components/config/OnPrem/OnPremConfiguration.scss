@@ -47,10 +47,26 @@
   text-decoration: underline;
 }
 
+.precheck-status-container {
+  cursor: pointer;
+}
+
+.precheck-action-container {
+  margin-left: 3px;
+  cursor: pointer;
+}
+
 .form-item-custom-label {
   font-weight: 500;
   text-align: left;
   padding: 8px 0px;
+}
+.onprem-ntp {
+  width: 200px;
+}
+.form-radio-values {
+  padding: 8px 0px;
+  margin-right: 20px;
 }
 
 .editor-container {
@@ -173,6 +189,20 @@
         border-top-right-radius: 5px;
         border-bottom-right-radius: 5px;
       }
+    }
+  }
+}
+
+.on-prem-provider-form-container{
+  .form-item-label{
+    min-width: 200px !important;
+  }
+  .form-right-aligned-labels
+  {
+    display: block;
+    &>.form-group{
+      display: flex;
+      align-items: center;
     }
   }
 }

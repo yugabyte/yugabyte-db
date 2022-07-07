@@ -4,42 +4,34 @@ headerTitle: 3. Explore Yugabyte Cloud QL
 linkTitle: 3. Explore distributed SQL APIs
 description: Explore Yugabyte Cloud QL (YCQL), a semi-relational distributed SQL API
 image: /images/section_icons/quick_start/explore_ycql.png
-aliases:
-  - /quick-start/test-cassandra/
-  - /stable/quick-start/test-cassandra/
-  - /stable/quick-start/test-ycql/
-  - /stable/api/ycql/quick-start/
-block_indexing: true
 menu:
   stable:
     parent: quick-start
     name: 3. Explore distributed SQL
     identifier: explore-dsql-2-ycql
     weight: 130
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/explore/ysql" class="nav-link">
+    <a href="../ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
  <li >
-    <a href="/stable/quick-start/explore/ycql" class="nav-link active">
+    <a href="../ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
-  
+
 </ul>
 
-After [creating a local cluster](../../create-local-cluster/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql) API.
+After [creating a local cluster](../../create-local-cluster/macos/), follow the instructions below to explore YugabyteDB's semi-relational [Yugabyte Cloud QL](../../../api/ycql/) API.
 
 [**ycqlsh**](../../../admin/ycqlsh/) is the command line shell for interacting with the YCQL API. You will use ycqlsh for this tutorial.
 
@@ -74,16 +66,16 @@ After [creating a local cluster](../../create-local-cluster/), follow the instru
 
 <div class="tab-content">
   <div id="macos" class="tab-pane fade show active" role="tabpanel" aria-labelledby="macos-tab">
-    {{% includeMarkdown "binary/explore-ycql.md" /%}}
+  {{% includeMarkdown "binary/explore-ycql.md" %}}
   </div>
   <div id="linux" class="tab-pane fade" role="tabpanel" aria-labelledby="linux-tab">
-    {{% includeMarkdown "binary/explore-ycql.md" /%}}
-  </div> 
+  {{% includeMarkdown "binary/explore-ycql.md" %}}
+  </div>
   <div id="docker" class="tab-pane fade" role="tabpanel" aria-labelledby="docker-tab">
-    {{% includeMarkdown "docker/explore-ycql.md" /%}}
+  {{% includeMarkdown "docker/explore-ycql.md" %}}
   </div>
   <div id="kubernetes" class="tab-pane fade" role="tabpanel" aria-labelledby="kubernetes-tab">
-    {{% includeMarkdown "kubernetes/explore-ycql.md" /%}}
+  {{% includeMarkdown "kubernetes/explore-ycql.md" %}}
   </div>
 </div>
 
@@ -133,7 +125,7 @@ Query all the values you have inserted into the database for the stock symbol 'A
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol = 'AAPL';
 ```
 
-```
+```output
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
          AAPL | 2017-10-26 09:00:00 |        157.41
@@ -148,7 +140,7 @@ Query all the values for `FB` and `GOOG` as follows.
 ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 ```
 
-```
+```output
  stock_symbol | ts                  | current_price
 --------------+---------------------+---------------
            FB | 2017-10-26 09:00:00 |        170.63
@@ -158,7 +150,6 @@ ycqlsh> SELECT * FROM myapp.stock_market WHERE stock_symbol in ('FB', 'GOOG');
 
 (4 rows)
 ```
-
 
 {{<tip title="Next step" >}}
 

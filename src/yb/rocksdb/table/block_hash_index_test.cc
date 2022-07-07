@@ -17,17 +17,18 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
-#include <map>
 #include <memory>
+#include <string>
 #include <vector>
+
+#include <gtest/gtest.h>
 
 #include "yb/rocksdb/comparator.h"
 #include "yb/rocksdb/iterator.h"
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/table/block_hash_index.h"
 #include "yb/rocksdb/table/internal_iterator.h"
-#include "yb/rocksdb/util/testharness.h"
+
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
@@ -66,7 +67,7 @@ class MapIterator : public InternalIterator {
   Data::const_iterator pos_;
 };
 
-class BlockTest : public testing::Test {};
+class BlockTest : public RocksDBTest {};
 
 TEST_F(BlockTest, BasicTest) {
   const size_t keys_per_block = 4;

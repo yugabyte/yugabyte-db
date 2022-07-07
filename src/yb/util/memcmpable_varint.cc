@@ -109,14 +109,14 @@
 //      8      2**56-1      16.8
 //      9      2**64-1      19.2
 //
+#include "yb/util/memcmpable_varint.h"
 
 #include <glog/logging.h>
 
-#include "yb/gutil/endian.h"
-#include "yb/util/faststring.h"
-#include "yb/util/memcmpable_varint.h"
 #include "yb/util/cast.h"
+#include "yb/util/faststring.h"
 #include "yb/util/slice.h"
+#include "yb/util/status.h"
 
 namespace yb {
 
@@ -139,26 +139,25 @@ static void varintWrite32(uint8_t *z, uint32_t y) {
 //
 // This function is borrowed from sqlite4/varint.c
 static size_t sqlite4PutVarint64(uint8_t *z, uint64_t x) {
-  uint64_t w, y;
   if (x <= 240) {
     z[0] = (uint8_t)x;
     return 1;
   }
   if (x <= 2287) {
-    y = (uint64_t)(x - 240);
+    auto y = x - 240;
     z[0] = (uint8_t)(y/256 + 241);
     z[1] = (uint8_t)(y%256);
     return 2;
   }
   if (x <= 67823) {
-    y = (uint64_t)(x - 2288);
+    auto y = x - 2288;
     z[0] = 249;
     z[1] = (uint8_t)(y/256);
     z[2] = (uint8_t)(y%256);
     return 3;
   }
-  y = (uint64_t)x;
-  w = (uint64_t)(x>>32);
+  auto y = static_cast<uint32_t>(x);
+  auto w = static_cast<uint32_t>(x >> 32);
   if (w == 0) {
     if (y <= 16777215) {
       z[0] = 250;
@@ -207,7 +206,7 @@ static size_t sqlite4PutVarint64(uint8_t *z, uint64_t x) {
 // Borrowed from sqlite4 varint.c
 static int sqlite4GetVarint64(
   const uint8_t *z,
-  int n,
+  size_t n,
   uint64_t *pResult) {
   unsigned int x;
   if ( n < 1) return 0;
@@ -220,7 +219,7 @@ static int sqlite4GetVarint64(
     *pResult = (z[0]-241)*256 + z[1] + 240;
     return 2;
   }
-  if (n < z[0]-246 ) return 0;
+  if (n < z[0]-246U ) return 0;
   if (z[0] == 249) {
     *pResult = 2288 + 256*z[1] + z[2];
     return 3;
@@ -255,21 +254,21 @@ static int sqlite4GetVarint64(
 // End code ripped from sqlite4
 ////////////////////////////////////////////////////////////
 
-int PutVarint64ToBuf(uint8_t* buf, size_t bufsize, uint64_t value) {
-  int used = sqlite4PutVarint64(buf, value);
+size_t PutVarint64ToBuf(uint8_t* buf, size_t bufsize, uint64_t value) {
+  auto used = sqlite4PutVarint64(buf, value);
   DCHECK_LE(used, bufsize);
   return used;
 }
 
 void PutMemcmpableVarint64(std::string *dst, uint64_t value) {
   uint8_t buf[16];
-  int used = PutVarint64ToBuf(buf, sizeof(buf), value);
-  dst->append(yb::util::to_char_ptr(buf), used);
+  auto used = PutVarint64ToBuf(buf, sizeof(buf), value);
+  dst->append(to_char_ptr(buf), used);
 }
 
 void PutMemcmpableVarint64(faststring *dst, uint64_t value) {
   uint8_t buf[16];
-  int used = PutVarint64ToBuf(buf, sizeof(buf), value);
+  auto used = PutVarint64ToBuf(buf, sizeof(buf), value);
   dst->append(buf, used);
 }
 

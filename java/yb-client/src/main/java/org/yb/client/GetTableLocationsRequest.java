@@ -35,7 +35,8 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
 import com.google.protobuf.UnsafeByteOperations;
 import org.yb.annotations.InterfaceAudience;
-import org.yb.master.Master;
+import org.yb.master.MasterClientOuterClass;
+import org.yb.master.MasterTypes;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -43,14 +44,15 @@ import org.jboss.netty.buffer.ChannelBuffer;
  * Package-private RPC that can only go to a master.
  */
 @InterfaceAudience.Private
-class GetTableLocationsRequest extends YRpc<Master.GetTableLocationsResponsePB> {
+class GetTableLocationsRequest extends YRpc<MasterClientOuterClass.GetTableLocationsResponsePB> {
 
   private final byte[] startPartitionKey;
   private final byte[] endKey;
   private final String tableId;
+  private final int maxTablets;
 
   GetTableLocationsRequest(YBTable table, byte[] startPartitionKey,
-                           byte[] endPartitionKey, String tableId) {
+                           byte[] endPartitionKey, String tableId, int maxTablets) {
     super(table);
     if (startPartitionKey != null && endPartitionKey != null
         && Bytes.memcmp(startPartitionKey, endPartitionKey) > 0) {
@@ -60,6 +62,7 @@ class GetTableLocationsRequest extends YRpc<Master.GetTableLocationsResponsePB> 
     this.startPartitionKey = startPartitionKey;
     this.endKey = endPartitionKey;
     this.tableId = tableId;
+    this.maxTablets = maxTablets;
   }
 
   @Override
@@ -71,23 +74,28 @@ class GetTableLocationsRequest extends YRpc<Master.GetTableLocationsResponsePB> 
   }
 
   @Override
-  Pair<Master.GetTableLocationsResponsePB, Object> deserialize(
+  Pair<MasterClientOuterClass.GetTableLocationsResponsePB, Object> deserialize(
       final CallResponse callResponse, String tsUUID)
       throws Exception {
-    Master.GetTableLocationsResponsePB.Builder builder = Master.GetTableLocationsResponsePB
-        .newBuilder();
+    MasterClientOuterClass.GetTableLocationsResponsePB.Builder builder =
+        MasterClientOuterClass.GetTableLocationsResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), builder);
-    Master.GetTableLocationsResponsePB resp = builder.build();
-    return new Pair<Master.GetTableLocationsResponsePB, Object>(
+    MasterClientOuterClass.GetTableLocationsResponsePB resp = builder.build();
+    return new Pair<MasterClientOuterClass.GetTableLocationsResponsePB, Object>(
         resp, builder.hasError() ? builder.getError() : null);
   }
 
   @Override
   ChannelBuffer serialize(Message header) {
-    final Master.GetTableLocationsRequestPB.Builder builder = Master
+    final MasterClientOuterClass.GetTableLocationsRequestPB.Builder builder = MasterClientOuterClass
         .GetTableLocationsRequestPB.newBuilder();
-    builder.setTable(Master.TableIdentifierPB.newBuilder().
+    builder.setTable(MasterTypes.TableIdentifierPB.newBuilder().
         setTableId(ByteString.copyFromUtf8(tableId)));
+
+    if (maxTablets != 0) {
+      builder.setMaxReturnedLocations(maxTablets);
+    }
+
     if (startPartitionKey != null) {
       builder.setPartitionKeyStart(UnsafeByteOperations.unsafeWrap(startPartitionKey));
     }

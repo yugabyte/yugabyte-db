@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/client/table.h"
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 
@@ -21,13 +22,15 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/integration-tests/cluster_verifier.h"
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/encryption_manager.h"
+
+#include "yb/tools/yb-admin_client.h"
 
 #include "yb/util/test_util.h"
 #include "yb/util/random_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
-#include "yb/master/master.pb.h"
 
 DECLARE_int64(db_write_buffer_size);
 DECLARE_int32(memstore_size_mb);
@@ -51,15 +54,17 @@ constexpr uint32_t kCounterOverflowDefault = 0xFFFFFFE0;
 class EncryptionTest : public YBTableTestBase, public testing::WithParamInterface<bool> {
  public:
 
-  bool use_external_mini_cluster() override { return false; }
+  bool use_external_mini_cluster() override { return true; }
+
+  bool use_yb_admin_client() override { return true; }
 
   bool enable_ysql() override { return false; }
 
-  int num_tablet_servers() override {
+  size_t num_tablet_servers() override {
     return 3;
   }
 
-  int num_masters() override {
+  size_t num_masters() override {
     return 3;
   }
 
@@ -87,10 +92,10 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
       PutKeyValue(Format("k_$0", i), s);
       auto num_keys_written = i - start + 1;
       if (num_keys_written % (total_num_keys / kNumFlushes) == 0) {
-        ASSERT_OK(mini_cluster()->FlushTablets());
+        ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, false));
       }
       if (num_keys_written % (total_num_keys / kNumCompactions) == 0) {
-        ASSERT_OK(mini_cluster()->CompactTablets());
+        ASSERT_OK(client_->FlushTables({table_->id()}, false, 30, true));
       }
     }
   }
@@ -98,101 +103,41 @@ class EncryptionTest : public YBTableTestBase, public testing::WithParamInterfac
   void VerifyWrittenRecords() {
     auto result_kvs = GetScanResults(client::TableRange(table_));
     for (uint32_t i = 0; i < result_kvs.size(); i++) {
-      int32_t key;
       auto split = StringSplit(result_kvs[i].first, '_');
-      key = boost::lexical_cast<int32_t>(split.back());
+      int32_t key = CHECK_RESULT(CheckedStoInt<int32_t>(split.back()));
       ASSERT_EQ(Format("k_$0", key), result_kvs[i].first);
       ASSERT_TRUE(string(kKeySize, 'a' + (key % 26)) == result_kvs[i].second);
     }
   }
 
-  Result<std::string> IsEncryptionEnabled() {
-    master::IsEncryptionEnabledRequestPB is_enabled_req;
-    master::IsEncryptionEnabledResponsePB is_enabled_resp;
-
-    auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
-    RETURN_NOT_OK(catalog_manager->IsEncryptionEnabled(&is_enabled_req, &is_enabled_resp));
-    return is_enabled_resp.encryption_enabled() ? is_enabled_resp.key_id() : "";
-  }
-
   void AddUniverseKeys() {
     current_key_id_ = RandomHumanReadableString(16);
     auto bytes = RandomBytes(32);
-
-    for (int i = 0; i < mini_cluster()->num_masters(); i++) {
-      master::AddUniverseKeysRequestPB req;
-      master::AddUniverseKeysResponsePB resp;
-      (*req.mutable_universe_keys()->mutable_map())[current_key_id_] =
-          string(bytes.begin(), bytes.end());
-      auto* catalog_manager = mini_cluster()->mini_master(i)->master()->catalog_manager();
-      ASSERT_OK(catalog_manager->encryption_manager().AddUniverseKeys(&req, &resp));
-      ASSERT_FALSE(resp.has_error());
-    }
+    ASSERT_OK(yb_admin_client_->AddUniverseKeyToAllMasters(
+        current_key_id_, std::string(bytes.begin(), bytes.end())));
   }
 
-  Result<bool> AllMastersHaveLatestKeyInMemory() {
-    for (int i = 0; i < mini_cluster()->num_masters(); i++) {
-      master::HasUniverseKeyInMemoryRequestPB req;
-      master::HasUniverseKeyInMemoryResponsePB resp;
-      req.set_version_id(current_key_id_);
-
-      auto* catalog_manager = mini_cluster()->mini_master(i)->master()->catalog_manager();
-      RETURN_NOT_OK(catalog_manager->encryption_manager().HasUniverseKeyInMemory(&req, &resp));
-      if (resp.has_error() || !resp.has_key()) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  void WaitForAllMastersHaveLatestKeyInMemory() {
-    AssertLoggedWaitFor([&]() -> Result<bool> {
-      return AllMastersHaveLatestKeyInMemory();
+  Status WaitForAllMastersHaveLatestKeyInMemory() {
+    return LoggedWaitFor([&]() -> Result<bool> {
+      return yb_admin_client_->AllMastersHaveUniverseKeyInMemory(current_key_id_).ok();
     }, 30s, "Wait for all masters to have key in memory");
   }
 
-
   void RotateKey() {
-    master::ChangeEncryptionInfoRequestPB encryption_info_req;
-    master::ChangeEncryptionInfoResponsePB encryption_info_resp;
-    encryption_info_req.set_encryption_enabled(true);
-
-    auto bytes = RandomBytes(32);
-
-    encryption_info_req.set_version_id(current_key_id_);
-    encryption_info_req.set_in_memory(true);
-
-    auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
-    ASSERT_OK(catalog_manager->ChangeEncryptionInfo(&encryption_info_req, &encryption_info_resp));
-    ASSERT_FALSE(encryption_info_resp.has_error());
-    auto res = ASSERT_RESULT(IsEncryptionEnabled());
-    ASSERT_NE("", res);
-    ASSERT_EQ(current_key_id_, res);
-    ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+    ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
+    ASSERT_OK(yb_admin_client_->RotateUniverseKeyInMemory(current_key_id_));
+    ASSERT_OK(yb_admin_client_->IsEncryptionEnabled());
   }
 
-  void WaitForLoadBalanced() {
+  Status WaitForLoadBalanced() {
     SleepFor(MonoDelta::FromSeconds(5));
-    AssertLoggedWaitFor([&]() -> Result<bool> {
-      master::IsLoadBalancedRequestPB req;
-      master::IsLoadBalancedResponsePB resp;
-      auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
-      return catalog_manager->IsLoadBalanced(&req, &resp).ok();
+    return LoggedWaitFor([&]() -> Result<bool> {
+      return client_->IsLoadBalanced(3);
     }, MonoDelta::FromSeconds(30), "Wait for load balanced");
   }
 
   void DisableEncryption() {
-    master::ChangeEncryptionInfoRequestPB encryption_info_req;
-    master::ChangeEncryptionInfoResponsePB encryption_info_resp;
-    encryption_info_req.set_encryption_enabled(false);
-
-    auto* catalog_manager = mini_cluster()->leader_mini_master()->master()->catalog_manager();
-    ASSERT_OK(catalog_manager->ChangeEncryptionInfo(&encryption_info_req, &encryption_info_resp));
-    ASSERT_FALSE(encryption_info_resp.has_error());
-
-    auto res = ASSERT_RESULT(IsEncryptionEnabled());
-    ASSERT_EQ(res, "");
-    current_key_id_ = "";
+    ASSERT_OK(yb_admin_client_->DisableEncryptionInMemory());
   }
  private:
   std::string current_key_id_ = "";
@@ -210,68 +155,77 @@ TEST_P(EncryptionTest, BasicWriteRead) {
 
   WriteWorkload(0, kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, MasterLeaderRestart) {
   WriteWorkload(0, kNumKeys);
   // Restart the master leader.
-  CHECK_OK(mini_cluster()->leader_mini_master()->Restart());
-  ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+  auto* master_leader = external_mini_cluster()->GetLeaderMaster();
+  master_leader->Shutdown();
+  ASSERT_OK(master_leader->Restart());
+  // Recreate the admin client after restarting master leader.
+  CreateAdminClient();
+  ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   // Restart the tablet servers and make sure they can contact the new master leader for the key.
-  for (int i = 0; i < mini_cluster()->num_tablet_servers(); i++) {
-    CHECK_OK(mini_cluster()->mini_tablet_server(i)->Restart());
+  for (size_t i = 0; i < external_mini_cluster()->num_tablet_servers(); i++) {
+    external_mini_cluster()->tablet_server(i)->Shutdown();
+    CHECK_OK(external_mini_cluster()->tablet_server(i)->Restart());
+    SleepFor(MonoDelta::FromSeconds(5));\
+    /*ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+        external_mini_cluster()->tablet_server(i), MonoDelta::FromSeconds(30)));*/
   }
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, AllMastersRestart) {
   WriteWorkload(0, kNumKeys);
-  // Restart all the master leaders and make sure the
-  for (int i = 0; i < mini_cluster()->num_masters(); i++) {
-    CHECK_OK(mini_cluster()->mini_master(i)->Restart());
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
+    external_mini_cluster()->master(i)->Shutdown();
+    CHECK_OK(external_mini_cluster()->master(i)->Restart());
   }
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, RollingMasterRestart) {
   WriteWorkload(0, kNumKeys);
-  // Restart all the master leaders and make sure the
-
-  for (int i = 0; i < mini_cluster()->num_masters(); i++) {
-    CHECK_OK(mini_cluster()->mini_master(i)->Restart());
-    ASSERT_NO_FATALS(WaitForAllMastersHaveLatestKeyInMemory());
+  for (size_t i = 0; i < external_mini_cluster()->num_masters(); i++) {
+    external_mini_cluster()->master(i)->Shutdown();
+    CHECK_OK(external_mini_cluster()->master(i)->Restart());
+    ASSERT_OK(WaitForAllMastersHaveLatestKeyInMemory());
   }
+  // Recreate the admin client after rolling the masters.
+  CreateAdminClient();
   // Test that each master bootstraps from each other.
   ASSERT_NO_FATALS(AddUniverseKeys());
   ASSERT_NO_FATALS(RotateKey());
 
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, AddServer) {
   // Write 1000 values, add a server, and write 1000 more.
   WriteWorkload(0, kNumKeys);
-  ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
+  ASSERT_OK(external_mini_cluster()->AddTabletServer());
+  ASSERT_OK(WaitForLoadBalanced());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
@@ -283,7 +237,7 @@ TEST_F(EncryptionTest, RotateKey) {
   ASSERT_NO_FATALS(RotateKey());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
@@ -294,15 +248,15 @@ TEST_F(EncryptionTest, DisableEncryption) {
   ASSERT_NO_FATALS(DisableEncryption());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
 TEST_F(EncryptionTest, EmptyTable) {
   // No values added, make sure add server works with empty tables.
-  ASSERT_OK(mini_cluster()->AddTabletServer());
-  ASSERT_NO_FATALS(WaitForLoadBalanced());
-  ClusterVerifier cv(mini_cluster());
+  ASSERT_OK(external_mini_cluster()->AddTabletServer());
+  ASSERT_OK(WaitForLoadBalanced());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
@@ -315,10 +269,20 @@ TEST_F(EncryptionTest, EnableEncryption) {
   ASSERT_NO_FATALS(RotateKey());
   WriteWorkload(kNumKeys, 2 * kNumKeys);
   ASSERT_NO_FATALS(VerifyWrittenRecords());
-  ClusterVerifier cv(mini_cluster());
+  ClusterVerifier cv(external_mini_cluster());
   ASSERT_NO_FATALS(cv.CheckCluster());
 }
 
+TEST_F(EncryptionTest, ServerRestart) {
+  WriteWorkload(0, kNumKeys);
+  auto* tablet_server = external_mini_cluster()->tablet_server(0);
+  tablet_server->Shutdown();
+  ASSERT_OK(tablet_server->Restart());
+  ASSERT_OK(external_mini_cluster()->WaitForTabletsRunning(
+      tablet_server, MonoDelta::FromSeconds(30)));
+  ClusterVerifier cv(external_mini_cluster());
+  ASSERT_NO_FATALS(cv.CheckCluster());
+}
 
 } // namespace integration_tests
 } // namespace yb

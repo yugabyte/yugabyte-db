@@ -3,30 +3,26 @@ title: Benchmark scaling YSQL queries
 headerTitle: Scaling YSQL queries
 linkTitle: Scaling queries
 description: Benchmark scaling YSQL queries in YugabyteDB
-aliases:
-  - /stable/benchmark/scalability/scaling-queries/
-block_indexing: true
 menu:
   stable:
     identifier: scaling-queries-1-ysql
     parent: scalability
     weight: 11
-showAsideToc: true
-isTocNested: true
+type: docs
 ---
 
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/benchmark/scalability/scaling-queries-ysql" class="nav-link active">
+    <a href="/preview/benchmark/scalability/scaling-queries-ysql" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/stable/benchmark/scalability/scaling-queries-ycql" class="nav-link">
+    <a href="/preview/benchmark/scalability/scaling-queries-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -66,7 +62,7 @@ $ sudo apt install default-jre
 The [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) was downloaded on to these machines as shown below.
 
 ```sh
-$ wget -P target https://github.com/YugaByte/yb-sample-apps/releases/download/1.3.1/yb-sample-apps.jar
+$ wget -P target https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar
 ```
 
 This benchmark program can take a list of servers in the database cluster, and then perform random operations across these servers. In order to do this, we set up an environment variable with the list of comma-separated `host:port` entries of the 100 database servers as shown below.
@@ -172,7 +168,7 @@ The average CPU usage across the nodes in the cluster was about 64%, as shown in
 
 ## Architecture for horizontal write scaling
 
-The architecture of a YugabyteDB cluster is shown in the figure below. The YB-TServer service is responsible for managing the data in the cluster while the YB-Master service manages the system configuration of the cluster. YB-TServer automatically shards every table into a number of shards (aka tablets). Given the replication factor (RF) of `3` for the cluster, each tablet is represented as a Raft group of three replicas with one replica considered the leader and other two replicas considered as followers. In a 100-node cluster, each of these three replicas are automatically stored on exactly tree (out of 100) different nodes where each node can be thought of as representing an independent fault domain. YB-Master automatically balances the total number of leader and follower replicas on all the nodes so that no single node becomes a bottleneck and every node contributes its fair share to incoming client requests. The end result is strong write consistency (by ensuring writes are committed at a majority of replicas) and tunable read consistency (by serving strong reads from leaders and timeline-consistent reads from followers), irrespective of the number of nodes in the cluster.
+The architecture of a YugabyteDB cluster is shown in the figure below. The YB-TServer service is responsible for managing the data in the cluster while the YB-Master service manages the system configuration of the cluster. YB-TServer automatically shards every table into a number of shards (aka tablets). Given the replication factor (RF) of `3` for the cluster, each tablet is represented as a Raft group of three replicas with one replica considered the leader and other two replicas considered as followers. In a 100-node cluster, each of these three replicas are automatically stored on exactly three (out of 100) different nodes where each node can be thought of as representing an independent fault domain. YB-Master automatically balances the total number of leader and follower replicas on all the nodes so that no single node becomes a bottleneck and every node contributes its fair share to incoming client requests. The end result is strong write consistency (by ensuring writes are committed at a majority of replicas) and tunable read consistency (by serving strong reads from leaders and timeline-consistent reads from followers), irrespective of the number of nodes in the cluster.
 
 ![CPU usage](/images/benchmark/scalability/yugabytedb-cluster.png)
 
@@ -180,5 +176,4 @@ To those new to the Raft consensus protocol, the simplest explanation is that it
 
 ## Next steps
 
-You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack](http://www.yugabyte.com/slack).
-
+You can visit the [YugabyteDB workload generator](https://github.com/yugabyte/yb-sample-apps) GitHub repository to try out more experiments on your own local setups. After you set up a cluster and test your favorite application, share your feedback and suggestions with other users on the [YugabyteDB Community Slack]({{<slack-invite>}}).

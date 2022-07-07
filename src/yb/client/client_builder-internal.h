@@ -32,13 +32,23 @@
 #ifndef YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 #define YB_CLIENT_CLIENT_BUILDER_INTERNAL_H_
 
+#include <stdint.h>
+
 #include <functional>
+#include <set>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
+#include <boost/version.hpp>
+
 #include "yb/client/client.h"
+
+#include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {
@@ -50,12 +60,12 @@ class YBClientBuilder::Data {
   Data();
   ~Data();
 
+  // If this is specified for thread pool size, we will use the same number of threads as the number
+  // of reactor threads.
+  static constexpr int kUseNumReactorsAsNumThreads = -1;
+
   // Flag name to fetch master addresses from flagfile.
   std::string master_address_flag_name_;
-
-  // This is a REST endpoint from which the list of master hosts and ports can be queried. This
-  // takes precedence over both 'master_server_addrs_file_' and 'master_server_addrs_'.
-  std::string master_server_endpoint_;
 
   // This vector holds the list of master server addresses. Note that each entry in this vector
   // can either be a single 'host:port' or a comma separated list of 'host1:port1,host2:port2,...'.
@@ -76,7 +86,7 @@ class YBClientBuilder::Data {
   std::string client_name_ = "ybclient";
 
   // The size of the threadpool to use for calling callbacks.
-  size_t threadpool_size_ = 0;
+  ssize_t threadpool_size_ = 0;
 
   // If all masters are available but no leader is present on client init,
   // this flag determines if the client returns failure right away

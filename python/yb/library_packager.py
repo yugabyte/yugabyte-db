@@ -29,21 +29,20 @@ Run doctest tests as follows:
 import argparse
 import collections
 import glob
-import json
 import logging
 import os
 import re
 import shutil
 import subprocess
-import sys
 
 from functools import total_ordering
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from yb.command_util import run_program, mkdir_p, copy_deep  # nopep8
-from yb.linuxbrew import get_linuxbrew_dir  # nopep8
-from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by, \
-                           safe_path_join  # nopep8
+from yb.command_util import run_program, mkdir_p, copy_deep
+from yb.common_util import get_thirdparty_dir, YB_SRC_ROOT, sorted_grouped_by
+from yb.rpath import set_rpath, remove_rpath
+from yb.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
+
+from typing import List, Optional, Any, Set, Tuple
 
 # A resolved shared library dependency shown by ldd.
 # Example (split across two lines):
@@ -68,9 +67,10 @@ YB_BUILD_SUPPORT_DIR = os.path.join(YB_SRC_ROOT, 'build-support')
 PATCHELF_NOT_AN_ELF_EXECUTABLE = 'not an ELF executable'
 
 LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
-LIBRARY_CATEGORIES = ['system', 'yb', 'yb-thirdparty', 'linuxbrew']
+LIBRARY_CATEGORIES_NO_LINUXBREW = ['system', 'yb', 'yb-thirdparty', 'postgres']
+LIBRARY_CATEGORIES = LIBRARY_CATEGORIES_NO_LINUXBREW + ['linuxbrew']
 
-linuxbrew_home = None
+EXTENSIONS_TO_SKIP_FOR_RPATH = ('.h', '.sql', '.example')
 
 
 # This is an alternative to global variables, bundling a few commonly used things.
@@ -88,45 +88,56 @@ class Dependency:
     @param name: the name of the library as requested by the original executable/shared library
     @param target: target file pointed to by the dependency
     """
-    def __init__(self, name, target, origin, context):
+
+    name: str
+    target: str
+    category: Optional[str]
+    origin: str
+    context: DistributionContext
+
+    def __init__(self, name: str, target: str, origin: str, context: DistributionContext) -> None:
         self.name = name
         self.target = target
         self.category = None
         self.context = context
         self.origin = origin
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.name) ^ hash(self.target)
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         return self.name == other.name and \
                self.target == other.target
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Dependency(name='{}', target='{}', origin='{}')".format(
                 self.name, self.target, self.origin)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
 
-    def __lt__(self, other):
+    def __lt__(self, other: Any) -> bool:
         return (self.name, self.target) < (other.name, other.target)
 
-    def get_category(self):
+    def get_category(self) -> str:
         """
         Categorizes binaries into a few buckets:
-        - yb -- YugaByte product itself
-        - yb-thirdparty -- built with YugaByte
+        - yb -- built as part of YugabyteDB
+        - yb-thirdparty -- built as part of yugabyte-db-thirdparty
         - linuxbrew -- built using Linuxbrew
-        - system -- grabbed from a system-wide library directory
+        - system -- a library residing in a system-wide library directory. We do not copy these.
+        - postgres -- libraries inside the postgres directory
         """
         if self.category:
             return self.category
 
-        if linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
+        linuxbrew_home = get_linuxbrew_home()
+        if linuxbrew_home is not None and linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
             self.category = 'linuxbrew'
         elif self.target.startswith(get_thirdparty_dir() + '/'):
             self.category = 'yb-thirdparty'
+        elif self.target.startswith(self.context.build_dir + '/postgres/'):
+            self.category = 'postgres'
         elif self.target.startswith(self.context.build_dir + '/'):
             self.category = 'yb'
         elif (self.target.startswith(YB_SCRIPT_BIN_DIR + '/') or
@@ -146,6 +157,11 @@ class Dependency:
                      "Dependency: {}").format(self.category, LIBRARY_CATEGORIES, self))
             return self.category
 
+        if linuxbrew_home:
+            linuxbrew_dir_str = linuxbrew_home.get_human_readable_dirs()
+        else:
+            linuxbrew_dir_str = 'N/A'
+
         raise RuntimeError(
             ("Could not determine the category of this binary "
              "(yugabyte / yb-thirdparty / linuxbrew / system): '{}'. "
@@ -157,7 +173,7 @@ class Dependency:
              "and does not appear to be a system library (does not start with any of {})."
              ).format(
                 self.target,
-                linuxbrew_home.get_human_readable_dirs(),
+                linuxbrew_dir_str,
                 get_thirdparty_dir(),
                 self.context.build_dir,
                 YB_SCRIPT_BIN_DIR,
@@ -165,7 +181,7 @@ class Dependency:
                 SYSTEM_LIBRARY_PATHS))
 
 
-def add_common_arguments(parser):
+def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     """
     Add command-line arguments common between library_packager_old.py invoked as a script, and
     the yb_release.py script.
@@ -175,17 +191,7 @@ def add_common_arguments(parser):
                         action='store_true')
 
 
-def run_patchelf(*args):
-    patchelf_result = run_program([linuxbrew_home.patchelf_path] + list(args), error_ok=True)
-    if patchelf_result.returncode != 0 and patchelf_result.stderr not in [
-            'cannot find section .interp',
-            'cannot find section .dynamic',
-            PATCHELF_NOT_AN_ELF_EXECUTABLE]:
-        raise RuntimeError(patchelf_result.error_msg)
-    return patchelf_result
-
-
-def symlink(source, link_path):
+def symlink(source: str, link_path: str) -> None:
     if os.path.exists(link_path):
         if not source.startswith('/') or os.path.realpath(link_path) != os.path.realpath(source):
             raise RuntimeError(
@@ -202,12 +208,21 @@ class LibraryPackager:
     A utility for starting with a set of 'seed' executables, and walking the dependency tree of
     libraries to find all libraries that need to be packaged with the product.
     """
+
+    build_dir: str
+    dest_dir: str
+    seed_executable_patterns: List[str]
+    installed_dyn_linked_binaries: List[str]
+    main_dest_bin_dir: str
+    postgres_dest_bin_dir: str
+
     def __init__(self,
-                 build_dir,
-                 seed_executable_patterns,
-                 dest_dir,
-                 verbose_mode=False):
+                 build_dir: str,
+                 seed_executable_patterns: List[str],
+                 dest_dir: str,
+                 verbose_mode: bool = False) -> None:
         build_dir = os.path.realpath(build_dir)
+        dest_dir = os.path.realpath(dest_dir)
         if not os.path.exists(build_dir):
             raise IOError("Build directory '{}' does not exist".format(build_dir))
         self.seed_executable_patterns = seed_executable_patterns
@@ -223,15 +238,43 @@ class LibraryPackager:
         self.main_dest_bin_dir = os.path.join(self.dest_dir, 'bin')
         self.postgres_dest_bin_dir = os.path.join(self.dest_dir, 'postgres', 'bin')
 
-    def install_dyn_linked_binary(self, src_path, dest_dir):
+    @staticmethod
+    def get_absolute_rpath_items(dest_root_dir: str) -> List[str]:
+        assert not using_linuxbrew()
+        return [
+            os.path.abspath(os.path.join(dest_root_dir, 'lib', library_category))
+            for library_category in LIBRARY_CATEGORIES_NO_LINUXBREW
+        ] + [os.path.abspath(os.path.join(dest_root_dir, 'postgres', 'lib'))]
+
+    @staticmethod
+    def get_relative_rpath_items(dest_root_dir: str, dest_abs_dir: str) -> List[str]:
+        return [
+            f'$ORIGIN/{os.path.relpath(rpath_item, dest_abs_dir)}'
+            for rpath_item in LibraryPackager.get_absolute_rpath_items(dest_root_dir)
+        ]
+
+    @staticmethod
+    def set_rpath(dest_root_dir: str, file_path: str) -> None:
+        if using_linuxbrew():
+            return
+        if file_path.endswith(EXTENSIONS_TO_SKIP_FOR_RPATH):
+            return
+        file_abs_path = os.path.abspath(file_path)
+        new_rpath = ':'.join(LibraryPackager.get_relative_rpath_items(
+                    dest_root_dir, os.path.dirname(file_abs_path)))
+        set_rpath(file_path, new_rpath)
+
+    def install_dyn_linked_binary(self, src_path: str, dest_dir: str) -> str:
+        logging.debug(f"Installing dynamically-linked executable {src_path} to {dest_dir}")
         if not os.path.isdir(dest_dir):
             raise RuntimeError("Not a directory: '{}'".format(dest_dir))
         shutil.copy(src_path, dest_dir)
         installed_binary_path = os.path.join(dest_dir, os.path.basename(src_path))
+        LibraryPackager.set_rpath(self.dest_dir, installed_binary_path)
         self.installed_dyn_linked_binaries.append(installed_binary_path)
         return installed_binary_path
 
-    def find_elf_dependencies(self, elf_file_path):
+    def find_elf_dependencies(self, elf_file_path: str) -> Set[Dependency]:
         """
         Run ldd on the given ELF file and find libraries that it depends on. Also run patchelf and
         get the dynamic linker used by the file.
@@ -239,19 +282,24 @@ class LibraryPackager:
         @param elf_file_path: ELF file (executable/library) path
         """
 
+        linuxbrew_home: Optional[LinuxbrewHome] = get_linuxbrew_home()
         elf_file_path = os.path.realpath(elf_file_path)
-        if SYSTEM_LIBRARY_PATH_RE.match(elf_file_path):
+        if SYSTEM_LIBRARY_PATH_RE.match(elf_file_path) or not using_linuxbrew():
             ldd_path = '/usr/bin/ldd'
         else:
+            assert linuxbrew_home is not None
+            assert linuxbrew_home.ldd_path is not None
             ldd_path = linuxbrew_home.ldd_path
 
         ldd_result = run_program([ldd_path, elf_file_path], error_ok=True)
-        dependencies = set()
+        dependencies: Set[Dependency] = set()
 
         ldd_result_stdout_str = ldd_result.stdout
+        ldd_result_stderr_str = ldd_result.stderr
         if ldd_result.returncode != 0:
-            # Interestingly, the below error message is printed to stdout, not stderr.
-            if ldd_result_stdout_str == 'not a dynamic executable':
+            # The below error message is printed to stdout on some platforms (CentOS) and
+            # stderr on other platforms (Ubuntu).
+            if 'not a dynamic executable' in (ldd_result_stdout_str, ldd_result_stderr_str):
                 logging.debug(
                     "Not a dynamic executable: {}, ignoring dependency tracking".format(
                         elf_file_path))
@@ -279,10 +327,10 @@ class LibraryPackager:
         return dependencies
 
     @staticmethod
-    def is_postgres_binary(file_path):
+    def is_postgres_binary(file_path: str) -> bool:
         return os.path.dirname(file_path).endswith('/postgres/bin')
 
-    def get_dest_bin_dir_for_executable(self, file_path):
+    def get_dest_bin_dir_for_executable(self, file_path: str) -> str:
         if self.is_postgres_binary(file_path):
             dest_bin_dir = self.postgres_dest_bin_dir
         else:
@@ -290,16 +338,19 @@ class LibraryPackager:
         return dest_bin_dir
 
     @staticmethod
-    def join_binary_names_for_bash(binary_names):
+    def join_binary_names_for_bash(binary_names: List[str]) -> str:
         return ' '.join(['"{}"'.format(name) for name in binary_names])
 
-    def package_binaries(self):
+    def package_binaries(self) -> None:
         """
         The main entry point to this class. Arranges binaries (executables and shared libraries),
         starting with the given set of "seed executables", in the destination directory so that
         the executables can find all of their dependencies.
         """
-        all_deps = []
+
+        linuxbrew_home = get_linuxbrew_home()
+
+        all_deps: List[Dependency] = []
 
         dest_lib_dir = os.path.join(self.dest_dir, 'lib')
         mkdir_p(dest_lib_dir)
@@ -330,35 +381,46 @@ class LibraryPackager:
                     # This is probably a script.
                     shutil.copy(executable, dest_bin_dir)
 
-        # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we won't
-        # need to do any post-processing on these two later.
-        shutil.copy(linuxbrew_home.patchelf_path, self.main_dest_bin_dir)
-
-        ld_path = linuxbrew_home.ld_so_path
-        shutil.copy(ld_path, dest_lib_dir)
+        if using_linuxbrew():
+            # Not using the install_dyn_linked_binary method for copying patchelf and ld.so as we
+            # won't need to do any post-processing on these two later.
+            assert linuxbrew_home is not None
+            assert linuxbrew_home.patchelf_path is not None
+            assert linuxbrew_home.ld_so_path is not None
+            shutil.copy(linuxbrew_home.patchelf_path, self.main_dest_bin_dir)
+            shutil.copy(linuxbrew_home.ld_so_path, dest_lib_dir)
 
         all_deps = sorted(set(all_deps))
 
-        for dep_name, deps in sorted_grouped_by(all_deps, lambda dep: dep.name):
-            targets = sorted(set([dep.target for dep in deps]))
+        deps_sorted_by_name: List[Tuple[str, List[Dependency]]] = sorted_grouped_by(
+            all_deps, lambda dep: dep.name)
+
+        deps_with_same_name: List[Dependency]
+        for dep_name, deps_with_same_name in deps_sorted_by_name:
+            targets = sorted(set([dep.target for dep in deps_with_same_name]))
             if len(targets) > 1:
                 raise RuntimeError(
                     "Multiple dependencies with the same name {} but different targets: {}".format(
-                        dep_name, deps
+                        dep_name, deps_with_same_name
                     ))
 
         linuxbrew_dest_dir = os.path.join(self.dest_dir, 'linuxbrew')
         linuxbrew_lib_dest_dir = os.path.join(linuxbrew_dest_dir, 'lib')
 
         # Add libresolv and libnss_* libs explicitly because they are loaded by glibc at runtime.
-        additional_libs = set()
-        for additional_lib_name_glob in ADDITIONAL_LIB_NAME_GLOBS:
-            additional_libs.update(lib_path for lib_path in
-                                   glob.glob(os.path.join(linuxbrew_home.cellar_glibc_dir,
-                                                          '*',
-                                                          'lib',
-                                                          additional_lib_name_glob))
-                                   if not lib_path.endswith('.a'))
+        additional_libs: Set[str] = set()
+        if using_linuxbrew():
+            for additional_lib_name_glob in ADDITIONAL_LIB_NAME_GLOBS:
+                assert linuxbrew_home is not None
+                assert linuxbrew_home.cellar_glibc_dir is not None
+                additional_libs.update(
+                    lib_path for lib_path in
+                    glob.glob(os.path.join(
+                        linuxbrew_home.cellar_glibc_dir,
+                        '*',
+                        'lib',
+                        additional_lib_name_glob))
+                    if not lib_path.endswith('.a'))
 
         for category, deps_in_category in sorted_grouped_by(all_deps,
                                                             lambda dep: dep.get_category()):
@@ -369,6 +431,18 @@ class LibraryPackager:
             for dep in sorted(deps_in_category, key=lambda dep: dep.target):
                 logging.info("    {} -> {}".format(
                     dep.name + ' ' * (max_name_len - len(dep.name)), dep.target))
+            if category == 'system':
+                logging.info(
+                    "Not packaging any of the above dependencies from a system-wide directory.")
+                continue
+            if category == 'postgres' and not using_linuxbrew():
+                # Only avoid copying postgres libraries into the lib/yb directory in non-Linuxbrew
+                # mode. In Linuxbrew mode, post_install.sh has complex logic for changing rpaths
+                # and that is not updated to allow us to find libraries in postgres/lib.
+                logging.info(
+                    "Not installing any of the above YSQL libraries because they will be "
+                    "installed as part of copying the entire postgres directory.")
+                continue
 
             if category == 'linuxbrew':
                 category_dest_dir = linuxbrew_lib_dest_dir
@@ -393,7 +467,7 @@ class LibraryPackager:
                 link_target_basename = os.path.basename(os.readlink(lib_path))
                 logging.info("Installed additional symlink: " + lib_path)
                 symlink(link_target_basename,
-                        os.path.join(linuxbrew_lib_dest_dir, lib_basename))
+                        os.path.join(linuxbrew_lib_dest_dir, os.path.basename(lib_path)))
             else:
                 raise RuntimeError(
                     "Expected '{}' to be a file or a symlink".format(lib_path))
@@ -401,73 +475,98 @@ class LibraryPackager:
         for installed_binary in self.installed_dyn_linked_binaries:
             # Sometimes files that we copy from other locations are not even writable by user!
             subprocess.check_call(['chmod', 'u+w', installed_binary])
-            # Remove rpath (we will set it appropriately in post_install.sh).
-            run_patchelf('--remove-rpath', installed_binary)
-
-        # Add other files used by glibc at runtime.
-        linuxbrew_glibc_real_path = os.path.normpath(
-            os.path.join(os.path.realpath(linuxbrew_home.ldd_path), '..', '..'))
-
-        linuxbrew_glibc_rel_path = os.path.relpath(
-            linuxbrew_glibc_real_path, os.path.realpath(linuxbrew_home.linuxbrew_dir))
-        # We expect glibc to live under a path like "Cellar/glibc/2.23" in the Linuxbrew directory.
-        if not linuxbrew_glibc_rel_path.startswith('Cellar/glibc/'):
-            raise ValueError(
-                "Expected to find glibc under Cellar/glibc/<version> in Linuxbrew, but found it "
-                "at: '%s'" % linuxbrew_glibc_rel_path)
-
-        rel_paths = []
-        for glibc_rel_path in [
-            'etc/ld.so.cache',
-            'etc/localtime',
-            'lib/locale/locale-archive',
-            'lib/gconv',
-            'libexec/getconf',
-            'share/locale',
-            'share/zoneinfo',
-        ]:
-            rel_paths.append(os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path))
-
-        terminfo_glob_pattern = os.path.join(
-                linuxbrew_home.linuxbrew_dir, 'Cellar/ncurses/*/share/terminfo')
-        terminfo_paths = glob.glob(terminfo_glob_pattern)
-        if len(terminfo_paths) != 1:
-            raise ValueError(
-                "Failed to find the terminfo directory using glob pattern %s. "
-                "Found: %s" % (terminfo_glob_pattern, terminfo_paths))
-        terminfo_rel_path = os.path.relpath(terminfo_paths[0], linuxbrew_home.linuxbrew_dir)
-        rel_paths.append(terminfo_rel_path)
-
-        for rel_path in rel_paths:
-            src = os.path.join(linuxbrew_home.linuxbrew_dir, rel_path)
-            dst = os.path.join(linuxbrew_dest_dir, rel_path)
-            copy_deep(src, dst, create_dst_dir=True)
+            if using_linuxbrew():
+                # Remove rpath (we will set it appropriately in post_install.sh).
+                remove_rpath(installed_binary)
 
         post_install_path = os.path.join(self.main_dest_bin_dir, 'post_install.sh')
-        with open(post_install_path) as post_install_script_input:
-            post_install_script = post_install_script_input.read()
 
-        new_post_install_script = post_install_script
-        replacements = [
-            ("original_linuxbrew_path_to_patch", linuxbrew_home.linuxbrew_dir),
-            ("original_linuxbrew_path_length", len(linuxbrew_home.linuxbrew_dir)),
-        ]
-        for macro_var_name, list_of_binary_names in [
-            ("main_elf_names_to_patch", main_elf_names_to_patch),
-            ("postgres_elf_names_to_patch", postgres_elf_names_to_patch),
-        ]:
-            replacements.append(
-                (macro_var_name, self.join_binary_names_for_bash(list_of_binary_names)))
+        if using_linuxbrew():
+            # Add other files used by glibc at runtime.
+            assert linuxbrew_home is not None
 
-        for macro_var_name, value in replacements:
-            new_post_install_script = new_post_install_script.replace(
-                '${%s}' % macro_var_name, str(value))
+            linuxbrew_dir = linuxbrew_home.linuxbrew_dir
+            assert linuxbrew_dir is not None
+            assert linuxbrew_home.ldd_path is not None
+
+            linuxbrew_glibc_real_path = os.path.normpath(
+                os.path.join(os.path.realpath(linuxbrew_home.ldd_path), '..', '..'))
+
+            assert linuxbrew_home is not None
+            linuxbrew_glibc_rel_path = os.path.relpath(
+                linuxbrew_glibc_real_path, os.path.realpath(linuxbrew_dir))
+
+            # We expect glibc to live under a path like "Cellar/glibc/3.23" in
+            # the Linuxbrew directory.
+            if not linuxbrew_glibc_rel_path.startswith('Cellar/glibc/'):
+                raise ValueError(
+                    "Expected to find glibc under Cellar/glibc/<version> in Linuxbrew, but found it"
+                    " at: '%s'" % linuxbrew_glibc_rel_path)
+
+            rel_paths = []
+            for glibc_rel_path in [
+                'etc/ld.so.cache',
+                'etc/localtime',
+                'lib/locale/locale-archive',
+                'lib/gconv',
+                'libexec/getconf',
+                'share/locale',
+                'share/zoneinfo',
+            ]:
+                rel_paths.append(os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path))
+
+            terminfo_glob_pattern = os.path.join(
+                    linuxbrew_dir, 'Cellar/ncurses/*/share/terminfo')
+            terminfo_paths = glob.glob(terminfo_glob_pattern)
+            if len(terminfo_paths) != 1:
+                raise ValueError(
+                    "Failed to find the terminfo directory using glob pattern %s. "
+                    "Found: %s" % (terminfo_glob_pattern, terminfo_paths))
+            terminfo_rel_path = os.path.relpath(terminfo_paths[0], linuxbrew_dir)
+            rel_paths.append(terminfo_rel_path)
+
+            for rel_path in rel_paths:
+                src = os.path.join(linuxbrew_dir, rel_path)
+                dst = os.path.join(linuxbrew_dest_dir, rel_path)
+                copy_deep(src, dst, create_dst_dir=True)
+
+            with open(post_install_path) as post_install_script_input:
+                post_install_script = post_install_script_input.read()
+
+            new_post_install_script = post_install_script
+            replacements = [
+                ("original_linuxbrew_path_to_patch", linuxbrew_dir),
+                ("original_linuxbrew_path_length", len(linuxbrew_dir)),
+            ]
+            for macro_var_name, list_of_binary_names in [
+                ("main_elf_names_to_patch", main_elf_names_to_patch),
+                ("postgres_elf_names_to_patch", postgres_elf_names_to_patch),
+            ]:
+                replacements.append(
+                    (macro_var_name, self.join_binary_names_for_bash(list_of_binary_names)))
+
+            for macro_var_name, value in replacements:
+                new_post_install_script = new_post_install_script.replace(
+                    '${%s}' % macro_var_name, str(value))
+        else:
+            new_post_install_script = (
+                    '#!/usr/bin/env bash\n'
+                    '# For backward-compatibility only. We do not need this script anymore.\n'
+                )
 
         with open(post_install_path, 'w') as post_install_script_output:
             post_install_script_output.write(new_post_install_script)
 
-
-def set_build_root(build_root):
-    global linuxbrew_home
-    from yb import linuxbrew
-    linuxbrew_home = linuxbrew.LinuxbrewHome(build_root)
+    def post_process_distribution(self, build_target: str) -> None:
+        """
+        build_target is different from self.dest_dir because this function is invoked after
+        PostgreSQL files are copied to the second packaging directory. Ideally there should only
+        be one intermediate packaging directory, and we should only have one pass to set rpath
+        on all executables and dynamic libraries.
+        """
+        if using_linuxbrew():
+            return
+        for root, dirs, files in os.walk(os.path.join(build_target, 'postgres')):
+            for file_name in files:
+                file_path = os.path.join(root, file_name)
+                LibraryPackager.set_rpath(build_target, file_path)

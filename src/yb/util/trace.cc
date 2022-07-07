@@ -33,24 +33,43 @@
 #include "yb/util/trace.h"
 
 #include <iomanip>
-#include <ios>
 #include <iostream>
-#include <strstream>
 #include <string>
 #include <vector>
 
-#include <boost/range/iterator_range.hpp>
 #include <boost/range/adaptor/indirected.hpp>
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
+#include "yb/util/flag_tags.h"
+#include "yb/util/random.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/object_pool.h"
 #include "yb/util/size_literals.h"
 
 DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
+TAG_FLAG(enable_tracing, advanced);
+TAG_FLAG(enable_tracing, runtime);
+
+DEFINE_int32(sampled_trace_1_in_n, 1000, "Flag to enable/disable sampled tracing. 0 disables.");
+TAG_FLAG(sampled_trace_1_in_n, advanced);
+TAG_FLAG(sampled_trace_1_in_n, runtime);
+
+DEFINE_bool(use_monotime_for_traces, false, "Flag to enable use of MonoTime::Now() instead of "
+    "CoarseMonoClock::Now(). CoarseMonoClock is much cheaper so it is better to use it. However "
+    "if we need more accurate sub-millisecond level breakdown, we could use MonoTime.");
+TAG_FLAG(use_monotime_for_traces, advanced);
+TAG_FLAG(use_monotime_for_traces, runtime);
+
+DEFINE_int32(tracing_level, 0, "verbosity levels (like --v) up to which tracing is enabled.");
+TAG_FLAG(tracing_level, advanced);
+TAG_FLAG(tracing_level, runtime);
+
+DEFINE_int32(print_nesting_levels, 5, "controls the depth of the child traces to be printed.");
+TAG_FLAG(print_nesting_levels, advanced);
+TAG_FLAG(print_nesting_levels, runtime);
 
 namespace yb {
 
@@ -60,6 +79,8 @@ __thread Trace* Trace::threadlocal_trace_;
 
 namespace {
 
+const char* kNestedChildPrefix = "..  ";
+
 // Get the part of filepath after the last path separator.
 // (Doesn't modify filepath, contrary to basename() in libgen.h.)
 // Borrowed from glog.
@@ -68,31 +89,41 @@ const char* const_basename(const char* filepath) {
   return base ? (base + 1) : filepath;
 }
 
-template<class Children>
-void DumpChildren(std::ostream* out, bool include_time_deltas, const Children* children) {
+template <class Children>
+void DumpChildren(
+    std::ostream* out, int32_t tracing_depth, bool include_time_deltas, const Children* children) {
+  if (tracing_depth > GetAtomicFlag(&FLAGS_print_nesting_levels)) {
+    return;
+  }
   for (auto &child_trace : *children) {
+    for (int i = 0; i < tracing_depth; i++) {
+      *out << kNestedChildPrefix;
+    }
     *out << "Related trace:" << std::endl;
-    *out << child_trace->DumpToString(include_time_deltas);
+    *out << (child_trace ? child_trace->DumpToString(tracing_depth, include_time_deltas)
+                         : "Not collected");
   }
 }
 
-void DumpChildren(std::ostream* out, bool include_time_deltas, std::nullptr_t children) {
-}
+void DumpChildren(
+    std::ostream* out, int32_t tracing_depth, bool include_time_deltas, std::nullptr_t children) {}
 
-template<class Entries>
-void DumpEntries(std::ostream* out,
-                 bool include_time_deltas,
-                 int64_t start,
-                 const Entries& entries) {
+template <class Entries>
+void DumpEntries(
+    std::ostream* out,
+    int32_t tracing_depth,
+    bool include_time_deltas,
+    int64_t start,
+    const Entries& entries) {
   if (entries.empty()) {
     return;
   }
 
-  auto time_usec = entries.begin()->timestamp.GetDeltaSinceMin().ToMicroseconds();
+  auto time_usec = MonoDelta(entries.begin()->timestamp.time_since_epoch()).ToMicroseconds();
   const int64_t time_correction_usec = start - time_usec;
   int64_t prev_usecs = time_usec;
   for (const auto& e : entries) {
-    time_usec = e.timestamp.GetDeltaSinceMin().ToMicroseconds();
+    time_usec = MonoDelta(e.timestamp.time_since_epoch()).ToMicroseconds();
     const int64_t usecs_since_prev = time_usec - prev_usecs;
     prev_usecs = time_usec;
 
@@ -102,6 +133,9 @@ void DumpEntries(std::ostream* out,
     struct tm tm_time;
     localtime_r(&secs_since_epoch, &tm_time);
 
+    for (int i = 0; i < tracing_depth; i++) {
+      *out << kNestedChildPrefix;
+    }
     // Log format borrowed from glog/logging.cc
     using std::setw;
     out->fill('0');
@@ -122,17 +156,19 @@ void DumpEntries(std::ostream* out,
   }
 }
 
-template<class Entries, class Children>
-void DoDump(std::ostream* out,
-            bool include_time_deltas,
-            int64_t start,
-            const Entries& entries,
-            Children children) {
+template <class Entries, class Children>
+void DoDump(
+    std::ostream* out,
+    int32_t tracing_depth,
+    bool include_time_deltas,
+    int64_t start,
+    const Entries& entries,
+    Children children) {
   // Save original flags.
   std::ios::fmtflags save_flags(out->flags());
 
-  DumpEntries(out, include_time_deltas, start, entries);
-  DumpChildren(out, include_time_deltas, children);
+  DumpEntries(out, tracing_depth, include_time_deltas, start, entries);
+  DumpChildren(out, tracing_depth + 1, include_time_deltas, children);
 
   // Restore stream flags.
   out->flags(save_flags);
@@ -142,18 +178,16 @@ std::once_flag init_get_current_micros_fast_flag;
 int64_t initial_micros_offset;
 
 void InitGetCurrentMicrosFast() {
-  auto before = MonoTime::Now();
+  auto before = CoarseMonoClock::Now();
   initial_micros_offset = GetCurrentTimeMicros();
-  auto after = MonoTime::Now();
-  auto mid = after.GetDeltaSinceMin().ToMicroseconds();
-  mid += before.GetDeltaSinceMin().ToMicroseconds();
-  mid /= 2;
+  auto after = CoarseMonoClock::Now();
+  auto mid = MonoDelta(after.time_since_epoch() + before.time_since_epoch()).ToMicroseconds() / 2;
   initial_micros_offset -= mid;
 }
 
-int64_t GetCurrentMicrosFast(MonoTime now) {
+int64_t GetCurrentMicrosFast(CoarseTimePoint now) {
   std::call_once(init_get_current_micros_fast_flag, InitGetCurrentMicrosFast);
-  return initial_micros_offset + now.GetDeltaSinceMin().ToMicroseconds();
+  return initial_micros_offset + MonoDelta(now.time_since_epoch()).ToMicroseconds();
 }
 
 } // namespace
@@ -195,13 +229,13 @@ ScopedAdoptTrace::~ScopedAdoptTrace() {
 
 // Struct which precedes each entry in the trace.
 struct TraceEntry {
-  MonoTime timestamp;
+  CoarseTimePoint timestamp;
 
   // The source file and line number which generated the trace message.
   const char* file_path;
   int line_number;
 
-  uint32_t message_len;
+  size_t message_len;
   TraceEntry* next;
   char message[0];
 
@@ -245,9 +279,37 @@ ThreadSafeArena* Trace::GetAndInitArena() {
   return arena;
 }
 
+scoped_refptr<Trace> Trace::NewTrace() {
+  if (GetAtomicFlag(&FLAGS_enable_tracing)) {
+    return scoped_refptr<Trace>(new Trace());
+  }
+  const int32_t sampling_freq = GetAtomicFlag(&FLAGS_sampled_trace_1_in_n);
+  if (sampling_freq <= 0) {
+    VLOG(2) << "Sampled tracing returns " << nullptr;
+    return nullptr;
+  }
+  static yb::ThreadSafeRandom rng(static_cast<uint32_t>(GetCurrentTimeMicros()));
+
+  auto ret = scoped_refptr<Trace>(rng.OneIn(sampling_freq) ? new Trace() : nullptr);
+  VLOG(2) << "Sampled tracing returns " << (ret ? "non-null" : "nullptr");
+  if (ret) {
+    TRACE_TO(ret.get(), "Sampled trace created probabilistically");
+  }
+  return ret;
+}
+
+scoped_refptr<Trace>  Trace::NewTraceForParent(Trace* parent) {
+  if (parent) {
+    scoped_refptr<Trace> trace(new Trace);
+    parent->AddChildTrace(trace.get());
+    return trace;
+  }
+  return NewTrace();
+}
+
 void Trace::SubstituteAndTrace(
-    const char* file_path, int line_number, MonoTime now, GStringPiece format) {
-  int msg_len = format.size();
+    const char* file_path, int line_number, CoarseTimePoint now, GStringPiece format) {
+  auto msg_len = format.size();
   DCHECK_NE(msg_len, 0) << "Bad format specification";
   TraceEntry* entry = NewEntry(msg_len, file_path, line_number, now);
   if (entry == nullptr) return;
@@ -257,7 +319,7 @@ void Trace::SubstituteAndTrace(
 
 void Trace::SubstituteAndTrace(const char* file_path,
                                int line_number,
-                               MonoTime now,
+                               CoarseTimePoint now,
                                GStringPiece format,
                                const SubstituteArg& arg0, const SubstituteArg& arg1,
                                const SubstituteArg& arg2, const SubstituteArg& arg3,
@@ -276,7 +338,8 @@ void Trace::SubstituteAndTrace(const char* file_path,
   AddEntry(entry);
 }
 
-TraceEntry* Trace::NewEntry(int msg_len, const char* file_path, int line_number, MonoTime now) {
+TraceEntry* Trace::NewEntry(
+    size_t msg_len, const char* file_path, int line_number, CoarseTimePoint now) {
   auto* arena = GetAndInitArena();
   size_t size = offsetof(TraceEntry, message) + msg_len;
   void* dst = arena->AllocateBytesAligned(size, alignof(TraceEntry));
@@ -308,6 +371,10 @@ void Trace::AddEntry(TraceEntry* entry) {
 }
 
 void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
+  Dump(out, 0, include_time_deltas);
+}
+
+void Trace::Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const {
   // Gather a copy of the list of entries under the lock. This is fast
   // enough that we aren't worried about stalling concurrent tracers
   // (whereas doing the logging itself while holding the lock might be
@@ -327,16 +394,14 @@ void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
     trace_start_time_usec = trace_start_time_usec_;
   }
 
-  DoDump(out,
-         include_time_deltas,
-         trace_start_time_usec,
-         entries | boost::adaptors::indirected,
-         &child_traces);
+  DoDump(
+      out, tracing_depth, include_time_deltas, trace_start_time_usec,
+      entries | boost::adaptors::indirected, &child_traces);
 }
 
-string Trace::DumpToString(bool include_time_deltas) const {
+string Trace::DumpToString(int32_t tracing_depth, bool include_time_deltas) const {
   std::stringstream s;
-  Dump(&s, include_time_deltas);
+  Dump(&s, tracing_depth, include_time_deltas);
   return s.str();
 }
 
@@ -368,7 +433,7 @@ PlainTrace::PlainTrace() {
 }
 
 void PlainTrace::Trace(const char *file_path, int line_number, const char *message) {
-  auto timestamp = MonoTime::Now();
+  auto timestamp = CoarseMonoClock::Now();
   {
     std::lock_guard<decltype(mutex_)> lock(mutex_);
     if (size_ < kMaxEntries) {
@@ -382,6 +447,10 @@ void PlainTrace::Trace(const char *file_path, int line_number, const char *messa
 }
 
 void PlainTrace::Dump(std::ostream *out, bool include_time_deltas) const {
+  Dump(out, 0, include_time_deltas);
+}
+
+void PlainTrace::Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const {
   size_t size;
   decltype(trace_start_time_usec_) trace_start_time_usec;
   {
@@ -390,12 +459,14 @@ void PlainTrace::Dump(std::ostream *out, bool include_time_deltas) const {
     trace_start_time_usec = trace_start_time_usec_;
   }
   auto entries = boost::make_iterator_range(entries_, entries_ + size);
-  DoDump(out, include_time_deltas, trace_start_time_usec, entries, /* children */ nullptr);
+  DoDump(
+      out, tracing_depth, include_time_deltas, trace_start_time_usec, entries,
+      /* children */ nullptr);
 }
 
-std::string PlainTrace::DumpToString(bool include_time_deltas) const {
+std::string PlainTrace::DumpToString(int32_t tracing_depth, bool include_time_deltas) const {
   std::stringstream s;
-  Dump(&s, include_time_deltas);
+  Dump(&s, tracing_depth, include_time_deltas);
   return s.str();
 }
 

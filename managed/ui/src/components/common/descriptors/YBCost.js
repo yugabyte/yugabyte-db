@@ -7,19 +7,34 @@ import { YBFormattedNumber } from '../descriptors';
 
 import './stylesheets/YBCost.css';
 
+const hoursPerDay = 24;
+
+const timeFactor = (base, target) => {
+  const timeInHours = {};
+  timeInHours[base] = 1;
+  timeInHours[target] = 1;
+
+  for (const key of Object.keys(timeInHours)) {
+    if (key === 'day') {
+      timeInHours[key] = hoursPerDay;
+    } else if (key === 'month') {
+      timeInHours[key] = hoursPerDay * moment().daysInMonth();
+    }
+  }
+
+  return timeInHours[target] / timeInHours[base];
+};
+
 export default class YBCost extends Component {
   static propTypes = {
-    multiplier: PropTypes.oneOf(['day', 'month', 'hour']).isRequired
+    multiplier: PropTypes.oneOf(['day', 'month', 'hour']).isRequired,
+    base: PropTypes.oneOf(['day', 'month', 'hour'])
   };
 
   render() {
-    const { value, multiplier } = this.props;
-    let finalCost = value || 0;
-    if (multiplier === 'day') {
-      finalCost *= 24;
-    } else if (multiplier === 'month') {
-      finalCost = finalCost * 24 * moment().daysInMonth();
-    }
+    const { value, multiplier, base = 'hour' } = this.props;
+    const finalCost = value ? value * timeFactor(base, multiplier) : 0;
+
     return (
       <YBFormattedNumber
         value={finalCost}

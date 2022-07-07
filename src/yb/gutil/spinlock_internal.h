@@ -48,15 +48,15 @@
  * It may not be used directly by code outside of //base.
  */
 
-#ifndef BASE_SPINLOCK_INTERNAL_H_
-#define BASE_SPINLOCK_INTERNAL_H_
+#ifndef YB_GUTIL_SPINLOCK_INTERNAL_H
+#define YB_GUTIL_SPINLOCK_INTERNAL_H
 
-#include "yb/gutil/basictypes.h"
 #include "yb/gutil/atomicops.h"
+#include "yb/gutil/integral_types.h"
 
+namespace yb {
 namespace base {
 namespace internal {
-
 // SpinLockWait() waits until it can perform one of several transitions from
 // "from" to "to".  It returns when it performs a transition where done==true.
 struct SpinLockWaitTransition {
@@ -76,4 +76,6 @@ void SpinLockDelay(volatile Atomic32 *w, int32 value, int loop);
 
 } // namespace internal
 } // namespace base
-#endif
+} // namespace yb
+
+#endif // YB_GUTIL_SPINLOCK_INTERNAL_H

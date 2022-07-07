@@ -71,6 +71,7 @@ Status BadCPUStatus(const base::CPU& cpu, const char* instruction_set) {
 
 Status CheckCPUFlags() {
   base::CPU cpu;
+#ifndef __aarch64__
   if (!cpu.has_sse42()) {
     return BadCPUStatus(cpu, "SSE4.2");
   }
@@ -78,7 +79,7 @@ Status CheckCPUFlags() {
   if (!cpu.has_ssse3()) {
     return BadCPUStatus(cpu, "SSSE3");
   }
-
+#endif
   return Status::OK();
 }
 

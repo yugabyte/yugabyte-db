@@ -3,14 +3,12 @@ title: Bucket allocation scheme
 linkTitle: Bucket allocation scheme
 headerTitle: The bucket allocation scheme
 description: The bucket allocation scheme. Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: bucket-allocation
     parent: analyzing-a-normal-distribution
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 It might seem that the built-in function `width_bucket()` ([here](https://www.postgresql.org/docs/11/functions-math.html#FUNCTIONS-MATH-FUNC-TABLE) in the PostgreSQL documentation) is tailor-made for this task. But there's a snag.

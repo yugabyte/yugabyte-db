@@ -38,6 +38,18 @@ constexpr T RegularBuildVsSanitizers(T regular_build_value, T sanitizer_value) {
 #endif
 }
 
+template <class T>
+constexpr T RegularBuildVsDebugVsSanitizers(
+    T regular_build_value, T debug_build_value, T sanitizer_value) {
+#if defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+  return sanitizer_value;
+#elif defined(NDEBUG)
+  return regular_build_value;
+#else
+  return debug_build_value;
+#endif
+}
+
 constexpr bool IsSanitizer() {
   return RegularBuildVsSanitizers(false, true);
 }

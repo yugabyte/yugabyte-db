@@ -19,6 +19,7 @@
 #include "yb/rpc/reactor.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 
 namespace yb {

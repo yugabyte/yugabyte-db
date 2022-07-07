@@ -20,17 +20,19 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
-#include "yb/client/yb_op.h"
 #include "yb/client/callbacks.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_rowblock.h"
+
+#include "yb/server/server_fwd.h"
+
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 #include "yb/master/mini_master.h"
 #include "yb/tablet/tablet_fwd.h"
-#include "yb/util/async_util.h"
+#include "yb/util/result.h"
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -48,7 +50,7 @@ class QLDmlTestBase : public MiniClusterTestWithClient<MiniClusterType> {
   virtual ~QLDmlTestBase() {}
 
  protected:
-  void SetFlags();
+  virtual void SetFlags();
   void StartCluster();
 
   using MiniClusterTestWithClient<MiniClusterType>::client_;
@@ -64,8 +66,17 @@ namespace kv_table_test {
 constexpr const auto kKeyColumn = "key";
 constexpr const auto kValueColumn = "value";
 
+YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
+
+void BuildSchema(Partitioning partitioning, Schema* schema);
+
+Status CreateTable(
+    const Schema& schema, int num_tablets, YBClient* client,
+    TableHandle* table, const YBTableName& table_name = kTableName);
+
 void CreateTable(
-    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table);
+    Transactional transactional, int num_tablets, YBClient* client, TableHandle* table,
+    const YBTableName& table_name = kTableName);
 
 void CreateIndex(
     Transactional transactional, int indexed_column_index, bool use_mangled_names,
@@ -96,7 +107,8 @@ Result<int32_t> SelectRow(
 Result<std::map<int32_t, int32_t>> SelectAllRows(TableHandle* table, const YBSessionPtr& session);
 
 Result<YBqlWriteOpPtr> Increment(
-    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1);
+    TableHandle* table, const YBSessionPtr& session, int32_t key, int32_t delta = 1,
+    Flush flush = Flush::kFalse);
 
 } // namespace kv_table_test
 
@@ -105,9 +117,16 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
  protected:
   void CreateTable(Transactional transactional);
 
+  Status CreateTable(const Schema& schema);
+
   void CreateIndex(Transactional transactional,
                    int indexed_column_index = 1,
                    bool use_mangled_names = true);
+
+  void PrepareIndex(Transactional transactional,
+                    const YBTableName& index_name,
+                    int indexed_column_index = 1,
+                    bool use_mangled_names = true);
 
   Result<YBqlWriteOpPtr> WriteRow(
       const YBSessionPtr& session, int32_t key, int32_t value,
@@ -157,8 +176,9 @@ class KeyValueTableTest : public QLDmlTestBase<MiniClusterType> {
 };
 
 extern template class KeyValueTableTest<MiniCluster>;
+extern template class KeyValueTableTest<ExternalMiniCluster>;
 
-CHECKED_STATUS CheckOp(YBqlOp* op);
+Status CheckOp(YBqlOp* op);
 
 }  // namespace client
 }  // namespace yb

@@ -31,23 +31,15 @@
 //
 
 #include <glog/logging.h>
+#include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/hexdump.h"
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/random.h"
-#include "yb/util/stopwatch.h"
+#include "yb/util/stopwatch.h" // Required in NDEBUG mode
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-
-// Add operator<< to print pairs, used in a test below.
-// This has to be done in the 'std' namespace due to the way that
-// template resolution works.
-namespace std {
-template<typename T1, typename T2>
-ostream &operator <<(ostream &os, const pair<T1, T2> &pair) {
-  return os << "(" << pair.first << ", " << pair.second << ")";
-}
-}
 
 namespace yb {
 

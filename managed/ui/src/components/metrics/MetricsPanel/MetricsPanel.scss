@@ -2,10 +2,22 @@
 
 @import '../../../_style/colors.scss';
 
+.prometheus-link-tooltip {
+  font-size: 14px;
+  padding: 8px 14px;
+}
+
 .metrics-panel {
   padding: 1px;
   background-color: $YB_GRAY;
   margin: 5px 7.5px;
+  position: relative;
+
+  .prometheus-link {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+  }
 }
 
 .widget-panel {
@@ -40,6 +52,61 @@
     }
     .yb-resource-count {
       text-align: center;
+    }
+  }
+}
+
+.query-display-panel {
+  padding-bottom: 30px;
+
+  &__link {
+    font-size: larger;
+    font-weight: 500;
+  }
+
+  .react-bs-table-container {
+    margin-top: 15px;
+
+    thead {
+      border-bottom: 1px solid $YB_GRAY;
+    }
+
+    td {
+      position: relative;
+
+      pre {
+        margin: 0 !important;
+      }
+    }
+
+    .metric-bar {
+      background: #322965;
+      height: 10px;
+      position: absolute;
+      left: 100px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .whiskers-plot {
+      position: absolute;
+      border-right: 1px solid $YB_BRAND_ORANGE;
+      border-left: 1px solid $YB_BRAND_ORANGE;
+      background: linear-gradient(180deg,
+        rgba(0,0,0,0) calc(50% - 1px),
+        $YB_BRAND_ORANGE calc(50%),
+        rgba(0,0,0,0) calc(50% + 1px)
+      );
+      height: 8px;
+      width: 200px;
+      top: 50%;
+      left: 100px;
+      transform: translateY(-50%);
+    }
+  }
+
+  @media screen and (max-width: 1350px) {
+    .top-queries-table {
+      overflow-x: scroll !important;
     }
   }
 }

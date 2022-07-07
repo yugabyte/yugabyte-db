@@ -21,18 +21,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include <stdio.h>
 
 #ifndef ROCKSDB_LITE
+
 #include <algorithm>
-#include <cmath>
 #include <vector>
 
-#include "yb/rocksdb/table.h"
 #include "yb/rocksdb/table_properties.h"
-#include "yb/rocksdb/utilities/table_properties_collectors.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/utilities/table_properties_collectors/compact_on_deletion_collector.h"
+#include "yb/rocksdb/utilities/table_properties_collectors.h"
+
 #include "yb/util/stopwatch.h"
 #include "yb/util/tsan_util.h"
 
@@ -87,12 +85,12 @@ int main(int argc, char** argv) {
         int deletions = 0;
         for (int i = 0; i < kPaddedWindowSize; ++i) {
           if (i % kSample < delete_rate) {
-            collector->AddUserKey("hello", "rocksdb",
-                                  rocksdb::kEntryDelete, 0, 0);
+            CHECK_OK(collector->AddUserKey(
+                "hello", "rocksdb", rocksdb::kEntryDelete, 0, 0));
             deletions++;
           } else {
-            collector->AddUserKey("hello", "rocksdb",
-                                  rocksdb::kEntryPut, 0, 0);
+            CHECK_OK(collector->AddUserKey(
+                "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
           }
         }
         if (collector->NeedCompact() !=
@@ -104,7 +102,7 @@ int main(int argc, char** argv) {
                   kWindowSize, kNumDeletionTrigger);
           assert(false);
         }
-        collector->Finish(nullptr);
+        CHECK_OK(collector->Finish(nullptr));
       }
     }
 
@@ -120,25 +118,25 @@ int main(int argc, char** argv) {
         for (int section = 0; section < 5; ++section) {
           int initial_entries = rnd.Uniform(kWindowSize) + kWindowSize;
           for (int i = 0; i < initial_entries; ++i) {
-            collector->AddUserKey("hello", "rocksdb",
-                                  rocksdb::kEntryPut, 0, 0);
+            CHECK_OK(collector->AddUserKey(
+                "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
           }
         }
         for (int i = 0; i < kPaddedWindowSize; ++i) {
           if (i % kSample < delete_rate) {
-            collector->AddUserKey("hello", "rocksdb",
-                                  rocksdb::kEntryDelete, 0, 0);
+            CHECK_OK(collector->AddUserKey(
+                "hello", "rocksdb", rocksdb::kEntryDelete, 0, 0));
             deletions++;
           } else {
-            collector->AddUserKey("hello", "rocksdb",
-                                  rocksdb::kEntryPut, 0, 0);
+            CHECK_OK(collector->AddUserKey(
+                "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
           }
         }
         for (int section = 0; section < 5; ++section) {
           int ending_entries = rnd.Uniform(kWindowSize) + kWindowSize;
           for (int i = 0; i < ending_entries; ++i) {
-            collector->AddUserKey("hello", "rocksdb",
-                                  rocksdb::kEntryPut, 0, 0);
+            CHECK_OK(collector->AddUserKey(
+               "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
           }
         }
         if (collector->NeedCompact() != (deletions >= kNumDeletionTrigger) &&
@@ -150,7 +148,7 @@ int main(int argc, char** argv) {
                   kNumDeletionTrigger);
           assert(false);
         }
-        collector->Finish(nullptr);
+        CHECK_OK(collector->Finish(nullptr));
       }
     }
 
@@ -169,11 +167,11 @@ int main(int argc, char** argv) {
         for (int section = 0; section < 200; ++section) {
           for (int i = 0; i < kPaddedWindowSize; ++i) {
             if (i < kDeletionsPerSection) {
-              collector->AddUserKey("hello", "rocksdb",
-                                    rocksdb::kEntryDelete, 0, 0);
+              CHECK_OK(collector->AddUserKey(
+                  "hello", "rocksdb", rocksdb::kEntryDelete, 0, 0));
             } else {
-              collector->AddUserKey("hello", "rocksdb",
-                                    rocksdb::kEntryPut, 0, 0);
+              CHECK_OK(collector->AddUserKey(
+                  "hello", "rocksdb", rocksdb::kEntryPut, 0, 0));
             }
           }
         }
@@ -184,7 +182,7 @@ int main(int argc, char** argv) {
                   kWindowSize, kNumDeletionTrigger);
           assert(false);
         }
-        collector->Finish(nullptr);
+        CHECK_OK(collector->Finish(nullptr));
       }
     }
   }

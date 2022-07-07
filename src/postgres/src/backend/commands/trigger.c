@@ -162,6 +162,24 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 			  Oid funcoid, Oid parentTriggerOid, Node *whenClause,
 			  bool isInternal, bool in_partition)
 {
+	return
+		CreateTriggerFiringOn(stmt, queryString, relOid, refRelOid,
+							  constraintOid, indexOid, funcoid,
+							  parentTriggerOid, whenClause, isInternal,
+							  in_partition, TRIGGER_FIRES_ON_ORIGIN);
+}
+
+/*
+ * Like the above; additionally the firing condition
+ * (always/origin/replica/disabled) can be specified.
+ */
+ObjectAddress
+CreateTriggerFiringOn(CreateTrigStmt *stmt, const char *queryString,
+					  Oid relOid, Oid refRelOid, Oid constraintOid,
+					  Oid indexOid, Oid funcoid, Oid parentTriggerOid,
+					  Node *whenClause, bool isInternal, bool in_partition,
+					  char trigger_fires_when)
+{
 	int16		tgtype;
 	int			ncolumns;
 	int16	   *columns;
@@ -829,7 +847,7 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 															 CStringGetDatum(trigname));
 	values[Anum_pg_trigger_tgfoid - 1] = ObjectIdGetDatum(funcoid);
 	values[Anum_pg_trigger_tgtype - 1] = Int16GetDatum(tgtype);
-	values[Anum_pg_trigger_tgenabled - 1] = CharGetDatum(TRIGGER_FIRES_ON_ORIGIN);
+	values[Anum_pg_trigger_tgenabled - 1] = trigger_fires_when;
 	values[Anum_pg_trigger_tgisinternal - 1] = BoolGetDatum(isInternal || in_partition);
 	values[Anum_pg_trigger_tgconstrrelid - 1] = ObjectIdGetDatum(constrrelid);
 	values[Anum_pg_trigger_tgconstrindid - 1] = ObjectIdGetDatum(indexOid);
@@ -1172,11 +1190,11 @@ CreateTrigger(CreateTrigStmt *stmt, const char *queryString,
 			if (found_whole_row)
 				elog(ERROR, "unexpected whole-row reference found in trigger WHEN clause");
 
-			CreateTrigger(childStmt, queryString,
-						  partdesc->oids[i], refRelOid,
-						  InvalidOid, indexOnChild,
-						  funcoid, trigoid, qual,
-						  isInternal, true);
+			CreateTriggerFiringOn(childStmt, queryString,
+								  partdesc->oids[i], refRelOid,
+								  InvalidOid, indexOnChild,
+								  funcoid, trigoid, qual,
+								  isInternal, true, trigger_fires_when);
 
 			heap_close(childTbl, NoLock);
 
@@ -2357,7 +2375,7 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 					Instrumentation *instr,
 					MemoryContext per_tuple_context)
 {
-	LOCAL_FCINFO(fcinfo, 0);
+	FunctionCallInfoData fcinfo;
 	PgStat_FunctionCallUsage fcusage;
 	Datum		result;
 	MemoryContext oldContext;
@@ -2402,15 +2420,15 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 	/*
 	 * Call the function, passing no arguments but setting a context.
 	 */
-	InitFunctionCallInfoData(*fcinfo, finfo, 0,
+	InitFunctionCallInfoData(fcinfo, finfo, 0,
 							 InvalidOid, (Node *) trigdata, NULL);
 
-	pgstat_init_function_usage(fcinfo, &fcusage);
+	pgstat_init_function_usage(&fcinfo, &fcusage);
 
 	MyTriggerDepth++;
 	PG_TRY();
 	{
-		result = FunctionCallInvoke(fcinfo);
+		result = FunctionCallInvoke(&fcinfo);
 	}
 	PG_CATCH();
 	{
@@ -2428,11 +2446,11 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 	 * Trigger protocol allows function to return a null pointer, but NOT to
 	 * set the isnull result flag.
 	 */
-	if (fcinfo->isnull)
+	if (fcinfo.isnull)
 		ereport(ERROR,
 				(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
 				 errmsg("trigger function %u returned null value",
-						fcinfo->flinfo->fn_oid)));
+						fcinfo.flinfo->fn_oid)));
 
 	/*
 	 * If doing EXPLAIN ANALYZE, stop charging time to this trigger, and count
@@ -4437,6 +4455,7 @@ afterTriggerMarkEvents(AfterTriggerEventList *events,
 					   bool immediate_only)
 {
 	bool		found = false;
+	bool		deferred_found = false;
 	AfterTriggerEvent event;
 	AfterTriggerEventChunk *chunk;
 
@@ -4472,12 +4491,23 @@ afterTriggerMarkEvents(AfterTriggerEventList *events,
 		 */
 		if (defer_it && move_list != NULL)
 		{
+			deferred_found = true;
 			/* add it to move_list */
 			afterTriggerAddEvent(move_list, event, evtshared);
 			/* mark original copy "done" so we don't do it again */
 			event->ate_flags |= AFTER_TRIGGER_DONE;
 		}
 	}
+
+	/*
+	 * We could allow deferred triggers if, before the end of the
+	 * security-restricted operation, we were to verify that a SET CONSTRAINTS
+	 * ... IMMEDIATE has fired all such triggers.  For now, don't bother.
+	 */
+	if (deferred_found && InSecurityRestrictedOperation())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("cannot fire deferred trigger within security-restricted operation")));
 
 	return found;
 }
@@ -6002,6 +6032,11 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 							modifiedCols, oldtup, newtup))
 			continue;
 
+		const bool is_fk_trigger_on_yb_table = IsYBBackedRelation(rel) &&
+				RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK;
+		if (estate->yb_es_is_fk_check_disabled && is_fk_trigger_on_yb_table)
+			continue;
+
 		/*
 		 * If the trigger is a foreign key enforcement trigger, there are
 		 * certain cases where we can skip queueing the event because we can
@@ -6110,26 +6145,9 @@ AfterTriggerSaveEvent(EState *estate, ResultRelInfo *relinfo,
 			}
 		}
 
-		if (IsYBBackedRelation(rel) && RI_FKey_trigger_type(trigger->tgfoid) == RI_TRIGGER_FK)
-		{
-			YBCPgYBTupleIdDescriptor *descr = YBBuildFKTupleIdDescriptor(trigger, rel, newtup);
-			if (descr)
-			{
-				/*
-				 * Foreign key with at least one null value of real (non system) column
-				 * will not be checked, no need to add it into the cache.
-				 */
-				bool null_found = false;
-				for (YBCPgAttrValueDescriptor *attr = descr->attrs,
-					*end = descr->attrs + descr->nattrs;
-					attr != end && !null_found; ++attr)
-					null_found = attr->is_null && (attr->attr_num > 0);
+		if (is_fk_trigger_on_yb_table)
+			YbAddTriggerFKReferenceIntent(trigger, rel, newtup);
 
-				if (!null_found)
-					HandleYBStatus(YBCAddForeignKeyReferenceIntent(descr));
-				pfree(descr);
-			}
-		}
 		afterTriggerAddEvent(
 				&afterTriggers.query_stack[afterTriggers.query_depth].events, &new_event, &new_shared);
 	}

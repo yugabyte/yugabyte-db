@@ -24,6 +24,8 @@
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/db/db_test_util.h"
 
+#include "yb/util/test_macros.h"
+
 DECLARE_bool(TEST_exit_on_finish);
 
 const string kDbName = "/lbd_cmd_test";

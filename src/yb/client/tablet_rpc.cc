@@ -15,19 +15,32 @@
 
 #include "yb/client/tablet_rpc.h"
 
-#include "yb/common/wire_protocol.h"
-
+#include "yb/client/client-internal.h"
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
 #include "yb/client/meta_cache.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/rpc/network_error.h"
+#include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_header.pb.h"
+
 #include "yb/tserver/tserver_error.h"
+#include "yb/tserver/tserver_forward_service.proxy.h"
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/flag_tags.h"
-#include "yb/util/scope_exit.h"
+#include "yb/util/logging.h"
+#include "yb/util/result.h"
+#include "yb/util/trace.h"
 
 DEFINE_test_flag(bool, assert_local_op, false,
                  "When set, we crash if we received an operation that cannot be served locally.");
+DEFINE_bool(update_all_tablets_upon_network_failure, true, "If this is enabled, then "
+            "upon receiving a network error, we mark the remote server as being unreachable for "
+            "all tablets in metacache, instead of the single tablet which issued the rpc.");
+TAG_FLAG(update_all_tablets_upon_network_failure, runtime);
 DEFINE_int32(force_lookup_cache_refresh_secs, 0, "When non-zero, specifies how often we send a "
              "GetTabletLocations request to the master leader to update the tablet replicas cache. "
              "This request is only sent if we are processing a ConsistentPrefix read.");
@@ -40,6 +53,8 @@ DEFINE_int32(lookup_cache_refresh_secs, 60, "When non-zero, specifies how often 
 DEFINE_test_flag(int32, assert_failed_replicas_less_than, 0,
                  "If greater than 0, this process will crash if the number of failed replicas for "
                  "a RemoteTabletServer is greater than the specified number.");
+
+DECLARE_bool(ysql_forward_rpcs_to_local_tserver);
 
 using namespace std::placeholders;
 
@@ -55,7 +70,8 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
                              RemoteTablet* tablet,
                              const std::shared_ptr<const YBTable>& table,
                              rpc::RpcRetrier* retrier,
-                             Trace* trace)
+                             Trace* trace,
+                             master::IncludeInactive include_inactive)
       : client_(client),
         command_(command),
         rpc_(rpc),
@@ -64,6 +80,7 @@ TabletInvoker::TabletInvoker(const bool local_tserver_only,
         table_(table),
         retrier_(retrier),
         trace_(trace),
+        include_inactive_(include_inactive),
         local_tserver_only_(local_tserver_only),
         consistent_prefix_(consistent_prefix) {}
 
@@ -112,7 +129,7 @@ void TabletInvoker::SelectTabletServer()  {
   // 6. Repeat steps 1-5 until the write succeeds, fails for other reasons,
   //    or the write's deadline expires.
   current_ts_ = tablet_->LeaderTServer();
-  if (current_ts_ && ContainsKey(followers_, current_ts_)) {
+  if (current_ts_ && followers_.count(current_ts_)) {
     VLOG(2) << "Tablet " << tablet_id_ << ": We have a follower for a leader: "
             << current_ts_->ToString();
 
@@ -129,7 +146,7 @@ void TabletInvoker::SelectTabletServer()  {
     vector<RemoteTabletServer*> replicas;
     tablet_->GetRemoteTabletServers(&replicas);
     for (RemoteTabletServer* ts : replicas) {
-      if (!ContainsKey(followers_, ts)) {
+      if (!followers_.count(ts)) {
         current_ts_ = ts;
         break;
       }
@@ -144,6 +161,7 @@ void TabletInvoker::SelectTabletServer()  {
   } else {
     VLOG(4) << "Selected TServer " << current_ts_->ToString() << " as leader for " << tablet_id_;
   }
+  VTRACE_TO(1, trace_, "Selected $0", (current_ts_ ? current_ts_->ToString() : "none"));
 }
 
 void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
@@ -156,7 +174,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   }
 
   if (!tablet_) {
-    client_->LookupTabletById(tablet_id_, table_, retrier_->deadline(),
+    client_->LookupTabletById(tablet_id_, table_, include_inactive_, retrier_->deadline(),
                               std::bind(&TabletInvoker::InitialLookupTabletDone, this, _1),
                               UseCache::kTrue);
     return;
@@ -191,6 +209,7 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     if (refresh_cache) {
       client_->LookupTabletById(tablet_id_,
                                 table_,
+                                include_inactive_,
                                 retrier_->deadline(),
                                 std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                                 UseCache::kFalse);
@@ -216,11 +235,10 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
   // Put another way, we don't care about the lookup results at all; we're
   // just using it to fetch the latest consensus configuration information.
   //
-  // TODO(tsplit): When we support tablet splits, we should let the lookup shift
-  // the write to another tablet (i.e. if it's since been split).
   if (!current_ts_) {
     client_->LookupTabletById(tablet_id_,
                               table_,
+                              include_inactive_,
                               retrier_->deadline(),
                               std::bind(&TabletInvoker::LookupTabletCb, this, _1),
                               UseCache::kTrue);
@@ -239,14 +257,28 @@ void TabletInvoker::Execute(const std::string& tablet_id, bool leader_only) {
     return;
   }
 
-  VLOG(2) << "Tablet " << tablet_id_ << ": Writing batch to replica "
-          << current_ts_->ToString();
+  // Now that the current_ts_ is set, check if we need to send the request to the node local forward
+  // proxy.
+  should_use_local_node_proxy_ = ShouldUseNodeLocalForwardProxy();
+
+  VLOG(2) << "Tablet " << tablet_id_ << ": Sending " << command_->ToString() << " to replica "
+          << current_ts_->ToString() << " using local node forward proxy "
+          << should_use_local_node_proxy_;
 
   rpc_->SendRpcToTserver(retrier_->attempt_num());
 }
 
+bool TabletInvoker::ShouldUseNodeLocalForwardProxy() {
+  DCHECK(current_ts_);
+  return FLAGS_ysql_forward_rpcs_to_local_tserver &&
+         client().GetNodeLocalForwardProxy() &&
+         !(current_ts_->ProxyEndpoint() == client().GetMasterLeaderAddress()) &&
+         !(current_ts_->ProxyEndpoint() == client().GetNodeLocalTServerHostPort());
+}
+
 Status TabletInvoker::FailToNewReplica(const Status& reason,
                                        const tserver::TabletServerErrorPB* error_code) {
+  TRACE_TO(trace_, "FailToNewReplica($0)", reason.ToString());
   if (ErrorCode(error_code) == tserver::TabletServerErrorPB::STALE_FOLLOWER) {
     VLOG(1) << "Stale follower for " << command_->ToString() << " just retry";
   } else if (ErrorCode(error_code) == tserver::TabletServerErrorPB::NOT_THE_LEADER) {
@@ -268,6 +300,13 @@ Status TabletInvoker::FailToNewReplica(const Status& reason,
   } else {
     VLOG(1) << "Failing " << command_->ToString() << " to a new replica: " << reason
             << ", old replica: " << yb::ToString(current_ts_);
+
+    if (GetAtomicFlag(&FLAGS_update_all_tablets_upon_network_failure) &&
+        rpc::NetworkError(reason) == rpc::NetworkErrorCode::kConnectFailed) {
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Marking TServer " << current_ts_->ToString()
+                                      << " as unreachable due to " << reason.ToString();
+      client_->data_->meta_cache_->MarkTSFailed(current_ts_, reason);
+    }
 
     bool found = !tablet_ || tablet_->MarkReplicaFailed(current_ts_, reason);
     if (!found) {
@@ -300,6 +339,7 @@ bool TabletInvoker::Done(Status* status) {
         *status = STATUS(Aborted, "Retrier finished");
       }
     }
+    TRACE_TO(trace_, "Done($0)", status->ToString(false));
     return true;
   }
 
@@ -338,7 +378,7 @@ bool TabletInvoker::Done(Status* status) {
   }
 
   const bool is_tablet_split = ErrorCode(rsp_err) == tserver::TabletServerErrorPB::TABLET_SPLIT;
-  if (is_tablet_split || ClientError(*status) == ClientErrorCode::kTablePartitionsAreStale) {
+  if (is_tablet_split || ClientError(*status) == ClientErrorCode::kTablePartitionListIsStale) {
     // Replace status error with TryAgain, so upper layer retry request after refreshing
     // table partitioning metadata.
     *status = status->CloneAndReplaceCode(Status::kTryAgain);
@@ -414,7 +454,8 @@ bool TabletInvoker::Done(Status* status) {
     if (status->IsExpired() && rpc_->ShouldRetryExpiredRequest()) {
       client_->MaybeUpdateMinRunningRequestId(
           tablet_->tablet_id(), MinRunningRequestIdStatusData(*status).value());
-      *status = STATUS(TryAgain, status->message());
+      *status = STATUS(
+          TryAgain, status->message(), ClientError(ClientErrorCode::kExpiredRequestToBeRetried));
     }
     std::string current_ts_string;
     if (current_ts_) {
@@ -468,7 +509,8 @@ std::shared_ptr<tserver::TabletServerServiceProxy> TabletInvoker::proxy() const 
 }
 
 void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
-  VLOG(1) << "LookupTabletCb(" << yb::ToString(result) << ")";
+  VLOG_WITH_FUNC(1) << AsString(result) << ", command: " << command_->ToString()
+                    << ", retrier: " << retrier_->ToString();
 
   if (result.ok()) {
 #ifndef DEBUG
@@ -484,8 +526,9 @@ void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   // leader election doesn't depend on the existence of a master at all.
   // Unless we know that this status is persistent.
   // For instance if tablet was deleted, we would always receive "Not found".
-  if (!result.ok() && (result.status().IsNotFound() ||
-                       ClientError(result.status()) == ClientErrorCode::kTablePartitionsAreStale)) {
+  if (!result.ok() &&
+      (result.status().IsNotFound() ||
+       ClientError(result.status()) == ClientErrorCode::kTablePartitionListIsStale)) {
     command_->Finished(result.status());
     return;
   }
@@ -499,6 +542,32 @@ void TabletInvoker::LookupTabletCb(const Result<RemoteTabletPtr>& result) {
   if (!retry_status.ok()) {
     command_->Finished(!result.ok() ? result.status() : retry_status);
   }
+}
+
+void TabletInvoker::WriteAsync(const tserver::WriteRequestPB& req,
+                               tserver::WriteResponsePB *resp,
+                               rpc::RpcController *controller,
+                               std::function<void()>&& cb) {
+  if (should_use_local_node_proxy_) {
+    client().GetNodeLocalForwardProxy()->WriteAsync(req, resp, controller, std::move(cb));
+  } else {
+    current_ts_->proxy()->WriteAsync(req, resp, controller, std::move(cb));
+  }
+}
+
+void TabletInvoker::ReadAsync(const tserver::ReadRequestPB& req,
+                              tserver::ReadResponsePB *resp,
+                              rpc::RpcController *controller,
+                              std::function<void()>&& cb) {
+  if (should_use_local_node_proxy_) {
+    client().GetNodeLocalForwardProxy()->ReadAsync(req, resp, controller, std::move(cb));
+  } else {
+    current_ts_->proxy()->ReadAsync(req, resp, controller, std::move(cb));
+  }
+}
+
+std::string TabletInvoker::FollowerData::ToString() const {
+  return Format("{ status: $0 time: $1 }", status, CoarseMonoClock::now() - time);
 }
 
 Status ErrorStatus(const tserver::TabletServerErrorPB* error) {

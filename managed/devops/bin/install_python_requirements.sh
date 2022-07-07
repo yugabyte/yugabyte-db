@@ -51,8 +51,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$should_create_package" == "1" ]]; then
-  log "Removing any existing pyenv"
-  rm -rf "$virtualenv_dir"
+  log "Creating wheels package $YB_PYTHON_MODULES_PACKAGE"
+  create_pymodules_package
+  exit
+fi
+
+if [[ $should_use_package == "1" && -f "$YB_PYTHON_MODULES_PACKAGE" ]]; then
+  log "Installing from $YB_PYTHON_MODULES_PACKAGE"
+  install_pymodules_package
+  log "Finished installing to $YB_INSTALLED_MODULES_DIR"
+  exit
 fi
 
 if should_use_virtual_env; then
@@ -60,15 +68,19 @@ if should_use_virtual_env; then
   fix_virtualenv_permissions
 fi
 
-if [[ $should_use_package == "1" && -f "$virtualenv_package" ]]; then
-  log "Found virtualenv package $virtualenv_package"
-  tar -xf $virtualenv_package
+if [[ $should_use_package == "1" && -f "$YB_PYTHON_MODULES_PACKAGE" ]]; then
+  log "Found virtualenv package $YB_PYTHON_MODULES_PACKAGE"
+  tar -xf $YB_PYTHON_MODULES_PACKAGE
 else
   if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
     # looks like there is some issue with setuptools and virtualenv on python2.
     # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
     pip_install "setuptools<45"
   fi
+
+  # faster pip install of yb-cassandra-driver without a full compilation
+  # https://docs.datastax.com/en/developer/python-driver/3.16/installation/
+  export CASS_DRIVER_NO_CYTHON=1
 
   pip_install -r "$FROZEN_REQUIREMENTS_FILE"
   log "Installing ybops package"
@@ -106,9 +118,4 @@ else
           "$virtualenv_dir."
     fi
   fi
-fi
-
-if [[ $should_create_package == "1" ]]; then
-  log "Creating virtualenv package $virtualenv_package"
-  create_virtualenv_package
 fi

@@ -4,6 +4,8 @@ import React, { Component } from 'react';
 import { isFunction } from 'lodash';
 import { YBLabel } from '../../../../components/common/descriptors';
 
+import './stylesheets/YBSelect.scss';
+
 // TODO: Rename to YBSelect after changing prior YBSelect references.
 // TODO: Make default export after checking all corresponding imports.
 

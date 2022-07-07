@@ -10,89 +10,99 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Collection;
-import java.util.UUID;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.Common.HostPortPB;
-import org.yb.client.ModifyMasterClusterConfigBlacklist;
-
-import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+import org.apache.commons.collections.CollectionUtils;
+import org.yb.CommonNet.HostPortPB;
+import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;
-import play.api.Play;
 
 // This class runs the task that helps modify the existing list of blacklisted servers maintained
 // on the master leader.
+@Slf4j
 public class ModifyBlackList extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ModifyBlackList.class);
 
-  // The YB client.
-  public YBClientService ybService = null;
+  @Inject
+  protected ModifyBlackList(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for placement info update task.
   public static class Params extends UniverseTaskParams {
-    // When true, the collection of nodes below are added to the blacklist on the master leader,
-    // else they are removed.
-    public boolean isAdd;
+    // The list of nodes to be added to the blacklist.
+    public Collection<NodeDetails> addNodes;
 
-    // The list of nodes being added or removed to this universes' configuration.
-    public Collection<NodeDetails> nodes;
+    // The list of nodes to be removed from the blacklist.
+    public Collection<NodeDetails> removeNodes;
+
+    // When true, the tablet leaders on this node will move to another node, otherwise, move all
+    // tablets on this node to other nodes
+    public boolean isLeaderBlacklist;
   }
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
-  }
-
-  @Override
-  public void initialize(ITaskParams params) {
-    super.initialize(params);
-    ybService = Play.current().injector().instanceOf(YBClientService.class);
+    return (Params) taskParams;
   }
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ", isAdd=" +  taskParams().isAdd +
-        ", numNodes=" +  taskParams().nodes.size() + ")";
+    return super.getName()
+        + "("
+        + taskParams().universeUUID
+        + ", numAddNodes="
+        + (CollectionUtils.isEmpty(taskParams().addNodes) ? 0 : taskParams().addNodes.size())
+        + ", numRemoveNodes="
+        + (CollectionUtils.isEmpty(taskParams().removeNodes) ? 0 : taskParams().removeNodes.size())
+        + ", isLeaderBlacklist="
+        + taskParams().isLeaderBlacklist
+        + ")";
   }
 
   @Override
   public void run() {
-    Universe universe = Universe.get(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
     String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificate();
+    String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
-      LOG.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
-      List<HostPortPB> modifyHosts = new ArrayList<HostPortPB>();
-      for (NodeDetails node : taskParams().nodes) {
-        String ip = node.cloudInfo.private_ip;
-        if (ip == null) {
-          NodeDetails onDiskNode = universe.getNode(node.nodeName);
-          ip = onDiskNode.cloudInfo.private_ip;
-        }
-        HostPortPB.Builder hpb =  HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
-        modifyHosts.add(hpb.build());
-      }
+      log.info("Running {}: masterHostPorts={}.", getName(), masterHostPorts);
+      List<HostPortPB> addHosts = getHostPortPBs(universe, taskParams().addNodes);
+      List<HostPortPB> removeHosts = getHostPortPBs(universe, taskParams().removeNodes);
       client = ybService.getClient(masterHostPorts, certificate);
       ModifyMasterClusterConfigBlacklist modifyBlackList =
-        new ModifyMasterClusterConfigBlacklist(client, modifyHosts, taskParams().isAdd);
+          new ModifyMasterClusterConfigBlacklist(
+              client, addHosts, removeHosts, taskParams().isLeaderBlacklist);
       modifyBlackList.doCall();
       universe.incrementVersion();
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       ybService.closeClient(client, masterHostPorts);
     }
+  }
+
+  private List<HostPortPB> getHostPortPBs(Universe universe, Collection<NodeDetails> nodes) {
+    List<HostPortPB> hostPorts = null;
+    if (CollectionUtils.isNotEmpty(nodes)) {
+      hostPorts = new ArrayList<>(nodes.size());
+      for (NodeDetails node : nodes) {
+        String ip = Util.getNodeIp(universe, node);
+        HostPortPB.Builder hpb = HostPortPB.newBuilder().setPort(node.tserverRpcPort).setHost(ip);
+        hostPorts.add(hpb.build());
+      }
+    }
+    return hostPorts;
   }
 }

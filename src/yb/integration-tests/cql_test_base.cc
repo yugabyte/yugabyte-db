@@ -13,24 +13,50 @@
 
 #include "yb/integration-tests/cql_test_base.h"
 
+#include <memory>
+
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/mini_cluster.h"
+#include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
 #include "yb/rpc/messenger.h"
 
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tablet_server.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 
-void CqlTestBase::SetUp() {
-  YBMiniClusterTestBase<MiniCluster>::SetUp();
+template <class MiniClusterType>
+void CqlTestBase<MiniClusterType>::SetupClusterOpt() {
+  mini_cluster_opt_.num_masters = num_masters();
+  mini_cluster_opt_.num_tablet_servers = num_tablet_servers();
+}
 
-  MiniClusterOptions options;
-  options.num_tablet_servers = 3;
-  cluster_ = std::make_unique<MiniCluster>(env_.get(), options);
+template <>
+void CqlTestBase<ExternalMiniCluster>::SetUp() {
+  YBMiniClusterTestBase<ExternalMiniCluster>::SetUp();
+  SetupClusterOpt();
+  SetUpFlags();
+  cluster_.reset(new ExternalMiniCluster(mini_cluster_opt_));
   ASSERT_OK(cluster_->Start());
 
-  ASSERT_OK(CreateClient());
+  ASSERT_OK(MiniClusterTestWithClient<ExternalMiniCluster>::CreateClient());
 
-  auto* mini_tserver = cluster_->mini_tablet_server(0);
+  std::vector<std::string> hosts;
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+    hosts.push_back(cluster_->tablet_server(i)->bind_host());
+  }
+
+  driver_ = std::make_unique<CppCassandraDriver>(
+      hosts, cluster_->tablet_server(0)->cql_rpc_port(), UsePartitionAwareRouting::kFalse);
+}
+
+template <>
+Status CqlTestBase<MiniCluster>::StartCQLServer() {
+  auto* mini_tserver = YBMiniClusterTestBase<MiniCluster>::cluster_->mini_tablet_server(0);
   auto* tserver = mini_tserver->server();
 
   const auto& tserver_options = tserver->options();
@@ -39,24 +65,73 @@ void CqlTestBase::SetUp() {
   cql_server_options.master_addresses_flag = tserver_options.master_addresses_flag;
   cql_server_options.SetMasterAddresses(tserver_options.GetMasterAddresses());
 
-  auto cql_port = cluster_->AllocateFreePort();
-  auto cql_host = mini_tserver->bound_rpc_addr().address().to_string();
-  cql_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cql_host, cql_port);
+  if (cql_port_ == 0) {
+    cql_port_ = YBMiniClusterTestBase<MiniCluster>::cluster_->AllocateFreePort();
+  }
+  cql_host_ = mini_tserver->bound_rpc_addr().address().to_string();
+  cql_server_options.rpc_opts.rpc_bind_addresses = Format("$0:$1", cql_host_, cql_port_);
 
   cql_server_ = std::make_unique<cqlserver::CQLServer>(
-      cql_server_options, &client_->messenger()->io_service(), tserver);
+      cql_server_options,
+      &client_->messenger()->io_service(), tserver);
 
-  ASSERT_OK(cql_server_->Start());
-
-  driver_ = std::make_unique<CppCassandraDriver>(
-      std::vector<std::string>{ cql_host }, cql_port, false);
+  return cql_server_->Start();
 }
 
-void CqlTestBase::DoTearDown() {
+template <>
+void CqlTestBase<MiniCluster>::SetUp() {
+  YBMiniClusterTestBase<MiniCluster>::SetUp();
+  SetupClusterOpt();
+  SetUpFlags();
+  cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt_);
+  ASSERT_OK(cluster_->Start());
+  ASSERT_OK(MiniClusterTestWithClient<MiniCluster>::CreateClient());
+
+  ASSERT_OK(StartCQLServer());
+
+  driver_ = std::make_unique<CppCassandraDriver>(
+      std::vector<std::string>{ cql_host_ }, cql_port_, UsePartitionAwareRouting::kTrue);
+}
+
+template <>
+void CqlTestBase<MiniCluster>::DoTearDown() {
   WARN_NOT_OK(cluster_->mini_tablet_server(0)->server()->heartbeater()->Stop(),
               "Failed to stop heartbeater");
   cql_server_->Shutdown();
   MiniClusterTestWithClient<MiniCluster>::DoTearDown();
+}
+
+template <>
+void CqlTestBase<ExternalMiniCluster>::DoTearDown() {
+  MiniClusterTestWithClient<ExternalMiniCluster>::DoTearDown();
+}
+
+template <>
+Status CqlTestBase<MiniCluster>::RestartCluster() {
+  cql_server_->Shutdown();
+  cql_server_.reset();
+  RETURN_NOT_OK(cluster_->RestartSync());
+  return StartCQLServer();
+}
+
+template <>
+void CqlTestBase<MiniCluster>::ShutdownCluster() {
+  cql_server_->Shutdown();
+  cql_server_.reset();
+  cluster_->Shutdown();
+}
+
+template <>
+Status CqlTestBase<MiniCluster>::StartCluster() {
+  RETURN_NOT_OK(cluster_->StartSync());
+  return StartCQLServer();
+}
+
+template <>
+Status CqlTestBase<MiniCluster>::RunBackupCommand(const vector<string>& args) {
+  return tools::RunBackupCommand(
+      HostPort(), // Not used YSQL host/port.
+      cluster_->GetMasterAddresses(), cluster_->GetTserverHTTPAddresses(), *tmp_dir_, args);
 }
 
 } // namespace yb

@@ -38,6 +38,7 @@
 #include "catalog/pg_type.h"
 #include "commands/alter.h"
 #include "commands/defrem.h"
+#include "commands/extension.h"
 #include "commands/event_trigger.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
@@ -50,6 +51,8 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+/*  YB includes. */
+#include "pg_yb_utils.h"
 
 static void AlterOpFamilyAdd(AlterOpFamilyStmt *stmt,
 				 Oid amoid, Oid opfamilyoid,
@@ -400,11 +403,14 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	 * without solving the halting problem :-(
 	 *
 	 * XXX re-enable NOT_USED code sections below if you remove this test.
+	 * In YB mode, we allow users with the yb_extension role who are in the
+	 * midst of creating an extension to create a base type.
 	 */
-	if (!superuser())
+	if (!(IsYbExtensionUser(GetUserId()) && creating_extension) && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create an operator class")));
+				 errmsg("must be superuser or yb_extension role member to "
+				 		"create an operator class")));
 
 	/* Look up the datatype */
 	typeoid = typenameTypeId(NULL, stmt->datatype);
@@ -802,10 +808,11 @@ AlterOpFamily(AlterOpFamilyStmt *stmt)
 	 *
 	 * XXX re-enable NOT_USED code sections below if you remove this test.
 	 */
-	if (!superuser())
+	if (!superuser() && !(IsYbExtensionUser(GetUserId()) && creating_extension))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to alter an operator family")));
+				 errmsg("must be superuser or yb_extension role member to "
+				 		"alter an operator family")));
 
 	/*
 	 * ADD and DROP cases need separate code from here on down.

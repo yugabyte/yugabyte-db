@@ -10,6 +10,9 @@
   &.good {
     color: $YB_SUCCESS_COLOR;
   }
+  &.paused {
+    color: $YB_WARNING_COLOR;
+  }
   &.pending {
     margin-top: 0 !important;
     margin-bottom: 0;
@@ -17,6 +20,9 @@
   }
   &.bad {
     color: $YB_FAIL_COLOR;
+  }
+  &.warning {
+    color: $YB_WARNING_COLOR;
   }
   &.unknown {
     color: $YB_PENDING_COLOR;

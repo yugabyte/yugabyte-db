@@ -21,9 +21,10 @@
 #include "yb/client/client_fwd.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/schema.h"
-#include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/value.pb.h"
+
+#include "yb/gutil/callback_forward.h"
 
 namespace yb {
 namespace ql {
@@ -82,7 +83,7 @@ class ExecutedResult {
     SCHEMA_CHANGE = 3
   };
 
-  virtual const Type type() const = 0;
+  virtual Type type() const = 0;
 };
 
 // Callback to be called after a statement is executed. When execution fails, a not-ok status is
@@ -103,7 +104,7 @@ class SetKeyspaceResult : public ExecutedResult {
   virtual ~SetKeyspaceResult() override { };
 
   // Result type.
-  virtual const Type type() const override { return Type::SET_KEYSPACE; }
+  Type type() const override { return Type::SET_KEYSPACE; }
 
   // Accessor function for keyspace.
   const std::string& keyspace() const { return keyspace_; }
@@ -129,26 +130,25 @@ class RowsResult : public ExecutedResult {
   virtual ~RowsResult() override;
 
   // Result type.
-  virtual const Type type() const override { return Type::ROWS; }
+  Type type() const override { return Type::ROWS; }
 
   // Accessor functions.
   const client::YBTableName& table_name() const { return table_name_; }
   const std::vector<ColumnSchema>& column_schemas() const { return *column_schemas_; }
-  void set_column_schema(int col_index, const std::shared_ptr<QLType>& type) {
-    (*column_schemas_)[col_index].set_type(type);
-  }
+  void set_column_schema(int col_index, const std::shared_ptr<QLType>& type);
   const std::string& rows_data() const { return rows_data_; }
   std::string& rows_data() { return rows_data_; }
   void set_rows_data(const char *str, size_t size) { rows_data_.assign(str, size); }
   const std::string& paging_state() const { return paging_state_; }
   QLClient client() const { return client_; }
 
-  CHECKED_STATUS Append(RowsResult&& other);
+  Status Append(RowsResult&& other);
 
   void SetPagingState(client::YBqlOp *op);
   void SetPagingState(const QLPagingStatePB& paging_state);
   void SetPagingState(RowsResult&& other);
   void ClearPagingState();
+  bool has_paging_state() { return !paging_state_.empty(); }
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.
@@ -177,7 +177,7 @@ class SchemaChangeResult : public ExecutedResult {
   virtual ~SchemaChangeResult() override;
 
   // Result type.
-  virtual const Type type() const override { return Type::SCHEMA_CHANGE; }
+  Type type() const override { return Type::SCHEMA_CHANGE; }
 
   // Accessor functions.
   const std::string& change_type() const { return change_type_; }

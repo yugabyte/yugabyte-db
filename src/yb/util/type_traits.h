@@ -16,6 +16,8 @@
 #ifndef YB_UTIL_TYPE_TRAITS_H
 #define YB_UTIL_TYPE_TRAITS_H
 
+#include <type_traits>
+
 #include <boost/preprocessor/cat.hpp>
 #include <boost/tti/has_type.hpp>
 
@@ -64,10 +66,12 @@ class IsPointerLikeHelper {
   typedef int Yes;
   typedef struct { Yes array[2]; } No;
 
-  template <typename C> static Yes HasDeref(decltype(&C::operator*));
+  template <typename C> static Yes HasDeref(
+      typename std::remove_reference<decltype(*std::declval<C>())>::type*);
   template <typename C> static No HasDeref(...);
 
-  template <typename C> static Yes HasArrow(decltype(&C::operator->));
+  template <typename C> static Yes HasArrow(
+      typename std::remove_reference<decltype(std::declval<C>().operator->())>::type*);
   template <typename C> static No HasArrow(...);
  public:
   typedef boost::mpl::bool_<sizeof(HasDeref<T>(nullptr)) == sizeof(Yes) &&

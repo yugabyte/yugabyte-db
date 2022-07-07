@@ -21,16 +21,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <string>
+
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/testharness.h"
+
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
 namespace {
 const size_t kHugePageSize = 2 * 1024 * 1024;
 }  // namespace
-class ArenaTest : public testing::Test {};
+class ArenaTest : public RocksDBTest {};
 
 TEST_F(ArenaTest, Empty) { Arena arena0; }
 
@@ -183,7 +188,7 @@ static void SimpleTest(size_t huge_page_size) {
     const char* p = allocated[i].second;
     for (unsigned int b = 0; b < num_bytes; b++) {
       // Check the "i"th allocation for the known bit pattern
-      ASSERT_EQ(int(p[b]) & 0xff, (int)(i % 256));
+      ASSERT_EQ(static_cast<int>(p[b]) & 0xff, static_cast<int>(i % 256));
     }
   }
 }

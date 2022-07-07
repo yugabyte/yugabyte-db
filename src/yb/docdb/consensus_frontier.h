@@ -14,7 +14,14 @@
 #ifndef YB_DOCDB_CONSENSUS_FRONTIER_H
 #define YB_DOCDB_CONSENSUS_FRONTIER_H
 
+#include <unordered_map>
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/rocksdb/metadata.h"
+
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace docdb {
@@ -39,9 +46,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   }
   ConsensusFrontier() {}
   ConsensusFrontier(const OpId& op_id, HybridTime ht, HybridTime history_cutoff)
-      : op_id_(op_id),
-        ht_(ht),
-        history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
+      : op_id_(op_id), hybrid_time_(ht), history_cutoff_(NormalizeHistoryCutoff(history_cutoff)) {}
 
   virtual ~ConsensusFrontier();
 
@@ -51,7 +56,7 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   void Update(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) override;
   bool IsUpdateValid(const rocksdb::UserFrontier& rhs, rocksdb::UpdateUserValueType type) const
       override;
-  void FromPB(const google::protobuf::Any& pb) override;
+  Status FromPB(const google::protobuf::Any& pb) override;
   void FromOpIdPBDeprecated(const OpIdPB& pb) override;
   Slice Filter() const override;
 
@@ -61,8 +66,8 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   template <class PB>
   void set_op_id(const PB& pb) { op_id_ = OpId::FromPB(pb); }
 
-  HybridTime hybrid_time() const { return ht_; }
-  void set_hybrid_time(HybridTime ht) { ht_ = ht; }
+  HybridTime hybrid_time() const { return hybrid_time_; }
+  void set_hybrid_time(HybridTime ht) { hybrid_time_ = ht; }
 
   HybridTime history_cutoff() const { return history_cutoff_; }
   void set_history_cutoff(HybridTime history_cutoff) {
@@ -74,9 +79,24 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
     hybrid_time_filter_ = value;
   }
 
+  void AddSchemaVersion(const Uuid& table_id, SchemaVersion version);
+  void ResetSchemaVersion();
+
+  // Merge current frontier with provided map, preferring min values.
+  void MakeExternalSchemaVersionsAtMost(
+      std::unordered_map<Uuid, SchemaVersion, UuidHash>* min_schema_versions) const;
+
+  HybridTime max_value_level_ttl_expiration_time() const {
+    return max_value_level_ttl_expiration_time_;
+  }
+
+  void set_max_value_level_ttl_expiration_time(HybridTime ht) {
+    max_value_level_ttl_expiration_time_ = ht;
+  }
+
  private:
   OpId op_id_;
-  HybridTime ht_;
+  HybridTime hybrid_time_;
 
   // We use this to keep track of the maximum history cutoff hybrid time used in any compaction, and
   // refuse to perform reads at a hybrid time at which we don't have a valid snapshot anymore. Only
@@ -84,6 +104,14 @@ class ConsensusFrontier : public rocksdb::UserFrontier {
   HybridTime history_cutoff_;
 
   HybridTime hybrid_time_filter_;
+
+  // Used to track the boundary expiration timestamp for any doc in the file. Tracks value-level
+  // TTL expiration (generated at write-time), table-level TTL is calculated at read-time based
+  // on hybrid_time_. Only the largest frontier of this parameter is being used.
+  HybridTime max_value_level_ttl_expiration_time_;
+
+  std::optional<SchemaVersion> primary_schema_version_;
+  std::unordered_map<Uuid, SchemaVersion, UuidHash> cotable_schema_versions_;
 };
 
 typedef rocksdb::UserFrontiersBase<ConsensusFrontier> ConsensusFrontiers;
@@ -102,6 +130,17 @@ inline void set_history_cutoff(HybridTime history_cutoff, ConsensusFrontiers* fr
   frontiers->Smallest().set_history_cutoff(history_cutoff);
   frontiers->Largest().set_history_cutoff(history_cutoff);
 }
+
+template <class PB>
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, PB* pb) {
+  auto* out = pb->mutable_table_schema_version()->Add();
+  if (!table_id.IsNil()) {
+    out->set_table_id(table_id.cdata(), table_id.size());
+  }
+  out->set_schema_version(schema_version);
+}
+
 } // namespace docdb
 } // namespace yb
 

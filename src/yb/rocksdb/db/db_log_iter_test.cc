@@ -29,6 +29,8 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
+#include "yb/util/test_macros.h"
+
 namespace rocksdb {
 
 class DBTestXactLogIterator : public DBTestBase {
@@ -77,9 +79,9 @@ TEST_F(DBTestXactLogIterator, TransactionLogIterator) {
     Options options = OptionsForLogIterTest();
     DestroyAndReopen(options);
     CreateAndReopenWithCF({"pikachu"}, options);
-    Put(0, "key1", DummyString(1024));
-    Put(1, "key2", DummyString(1024));
-    Put(1, "key2", DummyString(1024));
+    ASSERT_OK(Put(0, "key1", DummyString(1024)));
+    ASSERT_OK(Put(1, "key2", DummyString(1024)));
+    ASSERT_OK(Put(1, "key2", DummyString(1024)));
     ASSERT_EQ(dbfull()->GetLatestSequenceNumber(), 3U);
     {
       auto iter = OpenTransactionLogIter(0);
@@ -88,9 +90,9 @@ TEST_F(DBTestXactLogIterator, TransactionLogIterator) {
     ReopenWithColumnFamilies({"default", "pikachu"}, options);
     env_->SleepForMicroseconds(2 * 1000 * 1000);
     {
-      Put(0, "key4", DummyString(1024));
-      Put(1, "key5", DummyString(1024));
-      Put(0, "key6", DummyString(1024));
+      ASSERT_OK(Put(0, "key4", DummyString(1024)));
+      ASSERT_OK(Put(1, "key5", DummyString(1024)));
+      ASSERT_OK(Put(0, "key6", DummyString(1024)));
     }
     {
       auto iter = OpenTransactionLogIter(0);
@@ -122,13 +124,13 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorRace) {
       rocksdb::SyncPoint::GetInstance()->DisableProcessing();
       Options options = OptionsForLogIterTest();
       DestroyAndReopen(options);
-      Put("key1", DummyString(1024));
-      dbfull()->Flush(FlushOptions());
-      Put("key2", DummyString(1024));
-      dbfull()->Flush(FlushOptions());
-      Put("key3", DummyString(1024));
-      dbfull()->Flush(FlushOptions());
-      Put("key4", DummyString(1024));
+      ASSERT_OK(Put("key1", DummyString(1024)));
+      ASSERT_OK(dbfull()->Flush(FlushOptions()));
+      ASSERT_OK(Put("key2", DummyString(1024)));
+      ASSERT_OK(dbfull()->Flush(FlushOptions()));
+      ASSERT_OK(Put("key3", DummyString(1024)));
+      ASSERT_OK(dbfull()->Flush(FlushOptions()));
+      ASSERT_OK(Put("key4", DummyString(1024)));
       ASSERT_EQ(dbfull()->GetLatestSequenceNumber(), 4U);
 
       {
@@ -142,10 +144,10 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorRace) {
       // condition
       FlushOptions flush_options;
       flush_options.wait = false;
-      dbfull()->Flush(flush_options);
+      ASSERT_OK(dbfull()->Flush(flush_options));
 
       // "key5" would be written in a new memtable and log
-      Put("key5", DummyString(1024));
+      ASSERT_OK(Put("key5", DummyString(1024)));
       {
         // this iter would miss "key4" if not fixed
         auto iter = OpenTransactionLogIter(0);
@@ -160,14 +162,14 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorStallAtLastRecord) {
   do {
     Options options = OptionsForLogIterTest();
     DestroyAndReopen(options);
-    Put("key1", DummyString(1024));
+    ASSERT_OK(Put("key1", DummyString(1024)));
     auto iter = OpenTransactionLogIter(0);
     ASSERT_OK(iter->status());
     ASSERT_TRUE(iter->Valid());
     iter->Next();
     ASSERT_TRUE(!iter->Valid());
     ASSERT_OK(iter->status());
-    Put("key2", DummyString(1024));
+    ASSERT_OK(Put("key2", DummyString(1024)));
     iter->Next();
     ASSERT_OK(iter->status());
     ASSERT_TRUE(iter->Valid());
@@ -178,9 +180,9 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorCheckAfterRestart) {
   do {
     Options options = OptionsForLogIterTest();
     DestroyAndReopen(options);
-    Put("key1", DummyString(1024));
-    Put("key2", DummyString(1023));
-    dbfull()->Flush(FlushOptions());
+    ASSERT_OK(Put("key1", DummyString(1024)));
+    ASSERT_OK(Put("key2", DummyString(1023)));
+    ASSERT_OK(dbfull()->Flush(FlushOptions()));
     Reopen(options);
     auto iter = OpenTransactionLogIter(0);
     ExpectRecords(2, iter);
@@ -192,22 +194,22 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorCorruptedLog) {
     Options options = OptionsForLogIterTest();
     DestroyAndReopen(options);
     for (int i = 0; i < 1024; i++) {
-      Put("key"+ToString(i), DummyString(10));
+      ASSERT_OK(Put("key"+ToString(i), DummyString(10)));
     }
-    dbfull()->Flush(FlushOptions());
+    ASSERT_OK(dbfull()->Flush(FlushOptions()));
     // Corrupt this log to create a gap
     rocksdb::VectorLogPtr wal_files;
     ASSERT_OK(dbfull()->GetSortedWalFiles(&wal_files));
     const auto logfile_path = dbname_ + "/" + wal_files.front()->PathName();
     if (mem_env_) {
-      mem_env_->Truncate(logfile_path, wal_files.front()->SizeFileBytes() / 2);
+      ASSERT_OK(mem_env_->Truncate(logfile_path, wal_files.front()->SizeFileBytes() / 2));
     } else {
       ASSERT_EQ(0, truncate(logfile_path.c_str(),
                    wal_files.front()->SizeFileBytes() / 2));
     }
 
     // Insert a new entry to a new log file
-    Put("key1025", DummyString(10));
+    ASSERT_OK(Put("key1025", DummyString(10)));
     // Try to read from the beginning. Should stop before the gap and read less
     // than 1025 entries
     auto iter = OpenTransactionLogIter(0);
@@ -230,11 +232,11 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorBatchOperations) {
     batch.Put(handles_[0], "key2", DummyString(1024));
     batch.Put(handles_[1], "key3", DummyString(1024));
     batch.Delete(handles_[0], "key2");
-    dbfull()->Write(WriteOptions(), &batch);
-    Flush(1);
-    Flush(0);
+    ASSERT_OK(dbfull()->Write(WriteOptions(), &batch));
+    ASSERT_OK(Flush(1));
+    ASSERT_OK(Flush(0));
     ReopenWithColumnFamilies({"default", "pikachu"}, options);
-    Put(1, "key4", DummyString(1024));
+    ASSERT_OK(Put(1, "key4", DummyString(1024)));
     auto iter = OpenTransactionLogIter(3);
     ExpectRecords(2, iter);
   } while (ChangeCompactOptions());
@@ -252,17 +254,17 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorBlobs) {
     batch.Put(handles_[1], "key3", DummyString(1024));
     batch.PutLogData(Slice("blob2"));
     batch.Delete(handles_[0], "key2");
-    dbfull()->Write(WriteOptions(), &batch);
+    ASSERT_OK(dbfull()->Write(WriteOptions(), &batch));
     ReopenWithColumnFamilies({"default", "pikachu"}, options);
   }
 
   auto res = OpenTransactionLogIter(0)->GetBatch();
   struct Handler : public WriteBatch::Handler {
     std::string seen;
-    virtual Status PutCF(uint32_t cf, const Slice& key,
-                         const Slice& value) override {
-      seen += "Put(" + ToString(cf) + ", " + key.ToString() + ", " +
-              ToString(value.size()) + ")";
+    virtual Status PutCF(uint32_t cf, const SliceParts& key,
+                         const SliceParts& value) override {
+      seen += "Put(" + ToString(cf) + ", " + key.TheOnlyPart().ToString() + ", " +
+              ToString(value.TheOnlyPart().size()) + ")";
       return Status::OK();
     }
     virtual Status MergeCF(uint32_t cf, const Slice& key,

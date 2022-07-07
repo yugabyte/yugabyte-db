@@ -378,14 +378,14 @@ CREATE TABLE patient (
 	age			int4,
 	dob			date
 ) WITH (fillfactor=40);
-WARNING:  Storage parameter fillfactor is unsupported, ignoring
+WARNING:  storage parameter fillfactor is unsupported, ignoring
 CREATE TABLE planetrip (
 	origin		text,
 	dest		text,
 	day			date,
 	depart		time
 ) WITH (user_catalog_table=true);
-ERROR:  Users cannot create system catalog tables.
+ERROR:  users cannot create system catalog tables
 CREATE TABLE client (
 	name		text,
 	phonenum	int8,
@@ -663,24 +663,28 @@ SELECT k FROM ordered_desc WHERE k > 10 and k < 40 ORDER BY k ASC;
 -- Test create ... with (table_oid = x)
 set yb_enable_create_with_table_oid=1;
 create table with_invalid_table_oid (a int) with (table_oid = 0);
-ERROR:  User tables must have an OID >= 16384.
+ERROR:  user tables must have an OID >= 16384
 create table with_invalid_table_oid (a int) with (table_oid = -1);
-ERROR:  value -1 out of bounds for option "table_oid"
-DETAIL:  Valid values are between "16384" and "2147483647".
+ERROR:  invalid value for OID option "table_oid"
+HINT:  Value cannot be negative.
 create table with_invalid_table_oid (a int) with (table_oid = 123);
-ERROR:  User tables must have an OID >= 16384.
+ERROR:  user tables must have an OID >= 16384
+create table with_invalid_table_oid (a int) with (table_oid = 4294967296);
+ERROR:  invalid value for OID option "table_oid"
+HINT:  Value exceeds Oid range.
 create table with_invalid_table_oid (a int) with (table_oid = 'test');
-ERROR:  User tables must have an OID >= 16384.
-create table with_table_oid (a int) with (table_oid = 1234567);
+ERROR:  invalid value for OID option "table_oid"
+create table with_table_oid (a int) with (table_oid = 4294967295);
 select relname, oid from pg_class where relname = 'with_table_oid';
-    relname     |   oid
-----------------+---------
- with_table_oid | 1234567
+    relname     |    oid
+----------------+------------
+ with_table_oid | 4294967295
 (1 row)
 
-create table with_table_oid_duplicate (a int) with (table_oid = 1234567);
-ERROR:  Oid 1234567 is in use.
+create table with_table_oid_duplicate (a int) with (table_oid = 4294967295);
+ERROR:  table OID 4294967295 is in use
 -- Test temp tables with (table_oid = x)
+-- TODO(dmitry) ON COMMIT DROP should be fixed in context of #7926
 begin;
 create temp table with_table_oid_temp (a int) with (table_oid = 1234568) on commit drop;
 select relname, oid from pg_class where relname = 'with_table_oid_temp';
@@ -690,19 +694,92 @@ select relname, oid from pg_class where relname = 'with_table_oid_temp';
 (1 row)
 
 end;
+ERROR:  Illegal state: Transaction for catalog table write operation 'pg_type' not found
 -- Creating a new temp table with that oid will fail
 create temp table with_table_oid_temp_2 (a int) with (table_oid = 1234568);
-ERROR:  Oid 1234568 is in use.
+ERROR:  table OID 1234568 is in use
 -- But creating a regular table with that oid should succeed
 create table with_table_oid_2 (a int) with (table_oid = 1234568);
+ERROR:  table OID 1234568 is in use
 select relname, oid from pg_class where relname = 'with_table_oid_2';
-     relname      |   oid
-------------------+---------
- with_table_oid_2 | 1234568
-(1 row)
+ relname | oid
+---------+-----
+(0 rows)
 
 -- Test with session variable off
 set yb_enable_create_with_table_oid=0;
 create table with_table_oid_variable_false (a int) with (table_oid = 55555);
-ERROR:  Create table with oid is not allowed.
+ERROR:  create table with table_oid is not allowed
 HINT:  Try enabling the session variable yb_enable_create_with_table_oid.
+RESET yb_enable_create_with_table_oid;
+-- CREATE TABLE with implicit UNIQUE INDEX shouldn't spout a notice about it
+-- being nonconcurrent.
+BEGIN;
+CREATE TABLE tab_with_unique (i int, UNIQUE (i));
+COMMIT;
+-- Test temp table/view are automatically dropped.
+\c yugabyte
+create temporary table temp_tab(a int);
+create temporary view temp_view as select * from temp_tab;
+select count(*) from pg_class where relname = 'temp_tab';
+ count
+-------
+     1
+(1 row)
+
+select count(*) from pg_class where relname = 'temp_view';
+ count
+-------
+     1
+(1 row)
+
+\c yugabyte
+-- Wait some time for the last session to finish dropping temp table/view automatically.
+select pg_sleep(5);
+ pg_sleep
+----------
+
+(1 row)
+
+select count(*) from pg_class where relname = 'temp_tab';
+ count
+-------
+     0
+(1 row)
+
+select count(*) from pg_class where relname = 'temp_view';
+ count
+-------
+     0
+(1 row)
+
+-- Test EXPLAIN ANALYZE + CREATE TABLE AS. Use EXECUTE to hide the output since it won't be stable.
+DO $$
+BEGIN
+  EXECUTE 'EXPLAIN ANALYZE CREATE TABLE tbl_as_1 AS SELECT 1';
+END$$;
+SELECT * FROM tbl_as_1;
+ ?column?
+----------
+        1
+(1 row)
+
+-- Test EXPLAIN ANALYZE on a table containing secondary index with a wide column.
+-- Use EXECUTE to hide the output since it won't be stable.
+CREATE TABLE wide_table (id INT, data TEXT);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+DROP TABLE wide_table;
+-- Apply the same check for varchar column
+CREATE TABLE wide_table (id INT, data VARCHAR);
+CREATE INDEX wide_table_idx ON wide_table(id, data);
+INSERT INTO wide_table (id, data) VALUES (10, REPEAT('1234567890', 1000000));
+DO $$
+BEGIN
+	EXECUTE 'EXPLAIN ANALYZE SELECT data FROM wide_table WHERE id = 10';
+END$$;
+DROP TABLE wide_table;

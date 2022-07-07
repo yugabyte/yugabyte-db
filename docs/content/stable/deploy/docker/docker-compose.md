@@ -3,19 +3,13 @@ title: Deploy local clusters using Docker Compose
 headerTitle: Docker
 linkTitle: Docker
 description: Use Docker Compose to create and manage local YugabyteDB clusters.
-aliases:
-  - /admin/docker-compose/
-  - /stable/admin/docker-compose/
-block_indexing: true
 menu:
   stable:
     parent: deploy
     name: Docker
     identifier: docker-1-compose
     weight: 625
-type: page
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -25,15 +19,13 @@ showAsideToc: true
       Docker Compose
     </a>
   </li>
-  <li >
-    <a href="{{< relref "./docker-swarm.md" >}}" class="nav-link">
-      <i class="fas fa-layer-group"></i>
-      Docker Swarm
-    </a>
-  </li>
 </ul>
 
-Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments.
+Use [docker-compose](https://docs.docker.com/compose/overview/) utility to create and manage YugabyteDB local clusters. Note that this approach is not recommended for multi-node clusters used for performance testing and production environments. Refer to the [deployment checklist](../../../deploy/checklist/) to understand the configuration to create clusters.
+
+## Prerequisites
+
+Make sure to have [Docker](https://docs.docker.com/get-docker/) installed on your machine.
 
 ## 1. Create a single node cluster
 
@@ -212,7 +204,7 @@ services:
       - yb-tserver
 ```
 
-For more examples, follow the instructions in the [Quick Start](../../../quick-start/explore-ysql/#docker) section with Docker.
+For more examples, follow the instructions in the [Quick Start](../../../quick-start/explore/ysql/#docker) section with Docker.
 
 ## 4. Stop the cluster
 

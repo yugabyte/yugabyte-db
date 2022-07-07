@@ -3,16 +3,12 @@ title: Diagnostics reporting
 headerTitle: Diagnostics reporting
 linkTitle: Diagnostics reporting
 description: Enable diagnostics reporting and set collection levels on YB-Master and YB-TServer nodes.
-aliases:
-  - /stable/manage/diagnostics-reporting/
-block_indexing: true
 menu:
   stable:
     identifier: diagnostics-reporting
     parent: manage
     weight: 706
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The [YB-Master](../../reference/configuration/yb-master/) and [YB-TServer](../../reference/configuration/yb-tserver/) nodes report cluster diagnostics to the YugabyteDB diagnostics service every time a new cluster gets created and every hour thereafter. User data stored in YugabyteDB as well as any personally identifiable information regarding the user is never collected or reported.

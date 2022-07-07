@@ -47,8 +47,8 @@ namespace internal {
 //
 
 HashCode::HashCode() {
-  Random r(MonoTime::Now().GetDeltaSince(MonoTime::Min()).ToNanoseconds());
-  const uint64_t hash = r.Next64();
+  std::mt19937_64 random(MonoTime::Now().GetDeltaSince(MonoTime::Min()).ToNanoseconds());
+  const uint64_t hash = random();
   code_ = (hash == 0) ? 1 : hash;  // Avoid zero to allow xorShift rehash
 }
 
@@ -65,8 +65,12 @@ Cell::Cell()
 //
 // Striped64
 //
-const uint32_t Striped64::kNumCpus = sysconf(_SC_NPROCESSORS_ONLN);
-DEFINE_STATIC_THREAD_LOCAL(HashCode, Striped64, hashcode_);
+namespace {
+
+const int64_t kNumCpus = sysconf(_SC_NPROCESSORS_ONLN);
+thread_local std::unique_ptr<HashCode> hashcode_;
+
+}
 
 Striped64::Striped64()
     : busy_(false),
@@ -151,7 +155,9 @@ void Striped64::InternalReset(int64_t initialValue) {
 }
 
 void LongAdder::IncrementBy(int64_t x) {
-  INIT_STATIC_THREAD_LOCAL(HashCode, hashcode_);
+  if (!hashcode_) {
+    hashcode_ = std::make_unique<HashCode>();
+  }
   // Use hash table if present. If that fails, call RetryUpdate to rehash and retry.
   // If no hash table, try to CAS the base counter. If that fails, RetryUpdate to init the table.
   const int32_t n = base::subtle::Acquire_Load(&num_cells_);

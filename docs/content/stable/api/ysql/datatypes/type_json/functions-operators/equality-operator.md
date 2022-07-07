@@ -3,14 +3,12 @@ title: = (equality operator) [JSON]
 headerTitle: = (equality operator)
 linkTitle: = (equality)
 description: Test if two jsonb values are equal using the JSON equality operator (=).
-block_indexing: true
 menu:
   stable:
     identifier: equality-operator
     parent: json-functions-operators
     weight: 15
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Test if two `jsonb` values are equal.
@@ -50,9 +48,9 @@ Notice that the text definitions of the to-be-compared JSON values may differ in
 
 If you need to test two `json` values for equality, then you must `::text` typecast each.
 
-See the account of the `::text` operator when the input is a `json` value. The `json` representation preserves semantically insignificant whitespace and repeats occurrences of the same keys in an _object_. This implies that the equality comparison of two `json` values would in general be unpredictable and therefore meaningless. This is why the `=` operator doesn't have a `json` overload and is is another reason to prefer consistently to choose to use `jsonb`.
+See the account of the `::text` operator when the input is a `json` value. The `json` representation preserves semantically insignificant whitespace and repeats occurrences of the same keys in an _object_. This implies that the equality comparison of two `json` values would in general be unpredictable and therefore meaningless. This is why the `=` operator doesn't have a `json` overload and is another reason to prefer consistently to choose to use `jsonb`.
 
-```plpgsql 
+```plpgsql
 do $body$
 declare
   j1 constant json := '["a","b","c"]';

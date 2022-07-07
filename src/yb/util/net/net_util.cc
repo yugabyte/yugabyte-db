@@ -32,41 +32,37 @@
 
 #include "yb/util/net/net_util.h"
 
-#include <arpa/inet.h>
 #include <ifaddrs.h>
-#include <netdb.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 
 #include <algorithm>
-#include <iostream>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
-#include <boost/optional/optional.hpp>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/join.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/split.h"
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/gutil/strings/util.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/errno.h"
-#include "yb/util/faststring.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
-#include "yb/util/memory/memory.h"
+#include "yb/util/errno.h"
+#include "yb/util/faststring.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/locks.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/socket.h"
-#include "yb/util/random.h"
+#include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/subprocess.h"
 
@@ -81,7 +77,7 @@ using strings::Substitute;
 
 DEFINE_string(
     net_address_filter,
-    "ipv4_external,ipv4_all",
+    "ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all",
     "Order in which to select ip addresses returned by the resolver"
     "Can be set to something like \"ipv4_all,ipv6_all\" to prefer IPv4 over "
     "IPv6 addresses."
@@ -103,11 +99,18 @@ HostPort::HostPort()
     : port_(0) {
 }
 
+HostPort::HostPort(Slice host, uint16_t port)
+    : host_(host.cdata(), host.size()), port_(port) {}
+
 HostPort::HostPort(std::string host, uint16_t port)
     : host_(std::move(host)), port_(port) {}
 
 HostPort::HostPort(const Endpoint& endpoint)
     : host_(endpoint.address().to_string()), port_(endpoint.port()) {
+}
+
+HostPort::HostPort(const char* host, uint16_t port)
+    : HostPort(Slice(host), port) {
 }
 
 Status HostPort::RemoveAndGetHostPortList(
@@ -193,6 +196,24 @@ Status HostPort::ParseString(const string &str_in, uint16_t default_port) {
   return Status::OK();
 }
 
+Result<HostPort> HostPort::FromString(const std::string& str, uint16_t default_port) {
+  HostPort result;
+  RETURN_NOT_OK(result.ParseString(str, default_port));
+  return result;
+}
+
+Result<std::vector<HostPort>> HostPort::ParseStrings(
+    const std::string& comma_sep_addrs, uint16_t default_port,
+    const char* separator) {
+  std::vector<HostPort> result;
+  RETURN_NOT_OK(ParseStrings(comma_sep_addrs, default_port, &result, separator));
+  return result;
+}
+
+size_t HostPortHash::operator()(const HostPort& hostPort) const {
+  return GStringPiece(std::to_string(hostPort.port()) + hostPort.host()).hash();
+}
+
 namespace {
 const string getaddrinfo_rc_to_string(int rc) {
   const char* s = nullptr;
@@ -233,7 +254,7 @@ Result<std::unique_ptr<addrinfo, AddrinfoDeleter>> HostToInetAddrInfo(const std:
 }
 
 template <typename F>
-CHECKED_STATUS ResolveInetAddresses(const std::string& host, F func) {
+Status ResolveInetAddresses(const std::string& host, F func) {
   boost::optional<IpAddress> fast_resolve = TryFastResolve(host);
   if (fast_resolve) {
     func(*fast_resolve);
@@ -297,7 +318,6 @@ Status HostPort::ParseStrings(const string& comma_sep_addrs,
       comma_sep_addrs, separator, strings::SkipEmpty());
   std::vector<HostPort> host_ports;
   for (string& addr_string : addr_strings) {
-    StripWhiteSpace(&addr_string);
     HostPort host_port;
     RETURN_NOT_OK(host_port.ParseString(addr_string, default_port));
     host_ports.push_back(host_port);
@@ -428,6 +448,10 @@ Status GetFQDN(string* hostname) {
     }
   }
 
+  if (!result->ai_canonname) {
+    return STATUS(NetworkError, "Canonical name not specified");
+  }
+
   *hostname = result->ai_canonname;
   freeaddrinfo(result);
   return Status::OK();
@@ -525,10 +549,9 @@ uint16_t GetFreePort(std::unique_ptr<FileLock>* file_lock) {
   // Now, find a unused port in the [kMinPort..kMaxPort] range.
   constexpr uint16_t kMinPort = 15000;
   constexpr uint16_t kMaxPort = 30000;
-  static yb::Random rand(GetCurrentTimeMicros());
   Status s;
   for (int i = 0; i < 1000; ++i) {
-    const uint16_t random_port = kMinPort + rand.Next() % (kMaxPort - kMinPort + 1);
+    const uint16_t random_port = RandomUniformInt(kMinPort, kMaxPort);
     VLOG(1) << "Trying to bind to port " << random_port;
 
     Endpoint sock_addr(boost::asio::ip::address_v4::loopback(), random_port);
@@ -629,6 +652,17 @@ Result<IpAddress> ParseIpAddress(const std::string& host) {
   return addr;
 }
 
+simple_spinlock fail_to_fast_resolve_address_mutex;
+std::string fail_to_fast_resolve_address;
+
+void TEST_SetFailToFastResolveAddress(const std::string& address) {
+  {
+    std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+    fail_to_fast_resolve_address = address;
+  }
+  LOG(INFO) << "Setting fail_to_fast_resolve_address to: " << address;
+}
+
 boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   auto result = ParseIpAddress(host);
   if (result.ok()) {
@@ -638,6 +672,12 @@ boost::optional<IpAddress> TryFastResolve(const std::string& host) {
   // For testing purpose we resolve A.B.C.D.ip.yugabyte to A.B.C.D.
   static const std::string kYbIpSuffix = ".ip.yugabyte";
   if (boost::ends_with(host, kYbIpSuffix)) {
+    {
+      std::lock_guard<simple_spinlock> lock(fail_to_fast_resolve_address_mutex);
+      if (PREDICT_FALSE(host == fail_to_fast_resolve_address)) {
+        return boost::none;
+      }
+    }
     boost::system::error_code ec;
     auto address = IpAddress::from_string(
         host.substr(0, host.length() - kYbIpSuffix.length()), ec);

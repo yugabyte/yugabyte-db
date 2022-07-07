@@ -3,21 +3,13 @@ title: Build a Ruby application that uses YSQL
 headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a Ruby application that uses Ruby PostgreSQL driver and YSQL.
-aliases:
-  - /develop/client-drivers/ruby/
-  - /stable/develop/client-drivers/ruby/
-  - /stable/develop/build-apps/ruby/
-  - /stable/quick-start/build-apps/ruby/
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Ruby
     identifier: ruby-1
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -55,7 +47,7 @@ $ gem install pg -- --with-pg-config=<yugabyte-install-dir>/postgres/bin/pg_conf
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/explore-ysql//).
+- installed YugabyteDB and created a universe with YSQL enabled. If not, please follow these steps in the [Quick Start guide](../../../../quick-start/install/macos/).
 
 ### Add the sample Ruby application code
 
@@ -106,7 +98,7 @@ $ ./yb-sql-helloworld.rb
 
 You should see the following output.
 
-```
+```output
 Created table employee
 Inserted data (1, 'John', 35, 'Ruby')
 Query returned: John 35 Ruby

@@ -35,33 +35,9 @@
 
 #include <string>
 
-#include <boost/uuid/uuid_generators.hpp>
-
-#include "yb/gutil/macros.h"
-#include "yb/util/locks.h"
-
 namespace yb {
 
-// Generates a unique 32byte id, based on uuid v4.
-// This class is thread safe
-class ObjectIdGenerator {
- public:
-  ObjectIdGenerator() {}
-  ~ObjectIdGenerator() {}
-
-  std::string Next(bool binary_id = false);
-
- private:
-  typedef simple_spinlock LockType;
-
-  // Multiple instances of OID generators with corresponding locks are used to
-  // avoid bottlenecking on a single lock.
-  static const int kNumOidGenerators = 17;
-  LockType oid_lock_[kNumOidGenerators];
-  boost::uuids::random_generator oid_generator_[kNumOidGenerators];
-
-  DISALLOW_COPY_AND_ASSIGN(ObjectIdGenerator);
-};
+std::string GenerateObjectId(bool binary_id = false);
 
 } // namespace yb
 

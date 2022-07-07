@@ -3,14 +3,12 @@ title: jsonb_populate_recordset() and json_populate_recordset()
 headerTitle: jsonb_populate_recordset() and json_populate_recordset()
 linkTitle: jsonb_populate_recordset()
 description: Convert a homogeneous JSON array of JSON objects into the equivalent set of SQL records.
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-populate-recordset
     parent: json-functions-operators
     weight: 190
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Convert a homogeneous JSON _array_ of JSON _objects_ into the equivalent set of SQL _records_.
@@ -29,7 +27,7 @@ Each requires that the supplied JSON value is an _array_, each of whose values i
 Use this `ysqlsh` script to create the  type _"t"_, and then to execute the `ASSERT`.
 
 {{< note title="Record and array comparison" >}}
-Notice the because the result is a table, it must be materialized in a `cursor for loop`. Each selected row is accumulated in an array of type `t[]`. The expected result is also established in an array of type `t[]`. The input JSON _array_ has been contrived, by sometimes not having a key `"a"` or a key `"b"` so that the resulting records sometimes have `NULL` fields. Record comparison, and array comparison, both use `IS NOT DISTINCT FROM` semantics—unlike is the case for scalar comparison. This means that the `ASSERT` can use a simple equality test to compare _"rows"_ and _"expected_rows"_. See the section [Operators for comparing two arrays](../../..//type_array/functions-operators/comparison/).
+Notice the because the result is a table, it must be materialized in a `cursor for loop`. Each selected row is accumulated in an array of type `t[]`. The expected result is also established in an array of type `t[]`. The input JSON _array_ has been contrived, by sometimes not having a key `"a"` or a key `"b"` so that the resulting records sometimes have `NULL` fields. Record comparison, and array comparison, both use `IS NOT DISTINCT FROM` semantics—unlike is the case for scalar comparison. This means that the `ASSERT` can use a simple equality test to compare _"rows"_ and _"expected_rows"_. See the section [Operators for comparing two arrays](../../../type_array/functions-operators/comparison/).
 {{< /note >}}
 
 ```plpgsql

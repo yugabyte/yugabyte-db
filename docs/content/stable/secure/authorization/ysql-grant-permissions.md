@@ -3,27 +3,24 @@ title: Grant YSQL privileges in YugabyteDB
 headerTitle: Grant privileges
 linkTitle: Grant privileges
 description: Grant YSQL privileges in YugabyteDB
-block_indexing: true
 menu:
   stable:
-    name: Grant privileges
+    name: Grant Privileges
     identifier: ysql-grant-permissions
     parent: authorization
-    weight: 735  
-type: page
-isTocNested: true
-showAsideToc: true
+    weight: 735
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/secure/authorization/ysql-grant-permissions" class="nav-link active">
+    <a href="/preview/secure/authorization/ysql-grant-permissions" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/secure/authorization/ycql-grant-permissions" class="nav-link">
+    <a href="/preview/secure/authorization/ycql-grant-permissions" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -41,7 +38,7 @@ Here is what you want to achieve from a role-based access control (RBAC) perspec
 
 ## 1. Create role hierarchy
 
-Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../authentication/ysql-authentication/) in YugabyteDB clusters for YSQL. For this tutorial, you are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
+Connect to the cluster using a superuser role. Read more about [enabling authentication and connecting using a superuser role](../../enable-authentication/ysql/) in YugabyteDB clusters for YSQL. For this tutorial, you are using the default `yugabyte` user and connect to the cluster using `ysqlsh` as follows:
 
 ```sh
 $ ysqlsh
@@ -164,7 +161,7 @@ The output should look similar to below, where you see that the `engineering` ro
         |                   |       | engineering=r/yugabyte   +|                   |
 ```
 
-The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../api/ysql/commands/dcl_grant).
+The access privileges "arwdDxt" include all privileges for the user `yugabyte` (superuser), while the role `engineering` has only "r" (read) privileges. For details on the `GRANT` statement and access privileges, see [GRANT](../../../api/ysql/the-sql-language/statements/dcl_grant).
 
 Granting the role `engineering` to any other role will cause all those roles to inherit the specified privileges. Thus, `developer`, `qa` and `db_admin` will all inherit the `SELECT` and `USAGE` privileges, giving them read-access.
 
@@ -227,7 +224,7 @@ We should see that owner has changed from `yugabyte` to `qa` and `qa` has all ac
 
 DB admins should be able to perform all operations on any database. There are two ways to achieve this:
 
-1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../../authentication/ysql-authentication). Note that doing this will give the DB admin all the privileges over all the roles as well.
+1. The DB admins can be granted the superuser privilege. Read more about [granting the superuser privilege to roles](../../enable-authentication/ysql/). Note that doing this will give the DB admin all the privileges over all the roles as well.
 
 2. Grant `ALL` privileges to the `db_admin` role. This can be achieved as follows.
 

@@ -29,13 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <semaphore.h>
+
+#include <glog/logging.h>
 
 #include "yb/util/semaphore.h"
-
-#include <semaphore.h>
-#include <condition_variable>
-#include <glog/logging.h>
-#include "yb/gutil/walltime.h"
 
 namespace yb {
 

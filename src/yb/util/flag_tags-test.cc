@@ -30,9 +30,9 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
-#include <gflags/gflags.h>
 #include <unordered_set>
+
+#include <gtest/gtest.h>
 
 #include "yb/gutil/map-util.h"
 #include "yb/util/flag_tags.h"
@@ -56,18 +56,18 @@ class FlagTagsTest : public YBTest {
 };
 
 TEST_F(FlagTagsTest, TestTags) {
-  unordered_set<string> tags;
+  unordered_set<FlagTag> tags;
   GetFlagTags("flag_with_no_tags", &tags);
   EXPECT_EQ(0, tags.size());
 
   GetFlagTags("flag_with_one_tag", &tags);
   EXPECT_EQ(1, tags.size());
-  EXPECT_TRUE(ContainsKey(tags, "stable"));
+  EXPECT_TRUE(ContainsKey(tags, FlagTag::kStable));
 
   GetFlagTags("flag_with_two_tags", &tags);
   EXPECT_EQ(2, tags.size());
-  EXPECT_TRUE(ContainsKey(tags, "evolving"));
-  EXPECT_TRUE(ContainsKey(tags, "unsafe"));
+  EXPECT_TRUE(ContainsKey(tags, FlagTag::kEvolving));
+  EXPECT_TRUE(ContainsKey(tags, FlagTag::kUnsafe));
 
   GetFlagTags("missing_flag", &tags);
   EXPECT_EQ(0, tags.size());

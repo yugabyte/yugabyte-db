@@ -3,14 +3,12 @@ title: cr_bucket_using_width_bucket.sql
 linkTitle: cr_bucket_using_width_bucket.sql
 headerTitle: cr_bucket_using_width_bucket.sql
 description: cr_bucket_using_width_bucket.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: cr-bucket-using-width-bucket
     parent: analyzing-a-normal-distribution
     weight: 70
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_bucket_using_width_bucket.sql`.
 ```plpgsql
@@ -28,7 +26,6 @@ create or replace function bucket(
   upper_bound  in double precision default 1,
   no_of_values in int              default 10)
   returns int
-  immutable
   language plpgsql
 as $body$
 begin

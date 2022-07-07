@@ -82,7 +82,7 @@
 #include "utils/tqual.h"
 
 #include "pg_yb_utils.h"
-#include "access/ybcin.h"
+#include "access/yb_lsm.h"
 
 /* ----------------------------------------------------------------
  *					macros used in index_ routines
@@ -208,7 +208,8 @@ index_insert(Relation indexRelation,
 			 HeapTuple heapTuple,
 			 Relation heapRelation,
 			 IndexUniqueCheck checkUnique,
-			 IndexInfo *indexInfo)
+			 IndexInfo *indexInfo,
+			 bool yb_shared_insert)
 {
 	RELATION_CHECKS;
 
@@ -226,7 +227,8 @@ index_insert(Relation indexRelation,
 		CHECK_REL_PROCEDURE(yb_aminsert);
 		return indexRelation->rd_amroutine->yb_aminsert(indexRelation, values, isnull,
 														heapTuple->t_ybctid, heapRelation,
-														checkUnique, indexInfo);
+														checkUnique, indexInfo,
+														yb_shared_insert);
 	}
 	else
 	{
@@ -638,7 +640,7 @@ index_fetch_heap(IndexScanDesc scan)
 	 * - If YugaByte returns an index-tuple, the returned ybctid value should be used to query data.
 	 * - If YugaByte returns a heap_tuple, all requested data was already selected in the tuple.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(scan->heapRelation))
 	{
 		if (scan->xs_hitup != 0)
 			return scan->xs_hitup;

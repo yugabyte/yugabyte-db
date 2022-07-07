@@ -36,17 +36,16 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol.h"
-#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/sys_catalog.h"
+#include "yb/rpc/messenger.h"
+#include "yb/rpc/proxy.h"
 #include "yb/server/rpc_server.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
+#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/test_util.h"
-#include "yb/rpc/messenger.h"
-#include "yb/common/common.pb.h"
 
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
@@ -71,19 +70,19 @@ class SysCatalogTest : public YBTest {
     MessengerBuilder bld("Client");
     client_messenger_ = ASSERT_RESULT(bld.Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new MasterServiceProxy(&proxy_cache, mini_master_->bound_rpc_addr()));
   }
 
   void TearDown() override {
-    client_messenger_->Shutdown();
+    if (client_messenger_) {
+      client_messenger_->Shutdown();
+    }
     mini_master_->Shutdown();
     YBTest::TearDown();
   }
 
   std::unique_ptr<Messenger> client_messenger_;
-  gscoped_ptr<MiniMaster> mini_master_;
+  std::unique_ptr<MiniMaster> mini_master_;
   Master* master_;
-  gscoped_ptr<MasterServiceProxy> proxy_;
 };
 
 const int64_t kLeaderTerm = 1;
@@ -96,7 +95,7 @@ template<class C>
 std::pair<std::string, std::string> AssertMetadataEqualsHelper(C* ti_a, C* ti_b) {
   auto l_a = ti_a->LockForRead();
   auto l_b = ti_b->LockForRead();
-  return std::make_pair(l_a->data().pb.DebugString(), l_b->data().pb.DebugString());
+  return std::make_pair(l_a->pb.DebugString(), l_b->pb.DebugString());
 }
 
 // Similar to ASSERT_EQ but compares string representations of protobufs stored in two system

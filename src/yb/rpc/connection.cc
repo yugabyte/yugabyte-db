@@ -32,23 +32,26 @@
 
 #include "yb/rpc/connection.h"
 
-#include <iostream>
 #include <thread>
 #include <utility>
 
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/util/enums.h"
-
-#include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/network_error.h"
 #include "yb/rpc/reactor.h"
-#include "yb/rpc/growable_buffer.h"
 #include "yb/rpc/rpc_controller.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 
+#include "yb/util/enums.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
@@ -108,7 +111,7 @@ bool Connection::Idle(std::string* reason_not_idle) const {
   bool result = stream_->Idle(reason_not_idle);
 
   // Connection is not idle if calls are waiting for a response.
-  if (!awaiting_response_.empty()) {
+  if (!active_calls_.empty()) {
     UpdateIdleReason("awaiting response", &result, reason_not_idle);
   }
 
@@ -131,22 +134,22 @@ void Connection::Shutdown(const Status& status) {
     shutdown_status_ = status;
   }
 
-  // Clear any calls which have been sent and were awaiting a response.
-  for (auto& v : awaiting_response_) {
-    if (v.second) {
-      v.second->SetFailed(status);
-    }
-  }
-  awaiting_response_.clear();
-
   for (auto& call : outbound_data_being_processed_) {
     call->Transferred(status, this);
   }
   outbound_data_being_processed_.clear();
 
   context_->Shutdown(status);
-
   stream_->Shutdown(status);
+
+  // Clear any calls which have been sent and were awaiting a response.
+  for (auto& v : active_calls_) {
+    if (v.call && !v.call->IsFinished()) {
+      v.call->SetFailed(status);
+    }
+  }
+  active_calls_.clear();
+
   timer_.Shutdown();
 
   // TODO(bogdan): re-enable once we decide how to control verbose logs better...
@@ -188,34 +191,45 @@ void Connection::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
       auto passed = reactor_->cur_time() - last_activity_time_;
       reactor_->DestroyConnection(
           this,
-          STATUS_FORMAT(NetworkError, "Connect timeout, passed: $0, timeout: $1", passed, timeout));
+          STATUS_EC_FORMAT(NetworkError, NetworkError(NetworkErrorCode::kConnectFailed),
+                           "Connect timeout $0, passed: $1, timeout: $2",
+                           ToString(), passed, timeout));
       return;
     }
   }
 
-  while (!expiration_queue_.empty() && expiration_queue_.top().time <= now) {
-    auto& top = expiration_queue_.top();
-    auto call = top.call.lock();
-    auto handle = top.handle;
-    expiration_queue_.pop();
-    if (call && !call->IsFinished()) {
-      call->SetTimedOut();
-      if (handle != std::numeric_limits<size_t>::max()) {
-        stream_->Cancelled(handle);
-      }
-      auto i = awaiting_response_.find(call->call_id());
-      if (i != awaiting_response_.end()) {
-        i->second.reset();
-      }
-    }
-  }
+  CleanupExpirationQueue(now);
 
-  if (!expiration_queue_.empty()) {
-    deadline = std::min(deadline, expiration_queue_.top().time);
+  if (!active_calls_.empty()) {
+    deadline = std::min(deadline, active_calls_.get<ExpirationTag>().begin()->expires_at);
   }
 
   if (deadline != CoarseTimePoint::max()) {
     timer_.Start(deadline - now);
+  }
+}
+
+void Connection::CleanupExpirationQueue(CoarseTimePoint now) {
+  auto& index = active_calls_.get<ExpirationTag>();
+  while (!index.empty() && index.begin()->expires_at <= now) {
+    auto& top = *index.begin();
+    auto call = top.call;
+    auto handle = top.handle;
+    auto erase = false;
+    if (!call->IsFinished()) {
+      call->SetTimedOut();
+      if (handle != std::numeric_limits<size_t>::max()) {
+        erase = stream_->Cancelled(handle);
+      }
+    }
+    if (erase) {
+      index.erase(index.begin());
+    } else {
+      index.modify(index.begin(), [](auto& active_call) {
+        active_call.call.reset();
+        active_call.expires_at = CoarseTimePoint::max();
+      });
+    }
   }
 }
 
@@ -226,16 +240,28 @@ void Connection::QueueOutboundCall(const OutboundCallPtr& call) {
   auto handle = DoQueueOutboundData(call, true);
 
   // Set up the timeout timer.
-  const MonoDelta& timeout = call->controller()->timeout();
+  MonoDelta timeout = call->controller()->timeout();
+  CoarseTimePoint expires_at;
   if (timeout.Initialized()) {
-    auto expires_at = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
-    auto reschedule = expiration_queue_.empty() || expiration_queue_.top().time > expires_at;
-    expiration_queue_.push({expires_at, call, handle});
+    auto now = CoarseMonoClock::Now();
+    expires_at = now + timeout.ToSteadyDuration();
+    auto reschedule = active_calls_.empty() ||
+                      active_calls_.get<ExpirationTag>().begin()->expires_at > expires_at;
+    CleanupExpirationQueue(now);
     if (reschedule && (stream_->IsConnected() ||
                        expires_at < last_activity_time_ + FLAGS_rpc_connection_timeout_ms * 1ms)) {
       timer_.Start(timeout.ToSteadyDuration());
     }
+  } else {
+    // Call never expires.
+    expires_at = CoarseTimePoint::max();
   }
+  active_calls_.insert(ActiveCall {
+    .id = call->call_id(),
+    .call = call,
+    .expires_at = expires_at,
+    .handle = handle,
+  });
 
   call->SetQueued();
 }
@@ -286,22 +312,24 @@ void Connection::ParseReceived() {
   stream_->ParseReceived();
 }
 
-Result<ProcessDataResult> Connection::ProcessReceived(
-    const IoVecs& data, ReadBufferFull read_buffer_full) {
-  auto result = context_->ProcessCalls(shared_from_this(), data, read_buffer_full);
+Result<size_t> Connection::ProcessReceived(ReadBufferFull read_buffer_full) {
+  auto result = context_->ProcessCalls(
+      shared_from_this(), ReadBuffer().AppendedVecs(), read_buffer_full);
   VLOG_WITH_PREFIX(4) << "context_->ProcessCalls result: " << AsString(result);
   if (PREDICT_FALSE(!result.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Command sequence failure: " << result.status();
-    return result;
+    return result.status();
   }
 
-  if (!result->consumed && read_buffer_full && context_->Idle()) {
+  if (!result->consumed && ReadBuffer().Full() && context_->Idle()) {
     return STATUS_FORMAT(
         InvalidArgument, "Command is greater than read buffer, exist data: $0",
-        IoVecsFullSize(data));
+        IoVecsFullSize(ReadBuffer().AppendedVecs()));
   }
 
-  return result;
+  ReadBuffer().Consume(result->consumed, result->buffer);
+
+  return result->bytes_to_skip;
 }
 
 Status Connection::HandleCallResponse(CallData* call_data) {
@@ -310,14 +338,14 @@ Status Connection::HandleCallResponse(CallData* call_data) {
   RETURN_NOT_OK(resp.ParseFrom(call_data));
 
   ++responded_call_count_;
-  auto awaiting = awaiting_response_.find(resp.call_id());
-  if (awaiting == awaiting_response_.end()) {
+  auto awaiting = active_calls_.find(resp.call_id());
+  if (awaiting == active_calls_.end()) {
     LOG_WITH_PREFIX(DFATAL) << "Got a response for call id " << resp.call_id() << " which "
                             << "was not pending! Ignoring.";
     return Status::OK();
   }
-  auto call = awaiting->second;
-  awaiting_response_.erase(awaiting);
+  auto call = awaiting->call;
+  active_calls_.erase(awaiting);
 
   if (PREDICT_FALSE(!call)) {
     // The call already failed due to a timeout.
@@ -329,12 +357,6 @@ Status Connection::HandleCallResponse(CallData* call_data) {
   call->SetResponse(std::move(resp));
 
   return Status::OK();
-}
-
-void Connection::CallSent(OutboundCallPtr call) {
-  DCHECK(reactor_->IsCurrentThread());
-
-  awaiting_response_.emplace(call->call_id(), !call->IsFinished() ? call : nullptr);
 }
 
 std::string Connection::ToString() const {
@@ -367,8 +389,8 @@ Status Connection::DumpPB(const DumpRunningRpcsRequestPB& req,
 
   if (direction_ == Direction::CLIENT) {
     auto call_in_flight = resp->add_calls_in_flight();
-    for (auto& entry : awaiting_response_) {
-      if (entry.second && entry.second->DumpPB(req, call_in_flight)) {
+    for (auto& entry : active_calls_) {
+      if (entry.call && entry.call->DumpPB(req, call_in_flight)) {
         call_in_flight = resp->add_calls_in_flight();
       }
     }

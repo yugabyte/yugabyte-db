@@ -16,13 +16,16 @@
 
 #include <string>
 
-#include "yb/client/client.h"
+#include "yb/client/transaction_manager.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/master.h"
+
+#include "yb/master/master_replication.fwd.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
+
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
@@ -38,16 +41,19 @@ using client::YBClient;
 
 namespace enterprise {
 
-constexpr int kRpcTimeout = NonTsanVsTsan(30, 120);
+constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 
 struct TwoDCTestParams {
-  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_) :
-      batch_size(batch_size_), enable_replicate_intents(enable_replicate_intents_) {}
+  TwoDCTestParams(int batch_size_, bool enable_replicate_intents_, bool transactional_table_)
+      : batch_size(batch_size_),
+        enable_replicate_intents(enable_replicate_intents_),
+        transactional_table(transactional_table_) {}
 
   int batch_size;
   bool enable_replicate_intents;
+  bool transactional_table;
 };
 
 class TwoDCTestBase : public YBTest {
@@ -61,11 +67,15 @@ class TwoDCTestBase : public YBTest {
     boost::optional<client::TransactionManager> txn_mgr_;
 
     Result<pgwrapper::PGConn> Connect() {
-      return pgwrapper::PGConn::Connect(pg_host_port_);
+      return ConnectToDB(std::string() /* dbname */);
     }
 
     Result<pgwrapper::PGConn> ConnectToDB(const std::string& dbname) {
-      return pgwrapper::PGConn::Connect(pg_host_port_, dbname);
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname
+      }).Connect();
     }
   };
 
@@ -79,37 +89,41 @@ class TwoDCTestBase : public YBTest {
     FLAGS_flush_rocksdb_on_shutdown = false;
   }
 
-  void Destroy();
+  void TearDown() override;
 
-  CHECKED_STATUS SetupUniverseReplication(
+  Status SetupUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool leader_only = true);
 
-  CHECKED_STATUS VerifyUniverseReplication(
+  Status VerifyUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, master::GetUniverseReplicationResponsePB* resp);
 
-  CHECKED_STATUS ToggleUniverseReplication(
+  Status ToggleUniverseReplication(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, bool is_enabled);
 
-  CHECKED_STATUS VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
+  Status VerifyUniverseReplicationDeleted(MiniCluster* consumer_cluster,
       YBClient* consumer_client, const std::string& universe_id, int timeout);
 
-  CHECKED_STATUS GetCDCStreamForTable(
+  Status VerifyUniverseReplicationFailed(MiniCluster* consumer_cluster,
+      YBClient* consumer_client, const std::string& producer_uuid,
+      master::IsSetupUniverseReplicationDoneResponsePB* resp);
+
+  Status GetCDCStreamForTable(
       const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
-  CHECKED_STATUS DeleteUniverseReplication(const std::string& universe_id);
+  Status DeleteUniverseReplication(const std::string& universe_id);
 
-  CHECKED_STATUS DeleteUniverseReplication(
+  Status DeleteUniverseReplication(
       const std::string& universe_id, YBClient* client, MiniCluster* cluster);
 
-  uint32_t NumProducerTabletsPolled(MiniCluster* cluster);
+  Status CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
 
-  CHECKED_STATUS CorrectlyPollingAllTablets(MiniCluster* cluster, uint32_t num_producer_tablets);
+  Status WaitForSetupUniverseReplicationCleanUp(string producer_uuid);
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();

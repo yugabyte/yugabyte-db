@@ -13,13 +13,10 @@
 
 #include "yb/util/string_trim.h"
 
-#include <algorithm>
-#include <cctype>
-#include <locale>
-#include <sstream>
-#include <string>
-#include <vector>
+#include <limits>
 #include <regex>
+#include <sstream> // for istringstream
+#include <string>
 
 using std::string;
 using std::vector;
@@ -55,8 +52,8 @@ string ApplyEagerLineContinuation(const string& s) {
 
 namespace {
 
-int CountLeadingSpaces(const string& line) {
-  int num_spaces = 0;
+size_t CountLeadingSpaces(const string& line) {
+  size_t num_spaces = 0;
   for (char c : line) {
     if (c != ' ')
       break;
@@ -78,9 +75,9 @@ string LeftShiftTextBlock(const std::string& s) {
     getline(input, lines.back());
   }
 
-  int min_leading_spaces = std::numeric_limits<int>::max();
+  size_t min_leading_spaces = std::numeric_limits<int>::max();
   for (const string& line : lines) {
-    const int num_spaces = CountLeadingSpaces(line);
+    const auto num_spaces = CountLeadingSpaces(line);
     // We're not counting empty lines when calculating the minimum number of leading spaces.
     // TODO: we're counting all-space lines as empty but not if they have e.g. tab chracters.
     if (num_spaces != line.size() && num_spaces < min_leading_spaces) {

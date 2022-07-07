@@ -16,13 +16,15 @@
 #ifndef YB_UTIL_TOSTRING_H
 #define YB_UTIL_TOSTRING_H
 
+#include <float.h>
+
 #include <chrono>
+#include <functional>
+#include <sstream>
 #include <string>
 #include <type_traits>
 
-#include <boost/lexical_cast.hpp>
 #include <boost/mpl/and.hpp>
-
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
@@ -121,6 +123,14 @@ typename std::enable_if<std::is_integral<typename std::remove_reference<Int>::ty
   return std::string(buffer, end);
 }
 
+template <class Float>
+typename std::enable_if<std::is_floating_point<typename std::remove_reference<Float>::type>::value,
+                        std::string>::type ToString(Float&& value) {
+  char buffer[DBL_DIG + 10];
+  snprintf(buffer, sizeof (buffer), "%.*g", DBL_DIG, value);
+  return buffer;
+}
+
 template <class Pointer>
 class PointerToString {
  public:
@@ -200,13 +210,16 @@ typename std::enable_if<
         boost::mpl::bool_<!
             (IsPointerLike<T>::value ||
              std::is_integral<typename std::remove_reference<T>::type>::value ||
+             std::is_floating_point<typename std::remove_reference<T>::type>::value ||
              IsCollection<T>::value ||
              HasMemberFunction_ToString<T>::value ||
              HasMemberFunction_to_string<T>::value)>
     >::value,
     std::string>::type
 ToString(T&& value) {
-  return boost::lexical_cast<std::string>(value);
+  std::ostringstream out;
+  out << value;
+  return out.str();
 }
 
 // Definition of functions that use ToString chaining should be declared after all declarations.
@@ -258,12 +271,12 @@ std::string ToString(const std::tuple<Args...>& tuple) {
   return result;
 }
 
+std::string MillisecondsToString(int64_t milliseconds);
+
 template<class Rep, class Period>
 std::string ToString(const std::chrono::duration<Rep, Period>& duration) {
-  int64_t milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-  int64_t seconds = milliseconds / 1000;
-  milliseconds -= seconds * 1000;
-  return StringPrintf("%" PRId64 ".%03" PRId64 "s", seconds, milliseconds);
+  return MillisecondsToString(
+      std::chrono::duration_cast<std::chrono::milliseconds>(duration).count());
 }
 
 std::string ToString(const std::chrono::steady_clock::time_point& time_point);
@@ -319,7 +332,7 @@ std::string AsString(T&&... t) {
 #if BOOST_PP_VARIADICS
 
 #define YB_FIELD_TO_STRING(r, data, elem) \
-    " " BOOST_PP_STRINGIZE(elem) ": " + AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))) +
+    " " BOOST_PP_STRINGIZE(elem) ": " + yb::AsString(BOOST_PP_CAT(elem, BOOST_PP_APPLY(data))) +
 #define YB_FIELDS_TO_STRING(data, ...) \
     BOOST_PP_SEQ_FOR_EACH(YB_FIELD_TO_STRING, data(), BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__))
 

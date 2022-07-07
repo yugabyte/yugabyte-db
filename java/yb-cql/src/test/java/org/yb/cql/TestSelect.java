@@ -43,9 +43,13 @@ import static org.yb.AssertionWrappers.assertNull;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelect extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSelect.class);
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
@@ -172,6 +176,185 @@ public class TestSelect extends BaseCQLTest {
     LOG.info("TEST CQL SIMPLE QUERY - End");
   }
 
+  public void testNotEqualsQuery(boolean use_if_clause) throws Exception {
+    LOG.info("TEST CQL QUERY WITH NOT EQUALS - Start");
+
+    // Setup test table.
+    setupTable("test_select", 0);
+
+    // Populate rows.
+    {
+      String insert_stmt = "INSERT INTO test_select (h1, h2, r1, r2, v1, v2) " +
+                           "VALUES (?, ?, ?, ?, ?, ?)";
+      PreparedStatement stmt = session.prepare(insert_stmt);
+      for (int i = 1; i <= 2; i++) {
+        for (int j = 1; j <= 2; j++) {
+          session.execute(stmt.bind(new Integer(i), "h" + i,
+                                    new Integer(j), "r" + j,
+                                    new Integer(j), "v" + i + j));
+        }
+      }
+      session.execute("INSERT INTO test_select (h1, h2, r1, r2, v1, v2) " +
+                      "VALUES (3, 'h3', 1, 'r1', null, 'v')");
+    }
+
+    String clause_type = use_if_clause ? "IF" : "WHERE";
+
+    // Tests on primary key columns work only with WHERE clause.
+    if (!use_if_clause) {
+      // Test with "!=" on hash key (both null and non-null case
+      // even though the null case doesn't make sense for primary key columns).
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s h1 != NULL", clause_type),
+        "Row[1, h1, 1, r1, 1, v11]",
+        "Row[1, h1, 2, r2, 2, v12]",
+        "Row[2, h2, 1, r1, 1, v21]",
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s h1 != 1", clause_type),
+        "Row[2, h2, 1, r1, 1, v21]",
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+      // Test with "!=" on range key (both null and non-null case
+      // even though the null case doesn't make sense for primary key columns).
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s r1 != NULL", clause_type),
+        "Row[1, h1, 1, r1, 1, v11]",
+        "Row[1, h1, 2, r2, 2, v12]",
+        "Row[2, h2, 1, r1, 1, v21]",
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+      assertQueryRowsUnorderedWithoutDups(
+        String.format("SELECT * FROM test_select %s r1 != 1", clause_type),
+        "Row[1, h1, 2, r2, 2, v12]",
+        "Row[2, h2, 2, r2, 2, v22]");
+    }
+
+    // Test with "!=" on regular column (both null and non-null case).
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 != NULL", clause_type),
+      "Row[1, h1, 1, r1, 1, v11]",
+      "Row[1, h1, 2, r2, 2, v12]",
+      "Row[2, h2, 1, r1, 1, v21]",
+      "Row[2, h2, 2, r2, 2, v22]");
+
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 != 1", clause_type),
+      "Row[1, h1, 2, r2, 2, v12]",
+      "Row[2, h2, 2, r2, 2, v22]",
+      "Row[3, h3, 1, r1, NULL, v]");
+
+    // Test with "!=" operator on multiple columns.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 != 1 AND v2 != 'v12'", clause_type),
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+    // Test with "<>" instead of != operator - both are allowed in YCQL and have same semantics.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v1 <> 1 AND v2 != 'v12'", clause_type),
+        "Row[2, h2, 2, r2, 2, v22]",
+        "Row[3, h3, 1, r1, NULL, v]");
+
+    // Test with "!=" operator on json/collection column.
+    //   i) JSON should be comparable with NULL and other JSONs.
+    //   ii) Collections can only be compared with NULL. See IsComparable() in ql_type.h for ref.
+    String alter_stmt = "ALTER TABLE test_select add v_json jsonb, v_set SET<int>, " +
+      "v_map MAP<int,int>, v_list LIST<int>";
+
+    session.execute(alter_stmt);
+    session.execute("TRUNCATE TABLE test_select"); // To reduce the output space for tests.
+
+    session.execute("INSERT INTO test_select(h1, h2, r1, r2, v1, v2, v_json, v_set, v_map, " +
+      "v_list) VALUES (1, 'h1', 1, 'r1', 1, 'v11', '{\"key\": \"val\"}', {1}, {1:1}, [1])");
+
+    // For json.
+
+    // TODO: As of now != null works on collections but not with json.
+    // There were two approaches to allow json comparison with null -
+    // 1. Change the isConvertible() related conversion matrix for json and null
+    // 2. Add a condition in semantic analysis to not check isConvertible() for
+    //    =,!=,IN,NOT IN operators in where clause.
+    //
+    // assertQueryRowsUnorderedWithoutDups(
+    //   String.format("SELECT * FROM test_select %s v_json != null", clause_type),
+    //   "Row[1, h1, 1, r1, 1, v11, {\"key\": \"val\"}, {1}, {1:1}, [1]]");
+
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_json != '{\"key\": \"val\"}'", clause_type));
+
+    // For set.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_set != null", clause_type),
+      "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
+
+    // For map.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_map != null", clause_type),
+      "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
+
+    // For list.
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM test_select %s v_list != null", clause_type),
+      "Row[1, h1, 1, r1, 1, v11, {\"key\":\"val\"}, [1], {1=1}, [1]]");
+
+    // Negative tests below.
+    String illogicalConditionErrString = "Illogical condition for where clause";
+
+    if (!use_if_clause) {
+      // Test with more than one "!=" operator on one column.
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 != 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 <> 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+
+      // Test with "!=" operator with other operators - <, >, <=, >=, =, IN, NOT IN.
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 < 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 > 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 <= 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 >= 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v1 = 1 AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(
+        String.format("SELECT * FROM test_select %s v1 IN (1) AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+      runInvalidStmt(
+        String.format("SELECT * FROM test_select %s v1 NOT IN (1) AND v1 != 2", clause_type),
+        illogicalConditionErrString);
+
+      // Test with "!=" operator on json/collection subscripted column.
+      runInvalidStmt(
+        String.format("SELECT * FROM test_select %s v_json->>'key' != ''", clause_type),
+        "Invalid CQL Statement. Operator not supported for subscripted column");
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v_map[1] != null", clause_type),
+        "Invalid CQL Statement. Operator not supported for subscripted column");
+      runInvalidStmt(String.format("SELECT * FROM test_select %s v_list[1] != null", clause_type),
+        "Invalid CQL Statement. Operator not supported for subscripted column");
+    }
+
+    // Test with incomparable data type.
+    runInvalidStmt(String.format("SELECT * FROM test_select %s v1 != ''", clause_type),
+      "Datatype Mismatch");
+  }
+
+  @Test
+  public void testNotEqualsQueryWithWhere() throws Exception {
+    testNotEqualsQuery(false /* use_if_clause */);
+  }
+
+  @Test
+  public void testNotEqualsQueryWithIf() throws Exception {
+    testNotEqualsQuery(true /* use_if_clause */);
+  }
+
   @Test
   public void testRangeQuery() throws Exception {
     LOG.info("TEST CQL RANGE QUERY - Start");
@@ -236,10 +419,6 @@ public class TestSelect extends BaseCQLTest {
     runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 >= 1 AND r1 > 3;");
     runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 < 1 AND r1 <= 3;");
     runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 <= 1 AND r1 <= 3;");
-
-    // Invalid range: not-equal not supported.
-    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 <> 1;");
-    runInvalidStmt("SELECT * FROM test_select WHERE h1 = 1 AND h2 = 'h1' AND r1 != 1;");
 
     LOG.info("TEST CQL RANGE QUERY - End");
   }
@@ -1105,6 +1284,39 @@ public class TestSelect extends BaseCQLTest {
       assertEquals(4, metrics.seekCount);
     }
 
+    // Test using a partial specification of range key
+    {
+        String query =
+            "SELECT * FROM in_range_test WHERE h = 1 AND r1 IN (80, 30)";
+
+        String[] rows = {"Row[1, 80, 0, 180]",
+                        "Row[1, 80, 10, 181]",
+                        "Row[1, 80, 20, 182]",
+                        "Row[1, 80, 30, 183]",
+                        "Row[1, 80, 40, 184]",
+                        "Row[1, 80, 50, 185]",
+                        "Row[1, 80, 60, 186]",
+                        "Row[1, 80, 70, 187]",
+                        "Row[1, 80, 80, 188]",
+                        "Row[1, 80, 90, 189]",
+                        "Row[1, 30, 0, 130]",
+                        "Row[1, 30, 10, 131]",
+                        "Row[1, 30, 20, 132]",
+                        "Row[1, 30, 30, 133]",
+                        "Row[1, 30, 40, 134]",
+                        "Row[1, 30, 50, 135]",
+                        "Row[1, 30, 60, 136]",
+                        "Row[1, 30, 70, 137]",
+                        "Row[1, 30, 80, 138]",
+                        "Row[1, 30, 90, 139]"};
+        RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query,
+        rows);
+        // seeking to 2 places
+        // Seeking to DocKey(0x0a73, [1], [80, kLowest])
+        // Seeking to DocKey(0x0a73, [1], [30, kLowest])
+        assertEquals(2, metrics.seekCount);
+    }
+
     // Test ORDER BY clause with IN (reverse scan).
     {
       String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
@@ -1200,23 +1412,25 @@ public class TestSelect extends BaseCQLTest {
               "Row[1, 60, 40, 164]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
-      // There are n = 5 values of r1 to look at (90, 80, 70, 60, 50).
-      // For each r1 we have m = 4 values to look for in the range (20, 30, 40, 50). But, we only
-      // seek to the very first one. Then do Next(s) until we get out of range for r2.
+      // There are n = 3 values of r1 to look at (80, 70, 60).
+      // For each r1 we have m = 2 values to look for in the range (30, 40). But, we only
+      // seek to the very first one.
+      // Then do Next(s) until we get out of range for r2.
       // If there are more r1's to look at, we'd seek to r2=Max.
       // We will be performing (n - 1) seeks to the Max value for finding the next r1
-      // Thus, this scan will have to Seek to n * 1 + (n - 1) = 5 * 1 + (5 - 1) = 9 locations.
+      // We also do one seek per r1 to get the initial r2 value in range.
+      // We also do an initial seek to find the first valid value for r1
+      // Thus, this scan will have to Seek to n + n + 1 = 3 + 3 + 1 = 7
+      // locations.
       // For example,
-      //   Seeking to DocKey(0x0a73, [1], [90, "20"])
       //   Seeking to DocKey(0x0a73, [1], [90, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [80, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [80, "20", +Inf])
       //   Seeking to DocKey(0x0a73, [1], [80, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [70, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [70, "20", +inf])
       //   Seeking to DocKey(0x0a73, [1], [70, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [60, "20"])
+      //   Seeking to DocKey(0x0a73, [1], [60, "20", +inf])
       //   Seeking to DocKey(0x0a73, [1], [60, +Inf])
-      //   Seeking to DocKey(0x0a73, [1], [50, "20"])
-      assertEquals(9, metrics.seekCount);
+      assertEquals(7, metrics.seekCount);
     }
 
     // Test basic seek optimisation with fwd scans.
@@ -1240,6 +1454,20 @@ public class TestSelect extends BaseCQLTest {
       // We will be performing (n - 1) seeks to the Max value for finding the next r1
       // Thus, this scan will have to Seek to n * 1 + (n - 1) = 3 * 1 + (3 - 1) = 5 locations.
       assertEquals(5, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND r1 > 60 AND r1 < 80 AND " +
+                     "r2  > '30' AND r2 < '40'";
+
+      String[] rows = {};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // We first will seek to (60, Inf) to find a plausible value for r1
+      // Then we seek to (70, 30, Inf) to get a plausible r2 value
+      // Then we seek to (70, Inf) in hopes of getting another plausible r1
+      // value
+      assertEquals(3, metrics.seekCount);
     }
 
     // Test basic seek optimisation with fwd scans. No hash componenet specified.
@@ -1339,22 +1567,81 @@ public class TestSelect extends BaseCQLTest {
 
       // use unordered because the hash keys could go in random order.
       RocksDBMetrics metrics = assertUnorderedPartialRangeSpec("in_range_test", query, rows);
-      // For each Hash key in 0 .. 9 we'll have 11 of these seeks.
-      // Seeking to DocKey(0x0a73, [h], [90, "20"])
+      // For each Hash key in 0 .. 9 we'll have 8 of these seeks.
       // Seeking to DocKey(0x0a73, [h], [90, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [80, "20"])
+      // Seeking to DocKey(0x0a73, [h], [80, "20", +Inf])
       // Seeking to DocKey(0x0a73, [h], [80, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [70, "20"])
+      // Seeking to DocKey(0x0a73, [h], [70, "20", +Inf])
       // Seeking to DocKey(0x0a73, [h], [70, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [60, "20"])
+      // Seeking to DocKey(0x0a73, [h], [60, "20", +Inf])
       // Seeking to DocKey(0x0a73, [h], [60, +Inf])
-      // Seeking to DocKey(0x0a73, [h], [50, "20"])
-      // Seeking to DocKey(0x0a73, [h], [50, +Inf])
       // Seeking to DocKey(0x0a73, [h], [+Inf])
       // Additionally, one
       //   Seeking to DocKey([], []) per tablet.
-      // Overall, 11 * 10 + 9
-      assertEquals(119, metrics.seekCount);
+      // Overall, 8 * 10 + 9
+      assertEquals(89, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+                     "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50'";
+
+      String[] rows = {"Row[1, 30, 30, 133]",
+                       "Row[1, 30, 40, 134]",
+                       "Row[1, 20, 30, 123]",
+                       "Row[1, 20, 40, 124]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // Similar to above.
+      // There are n = 2 values of r1 to look at. For each r1 we have m = 2
+      // values to look for in the range. During the scan, for each r1
+      // we look at m + 1 = 3 values before deciding to seek out of r1 by
+      // going to r2=Max. We will be performing n seeks to the Max value for
+      // finding the next r1.
+      // Thus, this scan will have to Seek to
+      // n * (m + 1) + (n - 1) = 2 * 3 + 2 = 8 locations.
+      // But reverse scans do 2 seeks for each option
+      // since PrevDocKey calls Seek twice internally.
+      // So, the expected number of seeks = 8 * 2 = 16
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "10"]), []))
+      // Trying to seek out of r1 = 20. [1, 20, _]
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "90"]), []))
+      // Try to get into the range for r2.
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "10"]), []))
+      // Trying to seek out of r1 = 30. [1, 30, _]
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "90"]), []))
+      // Try to get into the range for r2.
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "50"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "20"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40,
+      //                        kString : "10"]), []))
+      assertEquals(4, metrics.seekCount);
     }
 
     // Test ORDER BY clause (reverse scan).
@@ -1385,12 +1672,38 @@ public class TestSelect extends BaseCQLTest {
       //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "40"]), []))
       //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "30"]), []))
       //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "20"]), []))
-      assertEquals(14, metrics.seekCount);
+      assertEquals(10, metrics.seekCount);
     }
 
     {
       String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
-              "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50' ORDER BY r1 ASC, r2 DESC";
+                     "r1 >= 20 AND r1 < 30 AND r2  > '30' AND r2 <= '40' ORDER BY r1 ASC, r2 DESC";
+
+      String[] rows = {"Row[1, 20, 40, 124]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
+      // There are n = 1 values of r1 to look at. For each r1 we have m = 1 values to look for
+      // in the range. During the scan, for each r1 we look at m + 1 = 3 values before deciding
+      // to seek out of r1 by going to r2=Max. We will be performing n seeks to the Max
+      // value for finding the next r1.
+      // Thus, this scan will have to Seek to n * (m + 1) + n = 3 locations.
+      // But reverse scans do 2 seeks for each option since PrevDocKey
+      // calls Seek twice internally.
+      // So the total number of seeks will be 3 * 2 = 6
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                       kString : "40"]), []))
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                       kLowest"]), []))
+      // Trying to seek out of r1 = 20. [1, 20, _]
+      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                       kString : "90"]), []))
+
+      assertEquals(6, metrics.seekCount);
+    }
+
+    {
+      String query = "SELECT * FROM in_range_test WHERE h = 1 AND " +
+                     "r1 >= 20 AND r1 < 40 AND r2  > '20' AND r2 < '50' ORDER BY r1 ASC, r2 DESC";
 
       String[] rows = {
               "Row[1, 20, 40, 124]",
@@ -1399,37 +1712,33 @@ public class TestSelect extends BaseCQLTest {
               "Row[1, 30, 30, 133]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
-      // Similar to above. But would stop at 2 extra values of r2 for each r1. (due to </> instead
-      // of <=/>=) so n = 3, m = 4
-      // There are n = 3 values of r1 to look at. For each r1 we have m = 4 values to look for in
-      // the range. During the scan, for each r1 we look at m + 1 = 5 values before deciding to
+      // Similar to above.
+      // There are n = 2 values of r1 to look at. For each r1 we have m = 2 values to look for in
+      // the range. During the scan, for each r1 we look at m + 1 = 3 values before deciding to
       // seek out of r1 by going to r2=Max
-      // We will be performing (n - 1) seeks to the Max value for finding the next r1
-      // Thus, this scan will have to Seek to n * (m + 1) + (n - 1) = 3 * 5 + 2 = 17 locations.
+      // We will be performing n seeks to the Max value for finding the next r1
+      // Thus, this scan will have to Seek to n * (m + 1) + n = 2 * 3 + 2 = 8 locations.
       // But reverse scans do 2 seeks for each option since PrevDocKey calls Seek twice internally.
-      // So, the expected number of seeks = 17 * 2 = 34
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "50"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "40"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "30"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "20"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20, kString : "10"]), []))
+      // So, the expected number of seeks = 8 * 2 = 16
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "50"], kLowest), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 20,
+      //                        kLowest]), []))
       // Trying to seek out of r1 = 20. [1, 20, _]
-      // Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "90"]), []))
       // Try to get into the range for r2.
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "50"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "40"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "30"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "20"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30, kString : "10"]), []))
-      // Trying to seek out of r1 = 30. [1, 30, _]
-      //Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "90"]), []))
-      // Try to get into the range for r2.
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "50"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "40"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "30"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "20"]), []))
-      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 40, kString : "10"]), []))
-      assertEquals(34, metrics.seekCount);
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "50"], kLowest), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "40"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kString : "30"]), []))
+      //  Seek(SubDocKey(DocKey(0x1210, [kInt32 : 1], [kInt32Descending : 30,
+      //                        kLowest), []))
+      assertEquals(16, metrics.seekCount);
     }
   }
 
@@ -2082,5 +2391,48 @@ public class TestSelect extends BaseCQLTest {
         "where keyspace_name='system'",
         "{\"class\":\"org.apache.cassandra.locator.SimpleStrategy\"," +
         "\"replication_factor\":\"3\"}");
+  }
+
+  @Test
+  public void testInClauseWithTokenRange() throws Exception {
+    // Test 1: #9032 Ensure all partitions honour token conditions.
+    session.execute("create table test (h1 int primary key, v1 int);");
+    session.execute("insert into test (h1, v1) values (1, 2)");
+    session.execute("insert into test (h1, v1) values (2, 3)");
+    session.execute("insert into test (h1, v1) values (5, 6)");
+
+    Set<Long> partition_keys = new HashSet<Long>();
+    for (Row row : session.execute("select h1, token(h1) from test;")) {
+      partition_keys.add(row.getLong(1));
+    }
+    // We know for sure that the tokens for 1, 2, 5 are -7921831744544702464,
+    // 4666855113862676480 and -8470426474153771008. We want to pick anything other than that.
+    assertFalse(partition_keys.contains(new Long(1)));
+
+    // Note that we test with 2 hash column values 2 and 5 after 1 in the IN clause. This is to
+    // confirm that both the lower_bound and the upper_bound of token() range are passed on to later
+    // requests for IN clause partitions. If we were to test with only in (1, 2), tests would still
+    // pass if hypothetically the db code missed to pass the lower_bound to later requests.
+    ResultSet res = session.execute("select * from test where token(h1) >= 1 and token(h1) <= 1 " +
+      "and h1 in (1, 2, 5);");
+
+    // The below assertion confirms that all point get queries (i.e., for h1 = 1, 2), the token()
+    // conditions are honoured.
+    assertTrue("No rows should be returned", res.all().isEmpty());
+
+    // Test 2: Ensure that all partitions use the same token conditions
+    // i.e., an op for one partition key might change the token range's lower and upper bound to be
+    // the same as the partition key of that op (as an optimization). But ops for subsequent
+    // partitions should use the original token ranges.
+    //
+    // For example, if the above statement didn't hold true, the op for h1=2 would use
+    // lower and upper bound as -7921831744544702464 (which is the hash code for h1=1). And in
+    // that case it would return just a single row i.e., for the first partition key h1=1.
+    //
+    // -7921831744544702464 is the hash code for 1
+    // -4666855113862676480 is the hash code for 2
+    assertQueryRowsUnordered("select * from test where token(h1) >= -7921831744544702464 " +
+      "and token(h1) <= 4666855113862676480 and h1 in (1, 2);",
+      "Row[1, 2]", "Row[2, 3]");
   }
 }

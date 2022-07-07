@@ -46,14 +46,13 @@
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/leader_lease.h"
-#include "yb/consensus/opid_util.h"
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
+
 #include "yb/rpc/rpc_controller.h"
+
 #include "yb/util/locks.h"
-#include "yb/util/net/net_util.h"
 
 namespace yb {
 class Status;
@@ -73,7 +72,7 @@ YB_DEFINE_ENUM(ElectionVote, (kDenied)(kGranted)(kUnknown));
 class VoteCounter {
  public:
   // Create new VoteCounter with the given majority size.
-  VoteCounter(int num_voters, int majority_size);
+  VoteCounter(size_t num_voters, size_t majority_size);
 
   // Register a peer's vote.
   //
@@ -83,16 +82,16 @@ class VoteCounter {
   // If the same vote is duplicated, 'is_duplicate' is set to true.
   // Otherwise, it is set to false.
   // If an OK status is not returned, the value in 'is_duplicate' is undefined.
-  CHECKED_STATUS RegisterVote(const std::string& voter_uuid, ElectionVote vote, bool* is_duplicate);
+  Status RegisterVote(const std::string& voter_uuid, ElectionVote vote, bool* is_duplicate);
 
   // If vote is not yet decided, returns ElectionVote::kUnknown.
   ElectionVote GetDecision() const;
 
   // Return the total of "Yes" and "No" votes.
-  int GetTotalVotesCounted() const;
+  size_t GetTotalVotesCounted() const;
 
   // Return total number of expected votes.
-  int GetTotalExpectedVotes() const { return num_voters_; }
+  size_t GetTotalExpectedVotes() const { return num_voters_; }
 
   // Return true iff GetTotalVotesCounted() == num_voters_;
   bool AreAllVotesIn() const;
@@ -102,11 +101,11 @@ class VoteCounter {
 
   typedef std::map<std::string, ElectionVote> VoteMap;
 
-  const int num_voters_;
-  const int majority_size_;
+  const size_t num_voters_;
+  const size_t majority_size_;
   VoteMap votes_; // Voting record.
-  int yes_votes_; // Accumulated yes votes, for quick counting.
-  int no_votes_;  // Accumulated no votes.
+  size_t yes_votes_ = 0; // Accumulated yes votes, for quick counting.
+  size_t no_votes_ = 0;  // Accumulated no votes.
 
   DISALLOW_COPY_AND_ASSIGN(VoteCounter);
 };

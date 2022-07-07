@@ -4,12 +4,11 @@ headerTitle: Back up universe YCQL data
 linkTitle: Back up universe data
 description: Use Yugabyte Platform to back up data in YCQL tables.
 menu:
-  stable:
+  stable_yugabyte-platform:
     parent: back-up-restore-universes
     identifier: back-up-universe-data-2-ycql
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -30,17 +29,24 @@ showAsideToc: true
 
 </ul>
 
-To immediately back up your YugabyteDB universe YSQL data, follow these steps.
+Use Yugabyte Platform to back up your YugabyteDB universe YCQL data.
 
-1. Open the **Universe Overview** and then click the **Backups** tab. The **Backups** page appears.
-2. Click **Create Backup** to open the **Create Backup** dialog.
+To schedule backups for a later time, or as a recurring task, see [Schedule universe YCQL data backups](../../schedule-data-backups/ycql).
 
-    ![Create Backup - YSQL](/images/yp/create-backup-ycql.png)
+To immediately back up your YugabyteDB universe YCQL data, perform the following:
 
-3. Click the **YSQL** tab and enter the following:
+1. Open your universe and select the **Backups** tab.
 
-    - **Storage**: Select the storage type: `GCS Storage`, `S3 Storage`, or `NFS Storage`.
-    - **Namespace**: Select the namespace from the drop-down list of available namespaces.
-    - **Parallel Threads**: Enter or select the number of threads. The default value of `8` appears.
+1. Click **Create Backup** to open the **Create Backup** dialog.
 
-Click **OK**. The backup begins immediately.
+    <br/><br/>
+
+    ![Create Backup - YCQL](/images/yp/create-backup-ycql.png)<br><br>
+
+1. Complete the fields presented in the **YCQL** tab.
+
+    Notice that the contents of the **Storage** field list depends on your existing backup storage configurations.
+
+1. Click **OK** to start the requested backup immediately.
+
+If the universe has [encryption at rest enabled](../../../security/enable-encryption-at-rest), data files are backed up as-is (encrypted) to reduce the computation cost of a backup and to keep the files encrypted. A universe key metadata file, containing key references, is also backed up.

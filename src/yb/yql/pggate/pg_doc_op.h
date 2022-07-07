@@ -15,16 +15,24 @@
 #ifndef YB_YQL_PGGATE_PG_DOC_OP_H_
 #define YB_YQL_PGGATE_PG_DOC_OP_H_
 
-#include <deque>
+#include <list>
+#include <memory>
+#include <variant>
 
-#include <boost/optional.hpp>
+#include "yb/client/yb_op.h"
 
 #include "yb/util/locks.h"
-#include "yb/client/yb_op.h"
+#include "yb/util/lw_function.h"
+
+#include "yb/yql/pggate/pg_gate_fwd.h"
+#include "yb/yql/pggate/pg_op.h"
 #include "yb/yql/pggate/pg_session.h"
+#include "yb/yql/pggate/pg_sys_table_prefetcher.h"
 
 namespace yb {
 namespace pggate {
+
+class PgTuple;
 
 YB_STRONGLY_TYPED_BOOL(RequestSent);
 
@@ -32,8 +40,8 @@ YB_STRONGLY_TYPED_BOOL(RequestSent);
 // PgDocResult represents a batch of rows in ONE reply from tablet servers.
 class PgDocResult {
  public:
-  explicit PgDocResult(string&& data);
-  PgDocResult(string&& data, std::list<int64_t>&& row_orders);
+  explicit PgDocResult(rpc::SidecarHolder data);
+  PgDocResult(rpc::SidecarHolder data, std::list<int64_t> row_orders);
   ~PgDocResult();
 
   PgDocResult(const PgDocResult&) = delete;
@@ -48,12 +56,16 @@ class PgDocResult {
   }
 
   // Get the postgres tuple from this batch.
-  CHECKED_STATUS WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
+  Status WritePgTuple(const std::vector<PgExpr*>& targets, PgTuple *pg_tuple,
                               int64_t *row_order);
 
   // Get system columns' values from this batch.
   // Currently, we only have ybctids, but there could be more.
-  CHECKED_STATUS ProcessSystemColumns();
+  Status ProcessSystemColumns();
+
+  // Update the reservoir with ybctids from this batch.
+  // The update is expected to be sparse, so ybctids come as index/value pairs.
+  Status ProcessSparseSystemColumns(std::string *reservoir);
 
   // Access function to ybctids value in this batch.
   // Sys columns must be processed before this function is called.
@@ -69,7 +81,7 @@ class PgDocResult {
 
  private:
   // Data selected from DocDB.
-  string data_;
+  rpc::SidecarHolder data_;
 
   // Iterator on "data_" from row to row.
   Slice row_iterator_;
@@ -93,7 +105,7 @@ class PgDocResult {
 // Classes
 // - PgDocOp: Shared functionalities among all ops, mostly just RPC calls to tablet servers.
 // - PgDocReadOp: Definition for data & method members to be used in READ operation.
-// - PgDocWriteOp: Definition for data & method members to be used in READ operation.
+// - PgDocWriteOp: Definition for data & method members to be used in WRITE operation.
 // - PgDocResult: Definition data holder before they are passed to Postgres layer.
 //
 // Processing Steps
@@ -152,7 +164,8 @@ class PgDocResult {
 //        pgsql_ops_[0] = template_op_
 //    - CreateRequests()
 //    - ClonePgsqlOps() Clone template_op_ into one or more ops.
-//    - PopulateParallelSelectCountOps() Parallel processing SELECT COUNT.
+//    - PopulateParallelSelectOps() Parallel processing of aggregate requests or requests with
+//      WHERE expressions filtering rows in DocDB.
 //      The same requests are constructed for each tablet server.
 //    - PopulateNextHashPermutationOps() Parallel processing SELECT by hash conditions.
 //      Hash permutations will be group into different request based on their hash_codes.
@@ -194,6 +207,41 @@ class PgDocResult {
 // different partitions and interact with different tablet servers.
 //--------------------------------------------------------------------------------------------------
 
+// Helper class to wrap PerformFuture and custom response provider.
+// No memory allocations is required in case of using PerformFuture.
+class PgDocResponse {
+ public:
+  struct Data {
+    Data(const rpc::CallResponsePtr& response_, uint64_t in_txn_limit_)
+        : response(response_), in_txn_limit(in_txn_limit_) {
+    }
+    rpc::CallResponsePtr response;
+    uint64_t in_txn_limit;
+  };
+
+  class Provider {
+   public:
+    virtual ~Provider() = default;
+    virtual Result<Data> Get() = 0;
+  };
+
+  using ProviderPtr = std::unique_ptr<Provider>;
+
+  PgDocResponse() = default;
+  PgDocResponse(PerformFuture future, uint64_t in_txn_limit);
+  explicit PgDocResponse(ProviderPtr provider);
+
+  bool Valid() const;
+  Result<Data> Get();
+
+ private:
+  struct PerformInfo {
+    PerformFuture future;
+    uint64_t in_txn_limit;
+  };
+  std::variant<PerformInfo, ProviderPtr> holder_;
+};
+
 class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
  public:
   // Public types.
@@ -203,14 +251,17 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   typedef std::unique_ptr<PgDocOp> UniPtr;
   typedef std::unique_ptr<const PgDocOp> UniPtrConst;
 
+  using Sender = std::function<Result<PgDocResponse>(
+      PgSession*, const PgsqlOpPtr*, size_t, const PgTableDesc&, uint64_t, bool)>;
+
   // Constructors & Destructors.
-  explicit PgDocOp(const PgSession::ScopedRefPtr& pg_session,
-                   const PgTableDesc::ScopedRefPtr& table_desc,
-                   const PgObjectId& relation_id = PgObjectId());
+  PgDocOp(
+      const PgSession::ScopedRefPtr& pg_session, PgTable* table,
+      const Sender& = Sender(&PgDocOp::DefaultSender));
   virtual ~PgDocOp();
 
   // Initialize doc operator.
-  virtual CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params);
+  virtual Status ExecuteInit(const PgExecParameters *exec_params);
 
   const PgExecParameters& ExecParameters() const;
 
@@ -225,7 +276,7 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   }
 
   // Get the result of the op. No rows will be added to rowsets in case end of data reached.
-  CHECKED_STATUS GetResult(std::list<PgDocResult> *rowsets);
+  virtual Status GetResult(std::list<PgDocResult> *rowsets);
   Result<int32_t> GetRowsAffectedCount() const;
 
   // This operation is requested internally within PgGate, and that request does not go through
@@ -234,11 +285,34 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   SELECT ... FROM <table> WHERE ybctid IN (SELECT base_ybctids from INDEX)
   // After ybctids are queried from INDEX, PgGate will call "PopulateDmlByYbctidOps" to create
   // operators to fetch rows whose rowids equal queried ybctids.
-  virtual CHECKED_STATUS PopulateDmlByYbctidOps(const vector<Slice> *ybctids) = 0;
+  using YbctidGenerator = LWFunction<Slice()>;
+  Status PopulateDmlByYbctidOps(const YbctidGenerator& generator);
+
+  bool has_out_param_backfill_spec() {
+    return !out_param_backfill_spec_.empty();
+  }
+
+  const char* out_param_backfill_spec() {
+    return out_param_backfill_spec_.c_str();
+  }
+
+  bool end_of_data() const {
+    return end_of_data_;
+  }
+
+  virtual bool IsWrite() const = 0;
+
+  Status CreateRequests();
+
+  const PgTable& table() const { return table_; }
 
  protected:
-  // Populate Protobuf requests using the collected informtion for this DocDB operator.
-  virtual CHECKED_STATUS CreateRequests() = 0;
+  uint64_t& GetInTxnLimit();
+
+  // Populate Protobuf requests using the collected information for this DocDB operator.
+  virtual Result<bool> DoCreateRequests() = 0;
+
+  virtual Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) = 0;
 
   // Create operators.
   // - Each operator is used for one request.
@@ -249,11 +323,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   * If (partition_count > 1), each operator is used for a specific partition range.
   //   * This optimization is used by
   //       PopulateDmlByYbctidOps()
-  //       PopulateParallelSelectCountOps()
+  //       PopulateParallelSelectOps()
   // - When parallelism by arguments is applied, each operator has only one argument.
   //   When tablet server will run the requests in parallel as it assigned one thread per request.
   //       PopulateNextHashPermutationOps()
-  CHECKED_STATUS ClonePgsqlOps(int op_count);
+  Status ClonePgsqlOps(size_t op_count);
 
   // Only active operators are kept in the active range [0, active_op_count_)
   // - Not execute operators that are outside of range [0, active_op_count_).
@@ -261,34 +335,46 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   void MoveInactiveOpsOutside();
 
   // Clone READ or WRITE "template_op_" into new operators.
-  virtual std::unique_ptr<client::YBPgsqlOp> CloneFromTemplate() = 0;
-
-  // Process the result set in server response.
-  Result<std::list<PgDocResult>> ProcessResponseResult();
-
-  void SetReadTime();
+  virtual PgsqlOpPtr CloneFromTemplate() = 0;
 
  private:
-  CHECKED_STATUS SendRequest(bool force_non_bufferable);
+  Status SendRequest(bool force_non_bufferable);
 
-  virtual CHECKED_STATUS SendRequestImpl(bool force_non_bufferable);
+  Status SendRequestImpl(bool force_non_bufferable);
 
-  Result<std::list<PgDocResult>> ProcessResponse(const Status& exec_status);
+  Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
-  virtual Result<std::list<PgDocResult>> ProcessResponseImpl() = 0;
+  Result<std::list<PgDocResult>> ProcessResponseImpl(const Result<PgDocResponse::Data>& data);
+
+  Result<std::list<PgDocResult>> ProcessCallResponse(const rpc::CallResponse& response);
+
+  virtual Status CompleteProcessResponse() = 0;
+
+  Status CompleteRequests();
+
+  static Result<PgDocResponse> DefaultSender(
+      PgSession* session, const PgsqlOpPtr* ops, size_t ops_count, const PgTableDesc& table,
+      uint64_t in_txn_limit, bool force_non_bufferable);
 
   //----------------------------------- Data Members -----------------------------------------------
  protected:
   // Session control.
   PgSession::ScopedRefPtr pg_session_;
 
-  // Operation time. This time is set at the start and must stay the same for the lifetime of the
-  // operation to ensure that it is operating on one snapshot.
-  uint64_t read_time_ = 0;
+  // This time is set at the start (i.e., before sending the first batch of PgsqlOp ops) and must
+  // stay the same for the lifetime of the PgDocOp.
+  //
+  // Each query must only see data written by earlier queries in the same transaction, not data
+  // written by itself. Setting it at the start ensures that future operations of the PgDocOp only
+  // see data written by previous queries.
+  //
+  // NOTE: Each query might result in many PgDocOps. So using 1 in_txn_limit_ per PgDocOp is not
+  // enough. The same should be used across all PgDocOps in the query. This is ensured by the use
+  // of statement_in_txn_limit in yb_exec_params of EState.
+  uint64_t in_txn_limit_ = 0;
 
   // Target table.
-  PgTableDesc::ScopedRefPtr table_desc_;
-  PgObjectId relation_id_;
+  PgTable& table_;
 
   // Exec control parameters.
   PgExecParameters exec_params_;
@@ -298,10 +384,10 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   bool suppress_next_result_prefetching_ = false;
 
   // Populated protobuf request.
-  std::vector<std::shared_ptr<client::YBPgsqlOp>> pgsql_ops_;
+  std::vector<PgsqlOpPtr> pgsql_ops_;
 
   // Number of active operators in the pgsql_ops_ list.
-  int32_t active_op_count_ = 0;
+  size_t active_op_count_ = 0;
 
   // Indicator for completing all request populations.
   bool request_population_completed_ = false;
@@ -314,11 +400,11 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //   should only be done when "wait_for_batch_completion_ == false"
   bool wait_for_batch_completion_ = true;
 
-  // Future object to fetch a response from DocDB after sending a request.
-  // Object's valid() method returns false in case no request is sent
+  // Object to fetch a response from DocDB after sending a request.
+  // Object's Valid() method returns false in case no request is sent
   // or sent request was buffered by the session.
   // Only one RunAsync() can be called to sent to DocDB at a time.
-  PgSessionAsyncRunResult response_;
+  PgDocResponse response_;
 
   // Executed row count.
   int32_t rows_affected_count_ = 0;
@@ -338,6 +424,12 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   //     pgsql_op <partition 1> (ybctid_1, ybctid_3, ybctid_4)
   //     pgsql_op <partition 2> (ybctid_2, ybctid_6)
   //     pgsql_op <partition 2> (ybctid_5, ybctid_7)
+  //
+  //  These respective ybctids are stored in batch_ybctid_ also.
+  //  In other words,
+  //     batch_ybctid_[partition 1] contains  (ybctid_1, ybctid_3, ybctid_4)
+  //     batch_ybctid_[partition 2] contains  (ybctid_2, ybctid_6)
+  //     batch_ybctid_[partition 3] contains  (ybctid_5, ybctid_7)
   //
   //   After getting the rows of data from pgsql, the rows must be then ordered from 1 thru 7.
   //   To do so, for each pgsql_op we kept an array of orders, batch_row_orders_.
@@ -359,12 +451,17 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Parallelism level.
   // - This is the maximum number of read/write requests being sent to servers at one time.
   // - When it is 1, there's no optimization. Available requests is executed one at a time.
-  int32_t parallelism_level_ = 1;
+  size_t parallelism_level_ = 1;
+
+  // Output parameter of the execution.
+  string out_param_backfill_spec_;
 
  private:
   // Result set either from selected or returned targets is cached in a list of strings.
   // Querying state variables.
   Status exec_status_ = Status::OK();
+
+  Sender sender_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -378,23 +475,31 @@ class PgDocReadOp : public PgDocOp {
   typedef std::unique_ptr<PgDocReadOp> UniPtr;
   typedef std::unique_ptr<const PgDocReadOp> UniPtrConst;
 
-  // Constructors & Destructors.
-  PgDocReadOp(const PgSession::ScopedRefPtr& pg_session,
-              const PgTableDesc::ScopedRefPtr& table_desc,
-              std::unique_ptr<client::YBPgsqlReadOp> read_op);
+  PgDocReadOp(const PgSession::ScopedRefPtr& pg_session, PgTable* table, PgsqlReadOpPtr read_op);
+  PgDocReadOp(
+      const PgSession::ScopedRefPtr& pg_session, PgTable* table,
+      PgsqlReadOpPtr read_op, const Sender& sender);
 
-  CHECKED_STATUS ExecuteInit(const PgExecParameters *exec_params) override;
+  Status ExecuteInit(const PgExecParameters *exec_params) override;
+
+  // Row sampler collects number of live and dead rows it sees.
+  Status GetEstimatedRowCount(double *liverows, double *deadrows);
+
+  bool IsWrite() const override {
+    return false;
+  }
+
+  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override;
 
  private:
   // Create protobuf requests using template_op_.
-  CHECKED_STATUS CreateRequests() override;
+  Result<bool> DoCreateRequests() override;
 
   // Create operators by partition.
   // - Optimization for statement
   //     SELECT xxx FROM <table> WHERE ybctid IN (SELECT ybctid FROM INDEX)
   // - After being queried from inner select, ybctids are used for populate request for outer query.
-  CHECKED_STATUS PopulateDmlByYbctidOps(const vector<Slice> *ybctids) override;
-  CHECKED_STATUS InitializeYbctidOperators();
+  Status InitializeYbctidOperators();
 
   // Create operators by partition arguments.
   // - Optimization for statement:
@@ -404,52 +509,59 @@ class PgDocReadOp : public PgDocOp {
   // - When an operator is assigned a hash permutation, it is marked as active to be executed.
   // - When an operator completes the execution, it is marked as inactive and available for the
   //   exection of the next hash permutation.
-  CHECKED_STATUS PopulateNextHashPermutationOps();
-  CHECKED_STATUS InitializeHashPermutationStates();
+  Result<bool> PopulateNextHashPermutationOps();
+  Status InitializeHashPermutationStates();
 
   // Create operators by partitions.
-  // - Optimization for statement:
-  //     Create parallel request for SELECT COUNT().
-  CHECKED_STATUS PopulateParallelSelectCountOps();
+  // - Optimization for aggregating or filtering requests.
+  Result<bool> PopulateParallelSelectOps();
+
+  // Create one sampling operator per partition and arrange their execution in random order
+  Result<bool> PopulateSamplingOps();
 
   // Set partition boundaries to a given partition.
-  CHECKED_STATUS SetScanPartitionBoundary();
+  Status SetScanPartitionBoundary();
 
-  // Process response from DocDB.
-  Result<std::list<PgDocResult>> ProcessResponseImpl() override;
+  Status CompleteProcessResponse() override;
 
-  // Process response paging state from DocDB.
-  CHECKED_STATUS ProcessResponsePagingState();
+  // Process response read state from DocDB.
+  Status ProcessResponseReadStates();
 
   // Reset pgsql operators before reusing them with new arguments / inputs from Postgres.
-  CHECKED_STATUS ResetInactivePgsqlOps();
+  Status ResetInactivePgsqlOps();
 
   // Analyze options and pick the appropriate prefetch limit.
   void SetRequestPrefetchLimit();
 
+  // Set the backfill_spec field of our read request.
+  void SetBackfillSpec();
+
   // Set the row_mark_type field of our read request based on our exec control parameter.
   void SetRowMark();
 
-  // Set the read_time for our read request based on our exec control parameter.
-  void SetReadTime();
+  // Set the read_time for our backfill's read request based on our exec control parameter.
+  void SetReadTimeForBackfill();
 
   // Clone the template into actual requests to be sent to server.
-  std::unique_ptr<client::YBPgsqlOp> CloneFromTemplate() override {
-    return template_op_->DeepCopy();
+  PgsqlOpPtr CloneFromTemplate() override {
+    return read_op_->DeepCopy(read_op_);
   }
 
-  // Get the read_op for a specific operation index from pgsql_ops_.
-  client::YBPgsqlReadOp *GetReadOp(int op_index) {
-    return static_cast<client::YBPgsqlReadOp *>(pgsql_ops_[op_index].get());
-  }
+  // Get the read_req for a specific operation index from pgsql_ops_.
+  LWPgsqlReadRequestPB& GetReadReq(size_t op_index);
 
   // Re-format the request when connecting to older server during rolling upgrade.
-  void FormulateRequestForRollingUpgrade(PgsqlReadRequestPB *read_req);
+  void FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req);
 
   //----------------------------------- Data Members -----------------------------------------------
 
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
-  std::shared_ptr<client::YBPgsqlReadOp> template_op_;
+  PgsqlReadOpPtr read_op_;
+
+  // While sampling is in progress, number of scanned row is accumulated in this variable.
+  // After completion the value is extrapolated to account for not scanned partitions and estimate
+  // total number of rows in the table.
+  double sample_rows_ = 0;
 
   // Used internally for PopulateNextHashPermutationOps to keep track of which permutation should
   // be used to construct the next read_op.
@@ -470,7 +582,7 @@ class PgDocReadOp : public PgDocOp {
   // Example:
   // For a query clause "h1 = 1 AND h2 IN (2,3) AND h3 IN (4,5,6) AND h4 = 7",
   // this will be initialized to [[1], [2, 3], [4, 5, 6], [7]]
-  std::vector<std::vector<const PgsqlExpressionPB*>> partition_exprs_;
+  std::vector<std::vector<const LWPgsqlExpressionPB*>> partition_exprs_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -486,42 +598,45 @@ class PgDocWriteOp : public PgDocOp {
 
   // Constructors & Destructors.
   PgDocWriteOp(const PgSession::ScopedRefPtr& pg_session,
-               const PgTableDesc::ScopedRefPtr& table_desc,
-               const PgObjectId& relation_id,
-               std::unique_ptr<client::YBPgsqlWriteOp> write_op);
+               PgTable* table,
+               PgsqlWriteOpPtr write_op);
 
   // Set write time.
   void SetWriteTime(const HybridTime& write_time);
 
+  bool IsWrite() const override {
+    return true;
+  }
+
  private:
-  // Process response implementation.
-  Result<std::list<PgDocResult>> ProcessResponseImpl() override;
+  Status CompleteProcessResponse() override;
 
   // Create protobuf requests using template_op (write_op).
-  CHECKED_STATUS CreateRequests() override;
+  Result<bool> DoCreateRequests() override;
 
   // For write ops, we are not yet batching ybctid from index query.
   // TODO(neil) This function will be implemented when we push down sub-query inside WRITE ops to
   // the proxy layer. There's many scenarios where this optimization can be done.
-  CHECKED_STATUS PopulateDmlByYbctidOps(const vector<Slice> *ybctids) override {
+  Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override {
     LOG(FATAL) << "Not yet implemented";
     return Status::OK();
   }
 
   // Get WRITE operator for a specific operator index in pgsql_ops_.
-  client::YBPgsqlWriteOp *GetWriteOp(int op_index) {
-    return static_cast<client::YBPgsqlWriteOp *>(pgsql_ops_[op_index].get());
-  }
+  LWPgsqlWriteRequestPB& GetWriteOp(int op_index);
 
   // Clone user data from template to actual protobuf requests.
-  std::unique_ptr<client::YBPgsqlOp> CloneFromTemplate() override {
-    return write_op_->DeepCopy();
+  PgsqlOpPtr CloneFromTemplate() override {
+    return write_op_->DeepCopy(write_op_);
   }
 
   //----------------------------------- Data Members -----------------------------------------------
   // Template operation all write ops.
-  std::shared_ptr<client::YBPgsqlWriteOp> write_op_;
+  PgsqlWriteOpPtr write_op_;
 };
+
+PgDocOp::SharedPtr MakeDocReadOpWithData(
+    const PgSession::ScopedRefPtr& pg_session, PrefetchedDataHolder data);
 
 }  // namespace pggate
 }  // namespace yb

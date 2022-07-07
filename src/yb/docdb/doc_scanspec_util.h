@@ -17,22 +17,38 @@
 #define YB_DOCDB_DOC_SCANSPEC_UTIL_H_
 
 #include "yb/common/ql_scanspec.h"
-#include "yb/common/schema.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/util/status.h"
+#include "yb/docdb/docdb_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace docdb {
 
 // Get the scanspec for range key components.
-std::vector<PrimitiveValue> GetRangeKeyScanSpec(const Schema& schema,
-                                                const common::QLScanRange* scan_range,
-                                                bool lower_bound,
-                                                bool include_static_columns = false);
+std::vector<KeyEntryValue> GetRangeKeyScanSpec(
+    const Schema& schema,
+    const std::vector<KeyEntryValue>* prefixed_range_components,
+    const QLScanRange* scan_range,
+    std::vector<bool> *inclusivities,
+    bool lower_bound,
+    bool include_static_columns = false,
+    bool use_strictness = true);
 
-PrimitiveValue GetQLRangeBoundAsPVal(const common::QLScanRange::QLRange& ql_range,
-                                     ColumnSchema::SortingType sorting_type,
-                                     bool lower_bound);
+// Gets the lower/upper bound value of the given range
+KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                    SortingType sorting_type,
+                                    bool lower_bound);
+
+const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
+    const QLScanRange::QLRange& ql_range,
+    SortingType sorting_type,
+    bool lower_bound);
+
+// Gets whether the lower/upper bound of the given range is inclusive
+bool GetQLRangeBoundIsInclusive(
+    const QLScanRange::QLRange& ql_range,
+    SortingType sorting_type,
+    bool lower_bound);
+
 }  // namespace docdb
 }  // namespace yb
 

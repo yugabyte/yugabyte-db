@@ -16,13 +16,23 @@
 #ifndef YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
 #define YB_YQL_CQL_QL_TEST_QL_TEST_BASE_H_
 
-#include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/yql/cql/ql/util/ql_env.h"
+#include "yb/common/ql_rowblock.h"
+
+#include "yb/gutil/bind.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/mini_master.h"
 
+#include "yb/server/server_fwd.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/test_util.h"
+
+#include "yb/yql/cql/ql/ql_fwd.h"
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
+#include "yb/yql/cql/ql/util/statement_result.h"
+#include "yb/yql/cql/ql/util/util_fwd.h"
 
 namespace yb {
 namespace ql {
@@ -91,14 +101,12 @@ namespace ql {
 
 class ClockHolder {
  protected:
-  ClockHolder() : clock_(new server::HybridClock()) {
-    CHECK_OK(clock_->Init());
-  }
+  ClockHolder();
 
   server::ClockPtr clock_;
 };
 
-class TestQLProcessor : public ClockHolder, public QLProcessor {
+class TestQLProcessor : public ClockHolder {
  public:
   // Public types.
   typedef std::unique_ptr<TestQLProcessor> UniPtr;
@@ -107,88 +115,58 @@ class TestQLProcessor : public ClockHolder, public QLProcessor {
   // Constructors.
   TestQLProcessor(client::YBClient* client,
                   std::shared_ptr<client::YBMetaDataCache> cache,
-                  const RoleName& role_name)
-      : QLProcessor(client, cache, nullptr /* ql_metrics */, nullptr /* parser_pool */, clock_,
-                    TransactionPoolProvider()) {
-    if (!role_name.empty()) {
-      ql_env_.ql_session()->set_current_role_name(role_name);
-    }
-  }
-  virtual ~TestQLProcessor() { }
+                  const RoleName& role_name);
+  virtual ~TestQLProcessor();
 
   void RunAsyncDone(
       Callback<void(const Status&)> cb, const Status& s,
-      const ExecutedResult::SharedPtr& result = nullptr) {
+      const ExecutedResultPtr& result) {
     result_ = result;
     cb.Run(s);
   }
 
   void RunAsync(
-      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb) {
-    result_ = nullptr;
-    parse_tree.reset(); // Delete previous parse tree.
-    RunAsyncInternal(stmt, params, Bind(&TestQLProcessor::RunAsyncDone, Unretained(this), cb));
-  }
+      const string& stmt, const StatementParameters& params, Callback<void(const Status&)> cb);
 
   // Execute a QL statement.
-  CHECKED_STATUS Run(
-      const std::string& stmt, const StatementParameters& params = StatementParameters()) {
-    Synchronizer s;
-    RunAsync(stmt, params, Bind(&Synchronizer::StatusCB, Unretained(&s)));
-    return s.Wait();
-  }
+  Status Run(
+      const std::string& stmt, const StatementParameters& params = StatementParameters());
+
+  Status Run(const Statement& stmt, const StatementParameters& params);
 
   // Construct a row_block and send it back.
-  std::shared_ptr<QLRowBlock> row_block() const {
-    LOG(INFO) << (result_ == NULL ? "Result is NULL." : "Got result.")
-              << " Return type = " << static_cast<int>(ExecutedResult::Type::ROWS);
-    if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
-      return std::shared_ptr<QLRowBlock>(static_cast<RowsResult*>(result_.get())->GetRowBlock());
-    }
-    return nullptr;
+  std::shared_ptr<QLRowBlock> row_block() const;
+
+  const ExecutedResultPtr& result() const { return result_; }
+
+  const RowsResult* rows_result() const;
+
+  std::string CurrentKeyspace() const;
+
+  Status UseKeyspace(const std::string& keyspace_name);
+
+  void RemoveCachedTableDesc(const client::YBTableName& table_name);
+
+  const ParseTreePtr& GetLastParseTree() const {
+    return parse_tree_;
   }
 
-  const ExecutedResult::SharedPtr& result() const { return result_; }
-
-  const RowsResult* rows_result() const {
-    if (result_ != nullptr && result_->type() == ExecutedResult::Type::ROWS) {
-      return static_cast<const RowsResult*>(result_.get());
-    }
-    return nullptr;
+  QLProcessor& ql_processor() {
+    return *processor_;
   }
 
-  std::string CurrentKeyspace() const { return ql_env_.CurrentKeyspace(); }
-
-  CHECKED_STATUS UseKeyspace(const std::string& keyspace_name) {
-    return ql_env_.UseKeyspace(keyspace_name);
-  }
-
-  void RemoveCachedTableDesc(const client::YBTableName& table_name) {
-    ql_env_.RemoveCachedTableDesc(table_name);
-  }
-
-  const ParseTree::UniPtr& GetLastParseTree() const {
-    return parse_tree;
-  }
+  const TreeNodePtr& GetLastParseTreeRoot() const;
 
  private:
   void RunAsyncInternal(const std::string& stmt, const StatementParameters& params,
-                        StatementExecutedCallback cb, bool reparsed = false) {
-    const Status s = Prepare(stmt, &parse_tree, reparsed);
-    if (PREDICT_FALSE(!s.ok())) {
-      return cb.Run(s, nullptr /* result */);
-    }
-    // Do not make a copy of stmt and params when binding to the RunAsyncDone callback because when
-    // error occurs due to stale matadata, the statement needs to be reexecuted. We should pass the
-    // original references which are guaranteed to still be alive when the statement is reexecuted.
-    ExecuteAsync(*parse_tree, params, Bind(&QLProcessor::RunAsyncDone, Unretained(this),
-        ConstRef(stmt), ConstRef(params), Unretained(parse_tree.get()), cb));
-  }
+                        StatementExecutedCallback cb, bool reparsed = false);
+
+  std::unique_ptr<QLProcessor> processor_;
 
   // Execute result.
-  ExecutedResult::SharedPtr result_;
+  ExecutedResultPtr result_;
 
-  ParseTree::UniPtr parse_tree;
+  ParseTreePtr parse_tree_;
 };
 
 // Base class for all QL test cases.
@@ -201,33 +179,18 @@ class QLTestBase : public YBTest {
 
   //------------------------------------------------------------------------------------------------
   // Test start and cleanup functions.
-  virtual void SetUp() override {
+  void SetUp() override {
     YBTest::SetUp();
   }
 
-  virtual void TearDown() override {
-    client_.reset();
-    if (cluster_ != nullptr) {
-      cluster_->Shutdown();
-    }
-    YBTest::TearDown();
-  }
+  void TearDown() override;
 
   //------------------------------------------------------------------------------------------------
   // Test only the parser.
-  CHECKED_STATUS TestParser(const std::string& stmt) {
-    QLProcessor* processor = GetQLProcessor();
-    ParseTree::UniPtr parse_tree;
-    return processor->Parse(stmt, &parse_tree);
-  }
+  Status TestParser(const std::string& stmt);
 
   // Tests parser and analyzer
-  CHECKED_STATUS TestAnalyzer(const string& stmt, ParseTree::UniPtr* parse_tree) {
-    QLProcessor* processor = GetQLProcessor();
-    RETURN_NOT_OK(processor->Parse(stmt, parse_tree));
-    RETURN_NOT_OK(processor->Analyze(parse_tree));
-    return Status::OK();
-  }
+  Status TestAnalyzer(const string& stmt, ParseTreePtr* parse_tree);
 
   //------------------------------------------------------------------------------------------------
   // Create simulated cluster.
@@ -243,26 +206,7 @@ class QLTestBase : public YBTest {
   void VerifyPaginationSelect(TestQLProcessor* processor,
                               const string &select_query,
                               int page_size,
-                              const string expected_rows) {
-    StatementParameters params;
-    params.set_page_size(page_size);
-    string rows;
-    do {
-      CHECK_OK(processor->Run(select_query, params));
-      std::shared_ptr<QLRowBlock> row_block = processor->row_block();
-      if (row_block->row_count() > 0) {
-        rows.append(row_block->ToString());
-      } else {
-        // Skip appending empty rowblock but verify it happens only at the last fetch.
-        EXPECT_TRUE(processor->rows_result()->paging_state().empty());
-      }
-      if (processor->rows_result()->paging_state().empty()) {
-        break;
-      }
-      CHECK_OK(params.SetPagingState(processor->rows_result()->paging_state()));
-    } while (true);
-    EXPECT_EQ(expected_rows, rows);
-  }
+                              const string expected_rows);
 
  protected:
   //------------------------------------------------------------------------------------------------

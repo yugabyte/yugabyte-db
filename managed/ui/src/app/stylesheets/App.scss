@@ -75,3 +75,24 @@
 .no-padding {
   padding: 0 !important;
 }
+
+.Toastify__toast {
+  font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+
+  &--error {
+    background-color: $YB_FAIL_COLOR;
+  }
+
+  &--success {
+    background-color: $YB_SUCCESS_COLOR;
+  }
+
+  &--warning {
+    background-color: $YB_WARNING_COLOR;
+  }
+
+  &-container {
+    width: 500px;
+  }
+}

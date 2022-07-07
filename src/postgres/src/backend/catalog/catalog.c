@@ -49,6 +49,9 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 
+/* YB includes. */
+#include "access/htup_details.h"
+#include "utils/syscache.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -170,6 +173,22 @@ IsSystemNamespace(Oid namespaceId)
 }
 
 /*
+ * Same logic as with IsSystemNamespace, to be used when OID isn't known.
+ * NULL name results in InvalidOid.
+ */
+bool
+YbIsSystemNamespaceByName(const char *namespace_name)
+{
+	Oid namespace_oid;
+
+	namespace_oid = namespace_name ?
+		LookupExplicitNamespace(namespace_name, true) :
+		InvalidOid;
+
+	return IsSystemNamespace(namespace_oid);
+}
+
+/*
  * IsToastNamespace
  *		True iff namespace is pg_toast or my temporary-toast-table namespace.
  *
@@ -266,6 +285,29 @@ IsSharedRelation(Oid relationId)
 		relationId == PgShseclabelToastTable ||
 		relationId == PgShseclabelToastIndex)
 		return true;
+
+	/* In test mode, there might be shared relations other than predefined ones. */
+	if (yb_test_system_catalogs_creation)
+	{
+		/* To avoid cycle */
+		if (relationId == RelationRelationId)
+			return false;
+
+		Relation  pg_class = heap_open(RelationRelationId, AccessShareLock);
+		HeapTuple tuple    = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(relationId));
+
+		bool result = HeapTupleIsValid(tuple)
+			? ((Form_pg_class) GETSTRUCT(tuple))->relisshared
+			: false;
+
+		if (HeapTupleIsValid(tuple))
+			heap_freetuple(tuple);
+
+		heap_close(pg_class, AccessShareLock);
+
+		return result;
+	}
+
 	return false;
 }
 
@@ -446,7 +488,7 @@ GetNewOidWithIndex(Relation relation, Oid indexId, AttrNumber oidcolumn)
 	 * assign.  Hitting this assert means there's some path where we failed to
 	 * ensure that a type OID is determined by commands in the dump script.
 	 */
-	Assert(!IsBinaryUpgrade || RelationGetRelid(relation) != TypeRelationId);
+	Assert(!IsBinaryUpgrade || yb_binary_restore || RelationGetRelid(relation) != TypeRelationId);
 
 	/* Generate new OIDs until we find one not in the table */
 	do
@@ -485,7 +527,7 @@ GetNewRelFileNode(Oid reltablespace, Relation pg_class, char relpersistence)
 	 * relfilenode assignments during a binary-upgrade run should be
 	 * determined by commands in the dump script.
 	 */
-	Assert(!IsBinaryUpgrade);
+	Assert(!IsBinaryUpgrade || yb_binary_restore);
 
 	/* This logic should match RelationInitPhysicalAddr */
 	rnode.node.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;
@@ -585,13 +627,13 @@ IsTableOidUnused(Oid table_oid,
 
 /*
  * GetTableOidFromRelOptions
- *		Scans through relOptions for any 'table_oid' options, and checks if
- *		that oid is available. If so, return that oid, else return InvalidOid.
+ *		Scans through relOptions for any 'table_oid' options, and ensures
+ *		that oid is available. Returns that oid, or InvalidOid if unspecified.
  */
 Oid
 GetTableOidFromRelOptions(List *relOptions,
 						  Oid reltablespace,
-				  		  char relpersistence)
+						  char relpersistence)
 {
 	ListCell   *opt_cell;
 	Oid			table_oid;
@@ -602,7 +644,12 @@ GetTableOidFromRelOptions(List *relOptions,
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 		if (strcmp(def->defname, "table_oid") == 0)
 		{
-			table_oid = strtol(defGetString(def), NULL, 10);
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &table_oid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"table_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
 			if (OidIsValid(table_oid))
 			{
 				Relation pg_class_desc =
@@ -616,12 +663,107 @@ GetTableOidFromRelOptions(List *relOptions,
 				if (is_oid_free)
 					return table_oid;
 				else
-					elog(ERROR, "Oid %d is in use.", table_oid);
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("table OID %u is in use", table_oid)));
 
 				/* Only process the first table_oid. */
 				break;
 			}
 		}
+	}
+
+	return InvalidOid;
+}
+
+/*
+ * GetColocationIdFromRelOptions
+ *		Scans through relOptions for any 'colocation_id' options.
+ *		Returns that ID, or InvalidOid if unspecified.
+ *
+ * This is only used during table/index creation, as this reloption is not
+ * persisted.
+ */
+Oid
+YbGetColocationIdFromRelOptions(List *relOptions)
+{
+	ListCell   *opt_cell;
+	Oid        colocation_id;
+
+	foreach(opt_cell, relOptions)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+		if (strcmp(def->defname, "colocation_id") == 0)
+		{
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &colocation_id, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"colocation_id\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+			if (OidIsValid(colocation_id))
+				return colocation_id;
+		}
+	}
+
+	return InvalidOid;
+}
+
+/*
+ * GetRowTypeOidFromRelOptions
+ *		Scans through relOptions for any 'row_type_oid' options, and ensures
+ *		that oid is available. Returns that oid, or InvalidOid if unspecified.
+ */
+Oid
+GetRowTypeOidFromRelOptions(List *relOptions)
+{
+	ListCell  *opt_cell;
+	Oid       row_type_oid;
+	Relation  pg_type_desc;
+	HeapTuple tuple;
+
+	foreach(opt_cell, relOptions)
+	{
+		DefElem *def = (DefElem *) lfirst(opt_cell);
+		if (strcmp(def->defname, "row_type_oid") == 0)
+		{
+			const char* hintmsg;
+			if (!parse_oid(defGetString(def), &row_type_oid, &hintmsg))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for OID option \"row_type_oid\""),
+						 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+			if (OidIsValid(row_type_oid))
+			{
+				pg_type_desc = heap_open(TypeRelationId, AccessExclusiveLock);
+
+				tuple = SearchSysCacheCopy1(TYPEOID, ObjectIdGetDatum(row_type_oid));
+				if (HeapTupleIsValid(tuple))
+					ereport(ERROR,
+							(errcode(ERRCODE_DUPLICATE_OBJECT),
+							 errmsg("type OID %u is in use", row_type_oid)));
+
+				heap_close(pg_type_desc, AccessExclusiveLock);
+
+				return row_type_oid;
+			}
+		}
+	}
+
+	return InvalidOid;
+}
+
+bool
+YbGetUseInitdbAclFromRelOptions(List *options)
+{
+	ListCell  *opt_cell;
+
+	foreach(opt_cell, options)
+	{
+		// Don't care about multiple occurrences, this reloption is internal.
+		DefElem *def = lfirst_node(DefElem, opt_cell);
+		if (strcmp(def->defname, "use_initdb_acl") == 0)
+			return defGetBoolean(def);
 	}
 
 	return InvalidOid;

@@ -32,27 +32,29 @@
 
 #include <memory>
 
-#include <boost/ptr_container/ptr_vector.hpp>
-#include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
-#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-base.h"
+#include "yb/tablet/tablet.h"
+
 #include "yb/util/countdown_latch.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_graph.h"
 #include "yb/util/thread.h"
 
 DEFINE_int32(num_counter_threads, 8, "Number of counting threads to launch");
 DEFINE_int32(num_summer_threads, 1, "Number of summing threads to launch");
 DEFINE_int32(num_slowreader_threads, 1, "Number of 'slow' reader threads to launch");
-DEFINE_int64(inserts_per_thread, 1000, "Number of rows inserted by the inserter thread");
+DEFINE_int32(inserts_per_thread, 1000, "Number of rows inserted by the inserter thread");
 
 using std::shared_ptr;
 
@@ -78,11 +80,11 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     superclass::SetUp();
 
     // Warm up code cache with all the projections we'll be using.
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_, boost::none));
+    ASSERT_OK(tablet()->NewRowIterator(client_schema_));
     const SchemaPtr schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
-    ASSERT_OK(tablet()->NewRowIterator(valcol_projection_, boost::none));
+    ASSERT_OK(tablet()->NewRowIterator(valcol_projection_));
 
     ts_collector_.StartDumperThread();
   }
@@ -96,7 +98,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     CountDownOnScopeExit dec_count(&running_insert_count_);
     shared_ptr<TimeSeries> inserts = ts_collector_.GetTimeSeries("inserted");
 
-    uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+    int32_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
         / kNumInsertThreads;
 
     if (max_rows < FLAGS_inserts_per_thread) {
@@ -124,7 +126,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     QLTableRow value_map;
 
     while (running_insert_count_.count() > 0) {
-      auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+      auto iter = tablet()->NewRowIterator(client_schema_);
       CHECK_OK(iter);
 
       while (ASSERT_RESULT((**iter).HasNext()) && running_insert_count_.count() > 0) {
@@ -159,13 +161,13 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   void SlowReaderThread(int tid) {
     QLTableRow row;
 
-    uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+    auto max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
             / kNumInsertThreads;
 
     int max_iters = kNumInsertThreads * max_rows / 10;
 
     while (running_insert_count_.count() > 0) {
-      auto iter = tablet()->NewRowIterator(client_schema_, boost::none);
+      auto iter = tablet()->NewRowIterator(client_schema_);
       ASSERT_OK(iter);
 
       for (int i = 0; i < max_iters && ASSERT_RESULT((**iter).HasNext()); i++) {
@@ -191,7 +193,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     uint64_t sum = 0;
 
-    auto iter = tablet()->NewRowIterator(valcol_projection_, boost::none);
+    auto iter = tablet()->NewRowIterator(valcol_projection_);
     CHECK_OK(iter);
 
     QLTableRow row;
@@ -299,7 +301,7 @@ TYPED_TEST(VerifyRowsTabletTest, DoTestAllAtOnce) {
     LOG(INFO) << "Sum = " << sum;
   }
 
-  uint64_t max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
+  auto max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
           / kNumInsertThreads;
 
   this->VerifyTestRows(0, max_rows * kNumInsertThreads);

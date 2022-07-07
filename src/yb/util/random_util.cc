@@ -34,12 +34,9 @@
 
 #include <cmath>
 #include <cstdlib>
-#include <cstring>
 #include <random>
 
-#include "yb/util/env.h"
 #include "yb/util/random.h"
-#include <boost/thread/tss.hpp>
 
 namespace yb {
 
@@ -75,12 +72,22 @@ std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng) {
   return data;
 }
 
-std::string RandomHumanReadableString(int len, Random* rnd) {
+std::string RandomString(size_t len, std::mt19937_64* rng) {
+  std::string str;
+  str.reserve(len);
+  while (len > 0) {
+    str += yb::RandomUniformInt<char>();
+    len--;
+  }
+  return str;
+}
+
+std::string RandomHumanReadableString(size_t len, Random* rnd) {
   // TODO: https://yugabyte.atlassian.net/browse/ENG-1508: Avoid code duplication in yb::Random and
   // rocksdb::Random. Currently this does not allow to reuse the same function in both code bases.
   std::string ret;
   ret.resize(len);
-  for (int i = 0; i < len; ++i) {
+  for (size_t i = 0; i < len; ++i) {
     ret[i] = static_cast<char>('a' + rnd->Uniform(26));
   }
   return ret;

@@ -1,0 +1,5 @@
+# contrib/fuzzystrmatch/yb_schedule
+
+# Since the upstream postgres test works fine without modifications
+# (currently), don't bother porting it to yb_pg_fuzzystrmatch.
+test: fuzzystrmatch

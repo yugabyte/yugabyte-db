@@ -20,12 +20,11 @@
 // functions.  This file should not be included directly.  Clients
 // should instead include "base/atomicops.h".
 
-#ifndef BASE_AUXILIARY_ATOMICOPS_INTERNALS_WINDOWS_H_
-#define BASE_AUXILIARY_ATOMICOPS_INTERNALS_WINDOWS_H_
+#ifndef YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_WINDOWS_H
+#define YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_WINDOWS_H
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "yb/gutil/basictypes.h"  // For COMPILE_ASSERT
 
 typedef int32 Atomic32;
 
@@ -149,7 +148,7 @@ inline Atomic32 NoBarrier_AtomicIncrement(volatile Atomic32* ptr,
   return Barrier_AtomicIncrement(ptr, increment);
 }
 
-}  // namespace base::subtle
+}  // namespace subtle
 }  // namespace base
 
 
@@ -516,7 +515,7 @@ inline void Release_Store(volatile Atomic64* ptr, Atomic64 value) {
 
 #undef ATOMICOPS_COMPILER_BARRIER
 
-}  // namespace base::subtle
+}  // namespace subtle
 }  // namespace base
 
-#endif  // BASE_AUXILIARY_ATOMICOPS_INTERNALS_WINDOWS_H_
+#endif  // YB_GUTIL_AUXILIARY_ATOMICOPS_INTERNALS_WINDOWS_H

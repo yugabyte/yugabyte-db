@@ -3,41 +3,42 @@
 package com.yugabyte.yw.models;
 
 import java.io.Serializable;
-
+import java.util.UUID;
 import javax.persistence.Embeddable;
-import javax.persistence.Entity;
+import lombok.Data;
+import lombok.experimental.Accessors;
 
-@Entity
+@Data
+@Accessors(chain = true)
 @Embeddable
 public class InstanceTypeKey implements Serializable {
-  public String providerCode;
-  public String instanceTypeCode;
+  private UUID providerUuid;
+  private String instanceTypeCode;
 
   @Override
   public boolean equals(Object object) {
-    if(object instanceof InstanceTypeKey) {
+    if (object instanceof InstanceTypeKey) {
       InstanceTypeKey key = (InstanceTypeKey) object;
-      if (this.providerCode.equals(key.providerCode) && this.instanceTypeCode.equals(key.instanceTypeCode)) {
-        return true;
-      }
+      return this.providerUuid.equals(key.providerUuid)
+          && this.instanceTypeCode.equals(key.instanceTypeCode);
     }
     return false;
   }
 
   @Override
   public int hashCode() {
-    return providerCode.hashCode() + instanceTypeCode.hashCode();
+    return providerUuid.hashCode() + instanceTypeCode.hashCode();
   }
 
-  public static InstanceTypeKey create(String instanceTypeCode, String providerCode) {
+  public static InstanceTypeKey create(String instanceTypeCode, UUID providerUuid) {
     InstanceTypeKey key = new InstanceTypeKey();
-    key.providerCode = providerCode;
+    key.providerUuid = providerUuid;
     key.instanceTypeCode = instanceTypeCode;
     return key;
   }
 
   @Override
   public String toString() {
-    return providerCode + ":" + instanceTypeCode;
+    return providerUuid + ":" + instanceTypeCode;
   }
 }

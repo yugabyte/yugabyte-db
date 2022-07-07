@@ -3,16 +3,12 @@ title: Change cluster configuration
 headerTitle: Change cluster configuration
 linkTitle: Change cluster configuration
 description: Migrate a YugabyteDB cluster to a new set of nodes.
-aliases:
-  - manage/change-cluster-config
-block_indexing: true
 menu:
   stable:
     identifier: manage-change-cluster-config
     parent: manage
     weight: 704
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Sometimes there might be a need to move a YugabyteDB universe deployed on a set of nodes to a completely different set of nodes in an online manner. Some scenarios that require such a cluster change are:
@@ -78,11 +74,11 @@ Run the command below to bring up the new YB-Master server on the new master nod
 The `master_addresses` parameter should not be set for these new masters.
 {{< /note >}}
 
-Refer to [starting master servers](../../../../deploy/manual-deployment/start-masters/) for further parameters and options.
+Refer to [starting master servers](../../deploy/manual-deployment/start-masters/) for further parameters and options.
 
 ## 3. Start YB-TServer servers
 
-Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`. 
+Run the following command to bring up the `tserver` servers on all the new nodes `node7`, `node8`, `node9`, `node10`, `node11` and `node12`.
 
 ```sh
 export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100
@@ -92,7 +88,7 @@ export MASTERS=node1:7100,node2:7100,node3:7100,node7:7100,node8:7100,node9:7100
     >& /mnt/d0/yb-tserver.out &
 ```
 
-Refer to [starting `tserver` servers](../../../../deploy/manual-deployment/start-tservers/) for further parameters and options.
+Refer to [starting `tserver` servers](../../deploy/manual-deployment/start-tservers/) for further parameters and options.
 
 {{< note title="Note" >}}
 The `tserver_master_addrs` parameter includes the new master IPs as well, so that they can keep heartbeating/reporting to the new master even after the old masters are removed from master quorum.

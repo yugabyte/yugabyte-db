@@ -23,6 +23,9 @@ const mapDispatchToProps = (dispatch) => {
     showCertificateDetailsModal: () => {
       dispatch(openDialog('certificateDetailsModal'));
     },
+    showConfirmDeleteModal: () => {
+      dispatch(openDialog('deleteCertificateModal'));
+    },
     closeModal: () => {
       dispatch(closeDialog());
     },
@@ -55,7 +58,8 @@ function mapStateToProps(state) {
   return {
     refreshReleases: state.customer.refreshReleases,
     customer: state.customer,
-    modal: state.modal
+    modal: state.modal,
+    featureFlags: state.featureFlags
   };
 }
 

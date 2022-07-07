@@ -30,29 +30,26 @@
 // under the License.
 //
 
-#include <sys/types.h>
-#include <unistd.h>
-
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <sstream>
 
-#include <boost/assign.hpp>
 #include <google/protobuf/descriptor.pb.h>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/env_util.h"
 #include "yb/util/memenv/memenv.h"
-#include "yb/util/pb_util.h"
 #include "yb/util/pb_util-internal.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/proto_container_test.pb.h"
 #include "yb/util/proto_container_test2.pb.h"
 #include "yb/util/proto_container_test3.pb.h"
-#include "yb/util/status.h"
-#include "yb/util/test_util.h"
 #include "yb/util/protobuf_util.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 namespace yb {
 namespace pb_util {
@@ -375,7 +372,7 @@ void TestPBUtil::DumpPBCToString(const string& path, bool oneline_output,
 
 TEST_F(TestPBUtil, TestDumpPBContainer) {
   const char* kExpectedOutput =
-      "Message 0\n"
+      "yb.ProtoContainerTest3PB 0\n"
       "-------\n"
       "record_one {\n"
       "  name: \"foo\"\n"
@@ -388,7 +385,7 @@ TEST_F(TestPBUtil, TestDumpPBContainer) {
       "  }\n"
       "}\n"
       "\n"
-      "Message 1\n"
+      "yb.ProtoContainerTest3PB 1\n"
       "-------\n"
       "record_one {\n"
       "  name: \"foo\"\n"

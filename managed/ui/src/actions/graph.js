@@ -11,6 +11,8 @@ export const QUERY_METRICS_SUCCESS = 'QUERY_METRICS_SUCCESS';
 export const QUERY_METRICS_FAILURE = 'QUERY_METRICS_FAILURE';
 export const RESET_METRICS = 'RESET_METRICS';
 
+export const TOGGLE_PROMETHEUS_QUERY = 'TOGGLE_PROMETHEUS_QUERY';
+
 export function changeGraphQueryPeriod(params) {
   return {
     type: CHANGE_GRAPH_QUERY_PERIOD,
@@ -33,6 +35,13 @@ export function queryMetrics(queryParams) {
   };
 }
 
+export function getQueryMetrics(queryParams) {
+  const customerUUID = localStorage.getItem('customerId');
+  return axios
+    .post(`${ROOT_URL}/customers/${customerUUID}/metrics`, queryParams)
+    .then((resp) => resp.data);
+}
+
 export function queryMetricsSuccess(result, panelType) {
   return {
     type: QUERY_METRICS_SUCCESS,
@@ -53,4 +62,15 @@ export function resetMetrics() {
   return {
     type: RESET_METRICS
   };
+}
+
+export function togglePrometheusQuery() {
+  return {
+    type: TOGGLE_PROMETHEUS_QUERY
+  };
+}
+
+export function getGrafanaJson() {
+  return axios
+    .get(`${ROOT_URL}/grafana_dashboard`);
 }

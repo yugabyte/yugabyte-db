@@ -6,10 +6,11 @@ description: Secure Yugabyte Platform and YugabyteDB universes.
 image: /images/section_icons/index/secure.png
 headcontent: Secure Yugabyte Platform and your YugabyteDB universes.
 menu:
-  stable:
-    parent: yugabyte-platform
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: security
 weight: 645
+type: indexpage
 ---
 
 <div class="row">
@@ -38,14 +39,38 @@ weight: 645
     </a>
   </div>
 
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ldap-authentication-platform/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">LDAP Authentication</div>
+      </div>
+      <div class="body">
+        Use an external LDAP service to perform client authentication.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="authorization-platform/">
       <div class="head">
         <img class="icon" src="/images/section_icons/secure/authorization.png" aria-hidden="true" />
         <div class="title">Authorization platform</div>
       </div>
       <div class="body">
-        Use Yugabyte Platform to manager users and roles.
+        Use Yugabyte Platform to manage users and roles.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="create-kms-config/aws-kms/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/tls-encryption/server-to-server.png" aria-hidden="true" />
+        <div class="title">Create a KMS configuration</div>
+      </div>
+      <div class="body">
+        Key management system.
       </div>
     </a>
   </div>

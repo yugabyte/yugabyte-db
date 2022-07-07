@@ -17,10 +17,21 @@
 
 #include "yb/yql/cql/ql/ptree/pt_insert.h"
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
-
 #include "yb/client/table.h"
-#include "yb/client/schema-internal.h"
+
+#include "yb/common/common.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_insert_json_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_option.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
 
 namespace yb {
 namespace ql {
@@ -28,13 +39,13 @@ namespace ql {
 //--------------------------------------------------------------------------------------------------
 
 PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
-                           YBLocation::SharedPtr loc,
+                           YBLocationPtr loc,
                            PTQualifiedName::SharedPtr relation,
                            PTQualifiedNameListNode::SharedPtr columns,
                            const PTCollection::SharedPtr& inserting_value,
-                           PTExpr::SharedPtr if_clause,
+                           PTExprPtr if_clause,
                            const bool else_error,
-                           PTDmlUsingClause::SharedPtr using_clause,
+                           PTDmlUsingClausePtr using_clause,
                            const bool returns_status)
     : PTDmlStmt(memctx, loc, nullptr /* where_clause */, if_clause, else_error, using_clause,
                 returns_status),
@@ -45,12 +56,12 @@ PTInsertStmt::PTInsertStmt(MemoryContext *memctx,
 
 PTInsertStmt::~PTInsertStmt() = default;
 
-CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
+Status PTInsertStmt::Analyze(SemContext *sem_context) {
   // If use_cassandra_authentication is set, permissions are checked in PTDmlStmt::Analyze.
   RETURN_NOT_OK(PTDmlStmt::Analyze(sem_context));
 
   // Get table descriptor.
-  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, OBJECT_TABLE));
+  RETURN_NOT_OK(relation_->AnalyzeName(sem_context, ObjectType::TABLE));
   RETURN_NOT_OK(LookupTable(sem_context));
   if (table_->schema().table_properties().contain_counters()) {
     return sem_context->Error(relation_, ErrorCode::INSERT_TABLE_OF_COUNTERS);
@@ -76,7 +87,7 @@ CHECKED_STATUS PTInsertStmt::Analyze(SemContext *sem_context) {
   return Status::OK();
 }
 
-CHECKED_STATUS PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value,
+Status PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value,
                                                    SemContext* sem_context) {
   RETURN_NOT_OK(inserting_value->Analyze(sem_context));
   if (auto values_clause = dynamic_cast<PTInsertValuesClause*>(inserting_value)) {
@@ -88,12 +99,12 @@ CHECKED_STATUS PTInsertStmt::AnalyzeInsertingValue(PTCollection* inserting_value
   }
 }
 
-CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
+Status PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_clause,
                                                   SemContext* sem_context) {
   if (values_clause->TupleCount() == 0) {
     return sem_context->Error(values_clause, ErrorCode::TOO_FEW_ARGUMENTS);
   }
-  const MCList<PTExpr::SharedPtr>& value_exprs = values_clause->Tuple(0)->node_list();
+  const auto& value_exprs = values_clause->Tuple(0)->node_list();
 
   if (columns_) {
     // Processing insert statement that has column list.
@@ -108,7 +119,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
     }
 
     // Mismatch between arguments and columns.
-    MCList<PTExpr::SharedPtr>::const_iterator value_exprs_iter = value_exprs.begin();
+    auto value_exprs_iter = value_exprs.begin();
     for (const PTQualifiedName::SharedPtr& name : names) {
       if (!name->IsSimpleName()) {
         return sem_context->Error(name, "Qualified name not allowed for column reference",
@@ -122,7 +133,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
       }
 
       // Process values arguments.
-      const PTExpr::SharedPtr& value_expr = *value_exprs_iter;
+      const PTExprPtr& value_expr = *value_exprs_iter;
       RETURN_NOT_OK(ProcessColumn(name->bindvar_name(), col_desc, value_expr, sem_context));
 
       value_exprs_iter++;
@@ -162,7 +173,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
 
   // Now check that each column in the hash key is associated with an argument.
   // NOTE: we assumed that primary_indexes and arguments are sorted by column_index.
-  for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+  for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
     if (!(*column_args_)[idx].IsInitialized()) {
       return sem_context->Error(inserting_value_.get(),
                                 ErrorCode::MISSING_ARGUMENT_FOR_PRIMARY_KEY);
@@ -171,8 +182,8 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
   // If inserting static columns only, check that either each column in the range key is associated
   // with an argument or no range key has an argument. Else, check that all range columns
   // have arguments.
-  int range_keys = 0;
-  for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+  size_t range_keys = 0;
+  for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
     if ((*column_args_)[idx].IsInitialized()) {
       range_keys++;
     }
@@ -192,7 +203,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
   }
 
   // Primary key cannot be null.
-  for (int idx = 0; idx < num_key_columns(); idx++) {
+  for (size_t idx = 0; idx < num_key_columns(); idx++) {
     if ((*column_args_)[idx].IsInitialized() && (*column_args_)[idx].expr()->is_null()) {
       return sem_context->Error(inserting_value_.get(), ErrorCode::NULL_ARGUMENT_FOR_PRIMARY_KEY);
     }
@@ -201,7 +212,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeValuesClause(PTInsertValuesClause* values_c
   return Status::OK();
 }
 
-CHECKED_STATUS PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
+Status PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
                                                 SemContext* sem_context) {
   // Since JSON could be a PTBindVar, at this stage we don't have a clue about a JSON we've got
   // other than its type is a string.
@@ -213,7 +224,7 @@ CHECKED_STATUS PTInsertStmt::AnanlyzeJsonClause(PTInsertJsonClause* json_clause,
   return Status::OK();
 }
 
-CHECKED_STATUS PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
+Status PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_name,
                                            const ColumnDesc* col_desc,
                                            const PTExpr::SharedPtr& value_expr,
                                            SemContext* sem_context) {
@@ -240,7 +251,7 @@ CHECKED_STATUS PTInsertStmt::ProcessColumn(const MCSharedPtr<MCString>& mc_col_n
 // For INSERT VALUES, default behaviour is to not modify missing columns
 // For INSERT JSON,   default behaviour is to replace missing columns with nulls - that is, unless
 // DEFAULT UNSET is specified
-CHECKED_STATUS PTInsertStmt::InitRemainingColumns(bool init_to_null,
+Status PTInsertStmt::InitRemainingColumns(bool init_to_null,
                                                   SemContext* sem_context) {
   if (!init_to_null) {
     // Not much we can do here
@@ -279,7 +290,7 @@ ExplainPlanPB PTInsertStmt::AnalysisResultToPB() {
   ExplainPlanPB explain_plan;
   InsertPlanPB *insert_plan = explain_plan.mutable_insert_plan();
   insert_plan->set_insert_type("Insert on " + table_name().ToString());
-  insert_plan->set_output_width(insert_plan->insert_type().length());
+  insert_plan->set_output_width(narrow_cast<int32_t>(insert_plan->insert_type().length()));
   return explain_plan;
 }
 

@@ -3,14 +3,12 @@ title: Overview
 headerTitle: Overview of Yugabyte Query Layer (YQL)
 linkTitle: Overview
 description: The Yugabyte Query Layer (YQL) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers.
-aliases:
-  - /architecture/concepts/yql/
-block_indexing: true
 menu:
   stable:
     identifier: architecture-query-layer-yql
     parent: architecture-query-layer
     weight: 1172
+type: docs
 ---
 
 The Yugabyte Query Layer (YQL) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API specific aspects such as query/command compilation and the run-time (data type representations, built-in operations and more). YQL is built with extensibility in mind, and allows for new APIs to be added. Currently, YQL supports two flavors of distributed SQL APIs, namely [YSQL](../../../api/ysql) and [YCQL](../../../api/ycql).

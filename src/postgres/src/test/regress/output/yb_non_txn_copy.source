@@ -44,3 +44,92 @@ SELECT COUNT(*) FROM onek;
 -------
   1000
 (1 row)
+
+-- Verify non-transactional copy on hash, range
+-- and list partitioned tables.
+CREATE TABLE onek_hash(
+    unique1     int4,
+    unique2     int4,
+    two         int4,
+    four        int4,
+    ten         int4,
+    twenty      int4,
+    hundred     int4,
+    thousand    int4,
+    twothousand int4,
+    fivethous   int4,
+    tenthous    int4,
+    odd         int4,
+    even        int4,
+    stringu1    name,
+    stringu2    name,
+    string4     name
+) PARTITION BY HASH(unique1);
+CREATE TABLE onek_hash0 PARTITION OF onek_hash FOR VALUES WITH (modulus 2, remainder 0);
+CREATE TABLE onek_hash1 PARTITION OF onek_hash FOR VALUES WITH (modulus 2, remainder 1);
+COPY onek_hash FROM '@abs_srcdir@/data/onek.data';
+WARNING:  non-transactional COPY is not supported on this relation; using transactional COPY instead
+HINT:  Non-transactional COPY is not supported on relations with secondary indices or triggers.
+SELECT COUNT(*) FROM onek_hash;
+ count
+-------
+  1000
+(1 row)
+
+CREATE TABLE onek_range(
+    unique1     int4,
+    unique2     int4,
+    two         int4,
+    four        int4,
+    ten         int4,
+    twenty      int4,
+    hundred     int4,
+    thousand    int4,
+    twothousand int4,
+    fivethous   int4,
+    tenthous    int4,
+    odd         int4,
+    even        int4,
+    stringu1    name,
+    stringu2    name,
+    string4     name
+) PARTITION BY RANGE(unique2);
+CREATE TABLE onek_range0 PARTITION OF onek_range FOR VALUES FROM (0) TO (500);
+CREATE TABLE onek_range1 PARTITION OF onek_range FOR VALUES FROM (500) TO (1000);
+COPY onek_range FROM '@abs_srcdir@/data/onek.data';
+WARNING:  non-transactional COPY is not supported on this relation; using transactional COPY instead
+HINT:  Non-transactional COPY is not supported on relations with secondary indices or triggers.
+SELECT COUNT(*) FROM onek_range;
+ count
+-------
+  1000
+(1 row)
+
+CREATE TABLE onek_list(
+    unique1     int4,
+    unique2     int4,
+    two         int4,
+    four        int4,
+    ten         int4,
+    twenty      int4,
+    hundred     int4,
+    thousand    int4,
+    twothousand int4,
+    fivethous   int4,
+    tenthous    int4,
+    odd         int4,
+    even        int4,
+    stringu1    name,
+    stringu2    name,
+    string4     name
+) PARTITION BY LIST(two);
+CREATE TABLE onek_list0 PARTITION OF onek_list FOR VALUES IN (0);
+CREATE TABLE onek_list1 PARTITION OF onek_list FOR VALUES IN (1);
+COPY onek_list FROM '@abs_srcdir@/data/onek.data';
+WARNING:  non-transactional COPY is not supported on this relation; using transactional COPY instead
+HINT:  Non-transactional COPY is not supported on relations with secondary indices or triggers.
+SELECT COUNT(*) FROM onek_list;
+ count
+-------
+  1000
+(1 row)

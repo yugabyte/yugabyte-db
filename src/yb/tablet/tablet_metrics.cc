@@ -31,9 +31,7 @@
 //
 #include "yb/tablet/tablet_metrics.h"
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/metrics.h"
-#include "yb/util/trace.h"
 
 // Tablet-specific metrics.
 METRIC_DEFINE_counter(tablet, rows_inserted, "Rows Inserted",
@@ -50,29 +48,27 @@ METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts"
                       yb::MetricUnit::kRows,
                       "Number of inserts which failed because the key already existed");
 
-METRIC_DEFINE_histogram(tablet, write_op_duration_client_propagated_consistency,
+METRIC_DEFINE_coarse_histogram(table, write_op_duration_client_propagated_consistency,
   "Write Op Duration with Propagated Consistency",
   yb::MetricUnit::kMicroseconds,
-  "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.",
-  60000000LU, 2);
+  "Duration of writes to this tablet with external consistency set to CLIENT_PROPAGATED.");
 
-METRIC_DEFINE_histogram(tablet, snapshot_read_inflight_wait_duration,
+METRIC_DEFINE_coarse_histogram(table, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
   yb::MetricUnit::kMicroseconds,
-  "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.",
-  60000000LU, 2);
+  "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.");
 
-METRIC_DEFINE_histogram(
-    tablet, redis_read_latency, "HandleRedisReadRequest latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to handle a RedisReadRequest", 60000000LU, 2);
+METRIC_DEFINE_coarse_histogram(
+    table, redis_read_latency, "HandleRedisReadRequest latency", yb::MetricUnit::kMicroseconds,
+    "Time taken to handle a RedisReadRequest");
 
-METRIC_DEFINE_histogram(
-    tablet, ql_read_latency, "HandleQLReadRequest latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to handle a QLReadRequest", 60000000LU, 2);
+METRIC_DEFINE_coarse_histogram(
+    table, ql_read_latency, "HandleQLReadRequest latency", yb::MetricUnit::kMicroseconds,
+    "Time taken to handle a QLReadRequest");
 
-METRIC_DEFINE_histogram(
-    tablet, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
-    "Time taken to acquire key locks for a write operation", 60000000LU, 2);
+METRIC_DEFINE_coarse_histogram(
+    table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
+    "Time taken to acquire key locks for a write operation");
 
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
@@ -88,21 +84,6 @@ METRIC_DEFINE_gauge_uint32(tablet, delta_major_compact_rs_running,
   "Major Delta Compactions Running",
   yb::MetricUnit::kMaintenanceOperations,
   "Number of delta major compactions currently running.");
-
-METRIC_DEFINE_histogram(tablet, compact_rs_duration,
-  "RowSet Compaction Duration",
-  yb::MetricUnit::kMilliseconds,
-  "Time spent compacting RowSets.", 60000LU, 1);
-
-METRIC_DEFINE_histogram(tablet, delta_minor_compact_rs_duration,
-  "Minor Delta Compaction Duration",
-  yb::MetricUnit::kMilliseconds,
-  "Time spent minor delta compacting.", 60000LU, 1);
-
-METRIC_DEFINE_histogram(tablet, delta_major_compact_rs_duration,
-  "Major Delta Compaction Duration",
-  yb::MetricUnit::kSeconds,
-  "Seconds spent major delta compacting.", 60000000LU, 2);
 
 METRIC_DEFINE_counter(tablet, not_leader_rejections,
   "Not Leader Rejections",
@@ -144,27 +125,34 @@ METRIC_DEFINE_counter(tablet, pgsql_consistent_prefix_read_rows,
                       yb::MetricUnit::kRequests,
                       "Number of pgsql rows read as part of a consistent prefix request");
 
+METRIC_DEFINE_counter(tablet, tablet_data_corruptions,
+  "Tablet Data Corruption Detections",
+  yb::MetricUnit::kUnits,
+  "Number of times this tablet was flagged for corrupted data");
+
 using strings::Substitute;
 
 namespace yb {
 namespace tablet {
 
-#define MINIT(x) x(METRIC_##x.Instantiate(entity))
-TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& entity)
-  : MINIT(snapshot_read_inflight_wait_duration),
-    MINIT(redis_read_latency),
-    MINIT(ql_read_latency),
-    MINIT(write_lock_latency),
-    MINIT(write_op_duration_client_propagated_consistency),
-    MINIT(not_leader_rejections),
-    MINIT(leader_memory_pressure_rejections),
-    MINIT(majority_sst_files_rejections),
-    MINIT(transaction_conflicts),
-    MINIT(expired_transactions),
-    MINIT(restart_read_requests),
-    MINIT(consistent_prefix_read_requests),
-    MINIT(pgsql_consistent_prefix_read_rows),
-    MINIT(rows_inserted) {
+#define MINIT(entity, x) x(METRIC_##x.Instantiate(entity))
+TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
+                             const scoped_refptr<MetricEntity>& tablet_entity)
+  : MINIT(table_entity, snapshot_read_inflight_wait_duration),
+    MINIT(table_entity, redis_read_latency),
+    MINIT(table_entity, ql_read_latency),
+    MINIT(table_entity, write_lock_latency),
+    MINIT(table_entity, write_op_duration_client_propagated_consistency),
+    MINIT(tablet_entity, not_leader_rejections),
+    MINIT(tablet_entity, leader_memory_pressure_rejections),
+    MINIT(tablet_entity, majority_sst_files_rejections),
+    MINIT(tablet_entity, transaction_conflicts),
+    MINIT(tablet_entity, expired_transactions),
+    MINIT(tablet_entity, restart_read_requests),
+    MINIT(tablet_entity, consistent_prefix_read_requests),
+    MINIT(tablet_entity, pgsql_consistent_prefix_read_rows),
+    MINIT(tablet_entity, tablet_data_corruptions),
+    MINIT(tablet_entity, rows_inserted) {
 }
 #undef MINIT
 

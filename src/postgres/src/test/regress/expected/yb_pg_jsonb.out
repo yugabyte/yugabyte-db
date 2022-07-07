@@ -2895,8 +2895,7 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
      0
 (1 row)
 
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- CREATE INDEX jidx ON testjsonb USING gin (j);
+CREATE INDEX jidx ON testjsonb USING gin (j);
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -2942,11 +2941,8 @@ SELECT count(*) FROM testjsonb WHERE j @> '{"array":["bar"]}';
 
 -- exercise GIN_SEARCH_MODE_ALL
 SELECT count(*) FROM testjsonb WHERE j @> '{}';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j ? 'public';
  count
 -------
@@ -2960,11 +2956,8 @@ SELECT count(*) FROM testjsonb WHERE j ? 'bar';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j ?| ARRAY['public','disabled'];
- count
--------
-   337
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method cannot use more than one required scan entry: got 2.
 SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
  count
 -------
@@ -2973,11 +2966,11 @@ SELECT count(*) FROM testjsonb WHERE j ?& ARRAY['public','disabled'];
 
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
-                      QUERY PLAN
--------------------------------------------------------
+                        QUERY PLAN
+-----------------------------------------------------------
  Aggregate
-   ->  Seq Scan on testjsonb
-         Filter: (j @@ '($."wait" == null)'::jsonpath)
+   ->  Index Scan using jidx on testjsonb
+         Index Cond: (j @@ '($."wait" == null)'::jsonpath)
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
@@ -3053,42 +3046,27 @@ SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public)';
- count
--------
-   194
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.bar)';
- count
--------
-     0
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) || exists($.disabled)';
- count
--------
-   337
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.public) && exists($.disabled)';
- count
--------
-    42
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                       QUERY PLAN
----------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Aggregate
-   ->  Seq Scan on testjsonb
-         Filter: (j @? '$."wait"?(@ == null)'::jsonpath)
+   ->  Index Scan using jidx on testjsonb
+         Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
@@ -3140,26 +3118,16 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
- count
--------
-   194
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
- count
--------
-     0
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 -- array exists - array elements should behave as keys (for GIN index scans too)
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
+CREATE INDEX jidx_array ON testjsonb USING gin((j->'array'));
 SELECT count(*) from testjsonb  WHERE j->'array' ? 'bar';
  count
 -------
@@ -3250,11 +3218,12 @@ SELECT distinct * FROM (values (jsonb '{}' || ''::text),('{}')) v(j);
 SET enable_sort = on;
 RESET enable_hashagg;
 RESET enable_sort;
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- DROP INDEX jidx;
--- DROP INDEX jidx_array;
--- -- btree
--- CREATE INDEX jidx ON testjsonb USING btree (j);
+DROP INDEX jidx;
+DROP INDEX jidx_array;
+-- btree
+CREATE INDEX jidx ON testjsonb USING btree (j);
+NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
+ERROR:  INDEX on column of type 'JSONB' not yet supported
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j > '{"p":1}';
  count
@@ -3269,9 +3238,9 @@ SELECT count(*) FROM testjsonb WHERE j = '{"pos":98, "line":371, "node":"CBA", "
 (1 row)
 
 --gin path opclass
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- DROP INDEX jidx;
--- CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
+DROP INDEX jidx;
+ERROR:  index "jidx" does not exist
+CREATE INDEX jidx ON testjsonb USING gin (j jsonb_path_ops);
 SET enable_seqscan = off;
 SELECT count(*) FROM testjsonb WHERE j @> '{"wait":null}';
  count
@@ -3305,11 +3274,8 @@ SELECT count(*) FROM testjsonb WHERE j @> '{"age":25.0}';
 
 -- exercise GIN_SEARCH_MODE_ALL
 SELECT count(*) FROM testjsonb WHERE j @> '{}';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @@ '$.wait == null';
  count
 -------
@@ -3383,18 +3349,15 @@ SELECT count(*) FROM testjsonb WHERE j @@ 'exists($.array[*] ? (@ == "bar"))';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @@ 'exists($)';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 EXPLAIN (COSTS OFF)
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
-                       QUERY PLAN
----------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Aggregate
-   ->  Seq Scan on testjsonb
-         Filter: (j @? '$."wait"?(@ == null)'::jsonpath)
+   ->  Index Scan using jidx on testjsonb
+         Index Cond: (j @? '$."wait"?(@ == null)'::jsonpath)
 (3 rows)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$.wait ? (@ == null)';
@@ -3446,26 +3409,16 @@ SELECT count(*) FROM testjsonb WHERE j @? '$.array[*] ? (@ == "bar")';
 (1 row)
 
 SELECT count(*) FROM testjsonb WHERE j @? '$';
- count
--------
-  1012
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.public';
- count
--------
-   194
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 SELECT count(*) FROM testjsonb WHERE j @? '$.bar';
- count
--------
-     0
-(1 row)
-
+ERROR:  unsupported ybgin index scan
+DETAIL:  ybgin index method does not support non-default search mode: all.
 RESET enable_seqscan;
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- DROP INDEX jidx;
+DROP INDEX jidx;
 -- nested tests
 SELECT '{"ff":{"a":12,"b":16}}'::jsonb;
            jsonb
@@ -3622,8 +3575,7 @@ create temp table nestjsonb (j jsonb);
 insert into nestjsonb (j) values ('{"a":[["b",{"x":1}],["b",{"x":2}]],"c":3}');
 insert into nestjsonb (j) values ('[[14,2,3]]');
 insert into nestjsonb (j) values ('[1,[14,2,3]]');
--- TODO(jason) uncomment when issue #1337 is closed or closing.
--- create index on nestjsonb using gin(j jsonb_path_ops);
+create index on nestjsonb using gin(j jsonb_path_ops);
 set enable_seqscan = on;
 set enable_bitmapscan = off;
 select * from nestjsonb where j @> '{"a":[[{"x":2}]]}'::jsonb;
@@ -4508,26 +4460,26 @@ ERROR:  path element at position 3 is null
 \pset null NULL
 -- pass though non nulls to jsonb_set
 select jsonb_set_lax('{"a":1,"b":2}','{b}','5') ;
-  jsonb_set_lax   
+  jsonb_set_lax
 ------------------
  {"a": 1, "b": 5}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}','{d}','6', true) ;
-      jsonb_set_lax       
+      jsonb_set_lax
 --------------------------
  {"a": 1, "b": 2, "d": 6}
 (1 row)
 
 -- using the default treatment
 select jsonb_set_lax('{"a":1,"b":2}','{b}',null);
-    jsonb_set_lax    
+    jsonb_set_lax
 ---------------------
  {"a": 1, "b": null}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}','{d}',null,true);
-        jsonb_set_lax        
+        jsonb_set_lax
 -----------------------------
  {"a": 1, "b": 2, "d": null}
 (1 row)
@@ -4543,19 +4495,19 @@ ERROR:  JSON value must not be null
 DETAIL:  Exception was raised because null_value_treatment is "raise_exception".
 HINT:  To avoid, either change the null_value_treatment argument or ensure that an SQL NULL is not passed.
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'return_target') as return_target;
-  return_target   
+  return_target
 ------------------
  {"a": 1, "b": 2}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'delete_key') as delete_key;
- delete_key 
+ delete_key
 ------------
  {"a": 1}
 (1 row)
 
 select jsonb_set_lax('{"a":1,"b":2}', '{b}', null, null_value_treatment => 'use_json_null') as use_json_null;
-    use_json_null    
+    use_json_null
 ---------------------
  {"a": 1, "b": null}
 (1 row)
@@ -4690,62 +4642,218 @@ HINT:  Try using the function jsonb_set to replace key value.
 select jsonb_insert('{"a": {"b": "value"}}', '{a, b}', '"new_value"', true);
 ERROR:  cannot replace existing key
 HINT:  Try using the function jsonb_set to replace key value.
--- TODO(jason): uncomment when issue #1979 is closed or closing.
--- -- jsonb to tsvector
--- select to_tsvector('{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
---
--- -- jsonb to tsvector with config
--- select to_tsvector('simple', '{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
---
--- -- jsonb to tsvector with stop words
--- select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": ["the eee fff ggg"], "c": {"d": "hhh. iii"}}'::jsonb);
---
--- -- jsonb to tsvector with numeric values
--- select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": 123, "c": 456}'::jsonb);
---
--- -- jsonb_to_tsvector
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
---
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
---
--- -- ts_vector corner cases
--- select to_tsvector('""'::jsonb);
--- select to_tsvector('{}'::jsonb);
--- select to_tsvector('[]'::jsonb);
--- select to_tsvector('null'::jsonb);
---
--- -- jsonb_to_tsvector corner cases
--- select jsonb_to_tsvector('""'::jsonb, '"all"');
--- select jsonb_to_tsvector('{}'::jsonb, '"all"');
--- select jsonb_to_tsvector('[]'::jsonb, '"all"');
--- select jsonb_to_tsvector('null'::jsonb, '"all"');
---
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '""');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '{}');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '[]');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, 'null');
--- select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["all", null]');
---
--- -- ts_headline for jsonb
--- select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
--- select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
--- select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
--- select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
---
--- -- corner cases for ts_headline with jsonb
--- select ts_headline('null'::jsonb, tsquery('aaa & bbb'));
--- select ts_headline('{}'::jsonb, tsquery('aaa & bbb'));
--- select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
+-- jsonb to tsvector
+select to_tsvector('{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
+                                to_tsvector                                
+---------------------------------------------------------------------------
+ 'aaa':1 'bbb':2 'ccc':4 'ddd':3 'eee':6 'fff':7 'ggg':8 'hhh':10 'iii':11
+(1 row)
+
+-- jsonb to tsvector with config
+select to_tsvector('simple', '{"a": "aaa bbb ddd ccc", "b": ["eee fff ggg"], "c": {"d": "hhh iii"}}'::jsonb);
+                                to_tsvector                                
+---------------------------------------------------------------------------
+ 'aaa':1 'bbb':2 'ccc':4 'ddd':3 'eee':6 'fff':7 'ggg':8 'hhh':10 'iii':11
+(1 row)
+
+-- jsonb to tsvector with stop words
+select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": ["the eee fff ggg"], "c": {"d": "hhh. iii"}}'::jsonb);
+                                to_tsvector                                 
+----------------------------------------------------------------------------
+ 'aaa':1 'bbb':3 'ccc':5 'ddd':4 'eee':8 'fff':9 'ggg':10 'hhh':12 'iii':13
+(1 row)
+
+-- jsonb to tsvector with numeric values
+select to_tsvector('english', '{"a": "aaa in bbb ddd ccc", "b": 123, "c": 456}'::jsonb);
+           to_tsvector           
+---------------------------------
+ 'aaa':1 'bbb':3 'ccc':5 'ddd':4
+(1 row)
+
+-- jsonb_to_tsvector
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
+                                   jsonb_to_tsvector                                    
+----------------------------------------------------------------------------------------
+ '123':8 '456':12 'aaa':2 'b':6 'bbb':4 'c':10 'd':14 'f':18 'fals':20 'g':22 'true':16
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
+       jsonb_to_tsvector        
+--------------------------------
+ 'b':2 'c':4 'd':6 'f':8 'g':10
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
+ jsonb_to_tsvector 
+-------------------
+ 'aaa':1 'bbb':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
+ jsonb_to_tsvector 
+-------------------
+ '123':1 '456':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
+ jsonb_to_tsvector 
+-------------------
+ 'fals':3 'true':1
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
+        jsonb_to_tsvector        
+---------------------------------
+ '123':5 '456':7 'aaa':1 'bbb':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"all"');
+                                   jsonb_to_tsvector                                    
+----------------------------------------------------------------------------------------
+ '123':8 '456':12 'aaa':2 'b':6 'bbb':4 'c':10 'd':14 'f':18 'fals':20 'g':22 'true':16
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"key"');
+       jsonb_to_tsvector        
+--------------------------------
+ 'b':2 'c':4 'd':6 'f':8 'g':10
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"string"');
+ jsonb_to_tsvector 
+-------------------
+ 'aaa':1 'bbb':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"numeric"');
+ jsonb_to_tsvector 
+-------------------
+ '123':1 '456':3
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '"boolean"');
+ jsonb_to_tsvector 
+-------------------
+ 'fals':3 'true':1
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["string", "numeric"]');
+        jsonb_to_tsvector        
+---------------------------------
+ '123':5 '456':7 'aaa':1 'bbb':3
+(1 row)
+
+-- ts_vector corner cases
+select to_tsvector('""'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+select to_tsvector('{}'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+select to_tsvector('[]'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+select to_tsvector('null'::jsonb);
+ to_tsvector 
+-------------
+ 
+(1 row)
+
+-- jsonb_to_tsvector corner cases
+select jsonb_to_tsvector('""'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('{}'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('[]'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('null'::jsonb, '"all"');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '""');
+ERROR:  wrong flag in flag array: ""
+HINT:  Possible values are: "string", "numeric", "boolean", "key", and "all".
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '{}');
+ERROR:  wrong flag type, only arrays and scalars are allowed
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '[]');
+ jsonb_to_tsvector 
+-------------------
+ 
+(1 row)
+
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, 'null');
+ERROR:  flag array element is not a string
+HINT:  Possible values are: "string", "numeric", "boolean", "key", and "all".
+select jsonb_to_tsvector('english', '{"a": "aaa in bbb", "b": 123, "c": 456, "d": true, "f": false, "g": null}'::jsonb, '["all", null]');
+ERROR:  flag array element is not a string
+HINT:  Possible values are: "string", "numeric", "boolean", "key", and "all".
+-- ts_headline for jsonb
+select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
+                                                   ts_headline                                                    
+------------------------------------------------------------------------------------------------------------------
+ {"a": "aaa <b>bbb</b>", "b": {"c": "ccc <b>ddd</b> fff", "c1": "ccc1 ddd1"}, "d": ["ggg <b>hhh</b>", "iii jjj"]}
+(1 row)
+
+select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'));
+                                          ts_headline                                          
+-----------------------------------------------------------------------------------------------
+ {"a": "aaa <b>bbb</b>", "b": {"c": "ccc <b>ddd</b> fff"}, "d": ["ggg <b>hhh</b>", "iii jjj"]}
+(1 row)
+
+select ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
+                                            ts_headline                                            
+---------------------------------------------------------------------------------------------------
+ {"a": "aaa <bbb>", "b": {"c": "ccc <ddd> fff", "c1": "ccc1 ddd1"}, "d": ["ggg <hhh>", "iii jjj"]}
+(1 row)
+
+select ts_headline('english', '{"a": "aaa bbb", "b": {"c": "ccc ddd fff", "c1": "ccc1 ddd1"}, "d": ["ggg hhh", "iii jjj"]}'::jsonb, tsquery('bbb & ddd & hhh'), 'StartSel = <, StopSel = >');
+                                            ts_headline                                            
+---------------------------------------------------------------------------------------------------
+ {"a": "aaa <bbb>", "b": {"c": "ccc <ddd> fff", "c1": "ccc1 ddd1"}, "d": ["ggg <hhh>", "iii jjj"]}
+(1 row)
+
+-- corner cases for ts_headline with jsonb
+select ts_headline('null'::jsonb, tsquery('aaa & bbb'));
+ ts_headline 
+-------------
+ null
+(1 row)
+
+select ts_headline('{}'::jsonb, tsquery('aaa & bbb'));
+ ts_headline 
+-------------
+ {}
+(1 row)
+
+select ts_headline('[]'::jsonb, tsquery('aaa & bbb'));
+ ts_headline 
+-------------
+ []
+(1 row)
+
 -- casts
 select 'true'::jsonb::bool;
  bool

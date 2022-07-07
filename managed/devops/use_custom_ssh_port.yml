@@ -7,16 +7,24 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 - name: "Use custom SSH port"
+  module_defaults:
+    yum:
+      lock_timeout: 600
   hosts: "{{ yb_ansible_host }}"
   become: yes
   become_method: sudo
-  pre_tasks:
-    # Ensure Python 2.x is installed.
-    # http://stackoverflow.com/questions/32429259/ansible-fails-with-bin-sh-1-usr-bin-python-not-found
-    - name: 'install python 2.x'
-      raw: if grep Ubuntu /etc/issue >/dev/null; then sudo apt-get -y install python; fi
   roles:
     - ansible-sshd
   vars:
     sshd:
       Port: "{{ custom_ssh_port }}"
+      # Disable empty password and root login.
+      # https://github.com/yugabyte/yugabyte-db/issues/7415
+      PermitRootLogin: no
+      PermitEmptyPasswords: no
+      # Disable all authentication methods except `publickey`.
+      PasswordAuthentication: no
+      ChallengeResponseAuthentication: no
+      KbdInteractiveAuthentication: no
+      AuthenticationMethods: 'publickey'
+  tags: yb-prebuilt-ami

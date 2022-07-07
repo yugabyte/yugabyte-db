@@ -39,17 +39,23 @@
 #include <mutex>
 #include <string>
 
-#include "yb/gutil/gscoped_ptr.h"
+#include <gtest/gtest_prod.h>
 
+#include "yb/common/common_net.pb.h"
+#include "yb/common/hybrid_time.h"
+
+#include "yb/master/master_heartbeat.fwd.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/master.pb.h"
 
-#include "yb/tserver/tserver_service.proxy.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/util/capabilities.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/net/net_util.h"
+#include "yb/util/physical_time.h"
+#include "yb/util/result.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/shared_ptr_tuple.h"
 #include "yb/util/shared_lock.h"
 
@@ -95,14 +101,14 @@ class TSDescriptor {
   virtual ~TSDescriptor();
 
   // Set the last-heartbeat time to now.
-  void UpdateHeartbeatTime();
+  void UpdateHeartbeat(const TSHeartbeatRequestPB* req);
 
   // Return the amount of time since the last heartbeat received
   // from this TS.
   MonoDelta TimeSinceHeartbeat() const;
 
   // Register this tablet server.
-  CHECKED_STATUS Register(const NodeInstancePB& instance,
+  Status Register(const NodeInstancePB& instance,
                           const TSRegistrationPB& registration,
                           CloudInfoPB local_cloud_info,
                           rpc::ProxyCache* proxy_cache);
@@ -112,6 +118,8 @@ class TSDescriptor {
 
   bool has_tablet_report() const;
   void set_has_tablet_report(bool has_report);
+
+  bool has_faulty_drive() const;
 
   bool registered_through_heartbeat() const;
 
@@ -127,19 +135,22 @@ class TSDescriptor {
   // information (eg: aws.us-west.* will match any TS in aws.us-west.1a or aws.us-west.1b, etc.).
   bool MatchesCloudInfo(const CloudInfoPB& cloud_info) const;
 
+  CloudInfoPB GetCloudInfo() const;
+
   // Return the pre-computed placement_id, comprised of the cloud_info data.
   std::string placement_id() const;
 
   std::string placement_uuid() const;
 
   bool IsRunningOn(const HostPortPB& hp) const;
+  bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
   // Should this ts have any leader load on it.
   virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
 
   // Return an RPC proxy to a service.
   template <class TProxy>
-  CHECKED_STATUS GetProxy(std::shared_ptr<TProxy>* proxy) {
+  Status GetProxy(std::shared_ptr<TProxy>* proxy) {
     return GetOrCreateProxy(proxy, &proxies_.get<TProxy>());
   }
 
@@ -177,29 +188,29 @@ class TSDescriptor {
     return leader_count_;
   }
 
-  void set_total_memory_usage(uint64_t total_memory_usage) {
+  MicrosTime physical_time() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return physical_time_;
+  }
+
+  void set_hybrid_time(HybridTime hybrid_time) {
     std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.total_memory_usage = total_memory_usage;
+    hybrid_time_ = hybrid_time;
+  }
+
+  HybridTime hybrid_time() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return hybrid_time_;
+  }
+
+  MonoDelta heartbeat_rtt() const {
+    SharedLock<decltype(lock_)> l(lock_);
+    return heartbeat_rtt_;
   }
 
   uint64_t total_memory_usage() {
     SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.total_memory_usage;
-  }
-
-  void set_total_sst_file_size (uint64_t total_sst_file_size) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.total_sst_file_size = total_sst_file_size;
-  }
-
-  void set_uncompressed_sst_file_size (uint64_t uncompressed_sst_file_size) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.uncompressed_sst_file_size = uncompressed_sst_file_size;
-  }
-
-  void set_num_sst_files (uint64_t num_sst_files) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.num_sst_files = num_sst_files;
   }
 
   uint64_t total_sst_file_size() {
@@ -217,19 +228,9 @@ class TSDescriptor {
     return ts_metrics_.num_sst_files;
   }
 
-  void set_read_ops_per_sec(double read_ops_per_sec) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.read_ops_per_sec = read_ops_per_sec;
-  }
-
   double read_ops_per_sec() {
     SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.read_ops_per_sec;
-  }
-
-  void set_write_ops_per_sec(double write_ops_per_sec) {
-    std::lock_guard<decltype(lock_)> l(lock_);
-    ts_metrics_.write_ops_per_sec = write_ops_per_sec;
   }
 
   double write_ops_per_sec() {
@@ -240,6 +241,21 @@ class TSDescriptor {
   uint64_t uptime_seconds() {
     SharedLock<decltype(lock_)> l(lock_);
     return ts_metrics_.uptime_seconds;
+  }
+
+  struct TSPathMetrics {
+    uint64_t used_space = 0;
+    uint64_t total_space = 0;
+  };
+
+  std::unordered_map<std::string, TSPathMetrics> path_metrics() {
+    SharedLock<decltype(lock_)> l(lock_);
+    return ts_metrics_.path_metrics;
+  }
+
+  bool get_disable_tablet_split_if_default_ttl() {
+    SharedLock<decltype(lock_)> l(lock_);
+    return ts_metrics_.disable_tablet_split_if_default_ttl;
   }
 
   void UpdateMetrics(const TServerMetricsPB& metrics);
@@ -280,8 +296,10 @@ class TSDescriptor {
     return capabilities_.find(capability) != capabilities_.end();
   }
 
+  virtual bool IsLiveAndHasReported() const;
+
  protected:
-  virtual CHECKED_STATUS RegisterUnlocked(const NodeInstancePB& instance,
+  virtual Status RegisterUnlocked(const NodeInstancePB& instance,
                                           const TSRegistrationPB& registration,
                                           CloudInfoPB local_cloud_info,
                                           rpc::ProxyCache* proxy_cache);
@@ -289,7 +307,7 @@ class TSDescriptor {
   mutable rw_spinlock lock_;
  private:
   template <class TProxy>
-  CHECKED_STATUS GetOrCreateProxy(std::shared_ptr<TProxy>* result,
+  Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
                                   std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
@@ -316,6 +334,10 @@ class TSDescriptor {
 
     uint64_t uptime_seconds = 0;
 
+    std::unordered_map<std::string, TSPathMetrics> path_metrics;
+
+    bool disable_tablet_split_if_default_ttl = false;
+
     void ClearMetrics() {
       total_memory_usage = 0;
       total_sst_file_size = 0;
@@ -324,6 +346,8 @@ class TSDescriptor {
       read_ops_per_sec = 0;
       write_ops_per_sec = 0;
       uptime_seconds = 0;
+      path_metrics.clear();
+      disable_tablet_split_if_default_ttl = false;
     }
   };
 
@@ -337,8 +361,18 @@ class TSDescriptor {
   // The last time a heartbeat was received for this node.
   MonoTime last_heartbeat_;
 
+  // The physical and hybrid times on this node at the time of heartbeat
+  MicrosTime physical_time_;
+  HybridTime hybrid_time_;
+
+  // Roundtrip time of previous heartbeat.
+  MonoDelta heartbeat_rtt_;
+
   // Set to true once this instance has reported all of its tablets.
   bool has_tablet_report_;
+
+  // Tablet server has at least one faulty drive.
+  bool has_faulty_drive_;
 
   // The number of times this tablet server has recently been selected to create a
   // tablet replica. This value decays back to 0 over time.
@@ -396,6 +430,19 @@ Status TSDescriptor::GetOrCreateProxy(std::shared_ptr<TProxy>* result,
   return Status::OK();
 }
 
+struct cloud_equal_to {
+  bool operator()(const yb::CloudInfoPB& x, const yb::CloudInfoPB& y) const {
+    return x.placement_cloud() == y.placement_cloud() &&
+           x.placement_region() == y.placement_region() && x.placement_zone() == y.placement_zone();
+  }
+};
+
+struct cloud_hash {
+  std::size_t operator()(const yb::CloudInfoPB& ci) const {
+    return std::hash<std::string>{}(TSDescriptor::generate_placement_id(ci));
+  }
+};
 } // namespace master
 } // namespace yb
+
 #endif // YB_MASTER_TS_DESCRIPTOR_H

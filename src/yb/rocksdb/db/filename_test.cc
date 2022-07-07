@@ -21,16 +21,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/db/filename.h"
+#include <string>
 
-#include "yb/rocksdb/db/dbformat.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
+
+#include "yb/rocksdb/db/filename.h"
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class FileNameTest : public testing::Test {};
+class FileNameTest : public RocksDBTest {};
 
 TEST_F(FileNameTest, Parse) {
   Slice db;
@@ -116,13 +118,13 @@ TEST_F(FileNameTest, Parse) {
   for (unsigned int i = 0; i < sizeof(errors) / sizeof(errors[0]); i++) {
     std::string f = errors[i];
     ASSERT_TRUE(!ParseFileName(f, &number, &type)) << f;
-  };
+  }
 }
 
 TEST_F(FileNameTest, InfoLogFileName) {
   std::string dbname = ("/data/rocksdb");
   std::string db_absolute_path;
-  Env::Default()->GetAbsolutePath(dbname, &db_absolute_path);
+  ASSERT_OK(Env::Default()->GetAbsolutePath(dbname, &db_absolute_path));
 
   ASSERT_EQ("/data/rocksdb/LOG", InfoLogFileName(dbname, db_absolute_path, ""));
   ASSERT_EQ("/data/rocksdb/LOG.old.666",

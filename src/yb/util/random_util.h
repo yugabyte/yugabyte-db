@@ -34,12 +34,9 @@
 #define YB_UTIL_RANDOM_UTIL_H
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdlib>
 #include <random>
-#include <string>
 
-#include <glog/logging.h>
+#include <glog/logging.h> // For CHECK
 
 namespace yb {
 
@@ -55,8 +52,9 @@ void RandomString(void* dest, size_t n, Random* rng);
 uint32_t GetRandomSeed32();
 
 std::vector<uint8_t> RandomBytes(size_t len, std::mt19937_64* rng = nullptr);
+std::string RandomString(size_t len, std::mt19937_64* rng = nullptr);
 
-std::string RandomHumanReadableString(int len, Random* rnd);
+std::string RandomHumanReadableString(size_t len, Random* rnd);
 
 class RandomDeviceSequence {
  public:
@@ -132,13 +130,19 @@ inline bool RandomActWithProbability(double probability, std::mt19937_64* rng = 
 }
 
 template <class Collection>
-typename Collection::const_reference RandomElement(const Collection& collection,
-                                                   std::mt19937_64* rng = nullptr) {
+typename Collection::const_iterator RandomIterator(const Collection& collection,
+                                                    std::mt19937_64* rng = nullptr) {
   CHECK(!collection.empty());
   size_t index = RandomUniformInt<size_t>(0, collection.size() - 1, rng);
   auto it = collection.begin();
   std::advance(it, index);
-  return *it;
+  return it;
+}
+
+template <class Collection>
+typename Collection::const_reference RandomElement(const Collection& collection,
+                                                   std::mt19937_64* rng = nullptr) {
+  return *RandomIterator(collection, rng);
 }
 
 std::string RandomHumanReadableString(size_t len, std::mt19937_64* rng = nullptr);

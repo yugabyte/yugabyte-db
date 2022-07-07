@@ -63,6 +63,7 @@ typedef struct PartitionPruneContext
 	ExprState **exprstates;
 	bool	   *exprhasexecparam;
 	bool		evalexecparams;
+	Oid			*partrelids;
 } PartitionPruneContext;
 
 /*
@@ -79,7 +80,7 @@ extern PartitionPruneInfo *make_partition_pruneinfo(PlannerInfo *root,
 						 List *subpaths,
 						 List *partitioned_rels,
 						 List *prunequal);
-extern Relids prune_append_rel_partitions(RelOptInfo *rel);
+extern Relids prune_append_rel_partitions(PlannerInfo *root, RelOptInfo *rel);
 extern Bitmapset *get_matching_partitions(PartitionPruneContext *context,
 						List *pruning_steps);
 

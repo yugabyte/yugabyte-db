@@ -18,11 +18,12 @@
 //
 
 #ifndef ROCKSDB_LITE
+
 #include "yb/rocksdb/table/adaptive_table_factory.h"
 
-#include "yb/rocksdb/table/table_builder.h"
 #include "yb/rocksdb/table/format.h"
-#include "yb/rocksdb/port/port.h"
+
+#include "yb/rocksdb/table/table_builder.h"
 
 namespace rocksdb {
 
@@ -71,11 +72,11 @@ Status AdaptiveTableFactory::NewTableReader(
   }
 }
 
-TableBuilder* AdaptiveTableFactory::NewTableBuilder(
+std::unique_ptr<TableBuilder> AdaptiveTableFactory::NewTableBuilder(
     const TableBuilderOptions &table_builder_options, uint32_t column_family_id,
     WritableFileWriter* base_file, WritableFileWriter* data_file) const {
-  return table_factory_to_write_->NewTableBuilder(table_builder_options,
-      column_family_id, base_file, data_file);
+  return table_factory_to_write_->NewTableBuilder(
+      table_builder_options, column_family_id, base_file, data_file);
 }
 
 bool AdaptiveTableFactory::IsSplitSstForWriteSupported() const {
@@ -88,19 +89,19 @@ std::string AdaptiveTableFactory::GetPrintableTableOptions() const {
   const int kBufferSize = 200;
   char buffer[kBufferSize];
 
-  if (!table_factory_to_write_) {
+  if (table_factory_to_write_) {
     snprintf(buffer, kBufferSize, "  write factory (%s) options:\n%s\n",
              table_factory_to_write_->Name(),
              table_factory_to_write_->GetPrintableTableOptions().c_str());
     ret.append(buffer);
   }
-  if (!plain_table_factory_) {
+  if (plain_table_factory_) {
     snprintf(buffer, kBufferSize, "  %s options:\n%s\n",
              plain_table_factory_->Name(),
              plain_table_factory_->GetPrintableTableOptions().c_str());
     ret.append(buffer);
   }
-  if (!block_based_table_factory_) {
+  if (block_based_table_factory_) {
     snprintf(buffer, kBufferSize, "  %s options:\n%s\n",
              block_based_table_factory_->Name(),
              block_based_table_factory_->GetPrintableTableOptions().c_str());

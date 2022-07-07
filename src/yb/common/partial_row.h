@@ -36,18 +36,11 @@
 #include <string>
 #include <vector>
 
-#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-#else
-// This is a poor module interdependency, but the stubs are header-only and
-// it's only for exported header builds, so we'll make an exception.
-#include "yb/client/stubs.h"
-#endif
-
 
 #include "yb/util/slice.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 class ColumnSchema;
@@ -77,73 +70,73 @@ class YBPartialRow {
   // Setters
   //------------------------------------------------------------
 
-  CHECKED_STATUS SetBool(const Slice& col_name, bool val) WARN_UNUSED_RESULT;
+  Status SetBool(const Slice& col_name, bool val) WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS SetInt8(const Slice& col_name, int8_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInt16(const Slice& col_name, int16_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInt32(const Slice& col_name, int32_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInt64(const Slice& col_name, int64_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimestamp(const Slice& col_name,
+  Status SetInt8(const Slice& col_name, int8_t val) WARN_UNUSED_RESULT;
+  Status SetInt16(const Slice& col_name, int16_t val) WARN_UNUSED_RESULT;
+  Status SetInt32(const Slice& col_name, int32_t val) WARN_UNUSED_RESULT;
+  Status SetInt64(const Slice& col_name, int64_t val) WARN_UNUSED_RESULT;
+  Status SetTimestamp(const Slice& col_name,
                               int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetFloat(const Slice& col_name, float val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetDouble(const Slice& col_name, double val) WARN_UNUSED_RESULT;
+  Status SetFloat(const Slice& col_name, float val) WARN_UNUSED_RESULT;
+  Status SetDouble(const Slice& col_name, double val) WARN_UNUSED_RESULT;
 
   // Same as above setters, but with numeric column indexes.
   // These are faster since they avoid a hashmap lookup, so should
   // be preferred in performance-sensitive code (eg bulk loaders).
-  CHECKED_STATUS SetBool(int col_idx, bool val) WARN_UNUSED_RESULT;
+  Status SetBool(size_t col_idx, bool val) WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS SetInt8(int col_idx, int8_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInt16(int col_idx, int16_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInt32(int col_idx, int32_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInt64(int col_idx, int64_t val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimestamp(int col_idx, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
+  Status SetInt8(size_t col_idx, int8_t val) WARN_UNUSED_RESULT;
+  Status SetInt16(size_t col_idx, int16_t val) WARN_UNUSED_RESULT;
+  Status SetInt32(size_t col_idx, int32_t val) WARN_UNUSED_RESULT;
+  Status SetInt64(size_t col_idx, int64_t val) WARN_UNUSED_RESULT;
+  Status SetTimestamp(size_t col_idx, int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS SetFloat(int col_idx, float val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetDouble(int col_idx, double val) WARN_UNUSED_RESULT;
+  Status SetFloat(size_t col_idx, float val) WARN_UNUSED_RESULT;
+  Status SetDouble(size_t col_idx, double val) WARN_UNUSED_RESULT;
 
   // Sets the string/binary value but does not copy the value. The slice
   // must remain valid until the call to AppendToPB().
-  CHECKED_STATUS SetString(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetString(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetBinary(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetBinary(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInet(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetInet(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetJsonb(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetJsonb(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetDecimal(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetDecimal(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetUuid(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimeUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimeUuid(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetFrozen(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetFrozen(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetString(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetString(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetBinary(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetBinary(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetInet(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetInet(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetJsonb(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetJsonb(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetDecimal(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetDecimal(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetUuid(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetTimeUuid(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetTimeUuid(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetFrozen(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetFrozen(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Copies 'val' immediately.
-  CHECKED_STATUS SetStringCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetStringCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetBinaryCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetBinaryCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetUuidCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetUuidCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimeUuidCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetTimeUuidCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetDecimalCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetDecimalCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetFrozenCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetFrozenCopy(int col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetStringCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetStringCopy(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetBinaryCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetBinaryCopy(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetUuidCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetUuidCopy(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetTimeUuidCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetTimeUuidCopy(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetDecimalCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetDecimalCopy(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetFrozenCopy(const Slice& col_name, const Slice& val) WARN_UNUSED_RESULT;
+  Status SetFrozenCopy(size_t col_idx, const Slice& val) WARN_UNUSED_RESULT;
 
   // Set the given column to NULL. This will only succeed on nullable
   // columns. Use Unset(...) to restore a column to its default.
-  CHECKED_STATUS SetNull(const Slice& col_name) WARN_UNUSED_RESULT;
-  CHECKED_STATUS SetNull(int col_idx) WARN_UNUSED_RESULT;
+  Status SetNull(const Slice& col_name) WARN_UNUSED_RESULT;
+  Status SetNull(size_t col_idx) WARN_UNUSED_RESULT;
 
   // Unsets the given column. Note that this is different from setting
   // it to NULL.
-  CHECKED_STATUS Unset(const Slice& col_name) WARN_UNUSED_RESULT;
-  CHECKED_STATUS Unset(int col_idx) WARN_UNUSED_RESULT;
+  Status Unset(const Slice& col_name) WARN_UNUSED_RESULT;
+  Status Unset(size_t col_idx) WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
   // Getters
@@ -154,69 +147,54 @@ class YBPartialRow {
 
   // Return true if the given column has been specified.
   bool IsColumnSet(const Slice& col_name) const;
-  bool IsColumnSet(int col_idx) const;
+  bool IsColumnSet(size_t col_idx) const;
 
   bool IsNull(const Slice& col_name) const;
-  bool IsNull(int col_idx) const;
+  bool IsNull(size_t col_idx) const;
 
-  CHECKED_STATUS GetBool(const Slice& col_name, bool* val) const WARN_UNUSED_RESULT;
+  Status GetBool(const Slice& col_name, bool* val) const WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS GetInt8(const Slice& col_name, int8_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInt16(const Slice& col_name, int16_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInt32(const Slice& col_name, int32_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInt64(const Slice& col_name, int64_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetTimestamp(const Slice& col_name,
+  Status GetInt8(const Slice& col_name, int8_t* val) const WARN_UNUSED_RESULT;
+  Status GetInt16(const Slice& col_name, int16_t* val) const WARN_UNUSED_RESULT;
+  Status GetInt32(const Slice& col_name, int32_t* val) const WARN_UNUSED_RESULT;
+  Status GetInt64(const Slice& col_name, int64_t* val) const WARN_UNUSED_RESULT;
+  Status GetTimestamp(const Slice& col_name,
                       int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS GetFloat(const Slice& col_name, float* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetDouble(const Slice& col_name, double* val) const WARN_UNUSED_RESULT;
+  Status GetFloat(const Slice& col_name, float* val) const WARN_UNUSED_RESULT;
+  Status GetDouble(const Slice& col_name, double* val) const WARN_UNUSED_RESULT;
 
   // Same as above getters, but with numeric column indexes.
   // These are faster since they avoid a hashmap lookup, so should
   // be preferred in performance-sensitive code.
-  CHECKED_STATUS GetBool(int col_idx, bool* val) const WARN_UNUSED_RESULT;
+  Status GetBool(size_t col_idx, bool* val) const WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS GetInt8(int col_idx, int8_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInt16(int col_idx, int16_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInt32(int col_idx, int32_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInt64(int col_idx, int64_t* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetTimestamp(int col_idx,
+  Status GetInt8(size_t col_idx, int8_t* val) const WARN_UNUSED_RESULT;
+  Status GetInt16(size_t col_idx, int16_t* val) const WARN_UNUSED_RESULT;
+  Status GetInt32(size_t col_idx, int32_t* val) const WARN_UNUSED_RESULT;
+  Status GetInt64(size_t col_idx, int64_t* val) const WARN_UNUSED_RESULT;
+  Status GetTimestamp(size_t col_idx,
                               int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
-  CHECKED_STATUS GetFloat(int col_idx, float* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetDouble(int col_idx, double* val) const WARN_UNUSED_RESULT;
+  Status GetFloat(size_t col_idx, float* val) const WARN_UNUSED_RESULT;
+  Status GetDouble(size_t col_idx, double* val) const WARN_UNUSED_RESULT;
 
   // Gets the string/binary value but does not copy the value. Callers should
   // copy the resulting Slice if necessary.
-  CHECKED_STATUS GetString(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetString(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetBinary(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInet(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetInet(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetJsonb(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetJsonb(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetDecimal(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetDecimal(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetUuid(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetTimeUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
-  CHECKED_STATUS GetTimeUuid(int col_idx, Slice* val) const WARN_UNUSED_RESULT;
-
-  //------------------------------------------------------------
-  // Key-encoding related functions
-  //------------------------------------------------------------
-
-  // Encode a row key suitable for use as a tablet split key, an encoded
-  // key range, etc.
-  //
-  // Requires that all of the key columns must be set; otherwise, returns
-  // InvalidArgument.
-  CHECKED_STATUS EncodeRowKey(std::string* encoded_key) const;
-
-  // Convenience method which is equivalent to the above, but triggers a
-  // FATAL error on failure.
-  std::string ToEncodedRowKeyOrDie() const;
+  Status GetString(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetString(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetBinary(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetBinary(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetInet(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetInet(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetJsonb(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetJsonb(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetDecimal(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetDecimal(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetUuid(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetTimeUuid(const Slice& col_name, Slice* val) const WARN_UNUSED_RESULT;
+  Status GetTimeUuid(size_t col_idx, Slice* val) const WARN_UNUSED_RESULT;
 
   //------------------------------------------------------------
   // Utility code
@@ -249,33 +227,32 @@ class YBPartialRow {
   template<typename KeyTypeWrapper> friend struct client::IntKeysTestSetup;
 
   template<typename T>
-  CHECKED_STATUS Set(const Slice& col_name, const typename T::cpp_type& val,
+  Status Set(const Slice& col_name, const typename T::cpp_type& val,
              bool owned = false);
 
   template<typename T>
-  CHECKED_STATUS Set(int col_idx, const typename T::cpp_type& val,
-             bool owned = false);
+  Status Set(size_t col_idx, const typename T::cpp_type& val, bool owned = false);
 
   // Runtime version of the generic setter.
-  CHECKED_STATUS Set(int32_t column_idx, const uint8_t* val);
+  Status Set(size_t column_idx, const uint8_t* val);
 
   template<typename T>
-  CHECKED_STATUS Get(const Slice& col_name, typename T::cpp_type* val) const;
+  Status Get(const Slice& col_name, typename T::cpp_type* val) const;
 
   template<typename T>
-  CHECKED_STATUS Get(int col_idx, typename T::cpp_type* val) const;
+  Status Get(size_t col_idx, typename T::cpp_type* val) const;
 
   template<typename T>
-  CHECKED_STATUS SetSliceCopy(const Slice& col_name, const Slice& val);
+  Status SetSliceCopy(const Slice& col_name, const Slice& val);
 
   template<typename T>
-  CHECKED_STATUS SetSliceCopy(int col_idx, const Slice& val);
+  Status SetSliceCopy(size_t col_idx, const Slice& val);
 
   // If the given column is a variable length column whose memory is owned by this instance,
   // deallocates the value.
   // NOTE: Does not mutate the isset bitmap.
   // REQUIRES: col_idx must be a variable length column.
-  void DeallocateStringIfSet(int col_idx, const ColumnSchema& col);
+  void DeallocateStringIfSet(size_t col_idx, const ColumnSchema& col);
 
   // Deallocate any string/binary values whose memory is managed by this object.
   void DeallocateOwnedStrings();

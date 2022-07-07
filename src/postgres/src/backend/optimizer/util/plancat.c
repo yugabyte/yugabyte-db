@@ -958,7 +958,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	 * TODO We don't support forwarding size estimates to postgres yet.
 	 * Use whatever is in pg_class.
 	 */
-	if (IsYugaByteEnabled())
+	if (IsYBRelation(rel))
 	{
 		*pages = rel->rd_rel->relpages;
 		*tuples = rel->rd_rel->reltuples;

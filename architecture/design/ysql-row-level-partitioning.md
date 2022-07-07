@@ -30,7 +30,7 @@ Example: partitioning by date ranges, an example of partitioning by month is sho
 1. Create the table with the `PARTITION BY` clause as shown below:
 ```sql
 CREATE TABLE measurement (
-    city_id         int not null PRIMARY KEY,
+    city_id         int not null,
     logdate         date not null,
     peaktemp        int,
     unitsales       int
@@ -57,7 +57,7 @@ Example: partitioning a table containing information about people by region.
 1. Table creation:
 ```sql
 CREATE TABLE person (
-    person_id         int not null PRIMARY KEY,
+    person_id         int not null,
     country           text
 ) PARTITION BY LIST (country);
 ```

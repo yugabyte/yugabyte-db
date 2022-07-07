@@ -12,14 +12,17 @@ import {
   getInstanceTypeList,
   getRegionList,
   getRegionListResponse,
+  getInstanceTypeListLoading,
   getInstanceTypeListResponse,
   getNodeInstancesForProvider,
   getNodesInstancesForProviderResponse,
   fetchAuthConfigList,
   fetchAuthConfigListResponse
 } from '../../../actions/cloud';
-import { getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
+import { fetchRunTimeConfigs, fetchRunTimeConfigsResponse, getTlsCertificates, getTlsCertificatesResponse } from '../../../actions/customers';
 import {
+  rollingUpgrade,
+  rollingUpgradeResponse,
   createUniverse,
   createUniverseResponse,
   editUniverse,
@@ -55,12 +58,23 @@ import {
   isEmptyObject
 } from '../../../utils/ObjectUtils';
 import { getClusterByType } from '../../../utils/UniverseUtils';
+import { EXPOSING_SERVICE_STATE_TYPES } from './ClusterFields';
+import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
-    submitConfigureUniverse: (values) => {
+    submitConfigureUniverse: (values, universeUUID = null) => {
       dispatch(configureUniverseTemplateLoading());
       return dispatch(configureUniverseTemplate(values)).then((response) => {
+        if (response.error) {
+          toast.error(createErrorMessage(response.payload));
+          if (universeUUID) {
+            dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+              dispatch(fetchUniverseInfoResponse(response.payload));
+            });
+          }
+        }
         return dispatch(configureUniverseTemplateResponse(response.payload));
       });
     },
@@ -76,6 +90,9 @@ const mapDispatchToProps = (dispatch) => {
         dispatch(getTlsCertificates()).then((response) => {
           dispatch(getTlsCertificatesResponse(response.payload));
         });
+        if (response.error) {
+          toast.error(createErrorMessage(response.payload));
+        }
         return dispatch(createUniverseResponse(response.payload));
       });
     },
@@ -91,14 +108,14 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitAddUniverseReadReplica: (values, universeUUID) => {
-      dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
-        dispatch(addUniverseReadReplicaResponse(response.payload));
+      return dispatch(addUniverseReadReplica(values, universeUUID)).then((response) => {
+        return dispatch(addUniverseReadReplicaResponse(response.payload));
       });
     },
 
     submitEditUniverseReadReplica: (values, universeUUID) => {
-      dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
-        dispatch(editUniverseReadReplicaResponse(response.payload));
+      return dispatch(editUniverseReadReplica(values, universeUUID)).then((response) => {
+        return dispatch(editUniverseReadReplicaResponse(response.payload));
       });
     },
 
@@ -118,13 +135,27 @@ const mapDispatchToProps = (dispatch) => {
     },
 
     submitEditUniverse: (values, universeUUID) => {
-      dispatch(editUniverse(values, universeUUID)).then((response) => {
-        dispatch(editUniverseResponse(response.payload));
+      return dispatch(editUniverse(values, universeUUID)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        }
+        return dispatch(editUniverseResponse(response.payload));
       });
     },
 
-    getInstanceTypeListItems: (provider) => {
-      dispatch(getInstanceTypeList(provider)).then((response) => {
+    submitUniverseNodeResize: (values, universeUUID) => {
+      return dispatch(rollingUpgrade(values, universeUUID)).then((response) => {
+        if (!response.error) {
+          dispatch(closeUniverseDialog());
+        }
+        return dispatch(rollingUpgradeResponse(response.payload));
+      });
+    },
+
+    getInstanceTypeListItems: (provider, zones) => {
+      dispatch(getInstanceTypeListLoading());
+      dispatch(getInstanceTypeList(provider, zones)).then((response) => {
         dispatch(getInstanceTypeListResponse(response.payload));
       });
     },
@@ -174,11 +205,24 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(openDialog('fullMoveModal'));
     },
 
+    showSmartResizeModal: () => {
+      dispatch(openDialog('smartResizeModal'));
+    },
+
+    showUpgradeNodesModal: () => {
+      dispatch(openDialog('resizeNodesModal'));
+    },
+
     fetchNodeInstanceList: (providerUUID) => {
       dispatch(getNodeInstancesForProvider(providerUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });
-    }
+    },
+    fetchRunTimeConfigs: () => {
+      return dispatch(fetchRunTimeConfigs('00000000-0000-0000-0000-000000000000',true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
+    },
   };
 };
 
@@ -192,17 +236,25 @@ const formFieldNames = [
   'primary.instanceType',
   'primary.ybSoftwareVersion',
   'primary.accessKeyCode',
+  'primary.gFlags',
   'primary.masterGFlags',
   'primary.tserverGFlags',
   'primary.instanceTags',
   'primary.diskIops',
+  'primary.throughput',
   'primary.numVolumes',
   'primary.volumeSize',
   'primary.storageType',
   'primary.assignPublicIP',
   'primary.useTimeSync',
   'primary.enableYSQL',
+  'primary.enableYSQLAuth',
+  'primary.ysqlPassword',
+  'primary.enableYCQL',
+  'primary.enableYCQLAuth',
+  'primary.ycqlPassword',
   'primary.enableIPV6',
+  'primary.enableExposingService',
   'primary.enableYEDIS',
   'primary.enableNodeToNodeEncrypt',
   'primary.enableClientToNodeEncrypt',
@@ -211,6 +263,7 @@ const formFieldNames = [
   'primary.tlsCertificateId',
   'primary.mountPoints',
   'primary.awsArnString',
+  'primary.useSystemd',
   'async.universeName',
   'async.provider',
   'async.providerType',
@@ -222,15 +275,36 @@ const formFieldNames = [
   'async.assignPublicIP',
   'async.useTimeSync',
   'async.enableYSQL',
+  'async.enableYSQLAuth',
+  'async.enableYCQL',
+  'async.enableYCQLAuth',
   'async.enableIPV6',
+  'async.enableExposingService',
   'async.enableYEDIS',
   'async.enableNodeToNodeEncrypt',
   'async.enableClientToNodeEncrypt',
+  'async.diskIops',
+  'async.throughput',
   'async.mountPoints',
+  'async.useSystemd',
   'masterGFlags',
   'tserverGFlags',
   'instanceTags',
+  'gFlags',
   'asyncClusters'
+];
+
+const portFields = [
+  'masterHttpPort',
+  'masterRpcPort',
+  'tserverHttpPort',
+  'tserverRpcPort',
+  'redisHttpPort',
+  'redisRpcPort',
+  'yqlHttpPort',
+  'yqlRpcPort',
+  'ysqlHttpPort',
+  'ysqlRpcPort'
 ];
 
 function getFormData(currentUniverse, formType, clusterType) {
@@ -247,7 +321,11 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].assignPublicIP = userIntent.assignPublicIP;
     data[clusterType].useTimeSync = userIntent.useTimeSync;
     data[clusterType].enableYSQL = userIntent.enableYSQL;
+    data[clusterType].enableYSQLAuth = userIntent.enableYSQLAuth;
+    data[clusterType].enableYCQL = userIntent.enableYCQL;
+    data[clusterType].enableYCQLAuth = userIntent.enableYCQLAuth;
     data[clusterType].enableIPV6 = userIntent.enableIPV6;
+    data[clusterType].enableExposingService = userIntent.enableExposingService;
     data[clusterType].enableYEDIS = userIntent.enableYEDIS;
     data[clusterType].enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     data[clusterType].enableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
@@ -256,8 +334,11 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].replicationFactor = userIntent.replicationFactor;
     data[clusterType].instanceType = userIntent.instanceType;
     data[clusterType].ybSoftwareVersion = userIntent.ybSoftwareVersion;
+    data[clusterType].ybcPackagePath = userIntent.ybcPackagePath;
+    data[clusterType].useSystemd = userIntent.useSystemd;
     data[clusterType].accessKeyCode = userIntent.accessKeyCode;
     data[clusterType].diskIops = userIntent.deviceInfo.diskIops;
+    data[clusterType].throughput = userIntent.deviceInfo.throughput;
     data[clusterType].numVolumes = userIntent.deviceInfo.numVolumes;
     data[clusterType].volumeSize = userIntent.deviceInfo.volumeSize;
     data[clusterType].storageType = userIntent.deviceInfo.storageType;
@@ -267,12 +348,29 @@ function getFormData(currentUniverse, formType, clusterType) {
     data[clusterType].regionList = cluster.regions.map((item) => {
       return { value: item.uuid, name: item.name, label: item.name };
     });
-    data[clusterType].masterGFlags = Object.keys(userIntent.masterGFlags).map((key) => {
-      return { name: key, value: userIntent.masterGFlags[key] };
-    });
-    data[clusterType].tserverGFlags = Object.keys(userIntent.tserverGFlags).map((key) => {
-      return { name: key, value: userIntent.tserverGFlags[key] };
-    });
+    //construct gflag component DS
+    data[clusterType].gFlags = [];
+    if (isNonEmptyObject(userIntent.masterGFlags)) {
+      Object.keys(userIntent.masterGFlags).forEach((key) => {
+        const masterObj = {};
+        if (userIntent?.tserverGFlags?.hasOwnProperty(key)) {
+          masterObj['TSERVER'] = userIntent.tserverGFlags[key];
+        }
+        masterObj['Name'] = key;
+        masterObj['MASTER'] = userIntent.masterGFlags[key];
+        data[clusterType].gFlags.push(masterObj);
+      });
+    }
+    if (isNonEmptyObject(userIntent.tserverGFlags)) {
+      Object.keys(userIntent.tserverGFlags).forEach((key) => {
+        const tserverObj = {};
+        if (!userIntent.masterGFlags.hasOwnProperty(key)) {
+          tserverObj['TSERVER'] = userIntent.tserverGFlags[key];
+          tserverObj['Name'] = key;
+          data[clusterType].gFlags.push(tserverObj);
+        }
+      });
+    }
     data[clusterType].instanceTags = Object.keys(userIntent.instanceTags).map((key) => {
       return { name: key, value: userIntent.instanceTags[key] };
     });
@@ -288,50 +386,70 @@ function getFormData(currentUniverse, formType, clusterType) {
 
 function mapStateToProps(state, ownProps) {
   const {
-    universe: { currentUniverse }
+    universe: { currentUniverse },
+    customer: {
+      runtimeConfigs
+    }
   } = state;
   let data = {
     formType: 'Create',
     primary: {
       universeName: '',
       ybSoftwareVersion: '',
+      ybcPackagePath: '',
       numNodes: 3,
       isMultiAZ: true,
-      instanceType: 'c5.large',
-      accessKeyCode: 'yugabyte-default',
+      instanceType: 'c5.4xlarge',
+      accessKeyCode: '',
       assignPublicIP: true,
-      useTimeSync: false,
+      useSystemd: false,
+      useTimeSync: true,
       enableYSQL: true,
+      enableYSQLAuth: true,
+      enableYCQL: true,
+      enableYCQLAuth: true,
       enableIPV6: false,
+      enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false,
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true,
       enableEncryptionAtRest: false,
       awsArnString: '',
-      selectEncryptionAtRestConfig: null
+      selectEncryptionAtRestConfig: null,
+      diskIops: null,
+      throughput: null
     },
     async: {
       universeName: '',
+      ybcPackagePath: '',
       numNodes: 3,
       isMultiAZ: true,
       assignPublicIP: true,
-      useTimeSync: false,
+      useSystemd: false,
+      useTimeSync: true,
       enableYSQL: true,
+      enableYSQLAuth: true,
+      enableYCQL: true,
+      enableYCQLAuth: true,
       enableIPV6: false,
+      enableExposingService: EXPOSING_SERVICE_STATE_TYPES['Unexposed'],
       enableYEDIS: false,
-      enableNodeToNodeEncrypt: false,
-      enableClientToNodeEncrypt: false
+      enableNodeToNodeEncrypt: true,
+      enableClientToNodeEncrypt: true,
+      diskIops: null,
+      throughput: null
     }
   };
 
   if (isNonEmptyObject(currentUniverse.data) && ownProps.type !== 'Create') {
     // TODO (vit.pankin): don't like this type having Async in it,
     // it should be clusterType or currentView
-    data = getFormData(
+    const formResult = getFormData(
       currentUniverse,
       ownProps.type,
       ownProps.type === 'Async' ? 'async' : 'primary'
     );
+    data = isEmptyObject(formResult) ? data : formResult;
   }
 
   const selector = formValueSelector('UniverseForm');
@@ -341,10 +459,12 @@ function mapStateToProps(state, ownProps) {
     modal: state.modal,
     tasks: state.tasks,
     cloud: state.cloud,
+    runtimeConfigs,
     softwareVersions: state.customer.softwareVersions,
     userCertificates: state.customer.userCertificates,
     accessKeys: state.cloud.accessKeys,
     initialValues: data,
+    featureFlags: state.featureFlags,
     formValues: selector(
       state,
       'formType',
@@ -357,19 +477,26 @@ function mapStateToProps(state, ownProps) {
       'primary.replicationFactor',
       'primary.ybSoftwareVersion',
       'primary.accessKeyCode',
+      'primary.gFlags',
       'primary.masterGFlags',
       'primary.tserverGFlags',
       'primary.instanceTags',
-      'primary.diskIops',
       'primary.numVolumes',
       'primary.volumeSize',
       'primary.storageType',
       'primary.diskIops',
+      'primary.throughput',
       'primary.assignPublicIP',
       'primary.mountPoints',
       'primary.useTimeSync',
       'primary.enableYSQL',
+      'primary.enableYSQLAuth',
+      'primary.ysqlPassword',
+      'primary.enableYCQL',
+      'primary.enableYCQLAuth',
+      'primary.ycqlPassword',
       'primary.enableIPV6',
+      'primary.enableExposingService',
       'primary.enableYEDIS',
       'primary.enableNodeToNodeEncrypt',
       'primary.enableClientToNodeEncrypt',
@@ -387,6 +514,8 @@ function mapStateToProps(state, ownProps) {
       'primary.yqlRpcPort',
       'primary.ysqlHttpPort',
       'primary.ysqlRpcPort',
+      'primary.useSystemd',
+      'primary.ybcPackagePath',
       'async.universeName',
       'async.provider',
       'async.providerType',
@@ -396,20 +525,28 @@ function mapStateToProps(state, ownProps) {
       'async.instanceType',
       'async.deviceInfo',
       'async.ybSoftwareVersion',
+      'async.ybcPackagePath',
       'async.accessKeyCode',
       'async.diskIops',
+      'async.throughput',
       'async.numVolumes',
       'async.volumeSize',
       'async.storageType',
       'async.assignPublicIP',
       'async.enableYSQL',
+      'async.enableYSQLAuth',
+      'async.enableYCQL',
+      'async.enableYCQLAuth',
       'async.enableIPV6',
+      'async.enableExposingService',
       'async.enableYEDIS',
       'async.enableNodeToNodeEncrypt',
       'async.enableClientToNodeEncrypt',
       'async.mountPoints',
       'async.useTimeSync',
+      'async.useSystemd',
       'masterGFlags',
+      'gFlags',
       'tserverGFlags',
       'instanceTags'
     )
@@ -424,7 +561,11 @@ const asyncValidate = (values, dispatch) => {
       values.formType !== 'Async'
     ) {
       dispatch(checkIfUniverseExists(values.primary.universeName)).then((response) => {
-        if (response.payload.status !== 200 && values.formType !== 'Edit') {
+        if (
+          response.payload.status === 200 &&
+          values.formType !== 'Edit' &&
+          response.payload.data.length > 0
+        ) {
           reject({ primary: { universeName: 'Universe name already exists' } });
         } else {
           resolve();
@@ -460,9 +601,25 @@ const validateProviderFields = (values, props, clusterType) => {
           'GCP Universe name cannot contain capital letters or special characters except dashes';
       }
     }
-    if (values[clusterType].enableEncryptionAtRest && !values[clusterType].selectEncryptionAtRestConfig) {
+    if (
+      values[clusterType].enableEncryptionAtRest &&
+      !values[clusterType].selectEncryptionAtRestConfig
+    ) {
       errors.selectEncryptionAtRestConfig = 'KMS Config is Required for Encryption at Rest';
     }
+
+    const notUniquePortError = 'Port number should be unique';
+    const portMap = new Map();
+    portFields.forEach((portField) => {
+      if (portMap.has(values[clusterType][portField])) {
+        if (!errors.hasOwnProperty(portMap.get(values[clusterType][portField]))) {
+          errors[portMap.get(values[clusterType][portField])] = notUniquePortError;
+        }
+        errors[portField] = notUniquePortError;
+      } else {
+        portMap.set(values[clusterType][portField], portField);
+      }
+    });
   }
 
   if (isEmptyObject(currentProvider)) {
@@ -495,7 +652,8 @@ const universeForm = reduxForm({
   form: 'UniverseForm',
   validate,
   asyncValidate,
-  fields: formFieldNames
+  fields: formFieldNames,
+  asyncChangeFields: ['primary.universeName', 'async.universeName']
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(universeForm(UniverseForm));

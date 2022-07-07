@@ -36,20 +36,17 @@
 
 // This module gets enough CPU information to optimize the
 // atomicops module on x86.
-
 #include "yb/gutil/atomicops-internals-x86.h"
 
-#include <string.h>
-
 #include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
+
 #include "yb/gutil/integral_types.h"
 
 // This file only makes sense with atomicops-internals-x86.h -- it
 // depends on structs that are defined in that file.  If atomicops.h
 // doesn't sub-include that file, then we aren't needed, and shouldn't
 // try to do anything.
-#ifdef GUTIL_ATOMICOPS_INTERNALS_X86_H_
+#ifdef YB_GUTIL_ATOMICOPS_INTERNALS_X86_H
 
 // This macro was copied from //util/cpuid/cpuid.cc
 // Inline cpuid instruction.  In PIC compilations, %ebx contains the address
@@ -73,14 +70,14 @@
 
 // Set the flags so that code will run correctly and conservatively
 // until InitGoogle() is called.
-struct AtomicOps_x86CPUFeatureStruct AtomicOps_Internalx86CPUFeatures = {
+struct AtomicOps_x86CPUFeatureStruct YbAtomicOps_Internalx86CPUFeatures = {
   false,          // bug can't exist before process spawns multiple threads
   false,          // no SSE2
   false,          // no cmpxchg16b
 };
 
-// Initialize the AtomicOps_Internalx86CPUFeatures struct.
-static void AtomicOps_Internalx86CPUFeaturesInit() {
+// Initialize the YbAtomicOps_Internalx86CPUFeatures struct.
+static void YbAtomicOps_Internalx86CPUFeaturesInit() {
   uint32 eax;
   uint32 ebx;
   uint32 ecx;
@@ -112,31 +109,43 @@ static void AtomicOps_Internalx86CPUFeaturesInit() {
   if (strcmp(vendor, "AuthenticAMD") == 0 &&       // AMD
       family == 15 &&
       32 <= model && model <= 63) {
-    AtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = true;
+    YbAtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = true;
   } else {
-    AtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = false;
+    YbAtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug = false;
   }
 
   // edx bit 26 is SSE2 which we use to tell use whether we can use mfence
-  AtomicOps_Internalx86CPUFeatures.has_sse2 = ((edx >> 26) & 1);
+  YbAtomicOps_Internalx86CPUFeatures.has_sse2 = ((edx >> 26) & 1);
 
   // ecx bit 13 indicates whether the cmpxchg16b instruction is supported
-  AtomicOps_Internalx86CPUFeatures.has_cmpxchg16b = ((ecx >> 13) & 1);
+  YbAtomicOps_Internalx86CPUFeatures.has_cmpxchg16b = ((ecx >> 13) & 1);
 
   VLOG(1) << "vendor " << vendor <<
              "  family " << family <<
              "  model " << model <<
              "  amd_lock_mb_bug " <<
-                   AtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug <<
-             "  sse2 " << AtomicOps_Internalx86CPUFeatures.has_sse2 <<
-             "  cmpxchg16b " << AtomicOps_Internalx86CPUFeatures.has_cmpxchg16b;
+                   YbAtomicOps_Internalx86CPUFeatures.has_amd_lock_mb_bug <<
+             "  sse2 " << YbAtomicOps_Internalx86CPUFeatures.has_sse2 <<
+             "  cmpxchg16b " << YbAtomicOps_Internalx86CPUFeatures.has_cmpxchg16b;
 }
 
 // AtomicOps initialisation routine for external use.
 void AtomicOps_x86CPUFeaturesInit() {
-  AtomicOps_Internalx86CPUFeaturesInit();
+  YbAtomicOps_Internalx86CPUFeaturesInit();
 }
 
 #endif
 
-#endif  // GUTIL_ATOMICOPS_INTERNALS_X86_H_
+namespace base {
+namespace subtle {
+
+#ifndef NDEBUG
+void CheckNaturalAlignmentHelper(uintptr_t value) {
+  DCHECK_EQ(0, value) << "unaligned pointer not allowed for atomics";
+}
+#endif
+
+} // namespace subtle
+} // namespace base
+
+#endif  // YB_GUTIL_ATOMICOPS_INTERNALS_X86_H

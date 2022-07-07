@@ -57,7 +57,11 @@ function mapStateToProps(state, ownProps) {
   const initialFormValues = {
     enableSSE: false,
     transactionalBackup: false,
-    parallelism: 8
+    parallelism: 8,
+    schedulingFrequencyUnit: {
+      value: 'Hours',
+      label: 'Hours'
+    }
   };
 
   if (isNonEmptyObject(ownProps.tableInfo)) {
@@ -69,7 +73,8 @@ function mapStateToProps(state, ownProps) {
   if (isNonEmptyArray(storageConfigs)) {
     initialFormValues.storageConfigUUID = {
       value: storageConfigs[0].configUUID,
-      label: storageConfigs[0].name + ' Storage'
+      label: storageConfigs[0].configName,
+      id: storageConfigs[0].name.toUpperCase()
     };
   }
 

@@ -15,15 +15,19 @@
 #include <memory>
 #include <vector>
 
-#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
+#include "yb/client/table.h"
+
 #include "yb/common/entity_ids.h"
+
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/load_generator.h"
-#include "yb/integration-tests/test_workload.h"
 #include "yb/integration-tests/yb_table_test_base.h"
-#include "yb/util/metrics.h"
+
+#include "yb/master/master_cluster.proxy.h"
+
 #include "yb/util/test_util.h"
 
 namespace yb {
@@ -63,7 +67,6 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   // Tolerate some errors in the load test due to temporary unavailability.
   static constexpr int kMaxWriteErrors = 1000;
   static constexpr int kMaxReadErrors = 1000;
-  static constexpr bool kStopOnEmptyRead = true;
 
   // Create two separate clients for read and writes.
   auto write_client = CreateYBClient();
@@ -78,12 +81,10 @@ TEST_F(StepDownUnderLoadTest, TestStepDownUnderLoad) {
   yb::load_generator::MultiThreadedReader reader(kRows, kReaderThreads, &read_session_factory,
                                                  writer.InsertionPoint(), writer.InsertedKeys(),
                                                  writer.FailedKeys(), &stop_requested_flag,
-                                                 kValueSizeBytes, kMaxReadErrors,
-                                                 kStopOnEmptyRead);
+                                                 kValueSizeBytes, kMaxReadErrors);
 
   auto* const emc = external_mini_cluster();
-  TabletServerMap ts_map;
-  ASSERT_OK(itest::CreateTabletServerMap(emc->master_proxy().get(), &emc->proxy_cache(), &ts_map));
+  TabletServerMap ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(emc));
 
   vector<TabletId> tablet_ids;
   {

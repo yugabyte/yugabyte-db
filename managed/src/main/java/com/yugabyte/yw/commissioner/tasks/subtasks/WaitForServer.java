@@ -10,30 +10,30 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.google.common.net.HostAndPort;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 
-import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
-
-import play.api.Play;
-
+@Slf4j
 public class WaitForServer extends ServerSubTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(WaitForServer.class);
 
-  // Timeout for failing to respond to pings.
-  private static final long TIMEOUT_SERVER_WAIT_MS = 120000;
+  @Inject
+  protected WaitForServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends ServerSubTaskParams {
     // Timeout for the RPC call.
-    public long serverWaitTimeoutMs = TIMEOUT_SERVER_WAIT_MS;
+    public long serverWaitTimeoutMs;
   }
 
   @Override
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -41,27 +41,31 @@ public class WaitForServer extends ServerSubTaskBase {
 
     checkParams();
 
-    boolean ret = false;
+    boolean ret;
     YBClient client = null;
     long startMs = System.currentTimeMillis();
     try {
       HostAndPort hp = getHostPort();
       client = getClient();
-
-      ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      if (taskParams().serverType == ServerType.MASTER) {
+        // This first calls waitForServer followed by availability check of master UUID.
+        // Check for master UUID retries until timeout.
+        ret = client.waitForMaster(hp, taskParams().serverWaitTimeoutMs);
+      } else {
+        ret = client.waitForServer(hp, taskParams().serverWaitTimeoutMs);
+      }
     } catch (Exception e) {
-      LOG.error("{} hit error : {}", getName(), e.getMessage());
+      log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
     } finally {
       closeClient(client);
     }
     if (!ret) {
-      throw new RuntimeException(getName() + " did not respond to pings in the set time.");
+      throw new RuntimeException(getName() + " did not respond in the set time.");
     }
-    LOG.info(
-      "Server {} responded to RPC calls in {} ms",
-      (taskParams().nodeName != null) ? taskParams().nodeName : "unknown",
-      (System.currentTimeMillis() - startMs)
-    );
+    log.info(
+        "Server {} responded to RPC calls in {} ms",
+        (taskParams().nodeName != null) ? taskParams().nodeName : "unknown",
+        (System.currentTimeMillis() - startMs));
   }
 }

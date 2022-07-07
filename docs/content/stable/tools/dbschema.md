@@ -3,14 +3,12 @@ title: Use DbSchema with YugabyteDB YSQL
 headerTitle: DbSchema
 linkTitle: DbSchema
 description: Use DbSchema to work with distributed SQL databases in YugabyteDB.
-block_indexing: true
 menu:
   stable:
     identifier: dbschema
     parent: tools
     weight: 2720
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 [DbSchema](https://dbschema.com/) is a well-rounded, visual database tool that supports over 40 databases from a single interface. Because YugabyteDB is PostgreSQL compatible, getting DBSchema to work with distributed SQL databases is relatively simple. Follow the steps below to connect DbSchema to YugabyteDB databases, start reverse-engineering schemas, edit entity-relationship (ER) diagrams, browse data, visually build queries, and synchronize schemas.

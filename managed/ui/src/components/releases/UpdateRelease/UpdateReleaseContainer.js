@@ -1,8 +1,18 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
+import { toast } from 'react-toastify';
 import { UpdateRelease } from '../../../components/releases';
-import { updateYugaByteRelease, updateYugaByteReleaseResponse } from '../../../actions/customers';
+import {
+  deleteYugaByteRelease,
+  fetchSoftwareVersionsFailure,
+  fetchSoftwareVersionsSuccess,
+  getYugaByteReleases,
+  getYugaByteReleasesResponse,
+  updateYugaByteRelease,
+  updateYugaByteReleaseResponse
+} from '../../../actions/customers';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -10,11 +20,25 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(updateYugaByteRelease(version, payload)).then((response) => {
         dispatch(updateYugaByteReleaseResponse(response.payload));
       });
+    },
+    deleteYugaByteRelease: (version) => {
+      dispatch(deleteYugaByteRelease(version)).then((response) => {
+        if (response.error) toast.error(createErrorMessage(response.payload));
+        else
+          dispatch(getYugaByteReleases()).then((response) => {
+            dispatch(getYugaByteReleasesResponse(response.payload));
+            if (response.payload.status !== 200) {
+              dispatch(fetchSoftwareVersionsFailure(response.payload));
+            } else {
+              dispatch(fetchSoftwareVersionsSuccess(response.payload));
+            }
+          });
+      });
     }
   };
 };
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
     updateRelease: state.customer.updateRelease
   };

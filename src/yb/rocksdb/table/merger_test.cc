@@ -22,12 +22,13 @@
 #include <string>
 
 #include "yb/rocksdb/table/merger.h"
-#include "yb/rocksdb/util/testharness.h"
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class MergerTest : public testing::Test {
+class MergerTest : public RocksDBTest {
  public:
   MergerTest()
       : rnd_(3), merging_iterator_(nullptr), single_iterator_(nullptr) {}

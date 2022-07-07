@@ -39,14 +39,13 @@
 #include <string>
 #include <vector>
 
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest_prod.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
 #include "yb/util/metrics.h"
-#include "yb/util/result.h"
+#include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
 
 DECLARE_bool(enable_data_block_fsync);
@@ -74,11 +73,11 @@ struct FsManagerOpts {
   FsManagerOpts();
   ~FsManagerOpts();
 
-  // The entity under which all metrics should be grouped. If NULL, metrics
-  // will not be produced.
-  //
-  // Defaults to NULL.
-  scoped_refptr<MetricEntity> metric_entity;
+  FsManagerOpts(const FsManagerOpts&);
+  FsManagerOpts& operator=(const FsManagerOpts&);
+
+  // The aggregated registry associated with the server.
+  MetricRegistry* metric_registry;
 
   // The memory tracker under which all new memory trackers will be parented.
   // If NULL, new memory trackers will be parented to the root tracker.
@@ -119,6 +118,7 @@ class FsManager {
   static const char *kWalFileNamePrefix;
   static const char *kWalsRecoveryDirSuffix;
   static const char *kRocksDBDirName;
+  static const char *kDataDirName;
 
   // Only for unit tests.
   FsManager(Env* env, const std::string& root_path, const std::string& server_type);
@@ -130,22 +130,22 @@ class FsManager {
   // If the file system has not been initialized, returns NotFound.
   // In that case, CreateInitialFileSystemLayout may be used to initialize
   // the on-disk structures.
-  CHECKED_STATUS Open();
+  Status CheckAndOpenFileSystemRoots();
 
   //
   // Returns an error if the file system is already initialized.
-  CHECKED_STATUS CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
+  Status CreateInitialFileSystemLayout(bool delete_fs_if_lock_found = false);
 
   // Deletes the yb-data directory contents for data/wal. "logs" subdirectory deletion is skipped
   // when 'also_delete_logs' is set to false.
   // Needed for a master shell process to be stoppable and restartable correctly in shell mode.
-  CHECKED_STATUS DeleteFileSystemLayout(
+  Status DeleteFileSystemLayout(
       ShouldDeleteLogs also_delete_logs = ShouldDeleteLogs::kFalse);
 
   // Check if a lock file is present.
   bool HasAnyLockFiles();
   // Delete the lock files. Used once the caller deems fs creation was succcessful.
-  CHECKED_STATUS DeleteLockFiles();
+  Status DeleteLockFiles();
 
   void DumpFileSystemTree(std::ostream& out);
 
@@ -156,6 +156,8 @@ class FsManager {
   // ==========================================================================
   //  on-disk path
   // ==========================================================================
+  std::set<std::string> GetFsRootDirs() const;
+
   std::vector<std::string> GetDataRootDirs() const;
 
   std::vector<std::string> GetWalRootDirs() const;
@@ -171,19 +173,24 @@ class FsManager {
   static bool IsWalSegmentFileName(const std::string& file_name);
 
   static std::string GetWalSegmentFilePath(
-      const string& wal_path, uint64_t sequence_number) {
+      const std::string& wal_path, uint64_t sequence_number) {
     return JoinPathSegments(wal_path, GetWalSegmentFileName(sequence_number));
   }
 
+  std::vector<std::string> GetRaftGroupMetadataDirs() const;
   // Return the directory where Raft group superblocks should be stored.
-  std::string GetRaftGroupMetadataDir() const;
   static std::string GetRaftGroupMetadataDir(const std::string& data_dir);
 
-  // Return the path for a specific Raft group's superblock.
-  std::string GetRaftGroupMetadataPath(const std::string& tablet_id) const;
+  void SetTabletPathByDataPath(const std::string& tablet_id, const std::string& path);
+  Result<std::string> GetTabletPath(const string& tablet_id) const;
+  bool LookupTablet(const std::string& tablet_id);
 
-  // List the tablet IDs in the metadata directory.
-  CHECKED_STATUS ListTabletIds(std::vector<std::string>* tablet_ids);
+  // Return the path for a specific Raft group's superblock.
+  Result<std::string> GetRaftGroupMetadataPath(const std::string& tablet_id) const;
+
+  // Read all RaftGroupMetadataDirs and fill tablet_id_to_path_.
+  // Return the tablet IDs in the metadata directory.
+  Result<std::vector<std::string>> ListTabletIds();
 
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
@@ -191,19 +198,25 @@ class FsManager {
   // Return the path where the fs lock file is stored.
   std::string GetFsLockFilePath(const std::string& root) const;
 
+  // Return the directory where the certs are stored.
+  std::string GetDefaultRootDir() const;
+  static std::string GetCertsDir(const std::string& root_dir);
+
+  std::vector<std::string> GetConsensusMetadataDirs() const;
   // Return the directory where the consensus metadata is stored.
-  std::string GetConsensusMetadataDir() const;
   static std::string GetConsensusMetadataDir(const std::string& data_dir);
 
   // Return the path where ConsensusMetadataPB is stored.
-  std::string GetConsensusMetadataPath(const std::string& tablet_id) const {
-    return JoinPathSegments(GetConsensusMetadataDir(), tablet_id);
-  }
+  Result<std::string> GetConsensusMetadataPath(const std::string& tablet_id) const;
 
   Env *env() { return env_; }
 
   bool read_only() const {
     return read_only_;
+  }
+
+  bool has_faulty_drive() const {
+    return has_faulty_drive_;
   }
 
   // ==========================================================================
@@ -213,32 +226,32 @@ class FsManager {
     return env_->FileExists(path);
   }
 
-  CHECKED_STATUS ListDir(const std::string& path, std::vector<std::string> *objects) const {
-    return env_->GetChildren(path, objects);
-  }
+  Status ListDir(const std::string& path, std::vector<std::string> *objects) const;
 
-  Result<std::vector<std::string>> ListDir(const std::string& path) const {
-    std::vector<std::string> result;
-    RETURN_NOT_OK(env_->GetChildren(path, ExcludeDots::kTrue, &result));
-    return result;
-  }
+  Result<std::vector<std::string>> ListDir(const std::string& path) const;
 
-  CHECKED_STATUS CreateDirIfMissing(const std::string& path, bool* created = NULL);
+  Status CreateDirIfMissing(const std::string& path, bool* created = NULL);
 
-  CHECKED_STATUS CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
+  Status CreateDirIfMissingAndSync(const std::string& path, bool* created = NULL);
 
  private:
   FRIEND_TEST(FsManagerTestBase, TestDuplicatePaths);
 
   // Initializes, sanitizes, and canonicalizes the filesystem roots.
-  CHECKED_STATUS Init();
+  Status Init();
+
+  // Creates filesystem roots, writing new on-disk instances using 'metadata'.
+  Status CreateFileSystemRoots(const InstanceMetadataPB& metadata,
+                                       bool create_lock = false);
+
+  std::set<std::string> GetAncillaryDirs() const;
 
   // Create a new InstanceMetadataPB.
   void CreateInstanceMetadata(InstanceMetadataPB* metadata);
 
   // Save a InstanceMetadataPB to the filesystem.
   // Does not mutate the current state of the fsmanager.
-  CHECKED_STATUS WriteInstanceMetadata(
+  Status WriteInstanceMetadata(
       const InstanceMetadataPB& metadata,
       const std::string& path);
 
@@ -246,7 +259,12 @@ class FsManager {
   //
   // Returns an error if it's not a directory. Otherwise, sets 'is_empty'
   // accordingly.
-  CHECKED_STATUS IsDirectoryEmpty(const std::string& path, bool* is_empty);
+  Status IsDirectoryEmpty(const std::string& path, bool* is_empty);
+
+  // Checks write to temporary file on root.
+  Status CheckWrite(const std::string& path);
+
+  void CreateAndSetFaultDriveMetric(const std::string& path);
 
   // ==========================================================================
   //  file-system helpers
@@ -255,16 +273,6 @@ class FsManager {
                           const std::string& prefix,
                           const std::string& path,
                           const std::vector<std::string>& objects);
-
-  static const char *kDataDirName;
-  static const char *kRaftGroupMetadataDirName;
-  static const char *kCorruptedSuffix;
-  static const char *kInstanceMetadataFileName;
-  static const char *kFsLockFileName;
-  static const char *kInstanceMetadataMagicNumber;
-  static const char *kTabletSuperBlockMagicNumber;
-  static const char *kConsensusMetadataDirName;
-  static const char *kLogsDirName;
 
   Env *env_;
 
@@ -277,7 +285,7 @@ class FsManager {
   const std::vector<std::string> data_fs_roots_;
   const std::string server_type_;
 
-  scoped_refptr<MetricEntity> metric_entity_;
+  MetricRegistry* metric_registry_;
 
   std::shared_ptr<MemTracker> parent_mem_tracker_;
 
@@ -287,13 +295,21 @@ class FsManager {
   // - The first data root is used as the metadata root.
   // - Common roots in the collections have been deduplicated.
   std::set<std::string> canonicalized_wal_fs_roots_;
-  std::string canonicalized_metadata_fs_root_;
+  std::string canonicalized_default_fs_root_;
   std::set<std::string> canonicalized_data_fs_roots_;
   std::set<std::string> canonicalized_all_fs_roots_;
 
-  gscoped_ptr<InstanceMetadataPB> metadata_;
+  std::unordered_map<std::string, std::string> tablet_id_to_path_ GUARDED_BY(data_mutex_);
+  mutable std::mutex data_mutex_;
 
-  bool initted_;
+  std::unique_ptr<InstanceMetadataPB> metadata_;
+
+  // Keep references to counters, counters without reference will be retired.
+  std::vector<scoped_refptr<Counter>> counters_;
+
+  bool initted_ = false;
+
+  bool has_faulty_drive_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(FsManager);
 };

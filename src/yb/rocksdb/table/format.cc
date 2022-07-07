@@ -28,7 +28,6 @@
 #include <string>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
@@ -36,10 +35,13 @@
 #include "yb/rocksdb/util/perf_context_imp.h"
 #include "yb/rocksdb/util/xxhash.h"
 
-#include "yb/util/encryption_util.h"
-#include "yb/util/encrypted_file.h"
-#include "yb/util/format.h"
+#include "yb/util/debug-util.h"
+#include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/result.h"
+#include "yb/util/stats/perf_step_timer.h"
+#include "yb/util/status_format.h"
+#include "yb/util/std_util.h"
 #include "yb/util/string_util.h"
 
 using yb::Format;
@@ -267,7 +269,7 @@ Status ReadFooterFromFile(
           footer(footer_),
           enforce_table_magic_number(enforce_table_magic_number_) {}
 
-    CHECKED_STATUS Validate(const Slice& read_result) const override {
+    Status Validate(const Slice& read_result) const override {
       // Check that we actually read the whole footer from the file. It may be that size isn't
       // correct.
       RETURN_NOT_OK(CheckSSTableFileSize(file, read_result.size()));
@@ -276,9 +278,10 @@ Status ReadFooterFromFile(
       RETURN_NOT_OK(footer->DecodeFrom(&mutable_read_result));
       if (enforce_table_magic_number != 0 &&
           enforce_table_magic_number != footer->table_magic_number()) {
-        return STATUS_FORMAT(Corruption, "Bad table magic number: $0, expected: $1",
-                              footer->table_magic_number(),
-                              enforce_table_magic_number);
+        return STATUS_FORMAT(
+            Corruption, "Bad table magic number: 0x$0, expected: 0x$1",
+            FastHex64ToString(footer->table_magic_number()),
+            FastHex64ToString(enforce_table_magic_number));
       }
       return Status::OK();
     }
@@ -311,7 +314,7 @@ Result<ChecksumData> ComputeChecksum(
           .actual = crc32c::Value(src_data.data(), src_data.size())
       };
     case kxxHash:
-      if (src_data.size() > std::numeric_limits<int>::max()) {
+      if (yb::std_util::cmp_greater(src_data.size(), std::numeric_limits<int>::max())) {
         return STATUS_FORMAT(
             Corruption, "Block too large for xxHash ($0 bytes, but must be $1 or smaller)",
             src_data.size(), std::numeric_limits<int>::max());
@@ -369,7 +372,7 @@ Status ReadBlock(
             handle(handle_),
             expected_read_size(expected_read_size_) {}
 
-      CHECKED_STATUS Validate(const Slice& read_result) const override {
+      Status Validate(const Slice& read_result) const override {
         if (read_result.size() != expected_read_size) {
           return STATUS_FORMAT(
               Corruption, "Truncated block read in file: $0, block handle: $1, expected size: $2",

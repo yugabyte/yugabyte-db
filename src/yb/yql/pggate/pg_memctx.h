@@ -15,12 +15,11 @@
 #ifndef YB_YQL_PGGATE_PG_MEMCTX_H_
 #define YB_YQL_PGGATE_PG_MEMCTX_H_
 
-#include <vector>
 #include <unordered_map>
 
 #include <boost/intrusive/list.hpp>
 
-#include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_gate_fwd.h"
 
 namespace yb {
 namespace pggate {
@@ -37,8 +36,6 @@ namespace pggate {
 //   associated YB Memctx. The object is automatically destroyed when YB Memctx is destroyed.
 class PgMemctx {
  public:
-  typedef std::shared_ptr<PgMemctx> SharedPtr;
-
   class Registrable : public boost::intrusive::list_base_hook<> {
    public:
     virtual ~Registrable() = default;
@@ -47,9 +44,8 @@ class PgMemctx {
     friend class PgMemctx;
   };
 
-  // Constructor and destructor.
-  PgMemctx();
-  virtual ~PgMemctx();
+  PgMemctx() = default;
+  ~PgMemctx();
 
   // API: Create(), Destroy(), and Reset()
   // - Because Postgres process own YugaByte memory context, only Postgres processes should call
@@ -60,27 +56,15 @@ class PgMemctx {
   //   Reset() API uses a global variable for that purpose.  When Postgres processes exit, the
   //   global destructor will free all YugaByte memory contexts.
 
-  // Create yugabyte memory context that will be owned by Postgres process.
-  static PgMemctx *Create();
-
-  // Destroy yugabyte memory context that is owned by Postgres process.
-  static CHECKED_STATUS Destroy(PgMemctx *handle);
-
-  // Clear the content of yugabyte memory context that is owned by Postgres process.
-  // Postgres has Reset() option where it clears the allocated memory for the current context but
-  // keeps all the allocated memory for the child contexts.
-  static CHECKED_STATUS Reset(PgMemctx *handle);
-
   void Register(Registrable *obj);
   static void Destroy(Registrable *obj);
 
   // Cache the table descriptor in the memory context to be destroyed later on.
-  void Cache(size_t hash_id, const PgTableDesc::ScopedRefPtr &table_desc);
+  void Cache(size_t hash_id, const PgTableDescPtr &table_desc);
 
   // Read the table descriptor from cache.
   void GetCache(size_t hash_id, PgTableDesc **handle);
 
- private:
   // NOTE:
   // - In Postgres, the objects in the outer context can references to the objects of the nested
   //   context but not vice versa, so it is safe to clear objects of outer context.
@@ -90,8 +74,9 @@ class PgMemctx {
   //   memctx, we can delay the PgStatement objects' destruction.
   void Clear();
 
-  // All talbe descriptors that are allocated with this memory context.
-  std::unordered_map<size_t, PgTableDesc::ScopedRefPtr> tabledesc_map_;
+ private:
+  // All table descriptors that are allocated with this memory context.
+  std::unordered_map<size_t, PgTableDescPtr> tabledesc_map_;
 
   boost::intrusive::list<Registrable> registered_objects_;
 

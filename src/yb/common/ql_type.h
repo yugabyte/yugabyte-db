@@ -18,13 +18,11 @@
 #ifndef YB_COMMON_QL_TYPE_H_
 #define YB_COMMON_QL_TYPE_H_
 
-#include <glog/logging.h>
+#include <boost/optional.hpp>
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/key_encoder.h"
-#include "yb/common/common.pb.h"
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/common/value.pb.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -32,7 +30,6 @@ namespace yb {
 // Used internally in QLType and only set for user-defined types.
 class UDTypeInfo {
  public:
-
   UDTypeInfo(std::string keyspace_name, std::string name)
       : keyspace_name_(keyspace_name), name_(name) {
   }
@@ -49,11 +46,11 @@ class UDTypeInfo {
     return id_;
   }
 
-  const std::vector<string>& field_names() const {
+  const std::vector<std::string>& field_names() const {
     return field_names_;
   }
 
-  const std::string& field_name(int index) const {
+  const std::string& field_name(size_t index) const {
     return field_names_[index];
   }
 
@@ -84,13 +81,13 @@ class QLType {
 
   template<DataType data_type>
   static std::shared_ptr<QLType> CreateCollectionType(
-      const vector<std::shared_ptr<QLType>>& params) {
+      const std::vector<std::shared_ptr<QLType>>& params) {
     return std::make_shared<QLType>(data_type, params);
   }
 
   // Create all builtin types including collection.
   static std::shared_ptr<QLType> Create(DataType data_type,
-                                        const vector<std::shared_ptr<QLType>>& params);
+                                        const std::vector<std::shared_ptr<QLType>>& params);
 
   // Create primitive types, all builtin types except collection.
   static std::shared_ptr<QLType> Create(DataType data_type);
@@ -145,7 +142,7 @@ class QLType {
   }
 
   // Constructor for collection types
-  QLType(DataType ql_typeid, const vector<std::shared_ptr<QLType>>& params)
+  QLType(DataType ql_typeid, const std::vector<std::shared_ptr<QLType>>& params)
       : id_(ql_typeid), params_(params) {
   }
 
@@ -167,58 +164,21 @@ class QLType {
   //------------------------------------------------------------------------------------------------
   // Access functions.
 
-  const DataType main() const {
+  DataType main() const {
     return id_;
   }
 
-  const vector<std::shared_ptr<QLType>>& params() const {
+  const std::vector<std::shared_ptr<QLType>>& params() const {
     return params_;
   }
 
-  std::shared_ptr<QLType> keys_type() const {
-    switch (id_) {
-      case MAP:
-        return params_[0];
-      case LIST:
-        return QLType::Create(INT32);
-      case SET:
-        // set has no keys, only values
-        return nullptr;
-      case TUPLE:
-        // https://github.com/YugaByte/yugabyte-db/issues/936
-        LOG(FATAL) << "Tuple type not implemented yet";
+  std::shared_ptr<QLType> keys_type() const;
 
-      default:
-        // elementary types have no keys or values
-        return nullptr;
-    }
-  }
+  std::shared_ptr<QLType> values_type() const;
 
-  std::shared_ptr<QLType> values_type() const {
-    switch (id_) {
-      case MAP:
-        return params_[1];
-      case LIST:
-        return params_[0];
-      case SET:
-        return params_[0];
-      case TUPLE:
-        LOG(FATAL) << "Tuple type not implemented yet";
+  const QLType::SharedPtr& param_type(size_t member_index = 0) const;
 
-      default:
-        // other types have no keys or values
-        return nullptr;
-    }
-  }
-
-  const QLType::SharedPtr& param_type(int member_index = 0) const {
-    DCHECK_LT(member_index, params_.size());
-    return params_[member_index];
-  }
-
-  const TypeInfo* type_info() const {
-    return GetTypeInfo(id_);
-  }
+  const TypeInfo* type_info() const;
 
   //------------------------------------------------------------------------------------------------
   // Methods for User-Defined types.
@@ -227,11 +187,11 @@ class QLType {
     return udtype_info_;
   }
 
-  const std::vector<string>& udtype_field_names() const {
+  const std::vector<std::string>& udtype_field_names() const {
     return udtype_info_->field_names();
   }
 
-  const std::string& udtype_field_name(int index) const {
+  const std::string& udtype_field_name(size_t index) const {
     return udtype_info_->field_name(index);
   }
 
@@ -255,15 +215,7 @@ class QLType {
   }
 
   // returns position of "field_name" in udtype_field_names() vector if found, otherwise -1
-  const int GetUDTypeFieldIdxByName(const std::string &field_name) const {
-    const std::vector<string>& field_names = udtype_field_names();
-    int i = 0;
-    while (i != field_names.size()) {
-      if (field_names[i] == field_name) return i;
-      i++;
-    }
-    return -1;
-  }
+  boost::optional<size_t> GetUDTypeFieldIdxByName(const std::string &field_name) const;
 
   // Get the type ids of all UDTs (transitively) referenced by this UDT.
   std::vector<std::string> GetUserDefinedTypeIds() const {
@@ -281,31 +233,18 @@ class QLType {
     }
   }
 
+  // Check whether the type id exists among type ids of all UDTs referenced by this UDT.
+  static bool DoesUserDefinedTypeIdExist(const QLTypePB& type_pb,
+                                         const bool transitive,
+                                         const std::string& udt_id);
+
   // Get the type ids of all UDTs referenced by this UDT.
   static void GetUserDefinedTypeIds(const QLTypePB& type_pb,
                                     const bool transitive,
-                                    std::vector<std::string>* udt_ids) {
-    if (type_pb.main() == USER_DEFINED_TYPE) {
-      udt_ids->push_back(type_pb.udtype_info().id());
-      if (!transitive) {
-        return; // Do not check params of the UDT if only looking for direct dependencies.
-      }
-    }
-
-    for (const auto& param : type_pb.params()) {
-      GetUserDefinedTypeIds(param, transitive, udt_ids);
-    }
-  }
+                                    std::vector<std::string>* udt_ids);
 
   // Returns the type of given field, or nullptr if that field is not found in this UDT.R
-  Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const {
-    SCHECK(IsUserDefined(), InternalError, "Can only be called on UDT");
-    const int idx = GetUDTypeFieldIdxByName(field_name);
-    if (idx == -1) {
-      return nullptr;
-    }
-    return param_type(idx);
-  }
+  Result<QLType::SharedPtr> GetUDTFieldTypeByName(const std::string& field_name) const;
 
   //------------------------------------------------------------------------------------------------
   // Predicates.
@@ -392,7 +331,7 @@ class QLType {
       return other.IsUserDefined() && udtype_id() == other.udtype_id();
     }
     if (id_ == other.id_ && params_.size() == other.params_.size()) {
-      for (int i = 0; i < params_.size(); i++) {
+      for (size_t i = 0; i < params_.size(); i++) {
         if (*params_[i] == *other.params_[i]) {
           continue;
         }
@@ -410,7 +349,7 @@ class QLType {
 
   //------------------------------------------------------------------------------------------------
   // Logging supports.
-  const std::string ToString() const;
+  std::string ToString() const;
   void ToString(std::stringstream& os) const;
   static const std::string ToCQLString(const DataType& datatype);
 
@@ -468,134 +407,28 @@ class QLType {
     kNotAllowed = 5,
   };
 
-  static ConversionMode GetConversionMode(DataType left, DataType right) {
-    DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
-
-    static const ConversionMode kID = ConversionMode::kIdentical;
-    static const ConversionMode kSI = ConversionMode::kSimilar;
-    static const ConversionMode kIM = ConversionMode::kImplicit;
-    static const ConversionMode kFC = ConversionMode::kFurtherCheck;
-    static const ConversionMode kEX = ConversionMode::kExplicit;
-    static const ConversionMode kNA = ConversionMode::kNotAllowed;
-    static const ConversionMode kConversionMode[kMaxTypeIndex][kMaxTypeIndex] = {
-        // LHS :=  RHS (source)
-        //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso
-        /* nul */{ kID,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM,  kIM },
-        /* i8 */ { kIM,  kID,  kSI,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* i16 */{ kIM,  kSI,  kID,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* i32 */{ kIM,  kSI,  kSI,  kID,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* i64 */{ kIM,  kSI,  kSI,  kSI,  kID,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kSI,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA },
-        /* str */{ kIM,  kEX,  kEX,  kEX,  kEX,  kID,  kEX,  kEX,  kEX,  kEX,  kEX,  kEX,  kNA,  kEX,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kEX },
-        /* bln */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* flt */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kID,  kSI,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* dbl */{ kIM,  kIM,  kIM,  kIM,  kIM,  kNA,  kNA,  kSI,  kID,  kNA,  kNA,  kSI,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* bin */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* tst */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA },
-        /* dec */{ kIM,  kIM,  kIM,  kIM,  kIM,  kEX,  kNA,  kSI,  kSI,  kNA,  kEX,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* vit */{ kIM,  kSI,  kSI,  kSI,  kSI,  kNA,  kNA,  kEX,  kEX,  kNA,  kEX,  kEX,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kEX,  kNA },
-        /* ine */{ kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* lst */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* map */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* set */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* uid */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* tui */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kID,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* tup */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* arg */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA,  kNA,  kNA,  kNA },
-        /* udt */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kNA,  kNA,  kNA,  kNA },
-        /* frz */{ kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kFC,  kFC,  kFC,  kNA,  kNA,  kFC,  kNA,  kFC,  kFC,  kNA,  kNA,  kNA },
-        /* dat */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kEX,  kNA,  kNA,  kNA,  kNA,  kID,  kNA,  kNA },
-        /* tim */{ kIM,  kNA,  kNA,  kNA,  kIM,  kIM,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID,  kNA },
-        /* jso */{ kNA,  kNA,  kNA,  kNA,  kNA,  kIM,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kNA,  kID },
-    };
-    return kConversionMode[left][right];
-  }
+  static ConversionMode GetConversionMode(DataType left, DataType right);
 
   static bool IsIdentical(DataType left, DataType right) {
     return GetConversionMode(left, right) == ConversionMode::kIdentical;
   }
 
-  static bool IsSimilar(DataType left, DataType right) {
-    return GetConversionMode(left, right) <= ConversionMode::kSimilar;
-  }
+  static bool IsSimilar(DataType left, DataType right);
 
   static bool IsImplicitlyConvertible(DataType left, DataType right) {
     return GetConversionMode(left, right) <= ConversionMode::kImplicit;
   }
 
-  static bool IsPotentiallyConvertible(DataType left, DataType right) {
-    return GetConversionMode(left, right) <= ConversionMode::kFurtherCheck;
-  }
+  static bool IsPotentiallyConvertible(DataType left, DataType right);
 
   static bool IsExplicitlyConvertible(DataType left, DataType right) {
     return GetConversionMode(left, right) <= ConversionMode::kExplicit;
   }
 
   static bool IsImplicitlyConvertible(const std::shared_ptr<QLType>& lhs_type,
-                                      const std::shared_ptr<QLType>& rhs_type) {
-    switch (QLType::GetConversionMode(lhs_type->main(), rhs_type->main())) {
-      case QLType::ConversionMode::kIdentical: FALLTHROUGH_INTENDED;
-      case QLType::ConversionMode::kSimilar: FALLTHROUGH_INTENDED;
-      case QLType::ConversionMode::kImplicit:
-        return true;
+                                      const std::shared_ptr<QLType>& rhs_type);
 
-      case QLType::ConversionMode::kFurtherCheck:
-        // checking params convertibility
-        if (lhs_type->params().size() != rhs_type->params().size()) {
-          return false;
-        }
-        for (int i = 0; i < lhs_type->params().size(); i++) {
-          if (!IsImplicitlyConvertible(lhs_type->params().at(i), rhs_type->params().at(i))) {
-            return false;
-          }
-        }
-        return true;
-
-      case QLType::ConversionMode::kExplicit: FALLTHROUGH_INTENDED;
-      case QLType::ConversionMode::kNotAllowed:
-        return false;
-    }
-
-    LOG(FATAL) << "Unsupported conversion mode in switch statement";
-    return false;
-  }
-
-  static bool IsComparable(DataType left, DataType right) {
-    DCHECK(IsValid(left) && IsValid(right)) << left << ", " << right;
-
-    static const bool kYS = true;
-    static const bool kNO = false;
-    static const bool kCompareMode[kMaxTypeIndex][kMaxTypeIndex] = {
-        // LHS ==  RHS (source)
-        //         nul | i8  | i16 | i32 | i64 | str | bln | flt | dbl | bin | tst | dec | vit | ine | lst | map | set | uid | tui | tup | arg | udt | frz | dat | tim | jso
-        /* nul */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* i8  */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* i16 */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* i32 */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* i64 */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* str */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* bln */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* flt */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* dbl */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* bin */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* tst */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO },
-        /* dec */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* vit */{ kNO,  kYS,  kYS,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* ine */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* lst */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* map */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* set */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* uid */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* tui */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* tup */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* arg */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* udt */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO },
-        /* frz */{ kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO },
-        /* dat */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO },
-        /* tim */{ kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kYS,  kNO },
-        /* jso */{ kNO,  kNO,  kNO,  kNO,  kNO,  kYS,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kNO,  kYS },
-    };
-    return kCompareMode[left][right];
-  }
+  static bool IsComparable(DataType left, DataType right);
 
  private:
   //------------------------------------------------------------------------------------------------

@@ -3,16 +3,12 @@ title: YB-TServer Service
 headerTitle: YB-TServer Service
 linkTitle: YB-TServer Service
 description: Learn how the YB-TServer service stores and serves application data using tablets (aka shards).
-aliases:
-  - /stable/architecture/concepts/yb-tserver/
-block_indexing: true
 menu:
   stable:
     identifier: architecture-concepts-yb-tserver
     parent: key-concepts
     weight: 1124
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The YB-TServer (short for YugabyteDB Tablet Server) service is responsible for the actual IO for end user requests in a YugabyteDB cluster. Recall from the previous section that data for a table is split, or sharded, into tablets. Each tablet is composed of one or more tablet-peers, depending on the replication factor. And each YB-TServer hosts one or more tablet-peers.
@@ -23,7 +19,7 @@ Below is a pictorial illustration of this in the case of a 4-node YugabyteDB uni
 
 ![tserver_overview](/images/architecture/tserver_overview.png)
 
-The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown above comprises of 16 independent Raft groups. The details of this replication are covered in a previous section on replication.
+The tablet-peers corresponding to each tablet hosted on different YB-TServers form a Raft group and replicate data between each other. The system shown above comprises of 16 independent Raft groups. The details of this replication are covered in another section on replication.
 
 Within each YB-TServer, there is a lot of cross-tablet intelligence built in to maximize resource efficiency. Below are just some of the ways the YB-TServer coordinates operations across tablets hosted by it:
 

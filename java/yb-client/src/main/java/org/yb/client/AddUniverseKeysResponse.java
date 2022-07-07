@@ -15,7 +15,7 @@ package org.yb.client;
 
 import org.yb.annotations.InterfaceAudience;
 
-import org.yb.master.Master.MasterErrorPB;
+import org.yb.master.MasterTypes.MasterErrorPB;
 
 @InterfaceAudience.Public
 public class AddUniverseKeysResponse extends YRpcResponse {

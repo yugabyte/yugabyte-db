@@ -20,23 +20,30 @@
 #ifndef YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 #define YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 
+#include <stdint.h>
+
+#include <cstdint>
+#include <cstdlib>
+#include <mutex>
 #include <stack>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
+#include <gflags/gflags_declare.h>
 #include <gtest/gtest_prod.h>
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/callback.h"
-#include "yb/gutil/walltime.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/ref_counted_memory.h"
-#include "yb/util/atomic.h"
-#include "yb/util/condition_variable.h"
-#include "yb/util/locks.h"
-#include "yb/util/thread.h"
+#include "yb/gutil/spinlock.h"
+#include "yb/gutil/walltime.h"
+
+#include "yb/util/mutex.h"
+#include "yb/util/shared_lock.h"
 #include "yb/util/threadlocal.h"
 
 // Older style trace macros with explicit id and extra data
@@ -71,6 +78,9 @@ struct hash<yb::Thread*> {
 #endif
 
 namespace yb {
+
+class Thread;
+
 namespace debug {
 
 // For any argument of type TRACE_VALUE_TYPE_CONVERTABLE the provided
@@ -117,7 +127,7 @@ class BASE_EXPORT TraceEvent {
   void CopyFrom(const TraceEvent& other);
 
   void Initialize(
-      int thread_id,
+      int64_t thread_id,
       MicrosecondsInt64 timestamp,
       MicrosecondsInt64 thread_timestamp,
       char phase,
@@ -146,7 +156,7 @@ class BASE_EXPORT TraceEvent {
   MicrosecondsInt64 timestamp() const { return timestamp_; }
   MicrosecondsInt64 thread_timestamp() const { return thread_timestamp_; }
   char phase() const { return phase_; }
-  int thread_id() const { return thread_id_; }
+  int64_t thread_id() const { return thread_id_; }
   MicrosecondsInt64 duration() const { return duration_; }
   MicrosecondsInt64 thread_duration() const { return thread_duration_; }
   uint64_t id() const { return id_; }
@@ -182,7 +192,7 @@ class BASE_EXPORT TraceEvent {
   const unsigned char* category_group_enabled_;
   const char* name_;
   scoped_refptr<yb::RefCountedString> parameter_copy_storage_;
-  int thread_id_;
+  int64_t thread_id_;
   char phase_;
   unsigned char flags_;
   unsigned char arg_types_[kTraceMaxNumArgs];
@@ -215,7 +225,7 @@ class BASE_EXPORT TraceBufferChunk {
     return &chunk_[index];
   }
 
-  gscoped_ptr<TraceBufferChunk> Clone() const;
+  std::unique_ptr<TraceBufferChunk> Clone() const;
 
   static const size_t kTraceBufferChunkSize = 64;
 
@@ -230,9 +240,9 @@ class BASE_EXPORT TraceBuffer {
  public:
   virtual ~TraceBuffer() {}
 
-  virtual gscoped_ptr<TraceBufferChunk> GetChunk(size_t *index) = 0;
+  virtual std::unique_ptr<TraceBufferChunk> GetChunk(size_t *index) = 0;
   virtual void ReturnChunk(size_t index,
-                           gscoped_ptr<TraceBufferChunk> chunk) = 0;
+                           std::unique_ptr<TraceBufferChunk> chunk) = 0;
 
   virtual bool IsFull() const = 0;
   virtual size_t Size() const = 0;
@@ -242,7 +252,7 @@ class BASE_EXPORT TraceBuffer {
   // For iteration. Each TraceBuffer can only be iterated once.
   virtual const TraceBufferChunk* NextChunk() = 0;
 
-  virtual gscoped_ptr<TraceBuffer> CloneForIteration() const = 0;
+  virtual std::unique_ptr<TraceBuffer> CloneForIteration() const = 0;
 };
 
 // TraceResultBuffer collects and converts trace fragments returned by TraceLog
@@ -515,7 +525,7 @@ class BASE_EXPORT TraceLog {
       const unsigned char* category_group_enabled,
       const char* name,
       uint64_t id,
-      int thread_id,
+      int64_t thread_id,
       const MicrosecondsInt64& timestamp,
       int num_args,
       const char** arg_names,
@@ -596,7 +606,7 @@ class BASE_EXPORT TraceLog {
   // the category group, or event_callback_ is not null and
   // event_callback_category_filter_ matches the category group.
   void UpdateCategoryGroupEnabledFlags();
-  void UpdateCategoryGroupEnabledFlag(int category_index);
+  void UpdateCategoryGroupEnabledFlag(AtomicWord category_index);
 
   // Configure synthetic delays based on the values set in the current
   // category filter.
@@ -626,7 +636,7 @@ class BASE_EXPORT TraceLog {
   TraceEvent* GetEventByHandleInternal(TraceEventHandle handle,
                                        OptionalAutoLock* lock);
 
-  void ConvertTraceEventsToTraceFormat(gscoped_ptr<TraceBuffer> logged_events,
+  void ConvertTraceEventsToTraceFormat(std::unique_ptr<TraceBuffer> logged_events,
                                        const OutputCallback& flush_output_callback);
   void FinishFlush(int generation,
                    const OutputCallback& flush_output_callback);
@@ -662,7 +672,7 @@ class BASE_EXPORT TraceLog {
   int locked_line_;
   Mode mode_;
   int num_traces_recorded_;
-  gscoped_ptr<TraceBuffer> logged_events_;
+  std::unique_ptr<TraceBuffer> logged_events_;
   AtomicWord /* EventCallback */ event_callback_;
   bool dispatching_to_observer_list_;
   std::vector<EnabledStateObserver*> enabled_state_observer_list_;
@@ -671,10 +681,10 @@ class BASE_EXPORT TraceLog {
   std::unordered_map<int, std::string> process_labels_;
   int process_sort_index_;
   std::unordered_map<int, int> thread_sort_indices_;
-  std::unordered_map<int, std::string> thread_names_;
+  std::unordered_map<int64_t, std::string> thread_names_;
 
   // The following two maps are used only when ECHO_TO_CONSOLE.
-  std::unordered_map<int, std::stack<MicrosecondsInt64> > thread_event_start_times_;
+  std::unordered_map<int64_t, std::stack<MicrosecondsInt64> > thread_event_start_times_;
   std::unordered_map<std::string, int> thread_colors_;
 
   // XORed with TraceID to make it unlikely to collide with other processes.
@@ -692,8 +702,8 @@ class BASE_EXPORT TraceLog {
   AtomicWord /* Options */ trace_options_;
 
   // Sampling thread handles.
-  gscoped_ptr<TraceSamplingThread> sampling_thread_;
-  scoped_refptr<yb::Thread> sampling_thread_handle_;
+  std::unique_ptr<TraceSamplingThread> sampling_thread_;
+  scoped_refptr<Thread> sampling_thread_handle_;
 
   CategoryFilter category_filter_;
   CategoryFilter event_callback_category_filter_;
@@ -716,7 +726,7 @@ class BASE_EXPORT TraceLog {
 
   // For events which can't be added into the thread local buffer, e.g. events
   // from threads without a message loop.
-  gscoped_ptr<TraceBufferChunk> thread_shared_chunk_;
+  std::unique_ptr<TraceBufferChunk> thread_shared_chunk_;
   size_t thread_shared_chunk_index_;
 
   // The generation is incremented whenever tracing is enabled, and incremented
@@ -727,6 +737,14 @@ class BASE_EXPORT TraceLog {
 
   DISALLOW_COPY_AND_ASSIGN(TraceLog);
 };
+
+extern std::atomic<bool> trace_events_enabled;
+
+inline bool TraceEventsEnabled() {
+  return trace_events_enabled.load(std::memory_order_relaxed);
+}
+
+void EnableTraceEvents();
 
 }  // namespace debug
 }  // namespace yb

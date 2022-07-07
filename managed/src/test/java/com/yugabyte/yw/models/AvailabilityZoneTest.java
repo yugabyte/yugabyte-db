@@ -2,26 +2,27 @@
 
 package com.yugabyte.yw.models;
 
-import static org.hamcrest.CoreMatchers.*;
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.assertNotNull;
-
-import java.util.Set;
-
-import com.yugabyte.yw.common.ModelFactory;
-import org.junit.Before;
-import org.junit.Test;
-
-import com.yugabyte.yw.common.FakeDBApplication;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.FakeDBApplication;
+import com.yugabyte.yw.common.ModelFactory;
+import java.util.Set;
+import org.junit.Before;
+import org.junit.Test;
 
 public class AvailabilityZoneTest extends FakeDBApplication {
   Region defaultRegion;
   Provider provider;
+
   @Before
   public void setUp() {
     Customer customer = ModelFactory.testCustomer();
@@ -31,7 +32,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Test
   public void testCreate() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     assertEquals(az.code, "az-1");
     assertEquals(az.name, "A Zone");
     assertEquals(az.region.code, "region-1");
@@ -40,9 +42,9 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Test
   public void testCreateDuplicateAZ() {
-    AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
+    AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     try {
-      AvailabilityZone.create(defaultRegion, "az-1", "A Zone 2", "subnet-2");
+      AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone 2", "subnet-2");
     } catch (Exception e) {
       assertThat(e.getMessage(), containsString("Unique index or primary key violation:"));
     }
@@ -50,7 +52,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Test
   public void testInactiveAZ() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
 
     assertEquals(az.code, "az-1");
     assertEquals(az.name, "A Zone");
@@ -66,12 +69,11 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Test
   public void testFindAZByRegion() {
-    AvailabilityZone.create(defaultRegion, "az-1", "A Zone 1", "subnet-1");
-    AvailabilityZone.create(defaultRegion, "az-2", "A Zone 2", "subnet-2");
+    AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone 1", "subnet-1");
+    AvailabilityZone.createOrThrow(defaultRegion, "az-2", "A Zone 2", "subnet-2");
 
-    Set<AvailabilityZone> zones = AvailabilityZone.find.query().where()
-      .eq("region_uuid", defaultRegion.uuid)
-      .findSet();
+    Set<AvailabilityZone> zones =
+        AvailabilityZone.find.query().where().eq("region_uuid", defaultRegion.uuid).findSet();
     assertEquals(zones.size(), 2);
     for (AvailabilityZone zone : zones) {
       assertThat(zone.code, containsString("az-"));
@@ -80,7 +82,8 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Test
   public void testGetProvider() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     Provider p = az.getProvider();
     assertNotNull(p);
     assertEquals(p, provider);
@@ -88,17 +91,19 @@ public class AvailabilityZoneTest extends FakeDBApplication {
 
   @Test
   public void testNullConfig() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     assertNotNull(az.uuid);
-    assertTrue(az.getConfig().isEmpty());
+    assertTrue(az.getUnmaskedConfig().isEmpty());
   }
 
   @Test
   public void testNotNullConfig() {
-    AvailabilityZone az = AvailabilityZone.create(defaultRegion, "az-1", "A Zone", "subnet-1");
-    az.setConfig(ImmutableMap.of("Foo", "Bar"));
+    AvailabilityZone az =
+        AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
+    az.updateConfig(ImmutableMap.of("Foo", "Bar"));
     az.save();
     assertNotNull(az.uuid);
-    assertNotNull(az.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(az.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 }

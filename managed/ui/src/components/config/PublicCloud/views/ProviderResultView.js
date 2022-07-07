@@ -9,15 +9,13 @@ import { RegionMap, YBMapLegend } from '../../../maps';
 import { YBConfirmModal } from '../../../modals';
 import EditProviderFormContainer from './EditProvider/EditProviderFormContainer';
 import { PROVIDER_TYPES } from '../../../../config';
+import { ChangeOrAddProvider } from './ChangeOrAddProvider/ChangeOrAddProvider';
+import { cloudProviders } from '../../../../redesign/universe/wizard/steps/instance/InstanceConfig';
 
 class ProviderResultView extends Component {
   constructor(props) {
     super(props);
     this.state = { refreshing: false, currentView: 'success' };
-  }
-
-  deleteProviderConfig(provider) {
-    this.props.deleteProviderConfig(provider.uuid);
   }
 
   refreshPricingData = (provider) => {
@@ -57,8 +55,7 @@ class ProviderResultView extends Component {
     const payload = {};
     payload.uuid = currentProvider.uuid;
     payload.code = currentProvider.code;
-    payload.hostedZoneId =
-      currentProvider.code === 'aws' ? currentProvider.config.AWS_HOSTED_ZONE_ID : '';
+    payload.hostedZoneId = currentProvider.config?.HOSTED_ZONE_ID || '';
     payload.accountName = providerInfo.find((a) => a.name === 'Name').data;
     payload.sshKey = providerInfo.find((a) => a.name === 'SSH Key').data;
     return payload;
@@ -78,7 +75,12 @@ class ProviderResultView extends Component {
       buttonBaseClassName,
       currentModal,
       providerType,
-      deleteButtonDisabled
+      deleteButtonDisabled,
+      configuredProviders,
+      selectProvider,
+      setCurrentViewCreateConfig,
+      featureFlags,
+      handleDeleteProviderConfig
     } = this.props;
     const providerMeta = PROVIDER_TYPES.find((item) => item.code === providerType);
     const { refreshing } = this.state;
@@ -99,6 +101,15 @@ class ProviderResultView extends Component {
     }
     return (
       <div className="provider-config-container">
+        {(featureFlags.test.addListMultiProvider || featureFlags.released.addListMultiProvider) && (
+          <ChangeOrAddProvider
+            configuredProviders={configuredProviders}
+            cloudProviders={cloudProviders}
+            selectProvider={selectProvider}
+            providerType={providerType}
+            setCurrentViewCreateConfig={setCurrentViewCreateConfig}
+          />
+        )}
         <Row className="config-section-header">
           <Col md={12}>
             <span className="pull-right buttons" title={deleteButtonTitle}>
@@ -114,14 +125,13 @@ class ProviderResultView extends Component {
                 disabled={refreshing}
                 onClick={this.refreshPricingData.bind(this, currentProvider)}
               />
-              <YBButton
-                btnText="Edit Configuration"
-                onClick={this.editProviderView.bind(this, currentProvider)}
-              />
+              <YBButton btnText="Edit Configuration" onClick={this.editProviderView} />
               <YBConfirmModal
                 name="deleteProvider"
                 title={'Confirm Delete'}
-                onConfirm={handleSubmit(this.deleteProviderConfig.bind(this, currentProvider))}
+                onConfirm={handleSubmit(() => {
+                  handleDeleteProviderConfig(currentProvider.uuid);
+                })}
                 currentModal={currentModal}
                 visibleModal={this.props.visibleModal}
                 hideConfirmModal={this.props.hideDeleteProviderModal}

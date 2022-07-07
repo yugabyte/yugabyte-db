@@ -14,11 +14,47 @@
 #ifndef YB_DOCDB_INTENT_H_
 #define YB_DOCDB_INTENT_H_
 
-#include "yb/docdb/value.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/common/doc_hybrid_time.h"
+#include "yb/common/transaction.h"
+
+#include "yb/docdb/docdb_fwd.h"
 
 namespace yb {
 namespace docdb {
+
+// "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
+// multiple write-only operations don't need to conflict. However, if one operation is a
+// read-modify-write snapshot isolation operation, then a write-only operation cannot proceed in
+// parallel with it. Conflicts between intent types are handled according to the conflict matrix at
+// https://goo.gl/Wbc663.
+
+// "Weak" intents are obtained for prefix SubDocKeys of a key that a transaction is working with.
+// E.g. if we're writing "a.b.c", we'll obtain weak write intents on "a" and "a.b", but a strong
+// write intent on "a.b.c".
+constexpr int kWeakIntentFlag         = 0b000;
+
+// "Strong" intents are obtained on the fully qualified SubDocKey that an operation is working with.
+// See the example above.
+constexpr int kStrongIntentFlag       = 0b010;
+
+constexpr int kReadIntentFlag         = 0b000;
+constexpr int kWriteIntentFlag        = 0b001;
+
+// We put weak intents before strong intents to be able to skip weak intents while checking for
+// conflicts.
+//
+// This was not always the case.
+// kObsoleteIntentTypeSet corresponds to intent type set values stored in such a way that
+// strong/weak and read/write bits are swapped compared to the current format.
+YB_DEFINE_ENUM(IntentType,
+    ((kWeakRead,      kWeakIntentFlag |  kReadIntentFlag))
+    ((kWeakWrite,     kWeakIntentFlag | kWriteIntentFlag))
+    ((kStrongRead,  kStrongIntentFlag |  kReadIntentFlag))
+    ((kStrongWrite, kStrongIntentFlag | kWriteIntentFlag))
+);
+
+constexpr int kIntentTypeSetMapSize = 1 << kIntentTypeMapSize;
+typedef EnumBitSet<IntentType> IntentTypeSet;
 
 // DecodeIntentKey result.
 // intent_prefix - intent prefix (SubDocKey (no HT)).
@@ -40,27 +76,30 @@ inline std::ostream& operator<<(std::ostream& out, const DecodedIntentKey& decod
 // Decodes intent RocksDB key.
 Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key);
 
+struct DecodedIntentValue {
+  // Decoded transaction_id. Nil() value can mean that the transaction_id was not decoded, but not
+  // necessarily that it was not present.
+  TransactionId transaction_id = TransactionId::Nil();
+  // Subtransaction id or defaults to kMinSubtransactionId.
+  SubTransactionId subtransaction_id;
+  // Decoded write id.
+  IntraTxnWriteId write_id;
+  // The rest of the data after write id.
+  Slice body;
+};
+
 // Decode intent RocksDB value.
 // encoded_intent_value - input intent value to decode.
-// transaction_id_slice - input transaction id (to double-check with transaction id in value).
-// write_id - output write id.
-// body - output the rest of the data after write id.
-CHECKED_STATUS DecodeIntentValue(
-    const Slice& encoded_intent_value, const Slice& transaction_id_slice, IntraTxnWriteId* write_id,
-    Slice* body);
+// transaction_id_slice - input transaction id (to double-check with transaction id in value). If
+//                        empty, decode TransactionId into returned result instead.
+// Returned DecodedIntentValue will have a Nil transaction_id unless transaction_id_slice was
+// non-null.
+Result<DecodedIntentValue> DecodeIntentValue(
+    const Slice& encoded_intent_value, const Slice* transaction_id_slice = nullptr,
+    bool has_strong_intent = true);
 
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
-
-// "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
-// we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
-// keys "a" and "a.b".
-//
-// "Strong" intents are written for keys that are being modified. In the example above, we will
-// write a strong snapshot isolation intent for the key a.b.c itself.
-YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
-
-YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
 IntentTypeSet GetStrongIntentTypeSet(
     IsolationLevel level, OperationKind operation_kind, RowMarkType row_mark);

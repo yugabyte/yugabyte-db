@@ -29,11 +29,14 @@
 #include <vector>
 
 #include "yb/rocksdb/db/dbformat.h"
+#include "yb/rocksdb/immutable_options.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/murmurhash.h"
 #include "yb/rocksdb/util/hash.h"
 #include "yb/rocksdb/util/arena.h"
 #include "yb/rocksdb/util/histogram.h"
+
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 

@@ -1,27 +1,75 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
-import io.ebean.*;
+import com.yugabyte.yw.models.helpers.ProviderAndRegion;
+import io.ebean.ExpressionList;
+import io.ebean.Finder;
+import io.ebean.Junction;
+import io.ebean.Model;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import javax.persistence.Column;
+import javax.persistence.EmbeddedId;
+import javax.persistence.Entity;
+import javax.persistence.JoinColumn;
+import javax.persistence.ManyToOne;
+import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
-import javax.persistence.Column;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
-import java.util.List;
-
 @Entity
 public class PriceComponent extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(PriceComponent.class);
 
-  @EmbeddedId
-  @Constraints.Required
-  private PriceComponentKey idKey;
+  @EmbeddedId @Constraints.Required private PriceComponentKey idKey;
+
+  // ManyToOne for provider is kept outside of PriceComponentKey
+  // as ebean currently doesn't support having @ManyToOne inside @EmbeddedId
+  // insertable and updatable are set to false as actual updates
+  // are taken care by providerUuid parameter in PriceComponentKey
+  @ManyToOne(optional = false)
+  @JoinColumn(name = "provider_uuid", insertable = false, updatable = false)
+  private Provider provider;
+
+  public PriceComponentKey getIdKey() {
+    return idKey;
+  }
+
+  public Provider getProvider() {
+    if (this.provider == null) {
+      setProviderUuid(this.idKey.providerUuid);
+    }
+    return this.provider;
+  }
+
+  public void setProvider(Provider aProvider) {
+    provider = aProvider;
+    idKey.providerUuid = aProvider.uuid;
+  }
+
+  public UUID getProviderUuid() {
+    return this.idKey.providerUuid;
+  }
+
+  public void setProviderUuid(UUID providerUuid) {
+    Provider provider = Provider.get(providerUuid);
+    if (provider != null) {
+      setProvider(provider);
+    } else {
+      LOG.error("No provider found for the given id: {}", providerUuid);
+    }
+  }
 
   public String getProviderCode() {
-    return this.idKey.providerCode;
+    Provider provider = getProvider();
+    return provider != null ? provider.code : null;
   }
 
   public String getRegionCode() {
@@ -43,26 +91,20 @@ public class PriceComponent extends Model {
   public PriceDetails priceDetails = new PriceDetails();
 
   private static final Finder<PriceComponentKey, PriceComponent> find =
-    new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
+      new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
 
   /**
    * Get a single specified pricing component for a given provider and region.
    *
-   * @param providerCode The cloud provider that the pricing component is in.
+   * @param providerUuid The cloud provider that the pricing component is in.
    * @param regionCode The region that the pricing component is in.
    * @param componentCode The pricing component's code.
    * @return The uniquely matching pricing component.
    */
-  public static PriceComponent get(String providerCode, String regionCode, String componentCode) {
-    PriceComponentKey pcKey = PriceComponentKey.create(providerCode, regionCode, componentCode);
+  public static PriceComponent get(UUID providerUuid, String regionCode, String componentCode) {
+    PriceComponentKey pcKey = PriceComponentKey.create(providerUuid, regionCode, componentCode);
     PriceComponent pc = PriceComponent.find.byId(pcKey);
-    if (pc != null) {
-      pc.priceDetails = new PriceDetails();
-      if (pc.priceDetailsJson != null && !pc.priceDetailsJson.isEmpty()) {
-        pc.priceDetails = Json.fromJson(Json.parse(pc.priceDetailsJson), PriceDetails.class);
-      }
-    }
-    return pc;
+    return populateDetails(pc);
   }
 
   /**
@@ -72,56 +114,79 @@ public class PriceComponent extends Model {
    * @return A list of pricing components in the cloud provider.
    */
   public static List<PriceComponent> findByProvider(Provider provider) {
-    return PriceComponent.find.query().where()
-        .eq("provider_code", provider.code)
-        .findList();
+    return PriceComponent.find
+        .query()
+        .where()
+        .eq("provider_uuid", provider.uuid)
+        .findList()
+        .stream()
+        .map(PriceComponent::populateDetails)
+        .collect(Collectors.toList());
   }
 
-  /**
-   * Query helper to find pricing components for a given region in a given cloud provider.
-   *
-   * @param provider The cloud provider to find pricing components of.
-   * @param region The region to find pricing components of.
-   * @return A list of pricing components in the cloud provider's region.
-   */
-  public static List<PriceComponent> findByRegion(Provider provider, Region region) {
-    return PriceComponent.find.query().where()
-        .eq("provider_code", provider.code)
-        .eq("region_code", region.code)
-        .findList();
+  public static List<PriceComponent> findByProvidersAndRegions(Collection<ProviderAndRegion> keys) {
+    if (CollectionUtils.isEmpty(keys)) {
+      return Collections.emptyList();
+    }
+    Set<ProviderAndRegion> uniqueKeys = new HashSet<>(keys);
+    ExpressionList<PriceComponent> query = find.query().where();
+    Junction<PriceComponent> orExpr = query.or();
+    for (ProviderAndRegion key : uniqueKeys) {
+      Junction<PriceComponent> andExpr = orExpr.and();
+      andExpr.eq("provider_uuid", key.getProviderUuid());
+      andExpr.eq("region_code", key.getRegionCode());
+      orExpr.endAnd();
+    }
+    return query
+        .endOr()
+        .findList()
+        .stream()
+        .map(PriceComponent::populateDetails)
+        .collect(Collectors.toList());
+  }
+
+  private static PriceComponent populateDetails(PriceComponent priceComponent) {
+    if (priceComponent != null) {
+      priceComponent.priceDetails = new PriceDetails();
+      if (priceComponent.priceDetailsJson != null && !priceComponent.priceDetailsJson.isEmpty()) {
+        priceComponent.priceDetails =
+            Json.fromJson(Json.parse(priceComponent.priceDetailsJson), PriceDetails.class);
+      }
+    }
+    return priceComponent;
   }
 
   /**
    * Create or update a pricing component.
    *
-   * @param providerCode Cloud provider that the pricing component belongs to.
+   * @param providerUuid Cloud provider that the pricing component belongs to.
    * @param regionCode Region in the cloud provider that the pricing component belongs to.
-   * @param componentCode The identifying code for the pricing component. Must be unique within
-   *                      the region.
+   * @param componentCode The identifying code for the pricing component. Must be unique within the
+   *     region.
    * @param priceDetails The pricing details of the component.
    * @return The newly created/updated pricing component.
    */
-  public static void upsert(String providerCode, String regionCode, String componentCode,
-                            PriceDetails priceDetails) {
-    PriceComponent component = PriceComponent.get(providerCode, regionCode, componentCode);
+  public static PriceComponent upsert(
+      UUID providerUuid, String regionCode, String componentCode, PriceDetails priceDetails) {
+    PriceComponent component = PriceComponent.get(providerUuid, regionCode, componentCode);
     if (component == null) {
       component = new PriceComponent();
-      component.idKey = PriceComponentKey.create(providerCode, regionCode, componentCode);
+      component.idKey = PriceComponentKey.create(providerUuid, regionCode, componentCode);
     }
     PriceDetails details = priceDetails == null ? new PriceDetails() : priceDetails;
     component.setPriceDetails(details);
+    return component;
   }
 
-  /**
-   * The actual details of the pricing component.
-   */
+  /** The actual details of the pricing component. */
   public static class PriceDetails {
 
     // The unit on which the 'pricePerUnit' is based.
     public enum Unit {
       Hours,
       GBMonth,
-      PIOPMonth
+      PIOPMonth,
+      GiBpsMonth
     }
 
     // The price currency. Note that the case here matters as it matches AWS output.
@@ -164,12 +229,13 @@ public class PriceComponent extends Model {
         case "IOPS-MO":
           this.unit = Unit.PIOPMonth;
           break;
+        case "GIBPS-MO":
+          this.unit = Unit.GiBpsMonth;
+          break;
         default:
           LOG.error("Invalid price unit provided: " + unit);
           break;
       }
     }
-
   }
-
 }

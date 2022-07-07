@@ -13,21 +13,18 @@
 //
 //
 
-#include <deque>
-#include <list>
-#include <map>
-#include <vector>
-#include <unordered_map>
 #include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-#include <boost/multi_index_container.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/member.hpp>
+#include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/macros.h"
 
-#include "yb/util/test_util.h"
-#include "yb/util/format.h"
+#include "yb/util/monotime.h"
+#include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 
 using namespace std::literals;
 

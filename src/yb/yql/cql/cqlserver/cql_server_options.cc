@@ -14,7 +14,7 @@
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 
 #include "yb/util/flag_tags.h"
-#include "yb/yql/cql/cqlserver/cql_rpc.h"
+
 #include "yb/yql/cql/cqlserver/cql_server.h"
 
 DEFINE_int32(cql_rpc_keepalive_time_ms, 120000,

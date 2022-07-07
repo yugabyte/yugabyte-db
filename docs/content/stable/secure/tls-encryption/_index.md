@@ -1,26 +1,24 @@
 ---
-title: Encryption in transit on YugabyteDB clusters
-headerTitle: Encryption in transit
-linkTitle: Encryption in transit
+title: Encryption in Transit on YugabyteDB Clusters
+headerTitle: Encryption in Transit
+linkTitle: Encryption in Transit
 description: Enable encryption in transit (using TLS) to protect network communication.
 headcontent: Enable encryption in transit (using TLS) to protect network communication.
 image: /images/section_icons/secure/tls-encryption.png
-aliases:
-  - /secure/tls-encryption/
-block_indexing: true
 menu:
   stable:
     identifier: tls-encryption
     parent: secure
-    weight: 721
+    weight: 725
+type: indexpage
 ---
 
-YugabyteDB can be configured to protect data in transit with:
+YugabyteDB can be configured to protect data in transit using the following:
 
-- [Server-server encryption](./server-to-server) for intra-node communication between YB-Master and YB-TServer nodes
-- [Client-server](./client-to-server) for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL
+- [Server-server encryption](./server-to-server) for intra-node communication between YB-Master and YB-TServer nodes.
+- [Client-server](./client-to-server) for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
 
-YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security) encryption based on [OpenSSL](https://www.openssl.org), an open source cryptography toolkit that provides an implementation of the Transport Layer Security (TLS) and Secure Socket Layer (SSL) protocols. 
+YugabyteDB supports [Transport Layer Security (TLS)](https://en.wikipedia.org/wiki/Transport_Layer_Security) encryption based on [OpenSSL](https://www.openssl.org) (v. 1.0.2u or later), an open source cryptography toolkit that provides an implementation of the Transport Layer Security (TLS) and Secure Socket Layer (SSL) protocols.
 
 **Note:** Client-server TLS encryption is not supported for YEDIS.
 
@@ -40,6 +38,7 @@ Follow the steps in this section to learn how to enable encryption using TLS for
     </a>
   </div>
 
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="client-certificates/">
       <div class="head">
@@ -51,6 +50,7 @@ Follow the steps in this section to learn how to enable encryption using TLS for
       </div>
     </a>
   </div>
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="server-to-server/">
@@ -84,6 +84,18 @@ Follow the steps in this section to learn how to enable encryption using TLS for
       </div>
       <div class="body">
           Connect clients, tools, and APIs to encryption-enabled YugabyteDB clusters.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="tls-authentication/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/secure/authentication.png" aria-hidden="true" />
+        <div class="title">TLS and authentication</div>
+      </div>
+      <div class="body">
+          Use TLS encryption in conjunction with authentication.
       </div>
     </a>
   </div>

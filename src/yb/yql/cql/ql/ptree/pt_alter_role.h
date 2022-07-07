@@ -20,7 +20,6 @@
 
 #include <boost/optional.hpp>
 
-#include "yb/common/schema.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_create_role.h"
@@ -43,7 +42,7 @@ class PTAlterRole : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTAlterRole(MemoryContext* memctx,
-              YBLocation::SharedPtr loc,
+              YBLocationPtr loc,
               const MCSharedPtr<MCString>& name,
               const PTRoleOptionListNode::SharedPtr& roleOptions);
 
@@ -61,7 +60,7 @@ class PTAlterRole : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext* sem_context) override;
+  virtual Status Analyze(SemContext* sem_context) override;
   void PrintSemanticAnalysisResult(SemContext* sem_context);
 
   // Role name.

@@ -36,11 +36,9 @@
 #include <vector>
 
 #include "yb/gutil/map-util.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/util/flag_tags.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/util/shared_lock.h"
 
 using std::shared_ptr;
 using std::string;
@@ -150,7 +148,7 @@ Status TSManager::RegisterTS(const NodeInstancePB& instance,
     }
 
     if (!ts_count_callback_.empty()) {
-      int new_count = GetCountUnlocked();
+      auto new_count = GetCountUnlocked();
       if (new_count >= ts_count_callback_min_count_) {
         callback_to_call = std::move(ts_count_callback_);
         ts_count_callback_min_count_ = 0;
@@ -203,7 +201,7 @@ void TSManager::GetAllDescriptorsUnlocked(TSDescriptorVector* descs) const {
 }
 
 void TSManager::GetAllLiveDescriptors(TSDescriptorVector* descs,
-    const BlacklistSet blacklist) const {
+                                      const boost::optional<BlacklistSet>& blacklist) const {
   GetDescriptors([blacklist](const TSDescriptorPtr& ts) -> bool {
     return ts->IsLive() && !IsTsBlacklisted(ts, blacklist); }, descs);
 }
@@ -218,23 +216,16 @@ bool TSManager::IsTsInCluster(const TSDescriptorPtr& ts, string cluster_uuid) {
 }
 
 bool TSManager::IsTsBlacklisted(const TSDescriptorPtr& ts,
-    const BlacklistSet blacklist) {
-  if (blacklist.empty()) {
+                                const boost::optional<BlacklistSet>& blacklist) {
+  if (!blacklist.is_initialized()) {
     return false;
   }
-  for (const auto& tserver : blacklist) {
-    HostPortPB hp;
-    HostPortToPB(tserver, &hp);
-    if (ts->IsRunningOn(hp)) {
-      return true;
-    }
-  }
-  return false;
+  return ts->IsBlacklisted(*blacklist);
 }
 
 void TSManager::GetAllLiveDescriptorsInCluster(TSDescriptorVector* descs,
     string placement_uuid,
-    const BlacklistSet blacklist,
+    const boost::optional<BlacklistSet>& blacklist,
     bool primary_cluster) const {
   descs->clear();
   SharedLock<decltype(lock_)> l(lock_);
@@ -265,7 +256,7 @@ const TSDescriptorPtr TSManager::GetTSDescriptor(const HostPortPB& host_port) co
   return nullptr;
 }
 
-int TSManager::GetCountUnlocked() const {
+size_t TSManager::GetCountUnlocked() const {
   TSDescriptorVector descs;
   GetAllDescriptorsUnlocked(&descs);
   return descs.size();

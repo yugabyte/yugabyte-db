@@ -36,38 +36,32 @@
 #ifndef YB_UTIL_SLICE_H_
 #define YB_UTIL_SLICE_H_
 
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-
-#include <map>
 #include <string>
+#include <string_view>
 
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/stringpiece.h"
-#include "yb/util/faststring.h"
-#include "yb/util/cast.h"
 
+#include "yb/util/cast.h"
+#include "yb/util/faststring.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
-class Status;
 struct SliceParts;
 
 class Slice {
  public:
   // Create an empty slice.
-  Slice() : begin_(util::to_uchar_ptr("")), end_(begin_) { }
+  Slice() : begin_(to_uchar_ptr("")), end_(begin_) { }
 
   // Create a slice that refers to d[0,n-1].
   Slice(const uint8_t* d, size_t n) : begin_(d), end_(d + n) {}
   // Create a slice that refers to d[0,n-1].
-  Slice(const char* d, size_t n) : Slice(util::to_uchar_ptr(d), n) {}
+  Slice(const char* d, size_t n) : Slice(to_uchar_ptr(d), n) {}
 
   // Create a slice that refers to [begin, end).
-  Slice(const uint8_t* begin, const uint8_t* end) : begin_(begin), end_(end) {
-    CHECK_LE(begin, end);
-  }
+  Slice(const uint8_t* begin, const uint8_t* end) : begin_(begin), end_(end) {}
 
   template<size_t N>
   explicit Slice(const std::array<char, N>& arr) : Slice(arr.data(), N) {}
@@ -76,16 +70,16 @@ class Slice {
   explicit Slice(const std::array<unsigned char, N>& arr) : Slice(arr.data(), N) {}
 
   Slice(const char* begin, const char* end)
-      : Slice(util::to_uchar_ptr(begin), util::to_uchar_ptr(end)) {}
+      : Slice(to_uchar_ptr(begin), to_uchar_ptr(end)) {}
 
   // Create a slice that refers to the contents of "s"
   template <class CharTraits, class Allocator>
   Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
-      : Slice(util::to_uchar_ptr(s.data()), s.size()) {}
+      : Slice(to_uchar_ptr(s.data()), s.size()) {}
 
   // Create a slice that refers to s[0,strlen(s)-1]
   Slice(const char* s) // NOLINT(runtime/explicit)
-      : Slice(util::to_uchar_ptr(s), strlen(s)) {}
+      : Slice(to_uchar_ptr(s), strlen(s)) {}
 
   // Create a slice that refers to the contents of the faststring.
   // Note that further appends to the faststring may invalidate this slice.
@@ -93,13 +87,13 @@ class Slice {
       : Slice(s.data(), s.size()) {}
 
   Slice(const GStringPiece& s) // NOLINT(runtime/explicit)
-      : Slice(util::to_uchar_ptr(s.data()), s.size()) {}
+      : Slice(to_uchar_ptr(s.data()), s.size()) {}
 
   // Create a single slice from SliceParts using buf as storage.
   // buf must exist as long as the returned Slice exists.
   Slice(const SliceParts& parts, std::string* buf);
 
-  const char* cdata() const { return util::to_char_ptr(begin_); }
+  const char* cdata() const { return to_char_ptr(begin_); }
 
   // Return a pointer to the beginning of the referenced data
   const uint8_t* data() const { return begin_; }
@@ -109,7 +103,7 @@ class Slice {
 
   const uint8_t* end() const { return end_; }
 
-  const char* cend() const { return util::to_char_ptr(end_); }
+  const char* cend() const { return to_char_ptr(end_); }
 
   // Return the length (in bytes) of the referenced data
   size_t size() const { return end_ - begin_; }
@@ -129,53 +123,36 @@ class Slice {
 
   // Return the ith byte in the referenced data.
   // REQUIRES: n < size()
-  uint8_t operator[](size_t n) const {
-    DCHECK_LT(n, size());
-    return begin_[n];
-  }
+  uint8_t operator[](size_t n) const;
 
   // Change this slice to refer to an empty array
   void clear() {
-    begin_ = util::to_uchar_ptr("");
+    begin_ = to_uchar_ptr("");
     end_ = begin_;
   }
 
   // Drop the first "n" bytes from this slice.
-  void remove_prefix(size_t n) {
-    DCHECK_LE(n, size());
-    begin_ += n;
-  }
+  void remove_prefix(size_t n);
 
-  Slice Prefix(size_t n) const {
-    DCHECK_LE(n, size());
-    return Slice(begin_, n);
-  }
+  Slice Prefix(size_t n) const;
+
+  Slice WithoutPrefix(size_t n) const;
 
   // Drop the last "n" bytes from this slice.
-  void remove_suffix(size_t n) {
-    DCHECK_LE(n, size());
-    end_ -= n;
-  }
+  void remove_suffix(size_t n);
 
-  Slice Suffix(size_t n) const {
-    DCHECK_LE(n, size());
-    return Slice(end_ - n, end_);
-  }
+  Slice Suffix(size_t n) const;
+
+  Slice WithoutSuffix(size_t n) const;
 
   void CopyTo(void* buffer) const {
     memcpy(buffer, begin_, size());
   }
 
   // Truncate the slice to "n" bytes
-  void truncate(size_t n) {
-    DCHECK_LE(n, size());
-    end_ = begin_ + n;
-  }
+  void truncate(size_t n);
 
-  char consume_byte() {
-    DCHECK_GT(end_, begin_);
-    return *begin_++;
-  }
+  char consume_byte();
 
   bool TryConsumeByte(char c) {
     if (empty() || *begin_ != c) {
@@ -199,6 +176,8 @@ class Slice {
   size_t difference_offset(const Slice& b) const;
 
   void CopyToBuffer(std::string* buffer) const;
+
+  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
@@ -270,6 +249,12 @@ class Slice {
 
   size_t DynamicMemoryUsage() const { return 0; }
 
+  // Return a Slice representing bytes for any type which is laid out contiguously in memory.
+  template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
+  static Slice FromPod(const T* data) {
+    return Slice(pointer_cast<const char*>(data), sizeof(*data));
+  }
+
  private:
   friend bool operator==(const Slice& x, const Slice& y);
 
@@ -316,13 +301,19 @@ struct SliceParts {
       : parts(input.data()), num_parts(N) {
   }
 
-  std::string ToDebugHexString() const {
-    std::string result;
-    for (int i = 0; i != num_parts; ++i) {
-      result += parts[i].ToDebugHexString();
-    }
-    return result;
+  std::string ToDebugHexString() const;
+
+  // Sum of sizes of all slices.
+  size_t SumSizes() const;
+
+  // Copy content of all slice to specified buffer.
+  void* CopyAllTo(void* out) const {
+    return CopyAllTo(static_cast<char*>(out));
   }
+
+  char* CopyAllTo(char* out) const;
+
+  Slice TheOnlyPart() const;
 
   const Slice* parts;
   int num_parts;
@@ -368,6 +359,10 @@ inline size_t Slice::hash() const noexcept {
   return result;
 }
 
+inline size_t hash_value(const Slice& slice) {
+  return slice.hash();
+}
+
 inline size_t Slice::difference_offset(const Slice& b) const {
   size_t off = 0;
   const size_t len = std::min(size(), b.size());
@@ -377,20 +372,28 @@ inline size_t Slice::difference_offset(const Slice& b) const {
   return off;
 }
 
-// STL map whose keys are Slices.
-//
-// See sample usage in slice-test.cc.
-template <typename T>
-struct SliceMap {
-  typedef std::map<Slice, T, Slice::Comparator> type;
-};
-
 // Can be used with source implicitly convertible to Slice, for example std::string.
 inline void CopyToBuffer(const Slice& source, std::string* dest) {
   // operator= or assign(const std::string&) will shrink the capacity on at least CentOS gcc
   // build, so we have to use assign(const char*, size_t) to preserve buffer capacity and avoid
   // unnecessary memory reallocations.
   source.CopyToBuffer(dest);
+}
+
+inline bool operator<(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) < 0;
+}
+
+inline bool operator<=(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) <= 0;
+}
+
+inline bool operator>(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) > 0;
+}
+
+inline bool operator>=(const Slice& lhs, const Slice& rhs) {
+  return lhs.compare(rhs) >= 0;
 }
 
 }  // namespace yb

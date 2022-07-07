@@ -22,11 +22,13 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "yb/rocksdb/db/db_test_util.h"
+#include "yb/rocksdb/db/job_context.h"
 #include "yb/rocksdb/port/stack_trace.h"
 #include "yb/rocksdb/sst_file_manager.h"
 #include "yb/rocksdb/util/sst_file_manager_impl.h"
-#include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/util/test_macros.h"
 
 namespace rocksdb {
 
@@ -219,7 +221,7 @@ TEST_F(DBTest, DeleteObsoleteFilesPendingOutputs) {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   ASSERT_EQ(metadata.size(), 1U);
-  auto file_on_L2 = metadata[0].name;
+  auto file_on_L2 = metadata[0].Name();
   listener->SetExpectedFileName(dbname_ + file_on_L2);
 
   ASSERT_OK(dbfull()->TEST_CompactRange(3, nullptr, nullptr, nullptr,
@@ -631,7 +633,7 @@ TEST_F(DBTest, GetTotalSstFilesSize) {
     Options options = CurrentOptions();
     options.disable_auto_compactions = true;
     options.compression = is_compressed ? kSnappyCompression : kNoCompression;
-    auto stats = rocksdb::CreateDBStatistics();
+    auto stats = rocksdb::CreateDBStatisticsForTests();
     options.statistics = stats;
     DestroyAndReopen(options);
     // Generate 5 files in L0
@@ -763,7 +765,7 @@ TEST_F(DBTest, GetTotalSstFilesSizeVersionsFilesShared) {
     Options options = CurrentOptions();
     options.disable_auto_compactions = true;
     options.compression = is_compressed ? kSnappyCompression : kNoCompression;
-    auto stats = rocksdb::CreateDBStatistics();
+    auto stats = rocksdb::CreateDBStatisticsForTests();
     options.statistics = stats;
     DestroyAndReopen(options);
     // Generate 5 files in L0

@@ -1,179 +1,351 @@
 package com.yugabyte.yw.controllers;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
-
-import com.yugabyte.yw.common.ApiResponse;
-import com.yugabyte.yw.common.CertificateHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertificateDetails;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
+import com.yugabyte.yw.forms.CertificateParams;
+import com.yugabyte.yw.forms.ClientCertParams;
+import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
+import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.ClientCertParams;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import play.mvc.Result;
-import play.data.Form;
-import play.data.FormFactory;
-import play.libs.Json;
-
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
+import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponses;
+import io.swagger.annotations.Authorization;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import play.data.Form;
+import play.libs.Json;
+import play.mvc.Result;
 
+@Api(
+    value = "Certificate Info",
+    authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class CertificateController extends AuthenticatedController {
+
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
 
-  @Inject
-  play.Configuration appConfig;
+  @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
-  @Inject
-  FormFactory formFactory;
+  @Inject private play.Configuration appConfig;
 
+  @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "certificate",
+          value = "certificate params of the backup to be restored",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.CertificateParams",
+          required = true))
   public Result upload(UUID customerUUID) {
-    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
+    Customer.getOrBadRequest(customerUUID);
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
 
     Date certStart = new Date(formData.get().certStart);
     Date certExpiry = new Date(formData.get().certExpiry);
     String label = formData.get().label;
-    CertificateInfo.Type certType = formData.get().certType;
+    CertConfigType certType = formData.get().certType;
     String certContent = formData.get().certContent;
     String keyContent = formData.get().keyContent;
+
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
-    if (certType == CertificateInfo.Type.SelfSigned) {
-      if (certContent == null || keyContent == null) {
-        return ApiResponse.error(BAD_REQUEST, "Certificate or Keyfile can't be null.");
-      }
-    } else {
-      if (customCertInfo == null) {
-        return ApiResponse.error(BAD_REQUEST, "Custom Cert Info must be provided.");
-      } else if (customCertInfo.nodeCertPath == null || customCertInfo.nodeKeyPath == null ||
-                 customCertInfo.rootCertPath == null) {
-        return ApiResponse.error(BAD_REQUEST, "Custom Cert Paths can't be empty.");
-      }
+    CertificateParams.CustomServerCertData customServerCertData =
+        formData.get().customServerCertData;
+    HashicorpVaultConfigParams hcVaultParams = formData.get().hcVaultCertParams;
+
+    switch (certType) {
+      case SelfSigned:
+        {
+          if (certContent == null || keyContent == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Certificate or Keyfile can't be null.");
+          }
+          break;
+        }
+      case CustomCertHostPath:
+        {
+          if (customCertInfo == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Custom Cert Info must be provided.");
+          } else if (customCertInfo.nodeCertPath == null
+              || customCertInfo.nodeKeyPath == null
+              || customCertInfo.rootCertPath == null) {
+            throw new PlatformServiceException(BAD_REQUEST, "Custom Cert Paths can't be empty.");
+          }
+          break;
+        }
+      case CustomServerCert:
+        {
+          if (customServerCertData == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Custom Server Cert Info must be provided.");
+          } else if (customServerCertData.serverCertContent == null
+              || customServerCertData.serverKeyContent == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Custom Server Cert and Key content can't be empty.");
+          }
+          break;
+        }
+      case HashicorpVault:
+        {
+          if (hcVaultParams == null) {
+            throw new PlatformServiceException(
+                BAD_REQUEST, "Hashicorp Vault info must be provided.");
+          }
+          try {
+            UUID certUUID =
+                EncryptionInTransitUtil.createHashicorpCAConfig(
+                    customerUUID,
+                    label,
+                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+                    hcVaultParams);
+            auditService()
+                .createAuditEntryWithReqBody(
+                    ctx(),
+                    Audit.TargetType.Certificate,
+                    certUUID.toString(),
+                    Audit.ActionType.Create,
+                    Json.toJson(formData.rawData()));
+            return PlatformResults.withData(certUUID);
+
+          } catch (Exception e) {
+            String message = "Hashicorp Vault connection failed with exception. " + e.getMessage();
+            LOG.error(message + e.getMessage());
+            throw new PlatformServiceException(BAD_REQUEST, message);
+          }
+        }
+      default:
+        {
+          throw new PlatformServiceException(BAD_REQUEST, "certType should be valid.");
+        }
     }
     LOG.info("CertificateController: upload cert label {}, type {}", label, certType);
-    try {
-      UUID certUUID = CertificateHelper.uploadRootCA(
-                        label, customerUUID, appConfig.getString("yb.storage.path"),
-                        certContent, keyContent, certStart, certExpiry, certType,
-                        customCertInfo
-                      );
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(certUUID);
-    } catch (Exception e) {
-      LOG.error("Could not upload certs for customer {}", customerUUID, e);
-      return ApiResponse.error(BAD_REQUEST, "Couldn't upload certfiles");
-    }
+    UUID certUUID =
+        CertificateHelper.uploadRootCA(
+            label,
+            customerUUID,
+            runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+            certContent,
+            keyContent,
+            certStart,
+            certExpiry,
+            certType,
+            customCertInfo,
+            customServerCertData);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            certUUID.toString(),
+            Audit.ActionType.Create,
+            Json.toJson(formData.rawData()));
+    return PlatformResults.withData(certUUID);
   }
 
+  @ApiOperation(value = "Create a self signed certificate", response = UUID.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "label",
+          value = "certificate label",
+          paramType = "body",
+          dataType = "java.lang.String",
+          required = true))
+  public Result createSelfSignedCert(UUID customerUUID) {
+    ObjectNode formData = (ObjectNode) request().body().asJson();
+    JsonNode jsonData = formData.get("label");
+    if (jsonData == null) {
+      throw new PlatformServiceException(BAD_REQUEST, "Certificate label can't be null");
+    }
+    String certLabel = jsonData.asText();
+    LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
+    UUID certUUID =
+        CertificateHelper.createRootCA(
+            certLabel, customerUUID, appConfig.getString("yb.storage.path"));
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            certUUID.toString(),
+            Audit.ActionType.CreateSelfSignedCert,
+            Json.toJson(formData));
+    return PlatformResults.withData(certUUID);
+  }
+
+  @ApiOperation(value = "Add a client certificate", response = CertificateDetails.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "certificate",
+          value = "post certificate info",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.ClientCertParams",
+          required = true))
   public Result getClientCert(UUID customerUUID, UUID rootCA) {
-    Form<ClientCertParams> formData = formFactory.form(ClientCertParams.class)
-                                                 .bindFromRequest();
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-    Long certTimeMillis = formData.get().certStart;
-    Long certExpiryMillis = formData.get().certExpiry;
+    Form<ClientCertParams> formData = formFactory.getFormDataOrBadRequest(ClientCertParams.class);
+    Customer.getOrBadRequest(customerUUID);
+    long certTimeMillis = formData.get().certStart;
+    long certExpiryMillis = formData.get().certExpiry;
     Date certStart = certTimeMillis != 0L ? new Date(certTimeMillis) : null;
     Date certExpiry = certExpiryMillis != 0L ? new Date(certExpiryMillis) : null;
 
-    try {
-      JsonNode result = CertificateHelper.createClientCertificate(
-          rootCA, null, formData.get().username, certStart, certExpiry);
-      Audit.createAuditEntry(ctx(), request(), Json.toJson(formData.data()));
-      return ApiResponse.success(result);
-    } catch (Exception e) {
-      LOG.error(
-        "Error generating client cert for customer {} rootCA {}",
-        customerUUID, rootCA, e
-      );
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't generate client cert.");
-    }
+    CertificateDetails result =
+        CertificateHelper.createClientCertificate(
+            rootCA, null, formData.get().username, certStart, certExpiry);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            rootCA.toString(),
+            Audit.ActionType.AddClientCertificate,
+            Json.toJson(formData.rawData()));
+    return PlatformResults.withData(result);
   }
 
+  // TODO: cleanup raw json
+  @ApiOperation(value = "Get a customer's root certificate", response = Object.class)
   public Result getRootCert(UUID customerUUID, UUID rootCA) {
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    if (CertificateInfo.get(rootCA) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Cert ID: " + rootCA);
-    }
-    if (!CertificateInfo.get(rootCA).customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
-    }
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo.getOrBadRequest(rootCA, customerUUID);
+
     try {
+      CertificateInfo info = CertificateInfo.get(rootCA);
+
+      if (info.certType == CertConfigType.HashicorpVault) {
+        EncryptionInTransitUtil.fetchLatestCAForHashicorpPKI(
+            info, runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"));
+      }
+
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
-      Audit.createAuditEntry(ctx(), request());
+      auditService()
+          .createAuditEntryWithReqBody(
+              ctx(),
+              Audit.TargetType.Certificate,
+              rootCA.toString(),
+              Audit.ActionType.GetRootCertificate,
+              request().body().asJson());
       ObjectNode result = Json.newObject();
       result.put(CertificateHelper.ROOT_CERT, certContents);
-      return ApiResponse.success(result);
+      return PlatformResults.withRawData(result);
     } catch (Exception e) {
-      LOG.error("Could not get root cert {} for customer {}", rootCA, customerUUID, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't fetch root cert.");
+      throw new PlatformServiceException(BAD_REQUEST, "Failed to extract certificate");
     }
   }
 
+  @ApiOperation(
+      value = "List a customer's certificates",
+      response = CertificateInfo.class,
+      responseContainer = "List",
+      nickname = "getListOfCertificate")
+  @ApiResponses(
+      @io.swagger.annotations.ApiResponse(
+          code = 500,
+          message = "If there was a server or database issue when listing the regions",
+          response = YBPError.class))
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    if (certs == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    return ApiResponse.success(certs);
+    return PlatformResults.withData(certs);
   }
 
+  @ApiOperation(
+      value = "Get a certificate's UUID",
+      response = UUID.class,
+      nickname = "getCertificate")
   public Result get(UUID customerUUID, String label) {
-    CertificateInfo cert = CertificateInfo.get(label);
-    if (cert == null) {
-      return ApiResponse.error(BAD_REQUEST, "No Certificate with Label: " + label);
-    } else {
-      return ApiResponse.success(cert.uuid);
-    }
+    CertificateInfo cert = CertificateInfo.getOrBadRequest(label);
+    return PlatformResults.withData(cert.uuid);
   }
 
+  @ApiOperation(
+      value = "Delete a certificate",
+      response = YBPSuccess.class,
+      nickname = "deleteCertificate")
+  public Result delete(UUID customerUUID, UUID reqCertUUID) {
+    CertificateInfo.delete(reqCertUUID, customerUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Delete);
+    LOG.info("Successfully deleted the certificate:" + reqCertUUID);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "Edit TLS certificate config details",
+      response = YBPSuccess.class,
+      nickname = "editCertificate")
+  public Result edit(UUID customerUUID, UUID reqCertUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+
+    CertConfigType certType = formData.get().certType;
+    CertificateInfo info = CertificateInfo.get(reqCertUUID);
+
+    if (certType != CertConfigType.HashicorpVault
+        || info.certType != CertConfigType.HashicorpVault) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Certificate Config does not support Edit option");
+    } else {
+      HashicorpVaultConfigParams formParams = formData.get().hcVaultCertParams;
+      HashicorpVaultConfigParams configParams = info.getCustomHCPKICertInfoInternal();
+
+      if (Strings.isNullOrEmpty(formParams.vaultToken)) {
+        throw new PlatformServiceException(BAD_REQUEST, "Certificate Config not changed");
+      }
+
+      if (Strings.isNullOrEmpty(formParams.engine)) {
+        formParams.engine = configParams.engine;
+      }
+      if (Strings.isNullOrEmpty(formParams.vaultAddr)) {
+        formParams.vaultAddr = configParams.vaultAddr;
+      }
+      if (Strings.isNullOrEmpty(formParams.mountPath)) {
+        formParams.mountPath = configParams.mountPath;
+      }
+      if (Strings.isNullOrEmpty(formParams.role)) {
+        formParams.role = configParams.role;
+      }
+
+      EncryptionInTransitUtil.editEITHashicorpConfig(
+          info.uuid,
+          customerUUID,
+          runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+          formParams);
+    }
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(), Audit.TargetType.Certificate, reqCertUUID.toString(), Audit.ActionType.Edit);
+    LOG.info("Successfully edited the certificate information:" + reqCertUUID);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(value = "Update an empty certificate", response = CertificateInfo.class)
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
-    Form<CertificateParams> formData = formFactory.form(CertificateParams.class)
-                                                  .bindFromRequest();
-    if (formData.hasErrors()) {
-      return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
-    }
-    if (Customer.get(customerUUID) == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Customer UUID: " + customerUUID);
-    }
-    CertificateInfo certificate = CertificateInfo.get(rootCA);
-    if (certificate == null) {
-      return ApiResponse.error(BAD_REQUEST, "Invalid Cert ID: " + rootCA);
-    }
-    if (!certificate.customerUUID.equals(customerUUID)) {
-      return ApiResponse.error(BAD_REQUEST, "Certificate doesn't belong to customer");
-    }
-    if (certificate.certType == CertificateInfo.Type.SelfSigned) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot edit self-signed cert.");
-    }
-    if (certificate.customCertInfo != null) {
-      return ApiResponse.error(BAD_REQUEST, "Cannot edit pre-customized cert. Create a new one.");
-    }
+    Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
+    Customer.getOrBadRequest(customerUUID);
+    CertificateInfo certificate = CertificateInfo.getOrBadRequest(rootCA, customerUUID);
     CertificateParams.CustomCertInfo customCertInfo = formData.get().customCertInfo;
-    try {
-      certificate.setCustomCertInfo(customCertInfo);
-      return ApiResponse.success(certificate);
-    } catch (Exception e) {
-      LOG.error("Could not set cert info for certificate {}", rootCA, e);
-      return ApiResponse.error(INTERNAL_SERVER_ERROR, "Couldn't set custom cert info.");
-    }
+    certificate.setCustomCertPathParams(customCertInfo, rootCA, customerUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            ctx(),
+            Audit.TargetType.Certificate,
+            Objects.toString(certificate.uuid, null),
+            Audit.ActionType.UpdateEmptyCustomerCertificate);
+    return PlatformResults.withData(certificate);
   }
 }

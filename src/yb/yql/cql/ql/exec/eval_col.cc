@@ -13,9 +13,19 @@
 //
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/common/jsonb.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/util/result.h"
+
+#include "yb/yql/cql/ql/exec/exec_context.h"
 #include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_update.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
 
 namespace yb {
 namespace ql {
@@ -24,7 +34,7 @@ using std::shared_ptr;
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
+Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
                                         QLReferencedColumnsPB *columns_pb) {
   // Write a list of columns to be read before executing the statement.
   const MCSet<int32>& column_refs = tnode->column_refs();
@@ -39,7 +49,7 @@ CHECKED_STATUS Executor::ColumnRefsToPB(const PTDmlStmt *tnode,
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
+Status Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB *req) {
   const MCVector<ColumnArg>& column_args = tnode->column_args();
 
   for (const ColumnArg& col : column_args) {
@@ -51,9 +61,21 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB
     const ColumnDesc *col_desc = col.desc();
     VLOG(3) << "WRITE request, column id = " << col_desc->id();
 
+    const PTExpr::SharedPtr& expr = col.expr();
+    if (expr != nullptr && expr->expr_op() == ExprOperator::kBindVar) {
+      const PTBindVar* bind_pt = static_cast<const PTBindVar*>(expr.get());
+      DCHECK_NOTNULL(bind_pt->name().get());
+      if(VERIFY_RESULT(exec_context_->params().IsBindVariableUnset(bind_pt->name()->c_str(),
+                                                                   bind_pt->pos()))) {
+        VLOG(3) << "Value unset for column: " << bind_pt->name()->c_str();
+        continue;
+      }
+    }
+
     QLExpressionPB *expr_pb = CreateQLExpression(req, *col_desc);
 
-    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    RETURN_NOT_OK(PTExprToPB(expr, expr_pb));
+
     if (col_desc->is_primary()) {
       RETURN_NOT_OK(EvalExpr(expr_pb, QLTableRow::empty_row()));
     }
@@ -78,13 +100,33 @@ CHECKED_STATUS Executor::ColumnArgsToPB(const PTDmlStmt *tnode, QLWriteRequestPB
     }
   }
 
+  common::Jsonb jsonb_null;
+  RETURN_NOT_OK(jsonb_null.FromString("null"));
   const MCVector<JsonColumnArg>& jsoncol_args = tnode->json_col_args();
   for (const JsonColumnArg& col : jsoncol_args) {
+    QLExpressionPB expr_pb;
+    RETURN_NOT_OK(PTExprToPB(col.expr(), &expr_pb));
+
+    if (tnode->opcode() == TreeNodeOpcode::kPTUpdateStmt) {
+      const PTUpdateStmt* update_tnode = static_cast<const PTUpdateStmt*>(tnode);
+      if (update_tnode->update_properties() &&
+          update_tnode->update_properties()->ignore_null_jsonb_attributes()) {
+        if (expr_pb.expr_case() == QLExpressionPB::kValue &&
+            expr_pb.value().value_case() == QLValuePB::kJsonbValue &&
+            expr_pb.value().jsonb_value() == jsonb_null.SerializedJsonb()) {
+          // TODO(Piyush): Log attribute json path as well.
+          VLOG(1) << "Ignoring null for json attribute in UPDATE statement " \
+            "for column " << col.desc()->MangledName();
+          continue;
+        }
+      }
+    }
+
     const ColumnDesc *col_desc = col.desc();
     QLColumnValuePB *col_pb = req->add_column_values();
     col_pb->set_column_id(col_desc->id());
-    QLExpressionPB *expr_pb = col_pb->mutable_expr();
-    RETURN_NOT_OK(PTExprToPB(col.expr(), expr_pb));
+    *(col_pb->mutable_expr()) = expr_pb;
+
     for (auto& col_arg : col.args()->node_list()) {
       QLJsonOperationPB *arg_pb = col_pb->add_json_args();
       RETURN_NOT_OK(PTJsonOperatorToPB(std::dynamic_pointer_cast<PTJsonOperator>(col_arg), arg_pb));

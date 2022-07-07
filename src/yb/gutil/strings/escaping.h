@@ -33,21 +33,24 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef STRINGS_ESCAPING_H_
-#define STRINGS_ESCAPING_H_
+#ifndef YB_GUTIL_STRINGS_ESCAPING_H
+#define YB_GUTIL_STRINGS_ESCAPING_H
 
 #include <stddef.h>
+
 #include <string>
-using std::string;
 #include <vector>
-using std::vector;
 
 #include <glog/logging.h>
 
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/strings/ascii_ctype.h"
 #include "yb/gutil/strings/charset.h"
 #include "yb/gutil/strings/stringpiece.h"
+
+using std::string;
+using std::vector;
+
+
 
 namespace strings {
 
@@ -60,7 +63,7 @@ namespace strings {
 //
 //    Example: [some "string" to test] --> [some ""string"" to test]
 // ----------------------------------------------------------------------
-int EscapeStrForCSV(const char* src, char* dest, int dest_len);
+size_t EscapeStrForCSV(const char* src, char* dest, size_t dest_len);
 
 // ----------------------------------------------------------------------
 // UnescapeCEscapeSequences()
@@ -98,9 +101,8 @@ int EscapeStrForCSV(const char* src, char* dest, int dest_len);
 //
 //    *** DEPRECATED: Use CUnescape() in new code ***
 //    ----------------------------------------------------------------------
-int UnescapeCEscapeSequences(const char* source, char* dest);
-int UnescapeCEscapeSequences(const char* source, char* dest,
-                             vector<string>* errors);
+size_t UnescapeCEscapeSequences(const char* source, char* dest);
+size_t UnescapeCEscapeSequences(const char* source, char* dest, vector<string>* errors);
 
 // ----------------------------------------------------------------------
 // UnescapeCEscapeString()
@@ -118,9 +120,8 @@ int UnescapeCEscapeSequences(const char* source, char* dest,
 //
 //    *** DEPRECATED: Use CUnescape() in new code ***
 // ----------------------------------------------------------------------
-int UnescapeCEscapeString(const string& src, string* dest);
-int UnescapeCEscapeString(const string& src, string* dest,
-                          vector<string>* errors);
+size_t UnescapeCEscapeString(const string& src, string* dest);
+size_t UnescapeCEscapeString(const string& src, string* dest, vector<string>* errors);
 string UnescapeCEscapeString(const string& src);
 
 // ----------------------------------------------------------------------
@@ -153,8 +154,7 @@ string UnescapeCEscapeString(const string& src);
 //    Errors: Sets the description of the first encountered error in
 //    'error'. To disable error reporting, set 'error' to NULL.
 // ----------------------------------------------------------------------
-bool CUnescape(const GStringPiece& source, char* dest, int* dest_len,
-               string* error);
+bool CUnescape(const GStringPiece& source, char* dest, size_t* dest_len, string* error);
 
 bool CUnescape(const GStringPiece& source, string* dest, string* error);
 
@@ -177,7 +177,7 @@ inline bool CUnescape(const GStringPiece& source, string* dest) {
 
 bool CUnescapeForNullTerminatedString(const GStringPiece& source,
                                       char* dest,
-                                      int* dest_len,
+                                      size_t* dest_len,
                                       string* error);
 
 bool CUnescapeForNullTerminatedString(const GStringPiece& source,
@@ -205,12 +205,10 @@ inline bool CUnescapeForNullTerminatedString(const GStringPiece& source,
 //
 //    Currently only \n, \r, \t, ", ', \ and !ascii_isprint() chars are escaped.
 // ----------------------------------------------------------------------
-int CEscapeString(const char* src, int src_len, char* dest, int dest_len);
-int CHexEscapeString(const char* src, int src_len, char* dest, int dest_len);
-int Utf8SafeCEscapeString(const char* src, int src_len, char* dest,
-                          int dest_len);
-int Utf8SafeCHexEscapeString(const char* src, int src_len, char* dest,
-                             int dest_len);
+size_t CEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len);
+size_t CHexEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len);
+size_t Utf8SafeCEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len);
+size_t Utf8SafeCHexEscapeString(const char* src, size_t src_len, char* dest, size_t dest_len);
 
 // ----------------------------------------------------------------------
 // CEscape()
@@ -297,7 +295,7 @@ inline string BackslashUnescape(const GStringPiece& src,
 //    anyway.
 //    RETURNS the length of dest.
 // ----------------------------------------------------------------------
-int QuotedPrintableUnescape(const char* src, int slen, char* dest, int szdest);
+size_t QuotedPrintableUnescape(const char* src, size_t slen, char* dest, size_t szdest);
 
 // ----------------------------------------------------------------------
 // QEncodingUnescape()
@@ -311,7 +309,7 @@ int QuotedPrintableUnescape(const char* src, int slen, char* dest, int szdest);
 //    anyway.
 //    RETURNS the length of dest.
 // ----------------------------------------------------------------------
-int QEncodingUnescape(const char* src, int slen, char* dest, int szdest);
+size_t QEncodingUnescape(const char* src, size_t slen, char* dest, size_t szdest);
 
 // ----------------------------------------------------------------------
 // Base64Unescape()
@@ -325,14 +323,14 @@ int QEncodingUnescape(const char* src, int slen, char* dest, int szdest);
 //    return false (with dest empty) if src contains invalid chars; for
 //    these versions src and dest must be different strings.
 // ----------------------------------------------------------------------
-int Base64Unescape(const char* src, int slen, char* dest, int szdest);
-bool Base64Unescape(const char* src, int slen, string* dest);
+size_t Base64Unescape(const char* src, size_t slen, char* dest, size_t szdest);
+bool Base64Unescape(const char* src, size_t slen, string* dest);
 inline bool Base64Unescape(const string& src, string* dest) {
   return Base64Unescape(src.data(), src.size(), dest);
 }
 
-int WebSafeBase64Unescape(const char* src, int slen, char* dest, int szdest);
-bool WebSafeBase64Unescape(const char* src, int slen, string* dest);
+size_t WebSafeBase64Unescape(const char* src, size_t slen, char* dest, size_t szdest);
+bool WebSafeBase64Unescape(const char* src, size_t slen, string* dest);
 inline bool WebSafeBase64Unescape(const string& src, string* dest) {
   return WebSafeBase64Unescape(src.data(), src.size(), dest);
 }
@@ -341,9 +339,9 @@ inline bool WebSafeBase64Unescape(const string& src, string* dest) {
 // routines. Make sure to use the same value for do_padding in both.
 // This function may return incorrect results if given input_len values that
 // are extremely high, which should happen rarely.
-int CalculateBase64EscapedLen(int input_len, bool do_padding);
+size_t CalculateBase64EscapedLen(size_t input_len, bool do_padding);
 // Use this version when calling Base64Escape without a do_padding arg.
-int CalculateBase64EscapedLen(int input_len);
+size_t CalculateBase64EscapedLen(size_t input_len);
 
 // ----------------------------------------------------------------------
 // Base64Escape()
@@ -357,9 +355,9 @@ int CalculateBase64EscapedLen(int input_len);
 //    to escape them.  It also has an extra parameter "do_padding",
 //    which when set to false will prevent padding with "=".
 // ----------------------------------------------------------------------
-int Base64Escape(const unsigned char* src, int slen, char* dest, int szdest);
-int WebSafeBase64Escape(const unsigned char* src, int slen, char* dest,
-                        int szdest, bool do_padding);
+size_t Base64Escape(const unsigned char* src, size_t slen, char* dest, size_t szdest);
+size_t WebSafeBase64Escape(
+    const unsigned char* src, size_t slen, char* dest, size_t szdest, bool do_padding);
 // Encode src into dest with padding.
 void Base64Escape(const string& src, string* dest);
 // Encode src into dest web-safely without padding.
@@ -367,10 +365,8 @@ void WebSafeBase64Escape(const string& src, string* dest);
 // Encode src into dest web-safely with padding.
 void WebSafeBase64EscapeWithPadding(const string& src, string* dest);
 
-void Base64Escape(const unsigned char* src, int szsrc,
-                  string* dest, bool do_padding);
-void WebSafeBase64Escape(const unsigned char* src, int szsrc,
-                         string* dest, bool do_padding);
+void Base64Escape(const unsigned char* src, size_t szsrc, string* dest, bool do_padding);
+void WebSafeBase64Escape(const unsigned char* src, size_t szsrc, string* dest, bool do_padding);
 
 // ----------------------------------------------------------------------
 // Base32Unescape()
@@ -378,8 +374,8 @@ void WebSafeBase64Escape(const unsigned char* src, int szsrc,
 //    ASCII equivalents. src is not null terminated, instead specify len.
 //    RETURNS the length of dest, or -1 if src contains invalid chars.
 // ----------------------------------------------------------------------
-int Base32Unescape(const char* src, int slen, char* dest, int szdest);
-bool Base32Unescape(const char* src, int slen, string* dest);
+size_t Base32Unescape(const char* src, size_t slen, char* dest, size_t szdest);
+bool Base32Unescape(const char* src, size_t slen, string* dest);
 inline bool Base32Unescape(const string& src, string* dest) {
   return Base32Unescape(src.data(), src.size(), dest);
 }
@@ -394,8 +390,7 @@ inline bool Base32Unescape(const string& src, string* dest) {
 //
 //    Note that this is "Base 32 Encoding" from RFC 4648 section 6.
 // ----------------------------------------------------------------------
-int Base32Escape(const unsigned char* src, size_t szsrc,
-                 char* dest, size_t szdest);
+size_t Base32Escape(const unsigned char* src, size_t szsrc, char* dest, size_t szdest);
 bool Base32Escape(const string& src, string* dest);
 
 // ----------------------------------------------------------------------
@@ -409,14 +404,13 @@ bool Base32Escape(const string& src, string* dest);
 //    Note that this is "Base 32 Encoding with Extended Hex Alphabet"
 //    from RFC 4648 section 7.
 // ----------------------------------------------------------------------
-int Base32HexEscape(const unsigned char* src, size_t szsrc,
-                    char* dest, size_t szdest);
+size_t Base32HexEscape(const unsigned char* src, size_t szsrc, char* dest, size_t szdest);
 bool Base32HexEscape(const string& src, string* dest);
 
 // Return the length to use for the output buffer given to the base32 escape
 // routines.  This function may return incorrect results if given input_len
 // values that are extremely high, which should happen rarely.
-int CalculateBase32EscapedLen(size_t input_len);
+size_t CalculateBase32EscapedLen(size_t input_len);
 
 // ----------------------------------------------------------------------
 // EightBase32DigitsToTenHexDigits()
@@ -523,9 +517,9 @@ inline int hex_digit_to_int(char c) {
 //         2*'num' hexadecimal characters to 'num' binary data.
 //        Return value: 'num' bytes of binary data (via the 'to' argument)
 // ----------------------------------------------------------------------
-void a2b_hex(const char* from, unsigned char* to, int num);
-void a2b_hex(const char* from, char* to, int num);
-void a2b_hex(const char* from, string* to, int num);
+void a2b_hex(const char* from, unsigned char* to, size_t num);
+void a2b_hex(const char* from, char* to, size_t num);
+void a2b_hex(const char* from, string* to, size_t num);
 string a2b_hex(const string& a);
 
 // ----------------------------------------------------------------------
@@ -546,8 +540,8 @@ string a2b_bin(const string& a, bool byte_order_msb);
 //   'num' bytes of binary to a 2*'num'-character hexadecimal representation
 //    Return value: 2*'num' characters of ascii text (via the 'to' argument)
 // ----------------------------------------------------------------------
-void b2a_hex(const unsigned char* from, char* to, int num);
-void b2a_hex(const unsigned char* from, string* to, int num);
+void b2a_hex(const unsigned char* from, char* to, size_t num);
+void b2a_hex(const unsigned char* from, string* to, size_t num);
 
 // ----------------------------------------------------------------------
 // b2a_hex()
@@ -555,7 +549,7 @@ void b2a_hex(const unsigned char* from, string* to, int num);
 //   'num' bytes of binary to a 2*'num'-character hexadecimal representation
 //    Return value: 2*'num' characters of ascii string
 // ----------------------------------------------------------------------
-string b2a_hex(const char* from, int num);
+string b2a_hex(const char* from, size_t num);
 string b2a_hex(const GStringPiece& b);
 
 // ----------------------------------------------------------------------
@@ -594,11 +588,11 @@ string ShellEscapeCommandLine(InputIterator begin, const InputIterator& end) {
 
 // Reads at most bytes_to_read from binary_string and writes it to
 // ascii_string in lower case hex.
-void ByteStringToAscii(const string& binary_string, int bytes_to_read,
+void ByteStringToAscii(const string& binary_string, size_t bytes_to_read,
                        string* ascii_string);
 
 inline string ByteStringToAscii(const string& binary_string,
-                                int bytes_to_read) {
+                                size_t bytes_to_read) {
   string result;
   ByteStringToAscii(binary_string, bytes_to_read, &result);
   return result;
@@ -689,4 +683,4 @@ using strings::ByteStringFromAscii;
 using strings::ByteStringToAscii;
 using strings::CleanStringLineEndings;
 
-#endif  // STRINGS_ESCAPING_H_
+#endif  // YB_GUTIL_STRINGS_ESCAPING_H

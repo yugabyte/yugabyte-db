@@ -30,7 +30,7 @@ YB_STRONGLY_TYPED_BOOL(SkipEmptyMessages);
 // Listener of BinaryCallParser, invoked when call is parsed.
 class BinaryCallParserListener {
  public:
-  virtual CHECKED_STATUS HandleCall(const ConnectionPtr& connection, CallData* call_data) = 0;
+  virtual Status HandleCall(const ConnectionPtr& connection, CallData* call_data) = 0;
  protected:
   ~BinaryCallParserListener() {}
 };
@@ -45,9 +45,9 @@ class BinaryCallParser {
 
   // If tracker_for_throttle is not nullptr - throttle big requests when tracker_for_throttle
   // (or any of its ancestors) exceeds soft memory limit.
-  Result<ProcessDataResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
-                                  ReadBufferFull read_buffer_full,
-                                  const MemTrackerPtr* tracker_for_throttle);
+  Result<ProcessCallsResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
+                                   ReadBufferFull read_buffer_full,
+                                   const MemTrackerPtr* tracker_for_throttle);
 
  private:
   MemTrackerPtr buffer_tracker_;
@@ -64,7 +64,7 @@ class BinaryCallParser {
 // Returns whether we should throttle RPC call based on its size and memory consumption.
 // Uses specified throttle_message when logging a warning about throttling an RPC call.
 bool ShouldThrottleRpc(
-    const MemTrackerPtr& throttle_tracker, size_t call_data_size, const char* throttle_message);
+    const MemTrackerPtr& throttle_tracker, ssize_t call_data_size, const char* throttle_message);
 
 } // namespace rpc
 } // namespace yb

@@ -26,7 +26,7 @@ export const useAvailabilityZones = (
   // zones are the derivatives from regions as every region item has "zones" prop
   const { data: allRegions } = useQuery(
     [QUERY_KEY.getRegionsList, provider?.uuid],
-    api.getRegionsList,
+    () => api.getRegionsList(provider?.uuid),
     { enabled: !!provider?.uuid } // make sure query won't run when there's no provider defined
   );
 
@@ -95,20 +95,24 @@ export const useAutoPlacement = (
     ]
   };
 
-  const { isFetching } = useQuery([QUERY_KEY.universeConfigure, payload], api.universeConfigure, {
-    enabled:
-      needAutoPlacement &&
-      autoPlacement &&
-      totalNodes >= replicationFactor &&
-      !_.isEmpty(regionList),
-    onSuccess: (data) => {
-      const cluster = _.find<Cluster>(data.clusters, { clusterType }); // TODO: revise logic for async cluster case
-      const zones = getPlacementsFromCluster(cluster);
-      _log('loaded auto placement', zones);
-      setValue(name, zones, { shouldValidate: true });
-      setNeedAutoPlacement(false);
+  const { isFetching } = useQuery(
+    [QUERY_KEY.universeConfigure, payload],
+    () => api.universeConfigure(payload),
+    {
+      enabled:
+        needAutoPlacement &&
+        autoPlacement &&
+        totalNodes >= replicationFactor &&
+        !_.isEmpty(regionList),
+      onSuccess: (data) => {
+        const cluster = _.find<Cluster>(data.clusters, { clusterType }); // TODO: revise logic for async cluster case
+        const zones = getPlacementsFromCluster(cluster);
+        _log('loaded auto placement', zones);
+        setValue(name, zones, { shouldValidate: true });
+        setNeedAutoPlacement(false);
+      }
     }
-  });
+  );
 
   // manual mode - update placements when zones (i.e. regions) or replication factor changed only
   useEffect(() => {
@@ -145,7 +149,7 @@ export const useAutoPlacement = (
 
     // keep track of zones to identify when it was a zones reset or initial zones loading
     prevZones.current = zonesAll;
-  }, [autoPlacement, replicationFactor, zonesAll]);
+  }, [autoPlacement, replicationFactor, zonesAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // auto mode
   useEffect(() => {
@@ -166,7 +170,7 @@ export const useAutoPlacement = (
     }
 
     prevPropsCombination.current = propsCombination;
-  }, [autoPlacement, regionList, totalNodes, replicationFactor]);
+  }, [autoPlacement, regionList, totalNodes, replicationFactor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // return isFetching flag as it updates even when re-running same queries
   return { isLoading: isFetching };

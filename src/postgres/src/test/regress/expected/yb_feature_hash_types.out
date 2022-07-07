@@ -46,7 +46,6 @@ CREATE TABLE ft_h_tab_bool (feature_col BOOLEAN PRIMARY KEY);
 -- Enumerated Types
 CREATE TYPE feature_h_enum AS ENUM('one', 'two', 'three');
 CREATE TABLE ft_h_tab_enum (feature_col feature_h_enum PRIMARY KEY);
-ERROR:  PRIMARY KEY containing column of type 'user_defined_type' not yet supported
 --
 -- Geometric Types
 CREATE TABLE ft_h_tab_point (feature_col POINT PRIMARY KEY);

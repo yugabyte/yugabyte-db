@@ -25,13 +25,13 @@
 #define YB_ROCKSDB_DB_WRITE_BATCH_INTERNAL_H
 
 #pragma once
+
 #include <vector>
+
 #include "yb/rocksdb/db/write_thread.h"
 #include "yb/rocksdb/types.h"
-#include "yb/rocksdb/write_batch.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/autovector.h"
+#include "yb/rocksdb/write_batch.h"
 
 #include "yb/util/enums.h"
 

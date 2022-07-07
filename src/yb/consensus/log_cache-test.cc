@@ -40,13 +40,18 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/wire_protocol-test-util.h"
+
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_cache.h"
+
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/bind_helpers.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -60,6 +65,7 @@ using std::thread;
 
 DECLARE_int32(log_cache_size_limit_mb);
 DECLARE_int32(global_log_cache_size_limit_mb);
+DECLARE_int32(global_log_cache_size_limit_percentage);
 
 METRIC_DECLARE_entity(tablet);
 
@@ -94,7 +100,7 @@ class LogCacheTest : public YBTest {
     YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     ASSERT_OK(ThreadPoolBuilder("log").Build(&log_thread_pool_));
     ASSERT_OK(log::Log::Open(log::LogOptions(),
                             kTestTablet,
@@ -102,7 +108,8 @@ class LogCacheTest : public YBTest {
                             fs_manager_->uuid(),
                             schema_,
                             0, // schema_version
-                            NULL,
+                            nullptr, // table_metrics_entity
+                            nullptr, // tablet_metrics_entity
                             log_thread_pool_.get(),
                             log_thread_pool_.get(),
                             std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -148,9 +155,9 @@ class LogCacheTest : public YBTest {
   const Schema schema_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
-  gscoped_ptr<LogCache> cache_;
+  std::unique_ptr<LogCache> cache_;
   scoped_refptr<log::Log> log_;
   scoped_refptr<server::Clock> clock_;
 };
@@ -271,7 +278,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
 
   // Verify the size is right. It's not exactly kPayloadSize because of in-memory
   // overhead, etc.
-  int size_with_one_msg = cache_->BytesUsed();
+  auto size_with_one_msg = cache_->BytesUsed();
   ASSERT_GT(size_with_one_msg, 300_KB);
   ASSERT_LT(size_with_one_msg, 500_KB);
 
@@ -280,7 +287,7 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   ASSERT_OK(log_->WaitUntilAllFlushed());
   ASSERT_EQ(2, cache_->num_cached_ops());
 
-  int size_with_two_msgs = cache_->BytesUsed();
+  auto size_with_two_msgs = cache_->BytesUsed();
   ASSERT_GT(size_with_two_msgs, 2 * 300_KB);
   ASSERT_LT(size_with_two_msgs, 2 * 500_KB);
 
@@ -305,12 +312,33 @@ TEST_F(LogCacheTest, TestMemoryLimit) {
   ASSERT_EQ(cache_->BytesUsed(), 0);
 }
 
-TEST_F(LogCacheTest, TestGlobalMemoryLimit) {
-  FLAGS_global_log_cache_size_limit_mb = 4;
+TEST_F(LogCacheTest, TestGlobalMemoryLimitMB) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_mb) = 4;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_global_log_cache_size_limit_percentage) = 100;
   CloseAndReopenCache(MinimumOpId());
 
-  // Exceed the global hard limit.
+  // Consume all but 1 MB of cache space.
   ScopedTrackedConsumption consumption(cache_->parent_tracker_, 3_MB);
+
+  const int kPayloadSize = 768_KB;
+
+  // Should succeed, but only end up caching one of the two ops because of the global limit.
+  ASSERT_OK(AppendReplicateMessagesToCache(1, 2, kPayloadSize));
+  ASSERT_OK(log_->WaitUntilAllFlushed());
+
+  ASSERT_EQ(1, cache_->num_cached_ops());
+  ASSERT_LE(cache_->BytesUsed(), 1_MB);
+}
+
+TEST_F(LogCacheTest, TestGlobalMemoryLimitPercentage) {
+  FLAGS_global_log_cache_size_limit_mb = INT32_MAX;
+  FLAGS_global_log_cache_size_limit_percentage = 5;
+  const int64_t root_mem_limit = MemTracker::GetRootTracker()->limit();
+
+  CloseAndReopenCache(MinimumOpId());
+
+  // Consume all but 1 MB of cache space.
+  ScopedTrackedConsumption consumption(cache_->parent_tracker_, root_mem_limit * 0.05 - 1_MB);
 
   const int kPayloadSize = 768_KB;
 
@@ -331,7 +359,7 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
   ASSERT_EQ(0, tracker->consumption());
 
   ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));
-  int size_with_one_msg = tracker->consumption();
+  auto size_with_one_msg = tracker->consumption();
 
   for (int i = 0; i < 10; i++) {
     ASSERT_OK(AppendReplicateMessagesToCache(1, 1, kPayloadSize));

@@ -17,6 +17,7 @@
 
 #include "yb/util/ntp_clock.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 
 using namespace std::literals;
 

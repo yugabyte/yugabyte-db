@@ -15,14 +15,14 @@ package org.yb.pgsql;
 import org.apache.commons.lang3.RandomUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.core.TransactionState;
-import org.postgresql.util.PSQLException;
-import org.postgresql.util.PSQLState;
+import com.yugabyte.core.TransactionState;
+import com.yugabyte.util.PSQLException;
+import com.yugabyte.util.PSQLState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.util.RandomNumberUtil;
-import org.yb.util.SanitizerUtil;
+import org.yb.util.BuildTypeUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Array;
@@ -40,6 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Random;
 
 import static org.yb.AssertionWrappers.*;
@@ -485,7 +486,7 @@ public class TestPgTransactions extends BasePgSQLTest {
 
       int numFirstWinners = 0;
       int numSecondWinners = 0;
-      final int totalIterations = SanitizerUtil.nonTsanVsTsan(300, 100);
+      final int totalIterations = BuildTypeUtil.nonTsanVsTsan(300, 100);
       for (int i = 1; i <= totalIterations; ++i) {
         LOG.info("Starting iteration: i=" + i);
         if (RandomUtils.nextBoolean()) {
@@ -740,7 +741,7 @@ public class TestPgTransactions extends BasePgSQLTest {
                              "UPDATE test SET v = 3 WHERE k = 1", 1);
 
     // Verify JDBC single-row prepared statements use non-txn path.
-    long oldTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long oldTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
 
     PreparedStatement insertStatement =
       connection.prepareStatement("INSERT INTO test VALUES (?, ?)");
@@ -759,7 +760,7 @@ public class TestPgTransactions extends BasePgSQLTest {
     updateStatement.setInt(2, 1);
     updateStatement.executeUpdate();
 
-    long newTxnValue = getMetricCounter(TRANSACTIONS_METRIC);
+    long newTxnValue = getMetricCounter(SINGLE_SHARD_TRANSACTIONS_METRIC);
     assertEquals(oldTxnValue, newTxnValue);
   }
 
@@ -899,7 +900,7 @@ public class TestPgTransactions extends BasePgSQLTest {
       txn1_successes = checkConflictingStatements(statement1,
                                                   "SELECT * FROM test WHERE v = 1 FOR UPDATE",
                                                   statement2,
-                                                  "UPDATE test SET v = 10 WHERE k = 2",
+                                                  "UPDATE test SET v = 10 WHERE k = 1",
                                                   numItersSmall);
       assertEquals(numItersSmall, txn1_successes);
 
@@ -938,6 +939,126 @@ public class TestPgTransactions extends BasePgSQLTest {
                                                   "SELECT * FROM idx_test WHERE v = 1 FOR SHARE",
                                                   numItersLarge);
       checkTransactionFairness(txn1_successes, numItersLarge - txn1_successes, numItersLarge);
+    }
+  }
+
+  @Test
+  public void testReadPointInReadCommittedIsolation() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("yb_enable_read_committed_isolation", "true"));
+
+    List<IsolationLevel> isoLevels = Arrays.asList(IsolationLevel.READ_UNCOMMITTED,
+                                                   IsolationLevel.READ_COMMITTED);
+
+    isoLevels.forEach((isolation) -> {
+      try (Statement s1 =
+             getConnectionBuilder().withIsolationLevel(isolation).connect().createStatement();
+           Statement s2 =
+             getConnectionBuilder().withIsolationLevel(isolation).connect().createStatement()) {
+        s1.execute("CREATE TABLE test (k int PRIMARY KEY, v int)");
+        // Row inserted before txn start
+        s2.execute("INSERT INTO test VALUES (1, 2)");
+
+        s1.execute("BEGIN");
+        // Row inserted by concurrent single-stmt before first statement in txn.
+        s2.execute("INSERT INTO test VALUES (2, 3)");
+
+        assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3)),
+                     getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+        // Row inserted by concurrent single-stmt after first statement in txn.
+        s2.execute("INSERT INTO test VALUES (3, 4)");
+        assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3), new Row(3, 4)),
+                     getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+        // Row inserted by current txn itself.
+        s1.execute("INSERT INTO test VALUES (4, 5)");
+        assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3), new Row(3, 4), new Row(4, 5)),
+                     getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+        // Check further modification by concurrent single-stmt after first write in s1's txn (which
+        // results in creation of a real txn).
+        s2.execute("DELETE FROM test where k=3");
+        assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3), new Row(4, 5)),
+                     getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+        // Check further modification using a concurrent txn block.
+        s2.execute("BEGIN");
+        s2.execute("INSERT INTO test VALUES (3, 4)");
+        assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3), new Row(4, 5)),
+                     getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+        s2.execute("COMMIT");
+        assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3), new Row(3, 4), new Row(4, 5)),
+                     getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+        s1.execute("COMMIT");
+        s1.execute("DROP TABLE test");
+      } catch (Exception ex) {
+        fail(ex.getMessage());
+      }
+    });
+
+    restartClusterWithFlags(
+        Collections.emptyMap(),
+        Collections.singletonMap("yb_enable_read_committed_isolation", "false"));
+  }
+
+  @Test
+  public void testReadCommittedEnabledEnvVarCaching() throws Exception {
+    restartClusterWithFlags(Collections.emptyMap(),
+                            Collections.singletonMap("yb_enable_read_committed_isolation", "true"));
+
+    try (Statement s1 = getConnectionBuilder().connect().createStatement();
+         Statement s2 = getConnectionBuilder().connect().createStatement()) {
+      s1.execute("CREATE TABLE test (k int PRIMARY KEY, v int)");
+      s2.execute("INSERT INTO test VALUES (1, 2)");
+
+      s1.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;");
+      // Row inserted by concurrent single-stmt before first statement in txn.
+      s2.execute("INSERT INTO test VALUES (2, 3)");
+
+      assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3)),
+                   getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+      s1.execute("COMMIT");
+
+      s1.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;");
+      assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3)),
+                   getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+      // Row inserted by concurrent single-stmt before first statement in txn.
+      s2.execute("INSERT INTO test VALUES (3, 4)");
+
+      // Assert that read should be repeatable i.e., result shouldn't change.
+      // This assertion is to ensure that we don't cache the final output of IsYBReadCommitted(),
+      // but only cache the value of FLAGS_yb_enable_read_committed_isolation. In the former case,
+      // all txns after the first txn would incorrectly return the same for IsYBReadCommitted() as
+      // the first txn and hence follow the behaviour of first txn.
+      assertEquals(Arrays.<Row>asList(new Row(1, 2), new Row(2, 3)),
+                  getSortedRowList(s1.executeQuery("SELECT * FROM test")));
+
+      s1.execute("COMMIT");
+
+      s1.execute("DROP TABLE test");
+    }
+
+    restartClusterWithFlags(
+      Collections.emptyMap(),
+      Collections.singletonMap("yb_enable_read_committed_isolation", "false"));
+  }
+
+  @Test
+  public void testMiscellaneous() throws Exception {
+    // Test issue #12004 - READ COMMITTED isolation in YSQL maps to REPEATABLE READ if
+    // yb_enable_read_committed_isolation=false. In this case, if the first statement takes an
+    // explicit locking, a transaction should be present/created.
+    try (Statement s1 = getConnectionBuilder().connect().createStatement();) {
+      s1.execute("CREATE TABLE test (k int PRIMARY KEY, v INT)");
+      s1.execute("INSERT INTO test values (1, 1)");
+      s1.execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED");
+      s1.execute("SELECT * FROM test WHERE k=1 for update");
+      s1.execute("COMMIT");
+      s1.execute("DROP TABLE test");
     }
   }
 }

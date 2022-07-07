@@ -2,16 +2,28 @@
   "exclude": [
      "(\\.l$)",
      "(Makefile$)",
-     "(src/yb/common/ql_type.h$)",
+     "(src/yb/common/ql_type.cc$)",
+     "(src/yb/gutil/valgrind.h$)",
+     "(\\.ipynb$)",
      "(\\.sql$)",
      "(\\.txt$)",
      "(^src/postgres/.*$)",
      "(^[.]gitmodules$)",
      "(^managed/src/main/resources/v1.routes$)",
+     "(^managed/src/main/public/swagger-ui/)",
+     "(^managed/src/main/resources/swagger.json$)",
      "(^managed/build.sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)"
   ],
   "linters": {
+    "script-and-regex.script": {
+      "type": "script-and-regex",
+      "include": "(^managed/.*\\.java$)",
+      "script-and-regex.script":
+      "cd managed; sbt javafmtCheckAll; echo ",
+      "script-and-regex.regex":
+        "/^.*(?P<error>javafmtCheck).*(?P<message>Unformatted.*javafmt)\\:\\ (?P<file>.*)$/m"
+    },
     "text": {
       "type": "text",
       "text.max-line-length": 100,
@@ -26,7 +38,8 @@
         "(^.*[.]patch$)",
         "(java/yb-cdc/pom.xml)",
         "(java/yb-cdc/README.md)",
-        "(^docs/.*[.]md$)"
+        "(^docs/.*[.]md$)",
+        "(^[.]fossa[.]yml$)"
       ]
     },
     "pycodestyle": {
@@ -40,16 +53,11 @@
       "type": "googlecpplint",
       "exclude": [
         "(^src/yb/yql/cql/ql/kwlist[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_undef[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_cxx_decl[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_common[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_wrapper_common[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_wrapper_decl[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_wrapper_impl[.]h$)",
-        "(^src/yb/yql/pggate/if_macros_c_pg_wrapper_inl[.]h$)",
-        "(^src/yb/yql/pggate/pg_api_example_if[.]h$)",
-        "(^src/yb/yql/pggate/pg_txn_manager_if[.]h$)",
-        "(^src/yb/yql/pggate/pggate_if[.]h$)"
+        "(^src/yb/gutil/linux_syscall_support[.]h$)",
+        "(^src/yb/gutil/cycleclock-inl[.]h$)",
+        "(^src/yb/gutil/spinlock_linux-inl[.]h$)",
+        "(^src/yb/gutil/port[.]h$)",
+        "(^src/yb/rocksdb/util/murmurhash[.]cc$)"
       ],
       "include": [
         "(\\.cpp$)",

@@ -13,27 +13,36 @@
 
 #include "yb/tablet/operations/history_cutoff_operation.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus_round.h"
 
 #include "yb/docdb/consensus_frontier.h"
+
+#include "yb/rocksdb/db.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_retention_policy.h"
 
+#include "yb/util/logging.h"
+
 namespace yb {
 namespace tablet {
 
-void HistoryCutoffOperationState::UpdateRequestFromConsensusRound() {
-  VLOG_WITH_PREFIX(2) << "UpdateRequestFromConsensusRound";
-
-  UseRequest(&consensus_round()->replicate_msg()->history_cutoff());
+template <>
+void RequestTraits<consensus::HistoryCutoffPB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, consensus::HistoryCutoffPB* request) {
+  replicate->set_allocated_history_cutoff(request);
 }
 
-Status HistoryCutoffOperationState::Replicated(int64_t leader_term) {
+template <>
+consensus::HistoryCutoffPB* RequestTraits<consensus::HistoryCutoffPB>::MutableRequest(
+    consensus::ReplicateMsg* replicate) {
+  return replicate->mutable_history_cutoff();
+}
+
+Status HistoryCutoffOperation::Apply(int64_t leader_term) {
   HybridTime history_cutoff(request()->history_cutoff());
 
-  VLOG_WITH_PREFIX(2)
-      << "History cutoff replicated " << yb::OpId::FromPB(op_id()) << ": " << history_cutoff;
+  VLOG_WITH_PREFIX(2) << "History cutoff replicated " << op_id() << ": " << history_cutoff;
 
   history_cutoff = tablet()->RetentionPolicy()->UpdateCommittedHistoryCutoff(history_cutoff);
   auto regular_db = tablet()->doc_db().regular;
@@ -48,32 +57,15 @@ Status HistoryCutoffOperationState::Replicated(int64_t leader_term) {
   return Status::OK();
 }
 
-consensus::ReplicateMsgPtr HistoryCutoffOperation::NewReplicateMsg() {
-  auto result = std::make_shared<consensus::ReplicateMsg>();
-  result->set_op_type(consensus::HISTORY_CUTOFF_OP);
-  *result->mutable_history_cutoff() = *state()->request();
-  return result;
-}
-
 Status HistoryCutoffOperation::Prepare() {
   VLOG_WITH_PREFIX(2) << "Prepare";
   return Status::OK();
 }
 
-void HistoryCutoffOperation::DoStart() {
-  VLOG_WITH_PREFIX(2) << "DoStart";
-
-  state()->TrySetHybridTimeFromClock();
-}
-
 Status HistoryCutoffOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Replicated";
 
-  return state()->Replicated(leader_term);
-}
-
-string HistoryCutoffOperation::ToString() const {
-  return Format("HistoryCutoffOperation { state: $0 }", *state());
+  return Apply(leader_term);
 }
 
 Status HistoryCutoffOperation::DoAborted(const Status& status) {

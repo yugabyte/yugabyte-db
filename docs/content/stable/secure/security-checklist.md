@@ -3,23 +3,19 @@ title: Security checklist
 headerTitle: Security checklist
 linkTitle: Security checklist
 description: Review security measures for your YugabyteDB installation.
-aliases:
-  - /secure/security-checklist/
-block_indexing: true
 menu:
   stable:
     identifier: security-checklist
     parent: secure
     weight: 710
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Below are a list of security measures that can be implemented to protect your YugabyteDB installation.
 
 ## Enable authentication
 
-Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB cluster. YugabyteDB stores authentication credentials internally in the YB-Master system tables. The authentication mechanisms available to clients depend on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
 
 Read more about [how to enable authentication in YugabyteDB](../authentication).
 
@@ -37,7 +33,7 @@ Run the YB-Master and YB-TServer services with a dedicated operating system user
 
 ### Restrict machine and port access
 
-Ensure that YugabyteDB runs in a trusted network environment.  Here are some steps to ensure that:
+Ensure that YugabyteDB runs in a trusted network environment, such that:
 
 * Servers running YugabyteDB services are directly accessible only by the servers running the application and database administrators.
 
@@ -45,7 +41,7 @@ Ensure that YugabyteDB runs in a trusted network environment.  Here are some ste
 
 ### RPC bind interfaces
 
-Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the `--rpc_bind_addresses` option. Do not bind to the loopback address. Read more in the [Admin Reference](../../reference/configuration/yb-tserver/) section on how to use these options when starting `yb-master` and `yb-tserver` services.
+Limit the interfaces on which YugabyteDB instances listen for incoming connections. Specify just the required interfaces when starting `yb-master` and `yb-tserver` by using the `--rpc_bind_addresses` option. Do not bind to the loopback address. Refer to the [Admin Reference](../../reference/configuration/yb-tserver/) for more information on using these options.
 
 ### Tips for public clouds
 

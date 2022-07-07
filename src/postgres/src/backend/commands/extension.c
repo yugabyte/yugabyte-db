@@ -62,6 +62,8 @@
 #include "utils/tqual.h"
 #include "utils/varlena.h"
 
+#include "pg_yb_utils.h"
+
 
 /* Globally visible state variables */
 bool		creating_extension = false;
@@ -799,20 +801,22 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 	 * here so that the flag is correctly associated with the right script(s)
 	 * if it's set in secondary control files.
 	 */
-	if (control->superuser && !superuser())
+	if (!IsYbExtensionUser(GetUserId()) && (control->superuser && !superuser()))
 	{
 		if (from_version == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to create extension \"%s\"",
 							control->name),
-					 errhint("Must be superuser to create this extension.")));
+					 errhint("Must be superuser or yb_extension role member "
+					 		 "to create this extension.")));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied to update extension \"%s\"",
 							control->name),
-					 errhint("Must be superuser to update this extension.")));
+					 errhint("Must be superuser or yb_extension role member "
+					 		 "to create this extension.")));
 	}
 
 	filename = get_extension_script_filename(control, from_version, version);
@@ -3183,9 +3187,17 @@ ExecAlterExtensionContentsStmt(AlterExtensionContentsStmt *stmt,
 	Relation	relation;
 	Oid			oldExtension;
 
-	extension.classId = ExtensionRelationId;
-	extension.objectId = get_extension_oid(stmt->extname, false);
-	extension.objectSubId = 0;
+	/*
+	 * Find the extension and acquire a lock on it, to ensure it doesn't get
+	 * dropped concurrently.  A sharable lock seems sufficient: there's no
+	 * reason not to allow other sorts of manipulations, such as add/drop of
+	 * other objects, to occur concurrently.  Concurrently adding/dropping the
+	 * *same* object would be bad, but we prevent that by using a non-sharable
+	 * lock on the individual object, below.
+	 */
+	extension = get_object_address(OBJECT_EXTENSION,
+								   (Node *) makeString(stmt->extname),
+								   &relation, AccessShareLock, false);
 
 	/* Permission check: must own extension */
 	if (!pg_extension_ownercheck(extension.objectId, GetUserId()))

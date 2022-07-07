@@ -3,14 +3,12 @@ title: "-> and ->> and #> and #>> (JSON subvalue operators)"
 headerTitle: "-> and ->> and #> and #>> (JSON subvalue operators)"
 linkTitle: "->, ->>, #>, #>> (JSON subvalues)"
 description: Read a JSON value at a specified path.
-block_indexing: true
 menu:
   stable:
     identifier: subvalue-operators
     parent: json-functions-operators
     weight: 12
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Read a JSON value at a specified path. The `>` variants return a `json` or `jsonb` value, according to the data type of the input. And the `>>` variants return a `text` value. The `#>` and `#>>` variants differ from `->` and `->>` variants in how the path is specified.
@@ -107,7 +105,7 @@ This, therefore, is the path to the primitive JSON _string_ value _"dog"_:
 -> 1 -> 'x' -> 2 -> 'b'
 ```
 
-(Recall that _array_ value indexing starts at _zero_.) 
+(Recall that _array_ value indexing starts at _zero_.)
 
 The `#>` operator is a convenient syntax sugar shorthand for specifying a long path compactly, thus:
 
@@ -175,7 +173,7 @@ input value:        jsonb #>> text[]
 return value:       text
 ```
 
-**Notes:** The `->` operator returns a JSON object. When the targeted value is compound, the `->>` operator returns the `::text` typecast of the value. But when the targeted value is primitive, the `->>` operator returns the value itself, typecast to a `text` value. In particular; a JSON _number_ value is returned as the `::text` typecast of that value (for example `'4.2'`), allowing it to be trivially `::numeric` typecasted back to what it actually is; a JSON _boolean_ value is returned as the `::text` typecast of that value (`'TRUE'` or `'FALSE'`), allowing it to be trivially `::boolean` typecasted back to what it actually is; a JSON _string_ value is return as is as a `text` value; and a JSON _null_ value is returned as a genuine SQL `NULL` so that the `IS NULL` test is `TRUE`.
+**Notes:** The `->` operator returns a JSON object. When the targeted value is compound, the `->>` operator returns the `::text` typecast of the value. But when the targeted value is primitive, the `->>` operator returns the value itself, typecast to a `text` value. In particular; a JSON _number_ value is returned as the `::text` typecast of that value (for example `'4.2'`), allowing it to be trivially `::numeric` typecast back to what it actually is; a JSON _boolean_ value is returned as the `::text` typecast of that value (`'TRUE'` or `'FALSE'`), allowing it to be trivially `::boolean` typecast back to what it actually is; a JSON _string_ value is return as is as a `text` value; and a JSON _null_ value is returned as a genuine SQL `NULL` so that the `IS NULL` test is `TRUE`.
 
 The difference in semantics between the `->` operator and the `->>` operator is vividly illustrated (as promised above) by targeting this primitive JSON _string_ subvalue:
 
@@ -194,7 +192,7 @@ declare
 
   expected_a_value_j constant jsonb :=
     '"\"First line\"\n\"second line\""'::jsonb;
-  
+
   expected_a_value_t constant text := '"First line"
 "second line"';
 

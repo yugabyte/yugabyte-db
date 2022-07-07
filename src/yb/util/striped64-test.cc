@@ -29,14 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <memory>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/monotime.h"
+#include "yb/util/status_log.h"
 #include "yb/util/striped64.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
@@ -118,7 +117,7 @@ class MultiThreadTest {
 
   int64_t num_operations_;
   // This is rounded down to the nearest even number
-  int32_t num_threads_;
+  int64_t num_threads_;
   thread_vec_t threads_;
 };
 

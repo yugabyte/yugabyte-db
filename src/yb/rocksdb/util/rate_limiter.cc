@@ -23,6 +23,7 @@
 
 #include "yb/rocksdb/util/rate_limiter.h"
 #include "yb/rocksdb/env.h"
+#include <glog/logging.h>
 
 namespace rocksdb {
 
@@ -75,10 +76,12 @@ GenericRateLimiter::~GenericRateLimiter() {
 
 // This API allows user to dynamically change rate limiter's bytes per second.
 void GenericRateLimiter::SetBytesPerSecond(int64_t bytes_per_second) {
-  assert(bytes_per_second > 0);
+  DCHECK_GT(bytes_per_second, 0);
   refill_bytes_per_period_.store(
       CalculateRefillBytesPerPeriod(bytes_per_second),
       std::memory_order_relaxed);
+  MutexLock g(&request_mutex_);
+  available_bytes_ = 0;
 }
 
 void GenericRateLimiter::Request(int64_t bytes, const Env::IOPriority pri) {

@@ -26,7 +26,6 @@
 #include <inttypes.h>
 
 #include <string>
-#include <sstream>
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/memtable.h"
@@ -36,7 +35,8 @@
 #include "yb/rocksdb/table/merger.h"
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/log_buffer.h"
-#include "yb/rocksdb/util/thread_status_util.h"
+
+#include "yb/util/result.h"
 
 using yb::Result;
 using std::ostringstream;
@@ -110,6 +110,23 @@ int MemTableList::NumNotFlushed() const {
   int size = static_cast<int>(current_->memlist_.size());
   assert(num_flush_not_started_ <= size);
   return size;
+}
+
+// Usually immutable mem table list is empty, and frontier could be taken from active mem table.
+// So we implement logic to avoid doing clone when there is just one frontier source.
+UserFrontierPtr MemTableList::GetFrontier(UserFrontierPtr frontier, UpdateUserValueType type) {
+  for (const auto& mem : current_->memlist_) {
+    auto current = mem->GetFrontier(type);
+    if (!current) {
+      continue;
+    }
+    if (!frontier) {
+      frontier = current;
+      continue;
+    }
+    frontier->Update(*current, type);
+  }
+  return frontier;
 }
 
 int MemTableList::NumFlushed() const {
@@ -257,8 +274,6 @@ bool MemTableList::IsFlushPending() const {
 
 // Returns the memtables that need to be flushed.
 void MemTableList::PickMemtablesToFlush(autovector<MemTable*>* ret, const MemTableFilter& filter) {
-  AutoThreadOperationStageUpdater stage_updater(
-      ThreadStatus::STAGE_PICK_MEMTABLES_TO_FLUSH);
   const auto& memlist = current_->memlist_;
   bool all_memtables_logged = false;
   for (auto it = memlist.rbegin(); it != memlist.rend(); ++it) {
@@ -302,8 +317,6 @@ void MemTableList::PickMemtablesToFlush(autovector<MemTable*>* ret, const MemTab
 
 void MemTableList::RollbackMemtableFlush(const autovector<MemTable*>& mems,
                                          uint64_t file_number) {
-  AutoThreadOperationStageUpdater stage_updater(
-      ThreadStatus::STAGE_MEMTABLE_ROLLBACK);
   assert(!mems.empty());
 
   // If the flush was not successful, then just reset state.
@@ -326,8 +339,6 @@ Status MemTableList::InstallMemtableFlushResults(
     const autovector<MemTable*>& mems, VersionSet* vset, InstrumentedMutex* mu,
     uint64_t file_number, autovector<MemTable*>* to_delete,
     Directory* db_directory, LogBuffer* log_buffer, const FileNumbersHolder& file_number_holder) {
-  AutoThreadOperationStageUpdater stage_updater(
-      ThreadStatus::STAGE_MEMTABLE_INSTALL_FLUSH_RESULTS);
   mu->AssertHeld();
 
   // flush was successful

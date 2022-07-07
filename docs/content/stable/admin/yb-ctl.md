@@ -3,20 +3,15 @@ title: yb-ctl - command line tool for administering local YugabyteDB clusters
 headerTitle: yb-ctl
 linkTitle: yb-ctl
 description: Use the yb-ctl command line tool to administer local YugabyteDB clusters used for development and learning.
-block_indexing: true
 menu:
   stable:
     identifier: yb-ctl
     parent: admin
     weight: 2410
-aliases:
-  - admin/yb-ctl
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
-
 
 {{< note title="Note" >}}
 
@@ -48,7 +43,7 @@ $ ./bin/yb-ctl --help
 
 Creates a local YugabyteDB cluster. With no flags, creates a 1-node cluster.
 
-For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
+For more details and examples, see [Create a local cluster](#create-a-local-cluster), [Create a cluster across multiple zones, regions, and clouds](#create-a-cluster-across-multiple-zones-regions-and-clouds), and [Create a local cluster with custom flags](#create-a-local-cluster-with-custom-flags).
 
 ##### start
 
@@ -138,17 +133,17 @@ Default: `$HOME/yugabyte-data/`
 
 Specifies a list of YB-Master flags, separated by commas.
 
-For details and examples, see [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
+For details and examples, see [Create a local cluster with custom flags](#create-a-local-cluster-with-custom-flags).
 
 ##### --tserver_flags
 
 Specifies a list of YB-TServer flags, separated by commas.
 
-For details and examples, see [Create a cluster with custom flags](#create-a-cluster-with-custom-flags).
+For details and examples, see [Create a local cluster with custom flags](#create-a-local-cluster-with-custom-flags).
 
 **Example**
 
-To enable [YSQL authentication](../../secure/authentication/ysql-authentication), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
+To enable [YSQL authentication](../../secure/enable-authentication/ysql), you can use the `--tserver_flags` flag to add the `yb-tserver` [`--ysql_enable-auth`](../yb-tserver/#ysql-enable-auth) flag to the `yb-ctl create | start | restart` commands.
 
 ```sh
 $./bin/yb-ctl create --tserver_flags "ysql_enable_auth=true"
@@ -317,13 +312,13 @@ $ ./bin/yb-ctl status
 
 Following is the output shown for a 3-node RF3 cluster.
 
-```
+```output
 ----------------------------------------------------------------------------------------------------
 | Node Count: 3 | Replication Factor: 3                                                            |
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/ycqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                 |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | Web UI              : http://127.0.0.1:7000/                                                     |
 | Cluster Data        : /Users/testuser12/yugabyte-data                                            |
@@ -333,7 +328,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh                                                                 |
-| YCQL Shell          : bin/ycqlsh                                                                  |
+| YCQL Shell          : bin/ycqlsh                                                                 |
 | YEDIS Shell         : bin/redis-cli                                                              |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-1/disk-1/yb-data/tserver/logs         |
@@ -344,7 +339,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.2:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.2                                                    |
-| YCQL Shell          : bin/ycqlsh 127.0.0.2                                                        |
+| YCQL Shell          : bin/ycqlsh 127.0.0.2                                                       |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.2                                                 |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-2/disk-1/yb-data/tserver/logs         |
@@ -355,7 +350,7 @@ Following is the output shown for a 3-node RF3 cluster.
 ----------------------------------------------------------------------------------------------------
 | JDBC                : jdbc:postgresql://127.0.0.3:5433/yugabyte                                  |
 | YSQL Shell          : bin/ysqlsh -h 127.0.0.3                                                    |
-| YCQL Shell          : bin/ycqlsh 127.0.0.3                                                        |
+| YCQL Shell          : bin/ycqlsh 127.0.0.3                                                       |
 | YEDIS Shell         : bin/redis-cli -h 127.0.0.3                                                 |
 | data-dir[0]         : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data                      |
 | yb-tserver Logs     : /Users/testuser12/yugabyte-data/node-3/disk-1/yb-data/tserver/logs         |
@@ -472,6 +467,12 @@ To add a node with custom YB-Master flags:
 $ ./bin/yb-ctl add_node --master_flags "log_cache_size_limit_mb=128,log_min_seconds_to_retain=20"
 ```
 
+To handle flags whose value contains commas or equals, quote the whole key-value pair with double-quotes:
+
+```sh
+$ ./bin/yb-ctl create --tserver_flags 'ysql_enable_auth=false,"vmodule=tablet_service=1,pg_doc_op=1",ysql_prefetch_limit=1000'
+```
+
 ### Restart a cluster
 
 The `yb-ctl restart` command can be used to restart a cluster. Please note that if you restart the cluster, all custom defined flags and placement information will be lost. Nevertheless, you can pass the placement information and custom flags in the same way as they are passed in the `yb-ctl create` command.
@@ -483,7 +484,7 @@ $ ./bin/yb-ctl restart
 - Restart with cloud, region and zone flags
 
 ```sh
-$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl restart --placement_info "cloud1.region1.zone1"
 ```
 
 ### Restart with custom flags
@@ -532,7 +533,7 @@ $ ./bin/yb-ctl wipe_restart
 #### Wipe and restart with placement info flags
 
 ```sh
-$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1" 
+$ ./bin/yb-ctl wipe_restart --placement_info "cloud1.region1.zone1"
 ```
 
 #### Wipe and restart with custom flags

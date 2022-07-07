@@ -28,15 +28,17 @@
 #include <vector>
 
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/options.h"
 #include "yb/rocksdb/util/delete_scheduler.h"
-#include "yb/util/string_util.h"
 #include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
+#include "yb/rocksdb/util/testutil.h"
+
+#include "yb/util/string_util.h"
+#include "yb/util/test_util.h"
 
 namespace rocksdb {
 
-class DeleteSchedulerTest : public testing::Test {
+class DeleteSchedulerTest : public RocksDBTest {
  public:
   DeleteSchedulerTest() : env_(Env::Default()) {
     dummy_files_dir_ = test::TmpDir(env_) + "/dummy_data_dir";
@@ -82,7 +84,7 @@ class DeleteSchedulerTest : public testing::Test {
   std::string NewDummyFile(const std::string& file_name, uint64_t size = 1024) {
     std::string file_path = dummy_files_dir_ + "/" + file_name;
     std::unique_ptr<WritableFile> f;
-    env_->NewWritableFile(file_path, &f, EnvOptions());
+    EXPECT_OK(env_->NewWritableFile(file_path, &f, EnvOptions()));
     std::string data(size, 'A');
     EXPECT_OK(f->Append(data));
     EXPECT_OK(f->Close());

@@ -14,14 +14,17 @@
 #include <thread>
 
 #include "yb/client/ql-dml-test-base.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_handle.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/yql/cql/ql/util/statement_result.h"
-
 #include "yb/util/random_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
@@ -97,7 +100,7 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
       }
       ops.push_back(std::move(op));
     }
-    ASSERT_OK(session->ApplyAndFlush(ops));
+    ASSERT_OK(session->TEST_ApplyAndFlush(ops));
   }
 
   std::unique_ptr<QLRowBlock> ReadRows(YBSession* session, int32_t hash_seed) {
@@ -105,7 +108,7 @@ class QLListTest : public QLDmlTestBase<MiniCluster> {
     auto* const req = op->mutable_request();
     AddHash(hash_seed, req);
     table_.AddColumns(table_.AllColumnNames(), req);
-    EXPECT_OK(session->ApplyAndFlush(op));
+    EXPECT_OK(session->TEST_ApplyAndFlush(op));
     EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
 
     return ql::RowsResult(op.get()).GetRowBlock();

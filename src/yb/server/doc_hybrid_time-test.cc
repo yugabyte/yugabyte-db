@@ -11,14 +11,16 @@
 // under the License.
 //
 
-#include "yb/common/doc_hybrid_time.h"
-
 #include <string>
 
+#include "yb/common/doc_hybrid_time.h"
+
 #include "yb/gutil/ref_counted.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/server/hybrid_clock.h"
+
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -66,10 +68,8 @@ TEST(DocHybridTimeTest, TestDocDbFormatEncodeDecode) {
     ASSERT_LE(encoded_size, 12);
     // We store the encoded length of the whole DocHybridTime into its last 5 bits.
     ASSERT_EQ(encoded_size, last_ts_encoded.back() & 0x1f);
-    DocHybridTime decoded_ts;
-    ASSERT_OK_PREPEND(
-        decoded_ts.FullyDecodeFrom(last_ts_encoded),
-        Substitute("Could not decode from $0", FormatBytesAsStr(last_ts_encoded)));
+    SCOPED_TRACE(Format("last_ts_encoded: $0", Slice(last_ts_encoded).ToDebugHexString()));
+    DocHybridTime decoded_ts = ASSERT_RESULT(DocHybridTime::FullyDecodeFrom(last_ts_encoded));
     ASSERT_EQ(last_ts, decoded_ts);
   }
 

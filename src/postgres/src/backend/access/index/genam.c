@@ -129,6 +129,7 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	scan->xs_continue_hot = false;
 
 	scan->yb_exec_params = NULL;
+	scan->yb_scan_plan = NULL;
 	return scan;
 }
 

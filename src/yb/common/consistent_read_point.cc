@@ -10,11 +10,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/common/consistent_read_point.h"
-#include "yb/client/transaction.h"
 
-#include "yb/util/debug-util.h"
+#include "yb/common/common.pb.h"
 
 namespace yb {
 
@@ -24,6 +22,7 @@ ConsistentReadPoint::ConsistentReadPoint(const scoped_refptr<ClockBase>& clock)
 
 void ConsistentReadPoint::SetReadTime(
     const ReadHybridTime& read_time, HybridTimeMap&& local_limits) {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   read_time_ = read_time;
   restart_read_ht_ = read_time_.read;
   local_limits_ = std::move(local_limits);
@@ -31,6 +30,7 @@ void ConsistentReadPoint::SetReadTime(
 }
 
 void ConsistentReadPoint::SetCurrentReadTime() {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   read_time_ = ReadHybridTime::FromHybridTimeRange(clock_->NowRange());
   restart_read_ht_ = read_time_.read;
   local_limits_.clear();
@@ -38,6 +38,7 @@ void ConsistentReadPoint::SetCurrentReadTime() {
 }
 
 ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   ReadHybridTime read_time = read_time_;
   if (read_time) {
     // Use the local limit for the tablet but no earlier than the read time we want.
@@ -51,31 +52,54 @@ ReadHybridTime ConsistentReadPoint::GetReadTime(const TabletId& tablet) const {
 
 void ConsistentReadPoint::RestartRequired(const TabletId& tablet,
                                           const ReadHybridTime& restart_time) {
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  RestartRequiredUnlocked(tablet, restart_time);
+}
+
+void ConsistentReadPoint::RestartRequiredUnlocked(
+    const TabletId& tablet, const ReadHybridTime& restart_time) {
   DCHECK(read_time_) << "Unexpected restart without a read time set";
-  std::unique_lock<std::mutex> lock(mutex_);
   restart_read_ht_.MakeAtLeast(restart_time.read);
   // We should inherit per-tablet restart time limits before restart, doing it lazily.
   if (restarts_.empty()) {
     restarts_ = local_limits_;
   }
-  auto emplace_result = restarts_.emplace(tablet, restart_time.local_limit);
+  UpdateLimitsMapUnlocked(tablet, restart_time.local_limit, &restarts_);
+}
+
+void ConsistentReadPoint::UpdateLocalLimit(const TabletId& tablet, HybridTime local_limit) {
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  UpdateLimitsMapUnlocked(tablet, local_limit, &local_limits_);
+}
+
+void ConsistentReadPoint::UpdateLimitsMapUnlocked(
+    const TabletId& tablet, const HybridTime& local_limit, HybridTimeMap* map) {
+  auto emplace_result = map->emplace(tablet, local_limit);
   bool inserted = emplace_result.second;
   if (!inserted) {
     auto& existing_local_limit = emplace_result.first->second;
-    existing_local_limit = std::min(existing_local_limit, restart_time.local_limit);
+    existing_local_limit = std::min(existing_local_limit, local_limit);
   }
 }
 
 bool ConsistentReadPoint::IsRestartRequired() const {
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  return IsRestartRequiredUnlocked();
+}
+
+bool ConsistentReadPoint::IsRestartRequiredUnlocked() const {
   return !restarts_.empty();
 }
 
 void ConsistentReadPoint::Restart() {
-  local_limits_ = std::move(restarts_);
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  local_limits_.swap(restarts_);
+  restarts_.clear();
   read_time_.read = restart_read_ht_;
 }
 
 void ConsistentReadPoint::Defer() {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   read_time_.read = read_time_.global_limit;
 }
 
@@ -88,6 +112,7 @@ HybridTime ConsistentReadPoint::Now() const {
 }
 
 void ConsistentReadPoint::PrepareChildTransactionData(ChildTransactionDataPB* data) const {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   read_time_.AddToPB(data);
   auto& local_limits = *data->mutable_local_limits();
   for (const auto& entry : local_limits_) {
@@ -98,7 +123,8 @@ void ConsistentReadPoint::PrepareChildTransactionData(ChildTransactionDataPB* da
 
 void ConsistentReadPoint::FinishChildTransactionResult(
     HadReadTime had_read_time, ChildTransactionResultPB* result) const {
-  if (IsRestartRequired()) {
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  if (IsRestartRequiredUnlocked()) {
     result->set_restart_read_ht(restart_read_ht_.ToUint64());
     auto& restarts = *result->mutable_read_restarts();
     for (const auto& restart : restarts_) {
@@ -115,6 +141,7 @@ void ConsistentReadPoint::FinishChildTransactionResult(
 }
 
 void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResultPB& result) {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   if (result.has_used_read_time()) {
     LOG_IF(DFATAL, read_time_)
         << "Read time already picked (" << read_time_
@@ -130,22 +157,30 @@ void ConsistentReadPoint::ApplyChildTransactionResult(const ChildTransactionResu
     read_time.read = restart_read_ht;
     for (const auto& restart : result.read_restarts()) {
       read_time.local_limit = HybridTime(restart.second);
-      RestartRequired(restart.first, read_time);
+      RestartRequiredUnlocked(restart.first, read_time);
     }
   }
 }
 
 void ConsistentReadPoint::SetInTxnLimit(HybridTime value) {
+  std::lock_guard<simple_spinlock> lock(mutex_);
   read_time_.in_txn_limit = value;
 }
 
-ConsistentReadPoint& ConsistentReadPoint::operator=(ConsistentReadPoint&& other) {
-  clock_.swap(other.clock_);
-  read_time_ = std::move(other.read_time_);
-  restart_read_ht_ = std::move(other.restart_read_ht_);
-  local_limits_ = std::move(other.local_limits_);
-  restarts_ = std::move(other.restarts_);
-  return *this;
+ReadHybridTime ConsistentReadPoint::GetReadTime() const {
+  std::lock_guard<simple_spinlock> lock(mutex_);
+  return read_time_;
+}
+
+// NO_THREAD_SAFETY_ANALYSIS is required here because anylysis does not understand std::lock.
+void ConsistentReadPoint::MoveFrom(ConsistentReadPoint* rhs) NO_THREAD_SAFETY_ANALYSIS {
+  std::lock(mutex_, rhs->mutex_);
+  std::lock_guard<simple_spinlock> lock1(mutex_, std::adopt_lock);
+  std::lock_guard<simple_spinlock> lock2(rhs->mutex_, std::adopt_lock);
+  read_time_ = rhs->read_time_;
+  restart_read_ht_ = rhs->restart_read_ht_;
+  local_limits_ = std::move(rhs->local_limits_);
+  restarts_ = std::move(rhs->restarts_);
 }
 
 } // namespace yb

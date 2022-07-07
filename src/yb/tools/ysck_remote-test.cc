@@ -33,18 +33,25 @@
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
-#include "yb/client/table_creator.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
+#include "yb/client/table.h"
+#include "yb/client/table_creator.h"
 #include "yb/client/yb_op.h"
+
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster.h"
-#include "yb/master/mini_master.h"
-#include "yb/rpc/messenger.h"
+
 #include "yb/tools/data_gen_util.h"
 #include "yb/tools/ysck_remote.h"
+
 #include "yb/util/monotime.h"
+#include "yb/util/promise.h"
 #include "yb/util/random.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
 
 using namespace std::literals;
 
@@ -85,10 +92,10 @@ class RemoteYsckTest : public YBTest {
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
-    mini_cluster_.reset(new MiniCluster(env_.get(), opts));
+    mini_cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(mini_cluster_->Start());
 
-    master_rpc_addr_ = mini_cluster_->GetLeaderMasterBoundRpcAddr();
+    master_rpc_addr_ = ASSERT_RESULT(mini_cluster_->GetLeaderMasterBoundRpcAddr());
 
     // Connect to the cluster.
     client_ = ASSERT_RESULT(mini_cluster_->CreateClient());
@@ -136,7 +143,7 @@ class RemoteYsckTest : public YBTest {
     for (uint64_t i = 0; continue_writing.Load(); i++) {
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
-      status = session->ApplyAndFlush(insert);
+      status = session->TEST_ApplyAndFlush(insert);
       if (!status.ok()) {
         promise->Set(status);
         return;
@@ -157,13 +164,13 @@ class RemoteYsckTest : public YBTest {
       VLOG(1) << "Generating write for row id " << i;
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_request());
-      RETURN_NOT_OK(session->Apply(insert));
+      session->Apply(insert);
 
       if (i > 0 && i % 1000 == 0) {
-        RETURN_NOT_OK(session->Flush());
+        RETURN_NOT_OK(session->TEST_Flush());
       }
     }
-    RETURN_NOT_OK(session->Flush());
+    RETURN_NOT_OK(session->TEST_Flush());
     return Status::OK();
   }
 

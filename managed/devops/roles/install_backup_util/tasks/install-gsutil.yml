@@ -6,23 +6,35 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+- set_fact:
+    gsutil_cur_version: "{{ util_cur_version.stdout | regex_search('gsutil version: (.+)', '\\1')\
+      | first }}"
+  when: util_exists.rc == 0
+
+- debug:
+    msg: "gsutil current version {{ gsutil_cur_version }} new version {{ gsutil_version }}"
+  when: util_exists.rc == 0
+
 - block:
     - set_fact:
-        gcloud_package_path: "/usr/{{ gcloud_package_name }}"
+        gsutil_package_path: "/usr/local/{{ gsutil_package_name }}"
 
-    - name: gsutil | Copy and unarchive {{ gcloud_package }} from {{ package_path }}
+    - name: gsutil | Remove current gsutil
+      file:
+        path: "{{ gsutil_package_path }}"
+        state: absent
+
+    - name: gsutil | Copy and unarchive {{ gsutil_package }} from {{ package_path }}
       unarchive:
-        src: "{{ package_path }}/{{ gcloud_package }}"
-        dest: "/usr"
-        creates: "{{ gcloud_package_path }}"
+        src: "{{ package_path }}/{{ gsutil_package }}"
+        dest: "/usr/local"
+        creates: "{{ gsutil_package_path }}"
         remote_src: "{{ is_remote }}"
-
-    - name: gsutil | Run install script
-      command: "{{ gcloud_package_path }}/install.sh --quiet --usage-reporting false  --command-completion true --override-components gsutil"
 
     - name: gsutil | Create symlinks to {{ bin_path }}
       file:
-        src: "{{ gcloud_package_path }}/bin/gsutil"
+        src: "{{ gsutil_package_path }}/gsutil"
         path: "{{ bin_path }}/gsutil"
         state: link
         force: yes
+  when: util_exists.rc != 0 or gsutil_version != gsutil_cur_version

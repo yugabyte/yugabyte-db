@@ -23,7 +23,8 @@
 
 #include "yb/rocksdb/util/coding.h"
 
-#include "yb/rocksdb/util/testharness.h"
+#include <string>
+#include <gtest/gtest.h>
 
 namespace rocksdb {
 
@@ -128,23 +129,27 @@ TEST(Coding, Varint64) {
     values.push_back(power);
     values.push_back(power-1);
     values.push_back(power+1);
-  };
+  }
 
   std::string s;
   for (unsigned int i = 0; i < values.size(); i++) {
     PutVarint64(&s, values[i]);
+    FastPutVarint64(&s, values[i]);
   }
 
   const char* p = s.data();
   const char* limit = p + s.size();
   for (unsigned int i = 0; i < values.size(); i++) {
-    ASSERT_TRUE(p < limit);
-    uint64_t actual = 0;
-    const char* start = p;
-    p = GetVarint64Ptr(p, limit, &actual);
-    ASSERT_TRUE(p != nullptr);
-    ASSERT_EQ(values[i], actual);
-    ASSERT_EQ(VarintLength(actual), p - start);
+    // Check decoding of both PutVarint64 and FastPutVarint64.
+    for (int j = 0; j < 2; ++j) {
+      ASSERT_TRUE(p < limit);
+      uint64_t actual = 0;
+      const char* start = p;
+      p = GetVarint64Ptr(p, limit, &actual);
+      ASSERT_TRUE(p != nullptr);
+      ASSERT_EQ(values[i], actual);
+      ASSERT_EQ(VarintLength(actual), p - start);
+    }
   }
   ASSERT_EQ(p, limit);
 

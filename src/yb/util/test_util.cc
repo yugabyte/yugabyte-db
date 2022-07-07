@@ -29,22 +29,25 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/util/test_util.h"
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/strcat.h"
-#include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
 #include "yb/gutil/walltime.h"
+
 #include "yb/util/env.h"
-#include "yb/util/path_util.h"
-#include "yb/util/random.h"
-#include "yb/util/spinlock_profiling.h"
-#include "yb/util/thread.h"
 #include "yb/util/logging.h"
+#include "yb/util/path_util.h"
+#include "yb/util/spinlock_profiling.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread.h"
+#include "yb/util/debug/trace_event.h"
 
 DEFINE_string(test_leave_files, "on_failure",
               "Whether to leave test files around after the test run. "
@@ -54,6 +57,7 @@ DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
 DECLARE_bool(TEST_running_test);
+DECLARE_bool(never_fsync);
 
 using std::string;
 using strings::Substitute;
@@ -73,6 +77,7 @@ YBTest::YBTest()
   : env_(new EnvWrapper(Env::Default())),
     test_dir_(GetTestDataDirectory()) {
   InitThreading();
+  debug::EnableTraceEvents();
 }
 
 // env passed in from subclass, for tests that run in-memory
@@ -105,6 +110,7 @@ void YBTest::SetUp() {
   FLAGS_enable_tracing = true;
   FLAGS_memory_limit_hard_bytes = 8 * 1024 * 1024 * 1024L;
   FLAGS_TEST_running_test = true;
+  FLAGS_never_fsync = true;
   for (const char* env_var_name : {
       "ASAN_OPTIONS",
       "LSAN_OPTIONS",
@@ -256,13 +262,13 @@ void AssertEventually(const std::function<void(void)>& f,
   }
 }
 
-Status Wait(std::function<Result<bool>()> condition,
-            MonoTime deadline,
+Status Wait(const std::function<Result<bool>()>& condition,
+            CoarseTimePoint deadline,
             const std::string& description,
             MonoDelta initial_delay,
             double delay_multiplier,
             MonoDelta max_delay) {
-  auto start = MonoTime::Now();
+  auto start = CoarseMonoClock::Now();
   MonoDelta delay = initial_delay;
   for (;;) {
     const auto current = condition();
@@ -272,13 +278,13 @@ Status Wait(std::function<Result<bool>()> condition,
     if (current.get()) {
       break;
     }
-    const auto now = MonoTime::Now();
-    const auto left = deadline - now;
+    const auto now = CoarseMonoClock::Now();
+    const MonoDelta left(deadline - now);
     if (left <= MonoDelta::kZero) {
       return STATUS_FORMAT(TimedOut,
                            "Operation '$0' didn't complete within $1ms",
                            description,
-                           (now - start).ToMilliseconds());
+                           MonoDelta(now - start).ToMilliseconds());
     }
     delay = std::min(std::min(MonoDelta::FromSeconds(delay.ToSeconds() * delay_multiplier), left),
                      max_delay);
@@ -287,8 +293,33 @@ Status Wait(std::function<Result<bool>()> condition,
   return Status::OK();
 }
 
+Status Wait(const std::function<Result<bool>()>& condition,
+            MonoTime deadline,
+            const std::string& description,
+            MonoDelta initial_delay,
+            double delay_multiplier,
+            MonoDelta max_delay) {
+  auto left = deadline - MonoTime::Now();
+  return Wait(condition, CoarseMonoClock::Now() + left, description, initial_delay,
+              delay_multiplier, max_delay);
+}
+
+Status LoggedWait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
+    const string& description,
+    MonoDelta initial_delay,
+    double delay_multiplier,
+    MonoDelta max_delay) {
+  LOG(INFO) << description << " - started";
+  auto status =
+      Wait(condition, deadline, description, initial_delay, delay_multiplier, max_delay);
+  LOG(INFO) << description << " - completed: " << status;
+  return status;
+}
+
 // Waits for the given condition to be true or until the provided timeout has expired.
-Status WaitFor(std::function<Result<bool>()> condition,
+Status WaitFor(const std::function<Result<bool>()>& condition,
                MonoDelta timeout,
                const string& description,
                MonoDelta initial_delay,
@@ -298,28 +329,17 @@ Status WaitFor(std::function<Result<bool>()> condition,
               max_delay);
 }
 
-void AssertLoggedWaitFor(
-    std::function<Result<bool>()> condition,
-    MonoDelta timeout,
-    const string& description,
-    MonoDelta initial_delay,
-    double delay_multiplier,
-    MonoDelta max_delay) {
-  LOG(INFO) << description;
-  ASSERT_OK(WaitFor(condition, timeout, description, initial_delay));
-  LOG(INFO) << description << " - DONE";
-}
-
 Status LoggedWaitFor(
-    std::function<Result<bool>()> condition,
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const string& description,
     MonoDelta initial_delay,
     double delay_multiplier,
     MonoDelta max_delay) {
   LOG(INFO) << description << " - started";
-  auto status = WaitFor(condition, timeout, description, initial_delay);
-  LOG(INFO) << description << " - completed: " << yb::ToString(status);
+  auto status =
+      WaitFor(condition, timeout, description, initial_delay, delay_multiplier, max_delay);
+  LOG(INFO) << description << " - completed: " << status;
   return status;
 }
 
@@ -332,33 +352,14 @@ string GetToolPath(const string& rel_path, const string& tool_name) {
   return tool_path;
 }
 
-int CalcNumTablets(int num_tablet_servers) {
+int CalcNumTablets(size_t num_tablet_servers) {
 #ifdef NDEBUG
   return 0;  // Will use the default.
 #elif defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
-  return num_tablet_servers;
+  return narrow_cast<int>(num_tablet_servers);
 #else
-  return num_tablet_servers * 3;
+  return narrow_cast<int>(num_tablet_servers * 3);
 #endif
-}
-
-void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop) {
-  auto end = CoarseMonoClock::now() + duration;
-  while (!stop->load(std::memory_order_acquire) && CoarseMonoClock::now() < end) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
-}
-
-void TestThreadHolder::JoinAll() {
-  LOG(INFO) << __func__;
-
-  for (auto& thread : threads_) {
-    if (thread.joinable()) {
-      thread.join();
-    }
-  }
-
-  LOG(INFO) << __func__ << " done";
 }
 
 } // namespace yb

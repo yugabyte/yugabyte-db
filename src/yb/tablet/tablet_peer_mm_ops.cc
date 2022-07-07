@@ -38,21 +38,22 @@
 #include <string>
 
 #include <gflags/gflags.h>
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/tablet/maintenance_manager.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_metrics.h"
-#include "yb/util/flag_tags.h"
-#include "yb/util/metrics.h"
+#include "yb/tablet/tablet_peer.h"
 
-METRIC_DEFINE_gauge_uint32(tablet, log_gc_running,
+#include "yb/util/metrics.h"
+#include "yb/util/logging.h"
+
+METRIC_DEFINE_gauge_uint32(table, log_gc_running,
                            "Log GCs Running",
                            yb::MetricUnit::kOperations,
                            "Number of log GC operations currently running.");
-METRIC_DEFINE_histogram(tablet, log_gc_duration,
+METRIC_DEFINE_coarse_histogram(table, log_gc_duration,
                         "Log GC Duration",
                         yb::MetricUnit::kMilliseconds,
-                        "Time spent garbage collecting the logs.", 60000LU, 1);
+                        "Time spent garbage collecting the logs.");
 
 namespace yb {
 namespace tablet {
@@ -65,19 +66,24 @@ using strings::Substitute;
 //
 
 LogGCOp::LogGCOp(TabletPeer* tablet_peer)
-    : MaintenanceOp(StringPrintf("LogGCOp(%s)", tablet_peer->tablet()->tablet_id().c_str()),
-                    MaintenanceOp::LOW_IO_USAGE),
+    : MaintenanceOp(
+          StringPrintf("LogGCOp(%s)", tablet_peer->tablet()->tablet_id().c_str()),
+          MaintenanceOp::LOW_IO_USAGE),
       tablet_peer_(tablet_peer),
-      log_gc_duration_(METRIC_log_gc_duration.Instantiate(
-                           tablet_peer->tablet()->GetMetricEntity())),
-      log_gc_running_(METRIC_log_gc_running.Instantiate(
-                          tablet_peer->tablet()->GetMetricEntity(), 0)),
+      log_gc_duration_(
+          METRIC_log_gc_duration.Instantiate(tablet_peer->tablet()->GetTableMetricsEntity())),
+      log_gc_running_(
+          METRIC_log_gc_running.Instantiate(tablet_peer->tablet()->GetTableMetricsEntity(), 0)),
       sem_(1) {}
 
 void LogGCOp::UpdateStats(MaintenanceOpStats* stats) {
-  int64_t retention_size;
+  int64_t retention_size = 0;
 
-  if (!tablet_peer_->GetGCableDataSize(&retention_size).ok()) {
+  auto status = tablet_peer_->GetGCableDataSize(&retention_size);
+  if (!status.ok()) {
+    YB_LOG_EVERY_N_SECS(WARNING, 1)
+        << tablet_peer_->LogPrefix()
+        << "failed to get GC-able data size: " << status;
     return;
   }
   stats->set_logs_retained_bytes(retention_size);

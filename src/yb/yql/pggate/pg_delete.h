@@ -15,6 +15,9 @@
 #ifndef YB_YQL_PGGATE_PG_DELETE_H_
 #define YB_YQL_PGGATE_PG_DELETE_H_
 
+#include <memory>
+#include <utility>
+
 #include "yb/yql/pggate/pg_dml_write.h"
 
 namespace yb {
@@ -26,14 +29,21 @@ namespace pggate {
 
 class PgDelete : public PgDmlWrite {
  public:
-  PgDelete(PgSession::ScopedRefPtr pg_session, const PgObjectId& table_id, bool is_single_row_txn)
-      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn) {}
+  PgDelete(PgSession::ScopedRefPtr pg_session,
+           const PgObjectId& table_id,
+           bool is_single_row_txn,
+           bool is_region_local)
+      : PgDmlWrite(std::move(pg_session), table_id, is_single_row_txn, is_region_local) {}
 
   StmtOp stmt_op() const override { return StmtOp::STMT_DELETE; }
 
+  void SetIsPersistNeeded(const bool is_persist_needed) {
+    write_req_->set_is_delete_persist_needed(is_persist_needed);
+  }
+
  private:
-  std::unique_ptr<client::YBPgsqlWriteOp> AllocWriteOperation() const override {
-    return target_desc_->NewPgsqlDelete();
+  PgsqlWriteRequestPB::PgsqlStmtType stmt_type() const override {
+    return PgsqlWriteRequestPB::PGSQL_DELETE;
   }
 };
 

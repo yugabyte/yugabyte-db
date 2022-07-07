@@ -31,26 +31,26 @@
 //
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <thread>
+#include <vector>
 
+#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/util/barrier.h"
-#include "yb/gutil/bind.h"
-#include "yb/util/countdown_latch.h"
-#include "yb/util/metrics.h"
-#include "yb/gutil/sysinfo.h"
 
+#include "yb/util/blocking_queue.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/taskstream.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/threadpool.h"
-#include "yb/util/trace.h"
-
-#include "yb/util/locks.h"
 
 using std::atomic;
 using std::shared_ptr;
@@ -67,11 +67,14 @@ using std::shared_ptr;
 namespace yb {
 
 namespace {
-static Status BuildMinMaxTestPool(int min_threads, int max_threads, gscoped_ptr<ThreadPool> *pool) {
+
+static Status BuildMinMaxTestPool(
+    int min_threads, int max_threads, std::unique_ptr<ThreadPool> *pool) {
   return ThreadPoolBuilder("test").set_min_threads(min_threads)
       .set_max_threads(max_threads)
       .Build(pool);
 }
+
 } // anonymous namespace
 
 class TestTaskStream : public ::testing::Test {
@@ -96,7 +99,7 @@ static void SimpleTaskStreamMethod(int* value, std::atomic<int32_t>* counter) {
 
 TEST_F(TestTaskStream, TestSimpleTaskStream) {
   using namespace std::placeholders;
-  gscoped_ptr<ThreadPool> thread_pool;
+  std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
 
   std::atomic<int32_t> counter(0);
@@ -117,7 +120,7 @@ TEST_F(TestTaskStream, TestSimpleTaskStream) {
 
 TEST_F(TestTaskStream, TestTwoTaskStreams) {
   using namespace std::placeholders;
-  gscoped_ptr<ThreadPool> thread_pool;
+  std::unique_ptr<ThreadPool> thread_pool;
   ASSERT_OK(BuildMinMaxTestPool(1, 1, &thread_pool));
 
   std::atomic<int32_t> counter0(0);

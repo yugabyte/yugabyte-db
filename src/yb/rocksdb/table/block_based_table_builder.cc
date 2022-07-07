@@ -33,38 +33,38 @@
 #include <unordered_map>
 #include <utility>
 
-#include "yb/rocksdb/db/dbformat.h"
+#include <glog/logging.h>
+
+#include "yb/gutil/macros.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/comparator.h"
+#include "yb/rocksdb/db/dbformat.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/filter_policy.h"
 #include "yb/rocksdb/flush_block_policy.h"
 #include "yb/rocksdb/table.h"
-
 #include "yb/rocksdb/table/block.h"
+#include "yb/rocksdb/table/block_based_filter_block.h"
+#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/block_based_table_internal.h"
 #include "yb/rocksdb/table/block_builder.h"
 #include "yb/rocksdb/table/filter_block.h"
-#include "yb/rocksdb/table/block_based_filter_block.h"
-#include "yb/rocksdb/table/block_based_table_factory.h"
 #include "yb/rocksdb/table/fixed_size_filter_block.h"
-#include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/format.h"
+#include "yb/rocksdb/table/full_filter_block.h"
 #include "yb/rocksdb/table/index_builder.h"
 #include "yb/rocksdb/table/meta_blocks.h"
 #include "yb/rocksdb/table/table_builder.h"
-
 #include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/compression.h"
 #include "yb/rocksdb/util/crc32c.h"
+#include "yb/rocksdb/util/file_reader_writer.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/xxhash.h"
 
 #include "yb/util/mem_tracker.h"
-#include "yb/util/string_util.h"
-
-#include "yb/gutil/macros.h"
+#include "yb/util/status_log.h"
 
 namespace rocksdb {
 
@@ -201,12 +201,13 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
     : public IntTblPropCollector {
  public:
   explicit BlockBasedTablePropertiesCollector(
-      BlockBasedTableBuilder::Rep* rep, IndexType index_type,
-      bool whole_key_filtering, bool prefix_filtering)
+      BlockBasedTableBuilder::Rep* rep, IndexType index_type, bool whole_key_filtering,
+      bool prefix_filtering, const KeyValueEncodingFormat key_value_encoding_format)
       : rep_(rep),
         index_type_(index_type),
         whole_key_filtering_(whole_key_filtering),
-        prefix_filtering_(prefix_filtering) {}
+        prefix_filtering_(prefix_filtering),
+        key_value_encoding_format_(key_value_encoding_format) {}
 
   virtual Status InternalAdd(const Slice& key, const Slice& value,
                              uint64_t file_size) override {
@@ -232,6 +233,7 @@ class BlockBasedTableBuilder::BlockBasedTablePropertiesCollector
   IndexType index_type_;
   bool whole_key_filtering_;
   bool prefix_filtering_;
+  KeyValueEncodingFormat key_value_encoding_format_;
 };
 
 // Originally following data was stored in BlockBasedTableBuilder::Rep and related to a single SST
@@ -303,6 +305,8 @@ struct BlockBasedTableBuilder::Rep {
 
   yb::MemTrackerPtr mem_tracker;
 
+  bool TEST_skip_writing_key_value_encoding_format_ = false;
+
   Rep(const ImmutableCFOptions& _ioptions,
       const BlockBasedTableOptions& table_opt,
       const InternalKeyComparatorPtr& icomparator,
@@ -331,6 +335,11 @@ Status BlockBasedTableBuilder::BlockBasedTablePropertiesCollector::Finish(
   val.clear();
   PutFixed32(&val, rep_->data_index_builder->NumLevels());
   properties->emplace(BlockBasedTablePropertyNames::kNumIndexLevels, val);
+  if (!rep_->TEST_skip_writing_key_value_encoding_format_) {
+    val.clear();
+    PutFixed8(&val, static_cast<uint8_t>(key_value_encoding_format_));
+    properties->emplace(BlockBasedTablePropertyNames::kDataBlockKeyValueEncodingFormat, val);
+  }
   return Status::OK();
 }
 
@@ -351,8 +360,9 @@ BlockBasedTableBuilder::Rep::Rep(
       filter_type(GetFilterType(table_options)),
       filter_block_builder(skip_filters ? nullptr : CreateFilterBlockBuilder(
           _ioptions, table_options, filter_type)),
-      data_block_builder(table_options.block_restart_interval,
-                 table_options.use_delta_encoding),
+      data_block_builder(
+          table_options.block_restart_interval,
+          table_options.data_block_key_value_encoding_format, table_options.use_delta_encoding),
       internal_prefix_transform(_ioptions.prefix_extractor),
       filter_key_transformer(table_opt.filter_policy ?
           table_opt.filter_policy->GetKeyTransformer() : nullptr),
@@ -388,10 +398,9 @@ BlockBasedTableBuilder::Rep::Rep(
     table_properties_collectors.emplace_back(
         collector_factories->CreateIntTblPropCollector(column_family_id));
   }
-  table_properties_collectors.emplace_back(
-      new BlockBasedTablePropertiesCollector(
-          this, table_options.index_type, table_options.whole_key_filtering,
-          _ioptions.prefix_extractor != nullptr));
+  table_properties_collectors.emplace_back(new BlockBasedTablePropertiesCollector(
+      this, table_options.index_type, table_options.whole_key_filtering,
+      _ioptions.prefix_extractor != nullptr, table_options.data_block_key_value_encoding_format));
 }
 
 BlockBasedTableBuilder::BlockBasedTableBuilder(
@@ -445,7 +454,9 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
   DCHECK(!r->closed);
   if (!ok()) return;
   if (r->props.num_entries > 0) {
-    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0);
+    DCHECK_GT(r->internal_comparator->Compare(key, Slice(r->last_key)), 0)
+        << "New key: " << key.ToDebugHexString()
+        << ", last key: " << Slice(r->last_key).ToDebugHexString();
   }
 
   const auto should_flush_data = r->flush_block_policy->Update(key, value);
@@ -571,8 +582,8 @@ size_t BlockBasedTableBuilder::WriteBlock(BlockBuilder* block,
 }
 
 size_t BlockBasedTableBuilder::WriteBlock(const Slice& raw_block_contents,
-                                          BlockHandle* handle,
-                                          FileWriterWithOffsetAndCachePrefix* writer_info) {
+    BlockHandle* handle,
+    FileWriterWithOffsetAndCachePrefix* writer_info) {
   // File format contains a sequence of blocks where each block has:
   //    block_data: uint8[n]
   //    type: uint8
@@ -661,8 +672,8 @@ static void DeleteCachedBlock(const Slice& key, void* value) {
 //
 Status BlockBasedTableBuilder::InsertBlockInCache(const Slice& block_contents,
                                                   const CompressionType type,
-                                                  const BlockHandle* handle,
-                                                  FileWriterWithOffsetAndCachePrefix* writer_info) {
+    const BlockHandle* handle,
+    FileWriterWithOffsetAndCachePrefix* writer_info) {
   Rep* r = rep_;
   Cache* block_cache_compressed = r->table_options.block_cache_compressed.get();
 
@@ -880,6 +891,14 @@ TableProperties BlockBasedTableBuilder::GetTableProperties() const {
     CHECK_OK(collector->Finish(&ret.user_collected_properties));
   }
   return ret;
+}
+
+const std::string& BlockBasedTableBuilder::LastKey() const {
+  return rep_->last_key;
+}
+
+void BlockBasedTableBuilder::TEST_skip_writing_key_value_encoding_format() {
+  rep_->TEST_skip_writing_key_value_encoding_format_ = true;
 }
 
 }  // namespace rocksdb

@@ -29,10 +29,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include <glog/logging.h>
 #include <gtest/gtest.h>
-#include <stdlib.h>
+
 #include "yb/util/bloom_filter.h"
 
 namespace yb {
@@ -82,7 +81,7 @@ TEST(TestBloomFilter, TestInsertAndProbe) {
   // is within reasonable bounds.
   uint32_t num_queries = 100000;
   uint32_t num_positives = 0;
-  for (int i = 0; i < num_queries; i++) {
+  for (uint32_t i = 0; i < num_queries; i++) {
     uint64_t key = random();
     Slice key_slice(reinterpret_cast<const uint8_t *>(&key), sizeof(key));
     BloomKeyProbe probe(key_slice);

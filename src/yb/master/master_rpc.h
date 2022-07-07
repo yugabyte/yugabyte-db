@@ -33,11 +33,24 @@
 #ifndef YB_MASTER_MASTER_RPC_H
 #define YB_MASTER_MASTER_RPC_H
 
-#include <vector>
-#include <string>
+#include <stdint.h>
+#include <string.h>
 
+#include <cstdarg>
+#include <functional>
+#include <string>
+#include <type_traits>
+#include <vector>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/optional/optional_fwd.hpp>
+#include <boost/version.hpp>
+#include <gflags/gflags_declare.h>
+
+#include "yb/gutil/callback.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
-#include "yb/master/master.pb.h"
+
 #include "yb/rpc/rpc.h"
 
 #include "yb/server/server_base_options.h"
@@ -45,7 +58,6 @@
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
-
 
 namespace yb {
 
@@ -106,7 +118,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   // master is a leader, or if responses have been received from all
   // of the Masters.
   void GetMasterRegistrationRpcCbForNode(
-      int idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
+      size_t idx, const Status& status, const std::shared_ptr<rpc::RpcCommand>& self,
       rpc::Rpcs::Handle handle);
 
   LeaderCallback user_cb_;
@@ -120,7 +132,7 @@ class GetLeaderMasterRpc : public rpc::Rpc {
   std::vector<ServerEntryPB> responses_;
 
   // Number of pending responses.
-  int pending_responses_ = 0;
+  size_t pending_responses_ = 0;
 
   // If true, then we've already executed the user callback and the
   // RPC can be deallocated.

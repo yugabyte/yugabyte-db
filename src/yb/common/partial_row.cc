@@ -33,31 +33,34 @@
 #include "yb/common/partial_row.h"
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 
 #include "yb/common/common.pb.h"
+#include "yb/common/key_encoder.h"
 #include "yb/common/row.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.pb.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/bitmap.h"
-#include "yb/util/status.h"
 #include "yb/util/decimal.h"
+#include "yb/util/result.h"
+#include "yb/util/status.h"
+#include "yb/util/status_log.h"
 
 using strings::Substitute;
 
 namespace yb {
 
 namespace {
-inline Status FindColumn(const Schema& schema, const Slice& col_name, int* idx) {
-  GStringPiece sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
-  *idx = schema.find_column(sp);
-  if (PREDICT_FALSE(*idx == -1)) {
+
+inline Result<size_t> FindColumn(const Schema& schema, const Slice& col_name) {
+  GStringPiece sp(col_name.cdata(), col_name.size());
+  auto result = schema.find_column(sp);
+  if (PREDICT_FALSE(result == Schema::kColumnNotFound)) {
     return STATUS(NotFound, "No such column", col_name);
   }
-  return Status::OK();
+  return result;
 }
+
 } // anonymous namespace
 
 YBPartialRow::YBPartialRow(const Schema* schema)
@@ -102,7 +105,7 @@ YBPartialRow::YBPartialRow(const YBPartialRow& other)
   memcpy(isset_bitmap_, other.isset_bitmap_, len);
 
   // Copy owned strings.
-  for (int col_idx = 0; col_idx < schema_->num_columns(); col_idx++) {
+  for (size_t col_idx = 0; col_idx < schema_->num_columns(); col_idx++) {
     if (BitmapTest(owned_strings_bitmap_, col_idx)) {
       ContiguousRow row(schema_, row_data_);
       Slice* slice = reinterpret_cast<Slice*>(row.mutable_cell_ptr(col_idx));
@@ -124,28 +127,28 @@ template<typename T>
 Status YBPartialRow::Set(const Slice& col_name,
                          const typename T::cpp_type& val,
                          bool owned) {
-  int col_idx;
-  RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
-  return Set<T>(col_idx, val, owned);
+  return Set<T>(VERIFY_RESULT(FindColumn(*schema_, col_name)), val, owned);
 }
 
 template<typename T>
-Status YBPartialRow::Set(int col_idx,
+Status YBPartialRow::Set(size_t col_idx,
                          const typename T::cpp_type& val,
                          bool owned) {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
+  if (PREDICT_FALSE(col.type_info()->type != T::type)) {
     // TODO: at some point we could allow type coercion here.
     return STATUS(InvalidArgument,
       Substitute("invalid type $0 provided for column '$1' (expected $2)",
                  T::name(),
-                 col.name(), col.type_info()->name()));
+                 col.name(), col.type_info()->name));
   }
 
   ContiguousRow row(schema_, row_data_);
 
   // If we're replacing an existing STRING/BINARY/INET value, deallocate the old value.
-  if (T::physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->var_length()) {
+    DeallocateStringIfSet(col_idx, col);
+  }
 
   // Mark the column as set.
   BitmapSet(isset_bitmap_, col_idx);
@@ -162,10 +165,10 @@ Status YBPartialRow::Set(int col_idx,
   return Status::OK();
 }
 
-Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
+Status YBPartialRow::Set(size_t column_idx, const uint8_t* val) {
   const ColumnSchema& column_schema = schema()->column(column_idx);
 
-  switch (column_schema.type_info()->type()) {
+  switch (column_schema.type_info()->type) {
     case BOOL: {
       RETURN_NOT_OK(SetBool(column_idx, *reinterpret_cast<const bool*>(val)));
       break;
@@ -235,33 +238,18 @@ Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
   return Status::OK();
 }
 
-void YBPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
+void YBPartialRow::DeallocateStringIfSet(size_t col_idx, const ColumnSchema& col) {
   if (BitmapTest(owned_strings_bitmap_, col_idx)) {
     ContiguousRow row(schema_, row_data_);
-    const Slice* dst;
-    if (col.type_info()->type() == BINARY) {
-      dst = schema_->ExtractColumnFromRow<BINARY>(row, col_idx);
-    } else if (col.type_info()->type() == INET) {
-      dst = schema_->ExtractColumnFromRow<INET>(row, col_idx);
-    } else if (col.type_info()->type() == JSONB) {
-      dst = schema_->ExtractColumnFromRow<JSONB>(row, col_idx);
-    } else if (col.type_info()->type() == UUID) {
-      dst = schema_->ExtractColumnFromRow<UUID>(row, col_idx);
-    } else if (col.type_info()->type() == TIMEUUID) {
-      dst = schema_->ExtractColumnFromRow<TIMEUUID>(row, col_idx);
-    } else if (col.type_info()->type() == FROZEN) {
-      dst = schema_->ExtractColumnFromRow<FROZEN>(row, col_idx);
-    } else {
-      CHECK(col.type_info()->type() == STRING);
-      dst = schema_->ExtractColumnFromRow<STRING>(row, col_idx);
-    }
-    delete [] dst->data();
+    CHECK(col.type_info()->var_length());
+    auto dst = row.CellSlice(col_idx);
+    delete [] dst.data();
     BitmapClear(owned_strings_bitmap_, col_idx);
   }
 }
 
 void YBPartialRow::DeallocateOwnedStrings() {
-  for (int i = 0; i < schema_->num_columns(); i++) {
+  for (size_t i = 0; i < schema_->num_columns(); i++) {
     DeallocateStringIfSet(i, schema_->column(i));
   }
 }
@@ -315,83 +303,83 @@ Status YBPartialRow::SetTimeUuid(const Slice& col_name, const Slice& val) {
 Status YBPartialRow::SetDecimal(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_name, val, false);
 }
-Status YBPartialRow::SetBool(int col_idx, bool val) {
+Status YBPartialRow::SetBool(size_t col_idx, bool val) {
   return Set<TypeTraits<BOOL> >(col_idx, val);
 }
-Status YBPartialRow::SetInt8(int col_idx, int8_t val) {
+Status YBPartialRow::SetInt8(size_t col_idx, int8_t val) {
   return Set<TypeTraits<INT8> >(col_idx, val);
 }
-Status YBPartialRow::SetInt16(int col_idx, int16_t val) {
+Status YBPartialRow::SetInt16(size_t col_idx, int16_t val) {
   return Set<TypeTraits<INT16> >(col_idx, val);
 }
-Status YBPartialRow::SetInt32(int col_idx, int32_t val) {
+Status YBPartialRow::SetInt32(size_t col_idx, int32_t val) {
   return Set<TypeTraits<INT32> >(col_idx, val);
 }
-Status YBPartialRow::SetInt64(int col_idx, int64_t val) {
+Status YBPartialRow::SetInt64(size_t col_idx, int64_t val) {
   return Set<TypeTraits<INT64> >(col_idx, val);
 }
-Status YBPartialRow::SetTimestamp(int col_idx, int64_t val) {
+Status YBPartialRow::SetTimestamp(size_t col_idx, int64_t val) {
   return Set<TypeTraits<TIMESTAMP> >(col_idx, val);
 }
-Status YBPartialRow::SetString(int col_idx, const Slice& val) {
+Status YBPartialRow::SetString(size_t col_idx, const Slice& val) {
   return Set<TypeTraits<STRING> >(col_idx, val, false);
 }
-Status YBPartialRow::SetBinary(int col_idx, const Slice& val) {
+Status YBPartialRow::SetBinary(size_t col_idx, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_idx, val, false);
 }
-Status YBPartialRow::SetFrozen(int col_idx, const Slice& val) {
+Status YBPartialRow::SetFrozen(size_t col_idx, const Slice& val) {
   return Set<TypeTraits<FROZEN> >(col_idx, val, false);
 }
-Status YBPartialRow::SetInet(int col_idx, const Slice& val) {
+Status YBPartialRow::SetInet(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<INET> >(col_idx, val);
 }
-Status YBPartialRow::SetJsonb(int col_idx, const Slice& val) {
+Status YBPartialRow::SetJsonb(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<JSONB> >(col_idx, val);
 }
-Status YBPartialRow::SetUuid(int col_idx, const Slice& val) {
+Status YBPartialRow::SetUuid(size_t col_idx, const Slice& val) {
   return Set<TypeTraits<UUID> >(col_idx, val, false);
 }
-Status YBPartialRow::SetTimeUuid(int col_idx, const Slice& val) {
+Status YBPartialRow::SetTimeUuid(size_t col_idx, const Slice& val) {
   return Set<TypeTraits<TIMEUUID> >(col_idx, val, false);
 }
-Status YBPartialRow::SetDecimal(int col_idx, const Slice& val) {
+Status YBPartialRow::SetDecimal(size_t col_idx, const Slice& val) {
   return Set<TypeTraits<DECIMAL> >(col_idx, val, false);
 }
-Status YBPartialRow::SetFloat(int col_idx, float val) {
+Status YBPartialRow::SetFloat(size_t col_idx, float val) {
   return Set<TypeTraits<FLOAT> >(col_idx, util::CanonicalizeFloat(val));
 }
-Status YBPartialRow::SetDouble(int col_idx, double val) {
+Status YBPartialRow::SetDouble(size_t col_idx, double val) {
   return Set<TypeTraits<DOUBLE> >(col_idx, util::CanonicalizeDouble(val));
 }
 
 Status YBPartialRow::SetBinaryCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<BINARY> >(col_name, val);
 }
-Status YBPartialRow::SetBinaryCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetBinaryCopy(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<BINARY> >(col_idx, val);
 }
 Status YBPartialRow::SetStringCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<STRING> >(col_name, val);
 }
-Status YBPartialRow::SetStringCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetStringCopy(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<STRING> >(col_idx, val);
 }
 Status YBPartialRow::SetUuidCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<UUID> >(col_name, val);
 }
-Status YBPartialRow::SetUuidCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetUuidCopy(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<UUID> >(col_idx, val);
 }
 Status YBPartialRow::SetTimeUuidCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<TIMEUUID> >(col_name, val);
 }
-Status YBPartialRow::SetTimeUuidCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetTimeUuidCopy(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<TIMEUUID> >(col_idx, val);
 }
 Status YBPartialRow::SetFrozenCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<FROZEN> >(col_name, val);
 }
-Status YBPartialRow::SetFrozenCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetFrozenCopy(size_t col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<FROZEN> >(col_idx, val);
 }
 
@@ -408,7 +396,7 @@ Status YBPartialRow::SetSliceCopy(const Slice& col_name, const Slice& val) {
 }
 
 template<typename T>
-Status YBPartialRow::SetSliceCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetSliceCopy(size_t col_idx, const Slice& val) {
   auto relocated = new uint8_t[val.size()];
   memcpy(relocated, val.data(), val.size());
   Slice relocated_val(relocated, val.size());
@@ -420,18 +408,16 @@ Status YBPartialRow::SetSliceCopy(int col_idx, const Slice& val) {
 }
 
 Status YBPartialRow::SetNull(const Slice& col_name) {
-  int col_idx;
-  RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
-  return SetNull(col_idx);
+  return SetNull(VERIFY_RESULT(FindColumn(*schema_, col_name)));
 }
 
-Status YBPartialRow::SetNull(int col_idx) {
+Status YBPartialRow::SetNull(size_t col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(!col.is_nullable())) {
     return STATUS(InvalidArgument, "column not nullable", col.ToString());
   }
 
-  if (col.type_info()->physical_type() == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
 
   ContiguousRow row(schema_, row_data_);
   row.set_null(col_idx, true);
@@ -442,14 +428,12 @@ Status YBPartialRow::SetNull(int col_idx) {
 }
 
 Status YBPartialRow::Unset(const Slice& col_name) {
-  int col_idx;
-  RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
-  return Unset(col_idx);
+  return Unset(VERIFY_RESULT(FindColumn(*schema_, col_name)));
 }
 
-Status YBPartialRow::Unset(int col_idx) {
+Status YBPartialRow::Unset(size_t col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (col.type_info()->physical_type() == BINARY) DeallocateStringIfSet(col_idx, col);
+  if (col.type_info()->physical_type == BINARY) DeallocateStringIfSet(col_idx, col);
   BitmapClear(isset_bitmap_, col_idx);
   return Status::OK();
 }
@@ -461,22 +445,22 @@ Status YBPartialRow::Unset(int col_idx) {
 //------------------------------------------------------------
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(size_t col_idx, const Slice& val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(size_t col_idx, const Slice& val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<INET> >(size_t col_idx, const Slice& val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<JSONB> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<JSONB> >(size_t col_idx, const Slice& val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<UUID> >(size_t col_idx, const Slice& val);
 
 template
-Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(size_t col_idx, const Slice& val);
 
 template
 Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(const Slice& col_name, const Slice& val);
@@ -497,53 +481,53 @@ template
 Status YBPartialRow::SetSliceCopy<TypeTraits<TIMEUUID> >(const Slice& col_name, const Slice& val);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT8> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT8> >(size_t col_idx,
                                               const TypeTraits<INT8>::cpp_type& val,
                                               bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT16> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT16> >(size_t col_idx,
                                                const TypeTraits<INT16>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT32> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT32> >(size_t col_idx,
                                                const TypeTraits<INT32>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<INT64> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT64> >(size_t col_idx,
                                                const TypeTraits<INT64>::cpp_type& val,
                                                bool owned);
 
 template
 Status YBPartialRow::Set<TypeTraits<TIMESTAMP> >(
-    int col_idx,
+    size_t col_idx,
     const TypeTraits<TIMESTAMP>::cpp_type& val,
     bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<STRING> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<STRING> >(size_t col_idx,
                                                 const TypeTraits<STRING>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<BINARY> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<BINARY> >(size_t col_idx,
                                                 const TypeTraits<BINARY>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<FLOAT> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<FLOAT> >(size_t col_idx,
                                                const TypeTraits<FLOAT>::cpp_type& val,
                                                bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<DOUBLE> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<DOUBLE> >(size_t col_idx,
                                                 const TypeTraits<DOUBLE>::cpp_type& val,
                                                 bool owned);
 
 template
-Status YBPartialRow::Set<TypeTraits<BOOL> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<BOOL> >(size_t col_idx,
                                               const TypeTraits<BOOL>::cpp_type& val,
                                               bool owned);
 
@@ -601,19 +585,17 @@ Status YBPartialRow::Set<TypeTraits<BINARY> >(const Slice& col_name,
 //------------------------------------------------------------
 // Getters
 //------------------------------------------------------------
-bool YBPartialRow::IsColumnSet(int col_idx) const {
+bool YBPartialRow::IsColumnSet(size_t col_idx) const {
   DCHECK_GE(col_idx, 0);
   DCHECK_LT(col_idx, schema_->num_columns());
   return BitmapTest(isset_bitmap_, col_idx);
 }
 
 bool YBPartialRow::IsColumnSet(const Slice& col_name) const {
-  int col_idx;
-  CHECK_OK(FindColumn(*schema_, col_name, &col_idx));
-  return IsColumnSet(col_idx);
+  return IsColumnSet(CHECK_RESULT(FindColumn(*schema_, col_name)));
 }
 
-bool YBPartialRow::IsNull(int col_idx) const {
+bool YBPartialRow::IsNull(size_t col_idx) const {
   const ColumnSchema& col = schema_->column(col_idx);
   if (!col.is_nullable()) {
     return false;
@@ -626,9 +608,7 @@ bool YBPartialRow::IsNull(int col_idx) const {
 }
 
 bool YBPartialRow::IsNull(const Slice& col_name) const {
-  int col_idx;
-  CHECK_OK(FindColumn(*schema_, col_name, &col_idx));
-  return IsNull(col_idx);
+  return IsNull(CHECK_RESULT(FindColumn(*schema_, col_name)));
 }
 
 Status YBPartialRow::GetBool(const Slice& col_name, bool* val) const {
@@ -673,66 +653,64 @@ Status YBPartialRow::GetUuid(const Slice& col_name, Slice* val) const {
 Status YBPartialRow::GetTimeUuid(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<TIMEUUID> >(col_name, val);
 }
-Status YBPartialRow::GetBool(int col_idx, bool* val) const {
+Status YBPartialRow::GetBool(size_t col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
 }
-Status YBPartialRow::GetInt8(int col_idx, int8_t* val) const {
+Status YBPartialRow::GetInt8(size_t col_idx, int8_t* val) const {
   return Get<TypeTraits<INT8> >(col_idx, val);
 }
-Status YBPartialRow::GetInt16(int col_idx, int16_t* val) const {
+Status YBPartialRow::GetInt16(size_t col_idx, int16_t* val) const {
   return Get<TypeTraits<INT16> >(col_idx, val);
 }
-Status YBPartialRow::GetInt32(int col_idx, int32_t* val) const {
+Status YBPartialRow::GetInt32(size_t col_idx, int32_t* val) const {
   return Get<TypeTraits<INT32> >(col_idx, val);
 }
-Status YBPartialRow::GetInt64(int col_idx, int64_t* val) const {
+Status YBPartialRow::GetInt64(size_t col_idx, int64_t* val) const {
   return Get<TypeTraits<INT64> >(col_idx, val);
 }
-Status YBPartialRow::GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const {
+Status YBPartialRow::GetTimestamp(size_t col_idx, int64_t* micros_since_utc_epoch) const {
   return Get<TypeTraits<TIMESTAMP> >(col_idx, micros_since_utc_epoch);
 }
-Status YBPartialRow::GetFloat(int col_idx, float* val) const {
+Status YBPartialRow::GetFloat(size_t col_idx, float* val) const {
   return Get<TypeTraits<FLOAT> >(col_idx, val);
 }
-Status YBPartialRow::GetDouble(int col_idx, double* val) const {
+Status YBPartialRow::GetDouble(size_t col_idx, double* val) const {
   return Get<TypeTraits<DOUBLE> >(col_idx, val);
 }
-Status YBPartialRow::GetString(int col_idx, Slice* val) const {
+Status YBPartialRow::GetString(size_t col_idx, Slice* val) const {
   return Get<TypeTraits<STRING> >(col_idx, val);
 }
-Status YBPartialRow::GetBinary(int col_idx, Slice* val) const {
+Status YBPartialRow::GetBinary(size_t col_idx, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_idx, val);
 }
-Status YBPartialRow::GetInet(int col_idx, Slice* val) const {
+Status YBPartialRow::GetInet(size_t col_idx, Slice* val) const {
   return Get<TypeTraits<INET> >(col_idx, val);
 }
-Status YBPartialRow::GetJsonb(int col_idx, Slice* val) const {
+Status YBPartialRow::GetJsonb(size_t col_idx, Slice* val) const {
   return Get<TypeTraits<JSONB> >(col_idx, val);
 }
-Status YBPartialRow::GetUuid(int col_idx, Slice* val) const {
+Status YBPartialRow::GetUuid(size_t col_idx, Slice* val) const {
   return Get<TypeTraits<UUID> >(col_idx, val);
 }
-Status YBPartialRow::GetTimeUuid(int col_idx, Slice* val) const {
+Status YBPartialRow::GetTimeUuid(size_t col_idx, Slice* val) const {
   return Get<TypeTraits<TIMEUUID> >(col_idx, val);
 }
 
 template<typename T>
 Status YBPartialRow::Get(const Slice& col_name,
-                           typename T::cpp_type* val) const {
-  int col_idx;
-  RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
-  return Get<T>(col_idx, val);
+                         typename T::cpp_type* val) const {
+  return Get<T>(VERIFY_RESULT(FindColumn(*schema_, col_name)), val);
 }
 
 template<typename T>
-Status YBPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
+Status YBPartialRow::Get(size_t col_idx, typename T::cpp_type* val) const {
   const ColumnSchema& col = schema_->column(col_idx);
-  if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
+  if (PREDICT_FALSE(col.type_info()->type != T::type)) {
     // TODO: at some point we could allow type coercion here.
     return STATUS(InvalidArgument,
       Substitute("invalid type $0 provided for column '$1' (expected $2)",
                  T::name(),
-                 col.name(), col.type_info()->name()));
+                 col.name(), col.type_info()->name));
   }
 
   if (PREDICT_FALSE(!IsColumnSet(col_idx))) {
@@ -745,38 +723,6 @@ Status YBPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
   ContiguousRow row(schema_, row_data_);
   memcpy(val, row.cell_ptr(col_idx), sizeof(*val));
   return Status::OK();
-}
-
-//------------------------------------------------------------
-// Key-encoding related functions
-//------------------------------------------------------------
-Status YBPartialRow::EncodeRowKey(string* encoded_key) const {
-  // Currently, a row key must be fully specified.
-  // TODO: allow specifying a prefix of the key, and automatically
-  // fill the rest with minimum values.
-  for (int i = 0; i < schema_->num_key_columns(); i++) {
-    if (PREDICT_FALSE(!IsColumnSet(i))) {
-      return STATUS(InvalidArgument, "All key columns must be set",
-                                     schema_->column(i).name());
-    }
-  }
-
-  encoded_key->clear();
-  ContiguousRow row(schema_, row_data_);
-
-  for (int i = 0; i < schema_->num_key_columns(); i++) {
-    bool is_last = i == schema_->num_key_columns() - 1;
-    const TypeInfo* ti = schema_->column(i).type_info();
-    GetKeyEncoder<string>(ti).Encode(row.cell_ptr(i), is_last, encoded_key);
-  }
-
-  return Status::OK();
-}
-
-string YBPartialRow::ToEncodedRowKeyOrDie() const {
-  string ret;
-  CHECK_OK(EncodeRowKey(&ret));
-  return ret;
 }
 
 //------------------------------------------------------------
@@ -806,7 +752,7 @@ std::string YBPartialRow::ToString() const {
   ContiguousRow row(schema_, row_data_);
   std::string ret;
   bool first = true;
-  for (int i = 0; i < schema_->num_columns(); i++) {
+  for (size_t i = 0; i < schema_->num_columns(); i++) {
     if (IsColumnSet(i)) {
       if (!first) {
         ret.append(", ");

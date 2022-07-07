@@ -18,11 +18,18 @@
 #ifndef YB_YQL_PGGATE_PG_TABLEDESC_H_
 #define YB_YQL_PGGATE_PG_TABLEDESC_H_
 
-#include "yb/common/pgsql_protocol.pb.h"
-#include "yb/client/client.h"
+#include "yb/common/partition.h"
+#include "yb/common/pg_types.h"
+#include "yb/common/pgsql_protocol.messages.h"
+#include "yb/common/schema.h"
+
 #include "yb/client/yb_op.h"
+#include "yb/client/yb_table_name.h"
+
+#include "yb/master/master_ddl.pb.h"
+
 #include "yb/yql/pggate/pg_column.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 namespace yb {
 namespace pggate {
@@ -32,39 +39,27 @@ namespace pggate {
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
+  PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+              std::shared_ptr<client::VersionedTablePartitionList> partitions);
 
-  //------------------------------------------------------------------------------------------------
-  // Public types.
-  typedef scoped_refptr<PgTableDesc> ScopedRefPtr;
+  Status Init();
 
-  explicit PgTableDesc(std::shared_ptr<client::YBTable> pg_table);
+  const PgObjectId& id() const {
+    return id_;
+  }
 
   const client::YBTableName& table_name() const;
 
-  const std::shared_ptr<client::YBTable> table() const {
-    return table_;
-  }
+  const PartitionSchema& partition_schema() const;
 
-  static int ToPgAttrNum(const string &attr_name, int attr_num);
-
-  std::vector<PgColumn>& columns() {
-    return columns_;
-  }
-
-  const size_t num_hash_key_columns() const;
-  const size_t num_key_columns() const;
-  const size_t num_columns() const;
-
-  std::unique_ptr<client::YBPgsqlReadOp> NewPgsqlSelect();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlInsert();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlUpdate();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlDelete();
-  std::unique_ptr<client::YBPgsqlWriteOp> NewPgsqlTruncateColocated();
+  size_t num_hash_key_columns() const;
+  size_t num_key_columns() const;
+  size_t num_columns() const;
 
   // Find the column given the postgres attr number.
-  Result<PgColumn *> FindColumn(int attr_num);
+  Result<size_t> FindColumn(int attr_num) const;
 
-  CHECKED_STATUS GetColumnInfo(int16_t attr_number, bool *is_primary, bool *is_hash) const;
+  Result<YBCPgColumnInfo> GetColumnInfo(int16_t attr_number) const;
 
   bool IsHashPartitioned() const;
 
@@ -72,33 +67,46 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const std::vector<std::string>& GetPartitions() const;
 
-  int GetPartitionCount() const;
+  const std::string& LastPartition() const;
+
+  size_t GetPartitionCount() const;
 
   // When reading a row given its associated ybctid, the ybctid value is decoded to the row.
   Result<string> DecodeYbctid(const Slice& ybctid) const;
 
   // Seek the tablet partition where the row whose "ybctid" value was given can be found.
-  Result<int> FindPartitionIndex(const Slice& ybctid) const;
+  Result<size_t> FindPartitionIndex(const Slice& ybctid) const;
 
   // These values are set by  PgGate to optimize query to narrow the scanning range of a query.
-  CHECKED_STATUS SetScanBoundary(PgsqlReadRequestPB *req,
+  Status SetScanBoundary(LWPgsqlReadRequestPB *req,
                                  const string& partition_lower_bound,
                                  bool lower_bound_is_inclusive,
                                  const string& partition_upper_bound,
                                  bool upper_bound_is_inclusive);
 
-  bool IsTransactional() const;
+  const Schema& schema() const;
+
+  // True if table is colocated (including tablegroups, excluding YSQL system tables).
   bool IsColocated() const;
 
+  YBCPgOid GetColocationId() const;
+
+  YBCPgOid GetTablegroupOid() const;
+
+  uint32_t schema_version() const;
+
  private:
-  std::shared_ptr<client::YBTable> table_;
-  const std::shared_ptr<const client::VersionedTablePartitions> table_partitions_;
+  PgObjectId id_;
+  master::GetTableSchemaResponsePB resp_;
+  const std::shared_ptr<const client::VersionedTablePartitionList> table_partitions_;
 
-  std::vector<PgColumn> columns_;
-  std::unordered_map<int, size_t> attr_num_map_; // Attr number to column index map.
+  client::YBTableName table_name_;
+  Schema schema_;
+  PartitionSchema partition_schema_;
 
-  // Hidden columns.
-  PgColumn column_ybctid_;
+  // Attr number to column index map.
+  std::unordered_map<int, size_t> attr_num_map_;
+  YBCPgOid tablegroup_oid_{kInvalidOid};
 };
 
 }  // namespace pggate

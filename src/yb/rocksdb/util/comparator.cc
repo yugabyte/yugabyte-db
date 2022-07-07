@@ -20,15 +20,14 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
+#include <stdint.h>
+
+#include <memory>
+
+#include <glog/logging.h>
 
 #include "yb/rocksdb/comparator.h"
-
-#include <stdint.h>
-#include <algorithm>
-#include <memory>
 #include "yb/util/slice.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/logging.h"
 
 namespace rocksdb {
 

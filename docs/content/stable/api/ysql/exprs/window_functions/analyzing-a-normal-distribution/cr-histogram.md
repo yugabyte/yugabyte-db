@@ -3,14 +3,12 @@ title: cr_histogram.sql
 linkTitle: cr_histogram.sql
 headerTitle: cr_histogram.sql
 description: cr_histogram.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: cr-histogram
     parent: analyzing-a-normal-distribution
     weight: 100
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_histogram.sql`.
 ```plpgsql
@@ -21,7 +19,6 @@ create or replace function histogram(
   no_of_bukets in int,
   scale_factor in numeric)
   returns SETOF text
-  immutable
   language sql
 as $body$
   with

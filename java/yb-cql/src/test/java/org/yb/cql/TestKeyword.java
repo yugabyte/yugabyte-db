@@ -29,7 +29,6 @@ import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 
-import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
@@ -42,9 +41,13 @@ import static org.yb.AssertionWrappers.assertNull;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestKeyword extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestKeyword.class);
+
   private final String[] unreserved_keywords = {
     "group",
     "offset",

@@ -34,18 +34,18 @@
 
 #include <stdio.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "yb/gutil/strings/substitute.h"
 #include "yb/util/env.h"
 #include "yb/util/errno.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 

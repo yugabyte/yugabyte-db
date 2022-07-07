@@ -30,6 +30,7 @@
 #include <sstream>
 #include <vector>
 
+#include "yb/rocksdb/db/filename.h"
 #include "yb/rocksdb/db/memtable.h"
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
@@ -51,18 +52,37 @@
 
 #include "yb/rocksdb/port/port.h"
 
+#include "yb/docdb/docdb_debug.h"
+
+#include "yb/util/status_log.h"
+
+using yb::docdb::StorageDbType;
+
 namespace rocksdb {
 
 using std::dynamic_pointer_cast;
 
-SstFileReader::SstFileReader(const std::string& file_path,
-                             bool verify_checksum,
-                             bool output_hex)
-    :file_name_(file_path), read_num_(0), verify_checksum_(verify_checksum),
-    output_hex_(output_hex), ioptions_(options_),
-    internal_comparator_(std::make_shared<InternalKeyComparator>(BytewiseComparator())) {
+std::string DocDBKVFormatter::Format(
+    const yb::Slice&, const yb::Slice&, yb::docdb::StorageDbType) const {
+  CHECK(false) << "unimplemented";
+  return "";
+}
+
+SstFileReader::SstFileReader(
+    const std::string& file_path, bool verify_checksum, OutputFormat output_format,
+    const DocDBKVFormatter* formatter)
+    : file_name_(file_path),
+      read_num_(0),
+      verify_checksum_(verify_checksum),
+      output_format_(output_format),
+      docdb_kv_formatter_(formatter),
+      ioptions_(options_),
+      internal_comparator_(std::make_shared<InternalKeyComparator>(BytewiseComparator())) {
   fprintf(stdout, "Process %s\n", file_path.c_str());
   init_result_ = GetTableReader(file_name_);
+}
+
+SstFileReader::~SstFileReader() {
 }
 
 extern const uint64_t kBlockBasedTableMagicNumber;
@@ -170,10 +190,10 @@ uint64_t SstFileReader::CalculateCompressedTableSize(
   table_options.block_size = block_size;
   BlockBasedTableFactory block_based_tf(table_options);
   unique_ptr<TableBuilder> table_builder;
-  table_builder.reset(block_based_tf.NewTableBuilder(
+  table_builder = block_based_tf.NewTableBuilder(
       tb_options,
       TablePropertiesCollectorFactory::Context::kUnknownColumnFamily,
-      dest_writer.get()));
+      dest_writer.get());
   unique_ptr<InternalIterator> iter(table_reader_->NewIterator(ReadOptions()));
   for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
     if (!iter->status().ok()) {
@@ -339,9 +359,23 @@ Status SstFileReader::ReadSequential(bool print_kv,
     }
 
     if (print_kv) {
-      fprintf(stdout, "%s => %s\n",
-          ikey.DebugString(output_hex_).c_str(),
-          value.ToString(output_hex_).c_str());
+      switch (output_format_) {
+        case OutputFormat::kRaw:
+        case OutputFormat::kHex: {
+          bool output_hex = (output_format_ == OutputFormat::kHex);
+          fprintf(
+              stdout, "%s => %s\n", ikey.DebugString(output_hex).c_str(),
+              value.ToString(output_hex).c_str());
+          break;
+        }
+        case OutputFormat::kDecodedRegularDB:
+        case OutputFormat::kDecodedIntentsDB:
+          auto storage_type =
+              (output_format_ == OutputFormat::kDecodedRegularDB ? StorageDbType::kRegular
+                                                                 : StorageDbType::kIntents);
+          fprintf(stdout, "%s", docdb_kv_formatter_->Format(key, value, storage_type).c_str());
+          break;
+      }
     }
   }
 
@@ -368,7 +402,7 @@ void print_help() {
   fprintf(stderr,
           "sst_dump [--command=check|scan|none|raw] [--verify_checksum] "
           "--file=data_dir_OR_sst_file"
-          " [--output_hex]"
+          " [--output_format=raw|hex|decoded_regulardb|decoded_intentsdb]"
           " [--input_key_hex]"
           " [--from=<user_key>]"
           " [--to=<user_key>]"
@@ -388,7 +422,7 @@ int SSTDumpTool::Run(int argc, char** argv) {
   char junk;
   uint64_t n;
   bool verify_checksum = false;
-  bool output_hex = false;
+  OutputFormat output_format = OutputFormat::kRaw;
   bool input_key_hex = false;
   bool has_from = false;
   bool has_to = false;
@@ -402,12 +436,23 @@ int SSTDumpTool::Run(int argc, char** argv) {
   for (int i = 1; i < argc; i++) {
     if (strncmp(argv[i], "--file=", 7) == 0) {
       dir_or_file = argv[i] + 7;
-    } else if (strcmp(argv[i], "--output_hex") == 0) {
-      output_hex = true;
+    } else if (strncmp(argv[i], "--output_format=", 16) == 0) {
+      auto option = argv[i] + 16;
+      if (strcmp(option, "raw") == 0) {
+        output_format = OutputFormat::kRaw;
+      } else if (strcmp(option, "hex") == 0) {
+        output_format = OutputFormat::kHex;
+      } else if (strcmp(option, "decoded_regulardb") == 0) {
+        output_format = OutputFormat::kDecodedRegularDB;
+      } else if (strcmp(option, "decoded_intentsdb") == 0) {
+        output_format = OutputFormat::kDecodedIntentsDB;
+      } else {
+        print_help();
+        exit(1);
+      }
     } else if (strcmp(argv[i], "--input_key_hex") == 0) {
       input_key_hex = true;
-    } else if (sscanf(argv[i],
-               "--read_num=%" PRIu64 "%c", &n, &junk) == 1) {
+    } else if (sscanf(argv[i], "--read_num=%" PRIu64 "%c", &n, &junk) == 1) {
       read_num = n;
     } else if (strcmp(argv[i], "--verify_checksum") == 0) {
       verify_checksum = true;
@@ -478,8 +523,7 @@ int SSTDumpTool::Run(int argc, char** argv) {
       filename = std::string(dir_or_file) + "/" + filename;
     }
 
-    rocksdb::SstFileReader reader(filename, verify_checksum,
-                                  output_hex);
+    rocksdb::SstFileReader reader(filename, verify_checksum, output_format, formatter_);
     if (!reader.getStatus().ok()) {
       fprintf(stderr, "%s: %s\n", filename.c_str(),
               reader.getStatus().ToString().c_str());
@@ -546,6 +590,13 @@ int SSTDumpTool::Run(int argc, char** argv) {
         fprintf(stdout, "# deleted keys: %" PRIu64 "\n",
                 rocksdb::GetDeletedKeys(
                     table_properties->user_collected_properties));
+        fprintf(stdout,
+                "  User collected properties:\n"
+                "  ------------------------------\n");
+        for (const auto& prop : table_properties->user_collected_properties) {
+          fprintf(
+              stdout, "  %s: %s\n", prop.first.c_str(), Slice(prop.second).ToDebugString().c_str());
+        }
       }
     }
   }

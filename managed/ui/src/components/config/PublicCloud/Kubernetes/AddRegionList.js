@@ -36,6 +36,8 @@ class AddRegionList extends Component {
         {
           zoneLabel: '',
           storageClasses: '',
+          namespace: '',
+          kubeDomain: '',
           zoneKubeConfig: formik.values.kubeConfig,
           zoneOverrides: ''
         }
@@ -117,6 +119,8 @@ class AddRegionList extends Component {
               zoneArrayHelpers.replace(rowIdx, {
                 zoneLabel: '',
                 storageClasses: '',
+                namespace: '',
+                kubeDomain: '',
                 zoneKubeConfig: vals.kubeConfig,
                 zoneOverrides: ''
               });
@@ -137,6 +141,8 @@ class AddRegionList extends Component {
     arrayPush({
       zoneLabel: '',
       storageClasses: '',
+      namespace: '',
+      kubeDomain: '',
       zoneKubeConfig: formik.values.kubeConfig,
       zoneOverrides: ''
     });
@@ -263,6 +269,20 @@ class AddRegionList extends Component {
                                     STORAGE CLASS
                                   </TableHeaderColumn>
                                   <TableHeaderColumn
+                                    dataField="namespace"
+                                    columnClassName="no-border name-column"
+                                    className="no-border"
+                                  >
+                                    NAMESPACE
+                                  </TableHeaderColumn>
+                                  <TableHeaderColumn
+                                    dataField="kubeDomain"
+                                    columnClassName="no-border name-column"
+                                    className="no-border"
+                                  >
+                                    DNS DOMAIN
+                                  </TableHeaderColumn>
+                                  <TableHeaderColumn
                                     dataField="zoneKubeConfig.name"
                                     dataFormat={this.zoneConfigFormatter}
                                     columnClassName="no-border name-column"
@@ -308,7 +328,7 @@ class AddRegionList extends Component {
                                     <Col lg={7}>
                                       <Field
                                         name={`regionList[${regionIndex}].zoneList[${zoneIndex}].storageClasses`}
-                                        placeholder="standard"
+                                        placeholder="Storage Class for this Zone"
                                         component={YBFormInput}
                                         className={'kube-provider-input-field'}
                                       />
@@ -317,7 +337,49 @@ class AddRegionList extends Component {
                                       <YBInfoTip
                                         title="Storage Classes"
                                         content={
-                                          "Default is 'standard'. This field is accepts comma-delimited values."
+                                          "Default is '' (not specified). Will attempt to use Kubernetes cluster default."
+                                        }
+                                      />
+                                    </Col>
+                                  </Row>
+                                  <Row className="config-provider-row">
+                                    <Col lg={3}>
+                                      <div className="form-item-custom-label">Namespace</div>
+                                    </Col>
+                                    <Col lg={7}>
+                                      <Field
+                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].namespace`}
+                                        placeholder="Namespace for this Zone"
+                                        component={YBFormInput}
+                                        className={'kube-provider-input-field'}
+                                      />
+                                    </Col>
+                                    <Col lg={1} className="config-zone-tooltip">
+                                      <YBInfoTip
+                                        title="Namespace"
+                                        content={
+                                          "An existing namespace into which pods in this zone will be deployed."
+                                        }
+                                      />
+                                    </Col>
+                                  </Row>
+                                  <Row className="config-provider-row">
+                                    <Col lg={3}>
+                                      <div className="form-item-custom-label">Cluster DNS Domain</div>
+                                    </Col>
+                                    <Col lg={7}>
+                                      <Field
+                                        name={`regionList[${regionIndex}].zoneList[${zoneIndex}].kubeDomain`}
+                                        placeholder="Cluster DNS Domain for this Zone"
+                                        component={YBFormInput}
+                                        className={'kube-provider-input-field'}
+                                      />
+                                    </Col>
+                                    <Col lg={1} className="config-zone-tooltip">
+                                      <YBInfoTip
+                                        title="Cluster DNS Domain"
+                                        content={
+                                          "The dns domain name used in the Kubernetes cluster (default \"cluster.local\")"
                                         }
                                       />
                                     </Col>

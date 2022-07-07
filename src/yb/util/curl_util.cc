@@ -32,7 +32,17 @@
 
 #include "yb/util/curl_util.h"
 
+#include <curl/curl.h>
+
+#include <vector>
+
 #include <glog/logging.h>
+
+#include "yb/gutil/casts.h"
+
+#include "yb/util/faststring.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 
 using std::string;
 
@@ -67,8 +77,11 @@ EasyCurl::~EasyCurl() {
   curl_easy_cleanup(curl_);
 }
 
-Status EasyCurl::FetchURL(const string& url, faststring* buf, int64_t timeout_sec) {
-  return DoRequest(url, boost::none, boost::none, timeout_sec, buf);
+Status EasyCurl::FetchURL(const string& url,
+                          faststring* buf,
+                          int64_t timeout_sec,
+                          const std::vector<std::string>& headers) {
+  return DoRequest(url, boost::none, boost::none, timeout_sec, buf, headers);
 }
 
 Status EasyCurl::PostToURL(
@@ -87,7 +100,7 @@ Status EasyCurl::PostToURL(
 
 string EasyCurl::EscapeString(const string& data) {
   string escaped_str;
-  auto str = curl_easy_escape(curl_, data.c_str(), data.length());
+  auto str = curl_easy_escape(curl_, data.c_str(), narrow_cast<int>(data.length()));
   if (str) {
     escaped_str = str;
     curl_free(str);
@@ -100,10 +113,25 @@ Status EasyCurl::DoRequest(
     const boost::optional<const string>& post_data,
     const boost::optional<const string>& content_type,
     int64_t timeout_sec,
-    faststring* dst) {
+    faststring* dst,
+    const std::vector<std::string>& headers) {
   CHECK_NOTNULL(dst)->clear();
 
+  // Add headers if specified.
+  struct curl_slist* curl_headers = nullptr;
+  auto clean_up_curl_slist = ScopeExit([&]() {
+    curl_slist_free_all(curl_headers);
+  });
+
+  for (const auto& header : headers) {
+    curl_headers = CHECK_NOTNULL(curl_slist_append(curl_headers, header.c_str()));
+  }
+  RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_HTTPHEADER, curl_headers)));
+
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_URL, url.c_str())));
+  if (return_headers_) {
+    RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_HEADER, 1)));
+  }
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, WriteCallback)));
   RETURN_NOT_OK(TranslateError(curl_easy_setopt(curl_, CURLOPT_WRITEDATA,
                                                 static_cast<void *>(dst))));

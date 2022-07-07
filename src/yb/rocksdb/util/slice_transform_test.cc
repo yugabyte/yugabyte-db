@@ -21,19 +21,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#include "yb/rocksdb/slice_transform.h"
-
 #include "yb/rocksdb/db/db_test_util.h"
-#include "yb/rocksdb/db.h"
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/statistics.h"
-#include "yb/rocksdb/table.h"
-#include "yb/rocksdb/util/testharness.h"
+
+#include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
-class SliceTransformTest : public testing::Test {};
+class SliceTransformTest : public RocksDBTest {};
 
 TEST_F(SliceTransformTest, CapPrefixTransform) {
   std::string s;
@@ -60,7 +55,7 @@ TEST_F(SliceTransformTest, CapPrefixTransform) {
   ASSERT_EQ(transform->Transform(std::string()).ToString(), "");
 }
 
-class SliceTransformDBTest : public testing::Test {
+class SliceTransformDBTest : public RocksDBTest {
  private:
   std::string dbname_;
   Env* env_;
@@ -107,7 +102,7 @@ class SliceTransformDBTest : public testing::Test {
 
 TEST_F(SliceTransformDBTest, CapPrefix) {
   last_options_.prefix_extractor.reset(NewCappedPrefixTransform(8));
-  last_options_.statistics = rocksdb::CreateDBStatistics();
+  last_options_.statistics = rocksdb::CreateDBStatisticsForTests();
   BlockBasedTableOptions bbto;
   bbto.filter_policy.reset(NewBloomFilterPolicy(10, false));
   bbto.whole_key_filtering = false;

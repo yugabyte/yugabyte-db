@@ -19,15 +19,11 @@
 //
 #pragma once
 
-#include <assert.h>
-
 #include <condition_variable>
-#include <mutex>
-#include <string>
-#include <unordered_set>
-#include <unordered_map>
-#include <vector>
 #include <functional>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 // This is only set from db_stress.cc and for testing only.
 // If non-zero, kill at various points in source code with probability 1/this

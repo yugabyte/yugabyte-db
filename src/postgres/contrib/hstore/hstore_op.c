@@ -854,7 +854,7 @@ hstore_to_matrix(PG_FUNCTION_ARGS)
 
 static void
 setup_firstcall(FuncCallContext *funcctx, HStore *hs,
-				FunctionCallInfo fcinfo)
+				FunctionCallInfoData *fcinfo)
 {
 	MemoryContext oldcontext;
 	HStore	   *st;

@@ -6,12 +6,28 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse,
   resetUniverseInfo,
-  closeUniverseDialog,
   getHealthCheck,
-  getHealthCheckResponse
+  getHealthCheckResponse,
+  updateBackupState,
+  updateBackupStateResponse,
+  fetchReleasesByProvider,
+  fetchReleasesResponse
 } from '../../../actions/universe';
+import {
+  abortTask,
+  abortTaskResponse,
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../actions/tasks';
 
-import { getAlerts, getAlertsSuccess, getAlertsFailure } from '../../../actions/customers';
+import {
+  fetchRunTimeConfigs,
+  fetchRunTimeConfigsResponse,
+  getAlerts,
+  getAlertsSuccess,
+  getAlertsFailure
+} from '../../../actions/customers';
 
 import { openDialog, closeDialog } from '../../../actions/modal';
 
@@ -23,12 +39,13 @@ import {
 } from '../../../actions/tables';
 import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
     getUniverseInfo: (uuid) => {
-      dispatch(fetchUniverseInfo(uuid)).then((response) => {
-        dispatch(fetchUniverseInfoResponse(response.payload));
+      return dispatch(fetchUniverseInfo(uuid)).then((response) => {
+        return dispatch(fetchUniverseInfoResponse(response.payload));
       });
     },
 
@@ -39,6 +56,12 @@ const mapDispatchToProps = (dispatch) => {
         } else {
           dispatch(fetchUniverseTablesSuccess(response.payload));
         }
+      });
+    },
+
+    fetchSupportedReleases: (pUUID) => {
+      dispatch(fetchReleasesByProvider(pUUID)).then((response) => {
+        dispatch(fetchReleasesResponse(response.payload));
       });
     },
 
@@ -60,19 +83,67 @@ const mapDispatchToProps = (dispatch) => {
     showDeleteUniverseModal: () => {
       dispatch(openDialog('deleteUniverseModal'));
     },
+    showToggleUniverseStateModal: () => {
+      dispatch(openDialog('toggleUniverseStateForm'));
+    },
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
+    },
+    showVMImageUpgradeModal: () => {
+      dispatch(openDialog('vmImageUpgradeModal'));
     },
     showRunSampleAppsModal: () => {
       dispatch(openDialog('runSampleAppsModal'));
     },
+    showSupportBundleModal: () => {
+      dispatch(openDialog('supportBundleModal'));
+    },
+    showTLSConfigurationModal: () => {
+      dispatch(openDialog('tlsConfigurationModal'));
+    },
+    showRollingRestartModal: () => {
+      dispatch(openDialog('rollingRestart'));
+    },
+    showUpgradeSystemdModal: () => {
+      dispatch(openDialog('systemdUpgrade'));
+    },
+    showToggleBackupModal: () => {
+      dispatch(openDialog('toggleBackupModalForm'));
+    },
+    showThirdpartyUpgradeModal: () => {
+      dispatch(openDialog('thirdpartyUpgradeModal'));
+    },
+
+    updateBackupState: (universeUUID, flag) => {
+      dispatch(updateBackupState(universeUUID, flag)).then((response) => {
+        if (response.error) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
+        } else {
+          toast.success('Successfully Enabled the backups.');
+        }
+        dispatch(updateBackupStateResponse(response.payload));
+        dispatch(fetchUniverseInfo(universeUUID)).then((response) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+      });
+    },
     closeModal: () => {
       dispatch(closeDialog());
-      dispatch(closeUniverseDialog());
     },
     getHealthCheck: (uuid) => {
       dispatch(getHealthCheck(uuid)).then((response) => {
         dispatch(getHealthCheckResponse(response.payload));
+      });
+    },
+
+    fetchCustomerTasks: () => {
+      return dispatch(fetchCustomerTasks()).then((response) => {
+        if (!response.error) {
+          return dispatch(fetchCustomerTasksSuccess(response.payload));
+        } else {
+          return dispatch(fetchCustomerTasksFailure(response.payload));
+        }
       });
     },
     getAlertsList: () => {
@@ -83,6 +154,22 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(getAlertsFailure(response.payload));
         }
       });
+    },
+    abortCurrentTask: (taskUUID) => {
+      return dispatch(abortTask(taskUUID)).then((response) => {
+        return dispatch(abortTaskResponse(response.payload));
+      });
+    },
+    hideTaskAbortModal: () => {
+      dispatch(closeDialog());
+    },
+    showTaskAbortModal: () => {
+      dispatch(openDialog('confirmAbortTask'));
+    },
+    fetchRunTimeConfigs: (universeUUID) => {
+      return dispatch(fetchRunTimeConfigs(universeUUID, true)).then((response) =>
+        dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
     }
   };
 };
@@ -145,7 +232,9 @@ function mapStateToProps(state, ownProps) {
     universeTables: state.tables.universeTablesList,
     modal: state.modal,
     providers: state.cloud.providers,
-    updateAvailable: isUpdateAvailable(state)
+    updateAvailable: isUpdateAvailable(state),
+    featureFlags: state.featureFlags,
+    accessKeys: state.cloud.accessKeys
   };
 }
 

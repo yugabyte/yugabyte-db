@@ -34,6 +34,7 @@
 #include "storage/shmem.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/catcache.h"
 #include "utils/datetime.h"
 #include "utils/syscache.h"
 #include "yb/server/pgsql_webserver_wrapper.h"
@@ -47,17 +48,20 @@ PG_MODULE_MAGIC;
 
 typedef enum statementType
 {
-	Select,
-	Insert,
-	Delete,
-	Update,
-	Begin,
-	Commit,
-	Rollback,
-	Other,
-	Transaction,
-	AggregatePushdown,
-	kMaxStatementType
+  Select,
+  Insert,
+  Delete,
+  Update,
+  Begin,
+  Commit,
+  Rollback,
+  Other,
+  Single_Shard_Transaction,
+  SingleShardTransaction,
+  Transaction,
+  AggregatePushdown,
+  CatCacheMisses,
+  kMaxStatementType
 } statementType;
 int num_entries = kMaxStatementType;
 ybpgmEntry *ybpgm_table = NULL;
@@ -73,6 +77,19 @@ static int statement_nesting_level = 0;
  */
 static int block_nesting_level = 0;
 
+/*
+ * Flag to determine whether a transaction block has been entered.
+ */
+static bool is_inside_transaction_block = false;
+
+/*
+ * Flag to determine whether a DML or Other statement type has been executed.
+ * Multiple statements will count as a single transaction within a transaction block.
+ * DDL statements which are autonomous will be counted as its own transaction
+ * even within a transaction block.
+ */
+static bool is_statement_executed = false;
+
 char *metric_node_name = NULL;
 struct WebserverWrapper *webserver = NULL;
 int port = 0;
@@ -80,6 +97,8 @@ static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus **backendStatusArrayPointer = NULL;
+
+static long last_cache_misses_val = 0;
 
 void		_PG_init(void);
 /*
@@ -105,7 +124,8 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                  ProcessUtilityContext context,
                                  ParamListInfo params, QueryEnvironment *queryEnv,
                                  DestReceiver *dest, char *completionTag);
-static void ybpgm_Store();
+static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
+static void ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count);
 
 /*
  * Function used for checking if the current statement is a top level statement.
@@ -157,8 +177,14 @@ set_metric_names(void)
   strcpy(ybpgm_table[Commit].name, YSQL_METRIC_PREFIX "CommitStmt");
   strcpy(ybpgm_table[Rollback].name, YSQL_METRIC_PREFIX "RollbackStmt");
   strcpy(ybpgm_table[Other].name, YSQL_METRIC_PREFIX "OtherStmts");
+  // Deprecated. Names with "_"s may cause confusion to metric conumsers.
+  strcpy(
+      ybpgm_table[Single_Shard_Transaction].name, YSQL_METRIC_PREFIX "Single_Shard_Transactions");
+
+  strcpy(ybpgm_table[SingleShardTransaction].name, YSQL_METRIC_PREFIX "SingleShardTransactions");
   strcpy(ybpgm_table[Transaction].name, YSQL_METRIC_PREFIX "Transactions");
   strcpy(ybpgm_table[AggregatePushdown].name, YSQL_METRIC_PREFIX "AggregatePushdowns");
+  strcpy(ybpgm_table[CatCacheMisses].name, YSQL_METRIC_PREFIX "CatalogCacheMisses");
 }
 
 /*
@@ -388,7 +414,8 @@ _PG_init(void)
   strcpy(worker.bgw_name, "YSQL webserver");
   worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
   worker.bgw_start_time = BgWorkerStart_PostmasterStart;
-  worker.bgw_restart_time = BGW_NEVER_RESTART;
+  /* Value of 1 allows the background worker for webserver to restart */
+  worker.bgw_restart_time = 1;
   worker.bgw_main_arg = (Datum) 0;
   strcpy(worker.bgw_library_name, "yb_pg_metrics");
   strcpy(worker.bgw_function_name, "webserver_worker_main");
@@ -529,6 +556,8 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
       break;
   }
 
+  is_statement_executed = true;
+
   /* Collecting metric.
    * - Only processing metric for top level statement in top level portal.
    *   For example, CURSOR execution can have many nested portal and nested statement. The metric
@@ -539,19 +568,33 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
    *   use this not-null check for now.
    */
   if (isTopLevelStatement() && queryDesc->totaltime) {
-	uint64_t time;
-
 	InstrEndLoop(queryDesc->totaltime);
-	time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+	const uint64_t time = (uint64_t) (queryDesc->totaltime->total * 1000000.0);
+	const uint64 rows_count = queryDesc->estate->es_processed;
 
-	ybpgm_Store(type, time);
+	ybpgm_Store(type, time, rows_count);
 
-	if (!queryDesc->estate->es_yb_is_single_row_modify_txn)
-	  ybpgm_Store(Transaction, time);
+  if (!queryDesc->estate->yb_es_is_single_row_modify_txn) 
+  {
+    ybpgm_Store(Single_Shard_Transaction, time, rows_count);
+    ybpgm_Store(SingleShardTransaction, time, rows_count);
+  }
 
-	if (IsA(queryDesc->planstate, AggState) &&
-		castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
-	  ybpgm_Store(AggregatePushdown, time);
+  if (!is_inside_transaction_block)
+  ybpgm_Store(Transaction, time, rows_count);
+
+  if (IsA(queryDesc->planstate, AggState) &&
+      castNode(AggState, queryDesc->planstate)->yb_pushdown_supported)
+    ybpgm_Store(AggregatePushdown, time, rows_count);
+
+  long current_cache_misses = GetCatCacheMisses();
+
+  /* Currently we set the time parameter to 0 as we don't have metrics
+   * for that available
+   * TODO: Get timing metrics for catalog cache misses
+   */
+  ybpgm_StoreCount(CatCacheMisses, 0, current_cache_misses - last_cache_misses_val);
+  last_cache_misses_val = current_cache_misses;
   }
 
   IncStatementNestingLevel();
@@ -661,7 +704,48 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
-    ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end));
+
+    bool is_catalog_version_increment = false;
+    bool is_breaking_catalog_change = false;
+    if (IsTransactionalDdlStatement(pstmt,
+                                    &is_catalog_version_increment,
+                                    &is_breaking_catalog_change))
+    {
+      ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
+    }
+    else if (type == Other)
+    {
+      is_statement_executed = true;
+    }
+
+    if (type == Begin && !is_inside_transaction_block)
+    {
+      is_inside_transaction_block = true;
+      is_statement_executed = false;
+    }
+    if (type == Rollback)
+    {
+      is_inside_transaction_block = false;
+      is_statement_executed = false;
+    }
+    /*
+     * TODO: Once savepoint and rollback to specific transaction are supported,
+     * transaction block counter needs to be revisited.
+     * Current logic is to increment non-empty transaction block by 1
+     * if non-DDL statement types executed prior to committing.
+     */
+    if (type == Commit) {
+      if (strcmp(completionTag, "ROLLBACK") != 0 &&
+          is_inside_transaction_block &&
+          is_statement_executed)
+      {
+        ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
+      }
+      is_inside_transaction_block = false;
+      is_statement_executed = false;
+    }
+
+    ybpgm_Store(type, INSTR_TIME_GET_MICROSEC(end), 0 /* rows */);
   }
   else
   {
@@ -677,7 +761,17 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 }
 
 static void
-ybpgm_Store(statementType type, uint64_t time){
-  ybpgm_table[type].calls++;
-  ybpgm_table[type].total_time += time;
+ybpgm_Store(statementType type, uint64_t time, uint64_t rows) {
+  struct ybpgmEntry *entry = &ybpgm_table[type];
+  entry->total_time += time;
+  entry->calls += 1;
+  entry->rows += rows;
+}
+
+static void
+ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count) {
+  struct ybpgmEntry *entry = &ybpgm_table[type];
+  entry->total_time += time;
+  entry->calls += count;
+  entry->rows += count;
 }

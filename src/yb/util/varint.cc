@@ -15,6 +15,12 @@
 
 #include <openssl/bn.h>
 
+#include "yb/gutil/casts.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
 namespace yb {
 namespace util {
 
@@ -51,8 +57,8 @@ Result<int64_t> VarInt::ToInt64() const {
   BN_ULONG value = BN_get_word(impl_.get());
   bool negative = BN_is_negative(impl_.get());
   // Casting minimal signed value to unsigned type of the same size returns its absolute value.
-  int64_t bound = negative ? std::numeric_limits<int64_t>::min()
-                           : std::numeric_limits<int64_t>::max();
+  BN_ULONG bound = negative ? std::numeric_limits<int64_t>::min()
+                            : std::numeric_limits<int64_t>::max();
 
   if (value > bound) {
     return STATUS_FORMAT(
@@ -61,12 +67,16 @@ Result<int64_t> VarInt::ToInt64() const {
   return negative ? -value : value;
 }
 
+Status VarInt::FromString(const std::string& str) {
+  return FromString(str.c_str());
+}
+
 Status VarInt::FromString(const char* cstr) {
   if (*cstr == '+') {
     ++cstr;
   }
   BIGNUM* temp = nullptr;
-  int parsed = BN_dec2bn(&temp, cstr);
+  size_t parsed = BN_dec2bn(&temp, cstr);
   impl_.reset(temp);
   if (parsed == 0 || parsed != strlen(cstr)) {
     return STATUS_FORMAT(InvalidArgument, "Cannot parse varint: $0", cstr);
@@ -185,7 +195,7 @@ Status VarInt::DecodeFromComparable(const Slice &slice, size_t *num_decoded_byte
         slice.ToDebugHexString(), num_ones);
   }
   *num_decoded_bytes = num_ones;
-  impl_.reset(BN_bin2bn(buffer.data() + idx, num_ones - idx, nullptr /* ret */));
+  impl_.reset(BN_bin2bn(buffer.data() + idx, narrow_cast<int>(num_ones - idx), nullptr /* ret */));
   if (negative) {
     BN_set_negative(impl_.get(), 1);
   }
@@ -196,10 +206,6 @@ Status VarInt::DecodeFromComparable(const Slice &slice, size_t *num_decoded_byte
 Status VarInt::DecodeFromComparable(const Slice& slice) {
   size_t num_decoded_bytes;
   return DecodeFromComparable(slice, &num_decoded_bytes);
-}
-
-Status VarInt::DecodeFromComparable(const string& str) {
-  return DecodeFromComparable(Slice(str));
 }
 
 std::string VarInt::EncodeToTwosComplement() const {
@@ -238,7 +244,8 @@ Status VarInt::DecodeFromTwosComplement(const std::string& input) {
   bool negative = (input[0] & 0x80) != 0;
   if (!negative) {
     impl_.reset(BN_bin2bn(
-        pointer_cast<const unsigned char*>(input.data()), input.size(), nullptr /* ret */));
+        pointer_cast<const unsigned char*>(input.data()), narrow_cast<int>(input.size()),
+        nullptr /* ret */));
     return Status::OK();
   }
   std::string copy(input);
@@ -249,7 +256,7 @@ Status VarInt::DecodeFromTwosComplement(const std::string& input) {
   }
   --*back;
   FlipBits(data, copy.size());
-  impl_.reset(BN_bin2bn(data, input.size(), nullptr /* ret */));
+  impl_.reset(BN_bin2bn(data, narrow_cast<int>(input.size()), nullptr /* ret */));
   BN_set_negative(impl_.get(), 1);
 
   return Status::OK();
@@ -265,6 +272,18 @@ int VarInt::Sign() const {
     return 0;
   }
   return BN_is_negative(impl_.get()) ? -1 : 1;
+}
+
+Result<VarInt> VarInt::CreateFromString(const std::string& input) {
+  VarInt result;
+  RETURN_NOT_OK(result.FromString(input));
+  return result;
+}
+
+Result<VarInt> VarInt::CreateFromString(const char* input) {
+  VarInt result;
+  RETURN_NOT_OK(result.FromString(input));
+  return result;
 }
 
 std::ostream& operator<<(ostream& os, const VarInt& v) {

@@ -37,7 +37,11 @@
 #include "replication/walsender.h"
 #include "storage/ipc.h"
 #include "utils/backend_random.h"
+#include "utils/builtins.h"
 #include "utils/timestamp.h"
+
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 
 /*----------------------------------------------------------------
@@ -59,6 +63,8 @@ static int	CheckPWChallengeAuth(Port *port, char **logdetail);
 
 static int	CheckMD5Auth(Port *port, char *shadow_pass, char **logdetail);
 static int	CheckSCRAMAuth(Port *port, char *shadow_pass, char **logdetail);
+
+static int	CheckYbTserverKeyAuth(Port *port, char **logdetail);
 
 
 /*----------------------------------------------------------------
@@ -297,6 +303,10 @@ auth_failed(Port *port, int status, char *logdetail)
 			/* We use it to indicate if a .pgpass password failed. */
 			errcode_return = ERRCODE_INVALID_PASSWORD;
 			break;
+		case uaYbTserverKey:
+			errstr = gettext_noop("tserver key authentication failed for user \"%s\"");
+			errcode_return = ERRCODE_INVALID_PASSWORD;
+			break;
 		case uaGSS:
 			errstr = gettext_noop("GSSAPI authentication failed for user \"%s\"");
 			break;
@@ -323,8 +333,12 @@ auth_failed(Port *port, int status, char *logdetail)
 			break;
 	}
 
+	char *line_to_print = port->hba->maskedline;
+	if (!line_to_print)
+		line_to_print = port->hba->rawline;
+
 	cdetail = psprintf(_("Connection matched pg_hba.conf line %d: \"%s\""),
-					   port->hba->linenumber, port->hba->rawline);
+					   port->hba->linenumber, line_to_print);
 	if (logdetail)
 		logdetail = psprintf("%s\n%s", logdetail, cdetail);
 	else
@@ -559,6 +573,15 @@ ClientAuthentication(Port *port)
 
 		case uaPassword:
 			status = CheckPasswordAuth(port, &logdetail);
+			break;
+
+		case uaYbTserverKey:
+#ifdef HAVE_UNIX_SOCKETS
+			Assert(IsYugaByteEnabled());
+			status = CheckYbTserverKeyAuth(port, &logdetail);
+#else
+			Assert(false);
+#endif
 			break;
 
 		case uaPAM:
@@ -1016,6 +1039,48 @@ CheckSCRAMAuth(Port *port, char *shadow_pass, char **logdetail)
 	}
 
 	return STATUS_OK;
+}
+
+/*
+ * Yugabyte internal tserver to postgres key authentication.
+ */
+static int
+CheckYbTserverKeyAuth(Port *port, char **logdetail)
+{
+	char	   *passwd;
+	int			result;
+	uint64_t	client_key;
+	uint64_t   *server_key;
+
+	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
+
+	passwd = recv_password_packet(port);
+	if (passwd == NULL)
+		return STATUS_EOF;		/* client wouldn't send password */
+	else
+	{
+		/* Convert client-supplied password string to uint64 key */
+		char *end;
+		errno = 0;
+		client_key = pg_strtouint64(passwd, &end, 10);
+		if (!(*passwd != '\0' && *end == '\0') || errno == ERANGE)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("auth key must be uint64")));
+		pfree(passwd);
+	}
+
+	server_key = yb_get_role_password(port->user_name, logdetail);
+	if (server_key)
+	{
+		result = yb_plain_key_verify(port->user_name, *server_key, client_key,
+									 logdetail);
+		pfree(server_key);
+	}
+	else
+		result = STATUS_ERROR;
+
+	return result;
 }
 
 

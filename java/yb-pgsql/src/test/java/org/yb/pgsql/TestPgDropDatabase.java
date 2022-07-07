@@ -20,13 +20,11 @@ import java.util.List;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.yb.client.TestUtils;
-import org.yb.pgsql.cleaners.ClusterCleaner;
-import org.yb.pgsql.cleaners.DatabaseCleaner;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import com.google.common.net.HostAndPort;
@@ -38,13 +36,6 @@ public class TestPgDropDatabase extends BasePgSQLTest {
   @Override
   public int getTestMethodTimeoutSec() {
     return 1800;
-  }
-
-  @Override
-  protected List<ClusterCleaner> getCleaners() {
-    List<ClusterCleaner> cleaners = super.getCleaners();
-    cleaners.add(0, new DatabaseCleaner());
-    return cleaners;
   }
 
   public void createDatabaseObjects(Connection cxn) throws Exception {
@@ -133,10 +124,6 @@ public class TestPgDropDatabase extends BasePgSQLTest {
         }
       }
     }
-  }
-
-  private void runProcess(String... args) throws Exception {
-    assertEquals(0, new ProcessBuilder(args).start().waitFor());
   }
 
   private void setWriteRejection(HostAndPort server, int percentage) throws Exception {

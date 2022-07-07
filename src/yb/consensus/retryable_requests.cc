@@ -13,20 +13,30 @@
 
 #include "yb/consensus/retryable_requests.h"
 
-#include <boost/multi_index_container.hpp>
-#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index_container.hpp>
 
-#include "yb/common/wire_protocol.h"
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_round.h"
+
+#include "yb/tablet/operations.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+
+using namespace std::literals;
 
 DEFINE_int32(retryable_request_timeout_secs, 120,
              "Amount of time to keep write request in index, to prevent duplicate writes.");
+TAG_FLAG(retryable_request_timeout_secs, runtime);
 
 // We use this limit to prevent request range from infinite grow, because it will block log
 // cleanup. I.e. even we have continous request range, it will be split by blocks, that could be
@@ -51,16 +61,15 @@ namespace {
 
 struct RunningRetryableRequest {
   RetryableRequestId request_id;
-  yb::OpId op_id;
   RestartSafeCoarseTimePoint time;
   mutable std::vector<ConsensusRoundPtr> duplicate_rounds;
 
   RunningRetryableRequest(
-      RetryableRequestId request_id_, const OpIdPB& op_id_, RestartSafeCoarseTimePoint time_)
-      : request_id(request_id_), op_id(yb::OpId::FromPB(op_id_)), time(time_) {}
+      RetryableRequestId request_id_, RestartSafeCoarseTimePoint time_)
+      : request_id(request_id_), time(time_) {}
 
   std::string ToString() const {
-    return Format("{ request_id: $0 op_id $1 time: $2 }", request_id, op_id, time);
+    return YB_STRUCT_TO_STRING(request_id, time);
   }
 };
 
@@ -105,12 +114,6 @@ typedef boost::multi_index_container <
             boost::multi_index::member <
                 RunningRetryableRequest, RetryableRequestId, &RunningRetryableRequest::request_id
             >
-        >,
-        boost::multi_index::ordered_unique <
-            boost::multi_index::tag<OpIdIndex>,
-            boost::multi_index::member <
-                RunningRetryableRequest, yb::OpId, &RunningRetryableRequest::op_id
-            >
         >
     >
 > RunningRetryableRequests;
@@ -151,20 +154,20 @@ std::chrono::seconds RangeTimeLimit() {
 
 class ReplicateData {
  public:
-  ReplicateData() : client_id_(ClientId::Nil()), write_request_(nullptr) {}
+  ReplicateData() : client_id_(ClientId::Nil()), write_(nullptr) {}
 
-  explicit ReplicateData(const tserver::WriteRequestPB* write_request, const yb::OpIdPB& op_id)
-      : client_id_(write_request->client_id1(), write_request->client_id2()),
-        write_request_(write_request), op_id_(yb::OpId::FromPB(op_id)) {
+  explicit ReplicateData(const tablet::WritePB* write, const OpIdPB& op_id)
+      : client_id_(write->client_id1(), write->client_id2()),
+        write_(write), op_id_(OpId::FromPB(op_id)) {
 
   }
 
   static ReplicateData FromMsg(const ReplicateMsg& replicate_msg) {
-    if (!replicate_msg.has_write_request()) {
+    if (!replicate_msg.has_write()) {
       return ReplicateData();
     }
 
-    return ReplicateData(&replicate_msg.write_request(), replicate_msg.id());
+    return ReplicateData(&replicate_msg.write(), replicate_msg.id());
   }
 
   bool operator!() const {
@@ -179,12 +182,12 @@ class ReplicateData {
     return client_id_;
   }
 
-  const tserver::WriteRequestPB& write_request() const {
-    return *write_request_;
+  const tablet::WritePB& write() const {
+    return *write_;
   }
 
   RetryableRequestId request_id() const {
-    return write_request_->request_id();
+    return write_->request_id();
   }
 
   const yb::OpId& op_id() const {
@@ -193,13 +196,13 @@ class ReplicateData {
 
  private:
   ClientId client_id_;
-  const tserver::WriteRequestPB* write_request_;
+  const tablet::WritePB* write_;
   yb::OpId op_id_;
 };
 
 std::ostream& operator<<(std::ostream& out, const ReplicateData& data) {
   return out << data.client_id() << '/' << data.request_id() << ": "
-             << data.write_request().ShortDebugString() << " op_id: " << data.op_id();
+             << data.write().ShortDebugString() << " op_id: " << data.op_id();
 }
 
 } // namespace
@@ -210,7 +213,7 @@ class RetryableRequests::Impl {
     VLOG_WITH_PREFIX(1) << "Start";
   }
 
-  bool Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
+  Result<bool> Register(const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
     auto data = ReplicateData::FromMsg(*round->replicate_msg());
     if (!data) {
       return true;
@@ -223,31 +226,26 @@ class RetryableRequests::Impl {
     ClientRetryableRequests& client_retryable_requests = clients_[data.client_id()];
 
     CleanupReplicatedRequests(
-        data.write_request().min_running_request_id(), &client_retryable_requests);
+        data.write().min_running_request_id(), &client_retryable_requests);
 
     if (data.request_id() < client_retryable_requests.min_running_request_id) {
-      round->NotifyReplicationFinished(
-          STATUS_EC_FORMAT(
-              Expired,
-              MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
-              "Request id $0 is less than min running $1", data.request_id(),
-              client_retryable_requests.min_running_request_id),
-          round->bound_term(), nullptr /* applied_op_ids */);
-      return false;
+      return STATUS_EC_FORMAT(
+          Expired, MinRunningRequestIdStatusData(client_retryable_requests.min_running_request_id),
+          "Request id $0 from client $1 is less than min running $2", data.request_id(),
+          data.client_id(), client_retryable_requests.min_running_request_id);
     }
 
     auto& replicated_indexed_by_last_id = client_retryable_requests.replicated.get<LastIdIndex>();
     auto it = replicated_indexed_by_last_id.lower_bound(data.request_id());
     if (it != replicated_indexed_by_last_id.end() && it->first_id <= data.request_id()) {
-      round->NotifyReplicationFinished(
-          STATUS(AlreadyPresent, "Duplicate request"), round->bound_term(),
-          nullptr /* applied_op_ids */);
-      return false;
+      return STATUS_FORMAT(
+              AlreadyPresent, "Duplicate request $0 from client $1 (min running $2)",
+              data.request_id(), data.client_id(),
+              client_retryable_requests.min_running_request_id);
     }
 
     auto& running_indexed_by_request_id = client_retryable_requests.running.get<RequestIdIndex>();
-    auto emplace_result = running_indexed_by_request_id.emplace(
-        data.request_id(), round->replicate_msg()->id(), entry_time);
+    auto emplace_result = running_indexed_by_request_id.emplace(data.request_id(), entry_time);
     if (!emplace_result.second) {
       emplace_result.first->duplicate_rounds.push_back(round);
       return false;
@@ -261,11 +259,10 @@ class RetryableRequests::Impl {
     return true;
   }
 
-  yb::OpId CleanExpiredReplicatedAndGetMinOpId() {
-    yb::OpId result(std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max());
+  OpId CleanExpiredReplicatedAndGetMinOpId() {
+    OpId result = OpId::Max();
     auto now = clock_.Now();
-    auto clean_start =
-        now - std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs));
+    auto clean_start = now - GetAtomicFlag(&FLAGS_retryable_request_timeout_secs) * 1s;
     for (auto ci = clients_.begin(); ci != clients_.end();) {
       ClientRetryableRequests& client_retryable_requests = ci->second;
       auto& op_id_index = client_retryable_requests.replicated.get<OpIdIndex>();
@@ -313,7 +310,7 @@ class RetryableRequests::Impl {
     if (running_it == running_indexed_by_request_id.end()) {
 #ifndef NDEBUG
       LOG_WITH_PREFIX(ERROR) << "Running requests: "
-                             << yb::ToString(running_indexed_by_request_id);
+                             << AsString(running_indexed_by_request_id);
 #endif
       LOG_WITH_PREFIX(DFATAL) << "Replication finished for request with unknown id " << data;
       return;
@@ -359,7 +356,7 @@ class RetryableRequests::Impl {
     VLOG_WITH_PREFIX(4) << "Bootstrapped " << data;
 
     CleanupReplicatedRequests(
-       data.write_request().min_running_request_id(), &client_retryable_requests);
+       data.write().min_running_request_id(), &client_retryable_requests);
 
     AddReplicated(
         yb::OpId::FromPB(replicate_msg.id()), data, entry_time, &client_retryable_requests);
@@ -559,7 +556,7 @@ void RetryableRequests::operator=(RetryableRequests&& rhs) {
   impl_ = std::move(rhs.impl_);
 }
 
-bool RetryableRequests::Register(
+Result<bool> RetryableRequests::Register(
     const ConsensusRoundPtr& round, RestartSafeCoarseTimePoint entry_time) {
   return impl_->Register(round, entry_time);
 }

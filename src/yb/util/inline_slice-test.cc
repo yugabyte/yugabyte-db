@@ -30,10 +30,10 @@
 // under the License.
 //
 
-#include <gtest/gtest.h>
 #include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
+#include <gtest/gtest.h>
+
 #include "yb/util/inline_slice.h"
 #include "yb/util/memory/arena.h"
 
@@ -43,8 +43,8 @@ template<size_t N>
 static void TestRoundTrip(InlineSlice<N> *slice,
                           Arena *arena,
                           size_t test_size) {
-  gscoped_ptr<uint8_t[]> buf(new uint8_t[test_size]);
-  for (int i = 0; i < test_size; i++) {
+  std::unique_ptr<uint8_t[]> buf(new uint8_t[test_size]);
+  for (size_t i = 0; i < test_size; i++) {
     buf[i] = i & 0xff;
   }
 

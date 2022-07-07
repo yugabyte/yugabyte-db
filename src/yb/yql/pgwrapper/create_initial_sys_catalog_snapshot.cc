@@ -12,13 +12,10 @@
 
 // This program creates an "initial sys catalog snapshot" at a given directory that can later be
 // used to bring up YSQL clusters without the time-consuming step of running initdb.
-
-#include <gflags/gflags.h>
-
-#include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
-#include "yb/util/env_util.h"
 #include "yb/util/path_util.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 DEFINE_string(initial_sys_catalog_snapshot_dest_path, "",
               "Destination path to write the initial sys catalog snapshot to");
@@ -44,6 +41,7 @@ class CreateInitialSysCatalogSnapshotTest : public PgWrapperTestBase {
     LOG(INFO) << "Creating initial system catalog snapshot at: "
               << FLAGS_initial_sys_catalog_snapshot_dest_path;
     options->extra_master_flags.emplace_back("--create_initial_sys_catalog_snapshot");
+    options->extra_master_flags.emplace_back("--net_address_filter=ipv4_external,ipv4_all");
     options->extra_master_flags.emplace_back(
         "--initial_sys_catalog_snapshot_path=" + FLAGS_initial_sys_catalog_snapshot_dest_path);
     options->extra_master_flags.emplace_back("--master_auto_run_initdb");

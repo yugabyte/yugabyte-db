@@ -1,17 +1,15 @@
 ---
-title: percent_rank(), cume_dist(), and ntile() on a normal distribution
-linkTitle: Analyzing a normal distribution
-headerTitle: Analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()
-description: Compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
+title: case study—compare percent_rank(), cume_dist(), and ntile() on a normal distribution
+linkTitle: case study—analyzing a normal distribution
+headerTitle: Case study—analyzing a normal distribution with percent_rank(), cume_dist(), and ntile()
+description: Case study to compare and contrast the window functions percent_rank(), cume_dist(), and ntile() on large sets of normally distributed values.
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
   stable:
     identifier: analyzing-a-normal-distribution
     parent: window-functions
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 **On this page**<br>
 &#160;&#160;&#160;&#160;&#160;&#160;&#160;<br>
@@ -33,19 +31,19 @@ The answer is, of course, "Yes"—why else would the three functions all be supp
 
 The other two functions implement more fine grained measures. Here's what the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) documentation says:
 
-> **Purpose:** Return the percentile rank of each row within the [_window_](../sql-syntax-semantics/#the-window-definition-rule), with respect to the argument of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _p_ returned by `percent_rank()` is a number in the range _0 <= p <= 1_. It is calculated like this:
+> **Purpose:** Return the percentile rank of each row within the [_window_](../invocation-syntax-semantics/#the-window-definition-rule), with respect to the argument of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _p_ returned by `percent_rank()` is a number in the range _0 <= p <= 1_. It is calculated like this:
 ```
 percentile_rank = (rank - 1) / ("no. of rows in window" - 1)
 ```
 And here's what the [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) documentation says:
 
-> **Purpose:** Return a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. The graph of all values of `cume_dist()` within the [_window_](../sql-syntax-semantics/#the-window-definition-rule) is known as the cumulative distribution of the argument of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _c_ returned by `cume_dist()` is a number in the range _0 < c <= 1_. It is calculated like this:
+> **Purpose:** Return a value that represents the number of rows with values less than or equal to the current row’s value divided by the total number of rows—in other words, the relative position of a value in a set of values. The graph of all values of `cume_dist()` within the [_window_](../invocation-syntax-semantics/#the-window-definition-rule) is known as the cumulative distribution of the argument of the [`window_definition`](../../../syntax_resources/grammar_diagrams/#window-definition)'s window `ORDER BY` clause. The value _c_ returned by `cume_dist()` is a number in the range _0 < c <= 1_. It is calculated like this:
 ```
 cume_dist() =
   "no of rows with a value <= the current row's value" /
   "no. of rows in window"
 ```
-The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified. 
+The algorithm that the [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) uses is different from the one that  [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) uses. And the algorithm that `ntile()` uses to produce its bucket allocations directly is unspecified.
 
 However, the answer "Yes" to the question "is there any difference between the result produced by  each of the three functions?" is a qualified "Yes" because when certain conditions hold, there is no difference.
 
@@ -53,14 +51,14 @@ The pedagogic value of this empirical study is brought by the fact that it aims 
 
 Here is the problem statement at the next level of detail:
 
-- A row set with _N_ rows has only unique values of the column list that the OVER clause specifies for ordering the rows in the [_window_](../sql-syntax-semantics/#the-window-definition-rule). (In other words, there are no ties.)
+- A row set with _N_ rows has only unique values of the column list that the OVER clause specifies for ordering the rows in the [_window_](../invocation-syntax-semantics/#the-window-definition-rule). (In other words, there are no ties.)
 - The aim is to allocate the rows into _n_ buckets that each have the same number of rows.
 - _N_ is an integral multiple of _n_.
 
 The study shows that if these special qualifications are met, then the bucket allocations are identical. It shows, too, that if either of those special qualifications isn't met (in other words, either if there are ties, or if _N_ is not an integral multiple of _n_), then the bucket allocations produced by each approach differ.
 
 ## How to make best use of the code examples
-Before starting, create the data set that the code relies on using the `ysqlsh` script that [table t4](../function-syntax-semantics/data-sets/table-t4/) presents. It takes only a few seconds to run, and then you can simply leave _"t4"_ untouched as you run, and re-run, the code examples. Notice that the table is populated by values that are created by a generator that picks, pseudorandomly, from an ideal normal distribution. This means that the values in table _"t4"_ will be different each time that you drop and re-create it. The code examples will therefore always show the same patterns. And the invariants that it illustrates will hold reliably. But the details will change with each new re-creation of _"t4"_. Your experience will be best if, as you step through the code examples, you run them all against fixed content in in table _"t4"_.
+Before starting, create the data set that the code relies on using the `ysqlsh` script that [table t4](../function-syntax-semantics/data-sets/table-t4/) presents. It takes only a few seconds to run, and then you can simply leave _"t4"_ untouched as you run, and re-run, the code examples. Notice that the table is populated by values that are created by a generator that picks, pseudorandomly, from an ideal normal distribution. This means that the values in table _"t4"_ will be different each time that you drop and re-create it. The code examples will therefore always show the same patterns. And the invariants that it illustrates will hold reliably. But the details will change with each new re-creation of _"t4"_. Your experience will be best if, as you step through the code examples, you run them all against fixed content in table _"t4"_.
 
 The steps that are described in the next section should all be run at the `ysqlsh` prompt. They do a mixture of things:
 
@@ -101,14 +99,14 @@ from show_t4();
 ```
 Because of the pseudorandom behavior, the actual values of the mean and standard deviation will change with each successive re-population of _"t4"_. These results are typical:
 ```
-   Some useful overall measures of t4.    
+   Some useful overall measures of t4.
 ------------------------------------------
  count(*)                          100000
- 
+
  avg(%score)                         52.4
  stddev(%score)                      11.6
 ```
-Now get a sense of how similar the values returned by [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) and [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) are if (and only if) the values that the window `ORDER BY` uses are unique in the [_window_](../sql-syntax-semantics/#the-window-definition-rule).
+Now get a sense of how similar the values returned by [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank) and [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) are if (and only if) the values that the window `ORDER BY` uses are unique in the [_window_](../invocation-syntax-semantics/#the-window-definition-rule).
 
 - Use [`cr_dp_views.sql`](./cr-dp-views/) to create a view to present _"t4.dp_score"_ as _"score"_ .
 - Use [`cr_pr_cd_equality_report.sql`](./cr-pr-cd-equality-report) to create the function `pr_cd_equality_report()` . The name means 'compare the extent to which _"pr"_ (the value produced by [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank)) is similar to _"cr"_ (the value produced by [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist))' for each of the _"score"_ values. The values are compared as a ratio (expressed as a percent). The reporting function is parameterized by the absolute difference, _"delta_threshold"_ that this ratio might have from 100%. And it reports the count, the maximum score, and the maximum ratio over the scores where _"delta_" is greater than _"delta_threshold"_.
@@ -123,7 +121,7 @@ select * from pr_cd_equality_report(0.01);
 ```
 Here is a summary of the results:
 ```
- count(*) | max_score | max_ratio 
+ count(*) | max_score | max_ratio
 ----------+-----------+-----------
       199 |   19.19   |   99.50
       990 |   25.53   |   99.90
@@ -140,7 +138,7 @@ In other words, the two measures give remarkably similar answers over most of th
 Now repeat the measurement for the values in the _"t4.int_score"_ column—where each possible value as about _1,000_ duplicates. Use [`cr_int_views.sql`](./cr-int-views/) to do this. And then repeat the five function executions. Now the results are very different:
 
 ```
- count(*) | max_score | max_ratio 
+ count(*) | max_score | max_ratio
 ----------+-----------+-----------
     97717 |   75.00   |   99.46
     99541 |   82.00   |   99.86
@@ -172,7 +170,6 @@ create or replace function do_histogram(
   no_of_bukets in int,
   scale_factor in numeric)
   returns SETOF text
-  immutable
   language sql
 as $body$
 ```
@@ -221,7 +218,7 @@ Of course, this isn't a _proof_ that the test will always have this outcome. But
 
 ### Step FOUR
 
-Finally, repeat the test when one of the special conditions of the particular use case doesn't host—when the values that the three functions operate on have duplicates:
+Finally, repeat the test when one of the special conditions of the particular use case doesn't hold—when the values that the three functions operate on have duplicates:
 
 - Compare the bucket allocation produced by [`ntile()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#ntile), [`percent_rank()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#percent-rank), and [`cume_dist()`](../function-syntax-semantics/percent-rank-cume-dist-ntile/#cume-dist) acting on the `int` column _"int_score"_.
 
@@ -242,7 +239,7 @@ Then simply run the master script, [`do_demo.sql`](./do-demo/) and inspect the s
 
 This study has shown that if, and only if, these special conditions hold:
 
-- a row set with _N_ rows has only unique values of the column list that the OVER clause specifies for ordering the rows in the [_window_](../sql-syntax-semantics/#the-window-definition-rule)—In other words, there are no ties
+- a row set with _N_ rows has only unique values of the column list that the OVER clause specifies for ordering the rows in the [_window_](../invocation-syntax-semantics/#the-window-definition-rule)—In other words, there are no ties
 - the aim is to allocate the rows into _n_ buckets that each have the same number of rows
 - _N_ is an integral multiple of _n_
 
@@ -298,12 +295,12 @@ Very often, a window function is used in a `WITH` clause to specify intermediate
 
 See, for example, the script that [table t4](../function-syntax-semantics/data-sets/table-t4/) presents. The procedure encapsulates several steps that each builds on the next in a way that you cannot manage to do easily (or at all) using a single SQL statement. In particular, this procedure populates an array with SQL, processes its content using SQL on the array rather than on a schema-level table, and then uses SQL again to insert the array's content directly into the target table. In other words, it uses SQL, in the implementation of procedural code, to bring the famous benefits of set-based processing, rather than iterative programming in a procedural loop. This is a very powerful technique.
 
-### The use of "language plpgsql" functions  and procedures as an alternative to PREPARE
+### The use of "language sql" functions and procedures as an alternative to PREPARE
 
 This brings several benefits over `PREPARE`: you can use named formal parameters to improve readability; you shift the responsibility from application code start-up time, for every new session, to a one-time database installation when you install all of the artifacts that implement that application's database back end; and you have a single point of maintenance for the SQL that the stored function or procedure encapsulates.
 
 ### The contrast between ntile() and width_bucket()
 
-You saw that `ntile()` produces an equiheight histogram while `width_bucket()` produces an equiwidth histogram. The former is a window function; but the latter is a regular function. This reflects the fact that the latter is rather older in the history of databases than the former: it requires you to calculate the lower and upper bounds of the [_window_](../sql-syntax-semantics/#the-window-definition-rule) yourself, and supply these as actual arguments. You might use the window functions [`first_value`](../function-syntax-semantics/first-value-nth-value-last-value/#first-value) and [`last_value`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value) for this. And you might decide to implement `my_width_bucket` as a window function. YSQL has an extensibility framework (beyond the scope of this section) that would allow this.
+You saw that `ntile()` produces an equiheight histogram while `width_bucket()` produces an equiwidth histogram. The former is a window function; but the latter is a regular function. This reflects the fact that the latter is rather older in the history of databases than the former: it requires you to calculate the lower and upper bounds of the [_window_](../invocation-syntax-semantics/#the-window-definition-rule) yourself, and supply these as actual arguments. You might use the window functions [`first_value`](../function-syntax-semantics/first-value-nth-value-last-value/#first-value) and [`last_value`](../function-syntax-semantics/first-value-nth-value-last-value/#last-value) for this. And you might decide to implement `my_width_bucket` as a window function. YSQL has an extensibility framework (beyond the scope of this section) that would allow this.
 
 It is to be hoped, therefore, that you might dip into this optional section periodically to seek inspiration for techniques that you might use when you have a new problem to solve.

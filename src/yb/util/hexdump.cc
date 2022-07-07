@@ -29,12 +29,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include "yb/util/hexdump.h"
 
-#include <algorithm>
 #include <string>
 
 #include "yb/gutil/stringprintf.h"
-#include "yb/util/hexdump.h"
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -45,11 +44,11 @@ std::string HexDump(const Slice &slice) {
 
   const uint8_t *p = slice.data();
 
-  int rem = slice.size();
+  auto rem = slice.size();
   while (rem > 0) {
     const uint8_t *line_p = p;
-    int line_len = std::min(rem, 16);
-    int line_rem = line_len;
+    auto line_len = std::min<decltype(rem)>(rem, 16);
+    auto line_rem = line_len;
     StringAppendF(&output, "%06lx: ", line_p - slice.data());
 
     while (line_rem >= 2) {
@@ -66,13 +65,13 @@ std::string HexDump(const Slice &slice) {
       line_rem -= 1;
     }
 
-    int padding = (16 - line_len) / 2;
+    auto padding = (16 - line_len) / 2;
 
-    for (int i = 0; i < padding; i++) {
+    for (size_t i = 0; i < padding; i++) {
       output.append("     ");
     }
 
-    for (int i = 0; i < line_len; i++) {
+    for (size_t i = 0; i < line_len; i++) {
       char c = line_p[i];
       if (isprint(c)) {
         output.push_back(c);

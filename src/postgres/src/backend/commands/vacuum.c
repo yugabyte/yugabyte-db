@@ -180,7 +180,14 @@ vacuum(int options, List *relations, VacuumParams *params,
 	{
 		ereport(WARNING,
 				(errmsg("VACUUM will be ignored")));
-		return;
+		if (options & VACOPT_ANALYZE)
+		{
+			options &= ~VACOPT_VACUUM;
+		}
+		else
+		{
+			return;
+		}
 	}
 
 	Assert(params != NULL);
@@ -974,7 +981,7 @@ vac_update_relstats(Relation relation,
 
 	/* If anything changed, write out the tuple. */
 	if (dirty)
-		heap_inplace_update(rd, ctup);
+		heap_inplace_update(rd, ctup, false /* yb_shared_update */);
 
 	heap_close(rd, RowExclusiveLock);
 }
@@ -1129,7 +1136,7 @@ vac_update_datfrozenxid(void)
 		newMinMulti = dbform->datminmxid;
 
 	if (dirty)
-		heap_inplace_update(relation, tuple);
+		heap_inplace_update(relation, tuple, false /* yb_shared_update */);
 
 	heap_freetuple(tuple);
 	heap_close(relation, RowExclusiveLock);

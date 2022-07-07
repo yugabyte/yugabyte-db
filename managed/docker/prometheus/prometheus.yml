@@ -11,8 +11,9 @@ global:
   external_labels:
     monitor: 'swamper'
 
-  rule_files:
-    - "alert.rules"
+rule_files:
+  - '/etc/yugaware/prometheus/rules/yugaware.ad.*.yml'
+  - "alert.rules"
 
 # A list of scrape configurations.
 scrape_configs:

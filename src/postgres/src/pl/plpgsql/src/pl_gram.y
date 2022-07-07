@@ -798,19 +798,22 @@ decl_collate	:
 					{ $$ = InvalidOid; }
 				| K_COLLATE T_WORD
 					{
-						ybc_not_support(@1, "COLLATE", 1127);
+						if (!YBIsCollationEnabled())
+							ybc_not_support(@1, "COLLATE", 1127);
 						$$ = get_collation_oid(list_make1(makeString($2.ident)),
 											   false);
 					}
 				| K_COLLATE unreserved_keyword
 					{
-						ybc_not_support(@1, "COLLATE", 1127);
+						if (!YBIsCollationEnabled())
+							ybc_not_support(@1, "COLLATE", 1127);
 						$$ = get_collation_oid(list_make1(makeString(pstrdup($2))),
 											   false);
 					}
 				| K_COLLATE T_CWORD
 					{
-						ybc_not_support(@1, "COLLATE", 1127);
+						if (!YBIsCollationEnabled())
+							ybc_not_support(@1, "COLLATE", 1127);
 						$$ = get_collation_oid($2.idents, false);
 					}
 				;
@@ -3011,7 +3014,7 @@ make_execsql_stmt(int firsttoken, int location)
 
 	check_sql_expr(expr->query, location, 0);
 
-	execsql = palloc(sizeof(PLpgSQL_stmt_execsql));
+	execsql = palloc0(sizeof(PLpgSQL_stmt_execsql));
 	execsql->cmd_type = PLPGSQL_STMT_EXECSQL;
 	execsql->lineno  = plpgsql_location_to_lineno(location);
 	execsql->sqlstmt = expr;

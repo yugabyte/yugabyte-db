@@ -31,19 +31,27 @@
 //
 
 #include <algorithm>
+#include <limits>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol_util.h"
+#include "yb/common/ql_rowblock.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_rowwise_iterator.h"
+#include "yb/gutil/strings/numbers.h"
 
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/read_result.h"
+#include "yb/tablet/tablet-test-util.h"
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet-test-base.h"
+
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -72,10 +80,10 @@ class TabletPushdownTest : public YBTabletTest {
 
     LocalTabletWriter writer(tablet().get());
     QLWriteRequestPB req;
-    for (int64_t i = 0; i < nrows_; i++) {
+    for (int i = 0; i < nrows_; i++) {
       QLAddInt32HashValue(&req, i);
       QLAddInt32ColumnValue(&req, kFirstColumnId + 1, i * 10);
-      QLAddStringColumnValue(&req, kFirstColumnId + 2, StringPrintf("%08" PRId64, i));
+      QLAddStringColumnValue(&req, kFirstColumnId + 2, StringPrintf("%08d", i));
       ASSERT_OK_FAST(writer.Write(&req));
     }
   }
@@ -114,7 +122,7 @@ class TabletPushdownTest : public YBTabletTest {
   }
 
  private:
-  uint64_t nrows_;
+  int nrows_;
 };
 
 TEST_F(TabletPushdownTest, TestPushdownIntKeyRange) {

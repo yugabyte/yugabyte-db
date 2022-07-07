@@ -3,14 +3,12 @@ title: cr_do_ntile.sql
 linkTitle: cr_do_ntile.sql
 headerTitle: cr_do_ntile.sql
 description: cr_do_ntile.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: cr-do-ntile
     parent: analyzing-a-normal-distribution
     weight: 110
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `cr_do_ntile.sql`.
 ```plpgsql

@@ -3,14 +3,12 @@ title: do_assert_bucket_ok
 linkTitle: do_assert_bucket_ok
 headerTitle: do_assert_bucket_ok.sql
 description: do_assert_bucket_ok.sql - Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation.
-block_indexing: true
 menu:
   stable:
     identifier: do-assert-bucket-ok
     parent: analyzing-a-normal-distribution
     weight: 90
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 Save this script as `do_assert_bucket_ok.sql`.
 ```plpgsql

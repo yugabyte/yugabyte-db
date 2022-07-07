@@ -42,8 +42,8 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     retryCurrentTask: (taskUUID) => {
-      dispatch(retryTask(taskUUID)).then((response) => {
-        dispatch(retryTaskResponse(response.payload));
+      return dispatch(retryTask(taskUUID)).then((response) => {
+        return dispatch(retryTaskResponse(response.payload));
       });
     },
     fetchUniverseList: () => {

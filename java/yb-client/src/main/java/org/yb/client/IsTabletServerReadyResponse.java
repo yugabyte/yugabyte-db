@@ -13,7 +13,7 @@
 
 package org.yb.client;
 
-import org.yb.tserver.Tserver.TabletServerErrorPB;
+import org.yb.tserver.TserverTypes.TabletServerErrorPB;
 
 public class IsTabletServerReadyResponse extends IsServerReadyResponse {
   public IsTabletServerReadyResponse(long ellapsedMillis, String uuid,

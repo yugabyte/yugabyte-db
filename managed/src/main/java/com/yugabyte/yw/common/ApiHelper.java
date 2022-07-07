@@ -2,40 +2,71 @@
 
 package com.yugabyte.yw.common;
 
+import akka.stream.javadsl.Source;
+import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import play.libs.Json;
-import play.libs.ws.WSClient;
-import play.libs.ws.WSRequest;
-import play.libs.ws.WSResponse;
-
-import java.net.URL;
 import java.net.HttpURLConnection;
+import java.net.URL;
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Json;
+import play.libs.ws.WSClient;
+import play.libs.ws.WSRequest;
+import play.libs.ws.WSResponse;
+import play.mvc.Http;
 
-/**
- * Helper class API specific stuff
- */
-
+/** Helper class API specific stuff */
 @Singleton
+@Slf4j
 public class ApiHelper {
 
-  @Inject
-  WSClient wsClient;
+  private static final Duration DEFAULT_GET_REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
-  public JsonNode postRequest(String url, JsonNode data)  {
+  @Getter(onMethod_ = {@VisibleForTesting})
+  private final WSClient wsClient;
+
+  @Inject
+  public ApiHelper(WSClient wsClient) {
+    this.wsClient = wsClient;
+  }
+
+  public boolean postRequest(String url) {
+    try {
+      return wsClient
+          .url(url)
+          .execute("POST")
+          .thenApply(wsResponse -> wsResponse.getStatus() == 200)
+          .toCompletableFuture()
+          .get();
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  public JsonNode postRequest(String url, JsonNode data) {
     return postRequest(url, data, new HashMap<>());
   }
 
   public JsonNode postRequest(String url, JsonNode data, Map<String, String> headers) {
     WSRequest request = requestWithHeaders(url, headers);
-    CompletionStage<JsonNode> jsonPromise = request.post(data).thenApply(WSResponse::asJson);
+    CompletionStage<String> jsonPromise = request.post(data).thenApply(WSResponse::getBody);
+    return handleJSONPromise(jsonPromise);
+  }
+
+  public JsonNode putRequest(String url, JsonNode data, Map<String, String> headers) {
+    WSRequest request = requestWithHeaders(url, headers);
+    CompletionStage<String> jsonPromise = request.put(data).thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 
@@ -49,8 +80,9 @@ public class ApiHelper {
   }
 
   // Helper function to get the full body of the webpage via an http request to the given url.
-  public String getBody(String url)  {
+  public String getBody(String url) {
     WSRequest request = wsClient.url(url);
+    request.setRequestTimeout(DEFAULT_GET_REQUEST_TIMEOUT);
     CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
     String pageText = null;
     try {
@@ -67,7 +99,7 @@ public class ApiHelper {
     try {
       URL urlObj = getUrl(url);
       if (urlObj != null) {
-        objNode.put("status", ((HttpURLConnection)urlObj.openConnection()).getResponseMessage());
+        objNode.put("status", ((HttpURLConnection) urlObj.openConnection()).getResponseMessage());
       } else {
         objNode.put("status", "Could not connect to URL " + url);
       }
@@ -93,17 +125,20 @@ public class ApiHelper {
         request.setQueryParameter(entry.getKey(), entry.getValue());
       }
     }
-    CompletionStage<JsonNode> jsonPromise = request
-      .get()
-      .thenApply(WSResponse::asJson);
+    CompletionStage<String> jsonPromise = request.get().thenApply(WSResponse::getBody);
     return handleJSONPromise(jsonPromise);
   }
 
-  private JsonNode handleJSONPromise(CompletionStage<JsonNode> jsonPromise) {
+  private JsonNode handleJSONPromise(CompletionStage<String> jsonPromise) {
     try {
-      return jsonPromise.toCompletableFuture().get();
+      String jsonString = jsonPromise.toCompletableFuture().get();
+      return Json.parse(jsonString);
     } catch (InterruptedException | ExecutionException e) {
+      log.warn("Unexpected exception while parsing response", e);
       return ApiResponse.errorJSON(e.getMessage());
+    } catch (RuntimeException e) {
+      log.warn("Unexpected exception while parsing response", e);
+      throw e;
     }
   }
 
@@ -123,9 +158,10 @@ public class ApiHelper {
       StringBuilder requestUrlBuilder = new StringBuilder(baseUrl);
       for (Map.Entry<String, String[]> entry : queryParams.entrySet()) {
         requestUrlBuilder
-          .append(entry.getKey()).append("=")
-          .append(entry.getValue()[0])
-          .append("&");
+            .append(entry.getKey())
+            .append("=")
+            .append(entry.getValue()[0])
+            .append("&");
       }
 
       baseUrl = requestUrlBuilder.toString();
@@ -137,10 +173,22 @@ public class ApiHelper {
 
   public String replaceProxyLinks(String responseBody, UUID universeUUID, String proxyAddr) {
     String prefix = String.format("/universes/%s/proxy/%s/", universeUUID.toString(), proxyAddr);
-    return responseBody.replaceAll("src='/", String.format("src='%s", prefix))
-      .replaceAll("src=\"/", String.format("src=\"%s", prefix))
-      .replaceAll("href=\"/", String.format("href=\"%s", prefix))
-      .replaceAll("href='/", String.format("href='%s", prefix))
-      .replaceAll("http://", String.format("/universes/%s/proxy/", universeUUID.toString()));
+    return responseBody
+        .replaceAll("src='/", String.format("src='%s", prefix))
+        .replaceAll("src=\"/", String.format("src=\"%s", prefix))
+        .replaceAll("href=\"/", String.format("href=\"%s", prefix))
+        .replaceAll("href='/", String.format("href='%s", prefix))
+        .replaceAll("http://", String.format("/universes/%s/proxy/", universeUUID.toString()));
+  }
+
+  public JsonNode multipartRequest(
+      String url,
+      Map<String, String> headers,
+      List<Http.MultipartFormData.Part<Source<ByteString, ?>>> partsList) {
+    WSRequest request = wsClient.url(url);
+    headers.forEach(request::addHeader);
+    CompletionStage<String> post =
+        request.post(Source.from(partsList)).thenApply(WSResponse::getBody);
+    return handleJSONPromise(post);
   }
 }

@@ -46,12 +46,12 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/test_consensus_context.h"
 #include "yb/consensus/consensus_peers.h"
 #include "yb/consensus/consensus_queue.h"
-#include "yb/consensus/log.h"
-#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/opid_util.h"
+#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/test_consensus_context.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/rpc/messenger.h"
@@ -59,6 +59,7 @@
 #include "yb/server/clock.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
+#include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/threadpool.h"
@@ -149,7 +150,7 @@ RaftConfigPB BuildRaftConfigPBForTests(int num) {
   RaftConfigPB raft_config;
   for (int i = 0; i < num; i++) {
     RaftPeerPB* peer_pb = raft_config.add_peers();
-    peer_pb->set_member_type(RaftPeerPB::VOTER);
+    peer_pb->set_member_type(PeerMemberType::VOTER);
     peer_pb->set_permanent_uuid(Substitute("peer-$0", i));
     HostPortPB* hp = peer_pb->mutable_last_known_private_addr()->Add();
     hp->set_host(Substitute("peer-$0.fake-domain-for-tests", i));
@@ -265,7 +266,7 @@ class DelayablePeerProxy : public TestPeerProxy {
   }
 
  protected:
-  gscoped_ptr<ProxyType> const proxy_;
+  std::unique_ptr<ProxyType> const proxy_;
   bool delay_response_; // Protected by lock_.
   CountDownLatch latch_;
 };
@@ -425,7 +426,7 @@ class NoOpTestPeerProxyFactory : public PeerProxyFactory {
     return messenger_.get();
   }
 
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   std::unique_ptr<rpc::Messenger> messenger_;
 };
 
@@ -441,12 +442,12 @@ class TestPeerMapManager {
     InsertOrDie(&peers_, peer_uuid, peer);
   }
 
-  CHECKED_STATUS GetPeerByIdx(int idx, std::shared_ptr<RaftConsensus>* peer_out) const {
+  Status GetPeerByIdx(int idx, std::shared_ptr<RaftConsensus>* peer_out) const {
     CHECK_LT(idx, config_.peers_size());
     return GetPeerByUuid(config_.peers(idx).permanent_uuid(), peer_out);
   }
 
-  CHECKED_STATUS GetPeerByUuid(const std::string& peer_uuid,
+  Status GetPeerByUuid(const std::string& peer_uuid,
                        std::shared_ptr<RaftConsensus>* peer_out) const {
     std::lock_guard<simple_spinlock> lock(lock_);
     if (!FindCopy(peers_, peer_uuid, peer_out)) {
@@ -648,7 +649,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
   }
 
  private:
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   rpc::AutoShutdownMessengerHolder messenger_;
   TestPeerMapManager* const peers_;
     // NOTE: There is no need to delete this on the dctor because proxies are externally managed
@@ -659,7 +660,7 @@ class LocalTestPeerProxyFactory : public PeerProxyFactory {
 // This is usually implemented by OperationDriver but here we
 // keep the implementation to the minimally required to have consensus
 // work.
-class TestDriver {
+class TestDriver : public ConsensusRoundCallback {
  public:
   TestDriver(ThreadPool* pool, const scoped_refptr<ConsensusRound>& round)
       : round_(round), pool_(pool) {
@@ -670,7 +671,8 @@ class TestDriver {
   }
 
   // Does nothing but enqueue the Apply
-  void ReplicationFinished(const Status& status) {
+  void ReplicationFinished(
+      const Status& status, int64_t leader_term, OpIds* applied_op_ids) override {
     if (status.IsAborted()) {
       Cleanup();
       return;
@@ -678,6 +680,8 @@ class TestDriver {
     CHECK_OK(status);
     CHECK_OK(pool_->SubmitFunc(std::bind(&TestDriver::Apply, this)));
   }
+
+  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override {}
 
   // Called in all modes to delete the transaction and, transitively, the consensus
   // round.
@@ -704,7 +708,7 @@ class TestDriver {
 // testing RaftConsensusState. Does not actually support running transactions.
 class MockOperationFactory : public TestConsensusContext {
  public:
-  CHECKED_STATUS StartReplicaOperation(
+  Status StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     return StartReplicaOperationMock(round.get());
   }
@@ -723,11 +727,10 @@ class TestOperationFactory : public TestConsensusContext {
     consensus_ = consensus;
   }
 
-  CHECKED_STATUS StartReplicaOperation(
+  Status StartReplicaOperation(
       const scoped_refptr<ConsensusRound>& round, HybridTime propagated_hybrid_time) override {
     auto txn = new TestDriver(pool_.get(), round);
-    txn->round_->SetConsensusReplicatedCallback(std::bind(&TestDriver::ReplicationFinished,
-                                                     txn, std::placeholders::_1));
+    txn->round_->SetCallback(txn);
     return Status::OK();
   }
 
@@ -749,7 +752,7 @@ class TestOperationFactory : public TestConsensusContext {
   }
 
  private:
-  gscoped_ptr<ThreadPool> pool_;
+  std::unique_ptr<ThreadPool> pool_;
   Consensus* consensus_ = nullptr;
 };
 
@@ -773,70 +776,70 @@ class CounterHooks : public Consensus::ConsensusFaultHooks {
         pre_shutdown_calls_(0),
         post_shutdown_calls_(0) {}
 
-  virtual CHECKED_STATUS PreStart() override {
+  virtual Status PreStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_start_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostStart() override {
+  virtual Status PostStart() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostStart());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_start_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreConfigChange() override {
+  virtual Status PreConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostConfigChange() override {
+  virtual Status PostConfigChange() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostConfigChange());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_config_change_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreReplicate() override {
+  virtual Status PreReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostReplicate() override {
+  virtual Status PostReplicate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostReplicate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_replicate_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreUpdate() override {
+  virtual Status PreUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_update_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostUpdate() override {
+  virtual Status PostUpdate() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostUpdate());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_update_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PreShutdown() override {
+  virtual Status PreShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PreShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     pre_shutdown_calls_++;
     return Status::OK();
   }
 
-  virtual CHECKED_STATUS PostShutdown() override {
+  virtual Status PostShutdown() override {
     if (current_hook_.get()) RETURN_NOT_OK(current_hook_->PostShutdown());
     std::lock_guard<simple_spinlock> lock(lock_);
     post_shutdown_calls_++;
@@ -922,7 +925,7 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
     return majority_replicated_op_id_;
   }
 
-  void WaitForMajorityReplicatedIndex(int index, MonoDelta timeout = MonoDelta(30s)) {
+  void WaitForMajorityReplicatedIndex(int64_t index, MonoDelta timeout = MonoDelta(30s)) {
     ASSERT_OK(WaitFor(
         [&]() { return IsMajorityReplicated(index); },
         timeout, Format("waiting for index $0 to be replicated", index)));

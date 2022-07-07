@@ -40,21 +40,13 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
 namespace rpc {
 
 class ErrorStatusPB;
-
-// Specifies how to run callback for async outbound call.
-YB_DEFINE_ENUM(InvokeCallbackMode,
-    // On reactor thread.
-    (kReactorThread)
-    // On thread pool.
-    (kThreadPoolNormal)
-    (kThreadPoolHigh));
 
 // Controller for managing properties of a single RPC call, on the client side.
 //
@@ -101,9 +93,9 @@ class RpcController {
   // * a network error occurred which caused the connection to be torn
   //   down
   // * the call timed out
-  CHECKED_STATUS status() const;
+  Status status() const;
 
-  CHECKED_STATUS thread_pool_failure() const;
+  Status thread_pool_failure() const;
 
   // If status() returns a RemoteError object, then this function returns
   // the error response provided by the server. Service implementors may
@@ -156,8 +148,11 @@ class RpcController {
   //
   // May fail if index is invalid.
   Result<Slice> GetSidecar(int idx) const;
+  Result<SidecarHolder> GetSidecarHolder(int idx) const;
 
   int32_t call_id() const;
+
+  CallResponsePtr response() const;
 
  private:
   friend class OutboundCall;

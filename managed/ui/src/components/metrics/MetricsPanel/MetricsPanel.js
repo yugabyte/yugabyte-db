@@ -3,15 +3,21 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import {
-  removeNullProperties,
-  isNonEmptyObject,
+  divideYAxisByThousand,
   isNonEmptyArray,
+  isNonEmptyObject,
   isNonEmptyString,
   isYAxisGreaterThanThousand,
-  divideYAxisByThousand
+  removeNullProperties,
+  timeFormatXAxis
 } from '../../../utils/ObjectUtils';
 import './MetricsPanel.scss';
 import { METRIC_FONT } from '../MetricsConfig';
+import _ from 'lodash';
+import moment from 'moment';
+import { OverlayTrigger, Tooltip } from 'react-bootstrap';
+
+import prometheusIcon from '../images/prometheus-icon.svg';
 
 const Plotly = require('plotly.js/lib/core');
 
@@ -19,6 +25,7 @@ const WIDTH_OFFSET = 23;
 const CONTAINER_PADDING = 60;
 const MAX_GRAPH_WIDTH_PX = 600;
 const GRAPH_GUTTER_WIDTH_PX = 15;
+const MAX_NAME_LENGTH = 15;
 
 export default class MetricsPanel extends Component {
   static propTypes = {
@@ -27,8 +34,23 @@ export default class MetricsPanel extends Component {
   };
 
   plotGraph = () => {
-    const { metricKey, metric } = this.props;
+    const { metricKey, metric, currentUser } = this.props;
     if (isNonEmptyObject(metric)) {
+      metric.data.forEach((dataItem, i) => {
+        if (dataItem['instanceName'] && dataItem['name'] !== dataItem['instanceName']) {
+          dataItem['fullname'] = dataItem['name'] + ' (' + dataItem['instanceName'] + ')';
+        } else {
+          dataItem['fullname'] = dataItem['name'];
+        }
+        // Truncate trace names if they are longer than 15 characters, and append ellipsis
+        if (dataItem['name'].length > MAX_NAME_LENGTH) {
+          dataItem['name'] = dataItem['name'].substring(0, MAX_NAME_LENGTH) + '...';
+        }
+        // Only show upto first 8 traces in the legend
+        if (i >= 8) {
+          dataItem['showlegend'] = false;
+        }
+      });
       // Remove Null Properties from the layout
       removeNullProperties(metric.layout);
       // Detect if unit is µs and Y axis value is > 1000.
@@ -43,12 +65,16 @@ export default class MetricsPanel extends Component {
           metric.layout.yaxis.ticksuffix = '&nbsp;ms';
         }
       }
+      metric.data = timeFormatXAxis(metric.data, currentUser.data.timezone);
 
-      metric.layout.xaxis.hoverformat = '%H:%M:%S, %b %d, %Y';
+      metric.layout.xaxis.hoverformat = currentUser.data.timezone
+        ? '%H:%M:%S, %b %d, %Y ' + moment.tz(currentUser.data.timezone).format('[UTC]ZZ')
+        : '%H:%M:%S, %b %d, %Y ' + moment().format('[UTC]ZZ');
 
       // TODO: send this data from backend.
       let max = 0;
       metric.data.forEach(function (data) {
+        data.hovertemplate = '%{data.fullname}: %{y} at %{x} <extra></extra>';
         if (data.y) {
           data.y.forEach(function (y) {
             y = parseFloat(y) * 1.25;
@@ -56,18 +82,20 @@ export default class MetricsPanel extends Component {
           });
         }
       });
+
       if (max === 0) max = 1.01;
       metric.layout.autosize = false;
       metric.layout.width =
         this.props.width || this.getGraphWidth(this.props.containerWidth || 1200);
-      metric.layout.height = this.props.height || 360;
+      metric.layout.height = this.props.height || 400;
       metric.layout.showlegend = true;
+      metric.layout.hovermode = 'closest';
       metric.layout.margin = {
         l: 45,
         r: 25,
         b: 0,
         t: 70,
-        pad: 4
+        pad: 14
       };
       if (
         isNonEmptyObject(metric.layout.yaxis) &&
@@ -81,12 +109,19 @@ export default class MetricsPanel extends Component {
       metric.layout.font = {
         family: METRIC_FONT
       };
+
+      // Give the legend box extra vertical space if there are more than 4 traces
+      let legendExtraMargin = 0;
+      if (metric.data.length > 4) {
+        legendExtraMargin = 0.2;
+      }
+
       metric.layout.legend = {
         orientation: 'h',
         xanchor: 'center',
         yanchor: 'bottom',
         x: 0.5,
-        y: -0.5
+        y: -0.5 - legendExtraMargin
       };
 
       // Handle the case when the metric data is empty, we would show
@@ -106,7 +141,6 @@ export default class MetricsPanel extends Component {
         metric.layout.xaxis = { range: [0, 2] };
         metric.layout.yaxis = { range: [0, 2] };
       }
-
       Plotly.newPlot(metricKey, metric.data, metric.layout, { displayModeBar: false });
     }
   };
@@ -124,16 +158,11 @@ export default class MetricsPanel extends Component {
         width: this.props.width || this.getGraphWidth(this.props.containerWidth)
       });
     } else {
-      // All graph lines have the same x-axis, so get the first
-      // and compare unix time interval
-      const prevTime = prevProps.metric.data[0]?.x;
-      const currTime = this.props.metric.data[0]?.x;
-      if (
-        prevTime &&
-        currTime &&
-        (prevTime[0] !== currTime[0] ||
-          prevTime[prevTime.length - 1] !== currTime[currTime.length - 1])
-      ) {
+      // Comparing deep comparison of x-axis and y-axis arrays
+      // to avoid re-plotting graph if equal
+      const prevData = prevProps.metric.data;
+      const currData = this.props.metric.data;
+      if (prevData && currData && !_.isEqual(prevData, currData)) {
         // Re-plot graph
         this.plotGraph();
       }
@@ -147,8 +176,36 @@ export default class MetricsPanel extends Component {
   }
 
   render() {
+    const { prometheusQueryEnabled } = this.props;
+    const tooltip = (
+      <Tooltip id="tooltip" className="prometheus-link-tooltip">
+        Metric graph in Prometheus
+      </Tooltip>
+    );
+    const getMetricsUrl = (internalUrl) => {
+      var url = new URL(internalUrl);
+      url.hostname = window.location.hostname;
+      return url.href;
+    }
     return (
       <div id={this.props.metricKey} className="metrics-panel">
+        {prometheusQueryEnabled && this.props.metric.directURLs.length > 0 ? (
+          <OverlayTrigger placement="top" overlay={tooltip}>
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              className="prometheus-link"
+              href={getMetricsUrl(this.props.metric.directURLs[0])}
+            >
+              <img
+                className="prometheus-link-icon"
+                alt="Metric graph in Prometheus"
+                src={prometheusIcon}
+                width="25"
+              />
+            </a>
+          </OverlayTrigger>
+        ) : null}
         <div />
       </div>
     );

@@ -17,13 +17,12 @@
 
 #include <condition_variable>
 #include <mutex>
-#include <thread>
 
 #include <cds/container/basket_queue.h>
 #include <cds/gc/dhp.h>
 
-#include "yb/util/debug-util.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status_format.h"
 #include "yb/util/thread.h"
 
 namespace yb {
@@ -57,7 +56,7 @@ class Worker {
       : share_(share) {
   }
 
-  CHECKED_STATUS Start(size_t index) {
+  Status Start(size_t index) {
     auto name = strings::Substitute("rpc_tp_$0_$1", share_->options.name, index);
     return yb::Thread::Create(kRpcThreadCategory, name, &Worker::Execute, this, &thread_);
   }

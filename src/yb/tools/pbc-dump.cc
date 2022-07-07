@@ -35,7 +35,6 @@
 
 #include <glog/logging.h>
 
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"

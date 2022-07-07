@@ -32,9 +32,9 @@
 
 #include "yb/tserver/tablet_server_options.h"
 
-#include "yb/master/master.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/tserver_flags.h"
+#include "yb/util/result.h"
 
 using std::vector;
 
@@ -52,6 +52,8 @@ Result<TabletServerOptions> TabletServerOptions::CreateTabletServerOptions() {
 
   TabletServerOptions opts(std::make_shared<server::MasterAddresses>(std::move(master_addresses)));
   opts.master_addresses_flag = master_addresses_resolved_str;
+  opts.rocksdb_env = rocksdb::Env::Default();
+  opts.env = Env::Default();
   return opts;
 }
 

@@ -32,9 +32,8 @@ class TwoDCWriteInterface {
  public:
   virtual ~TwoDCWriteInterface() {}
   virtual std::unique_ptr<WriteRequestPB> GetNextWriteRequest() = 0;
-  virtual CHECKED_STATUS ProcessRecord(
+  virtual Status ProcessRecord(
       const std::string& tablet_id, const cdc::CDCRecordPB& record) = 0;
-  virtual bool HasMoreWrites() = 0;
 };
 
 void ResetWriteInterface(std::unique_ptr<TwoDCWriteInterface>* write_strategy);

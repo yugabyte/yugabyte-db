@@ -17,7 +17,6 @@
 #include <vector>
 #include <limits>
 
-#include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/varint.h"
 
@@ -89,16 +88,23 @@ class Decimal {
           bool is_positive = true)
       : digits_(digits), exponent_(exponent), is_positive_(is_positive) { make_canonical(); }
   Decimal(const Decimal& other) : Decimal(other.digits_, other.exponent_, other.is_positive_) {}
+  Decimal& operator=(const Decimal& other) {
+    digits_ = other.digits_;
+    exponent_ = other.exponent_;
+    is_positive_ = other.is_positive_;
+    make_canonical();
+    return *this;
+  }
 
   // Ensure the type conversion is possible if you use these constructors. Use FromX() otherwise.
-  explicit Decimal(const std::string& string_val) { CHECK_OK(FromString(string_val)); }
-  explicit Decimal(double double_val) { CHECK_OK(FromDouble(double_val)); }
-  explicit Decimal(const VarInt& varint_val) { CHECK_OK(FromVarInt(varint_val)); }
+  explicit Decimal(const std::string& string_val);
+  explicit Decimal(double double_val);
+  explicit Decimal(const VarInt& varint_val);
 
   void clear();
 
   std::string ToDebugString() const;
-  CHECKED_STATUS ToPointString(std::string* string_val, int max_length = kDefaultMaxLength) const;
+  Status ToPointString(std::string* string_val, int max_length = kDefaultMaxLength) const;
   std::string ToScientificString() const;
   std::string ToString() const;
   // Note: We are using decimal -> string -> double using std::stod() function.
@@ -112,12 +118,12 @@ class Decimal {
 
   // The input is expected to be of the form [+-]?[0-9]*('.'[0-9]*)?([eE][+-]?[0-9]+)?,
   // whitespace is not allowed. Use this after removing whitespace.
-  CHECKED_STATUS FromString(const Slice &slice);
+  Status FromString(const Slice &slice);
 
   // Note: We are using double -> string -> decimal using std::to_string() function.
   // In future, it may be better to write a direct conversion function.
-  CHECKED_STATUS FromDouble(double double_val);
-  CHECKED_STATUS FromVarInt(const VarInt& varint_val);
+  Status FromDouble(double double_val);
+  Status FromVarInt(const VarInt& varint_val);
 
   // Checks if this is a whole number. Assumes canonical.
   bool is_integer() const;
@@ -139,18 +145,14 @@ class Decimal {
   std::string EncodeToComparable() const;
 
   // Decodes a Decimal from a given Slice. Sets num_decoded_bytes = number of bytes decoded.
-  CHECKED_STATUS DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes);
-  CHECKED_STATUS DecodeFromComparable(const std::string& string, size_t* num_decoded_bytes) {
-    return DecodeFromComparable(Slice(string), num_decoded_bytes);
-  }
+  Status DecodeFromComparable(const Slice& slice, size_t *num_decoded_bytes);
 
-  CHECKED_STATUS DecodeFromComparable(const Slice& string);
-  CHECKED_STATUS DecodeFromComparable(const std::string& string);
+  Status DecodeFromComparable(const Slice& string);
 
   // Encode the decimal by using to Cassandra serialization format, as described above.
   std::string EncodeToSerializedBigDecimal(bool* is_out_of_range) const;
 
-  CHECKED_STATUS DecodeFromSerializedBigDecimal(Slice slice);
+  Status DecodeFromSerializedBigDecimal(Slice slice);
 
   const Decimal& Negate() { is_positive_ = !is_positive_; return *this; }
 
@@ -173,7 +175,7 @@ class Decimal {
 Decimal DecimalFromComparable(const Slice& slice);
 Decimal DecimalFromComparable(const std::string& string);
 
-std::ostream& operator<<(ostream& os, const Decimal& d);
+std::ostream& operator<<(std::ostream& os, const Decimal& d);
 
 template <typename T>
 inline T BitMask(int32_t a, int32_t b) {

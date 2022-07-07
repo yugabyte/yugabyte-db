@@ -20,7 +20,7 @@
 # To run shellcheck: shellcheck -x build-support/compiler-wrappers/compiler-wrapper.sh
 
 # shellcheck source=build-support/common-build-env.sh
-. "${0%/*}/../common-build-env.sh"
+. "${BASH_SOURCE[0]%/*}/../common-build-env.sh"
 
 if [[ ${YB_COMMON_BUILD_ENV_SOURCED:-} != "1" ]]; then
   echo >&2 "Failed to source common-build-env.sh"
@@ -229,6 +229,25 @@ is_configure_mode_invocation() {
   return 1  # "false" return value in bash
 }
 
+check_compiler_exit_code() {
+  if [[ $compiler_exit_code -ne 0 ]]; then
+    if grep -Eq 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
+         "$stderr_path" || \
+       grep -Eq 'error: ld returned' "$stderr_path"; then
+      determine_compiler_cmdline
+      generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
+    fi
+
+    if grep -E ': undefined reference to ' "$stderr_path" >/dev/null; then
+      for library_path in "${input_files[@]}"; do
+        nm -gC "$library_path" | grep ParseGet
+      done
+    fi
+
+    exit "$compiler_exit_code"
+  fi
+}
+
 # -------------------------------------------------------------------------------------------------
 # Common setup for remote and local build.
 # We parse command-line arguments in both cases.
@@ -257,10 +276,8 @@ fi
 
 output_file=""
 input_files=()
-library_files=()
 compiling_pch=false
-
-is_pb_cc=false
+yb_pch=false
 
 rpath_found=false
 num_output_files_found=0
@@ -268,7 +285,10 @@ has_yb_c_files=false
 
 compiler_args_no_output=()
 analyzer_checkers_specified=false
-is_linking=false
+
+linking=false
+use_lld=false
+lld_linking=false
 
 while [[ $# -gt 0 ]]; do
   is_output_arg=false
@@ -289,16 +309,10 @@ while [[ $# -gt 0 ]]; do
       # even if they have plausible extensions.
       if [[ ! $1 =~ ^[-] ]]; then
         input_files+=( "$1" )
-        if [[ $1 == *.pb.cc ]]; then
-          is_pb_cc=true
-        fi
         if [[ $1 =~ ^(.*/|)[a-zA-Z0-9_]*(yb|YB)[a-zA-Z0-9_]*[.]c$ ]]; then
           # We will use this later to add custom compilation flags to PostgreSQL source files that
           # we contributed, e.g. for stricter error checking.
           has_yb_c_files=true
-        fi
-        if [[ $1 == *.o ]]; then
-          is_linking=true
         fi
       fi
     ;;
@@ -307,6 +321,9 @@ while [[ $# -gt 0 ]]; do
     ;;
     c++-header)
       compiling_pch=true
+    ;;
+    -yb-pch)
+      yb_pch=true
     ;;
     -DYB_COMPILER_TYPE=*)
       compiler_type_from_cmd_line=${1#-DYB_COMPILER_TYPE=}
@@ -321,6 +338,9 @@ while [[ $# -gt 0 ]]; do
     -analyzer-checker=*)
       analyzer_checkers_specified=true
     ;;
+    -fuse-ld=lld)
+      use_lld=true
+    ;;
   esac
   if ! "$is_output_arg"; then
     compiler_args_no_output+=( "$1" )
@@ -328,9 +348,21 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-if [[ $output_file != *.o && ${#library_files[@]} -gt 0 ]]; then
-  input_files+=( "${library_files[@]}" )
-  library_files=()
+if [[ $output_file == *.o ]]; then
+  # Compiling.
+  linking=false
+else
+  linking=true
+fi
+
+if [[ $linking == "true" && $use_lld == "true" ]]; then
+  lld_linking=true
+fi
+
+if [[ $YB_COMPILER_TYPE == clang* && $output_file == "jsonpath_gram.o" ]]; then
+  # To avoid this error:
+  # https://gist.github.com/mbautin/b943fb426bfead7388dde17ddb1b0fa7
+  compiler_args+=( -Wno-error=implicit-fallthrough )
 fi
 
 # -------------------------------------------------------------------------------------------------
@@ -348,9 +380,12 @@ if [[ $HOSTNAME == build-worker* ]]; then
   is_build_worker=true
 fi
 
+# If linking with LLVM's lld linker, do it locally.
+# See https://github.com/yugabyte/yugabyte-db/issues/11034 for more details.
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_COMPILATION:-} == "1" &&
-      $is_build_worker == "false" ]]; then
+      $is_build_worker == "false" &&
+      $lld_linking == "false" ]]; then
 
   trap remote_build_exit_handler EXIT
 
@@ -365,10 +400,12 @@ if [[ $local_build_only == "false" &&
     get_build_worker_list
     build_worker_name=${build_workers[ $RANDOM % ${#build_workers[@]} ]}
     build_host="$build_worker_name$YB_BUILD_WORKER_DOMAIN"
+
     set +e
     run_remote_cmd "$build_host" "$0" "${compiler_args[@]}" 2>"$stderr_path"
     exit_code=$?
     set -e
+
     # Exit code 126: "/usr/bin/env: bash: Input/output error"
     # Exit code 127: "remote_cmd.sh: No such file or directory"
     # Exit code 141: SIGPIPE
@@ -386,7 +423,9 @@ if [[ $local_build_only == "false" &&
           $exit_code -eq 255 ||
           $exit_code -eq $YB_EXIT_CODE_NO_SUCH_FILE_OR_DIRECTORY ]] ||
         ( grep -E "$COMPILATION_FAILURE_STDERR_PATTERNS" "$stderr_path" &&
-          ! grep ": syntax error " "$stderr_path" )
+          ! grep ": syntax error " "$stderr_path" ) ||
+        # Always retry for non-zero exit code and empty or whitespace-only stderr output.
+        ( [[ $exit_code -ne 0 ]] && ! grep -Eq '[^[:space:]]' "$stderr_path" )
     then
       remote_build_flush_stderr_file
       # TODO: distinguish between problems that can be retried on the same host, and problems
@@ -403,11 +442,16 @@ if [[ $local_build_only == "false" &&
       if [[ $sleep_deciseconds -lt 9 ]]; then
         (( sleep_deciseconds+=1 ))
       fi
+
       continue
     fi
+
     remote_build_flush_stderr_file
+
+    # We have decided not to retry the build. Break now and report the error if any.
     break
-  done
+  done  # End of loop that tries to run the build on different remote hosts.
+
   if [[ $exit_code -ne 0 ]]; then
     log_empty_line
     # Not using the log function here, because as of 07/23/2017 it does not correctly handle
@@ -431,7 +475,7 @@ Exit code:  $exit_code
 "
     PS4=$old_ps4
   fi
-  exit $exit_code
+  exit "$exit_code"
 elif debugging_remote_compilation && ! $is_build_worker; then
   log "Not doing remote build: local_build_only=$local_build_only," \
     "YB_REMOTE_COMPILATION=${YB_REMOTE_COMPILATION:-undefined}," \
@@ -446,11 +490,6 @@ local_build_exit_handler() {
   if [[ $exit_code -eq 0 ]]; then
     if [[ -f ${stderr_path:-} ]]; then
       tail -n +2 "$stderr_path" >&2
-    fi
-  elif is_thirdparty_build; then
-    # Do not add any fancy output if we're running as part of the third-party build.
-    if [[ -f ${stderr_path:-} ]]; then
-      flush_stderr_file_helper
     fi
   else
     # We output the compiler executable path because the actual command we're running will likely
@@ -534,6 +573,12 @@ run_compiler_and_save_stderr() {
 # -------------------------------------------------------------------------------------------------
 # Local build
 
+if [[ $output_file =~ libyb_pgbackend*  ]]; then
+  # We record the linker command used for the libyb_pgbackend library so we can use it when
+  # producing the LTO build for yb-tserver.
+  echo "${compiler_args[*]}" >"link_cmd_${output_file}.txt"
+fi
+
 if [[ ${build_type:-} == "asan" &&
       $PWD == */postgres_build/src/backend/utils/adt &&
       # Turn off UBSAN instrumentation in a number of PostgreSQL source files determined by the
@@ -553,19 +598,9 @@ if [[ ${build_type:-} == "asan" &&
   compiler_args=( "${rewritten_args[@]}" "-fno-sanitize=undefined" )
 fi
 
-if "$is_linking" && ! is_configure_mode_invocation && [[
-      ${build_type:-} == "compilecmds" &&
-      ${YB_SKIP_LINKING:-0} == "1" &&
-      ( $output_file == *libpqwalreceiver* || $output_file != *libpq* ) &&
-      $output_file != *libpgtypes*
-   ]]; then
-  log "Skipping linking in compilecmds mode for output file $output_file"
-  exit 0
-fi
-
 set_default_compiler_type
 find_or_download_thirdparty
-find_compiler_by_type "$YB_COMPILER_TYPE"
+find_compiler_by_type
 
 if [[ $cc_or_cxx == "compiler-wrapper.sh" && $compiler_args_str == "--version" ]]; then
   # Allow invoking this script not through a symlink but directly in one special case: when trying
@@ -596,7 +631,8 @@ if [[ ! -x $compiler_executable ]]; then
 fi
 
 # We use ccache if it is available and YB_NO_CCACHE is not set.
-if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-} ]]; then
+if [[ -z ${YB_NO_CCACHE:-} && ${YB_USE_PCH:-} != "1" && "${compiling_pch}" != "true" ]] &&
+   command -v ccache >/dev/null; then
   export CCACHE_CC="$compiler_executable"
   export CCACHE_SLOPPINESS="file_macro,pch_defines,time_macros"
   export CCACHE_BASEDIR=$YB_SRC_ROOT
@@ -614,7 +650,7 @@ if command -v ccache >/dev/null && ! "$compiling_pch" && [[ -z ${YB_NO_CCACHE:-}
   if [[ -n ${YB_CCACHE_DIR:-} ]]; then
     export CCACHE_DIR=$YB_CCACHE_DIR
   else
-    jenkins_ccache_dir=/n/jenkins/ccache
+    jenkins_ccache_dir=/Volumes/n/jenkins/ccache
     if [[ $USER == "jenkins" && -d $jenkins_ccache_dir ]] && is_src_root_on_nfs; then
       # Enable reusing cache entries from builds in different directories, potentially with
       # incorrect file paths in debug information. This is OK for Jenkins because we probably won't
@@ -666,7 +702,6 @@ add_brew_bin_to_path
 # PostgreSQL code because to do it correctly we need to know the eventual "installation" locations
 # of PostgreSQL binaries and libraries, which requires a bit more work.
 if [[ ${YB_DISABLE_RELATIVE_RPATH:-0} == "0" ]] &&
-   ! is_thirdparty_build &&
    is_linux &&
    "$rpath_found" &&
    # In case BUILD_ROOT is defined (should be in all cases except for when we're determining the
@@ -705,7 +740,7 @@ if [[ $PWD == $BUILD_ROOT/postgres_build ||
       if [[ -d $include_dir ]]; then
         include_dir=$( cd "$include_dir" && pwd )
         if [[ $include_dir == $BUILD_ROOT/postgres_build/* ]]; then
-          rel_include_dir=${include_dir#$BUILD_ROOT/postgres_build/}
+          rel_include_dir=${include_dir#"${BUILD_ROOT}"/postgres_build/}
           updated_include_dir=$YB_SRC_ROOT/src/postgres/$rel_include_dir
           if [[ -d $updated_include_dir ]]; then
             new_cmd+=( -I"$updated_include_dir" )
@@ -715,7 +750,7 @@ if [[ $PWD == $BUILD_ROOT/postgres_build ||
       new_cmd+=( "$arg" )
     elif [[ -f $arg && $arg != "conftest.c" ]]; then
       file_path=$PWD/${arg#./}
-      rel_file_path=${file_path#$BUILD_ROOT/postgres_build/}
+      rel_file_path=${file_path#"${BUILD_ROOT}"/postgres_build/}
       updated_file_path=$YB_SRC_ROOT/src/postgres/$rel_file_path
       if [[ -f $updated_file_path ]] && cmp --quiet "$file_path" "$updated_file_path"; then
         new_cmd+=( "$updated_file_path" )
@@ -734,7 +769,7 @@ trap local_build_exit_handler EXIT
 
 if [[ ${YB_GENERATE_COMPILATION_CMD_FILES:-0} == "1" &&
       -n $output_file &&
-      $output_file == *.o ]]; then
+      ($output_file == *.o || $output_file == *.pch) ]]; then
   IFS=$'\n'
   echo "
 directory: $PWD
@@ -746,19 +781,116 @@ ${cmd[*]}
 fi
   unset IFS
 
-if [[ $YB_COMPILER_TYPE == "clang" ]]; then
-  if [[ -n ${YB_DXR_CXX_CLANG_OBJECT_FOLDER:-} ]]; then
-    export DXR_CXX_CLANG_OBJECT_FOLDER=$YB_DXR_CXX_CLANG_OBJECT_FOLDER
-  fi
-  if [[ -n ${YB_DXR_CXX_CLANG_TEMP_FOLDER:-} ]]; then
-    export DXR_CXX_CLANG_TEMP_FOLDER=$YB_DXR_CXX_CLANG_TEMP_FOLDER
+# When -yb-pch is specified, we use it to generate precompiled header.
+if [[ "${yb_pch}" == "true" ]]; then
+  if [[ -n $output_file ]]; then
+    pch_cmd=( "$compiler_executable" )
+    skip_next=false
+    pch_file="${output_file%.cc.o}.h.pch"
+    # Replace original args with args required for compilation.
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case "$arg" in
+        -yb-pch)
+          pch_cmd+=( "-Xclang" "-emit-pch" "-fpch-instantiate-templates" "-fpch-codegen"
+                     "-fpch-debuginfo" "-x" "c++-header" "-c" )
+        ;;
+        -fpch-*|-x|c++-header)
+        ;;
+        -MT)
+          pch_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        -o)
+          pch_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        -c)
+          skip_next=true
+        ;;
+        *)
+          pch_cmd+=("$arg")
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${pch_cmd[@]}"
+    check_compiler_exit_code
+
+    codegen_cmd=( "$compiler_executable" )
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case $arg in
+        -yb-pch)
+          skip_next=true
+        ;;
+        -c)
+          codegen_cmd+=( "$arg" "$pch_file" )
+          skip_next=true
+        ;;
+        *)
+          codegen_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${codegen_cmd[@]}"
+  else
+    new_cmd=( "$compiler_executable" )
+    skip_next=false
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        skip_next=false
+        continue
+      fi
+      case $arg in
+        -yb-pch)
+          skip_next=true
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${new_cmd[@]}"
   fi
 else
-  # DXR only works with clang.
-  YB_DXR_CLANG_FLAGS=""
-fi
+  if [[ -n $output_file ]]; then
+    run_compiler_and_save_stderr "${cmd[@]}"
+  else
+    # Have to patch compiler command line to make CLion happy while loading CMake project.
+    new_cmd=( "$compiler_executable" )
+    skip_next=false
+    for arg in "${compiler_args[@]}"; do
+      if "$skip_next"; then
+        if [[ "$arg" == "-Xclang" ]]; then
+          continue
+        fi
 
-run_compiler_and_save_stderr "${cmd[@]}" ${YB_DXR_CLANG_FLAGS:-}
+        skip_next=false
+        if [[ "$arg" == -* ]]; then
+          new_cmd+=( "$arg" )
+        else
+          new_cmd+=( "-include" "-Xclang" "$arg" )
+        fi
+        continue
+      fi
+      case $arg in
+        -include)
+          skip_next=true
+        ;;
+        *)
+          new_cmd+=( "$arg" )
+        ;;
+      esac
+    done
+    run_compiler_and_save_stderr "${new_cmd[@]}"
+  fi
+fi
 
 # Skip printing some command lines commonly used by CMake for detecting compiler/linker version.
 # Extra output might break the version detection.
@@ -767,28 +899,7 @@ if [[ -n ${YB_SHOW_COMPILER_COMMAND_LINE:-} ]] &&
   show_compiler_command_line "$CYAN_COLOR"
 fi
 
-if is_thirdparty_build; then
-  # Don't do any extra error checking/reporting, just pass the compiler output back to the caller.
-  # The compiler's standard error will be passed to the calling process by the exit handler.
-  exit "$compiler_exit_code"
-fi
-
-if [[ $compiler_exit_code -ne 0 ]]; then
-  if grep -Eq 'error: linker command failed with exit code [0-9]+ \(use -v to see invocation\)' \
-       "$stderr_path" || \
-     grep -Eq 'error: ld returned' "$stderr_path"; then
-    determine_compiler_cmdline
-    generate_build_debug_script rerun_failed_link_step "$determine_compiler_cmdline_rv -v"
-  fi
-
-  if grep -E ': undefined reference to ' "$stderr_path" >/dev/null; then
-    for library_path in "${input_files[@]}"; do
-      nm -gC "$library_path" | grep ParseGet
-    done
-  fi
-
-  exit "$compiler_exit_code"
-fi
+check_compiler_exit_code
 
 if grep -Eq 'ld: warning: directory not found for option' "$stderr_path"; then
   log "Linker failed to find a directory (probably a library directory) that should exist."
@@ -797,7 +908,6 @@ fi
 
 if is_clang &&
     [[ ${YB_ENABLE_STATIC_ANALYZER:-0} == "1" ]] &&
-    ! is_thirdparty_build &&
     [[ ${YB_PG_BUILD_STEP:-} != "configure" ]] &&
     ! is_configure_mode_invocation &&
     [[ $output_file == *.o ]] &&

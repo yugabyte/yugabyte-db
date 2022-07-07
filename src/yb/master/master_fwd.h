@@ -14,45 +14,123 @@
 #ifndef YB_MASTER_MASTER_FWD_H
 #define YB_MASTER_MASTER_FWD_H
 
+#include <map>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
+#include <boost/optional/optional.hpp>
+
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/gutil/ref_counted.h"
+
+#include "yb/master/master_backup.fwd.h"
+#include "yb/master/tablet_split_fwd.h"
+
+#include "yb/util/enums.h"
+#include "yb/util/math_util.h"
+#include "yb/util/monotime.h"
 #include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+class HostPort;
+struct HostPortHash;
+
 namespace master {
 
 class TSDescriptor;
 typedef std::shared_ptr<TSDescriptor> TSDescriptorPtr;
 typedef std::vector<TSDescriptorPtr> TSDescriptorVector;
 
-class TSRegistrationPB;
 class EncryptionManager;
 
-class AddUniverseKeysRequestPB;
-class AddUniverseKeysResponsePB;
-class GetUniverseKeyRegistryRequestPB;
-class GetUniverseKeyRegistryResponsePB;
-class HasUniverseKeyInMemoryRequestPB;
-class HasUniverseKeyInMemoryResponsePB;
-class EncryptionInfoPB;
-class ChangeEncryptionInfoRequestPB;
-class ChangeEncryptionInfoResponsePB;
-class IsEncryptionEnabledRequestPB;
-class IsEncryptionEnabledResponsePB;
-class ListSnapshotsResponsePB;
-class ListSnapshotRestorationsResponsePB;
+class CatalogManager;
+class CatalogManagerIf;
+class CatalogManagerBgTasks;
+class CDCConsumerSplitDriverIf;
+class CDCRpcTasks;
+class ClusterConfigInfo;
+class ClusterLoadBalancer;
+class FlushManager;
+class Master;
+class MasterBackupProxy;
+class MasterOptions;
+class MasterPathHandlers;
+class MasterAdminProxy;
+class MasterClientProxy;
+class MasterClusterProxy;
+class MasterDclProxy;
+class MasterDdlProxy;
+class MasterEncryptionProxy;
+class MasterHeartbeatProxy;
+class MasterReplicationProxy;
+class NamespaceInfo;
+class PermissionsManager;
+class RetryingTSRpcTask;
+class SnapshotCoordinatorContext;
+class SnapshotState;
+class SysCatalogTable;
+class SysConfigInfo;
 class SysRowEntries;
-class SysSnapshotEntryPB;
-class TabletInfo;
-class TSHeartbeatRequestPB;
-class TSHeartbeatResponsePB;
+class TSDescriptor;
+class TSManager;
+class UDTypeInfo;
+class XClusterSplitDriverIf;
+class YQLPartitionsVTable;
+class YQLVirtualTable;
+class YsqlTablegroupManager;
+class YsqlTablespaceManager;
+class YsqlTransactionDdl;
 
-typedef scoped_refptr<TabletInfo> TabletInfoPtr;
-typedef std::vector<TabletInfoPtr> TabletInfos;
+struct CDCConsumerStreamInfo;
+struct TableDescription;
+struct TabletReplica;
+struct TabletReplicaDriveInfo;
+
+class AsyncTabletSnapshotOp;
+using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
+
+class TableInfo;
+using TableInfoPtr = scoped_refptr<TableInfo>;
+using TableInfoMap = std::map<TableId, TableInfoPtr>;
+
+class TabletInfo;
+using TabletInfoPtr = scoped_refptr<TabletInfo>;
+using TabletInfos = std::vector<TabletInfoPtr>;
+
+struct SnapshotScheduleRestoration;
+using SnapshotScheduleRestorationPtr = std::shared_ptr<SnapshotScheduleRestoration>;
 
 YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
+
+YB_STRONGLY_TYPED_BOOL(IncludeInactive);
+
+YB_DEFINE_ENUM(
+    CollectFlag, (kAddIndexes)(kIncludeParentColocatedTable)(kSucceedIfCreateInProgress));
+using CollectFlags = EnumBitSet<CollectFlag>;
+
+using TableToTablespaceIdMap = std::unordered_map<TableId, boost::optional<TablespaceId>>;
+using TablespaceIdToReplicationInfoMap = std::unordered_map<
+    TablespaceId, boost::optional<ReplicationInfoPB>>;
+
+using LeaderStepDownFailureTimes = std::unordered_map<TabletServerId, MonoTime>;
+using TabletReplicaMap = std::unordered_map<std::string, TabletReplica>;
+using TabletToTabletServerMap = std::unordered_map<TabletId, TabletServerId>;
+using TabletInfoMap = std::map<TabletId, scoped_refptr<TabletInfo>>;
+struct cloud_hash;
+struct cloud_equal_to;
+using AffinitizedZonesSet = std::unordered_set<CloudInfoPB, cloud_hash, cloud_equal_to>;
+using BlacklistSet = std::unordered_set<HostPort, HostPortHash>;
+using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
+
+namespace enterprise {
+
+class CatalogManager;
+
+} // namespace enterprise
 
 } // namespace master
 } // namespace yb

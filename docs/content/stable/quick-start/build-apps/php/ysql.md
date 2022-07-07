@@ -3,24 +3,18 @@ title: Build a PHP application that uses YSQL
 headerTitle: Build a PHP application
 linkTitle: PHP
 description: Build a PHP application that uses YSQL to perform basic database operations.
-aliases:
-  - /develop/client-drivers/php/
-  - /stable/develop/client-drivers/php/
-  - /stable/quick-start/build-apps/php/
-block_indexing: true
 menu:
   stable:
     identifier: build-apps-php-1-ysql
     parent: build-apps
     weight: 555
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/stable/quick-start/build-apps/php/ysql" class="nav-link active">
+    <a href="../ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
@@ -101,7 +95,7 @@ $ php yb-sql-sample.php
 
 and you should see the following output:
 
-```
+```output
 Inserted new records successfully.
 Retrieving info for user id 11...
 Array

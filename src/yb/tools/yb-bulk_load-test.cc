@@ -13,36 +13,49 @@
 
 #include <string>
 #include <thread>
-#include <gtest/gtest.h>
+
 #include <boost/algorithm/string.hpp>
+#include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/schema.h"
+#include "yb/client/table.h"
 #include "yb/client/table_creator.h"
 #include "yb/client/table_handle.h"
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
-#include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
-#include "yb/docdb/docdb_test_util.h"
 #include "yb/common/partition.h"
-#include "yb/docdb/ql_rocksdb_storage.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
+#include "yb/gutil/casts.h"
+
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
-#include "yb/master/master.proxy.h"
-#include "yb/master/master_defaults.h"
+
+#include "yb/master/master_client.proxy.h"
 #include "yb/master/mini_master.h"
+
 #include "yb/rpc/messenger.h"
-#include "yb/yql/cql/ql/util/statement_result.h"
-#include "yb/tablet/tablet_peer.h"
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc_controller.h"
+
 #include "yb/tools/bulk_load_utils.h"
 #include "yb/tools/yb-generate_partitions.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/tserver/mini_tablet_server.h"
-#include "yb/util/date_time.h"
+
+#include "yb/tserver/tserver_service.proxy.h"
+
 #include "yb/util/path_util.h"
 #include "yb/util/random.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tsan_util.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 DECLARE_uint64(initial_seqno);
 DECLARE_uint64(bulk_load_num_files_per_tablet);
@@ -89,7 +102,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     // Use a high enough initial sequence number.
     FLAGS_initial_seqno = 1 << 20;
 
-    cluster_.reset(new MiniCluster(env_.get(), opts));
+    cluster_.reset(new MiniCluster(opts));
     ASSERT_OK(cluster_->Start());
 
     client_ = ASSERT_RESULT(YBClientBuilder()
@@ -111,8 +124,8 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     client_ = ASSERT_RESULT(cluster_->CreateClient());
     client_messenger_ = ASSERT_RESULT(rpc::MessengerBuilder("Client").Build());
     rpc::ProxyCache proxy_cache(client_messenger_.get());
-    proxy_.reset(new master::MasterServiceProxy(&proxy_cache,
-                                                cluster_->leader_mini_master()->bound_rpc_addr()));
+    proxy_ = std::make_unique<master::MasterClientProxy>(
+        &proxy_cache, ASSERT_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
 
     // Create the namespace.
     ASSERT_OK(client_->CreateNamespace(kNamespace));
@@ -129,7 +142,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     ASSERT_OK(client_->OpenTable(*table_name_, &table_));
 
-    for (int i = 0; i < cluster_->num_masters(); i++) {
+    for (size_t i = 0; i < cluster_->num_masters(); i++) {
       const string& master_address = cluster_->mini_master(i)->bound_rpc_addr_str();
       master_addresses_.push_back(master_address);
     }
@@ -145,10 +158,10 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     cluster_->Shutdown();
   }
 
-  CHECKED_STATUS StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
+  Status StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
                                            FILE** in, std::unique_ptr<Subprocess>* process) {
     process->reset(new Subprocess(exe_path, argv));
-    (*process)->ShareParentStdout(false);
+    (*process)->PipeParentStdout();
     RETURN_NOT_OK((*process)->Start());
 
     *out = fdopen((*process)->ReleaseChildStdinFd(), "w");
@@ -168,7 +181,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     ASSERT_EQ(0, WEXITSTATUS(wait_status));
   }
 
-  CHECKED_STATUS CreateQLReadRequest(const string& row, QLReadRequestPB* req) {
+  Status CreateQLReadRequest(const string& row, QLReadRequestPB* req) {
     req->set_client(YQL_CLIENT_CQL);
     string tablet_id;
     string partition_key;
@@ -204,9 +217,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Set all column ids.
     QLRSRowDescPB *rsrow_desc = req->mutable_rsrow_desc();
-    for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
-      req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      req->add_selected_exprs()->set_column_id(kFirstColumnId + i);
+    for (size_t i = 0; i < table_->InternalSchema().num_columns(); i++) {
+      req->mutable_column_refs()->add_ids(narrow_cast<int32_t>(kFirstColumnId + i));
+      req->add_selected_exprs()->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
 
       const ColumnSchema& col = table_->InternalSchema().column(i);
       QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();
@@ -376,7 +389,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   YBSchema schema_;
   std::unique_ptr<YBTableName> table_name_;
   std::shared_ptr<YBTable> table_;
-  std::unique_ptr<master::MasterServiceProxy> proxy_;
+  std::unique_ptr<master::MasterClientProxy> proxy_;
   std::unique_ptr<rpc::Messenger> client_messenger_;
   std::unique_ptr<YBPartitionGenerator> partition_generator_;
   std::vector<std::string> master_addresses_;
@@ -571,14 +584,15 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
       "-initial_seqno", "0",
       "-row_batch_size", std::to_string(kNumIterations/kNumTablets/10),
       "-bulk_load_num_files_per_tablet", std::to_string(kNumFilesPerTablet),
-      "-flush_batch_for_tests"
+      "-flush_batch_for_tests",
+      "-never_fsync", "true"
   };
 
   std::unique_ptr<Subprocess> bulk_load_process;
   ASSERT_OK(StartProcessAndGetStreams(bulk_load_exec, bulk_load_argv, &out, &in,
                 &bulk_load_process));
 
-  for (int i = 0; i < mapper_output.size(); i++) {
+  for (size_t i = 0; i < mapper_output.size(); i++) {
     // Write the input line.
     ASSERT_GT(fprintf(out, "%s", mapper_output[i].c_str()), 0);
     ASSERT_EQ(0, fflush(out));
@@ -618,7 +632,7 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
 
     HostPort leader_tserver;
     for (const master::TabletLocationsPB::ReplicaPB& replica : tablet_location.replicas()) {
-      if (replica.role() == consensus::RaftPeerPB_Role::RaftPeerPB_Role_LEADER) {
+      if (replica.role() == PeerRole::LEADER) {
         leader_tserver = HostPortFromPB(replica.ts_info().private_rpc_addresses(0));
         break;
       }
@@ -675,9 +689,9 @@ TEST_F_EX(YBBulkLoadTest, TestCLITool, YBBulkLoadTestWithoutRebalancing) {
 
     // Set all column ids.
     QLRSRowDescPB *rsrow_desc = ql_req->mutable_rsrow_desc();
-    for (int i = 0; i < table_->InternalSchema().num_columns(); i++) {
-      ql_req->mutable_column_refs()->add_ids(kFirstColumnId + i);
-      ql_req->add_selected_exprs()->set_column_id(kFirstColumnId + i);
+    for (size_t i = 0; i < table_->InternalSchema().num_columns(); i++) {
+      ql_req->mutable_column_refs()->add_ids(narrow_cast<int32_t>(kFirstColumnId + i));
+      ql_req->add_selected_exprs()->set_column_id(narrow_cast<int32_t>(kFirstColumnId + i));
 
       const ColumnSchema& col = table_->InternalSchema().column(i);
       QLRSColDescPB *rscol_desc = rsrow_desc->add_rscol_descs();

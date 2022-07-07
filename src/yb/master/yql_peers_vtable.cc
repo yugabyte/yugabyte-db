@@ -13,13 +13,19 @@
 
 #include "yb/master/yql_peers_vtable.h"
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 
+#include "yb/master/master.h"
+#include "yb/master/master_heartbeat.pb.h"
 #include "yb/master/ts_descriptor.h"
 
 #include "yb/rpc/messenger.h"
 
 #include "yb/util/net/dns_resolver.h"
+#include "yb/util/net/inetaddress.h"
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace master {
@@ -68,12 +74,12 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
   const auto& proxy_uuid = request.proxy_uuid();
 
   // Populate the YQL rows.
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
 
   struct Entry {
     size_t index;
     TSInformationPB ts_info;
-    util::PublicPrivateIPFutures ts_ips;
+    util::PublicPrivateIPFutures ts_ips{};
   };
 
   std::vector<Entry> entries;
@@ -134,15 +140,14 @@ Result<std::shared_ptr<QLRowBlock>> PeersVTable::RetrieveData(
     RETURN_NOT_OK(SetColumnValue(kRack, cloud_info.placement_zone(), &row));
 
     // HostId.
-    Uuid host_id;
-    RETURN_NOT_OK(host_id.FromHexString(entry.ts_info.tserver_instance().permanent_uuid()));
+    auto host_id = VERIFY_RESULT(Uuid::FromHexString(
+        entry.ts_info.tserver_instance().permanent_uuid()));
     RETURN_NOT_OK(SetColumnValue(kHostId, host_id, &row));
     RETURN_NOT_OK(SetColumnValue(yb::master::kSystemTablesReleaseVersionColumn,
         yb::master::kSystemTablesReleaseVersion, &row));
 
     // schema_version.
-    Uuid schema_version;
-    RETURN_NOT_OK(schema_version.FromString(master::kDefaultSchemaVersion));
+    Uuid schema_version = VERIFY_RESULT(Uuid::FromString(master::kDefaultSchemaVersion));
     RETURN_NOT_OK(SetColumnValue(kSchemaVersion, schema_version, &row));
 
     // Tokens.

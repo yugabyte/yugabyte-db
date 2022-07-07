@@ -30,13 +30,8 @@
 // under the License.
 //
 
-#include "yb/util/monotime.h"
-
-#include <sys/time.h>
-#include <unistd.h>
-
 #include <condition_variable>
-#include <thread>
+#include <mutex>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -160,13 +155,13 @@ TEST(TestMonoTime, TestDeltaConversions) {
   // TODO: Reliably test MonoDelta::FromSeconds() considering floating-point rounding errors
 
   MonoDelta mil(MonoDelta::FromMilliseconds(500));
-  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMillisecond, mil.nano_delta_);
+  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMillisecond, mil.ToNanoseconds());
 
   MonoDelta micro(MonoDelta::FromMicroseconds(500));
-  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMicrosecond, micro.nano_delta_);
+  ASSERT_EQ(500 * MonoTime::kNanosecondsPerMicrosecond, micro.ToNanoseconds());
 
   MonoDelta nano(MonoDelta::FromNanoseconds(500));
-  ASSERT_EQ(500, nano.nano_delta_);
+  ASSERT_EQ(500, nano.ToNanoseconds());
 }
 
 template <class Now>
@@ -224,8 +219,8 @@ TEST(TestMonoTime, ToCoarse) {
     auto converted = ToCoarse(MonoTime::Now());
     auto after = CoarseMonoClock::Now();
 
-    // Coarse mono clock has 1ms precision, so we add it to bounds.
-    const auto kPrecision = 2ms;
+    // Coarse mono clock has limited precision, so we add its resolution to bounds.
+    const auto kPrecision = ClockResolution<CoarseMonoClock>() * 2;
     ASSERT_GE(converted, before);
     ASSERT_LE(converted, after + kPrecision);
   }

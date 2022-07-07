@@ -2,39 +2,56 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.checkTagPattern;
+import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.getNodeName;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.checkTagPattern;
-
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.naming.TestCaseName;
 
+import org.junit.Before;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.HashSet;
+
 @RunWith(JUnitParamsRunner.class)
 public class UniverseDefinitionTaskBaseTest {
+
+  @Rule public MockitoRule rule = MockitoJUnit.rule();
+
   private Cluster myCluster;
   private NodeDetails myNode;
   private UserIntent userIntent;
+
+  @Mock private BaseTaskDependencies baseTaskDependencies;
 
   @Before
   public void setUp() {
@@ -79,8 +96,8 @@ public class UniverseDefinitionTaskBaseTest {
   }
 
   private String getTestNodeName(String tag) {
-    return getNodeName(myCluster, tag, "oldPrefix", myNode.nodeIdx,
-                       myNode.cloudInfo.region, myNode.cloudInfo.az);
+    return getNodeName(
+        myCluster, tag, "oldPrefix", myNode.nodeIdx, myNode.cloudInfo.region, myNode.cloudInfo.az);
   }
 
   @Test
@@ -119,12 +136,24 @@ public class UniverseDefinitionTaskBaseTest {
     assertEquals("my-ABCuniv!-1", getTestNodeName(tag));
 
     Cluster tempCluster = new Cluster(ClusterType.ASYNC, userIntent);
-    String name = getNodeName(tempCluster, "", "oldPrefix", myNode.nodeIdx,
-                              myNode.cloudInfo.region, myNode.cloudInfo.az);
+    String name =
+        getNodeName(
+            tempCluster,
+            "",
+            "oldPrefix",
+            myNode.nodeIdx,
+            myNode.cloudInfo.region,
+            myNode.cloudInfo.az);
     assertEquals("oldPrefix-readonly0-n1", name);
 
-    name = getNodeName(tempCluster, "${universe}-${instance-id}", "oldPrefix", myNode.nodeIdx,
-                       myNode.cloudInfo.region, myNode.cloudInfo.az);
+    name =
+        getNodeName(
+            tempCluster,
+            "${universe}-${instance-id}",
+            "oldPrefix",
+            myNode.nodeIdx,
+            myNode.cloudInfo.region,
+            myNode.cloudInfo.az);
     assertEquals("TagsTestUniverse-1-readonly0", name);
   }
 
@@ -134,92 +163,57 @@ public class UniverseDefinitionTaskBaseTest {
       checkTagPattern("");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Invalid value '' for Name")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("Invalid value '' for Name")));
     }
 
     try {
       checkTagPattern("${universe}-${zone");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
+      assertThat(
+          e.getMessage(),
+          allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
     }
 
     try {
       checkTagPattern("universe}-${zone}-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
+      assertThat(
+          e.getMessage(),
+          allOf(notNullValue(), containsString("Number of '${' does not match '}'")));
     }
 
     try {
       checkTagPattern("${universe-${zone}}-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Invalid variable universe-")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("Invalid variable universe-")));
     }
 
     try {
       checkTagPattern("${wrongkey}-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Invalid variable wrongkey")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("Invalid variable wrongkey")));
     }
 
     try {
       checkTagPattern("${universe}.${region}-${zone}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("should be part of Name value")));
+      assertThat(
+          e.getMessage(), allOf(notNullValue(), containsString("should be part of Name value")));
     }
 
     try {
       checkTagPattern("${universe}-${universe}-test-${region}");
       fail();
     } catch (RuntimeException e) {
-      assertThat(e.getMessage(),
-                 allOf(notNullValue(), containsString("Duplicate universe")));
-    }
-  }
-
-  @Test
-  @Parameters({ "false, false", "true, true", "true, false", "false, true" })
-  @TestCaseName("{method}(YSQL:{0}, YEDIS:{1})")
-  public void doTestAddDefaultGFlags(boolean enableYSQL, boolean enableYEDIS) {
-    UniverseDefinitionTaskBaseFake instance = new UniverseDefinitionTaskBaseFake();
-    instance.taskParams = new UniverseDefinitionTaskParams();
-    ((UniverseDefinitionTaskParams) instance.taskParams).clusters.add(myCluster);
-    myCluster.userIntent.enableYEDIS = enableYEDIS;
-    myCluster.userIntent.enableYSQL = enableYSQL;
-
-    assertEquals(0, userIntent.tserverGFlags.size());
-    instance.addDefaultGFlags(userIntent);
-    assertEquals(userIntent, instance.taskParams().getPrimaryCluster().userIntent);
-    assertTrue(userIntent.tserverGFlags.containsKey("cql_proxy_webserver_port"));
-    assertEquals(enableYSQL, userIntent.tserverGFlags.containsKey("pgsql_proxy_webserver_port"));
-    assertEquals(enableYEDIS, userIntent.tserverGFlags.containsKey("redis_proxy_webserver_port"));
-    assertEquals(!enableYEDIS, userIntent.tserverGFlags.containsKey("start_redis_proxy"));
-    if (!enableYEDIS) {
-      assertEquals("false", userIntent.tserverGFlags.get("start_redis_proxy"));
-    }
-  }
-
-  private static class UniverseDefinitionTaskBaseFake extends UniverseDefinitionTaskBase {
-    // The params for this task. Overrides visibility
-    public ITaskParams taskParams;
-
-    @Override
-    public void run() {
-    }
-
-    @Override
-    protected UniverseDefinitionTaskParams taskParams() {
-      return (UniverseDefinitionTaskParams) taskParams;
+      assertThat(e.getMessage(), allOf(notNullValue(), containsString("Duplicate universe")));
     }
   }
 }

@@ -21,8 +21,6 @@
 #include "yb/rocksdb/table/full_filter_block.h"
 
 #include "yb/rocksdb/filter_policy.h"
-#include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/coding.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
 
 namespace rocksdb {

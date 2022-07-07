@@ -3,27 +3,23 @@ title: Back up data for YSQL
 headerTitle: Back up data
 linkTitle: Back up data
 description: Back up data in YugabyteDB for YSQL.
-aliases:
-  - /manage/backup-restore/backing-up-data
-block_indexing: true
 menu:
   stable:
     identifier: back-up-data
     parent: backup-restore
     weight: 703
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/manage/backup-restore/back-up-data" class="nav-link active">
+    <a href="/preview/manage/backup-restore/back-up-data" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
   <li >
-    <a href="/stable/manage/backup-restore/back-up-data-ycql" class="nav-link">
+    <a href="/preview/manage/backup-restore/back-up-data-ycql" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

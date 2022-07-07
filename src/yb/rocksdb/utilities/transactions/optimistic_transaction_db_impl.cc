@@ -25,7 +25,6 @@
 #include <string>
 #include <vector>
 
-#include "yb/rocksdb/db/db_impl.h"
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/utilities/optimistic_transaction_db.h"

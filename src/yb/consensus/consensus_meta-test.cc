@@ -40,7 +40,6 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -66,13 +65,14 @@ class ConsensusMetadataTest : public YBTest {
   void SetUp() override {
     YBTest::SetUp();
     ASSERT_OK(fs_manager_.CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_.Open());
+    ASSERT_OK(fs_manager_.CheckAndOpenFileSystemRoots());
+    fs_manager_.SetTabletPathByDataPath(kTabletId, fs_manager_.GetDataRootDirs()[0]);
 
     // Initialize test configuration.
     config_.set_opid_index(kInvalidOpIdIndex);
     RaftPeerPB* peer = config_.add_peers();
     peer->set_permanent_uuid(fs_manager_.uuid());
-    peer->set_member_type(RaftPeerPB::VOTER);
+    peer->set_member_type(PeerMemberType::VOTER);
     HostPortToPB(HostPort("fake-host", 0), peer->mutable_last_known_private_addr()->Add());
   }
 
@@ -154,7 +154,7 @@ RaftConfigPB BuildConfig(const vector<string>& uuids) {
   for (const string& uuid : uuids) {
     RaftPeerPB* peer = config.add_peers();
     peer->set_permanent_uuid(uuid);
-    peer->set_member_type(RaftPeerPB::VOTER);
+    peer->set_member_type(PeerMemberType::VOTER);
     HostPortToPB(HostPort("255.255.255.255", 0), peer->mutable_last_known_private_addr()->Add());
   }
   return config;
@@ -165,43 +165,44 @@ TEST_F(ConsensusMetadataTest, TestActiveRole) {
   vector<string> uuids = { "a", "b", "c", "d" };
   string peer_uuid = "e";
   RaftConfigPB config1 = BuildConfig(uuids); // We aren't a member of this config...
-  config1.set_opid_index(1);
+  const auto op_id = OpId(1, 1);
+  config1.set_opid_index(op_id.index);
 
   std::unique_ptr<ConsensusMetadata> cmeta;
   ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, peer_uuid,
                                       config1, kInitialTerm, &cmeta));
 
   // Not a participant.
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
 
   // Follower.
   uuids.push_back(peer_uuid);
   RaftConfigPB config2 = BuildConfig(uuids); // But we are a member of this one.
-  config2.set_opid_index(1);
+  config2.set_opid_index(op_id.index);
   cmeta->set_committed_config(config2);
-  ASSERT_EQ(RaftPeerPB::FOLLOWER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::FOLLOWER, cmeta->active_role());
 
   // Pending should mask committed.
-  cmeta->set_pending_config(config1);
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  cmeta->set_pending_config(config1, op_id);
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
   cmeta->clear_pending_config();
-  ASSERT_EQ(RaftPeerPB::FOLLOWER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::FOLLOWER, cmeta->active_role());
 
   // Leader.
   cmeta->set_leader_uuid(peer_uuid);
-  ASSERT_EQ(RaftPeerPB::LEADER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::LEADER, cmeta->active_role());
 
   // Again, pending should mask committed.
-  cmeta->set_pending_config(config1);
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
-  cmeta->set_pending_config(config2); // pending == committed.
-  ASSERT_EQ(RaftPeerPB::LEADER, cmeta->active_role());
+  cmeta->set_pending_config(config1, op_id);
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
+  cmeta->set_pending_config(config2, op_id); // pending == committed.
+  ASSERT_EQ(PeerRole::LEADER, cmeta->active_role());
   cmeta->set_committed_config(config1); // committed now excludes this node, but is masked...
-  ASSERT_EQ(RaftPeerPB::LEADER, cmeta->active_role());
+  ASSERT_EQ(PeerRole::LEADER, cmeta->active_role());
 
   // ... until we clear pending, then we find committed now excludes us.
   cmeta->clear_pending_config();
-  ASSERT_EQ(RaftPeerPB::NON_PARTICIPANT, cmeta->active_role());
+  ASSERT_EQ(PeerRole::NON_PARTICIPANT, cmeta->active_role());
 }
 
 // Ensure that invocations of ToConsensusStatePB() return the expected state
@@ -222,7 +223,8 @@ TEST_F(ConsensusMetadataTest, TestToConsensusStatePB) {
   // Set the pending configuration to be one containing the current leader (who is not
   // in the committed configuration). Ensure that the leader shows up when we ask for
   // the active consensus state.
-  cmeta->set_pending_config(pending_config);
+  const auto op_id = OpId(1, 1);
+  cmeta->set_pending_config(pending_config, op_id);
   cmeta->set_leader_uuid(peer_uuid);
   ConsensusStatePB active_cstate = cmeta->ToConsensusStatePB(CONSENSUS_CONFIG_ACTIVE);
   ASSERT_TRUE(active_cstate.has_leader_uuid());
@@ -277,7 +279,8 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
 
   uuids.push_back("e");
   RaftConfigPB pending_config = BuildConfig(uuids);
-  cmeta->set_pending_config(pending_config);
+  auto op_id = OpId(1, 2);
+  cmeta->set_pending_config(pending_config, op_id);
   cmeta->set_leader_uuid("e");
   cmeta->set_voted_for("e");
 
@@ -297,7 +300,8 @@ TEST_F(ConsensusMetadataTest, TestMergeCommittedConsensusStatePB) {
   // Higher term, so wipe out the prior state.
   remote_state.set_current_term(2);
   *remote_state.mutable_config() = BuildConfig({ "i", "j", "k" });
-  cmeta->set_pending_config(pending_config);
+  op_id = OpId(2, 3);
+  cmeta->set_pending_config(pending_config, op_id);
   cmeta->MergeCommittedConsensusStatePB(remote_state);
   ASSERT_NO_FATALS(AssertConsensusMergeExpected(*cmeta, remote_state, 2, ""));
 }

@@ -14,11 +14,11 @@
 #ifndef YB_CONSENSUS_RETRYABLE_REQUESTS_H
 #define YB_CONSENSUS_RETRYABLE_REQUESTS_H
 
-#include "yb/common/wire_protocol.h"
+#include "yb/common/retryable_request.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/util/restart_safe_clock.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -42,9 +42,10 @@ class RetryableRequests {
   void operator=(RetryableRequests&& rhs);
 
   // Tries to register a new running retryable request.
-  // Returns false if request with such id is already present.
-  bool Register(const ConsensusRoundPtr& round,
-                RestartSafeCoarseTimePoint entry_time = RestartSafeCoarseTimePoint());
+  // Returns error or false if request with such id is already present.
+  Result<bool> Register(
+      const ConsensusRoundPtr& round,
+      RestartSafeCoarseTimePoint entry_time = RestartSafeCoarseTimePoint());
 
   // Cleans expires replicated requests and returns min op id of running request.
   yb::OpId CleanExpiredReplicatedAndGetMinOpId();

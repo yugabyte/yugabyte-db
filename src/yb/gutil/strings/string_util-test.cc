@@ -193,4 +193,20 @@ TEST_F(StringUtilTest, TestCollectionToString) {
   ASSERT_EQ("[foo]", RangeToString(v.begin(), v.begin() + 1));
 }
 
+TEST_F(StringUtilTest, TestStringStartsWithOrEquals) {
+  ASSERT_TRUE(StringStartsWithOrEquals("", ""));
+  ASSERT_TRUE(StringStartsWithOrEquals("abc", ""));
+  ASSERT_TRUE(StringStartsWithOrEquals("abc", "ab"));
+  ASSERT_TRUE(StringStartsWithOrEquals("abc", "abc"));
+  ASSERT_FALSE(StringStartsWithOrEquals("abc", "abd"));
+  ASSERT_FALSE(StringStartsWithOrEquals("abc", "abcd"));
+}
+
+TEST_F(StringUtilTest, TestSplitAndFlatten) {
+  ASSERT_EQ("[foo, bar, baz]", VectorToString(SplitAndFlatten(
+      {"foo,bar", "baz"})));
+  ASSERT_EQ("[foo, bar, baz, foo]", VectorToString(SplitAndFlatten(
+      {"foo", "bar:baz", "foo"}, ":")));
+}
+
 } // namespace yb

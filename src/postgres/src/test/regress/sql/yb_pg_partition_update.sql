@@ -1,6 +1,39 @@
+-- Test ON CONFLICT DO UPDATE with partitioned table and non-identical children
+
+CREATE TABLE upsert_test (
+    a   INT PRIMARY KEY,
+    b   TEXT
+) PARTITION BY LIST (a);
+
+CREATE TABLE upsert_test_1 PARTITION OF upsert_test FOR VALUES IN (1);
+CREATE TABLE upsert_test_2 (b TEXT, a INT PRIMARY KEY);
+ALTER TABLE upsert_test ATTACH PARTITION upsert_test_2 FOR VALUES IN (2);
+
+INSERT INTO upsert_test VALUES(1, 'Boo'), (2, 'Zoo');
+-- uncorrelated sub-select:
+WITH aaa AS (SELECT 1 AS a, 'Foo' AS b) INSERT INTO upsert_test
+  VALUES (1, 'Bar') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT b, a FROM aaa) RETURNING *;
+-- correlated sub-select:
+WITH aaa AS (SELECT 1 AS ctea, ' Foo' AS cteb) INSERT INTO upsert_test
+  VALUES (1, 'Bar'), (2, 'Baz') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT upsert_test.b||cteb, upsert_test.a FROM aaa) RETURNING *;
+
+DROP TABLE upsert_test;
+
+
 ---------------------------
--- UPDATE TESTS
+-- UPDATE with row movement
 ---------------------------
+
+-- When a partitioned table receives an UPDATE to the partitioned key and the
+-- new values no longer meet the partition's bound, the row must be moved to
+-- the correct partition for the new partition key (if one exists). We must
+-- also ensure that updatable views on partitioned tables properly enforce any
+-- WITH CHECK OPTION that is defined. The situation with triggers in this case
+-- also requires thorough testing as partition key updates causing row
+-- movement convert UPDATEs into DELETE+INSERT.
+
 CREATE TABLE range_parted (
 	a text,
 	b bigint,
@@ -39,34 +72,35 @@ ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_100_200 FOR VALUES FROM (100)
 CREATE TABLE part_c_1_100 (e varchar, d int, c numeric, b bigint, a text);
 ALTER TABLE part_b_10_b_20 ATTACH PARTITION part_c_1_100 FOR VALUES FROM (1) TO (100);
 
-
 \set init_range_parted 'truncate range_parted; insert into range_parted VALUES (''a'', 1, 1, 1), (''a'', 10, 200, 1), (''b'', 12, 96, 1), (''b'', 13, 97, 2), (''b'', 15, 105, 16), (''b'', 17, 105, 19)'
 \set show_data 'select tableoid::regclass::text COLLATE "C" partname, * from range_parted ORDER BY 1, 2, 3, 4, 5, 6'
 :init_range_parted;
 :show_data;
 
--- fail.
-UPDATE part_c_100_200 set c = c - 20, d = c WHERE c = 105 and b = 15;
--- fail, no partition key update, but "a = 'a'" violates partition
--- constraint enforced by root partition)
-UPDATE part_b_10_b_20 set a = 'a' WHERE c = 97;
--- fail, partition key update that requires row movement.
--- When this behavior is supported by Yugabyte, enable all
--- the following tests.
-UPDATE range_parted set d = d - 10 WHERE d > 16;
-/*
+-- The order of subplans should be in bound order
+EXPLAIN (costs off) UPDATE range_parted set c = c - 50 WHERE c > 97;
+
+-- fail, row movement happens only within the partition subtree.
+UPDATE part_c_100_200 set c = c - 20, d = c WHERE c = 105 AND b = 15;
+-- fail, no partition key update, so no attempt to move tuple,
+-- but "a = 'a'" violates partition constraint enforced by root partition)
+UPDATE part_b_10_b_20 set a = 'a' WHERE b = 12;
+-- ok, partition key update, no constraint violation
+UPDATE range_parted set d = d - 10 WHERE d > 10;
 -- ok, no partition key update, no constraint violation
 UPDATE range_parted set e = d;
 -- No row found
 UPDATE part_c_1_100 set c = c + 20 WHERE c = 98;
 -- ok, row movement
-UPDATE part_b_10_b_20 set c = c + 20 returning c, b, a;
+WITH x AS (UPDATE part_b_10_b_20 set c = c + 20 returning c, b, a)
+SELECT * FROM x ORDER BY b;
 :show_data;
 
 -- fail, row movement happens only within the partition subtree.
-UPDATE part_b_10_b_20 set b = b - 6 WHERE c > 116 returning *;
+UPDATE part_b_10_b_20 set b = b - 6 WHERE c > 116 AND d = 2 returning *;
 -- ok, row movement, with subset of rows moved into different partition.
-UPDATE range_parted set b = b - 6 WHERE c > 116 returning a, b + c;
+WITH x AS (UPDATE range_parted set b = b - 6 WHERE c > 116 returning a, b + c AS f)
+SELECT * FROM x ORDER BY a, f;
 
 :show_data;
 
@@ -76,25 +110,102 @@ INSERT into mintab VALUES (120);
 
 -- update partition key using updatable view.
 CREATE VIEW upview AS SELECT * FROM range_parted WHERE (select c > c1 FROM mintab) WITH CHECK OPTION;
+/*
+The following tests should be enabled after VIEW WITH CHECK OPTION
+is supported.
 -- ok
 UPDATE upview set c = 199 WHERE b = 4;
 -- fail, check option violation
 UPDATE upview set c = 120 WHERE b = 4;
 -- fail, row movement with check option violation
-UPDATE upview set a = 'b', b = 15, c = 120 WHERE b = 4;
 -- ok, row movement, check option passes
 UPDATE upview set a = 'b', b = 15 WHERE b = 4;
-
-:show_data;
-
 -- cleanup
 DROP VIEW upview;
-
+*/
 -- RETURNING having whole-row vars.
 :init_range_parted;
-UPDATE range_parted set c = 95 WHERE a = 'b' and b > 10 and c > 100 returning (range_parted), *;
+WITH x AS (UPDATE range_parted set c = 95 WHERE a = 'b' and b > 10 and c > 100 returning (range_parted), *)
+SELECT * FROM x ORDER BY b;
 :show_data;
 
+
+-- Transition tables with update row movement
+:init_range_parted;
+
+CREATE FUNCTION trans_updatetrigfunc() RETURNS trigger LANGUAGE plpgsql AS
+$$
+  begin
+    raise notice 'trigger = %, old table = %, new table = %',
+                 TG_NAME,
+                 (select string_agg(old_table::text, ', ' ORDER BY a) FROM old_table),
+                 (select string_agg(new_table::text, ', ' ORDER BY a) FROM new_table);
+    return null;
+  end;
+$$;
+
+-- Enable the following tests after REFERENCING clause (transition tables) is supported.
+CREATE TRIGGER trans_updatetrig
+  AFTER UPDATE ON range_parted REFERENCING OLD TABLE AS old_table NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trans_updatetrigfunc();
+
+/*
+UPDATE range_parted set c = (case when c = 96 then 110 else c + 1 end ) WHERE a = 'b' and b > 10 and c >= 96;
+:show_data;
+:init_range_parted;
+
+-- Enabling OLD TABLE capture for both DELETE as well as UPDATE stmt triggers
+-- should not cause DELETEd rows to be captured twice. Similar thing for
+-- INSERT triggers and inserted rows.
+CREATE TRIGGER trans_deletetrig
+  AFTER DELETE ON range_parted REFERENCING OLD TABLE AS old_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trans_updatetrigfunc();
+CREATE TRIGGER trans_inserttrig
+  AFTER INSERT ON range_parted REFERENCING NEW TABLE AS new_table
+  FOR EACH STATEMENT EXECUTE PROCEDURE trans_updatetrigfunc();
+UPDATE range_parted set c = c + 50 WHERE a = 'b' and b > 10 and c >= 96;
+:show_data;
+DROP TRIGGER trans_deletetrig ON range_parted;
+DROP TRIGGER trans_inserttrig ON range_parted;
+-- Don't drop trans_updatetrig yet. It is required below.
+
+-- Test with transition tuple conversion happening for rows moved into the
+-- new partition. This requires a trigger that references transition table
+-- (we already have trans_updatetrig). For inserted rows, the conversion
+-- is not usually needed, because the original tuple is already compatible with
+-- the desired transition tuple format. But conversion happens when there is a
+-- BR trigger because the trigger can change the inserted row. So install a
+-- BR triggers on those child partitions where the rows will be moved.
+CREATE FUNCTION func_parted_mod_b() RETURNS trigger AS $$
+BEGIN
+   NEW.b = NEW.b + 1;
+   return NEW;
+END $$ language plpgsql;
+CREATE TRIGGER trig_c1_100 BEFORE UPDATE OR INSERT ON part_c_1_100
+   FOR EACH ROW EXECUTE PROCEDURE func_parted_mod_b();
+CREATE TRIGGER trig_d1_15 BEFORE UPDATE OR INSERT ON part_d_1_15
+   FOR EACH ROW EXECUTE PROCEDURE func_parted_mod_b();
+CREATE TRIGGER trig_d15_20 BEFORE UPDATE OR INSERT ON part_d_15_20
+   FOR EACH ROW EXECUTE PROCEDURE func_parted_mod_b();
+:init_range_parted;
+UPDATE range_parted set c = (case when c = 96 then 110 else c + 1 end) WHERE a = 'b' and b > 10 and c >= 96;
+:show_data;
+:init_range_parted;
+UPDATE range_parted set c = c + 50 WHERE a = 'b' and b > 10 and c >= 96;
+:show_data;
+
+-- Case where per-partition tuple conversion map array is allocated, but the
+-- map is not required for the particular tuple that is routed, thanks to
+-- matching table attributes of the partition and the target table.
+:init_range_parted;
+UPDATE range_parted set b = 15 WHERE b = 1;
+:show_data;
+DROP TRIGGER trans_updatetrig ON range_parted;
+DROP TRIGGER trig_c1_100 ON part_c_1_100;
+DROP TRIGGER trig_d1_15 ON part_d_1_15;
+DROP TRIGGER trig_d15_20 ON part_d_15_20;
+DROP FUNCTION func_parted_mod_b();
+*/
 -- RLS policies with update-row-movement
 -----------------------------------------
 
@@ -182,7 +293,6 @@ DROP TABLE mintab;
 ---------------------------------------------------
 
 :init_range_parted;
-
 CREATE FUNCTION trigfunc() returns trigger language plpgsql as
 $$
   begin
@@ -270,8 +380,8 @@ UPDATE range_parted set a = 'b' WHERE a = 'bd';
 DROP TABLE range_parted;
 
 CREATE TABLE list_parted (
-	a text,
-	b int
+        a text,
+        b int
 ) PARTITION BY list (a);
 CREATE TABLE list_part1  PARTITION OF list_parted for VALUES in ('a', 'b');
 CREATE TABLE list_default PARTITION OF list_parted default;
@@ -373,8 +483,8 @@ create operator class custom_opclass for type int4 using hash as
 operator 1 = , function 2 dummy_hashint4(int4, int8);
 
 create table hash_parted (
-	a int,
-	b int
+        a int,
+        b int
 ) partition by hash (a custom_opclass, b custom_opclass);
 create table hpart1 partition of hash_parted for values with (modulus 2, remainder 1);
 create table hpart2 partition of hash_parted for values with (modulus 4, remainder 2);
@@ -395,4 +505,18 @@ update hash_parted set b = b + 8 where b = 1;
 drop table hash_parted;
 drop operator class custom_opclass using hash;
 drop function dummy_hashint4(a int4, seed int8);
-*/
+CREATE TABLE parted (a int, b text) PARTITION BY RANGE(a);
+CREATE TABLE part_a_1_5 PARTITION OF parted (a, b, PRIMARY KEY(a)) FOR VALUES FROM (1) TO (5);
+CREATE TABLE part_a_5_10 PARTITION OF parted (a, b, PRIMARY KEY(a)) FOR VALUES FROM (5) TO (10);
+INSERT INTO parted VALUES (1, '1'), (2, '2'), (4, '4'), (6, '6'), (8, '8');
+-- Test whether single row optimization is invoked when
+-- only one partition is being updated.
+EXPLAIN UPDATE parted SET b='5' WHERE a = 1;
+UPDATE parted SET b='5' WHERE a = 1;
+-- Verify that single row optimization is not invoked when
+-- multiple partitions are being updated.
+EXPLAIN UPDATE parted SET b='6' WHERE a > 1;
+UPDATE parted SET b='6' WHERE a > 1;
+-- Verify that the updates happened successfully.
+SELECT * FROM parted ORDER BY a;
+DROP TABLE parted;

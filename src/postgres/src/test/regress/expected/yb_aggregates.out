@@ -246,3 +246,75 @@ SELECT COUNT(v2) FROM test;
 -------
      3
 (1 row)
+
+-- For https://github.com/YugaByte/yugabyte-db/issues/10085
+-- Original test case that had postgres FATAL:
+CREATE TABLE t1(c0 DECIMAL );
+INSERT INTO t1(c0) VALUES(0.4632167437031089463062016875483095645904541015625), (0.82173140818865475498711248292238451540470123291015625), (0.69990454445895500246166420765803195536136627197265625), (0.7554730989898816861938257716246880590915679931640625);
+ALTER TABLE  ONLY t1 FORCE ROW LEVEL SECURITY, DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY;
+INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625), (0.13653666831997435249235195442452095448970794677734375), (0.3359001510719556993223022800520993769168853759765625), (0.312027233370160583802999099134467542171478271484375);
+SELECT SUM(count) FROM (SELECT (CAST((((('[-1962327130,2000870418)'::int4range)*('(-1293215916,183586536]'::int4range)))-((('[-545024026,526859443]'::int4range)*(NULL)))) AS VARCHAR)~current_query())::INT as count FROM ONLY t1) as res;
+ sum
+-----
+
+(1 row)
+
+-- Simplified test case that had postgres FATAL:
+CREATE TABLE t2(c0 DECIMAL );
+INSERT INTO t2 VALUES(1), (2), (3);
+SELECT SUM(r) < 6 from (SELECT random() as r from t2) as res;
+ ?column?
+----------
+ t
+(1 row)
+
+-- Simplified test case that had postgres FATAL:
+CREATE TABLE t3(c0 DECIMAL );
+INSERT INTO t3 VALUES(1), (2), (3);
+SELECT SUM(r) from (SELECT (NULL=random())::int as r from t3) as res;
+ sum
+-----
+
+(1 row)
+
+-- Test case that did not have postgres FATAL but showed wrong result 't':
+CREATE TABLE t4(c0 FLOAT8);
+INSERT INTO t4 VALUES(1), (2), (3);
+SELECT SUM(r) = 6 from (SELECT random() as r from t4) as res;
+ ?column?
+----------
+ f
+(1 row)
+
+-- Test EXPLAIN with aggregate pushdown
+EXPLAIN (COSTS OFF) SELECT COUNT(*), SUM(int_4) FROM ybaggtest;
+           QUERY PLAN
+---------------------------------
+ Finalize Aggregate
+   ->  Seq Scan on ybaggtest
+         Partial Aggregate: true
+(3 rows)
+
+-- Negative tests - pushdown not supported
+EXPLAIN (COSTS OFF) SELECT int_2, COUNT(*), SUM(int_4) FROM ybaggtest GROUP BY int_2;
+         QUERY PLAN
+-----------------------------
+ HashAggregate
+   Group Key: int_2
+   ->  Seq Scan on ybaggtest
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT DISTINCT int_4 FROM ybaggtest;
+         QUERY PLAN
+-----------------------------
+ HashAggregate
+   Group Key: int_4
+   ->  Seq Scan on ybaggtest
+(3 rows)
+
+EXPLAIN (COSTS OFF) SELECT COUNT(distinct int_4), SUM(int_4) FROM ybaggtest;
+         QUERY PLAN
+-----------------------------
+ Aggregate
+   ->  Seq Scan on ybaggtest
+(2 rows)

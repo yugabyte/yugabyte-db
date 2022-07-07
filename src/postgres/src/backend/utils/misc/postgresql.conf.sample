@@ -103,6 +103,8 @@
 #ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL' # allowed SSL ciphers
 #ssl_prefer_server_ciphers = on
 #ssl_ecdh_curve = 'prime256v1'
+#ssl_min_protocol_version = 'TLSv1'
+#ssl_max_protocol_version = ''
 #ssl_dh_params_file = ''
 #ssl_passphrase_command = ''
 #ssl_passphrase_command_supports_reload = off
@@ -127,6 +129,12 @@
 #maintenance_work_mem = 64MB		# min 1MB
 #autovacuum_work_mem = -1		# min 1MB, or -1 to use maintenance_work_mem
 #max_stack_depth = 2MB			# min 100kB
+#shared_memory_type = mmap		# the default is the first option
+					# supported by the operating system:
+					#   mmap
+					#   sysv
+					#   windows
+					# (change requires restart)
 #dynamic_shared_memory_type = posix	# the default is the first option
 					# supported by the operating system:
 					#   posix
@@ -309,6 +317,8 @@
 #enable_partitionwise_aggregate = off
 #enable_parallel_hash = on
 #enable_partition_pruning = on
+#yb_enable_geolocation_costing = on
+#yb_enable_expression_pushdown = off
 
 # - Planner Cost Constants -
 
@@ -471,6 +481,13 @@
 					#   %q = stop here in non-session
 					#        processes
 					#   %% = '%'
+					#	The following are yugabyte options
+					#   %C = cloud name 
+					#   %R = region / data center name
+					#   %Z = availability zone / rack name
+					#   %U = cluster UUID
+					#   %N = node and cluster name 
+					#   %H = current hostname
 					# e.g. '<%u%%%d> '
 #log_lock_waits = off			# log lock waits >= deadlock_timeout
 #log_statement = 'none'			# none, ddl, mod, all

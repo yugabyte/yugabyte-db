@@ -33,13 +33,19 @@
 #define YB_CONSENSUS_CONSENSUS_META_H_
 
 #include <stdint.h>
+
+#include <atomic>
 #include <string>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/common_types.pb.h"
+#include "yb/common/entity_ids_types.h"
+
 #include "yb/consensus/metadata.pb.h"
-#include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/gutil/macros.h"
-#include "yb/util/status.h"
+
+#include "yb/util/opid.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -75,7 +81,7 @@ class ConsensusMetadata {
  public:
   // Create a ConsensusMetadata object with provided initial state.
   // Encoded PB is flushed to disk before returning.
-  static CHECKED_STATUS Create(FsManager* fs_manager,
+  static Status Create(FsManager* fs_manager,
                                const std::string& tablet_id,
                                const std::string& peer_uuid,
                                const RaftConfigPB& config,
@@ -85,17 +91,17 @@ class ConsensusMetadata {
   // Load a ConsensusMetadata object from disk.
   // Returns Status::NotFound if the file could not be found. May return other
   // Status codes if unable to read the file.
-  static CHECKED_STATUS Load(FsManager* fs_manager,
+  static Status Load(FsManager* fs_manager,
                              const std::string& tablet_id,
                              const std::string& peer_uuid,
                              std::unique_ptr<ConsensusMetadata>* cmeta);
 
   // Delete the ConsensusMetadata file associated with the given tablet from
   // disk.
-  static CHECKED_STATUS DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
+  static Status DeleteOnDiskData(FsManager* fs_manager, const std::string& tablet_id);
 
   // Accessors for current term.
-  const int64_t current_term() const;
+  int64_t current_term() const;
   void set_current_term(int64_t term);
 
   // Accessors for voted_for.
@@ -108,6 +114,11 @@ class ConsensusMetadata {
   const RaftConfigPB& committed_config() const;
   void set_committed_config(const RaftConfigPB& config);
 
+  // Accessors for split_parent_tablet_id.
+  bool has_split_parent_tablet_id() const;
+  const TabletId& split_parent_tablet_id() const;
+  void set_split_parent_tablet_id(const TabletId& split_parent_tablet_id);
+
   // Returns whether a pending configuration is set.
   bool has_pending_config() const;
 
@@ -116,7 +127,10 @@ class ConsensusMetadata {
 
   // Set & clear the pending configuration.
   void clear_pending_config();
-  void set_pending_config(const RaftConfigPB& config);
+  void set_pending_config(const RaftConfigPB& config, const OpId& config_op_id);
+  Status set_pending_config_op_id(const OpId& config_op_id);
+
+  OpId pending_config_op_id() { return pending_config_op_id_; }
 
   // If a pending configuration is set, return it.
   // Otherwise, return the committed configuration.
@@ -132,7 +146,7 @@ class ConsensusMetadata {
   void set_tablet_id(const TabletId& tablet_id) { tablet_id_ = tablet_id; }
 
   // Returns the currently active role of the current node.
-  RaftPeerPB::Role active_role() const;
+  PeerRole active_role() const;
 
   // Copy the stored state into a ConsensusStatePB object.
   // To get the active configuration, specify 'type' = ACTIVE.
@@ -158,7 +172,7 @@ class ConsensusMetadata {
   void MergeCommittedConsensusStatePB(const ConsensusStatePB& committed_cstate);
 
   // Persist current state of the protobuf to disk.
-  CHECKED_STATUS Flush();
+  Status Flush();
 
   // The on-disk size of the consensus metadata, as of the last call to Load() or Flush().
   int64_t on_disk_size() const {
@@ -166,7 +180,7 @@ class ConsensusMetadata {
   }
 
   // A lock-free way to read role and term atomically.
-  std::pair<RaftPeerPB::Role, int64_t> GetRoleAndTerm() const;
+  std::pair<PeerRole, int64_t> GetRoleAndTerm() const;
 
   // Used internally for storing the role + term combination atomically.
   using PackedRoleAndTerm = uint64;
@@ -196,9 +210,10 @@ class ConsensusMetadata {
                             // configuration change pending.
   // RaftConfig used by the peers when there is a pending config change operation.
   RaftConfigPB pending_config_;
+  OpId pending_config_op_id_;
 
   // Cached role of the peer_uuid_ within the active configuration.
-  RaftPeerPB::Role active_role_;
+  PeerRole active_role_;
 
   // Durable fields.
   ConsensusMetadataPB pb_;

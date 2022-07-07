@@ -21,8 +21,7 @@
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc.h"
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -48,6 +47,7 @@ typedef std::function<void(const Status&, const tserver::WriteResponsePB&)> Writ
 MUST_USE_RESULT rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
+    const std::shared_ptr<client::YBTable>& table,
     client::YBClient* client,
     tserver::WriteRequestPB* req,
     WriteCDCRecordCallback callback,

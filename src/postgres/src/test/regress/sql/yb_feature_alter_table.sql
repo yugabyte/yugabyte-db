@@ -462,3 +462,45 @@ select * from test_alter_column_type_with_index order by a;
 \d test_alter_column_type_with_index
 
 DROP TABLE test_alter_column_type_with_index;
+-- Test #5543 by exercising cases where ALTER command fails due to constraint
+-- check validation, causing rollback of ALTER operation on DocDB.
+CREATE TABLE foobar (key text, value text);
+INSERT INTO foobar VALUES ('key', 'value');
+ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
+ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
+DROP TABLE foobar;
+--
+-- Check that attaching or detaching a partitioned partition correctly leads
+-- to its partitions' constraint being updated to reflect the parent's
+-- newly added/removed constraint
+create table target_parted (a int, b int) partition by list (a);
+create table attach_parted (a int, b int) partition by list (b);
+create table attach_parted_part1 partition of attach_parted for values in (1);
+-- insert a row directly into the leaf partition so that its partition
+-- constraint is built and stored in the relcache
+insert into attach_parted_part1 values (1, 1);
+-- the following better invalidate the partition constraint of the leaf
+-- partition too...
+alter table target_parted attach partition attach_parted for values in (1);
+-- ...such that the following insert fails
+insert into attach_parted_part1 values (2, 1);
+-- ...and doesn't when the partition is detached along with its own partition
+alter table target_parted detach partition attach_parted;
+insert into attach_parted_part1 values (2, 1);
+
+CREATE TABLE demo (i int);
+INSERT INTO demo VALUES (1);
+CREATE UNIQUE INDEX demoi ON demo(i);
+ALTER TABLE demo ADD CONSTRAINT demoi UNIQUE USING INDEX demoi;
+INSERT INTO demo VALUES (1);
+ALTER TABLE demo DROP CONSTRAINT demoi;
+INSERT INTO demo VALUES (1);
+SELECT * FROM demo;
+
+-- Test that an attemp to drop primary key column with sequence generator
+-- does not delete the associated sequence.
+CREATE TABLE tbl_serial_primary_key (k serial PRIMARY KEY, v text);
+ALTER TABLE tbl_serial_primary_key DROP COLUMN k;
+INSERT INTO tbl_serial_primary_key(v) VALUES ('ABC');
+SELECT * FROM tbl_serial_primary_key;
+DROP TABLE tbl_serial_primary_key;

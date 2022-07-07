@@ -16,5 +16,5 @@ set -euo pipefail
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 
 activate_virtualenv
-export PYTHONPATH=$YB_SRC_ROOT/python:${PYTHONPATH:-}
+set_pythonpath
 "$YB_SRC_ROOT"/python/yb/gen_initial_sys_catalog_snapshot.py "$@"

@@ -17,13 +17,15 @@
 
 #include <fstream>
 #include <chrono>
+#include <thread>
 
 #include "yb/server/total_mem_watcher.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
@@ -152,7 +154,7 @@ class LinuxTotalMemWatcher : public TotalMemWatcher {
     if (rss_termination_limit_bytes_ == 0) {
       return std::string();
     }
-    int64_t non_shared_rss_bytes = (statm_.resident - statm_.shared) * page_size_;
+    size_t non_shared_rss_bytes = (statm_.resident - statm_.shared) * page_size_;
     if (non_shared_rss_bytes <= rss_termination_limit_bytes_) {
       return std::string();
     }

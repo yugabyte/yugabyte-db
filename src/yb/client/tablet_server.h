@@ -11,6 +11,7 @@
 // under the License.
 //
 
+#include <string>
 #ifndef YB_CLIENT_TABLET_SERVER_H
 #define YB_CLIENT_TABLET_SERVER_H
 
@@ -18,37 +19,69 @@ namespace yb {
 namespace client {
 
 // In-memory representation of a remote tablet server.
-class YBTabletServer {
- public:
-  YBTabletServer(std::string uuid, std::string hostname, std::string placement_uuid = "")
-      : uuid_(std::move(uuid)), hostname_(std::move(hostname)),
-        placement_uuid_(std::move(placement_uuid)) {}
+struct YBTabletServer {
+  std::string uuid;
+  std::string hostname;
+  std::string placement_uuid;
 
-  YBTabletServer(const YBTabletServer&) = delete;
-  void operator=(const YBTabletServer&) = delete;
-
-  ~YBTabletServer() {}
-
-  // Returns the UUID of this tablet server. Is globally unique and
-  // guaranteed not to change for the lifetime of the tablet server.
-  const std::string& uuid() const {
-    return uuid_;
+  template <class PB, class CloudInfo>
+  static YBTabletServer FromPB(const PB& pb, const CloudInfo& cloud_info) {
+    return YBTabletServer {
+      .uuid = pb.instance_id().permanent_uuid(),
+      .hostname = DesiredHostPort(pb.registration().common(), cloud_info).host(),
+      .placement_uuid = pb.registration().common().placement_uuid(),
+    };
   }
 
-  // Returns the hostname of the first RPC address that this tablet server
-  // is listening on.
-  const std::string& hostname() const {
-    return hostname_;
+  template <class PB>
+  static YBTabletServer FromPB(const PB& pb) {
+    return YBTabletServer {
+      .uuid = pb.uuid(),
+      .hostname = pb.hostname(),
+      .placement_uuid = pb.placement_uuid(),
+    };
   }
 
-  const std::string& placement_uuid() const {
-    return placement_uuid_;
+  template <class PB>
+  void ToPB(PB* pb) const {
+    pb->set_uuid(uuid);
+    pb->set_hostname(hostname);
+    pb->set_placement_uuid(placement_uuid);
+  }
+};
+
+struct YBTabletServerPlacementInfo {
+  YBTabletServer server;
+  std::string cloud;
+  std::string region;
+  std::string zone;
+  bool is_primary;
+  std::string public_ip;
+  uint16_t pg_port;
+
+  template <class PB>
+  static YBTabletServerPlacementInfo FromPB(const PB& pb) {
+    return YBTabletServerPlacementInfo {
+      .server = YBTabletServer::FromPB(pb),
+      .cloud = pb.cloud(),
+      .region = pb.region(),
+      .zone = pb.zone(),
+      .is_primary = pb.is_primary(),
+      .public_ip = pb.public_ip(),
+      .pg_port = static_cast<uint16_t>(pb.pg_port()),
+    };
   }
 
- private:
-  const std::string uuid_;
-  const std::string hostname_;
-  const std::string placement_uuid_;
+  template <class PB>
+  void ToPB(PB* pb) const {
+    server.ToPB(pb);
+    pb->set_cloud(cloud);
+    pb->set_region(region);
+    pb->set_zone(zone);
+    pb->set_is_primary(is_primary);
+    pb->set_public_ip(public_ip);
+    pb->set_pg_port(pg_port);
+  }
 };
 
 } // namespace client

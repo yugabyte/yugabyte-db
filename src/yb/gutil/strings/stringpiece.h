@@ -123,30 +123,36 @@
 // (3) A null GStringPiece is empty.
 //     An empty GStringPiece may or may not be a null GStringPiece.
 
-#ifndef STRINGS_STRINGPIECE_H_
-#define STRINGS_STRINGPIECE_H_
-
+#ifndef YB_GUTIL_STRINGS_STRINGPIECE_H
+#define YB_GUTIL_STRINGS_STRINGPIECE_H
 
 #include <assert.h>
-#include <functional>
+
 #include <iosfwd>
 #include <limits>
-#include <stddef.h>
-#include <string.h>
 #include <string>
 
-#include "yb/gutil/integral_types.h"
-#include "yb/gutil/port.h"
-#include "yb/gutil/type_traits.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/hash/hash.h"
 
 class GStringPiece {
  private:
   const char*   ptr_;
-  int           length_;
+  size_t        length_;
 
  public:
+  // standard STL container boilerplate
+  typedef char value_type;
+  typedef const char* pointer;
+  typedef const char& reference;
+  typedef const char& const_reference;
+  typedef size_t size_type;
+  typedef ptrdiff_t difference_type;
+  static const size_type npos;
+  typedef const char* const_iterator;
+  typedef const char* iterator;
+  typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
+  typedef std::reverse_iterator<iterator> reverse_iterator;
+
   // We provide non-explicit singleton constructors so users can pass
   // in a "const char*" or a "string" wherever a "GStringPiece" is
   // expected.
@@ -163,30 +169,27 @@ class GStringPiece {
     }
   }
   GStringPiece(const std::string& str)  // NOLINT(runtime/explicit)
-      : ptr_(str.data()), length_(0) {
-    size_t length = str.size();
-    assert(length <= static_cast<size_t>(std::numeric_limits<int>::max()));
-    length_ = static_cast<int>(length);
+      : ptr_(str.data()), length_(str.length()) {
   }
-  GStringPiece(const char* offset, int len) : ptr_(offset), length_(len) {
-    assert(len >= 0);
+
+  GStringPiece(const char* offset, size_type len) : ptr_(offset), length_(len) {
   }
 
   // Substring of another GStringPiece.
   // pos must be non-negative and <= x.length().
-  GStringPiece(GStringPiece x, int pos);
+  GStringPiece(GStringPiece x, size_type pos);
   // Substring of another GStringPiece.
   // pos must be non-negative and <= x.length().
   // len must be non-negative and will be pinned to at most x.length() - pos.
-  GStringPiece(GStringPiece x, int pos, int len);
+  GStringPiece(GStringPiece x, size_type pos, size_type len);
 
   // data() may return a pointer to a buffer with embedded NULs, and the
   // returned buffer may or may not be null terminated.  Therefore it is
   // typically a mistake to pass data() to a routine that expects a NUL
   // terminated string.
   const char* data() const { return ptr_; }
-  int size() const { return length_; }
-  int length() const { return length_; }
+  size_type size() const { return length_; }
+  size_type length() const { return length_; }
   bool empty() const { return length_ == 0; }
 
   void clear() {
@@ -194,8 +197,7 @@ class GStringPiece {
     length_ = 0;
   }
 
-  void set(const char* data, int len) {
-    assert(len >= 0);
+  void set(const char* data, size_type len) {
     ptr_ = data;
     length_ = len;
   }
@@ -203,35 +205,35 @@ class GStringPiece {
   void set(const char* str) {
     ptr_ = str;
     if (str != NULL)
-      length_ = static_cast<int>(strlen(str));
+      length_ = strlen(str);
     else
       length_ = 0;
   }
-  void set(const void* data, int len) {
+
+  void set(const void* data, size_type len) {
     ptr_ = reinterpret_cast<const char*>(data);
     length_ = len;
   }
 
-  char operator[](int i) const {
-    assert(0 <= i);
+  char operator[](size_type i) const {
     assert(i < length_);
     return ptr_[i];
   }
 
-  void remove_prefix(int n) {
+  void remove_prefix(size_type n) {
     assert(length_ >= n);
     ptr_ += n;
     length_ -= n;
   }
 
-  void remove_suffix(int n) {
+  void remove_suffix(size_type n) {
     assert(length_ >= n);
     length_ -= n;
   }
 
   // returns {-1, 0, 1}
   int compare(GStringPiece x) const {
-    const int min_size = length_ < x.length_ ? length_ : x.length_;
+    const size_type min_size = length_ < x.length_ ? length_ : x.length_;
     int r = memcmp(ptr_, x.ptr_, min_size);
     if (r < 0) return -1;
     if (r > 0) return 1;
@@ -265,18 +267,6 @@ class GStringPiece {
             (memcmp(ptr_ + (length_-x.length_), x.ptr_, x.length_) == 0));
   }
 
-  // standard STL container boilerplate
-  typedef char value_type;
-  typedef const char* pointer;
-  typedef const char& reference;
-  typedef const char& const_reference;
-  typedef size_t size_type;
-  typedef ptrdiff_t difference_type;
-  static const size_type npos;
-  typedef const char* const_iterator;
-  typedef const char* iterator;
-  typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
-  typedef std::reverse_iterator<iterator> reverse_iterator;
   iterator begin() const { return ptr_; }
   iterator end() const { return ptr_ + length_; }
   const_reverse_iterator rbegin() const {
@@ -285,47 +275,44 @@ class GStringPiece {
   const_reverse_iterator rend() const {
     return const_reverse_iterator(ptr_);
   }
-  // STLS says return size_type, but Google says return int
-  int max_size() const { return length_; }
-  int capacity() const { return length_; }
+
+  size_type max_size() const { return length_; }
+  size_type capacity() const { return length_; }
 
   // cpplint.py emits a false positive [build/include_what_you_use]
-  int copy(char* buf, size_type n, size_type pos = 0) const;  // NOLINT
+  size_type copy(char* buf, size_type n, size_type pos = 0) const;  // NOLINT
 
   bool contains(GStringPiece s) const;
 
-  int find(GStringPiece s, size_type pos = 0) const;
-  int find(char c, size_type pos = 0) const;
-  int rfind(GStringPiece s, size_type pos = npos) const;
-  int rfind(char c, size_type pos = npos) const;
+  size_type find(GStringPiece s, size_type pos = 0) const;
+  size_type find(char c, size_type pos = 0) const;
+  size_type rfind(GStringPiece s, size_type pos = npos) const;
+  size_type rfind(char c, size_type pos = npos) const;
 
-  int find_first_of(GStringPiece s, size_type pos = 0) const;
-  int find_first_of(char c, size_type pos = 0) const { return find(c, pos); }
-  int find_first_not_of(GStringPiece s, size_type pos = 0) const;
-  int find_first_not_of(char c, size_type pos = 0) const;
-  int find_last_of(GStringPiece s, size_type pos = npos) const;
-  int find_last_of(char c, size_type pos = npos) const { return rfind(c, pos); }
-  int find_last_not_of(GStringPiece s, size_type pos = npos) const;
-  int find_last_not_of(char c, size_type pos = npos) const;
+  size_type find_first_of(GStringPiece s, size_type pos = 0) const;
+  size_type find_first_of(char c, size_type pos = 0) const { return find(c, pos); }
+  size_type find_first_not_of(GStringPiece s, size_type pos = 0) const;
+  size_type find_first_not_of(char c, size_type pos = 0) const;
+  size_type find_last_of(GStringPiece s, size_type pos = npos) const;
+  size_type find_last_of(char c, size_type pos = npos) const { return rfind(c, pos); }
+  size_type find_last_not_of(GStringPiece s, size_type pos = npos) const;
+  size_type find_last_not_of(char c, size_type pos = npos) const;
 
   GStringPiece substr(size_type pos, size_type n = npos) const;
-};
 
-#ifndef SWIG
-DECLARE_POD(GStringPiece);  // So vector<GStringPiece> becomes really fast
-#endif
+  size_t hash() const;
+};
 
 // This large function is defined inline so that in a fairly common case where
 // one of the arguments is a literal, the compiler can elide a lot of the
 // following comparisons.
 inline bool operator==(GStringPiece x, GStringPiece y) {
-  int len = x.size();
+  auto len = x.size();
   if (len != y.size()) {
     return false;
   }
 
-  return x.data() == y.data() || len <= 0 ||
-      strings::memeq(x.data(), y.data(), len);
+  return x.data() == y.data() || len <= 0 || strings::memeq(x.data(), y.data(), len);
 }
 
 inline bool operator!=(GStringPiece x, GStringPiece y) {
@@ -333,7 +320,7 @@ inline bool operator!=(GStringPiece x, GStringPiece y) {
 }
 
 inline bool operator<(GStringPiece x, GStringPiece y) {
-  const int min_size = x.size() < y.size() ? x.size() : y.size();
+  const auto min_size = x.size() < y.size() ? x.size() : y.size();
   const int r = memcmp(x.data(), y.data(), min_size);
   return (r < 0) || (r == 0 && x.size() < y.size());
 }
@@ -373,8 +360,9 @@ template<> struct hash<GStringPiece> {
 // GoodFastHash values.
 template<> struct GoodFastHash<GStringPiece> {
   size_t operator()(GStringPiece s) const {
-    return HashStringThoroughly(s.data(), s.size());
+    return s.hash();
   }
+
   // Less than operator, for MSVC.
   bool operator()(const GStringPiece& s1, const GStringPiece& s2) const {
     return s1 < s2;
@@ -385,7 +373,6 @@ template<> struct GoodFastHash<GStringPiece> {
 #endif
 
 // allow GStringPiece to be logged
-extern ostream& operator<<(ostream& o, GStringPiece piece);
+extern std::ostream& operator<<(std::ostream& o, GStringPiece piece);
 
-
-#endif  // STRINGS_STRINGPIECE_H__
+#endif  // YB_GUTIL_STRINGS_STRINGPIECE_H

@@ -26,13 +26,18 @@
 
 #include "yb/integration-tests/cdc_test_util.h"
 
+#include "yb/master/master_client.pb.h"
+
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tablet/tablet.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/util/logging.h"
 
+#include "yb/util/metrics.h"
 #include "yb/util/slice.h"
 
 DECLARE_bool(cdc_enable_replicate_intents);
@@ -140,7 +145,8 @@ TEST_P(CDCServiceTxnTest, TestGetChanges) {
 
   // Get tablet ID.
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_OK(
+      client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
@@ -209,7 +215,8 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
   // Get tablet ID.
   bool replicate_intents = GetParam();
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_OK(
+      client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
@@ -254,7 +261,7 @@ TEST_P(CDCServiceTxnTest, TestGetChangesForPendingTransaction) {
 
   // Commit transaction.
   ASSERT_OK(txn->CommitFuture().get());
-  ASSERT_OK(session->Flush());
+  ASSERT_OK(session->TEST_Flush());
 
   auto checkpoint = change_resp.checkpoint();
 
@@ -296,7 +303,8 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
 
   // Get tablet ID.
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(client_->GetTablets(table_->name(), 0, &tablets));
+  ASSERT_OK(
+      client_->GetTablets(table_->name(), 0, &tablets, /* partition_list_version =*/ nullptr));
   ASSERT_EQ(tablets.size(), 1);
 
   // Create CDC stream on table.
@@ -327,7 +335,7 @@ TEST_P(CDCServiceTxnTestEnableReplicateIntents, MetricsTest) {
   ASSERT_OK(WaitFor([&]() -> Result<bool> {
     const auto& tserver = cluster_->mini_tablet_server(0)->server();
     auto cdc_service = dynamic_cast<CDCServiceImpl*>(
-        tserver->rpc_server()->service_pool("yb.cdc.CDCService")->TEST_get_service().get());
+        tserver->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
     auto metrics = cdc_service->GetCDCTabletMetrics({"" /* UUID */, stream_id, tablet_id});
     auto lag = metrics->async_replication_sent_lag_micros->value();
     YB_LOG_EVERY_N_SECS(INFO, 1) << "Sent lag: " << lag << "us";

@@ -2,16 +2,13 @@
 
 package controllers;
 
-import play.api.mvc.Action;
+import javax.inject.Inject;
 import play.api.mvc.AnyContent;
 import play.mvc.Controller;
 import play.mvc.Result;
 
-import javax.inject.Inject;
-
 public class UIController extends Controller {
-  @Inject
-  Assets assets;
+  @Inject Assets assets;
 
   public play.api.mvc.Action<AnyContent> index() {
     return assets.at("/public", "index.html", false);

@@ -11,12 +11,16 @@
 // under the License.
 //
 
-#include "yb/master/catalog_manager.h"
 #include "yb/master/yql_size_estimates_vtable.h"
 
-#include "yb/rpc/messenger.h"
+#include "yb/common/partition.h"
+#include "yb/common/schema.h"
 
-#include "yb/util/net/dns_resolver.h"
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_client.pb.h"
+
+#include "yb/util/status_log.h"
 #include "yb/util/yb_partition.h"
 
 namespace yb {
@@ -30,20 +34,16 @@ YQLSizeEstimatesVTable::YQLSizeEstimatesVTable(const TableName& table_name,
 
 Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema_);
-  std::vector<scoped_refptr<TableInfo> > tables;
-  CatalogManager* catalog_manager = master_->catalog_manager();
-  catalog_manager->GetAllTables(&tables, true);
+  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto* catalog_manager = &this->catalog_manager();
 
-  for (scoped_refptr<TableInfo> table : tables) {
+  auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
+  for (const auto& table : tables) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
 
     // Get namespace for table.
-    NamespaceIdentifierPB nsId;
-    nsId.set_id(table->namespace_id());
-    scoped_refptr<NamespaceInfo> nsInfo;
-    RETURN_NOT_OK(master_->catalog_manager()->FindNamespace(nsId, &nsInfo));
+    auto ns_info = VERIFY_RESULT(catalog_manager->FindNamespaceById(table->namespace_id()));
 
     // Hide non-YQL tables.
     if (table->GetTableType() != TableType::YQL_TABLE_TYPE) {
@@ -51,21 +51,20 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
     }
 
     // Get tablets for table.
-    std::vector<scoped_refptr<TabletInfo> > tablets;
-    table->GetAllTablets(&tablets);
+    auto tablets = table->GetTablets();
     for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-      TabletLocationsPB tabletLocationsPB;
-      Status s = catalog_manager->GetTabletLocations(tablet->id(), &tabletLocationsPB);
+      TabletLocationsPB tablet_locations_pb;
+      Status s = catalog_manager->GetTabletLocations(tablet->id(), &tablet_locations_pb);
       // Skip not-found tablets: they might not be running yet or have been deleted.
       if (!s.ok()) {
         continue;
       }
 
       QLRow &row = vtable->Extend();
-      RETURN_NOT_OK(SetColumnValue(kKeyspaceName, nsInfo->name(), &row));
+      RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
       RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 
-      const PartitionPB &partition = tabletLocationsPB.partition();
+      const PartitionPB &partition = tablet_locations_pb.partition();
       uint16_t yb_start_hash = !partition.partition_key_start().empty() ?
           PartitionSchema::DecodeMultiColumnHashValue(partition.partition_key_start()) : 0;
       string cql_start_hash = std::to_string(YBPartition::YBToCqlHashCode(yb_start_hash));

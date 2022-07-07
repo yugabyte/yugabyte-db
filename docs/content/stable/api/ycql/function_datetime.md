@@ -1,20 +1,13 @@
 ---
 title: Date and time functions [YCQL]
 headerTitle: Date and time functions
-title: Date and time functions [YCQL]
-headerTitle: Date and time functions
-linkTitle: Date and time 
+linkTitle: Date and time
 description: Use date and time functions to work on date and time data types.
-block_indexing: true
 menu:
   stable:
     parent: api-cassandra
     weight: 1560
-aliases:
-  - /stable/api/cassandra/function_datetime
-  - /stable/api/ycql/function_datetime
-isTocNested: false
-showAsideToc: true
+type: docs
 ---
 
 This section covers the set of YCQL built-in functions that work on the date and time data types: [`DATE`, `TIME`, `TIMESTAMP`](../type_datetime), or [`TIMEUUID`](../type_uuid).
@@ -97,7 +90,7 @@ ycqlsh:example> SELECT v FROM test_now WHERE v < now();
 
 This function converts a timestamp or TIMEUUID to the corresponding date.
 
-- It takes in an argument of type `TIMESTAMP` or `TIMEUUID`. 
+- It takes in an argument of type `TIMESTAMP` or `TIMEUUID`.
 - The return value is a `DATE`.
 
 ```sql
@@ -122,7 +115,7 @@ ycqlsh:example> SELECT todate(ts) FROM test_todate;
 
 This function converts a date or TIMEUUID to the corresponding timestamp.
 
-- It takes in an argument of type `DATE` or `TIMEUUID`. 
+- It takes in an argument of type `DATE` or `TIMEUUID`.
 - The return value is a `TIMESTAMP`.
 
 ### Examples
@@ -165,7 +158,7 @@ ycqlsh:example> SELECT v FROM test_totimestamp WHERE v < totimestamp(now());
 
 This function converts a TIMEUUID to the corresponding timestamp.
 
-- It takes in an argument of type `TIMEUUID`. 
+- It takes in an argument of type `TIMEUUID`.
 - The return value is a `TIMESTAMP`.
 
 ### Examples
@@ -253,7 +246,7 @@ ycqlsh:example> SELECT v from test_tounixtimestamp WHERE v < tounixtimestamp(now
 ## unixtimestampof()
 
 This function converts TIMEUUID or timestamp to a unix timestamp (which is
-equal to the number of millisecond since epoch Thursday, 1 January 1970). 
+equal to the number of millisecond since epoch Thursday, 1 January 1970).
 
 - It takes in an argument of type `TIMEUUID` or type `TIMESTAMP`.
 - The return value is a `BIGINT`.

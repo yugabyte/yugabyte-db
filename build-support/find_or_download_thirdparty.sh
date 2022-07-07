@@ -17,4 +17,10 @@ set -euo pipefail
 
 . "${BASH_SOURCE%/*}/common-build-env.sh"
 
+if [[ -n ${BUILD_ROOT:-} ]]; then
+  handle_predefined_build_root_quietly=true
+  predefined_build_root=$BUILD_ROOT
+  handle_predefined_build_root
+fi
+
 find_or_download_thirdparty

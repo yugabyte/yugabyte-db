@@ -44,7 +44,6 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/server/clock.h"
 #include "yb/util/locks.h"
-#include "yb/util/metrics.h"
 #include "yb/util/physical_time.h"
 
 namespace yb {
@@ -55,7 +54,7 @@ struct HybridClockComponents {
   MicrosTime last_usec = 0;
 
   // The next logical value to be assigned to a hybrid time.
-  LogicalTimeComponent logical = 0;
+  uint64_t logical = 0;
 
   HybridClockComponents() noexcept {}
 
@@ -66,6 +65,8 @@ struct HybridClockComponents {
 
   HybridClockComponents(HybridClockComponents&& other) = default;
   HybridClockComponents(const HybridClockComponents& other) = default;
+  HybridClockComponents& operator=(const HybridClockComponents& other) = default;
+  HybridClockComponents& operator=(HybridClockComponents&& other) = default;
 
   bool operator< (const HybridClockComponents& o) const {
     return last_usec < o.last_usec || (last_usec == o.last_usec && logical < o.logical);
@@ -92,7 +93,7 @@ class HybridClock : public Clock {
   explicit HybridClock(PhysicalClockPtr clock);
   explicit HybridClock(const std::string& time_source);
 
-  CHECKED_STATUS Init() override;
+  Status Init() override;
 
   HybridTimeRange NowRange() override;
 
@@ -142,7 +143,7 @@ class HybridClock : public Clock {
   // Enables check whether clock skew within configured bounds.
   static void EnableClockSkewControl();
 
-  const PhysicalClockPtr& TEST_clock() { return clock_; }
+  const PhysicalClockPtr& physical_clock() { return clock_; }
 
  private:
   enum State {
@@ -166,7 +167,7 @@ class HybridClock : public Clock {
   // Clock metrics are set to detach to their last value. This means
   // that, during our destructor, we'll need to access other class members
   // declared above this. Hence, this member must be declared last.
-  FunctionGaugeDetacher metric_detacher_;
+  std::shared_ptr<void> metric_detacher_;
 };
 
 }  // namespace server

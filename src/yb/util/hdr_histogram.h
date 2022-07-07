@@ -56,12 +56,13 @@
 // tracked value (1 hour), it would still maintain a resolution of 3.6 seconds
 // (or better).
 
-#include <cstdint>
 #include <iosfwd>
+#include <memory>
 
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/gscoped_ptr.h"
-#include "yb/util/status.h"
+#include "yb/gutil/macros.h"
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -226,7 +227,7 @@ class HdrHistogram {
   base::subtle::Atomic64 current_sum_;
   base::subtle::Atomic64 min_value_;
   base::subtle::Atomic64 max_value_;
-  gscoped_array<base::subtle::Atomic64> counts_;
+  std::unique_ptr<base::subtle::Atomic64[]> counts_;
 
   HdrHistogram& operator=(const HdrHistogram& other); // Disable assignment operator.
 };
@@ -283,7 +284,7 @@ class AbstractHistogramIterator {
   virtual bool HasNext() const;
 
   // Returns the next element in the iteration.
-  CHECKED_STATUS Next(HistogramIterationValue* value);
+  Status Next(HistogramIterationValue* value);
 
   virtual double PercentileIteratedTo() const;
   virtual double PercentileIteratedFrom() const;

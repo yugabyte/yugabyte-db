@@ -292,6 +292,7 @@ _outPlannedStmt(StringInfo str, const PlannedStmt *node)
 	WRITE_NODE_FIELD(utilityStmt);
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_LOCATION_FIELD(stmt_len);
+	WRITE_INT_FIELD(yb_num_referenced_relations);
 }
 
 /*
@@ -396,6 +397,8 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_UINT_FIELD(exclRelRTI);
 	WRITE_NODE_FIELD(exclRelTlist);
 	WRITE_NODE_FIELD(ybPushdownTlist);
+	WRITE_NODE_FIELD(ybReturningColumns);
+	WRITE_NODE_FIELD(ybColumnRefs);
 	WRITE_NODE_FIELD(no_update_index_list);
 	WRITE_BOOL_FIELD(no_row_trigger);
 }
@@ -1067,6 +1070,16 @@ _outPartitionPruneStepOp(StringInfo str, const PartitionPruneStepOp *node)
 	WRITE_NODE_FIELD(exprs);
 	WRITE_NODE_FIELD(cmpfns);
 	WRITE_BITMAPSET_FIELD(nullkeys);
+}
+
+static void
+_outPartitionPruneStepFuncOp(StringInfo str,
+							   const PartitionPruneStepFuncOp *node)
+{
+	WRITE_NODE_TYPE("PARTITIONPRUNESTEPFUNCOP");
+
+	WRITE_INT_FIELD(step.step_id);
+	WRITE_NODE_FIELD(exprs);
 }
 
 static void
@@ -2941,7 +2954,6 @@ _outIndexElem(StringInfo str, const IndexElem *node)
 	WRITE_NODE_FIELD(opclass);
 	WRITE_ENUM_FIELD(ordering, SortByDir);
 	WRITE_ENUM_FIELD(nulls_ordering, SortByNulls);
-	WRITE_NODE_FIELD(yb_name_list);
 }
 
 static void
@@ -3703,6 +3715,17 @@ _outPartitionRangeDatum(StringInfo str, const PartitionRangeDatum *node)
 	WRITE_LOCATION_FIELD(location);
 }
 
+static void
+_outYbExprParamDesc(StringInfo str, const YbExprParamDesc *node)
+{
+	WRITE_NODE_TYPE("YBEXPRPARAMDESC");
+
+	WRITE_INT_FIELD(attno);
+	WRITE_INT_FIELD(typid);
+	WRITE_INT_FIELD(typmod);
+	WRITE_INT_FIELD(collid);
+}
+
 /*
  * outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -4359,6 +4382,9 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_PartitionRangeDatum:
 				_outPartitionRangeDatum(str, obj);
+				break;
+			case T_YbExprParamDesc:
+				_outYbExprParamDesc(str, obj);
 				break;
 
 			default:

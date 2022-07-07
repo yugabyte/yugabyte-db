@@ -10,24 +10,29 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.List;
-import java.util.UUID;
-
-import com.yugabyte.yw.commissioner.SubTaskGroup;
-import com.yugabyte.yw.commissioner.SubTaskGroupQueue;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.common.DnsManager;
-import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.jsonwebtoken.lang.Collections;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Tracks a read only cluster delete intent from a universe.
+@Slf4j
 public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(ReadOnlyClusterDelete.class);
+
+  @Inject
+  protected ReadOnlyClusterDelete(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   public static class Params extends UniverseDefinitionTaskParams {
     public UUID clusterUUID;
@@ -35,16 +40,14 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
   }
 
   public Params params() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
-    LOG.info("Started {} task for uuid={}", getName(), params().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), params().universeUUID);
 
     try {
-      // Create the task list sequence.
-      subTaskGroupQueue = new SubTaskGroupQueue(userTaskUUID);
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = null;
@@ -54,25 +57,42 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         universe = lockUniverseForUpdate(params().expectedUniverseVersion);
       }
 
-      Cluster cluster = universe.getUniverseDetails().getReadOnlyClusters().get(0);
+      List<Cluster> roClusters = universe.getUniverseDetails().getReadOnlyClusters();
+      if (Collections.isEmpty(roClusters)) {
+        String msg =
+            "Unable to delete RO cluster from universe \""
+                + universe.name
+                + "\" as it doesn't have any RO clusters.";
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
+
+      preTaskActions();
 
       // Delete all the read-only cluster nodes.
-      createDestroyServerTasks(universe.getNodesInCluster(cluster.uuid),
-                               params().isForceDelete,
-                               true /* deleteNodeFromDB */)
+      Cluster cluster = roClusters.get(0);
+      Collection<NodeDetails> nodesToBeRemoved = universe.getNodesInCluster(cluster.uuid);
+      // Set the node states to Removing.
+      createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
+      createDestroyServerTasks(
+              nodesToBeRemoved,
+              params().isForceDelete,
+              true /* deleteNodeFromDB */,
+              true /* deleteRootVolumes */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.
-      createDeleteClusterFromUniverseTask(params().clusterUUID);
+      createDeleteClusterFromUniverseTask(params().clusterUUID)
+          .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the async_replicas in the cluster config on master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Remove the DNS entry for this cluster.
-      createDnsManipulationTask(DnsManager.DnsCommandType.Delete, params().isForceDelete,
-                                cluster.userIntent.providerType, cluster.userIntent.provider,
-                                cluster.userIntent.universeName)
+      createDnsManipulationTask(
+              DnsManager.DnsCommandType.Delete, params().isForceDelete, cluster.userIntent)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Update the swamper target file.
@@ -83,36 +103,15 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Run all the tasks.
-      subTaskGroupQueue.run();
+      getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      LOG.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+      log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
       unlockUniverseForUpdate();
     }
-    LOG.info("Finished {} task.", getName());
-  }
-
-  /**
-   * Creates a task to delete a read only cluster info from the universe and
-   * adds the task to the task queue.
-   *
-   * @param clusterUUID uuid of the read-only cluster to be removed.
-   */
-  public void createDeleteClusterFromUniverseTask(UUID clusterUUID) {
-    SubTaskGroup subTaskGroup = new SubTaskGroup("DeleteClusterFromUniverse", executor);
-    DeleteClusterFromUniverse.Params params = new DeleteClusterFromUniverse.Params();
-    // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
-    params.clusterUUID = clusterUUID;
-    // Create the task to delete cluster ifo.
-    DeleteClusterFromUniverse task = new DeleteClusterFromUniverse();
-    task.initialize(params);
-    // Add it to the task list.
-    subTaskGroup.addTask(task);
-    subTaskGroupQueue.add(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);    
+    log.info("Finished {} task.", getName());
   }
 }

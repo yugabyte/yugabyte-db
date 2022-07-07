@@ -30,26 +30,38 @@
 // under the License.
 //
 
-#include <iostream>
+#include <map>
+#include <set>
 #include <vector>
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
+
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
-#include "yb/tablet/tablet_metadata.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/metrics.h"
-#include "yb/util/pb_util.h"
+#include "yb/util/memory/arena.h"
+#include "yb/util/metric_entity.h"
+#include "yb/util/monotime.h"
 #include "yb/util/opid.h"
+#include "yb/util/pb_util.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
+#include "yb/util/status_format.h"
 
 DEFINE_bool(print_headers, true, "print the log segment headers/footers");
 DEFINE_bool(filter_log_segment, false, "filter the input log segment");
@@ -86,8 +98,6 @@ using std::string;
 using std::vector;
 using std::cout;
 using std::endl;
-using tablet::RaftGroupMetadata;
-using tserver::WriteRequestPB;
 
 enum PrintEntryType {
   DONT_PRINT,
@@ -125,6 +135,8 @@ void PrintIdOnly(const LogEntryPB& entry) {
            << "@" << entry.replicate().hybrid_time() << "\t";
       cout << "REPLICATE "
            << OperationType_Name(entry.replicate().op_type());
+      cout << ", SIZE: "
+           << entry.replicate().ByteSizeLong();
       break;
     }
     default:
@@ -136,14 +148,7 @@ void PrintIdOnly(const LogEntryPB& entry) {
 
 Status PrintDecodedWriteRequestPB(const string& indent,
                                   const Schema& tablet_schema,
-                                  const WriteRequestPB& write) {
-  Arena arena(32 * 1024, 1024 * 1024);
-
-  cout << indent << "Tablet: " << write.tablet_id() << endl;
-  if (write.has_propagated_hybrid_time()) {
-    cout << indent << "Propagated TS: " << write.propagated_hybrid_time() << endl;
-  }
-
+                                  const tablet::WritePB& write) {
   return Status::OK();
 }
 
@@ -156,7 +161,7 @@ Status PrintDecoded(const LogEntryPB& entry, const Schema& tablet_schema) {
 
     const ReplicateMsg& replicate = entry.replicate();
     if (replicate.op_type() == consensus::WRITE_OP) {
-      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, tablet_schema, replicate.write_request()));
+      RETURN_NOT_OK(PrintDecodedWriteRequestPB(indent, tablet_schema, replicate.write()));
     } else {
       cout << indent << replicate.ShortDebugString() << endl;
     }
@@ -205,13 +210,13 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
   fs_opts.read_only = true;
   FsManager fs_manager(env, fs_opts);
 
-  RETURN_NOT_OK(fs_manager.Open());
+  RETURN_NOT_OK(fs_manager.CheckAndOpenFileSystemRoots());
   std::unique_ptr<LogReader> reader;
   RETURN_NOT_OK(LogReader::Open(env,
                                 scoped_refptr<LogIndex>(),
-                                tablet_id,
+                                "Log reader: ",
                                 tablet_wal_path,
-                                fs_manager.uuid(),
+                                scoped_refptr<MetricEntity>(),
                                 scoped_refptr<MetricEntity>(),
                                 &reader));
 
@@ -227,8 +232,7 @@ Status DumpLog(const string& tablet_id, const string& tablet_wal_path) {
 
 Status DumpSegment(const string &segment_path) {
   Env *env = Env::Default();
-  scoped_refptr<ReadableLogSegment> segment;
-  RETURN_NOT_OK(ReadableLogSegment::Open(env, segment_path, &segment));
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
   RETURN_NOT_OK(PrintSegment(segment));
 
   return Status::OK();
@@ -249,8 +253,7 @@ Status FilterLogSegment(const string& segment_path) {
   output_wal_dir = VERIFY_RESULT(env->Canonicalize(output_wal_dir));
   LOG(INFO) << "Created directory " << output_wal_dir;
 
-  scoped_refptr<ReadableLogSegment> segment;
-  RETURN_NOT_OK(ReadableLogSegment::Open(env, segment_path, &segment));
+  auto segment = VERIFY_RESULT(ReadableLogSegment::Open(env, segment_path));
   Schema tablet_schema;
   const auto& segment_header = segment->header();
 
@@ -272,7 +275,7 @@ Status FilterLogSegment(const string& segment_path) {
             << ": " << source_segment_size_bytes << " bytes";
   LOG(INFO) << "Target segment size: "
             << target_segment_size_bytes << " bytes";
-  gscoped_ptr<ThreadPool> log_thread_pool;
+  std::unique_ptr<ThreadPool> log_thread_pool;
   RETURN_NOT_OK(ThreadPoolBuilder("log").unlimited_threads().Build(&log_thread_pool));
 
   const OpId first_op_id_to_omit = { FLAGS_min_op_term_to_omit, FLAGS_min_op_index_to_omit };
@@ -313,12 +316,13 @@ Status FilterLogSegment(const string& segment_path) {
   scoped_refptr<Log> log;
   RETURN_NOT_OK(Log::Open(
       log_options,
-      segment_header.tablet_id(),
+      segment_header.unused_tablet_id(),
       output_wal_dir,
       "log-dump-tool",
       tablet_schema,
       segment_header.schema_version(),
-      /* metric_entity */ nullptr,
+      /* table_metric_entity */ nullptr,
+      /* tablet_metric_entity */ nullptr,
       log_thread_pool.get(),
       log_thread_pool.get(),
       /* cdc_min_replicated_index */ 0,

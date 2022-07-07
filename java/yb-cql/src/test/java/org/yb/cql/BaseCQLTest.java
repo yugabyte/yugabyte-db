@@ -12,14 +12,13 @@
 //
 package org.yb.cql;
 
+import static org.yb.AssertionWrappers.*;
+
 import com.datastax.driver.core.*;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ConsistencyLevel;
@@ -31,20 +30,28 @@ import com.datastax.driver.core.Statement;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.exceptions.QueryValidationException;
+import com.google.common.base.Stopwatch;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.yb.client.GetTableSchemaResponse;
+import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
+import org.yb.CommonTypes;
+import org.yb.IndexInfo;
 import org.yb.minicluster.BaseMiniClusterTest;
 import org.yb.minicluster.Metrics;
 import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
+import org.yb.util.BuildTypeUtil;
+import org.yb.util.StringUtil;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -53,11 +60,12 @@ import java.util.stream.Collectors;
 
 public class BaseCQLTest extends BaseMiniClusterTest {
 
-  protected static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(BaseCQLTest.class);
 
   // Integer.MAX_VALUE seconds is the maximum allowed TTL by Cassandra.
   protected static final int MAX_TTL_SEC = Integer.MAX_VALUE;
 
+  protected static final String DEFAULT_ROLE = "cassandra";
   protected static final String DEFAULT_TEST_KEYSPACE = "cql_test_keyspace";
 
   protected static final String TSERVER_READ_METRIC =
@@ -69,83 +77,51 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected static final String TSERVER_FLUSHES_METRIC =
       "handler_latency_yb_cqlserver_SQLProcessor_NumFlushesToExecute";
 
-  // CQL and Redis settings.
-  protected static boolean startCqlProxy = true;
-  protected static boolean startRedisProxy = false;
-  protected static int systemQueryCacheMsecs = 4000;
-  protected static boolean systemQueryCacheEmptyResponses = false;
-  protected static int cqlClientTimeoutMs = 120 * 1000;
+  // CQL and Redis settings, will be reset before each test via resetSettings method.
+  protected boolean startCqlProxy = true;
+  protected boolean startRedisProxy = false;
+  protected boolean systemQueryCacheEmptyResponses = false;
+  protected int cqlClientTimeoutMs = 120 * 1000;
+  protected int clientReadWriteTimeoutMs = 180 * 1000;
+  protected int systemQueryCacheUpdateMs = 4 * 1000;
 
+  /** Convenient default cluster for tests to use, cleaned after each test. */
   protected Cluster cluster;
+
+  /** Convenient default session for tests to use, cleaned after each test. */
   protected Session session;
 
-  float float_infinity_positive = createFloat(0, 0b11111111, 0);
-  float float_infinity_negative = createFloat(1, 0b11111111, 0);
-  float float_nan_0 = createFloat(0, 0b11111111, 1);
-  float float_nan_1 = createFloat(1, 0b11111111, 1);
-  float float_nan_2 = createFloat(0, 0b11111111, 0b10);
-  float float_zero_positive = createFloat(0, 0, 0);
-  float float_zero_negative = createFloat(1, 0, 0);
-  float float_sub_normal = createFloat(0, 0, 1);
-
-  double double_infinity_positive = createDouble(0, 0b11111111111, 0);
-  double double_infinity_negative = createDouble(1, 0b11111111111, 0);
-  double double_nan_0 = createDouble(0, 0b011111111111, 1);
-  double double_nan_1 = createDouble(0, 0b111111111111, 1);
-  double double_nan_2 = createDouble(0, 0b011111111111, 0b10);
-  double double_zero_positive = createDouble(0, 0, 0);
-  double double_zero_negative = createDouble(1, 0, 0);
-  double double_sub_normal = createDouble(0, 0, 1);
-
-  float[] float_all_literals = { float_infinity_positive, float_infinity_negative, float_nan_0,
-      float_nan_1, float_nan_2, float_zero_positive, float_zero_negative, float_sub_normal };
-  double[] double_all_literals = { double_infinity_positive, double_infinity_negative, double_nan_0,
-      double_nan_1, double_nan_2, double_zero_positive, double_zero_negative, double_sub_normal };
-
-  public float createFloat(int sign, int exp, int fraction) {
-    return Float.intBitsToFloat((sign << 31) | (exp << 23) | fraction);
-  }
-
-  public double createDouble(long sign, long exp, long fraction) {
-    return Double.longBitsToDouble((sign << 63) | (exp << 52) | fraction);
-  }
-
+  @Override
   protected Map<String, String> getTServerFlags() {
-    Map<String, String> flagMap = new TreeMap<>();
+    Map<String, String> flagMap = super.getTServerFlags();
 
-    flagMap.put("start_cql_proxy", Boolean.toString(startCqlProxy));
-    flagMap.put("start_redis_proxy", Boolean.toString(startRedisProxy));
-    flagMap.put("cql_update_system_query_cache_msecs", Integer.toString(systemQueryCacheMsecs));
+    flagMap.put("start_cql_proxy",
+        String.valueOf(startCqlProxy));
+    flagMap.put("start_redis_proxy",
+        String.valueOf(startRedisProxy));
+    flagMap.put("cql_update_system_query_cache_msecs",
+        String.valueOf(systemQueryCacheUpdateMs));
     flagMap.put("cql_system_query_cache_empty_responses",
-        Boolean.toString(systemQueryCacheEmptyResponses));
+        String.valueOf(systemQueryCacheEmptyResponses));
+    flagMap.put("client_read_write_timeout_ms",
+        String.valueOf(BuildTypeUtil.adjustTimeout(clientReadWriteTimeoutMs)));
 
     return flagMap;
-  }
-
-  protected Map<String, String> getMasterFlags() {
-    return new TreeMap<>();
   }
 
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
-    for (Map.Entry<String, String> entry : getTServerFlags().entrySet()) {
-      builder.addCommonTServerArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
-    for (Map.Entry<String, String> entry : getMasterFlags().entrySet()) {
-      builder.addMasterArgs("--" + entry.getKey() + "=" + entry.getValue());
-    }
-    builder.enablePostgres(false);
+    builder.enableYsql(false);
     // Prevent YB server processes from closing connections which are idle for less than client
     // timeout period.
-    builder.addCommonArgs(String.format(
-        "--rpc_default_keepalive_time_ms=%d", cqlClientTimeoutMs + 5000));
+    builder.addCommonFlag("rpc_default_keepalive_time_ms",
+        String.valueOf(cqlClientTimeoutMs + 5000));
   }
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
     LOG.info("BaseCQLTest.setUpBeforeClass is running");
-    BaseMiniClusterTest.tserverArgs.add("--client_read_write_timeout_ms=180000");
     // Disable extended peer check, to ensure "SELECT * FROM system.peers" works without
     // all columns.
     System.setProperty("com.datastax.driver.EXTENDED_PEER_CHECK", "false");
@@ -166,8 +142,13 @@ public class BaseCQLTest extends BaseMiniClusterTest {
               .withSocketOptions(socketOptions);
   }
 
-  public Session buildDefaultSession(Cluster cluster) {
-    return cluster.connect();
+  public ClusterAndSession connectWithTestDefaults() {
+    return new ClusterAndSession(getDefaultClusterBuilder().build());
+  }
+
+  public ClusterAndSession connectWithCredentials(String username, String password) {
+    return new ClusterAndSession(
+        getDefaultClusterBuilder().withCredentials(username, password).build());
   }
 
   @Before
@@ -180,14 +161,16 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       LOG.error(errorMsg);
       throw new RuntimeException(errorMsg);
     }
+
     try {
-      cluster = getDefaultClusterBuilder().build();
+      ClusterAndSession cs = connectWithTestDefaults();
+      cluster = cs.getCluster();
+      session = cs.getSession();
+      LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
     } catch (Exception ex) {
       LOG.error("Error while setting up a CQL client", ex);
       throw ex;
     }
-    LOG.info("Connected to cluster: " + cluster.getMetadata().getClusterName());
-    session = buildDefaultSession(cluster);
 
     final int numTServers = miniCluster.getTabletServers().size();
     final int expectedNumPeers = Math.max(0, Math.min(numTServers - 1, 2));
@@ -197,10 +180,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     boolean waitSuccessful = false;
 
     while (attemptsMade < 30) {
-      int numPeers = 0;
-      for (Row row : execute("select peer from system.peers")) {
-        numPeers++;
-      }
+      int numPeers = execute("SELECT peer FROM system.peers").all().size();
       if (numPeers >= expectedNumPeers) {
         waitSuccessful = true;
         break;
@@ -216,11 +196,18 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
     // Create and use test keyspace to be able to use short table names later.
     createKeyspaceIfNotExists(DEFAULT_TEST_KEYSPACE);
-    useKeyspace();
+    useKeyspace(DEFAULT_TEST_KEYSPACE);
   }
 
-  public void useKeyspace() throws Exception{
-    useKeyspace(DEFAULT_TEST_KEYSPACE);
+  @Override
+  protected void resetSettings() {
+    super.resetSettings();
+    startCqlProxy = true;
+    startRedisProxy = false;
+    systemQueryCacheEmptyResponses = false;
+    cqlClientTimeoutMs = 120 * 1000;
+    clientReadWriteTimeoutMs = 180 * 1000;
+    systemQueryCacheUpdateMs = 4 * 1000;
   }
 
   private static void closeIfNotNull(String logPrefix,
@@ -254,11 +241,14 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     // Clean up all tables before end of each test to lower high-water-mark disk usage.
     dropTables();
 
-    // Also delete all types to make sure we can delete keyspaces below.
+    // Delete all types to make sure we can delete keyspaces below.
     dropUDTypes();
 
-    // Also delete all keyspaces, because we may
+    // Delete all non-system keyspaces.
     dropKeyspaces();
+
+    // Delete all roles except a default one.
+    dropRoles();
 
     closeIfNotNull(logPrefix, "session", session);
     // Cannot move this check to closeIfNotNull, because isClosed() is not part of Closeable.
@@ -402,16 +392,15 @@ public class BaseCQLTest extends BaseMiniClusterTest {
 
   protected void dropTable(String tableName) throws Exception {
     String dropStmt = String.format("DROP TABLE %s;", tableName);
-    LOG.info("Executing drop table: " + dropStmt);
     session.execute(dropStmt);
   }
 
   protected void dropUDType(String keyspaceName, String typeName) throws Exception {
-    String drop_stmt = String.format("DROP TYPE %s.%s;", keyspaceName, typeName);
-    session.execute(drop_stmt);
+    String dropStmt = String.format("DROP TYPE %s.%s;", keyspaceName, typeName);
+    session.execute(dropStmt);
   }
 
-  protected boolean IsSystemKeyspace(String keyspaceName) {
+  protected boolean isSystemKeyspace(String keyspaceName) {
     return keyspaceName.equals("system") ||
            keyspaceName.equals("system_auth") ||
            keyspaceName.equals("system_distributed") ||
@@ -428,8 +417,11 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       return;
     }
     for (Row row : session.execute("SELECT keyspace_name, table_name FROM system_schema.tables")) {
-      if (!IsSystemKeyspace(row.getString("keyspace_name"))) {
-        dropTable(row.getString("keyspace_name") + "." + row.getString("table_name"));
+      String ksName = row.getString("keyspace_name");
+      String tableName = row.getString("table_name");
+      if (!isSystemKeyspace(ksName)) {
+        LOG.info("Dropping table " + ksName + "." + tableName);
+        dropTable(ksName + "." + tableName);
       }
     }
   }
@@ -439,8 +431,11 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       return;
     }
     for (Row row : session.execute("SELECT keyspace_name, type_name FROM system_schema.types")) {
-      if (!IsSystemKeyspace(row.getString("keyspace_name"))) {
-        dropUDType(row.getString("keyspace_name"), row.getString("type_name"));
+      String ksName = row.getString("keyspace_name");
+      String typeName = row.getString("type_name");
+      if (!isSystemKeyspace(ksName)) {
+        LOG.info("Dropping UDT " + ksName + "." + typeName);
+        dropUDType(ksName, typeName);
       }
     }
   }
@@ -450,8 +445,23 @@ public class BaseCQLTest extends BaseMiniClusterTest {
       return;
     }
     for (Row row : session.execute("SELECT keyspace_name FROM system_schema.keyspaces")) {
-      if (!IsSystemKeyspace(row.getString("keyspace_name"))) {
-        dropKeyspace(row.getString("keyspace_name"));
+      String ksName = row.getString("keyspace_name");
+      if (!isSystemKeyspace(ksName)) {
+        LOG.info("Dropping keyspace " + ksName);
+        dropKeyspace(ksName);
+      }
+    }
+  }
+
+  protected void dropRoles() throws Exception {
+    if (cluster == null) {
+      return;
+    }
+    for (Row row : session.execute("SELECT * FROM system_auth.roles")) {
+      String roleName = row.getString("role");
+      if (!DEFAULT_ROLE.equals(roleName)) {
+        LOG.info("Dropping role " + roleName);
+        session.execute("DROP ROLE '" + roleName + "'");
       }
     }
   }
@@ -467,19 +477,22 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return runSelect(String.format(select_stmt, args));
   }
 
+  /**
+   * DEPRECATED: use method with error message checking
+   *             {@link #runInvalidStmt(Statement stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidQuery(Statement stmt) {
-    try {
-      session.execute(stmt);
-      fail(String.format("Statement did not fail: %s", stmt));
-      return null; // Never happens, but keeps compiler happy
-    } catch (QueryValidationException qv) {
-      LOG.info("Expected exception", qv);
-      return qv.getCause().getMessage();
-    }
+    return runInvalidStmt(stmt);
   }
 
+  /**
+   * DEPRECATED: use method with error message checking
+   *             {@link #runInvalidStmt(String stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidQuery(String stmt) {
-    return runInvalidQuery(new SimpleStatement(stmt));
+    return runInvalidStmt(new SimpleStatement(stmt));
   }
 
   protected String runInvalidStmt(Statement stmt, Session s) {
@@ -502,22 +515,45 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return result;
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(Statement stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(Statement stmt) {
     return runInvalidStmt(stmt, session);
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(String stmt, Session s, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(String stmt, Session s) {
     return runInvalidStmt(new SimpleStatement(stmt), s);
   }
 
+  /**
+   * DEPRECATED: use version with error message checking
+   *             {@link #runInvalidStmt(String stmt, String errorSubstring)}
+   */
+  @Deprecated
   protected String runInvalidStmt(String stmt) {
     return runInvalidStmt(stmt, session);
   }
 
-  protected void runInvalidStmt(String stmt, String errorSubstring) {
-    String errorMsg = runInvalidStmt(stmt);
+  protected void runInvalidStmt(Statement stmt, Session s, String errorSubstring) {
+    String errorMsg = runInvalidStmt(stmt, s);
     assertTrue("Error message '" + errorMsg + "' should contain '" + errorSubstring + "'",
                errorMsg.contains(errorSubstring));
+  }
+
+  protected void runInvalidStmt(Statement stmt, String errorSubstring) {
+    runInvalidStmt(stmt, session, errorSubstring);
+  }
+
+  protected void runInvalidStmt(String stmt, String errorSubstring) {
+    runInvalidStmt(new SimpleStatement(stmt), errorSubstring);
   }
 
   protected void assertNoRow(String select_stmt) {
@@ -526,13 +562,16 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     assertFalse(iter.hasNext());
   }
 
-  protected void assertQuery(Statement stmt, String expectedResult) {
-    ResultSet rs = session.execute(stmt);
-    String actualResult = "";
+  protected static String resultSetToString(ResultSet rs) {
+    String result = "";
     for (Row row : rs) {
-      actualResult += row.toString();
+      result += row.toString();
     }
-    assertEquals(expectedResult, actualResult);
+    return result;
+  }
+
+  protected void assertQuery(Statement stmt, String expectedResult) {
+    assertEquals(expectedResult, resultSetToString(session.execute(stmt)));
   }
 
   protected void assertQuery(String stmt, String expectedResult) {
@@ -542,11 +581,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
   protected void assertQuery(Statement stmt, String expectedColumns, String expectedResult) {
     ResultSet rs = session.execute(stmt);
     assertEquals(expectedColumns, rs.getColumnDefinitions().toString());
-    String actualResult = "";
-    for (Row row : rs) {
-      actualResult += row.toString();
-    }
-    assertEquals(expectedResult, actualResult);
+    assertEquals(expectedResult, resultSetToString(rs));
   }
 
   protected void assertQuery(String stmt, String expectedColumns, String expectedResult) {
@@ -566,6 +601,19 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     assertEquals(expectedRows, actualRows);
   }
 
+  // Assert presence of expected rows while ensuring no duplicates exist in actual output.
+  protected void assertQueryWithoutDups(Statement stmt, Set<String> expectedRows) {
+    ResultSet rs = session.execute(stmt);
+    Set<String> actualRows = new HashSet<>();
+    int row_cnt = 0;
+    for (Row row : rs) {
+      row_cnt++;
+      actualRows.add(row.toString());
+    }
+    assertEquals(expectedRows, actualRows);
+    assertEquals(row_cnt, expectedRows.size());
+  }
+
   /**
    * Assert the result of a query when the order of the rows is not enforced.
    * To be used, for instance, when querying over multiple hashes where the order is defined by the
@@ -576,6 +624,21 @@ public class BaseCQLTest extends BaseMiniClusterTest {
    */
   protected void assertQueryRowsUnordered(String stmt, String... expectedRows) {
     assertQuery(stmt, Arrays.stream(expectedRows).collect(Collectors.toSet()));
+  }
+
+  /**
+   * Assert the result of a query when the order of the rows is not enforced.
+   * To be used, for instance, when querying over multiple hashes where the order is defined by the
+   * hash function not just the values. Also, ensure that there are no duplicates in the actual
+   * output.
+   *
+   * @param stmt The (select) query to be executed
+   * @param expectedRows the expected rows in no particular order
+   */
+  protected void assertQueryRowsUnorderedWithoutDups(String stmt,
+                                                     String... expectedRows) {
+    assertQueryWithoutDups(new SimpleStatement(stmt),
+      Arrays.stream(expectedRows).collect(Collectors.toSet()));
   }
 
   /**
@@ -704,4 +767,77 @@ public class BaseCQLTest extends BaseMiniClusterTest {
     return totalSum;
   }
 
+  public void waitForYcqlConnectivity() {
+    final int maxAttempts = 20;
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    LOG.info("Starting to wait for YCQL connectivity");
+    boolean success = false;
+    for (int connectionAttempt = 1; connectionAttempt <= maxAttempts; ++connectionAttempt) {
+      // We have to connect with the test's default settings, because for authenticated clusters
+      // we might be required to provide username/password.
+      try (ClusterAndSession clusterAndSession = connectWithTestDefaults()) {
+        success = true;
+        break;
+      } catch (com.datastax.driver.core.exceptions.AuthenticationException authEx) {
+        LOG.info(
+            "Received an AuthenticationException, which means YCQL connectivity is established",
+            authEx);
+        success = true;
+        break;
+      } catch (Exception ex) {
+        long sleepMs = 100 * connectionAttempt;
+        LOG.info(
+            "Temporary connection failure. This was attempt " + connectionAttempt + ", " +
+            "elapsed time waiting: " +
+            StringUtil.toDecimalString(stopwatch.elapsed(TimeUnit.MILLISECONDS) / 1000.0, 3) +
+            "sec. Will re-try after " + sleepMs + " ms.");
+        try {
+          Thread.sleep(sleepMs);
+        } catch (InterruptedException iex) {
+          LOG.warn("Caught an InterruptedException, breaking the connectivity check loop.", iex);
+          Thread.currentThread().interrupt();
+          break;
+        }
+      }
+    }
+
+    LOG.info(
+        (success ? "YCQL connectivity established" : "Still no YCQL connectivity") + " after " +
+        StringUtil.toDecimalString(stopwatch.elapsed(TimeUnit.MILLISECONDS) / 1000.0, 3) + " sec");
+  }
+
+  public void restartYcqlMiniCluster() throws Exception {
+    miniCluster.restart();
+    waitForYcqlConnectivity();
+  }
+
+  protected boolean doesQueryPlanContainSubstring(String query, String substring)
+      throws SQLException {
+    ResultSet rs = session.execute("EXPLAIN " + query);
+
+    for (Row row : rs) {
+      if (row.toString().contains(substring)) return true;
+    }
+    return false;
+  }
+
+  protected void waitForReadPermsOnAllIndexes(String tableName) throws Exception {
+    TestUtils.waitFor(
+      () -> {
+        boolean all_indexes_have_read_perms = true;
+        GetTableSchemaResponse response = miniCluster.getClient().getTableSchema(
+          DEFAULT_TEST_KEYSPACE, tableName);
+        List<IndexInfo> indexes = response.getIndexes();
+
+        for (IndexInfo index : indexes) {
+          if (index.getIndexPermissions() !=
+                CommonTypes.IndexPermissions.INDEX_PERM_READ_WRITE_AND_DELETE) {
+            LOG.info("Found index with permissions=" + index.getIndexPermissions() +
+              " != INDEX_PERM_READ_WRITE_AND_DELETE");
+            return false;
+          }
+        }
+        return true;
+      }, 20000 /* timeoutMs */, 100 /* sleepTime */);
+  }
 }

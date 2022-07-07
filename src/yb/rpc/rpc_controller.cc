@@ -38,6 +38,8 @@
 
 #include "yb/rpc/outbound_call.h"
 
+#include "yb/util/result.h"
+
 namespace yb { namespace rpc {
 
 RpcController::RpcController() {
@@ -112,6 +114,10 @@ Result<Slice> RpcController::GetSidecar(int idx) const {
   return call_->GetSidecar(idx);
 }
 
+Result<SidecarHolder> RpcController::GetSidecarHolder(int idx) const {
+  return call_->GetSidecarHolder(idx);
+}
+
 void RpcController::set_timeout(const MonoDelta& timeout) {
   std::lock_guard<simple_spinlock> l(lock_);
   DCHECK(!call_ || call_->state() == RpcCallState::READY);
@@ -136,6 +142,10 @@ int32_t RpcController::call_id() const {
     return call_->call_id();
   }
   return -1;
+}
+
+CallResponsePtr RpcController::response() const {
+  return CallResponsePtr(call_, &call_->call_response_);
 }
 
 } // namespace rpc

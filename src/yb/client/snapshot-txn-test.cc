@@ -11,45 +11,82 @@
 // under the License.
 //
 
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <boost/optional/optional_fwd.hpp>
+
 #include "yb/client/session.h"
+#include "yb/client/table.h"
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/txn-test-base.h"
+#include "yb/client/yb_op.h"
 
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/consensus/raft_consensus.h"
+#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
+
+#include "yb/gutil/casts.h"
+
+#include "yb/rocksdb/db.h"
+
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_peer.h"
+#include "yb/tablet/transaction_participant.h"
 
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
-#include "yb/util/bfql/gen_opcodes.h"
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/enums.h"
 #include "yb/util/lockfree.h"
+#include "yb/util/opid.h"
 #include "yb/util/random_util.h"
+#include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/tsan_util.h"
 
+#include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/yql/cql/ql/util/statement_result.h"
 
 using namespace std::literals;
 
-DECLARE_bool(ycql_consistent_transactional_paging);
+DECLARE_bool(TEST_disallow_lmp_failures);
+DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 DECLARE_bool(fail_on_out_of_range_clock_skew);
-DECLARE_uint64(max_clock_skew_usec);
+DECLARE_bool(ycql_consistent_transactional_paging);
 DECLARE_int32(TEST_inject_load_transaction_delay_ms);
+DECLARE_int32(TEST_inject_mvcc_delay_add_leader_pending_ms);
 DECLARE_int32(TEST_inject_status_resolver_delay_ms);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(txn_max_apply_batch_records);
+DECLARE_int64(transaction_rpc_timeout_ms);
+DECLARE_uint64(max_clock_skew_usec);
 DECLARE_uint64(max_transactions_in_status_request);
-DECLARE_bool(TEST_disallow_lmp_failures);
+DECLARE_uint64(clock_skew_force_crash_bound_usec);
+
+extern double TEST_delay_create_transaction_probability;
 
 namespace yb {
 namespace client {
 
-YB_DEFINE_ENUM(BankAccountsOption, (kTimeStrobe)(kStepDown)(kTimeJump));
+YB_DEFINE_ENUM(BankAccountsOption,
+               (kTimeStrobe) // Perform time stobe during test.
+               (kStepDown) // Perform leader step downs during test.
+               (kTimeJump) // Perform time jumps during test.
+               (kNetworkPartition) // Partition network during test.
+               (kNoSelectRead)) // Don't use select-read for updating balance, i.e. use only
+                                // "update set balance = balance + delta".
 typedef EnumBitSet<BankAccountsOption> BankAccountsOptions;
 
 class SnapshotTxnTest
@@ -61,21 +98,21 @@ class SnapshotTxnTest
   }
 
   void TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
-                        int minimal_updates_per_second);
+                        int minimal_updates_per_second, double select_update_probability = 0.5);
   void TestBankAccountsThread(
-     int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool);
+     int accounts, double select_update_probability, std::atomic<bool>* stop,
+     std::atomic<int64_t>* updates, TransactionPool* pool);
   void TestRemoteBootstrap();
   void TestMultiWriteWithRestart();
 };
 
+bool TransactionalFailure(const Status& status) {
+  return status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut();
+}
+
 void SnapshotTxnTest::TestBankAccountsThread(
-    int accounts, std::atomic<bool>* stop, std::atomic<int64_t>* updates, TransactionPool* pool) {
-  bool failure = true;
-  auto se = ScopeExit([&failure, stop] {
-    if (failure) {
-      stop->store(true, std::memory_order_release);
-    }
-  });
+    int accounts, double select_update_probability, std::atomic<bool>* stop,
+    std::atomic<int64_t>* updates, TransactionPool* pool) {
   auto session = CreateSession();
   YBTransactionPtr txn;
   int32_t key1 = 0, key2 = 0;
@@ -86,59 +123,70 @@ void SnapshotTxnTest::TestBankAccountsThread(
       if (key2 >= key1) {
         ++key2;
       }
-      txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel()));
+      txn = ASSERT_RESULT(pool->TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     }
     session->SetTransaction(txn);
-    auto result = SelectRow(session, key1);
-    int32_t balance1 = -1;
-    if (result.ok()) {
-      balance1 = *result;
-      result = SelectRow(session, key2);
-    }
-    if (!result.ok()) {
-      if (txn->IsRestartRequired()) {
-        ASSERT_TRUE(result.status().IsQLError()) << result;
-        auto txn_result = pool->TakeRestarted(txn);
-        if (!txn_result.ok()) {
-          ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
-          txn = nullptr;
-        } else {
-          txn = *txn_result;
+    int transfer = RandomUniformInt(1, 250);
+
+    auto txn_id = txn->id();
+    LOG(INFO) << txn_id << " transferring (" << key1 << ") => (" << key2 << "), delta: "
+              << transfer;
+
+    Status status;
+    if (RandomActWithProbability(select_update_probability)) {
+      auto result = SelectRow(session, key1);
+      int32_t balance1 = -1;
+      if (result.ok()) {
+        balance1 = *result;
+        result = SelectRow(session, key2);
+      }
+      if (!result.ok()) {
+        if (txn->IsRestartRequired()) {
+          ASSERT_TRUE(result.status().IsQLError()) << result;
+          auto txn_result = pool->TakeRestarted(txn, TransactionRpcDeadline());
+          if (!txn_result.ok()) {
+            ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
+            txn = nullptr;
+          } else {
+            txn = *txn_result;
+          }
+          continue;
         }
-        continue;
+        if (result.status().IsTimedOut() || result.status().IsQLError()) {
+          txn = nullptr;
+          continue;
+        }
+        ASSERT_TRUE(result.ok())
+            << Format("$0, TXN: $0, key1: $1, key2: $2", result.status(), txn->id(), key1, key2);
       }
-      if (result.status().IsTimedOut() || result.status().IsQLError()) {
-        txn = nullptr;
-        continue;
+      auto balance2 = *result;
+      status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
+      if (status.ok()) {
+        status = ResultToStatus(WriteRow(session, key2, balance2 + transfer));
       }
-      ASSERT_OK(result);
+    } else {
+      status = ResultToStatus(kv_table_test::Increment(
+          &table_, session, key1, -transfer, Flush::kTrue));
+      if (status.ok()) {
+        status = ResultToStatus(kv_table_test::Increment(
+            &table_, session, key2, transfer, Flush::kTrue));
+      }
     }
-    auto balance2 = *result;
-    if (balance1 == 0) {
-      std::swap(key1, key2);
-      std::swap(balance1, balance2);
-    }
-    if (balance1 == 0) {
-      txn = nullptr;
-      continue;
-    }
-    auto transfer = RandomUniformInt(1, balance1);
-    auto status = ResultToStatus(WriteRow(session, key1, balance1 - transfer));
-    if (status.ok()) {
-      status = ResultToStatus(WriteRow(session, key2, balance2 + transfer));
-    }
+
     if (status.ok()) {
       status = txn->CommitFuture().get();
     }
     txn = nullptr;
     if (status.ok()) {
+      LOG(INFO) << txn_id << " transferred (" << key1 << ") => (" << key2 << "), delta: "
+                << transfer;
       updates->fetch_add(1);
     } else {
-      ASSERT_TRUE(status.IsTryAgain() || status.IsExpired() || status.IsNotFound() ||
-                  status.IsTimedOut()) << status;
+      ASSERT_TRUE(
+          status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut() ||
+          ql::QLError(status) == ql::ErrorCode::RESTART_REQUIRED) << status;
     }
   }
-  failure = false;
 }
 
 std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* stop) {
@@ -151,11 +199,11 @@ std::thread RandomClockSkewWalkThread(MiniCluster* cluster, std::atomic<bool>* s
       auto num_servers = cluster->num_tablet_servers();
       std::vector<server::SkewedClock::DeltaTime> time_deltas(num_servers);
 
-      for (int i = 0; i != num_servers; ++i) {
+      for (size_t i = 0; i != num_servers; ++i) {
         auto* tserver = cluster->mini_tablet_server(i)->server();
         auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
         auto skewed_clock =
-            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
         auto shift = RandomUniformInt(-10, 10);
         std::chrono::milliseconds change(1 << std::abs(shift));
         if (shift < 0) {
@@ -179,11 +227,11 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
   return std::thread([cluster, stop] {
     int iteration = 0;
     while (!stop->load(std::memory_order_acquire)) {
-      for (int i = 0; i != cluster->num_tablet_servers(); ++i) {
+      for (size_t i = 0; i != cluster->num_tablet_servers(); ++i) {
         auto* tserver = cluster->mini_tablet_server(i)->server();
         auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
         auto skewed_clock =
-            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+            std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
         server::SkewedClock::DeltaTime time_delta;
         if (iteration & 1) {
           time_delta = server::SkewedClock::DeltaTime();
@@ -201,17 +249,17 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
   });
 }
 
-void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDuration duration,
-                                       int minimal_updates_per_second) {
+void SnapshotTxnTest::TestBankAccounts(
+    BankAccountsOptions options, CoarseDuration duration, int minimal_updates_per_second,
+    double select_update_probability) {
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
   const int kAccounts = 20;
   const int kThreads = 5;
-  const int kInitialAmount = 100;
-
-  std::atomic<bool> stop(false);
+  const int kInitialAmount = 10000;
 
   {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
+    LOG(INFO) << "Initial write transaction: " << txn->id();
     auto init_session = CreateSession(txn);
     for (int i = 1; i <= kAccounts; ++i) {
       ASSERT_OK(WriteRow(init_session, i, kInitialAmount));
@@ -219,33 +267,43 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
     ASSERT_OK(txn->CommitFuture().get());
   }
 
-  std::thread strobe_thread;
+  TestThreadHolder threads;
   if (options.Test(BankAccountsOption::kTimeStrobe)) {
-    strobe_thread = StrobeThread(cluster_.get(), &stop);
+    threads.AddThread(StrobeThread(cluster_.get(), &threads.stop_flag()));
+  }
+
+  if (options.Test(BankAccountsOption::kNetworkPartition)) {
+    threads.AddThreadFunctor([cluster = cluster_.get(), &stop = threads.stop_flag()]() {
+      auto num_tservers = cluster->num_tablet_servers();
+      while (!stop.load(std::memory_order_acquire)) {
+        auto partitioned = RandomUniformInt<size_t>(0, num_tservers - 1);
+        for (auto connectivity : {Connectivity::kOff, Connectivity::kOn}) {
+          for (size_t i = 0; i != num_tservers; ++i) {
+            if (i == partitioned) {
+              continue;
+            }
+            ASSERT_OK(SetupConnectivity(cluster, i, partitioned, connectivity));
+          }
+          std::this_thread::sleep_for(connectivity == Connectivity::kOff ? 10s : 30s);
+        }
+      }
+    });
   }
 
   std::atomic<int64_t> updates(0);
-  std::vector<std::thread> threads;
   auto se = ScopeExit(
-      [&stop, &threads, &updates, &strobe_thread, duration, minimal_updates_per_second] {
-    stop.store(true, std::memory_order_release);
-
-    for (auto& thread : threads) {
-      thread.join();
-    }
-
-    if (strobe_thread.joinable()) {
-      strobe_thread.join();
-    }
+      [&threads, &updates, duration, minimal_updates_per_second] {
+    threads.Stop();
 
     LOG(INFO) << "Total updates: " << updates.load(std::memory_order_acquire);
     ASSERT_GT(updates.load(std::memory_order_acquire),
               minimal_updates_per_second * duration / 1s);
   });
 
-  while (threads.size() != kThreads) {
-    threads.emplace_back(std::bind(
-        &SnapshotTxnTest::TestBankAccountsThread, this, kAccounts, &stop, &updates, &pool));
+  for (int i = 0; i != kThreads; ++i) {
+    threads.AddThreadFunctor(std::bind(
+        &SnapshotTxnTest::TestBankAccountsThread, this, kAccounts, select_update_probability,
+        &threads.stop_flag(), &updates, &pool));
   }
 
   auto end_time = CoarseMonoClock::now() + duration;
@@ -254,7 +312,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
     auto* tserver = cluster_->mini_tablet_server(0)->server();
     auto* hybrid_clock = down_cast<server::HybridClock*>(tserver->clock());
     auto skewed_clock =
-        std::static_pointer_cast<server::SkewedClock>(hybrid_clock->TEST_clock());
+        std::static_pointer_cast<server::SkewedClock>(hybrid_clock->physical_clock());
     auto old_delta = skewed_clock->SetDelta(duration);
     std::this_thread::sleep_for(1s);
     skewed_clock->SetDelta(old_delta);
@@ -262,15 +320,17 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 
   auto session = CreateSession();
   YBTransactionPtr txn;
-  while (CoarseMonoClock::now() < end_time && !stop.load(std::memory_order_acquire)) {
+  while (CoarseMonoClock::now() < end_time &&
+         !threads.stop_flag().load(std::memory_order_acquire)) {
     if (!txn) {
-      txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+      txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     }
+    auto txn_id = txn->id();
     session->SetTransaction(txn);
     auto rows = SelectAllRows(session);
     if (!rows.ok()) {
       if (txn->IsRestartRequired()) {
-        auto txn_result = pool.TakeRestarted(txn);
+        auto txn_result = pool.TakeRestarted(txn, TransactionRpcDeadline());
         if (!txn_result.ok()) {
           ASSERT_TRUE(txn_result.status().IsIllegalState()) << txn_result.status();
           txn = nullptr;
@@ -287,6 +347,7 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
     for (const auto& pair : *rows) {
       sum_balance += pair.second;
     }
+    LOG(INFO) << txn_id << ", read done, values: " << AsString(*rows);
     ASSERT_EQ(sum_balance, kAccounts * kInitialAmount);
 
     if (options.Test(BankAccountsOption::kStepDown)) {
@@ -297,11 +358,19 @@ void SnapshotTxnTest::TestBankAccounts(BankAccountsOptions options, CoarseDurati
 
 TEST_F(SnapshotTxnTest, BankAccounts) {
   FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
+}
+
+TEST_F(SnapshotTxnTest, BankAccountsPartitioned) {
+  TestBankAccounts(
+      BankAccountsOptions{BankAccountsOption::kNetworkPartition}, 150s,
+      RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
 TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
   FLAGS_fail_on_out_of_range_clock_skew = false;
+  FLAGS_clock_skew_force_crash_bound_usec = 0;
 
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeStrobe}, 300s,
@@ -314,6 +383,21 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kTimeJump, BankAccountsOption::kStepDown}, 30s,
       RegularBuildVsSanitizers(3, 1) /* minimal_updates_per_second */);
+}
+
+TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
+  FLAGS_transaction_rpc_timeout_ms = 500 * kTimeMultiplier;
+  TEST_delay_create_transaction_probability = 0.5;
+
+  TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */,
+                   0.0 /* select_update_probability */);
+}
+
+TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
+  FLAGS_TEST_disallow_lmp_failures = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
+  FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms = 20;
+  TestBankAccounts({}, 30s, RegularBuildVsSanitizers(5, 1) /* minimal_updates_per_second */);
 }
 
 struct PagingReadCounts {
@@ -406,7 +490,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
           total_values += written_value[j];
         }
         bool failed = false;
-        session->SetReadPoint(client::Restart::kFalse);
+        session->RestartNonTxnReadPoint(client::Restart::kFalse);
         session->SetForceConsistentRead(ForceConsistentRead::kFalse);
 
         for (;;) {
@@ -425,7 +509,7 @@ Result<PagingReadCounts> SingleTabletSnapshotTxnTest::TestPaging() {
             session->SetForceConsistentRead(ForceConsistentRead::kTrue);
             *req->mutable_paging_state() = std::move(paging_state);
           }
-          auto flush_status = session->ApplyAndFlush(op);
+          auto flush_status = session->TEST_ApplyAndFlush(op);
 
           if (!flush_status.ok() || !op->succeeded()) {
             if (flush_status.IsTimedOut()) {
@@ -549,11 +633,11 @@ TEST_F(SnapshotTxnTest, HotRow) {
   auto session = CreateSession();
   MonoTime start = MonoTime::Now();
   for (int i = 1; i <= kIterations; ++i) {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
     session->SetTransaction(txn);
 
     ASSERT_OK(kv_table_test::Increment(&table_, session, kKey));
-    ASSERT_OK(session->FlushFuture().get());
+    ASSERT_OK(session->TEST_Flush());
     ASSERT_OK(txn->CommitFuture().get());
     if (i % kBlockSize == 0) {
       auto now = MonoTime::Now();
@@ -595,7 +679,7 @@ bool IntermittentTxnFailure(const Status& status) {
     "Service is shutting down"s,
     "Timed out"s,
     "Transaction aborted"s,
-    "Transaction expired"s,
+    "expired or aborted by a conflict"s,
     "Transaction metadata missing"s,
     "Unknown transaction, could be recently aborted"s,
     "Transaction was recently aborted"s,
@@ -646,7 +730,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       auto session = CreateSession();
       while (!stop.load(std::memory_order_acquire)) {
         int k = key.fetch_add(1, std::memory_order_acq_rel);
-        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel()));
+        auto txn = ASSERT_RESULT(pool.TakeAndInit(GetIsolationLevel(), TransactionRpcDeadline()));
         session->SetTransaction(txn);
         bool good = true;
         for (int j = 1; j <= kNumWritesPerKey; ++j) {
@@ -693,7 +777,7 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
       YBqlReadOpPtr op;
       for (;;) {
         op = ReadRow(session, key->value);
-        auto flush_result = session->Flush();
+        auto flush_result = session->TEST_Flush();
         if (flush_result.ok()) {
           if (op->succeeded()) {
             break;
@@ -788,12 +872,13 @@ void SnapshotTxnTest::TestRemoteBootstrap() {
     ASSERT_OK(cluster_->CleanTabletLogs());
 
     // Shutdown to reset cached logs.
-    for (int i = 1; i != cluster_->num_tablet_servers(); ++i) {
+    for (size_t i = 1; i != cluster_->num_tablet_servers(); ++i) {
       cluster_->mini_tablet_server(i)->Shutdown();
     }
 
     // Start all servers. Cluster verifier should check that all tablets are synchronized.
-    for (int i = cluster_->num_tablet_servers(); i-- > 0;) {
+    for (auto i = cluster_->num_tablet_servers(); i > 0;) {
+      --i;
       ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
     }
 
@@ -854,7 +939,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   auto session = CreateSession();
   auto prev_ht = clock_->Now();
   for (int i = 0; i != 4; ++i) {
-    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_));
+    auto txn = ASSERT_RESULT(pool.TakeAndInit(isolation_level_, TransactionRpcDeadline()));
     session->SetTransaction(txn);
     ASSERT_OK(WriteRow(session, i, -i));
     ASSERT_OK(txn->CommitFuture().get());

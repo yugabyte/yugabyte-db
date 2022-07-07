@@ -34,13 +34,15 @@
 
 #include <atomic>
 
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 #include "yb/util/mutex.h"
 #include "yb/util/condition_variable.h"
-#include "yb/util/thread.h"
 #include "yb/gutil/ref_counted.h"
 
 namespace yb {
+
+class Thread;
+
 namespace master {
 
 class CatalogManager;
@@ -51,17 +53,11 @@ class CatalogManager;
 
 class CatalogManagerBgTasks final {
  public:
-  explicit CatalogManagerBgTasks(CatalogManager *catalog_manager)
-      : closing_(false),
-        pending_updates_(false),
-        cond_(&lock_),
-        thread_(nullptr),
-        catalog_manager_(down_cast<enterprise::CatalogManager*>(catalog_manager)) {
-  }
+  explicit CatalogManagerBgTasks(CatalogManager *catalog_manager);
 
   ~CatalogManagerBgTasks() {}
 
-  CHECKED_STATUS Init();
+  Status Init();
   void Shutdown();
 
   void Wake();

@@ -23,7 +23,10 @@
 
 #include "yb/rocksdb/db/version_edit.h"
 
-#include "yb/rocksdb/util/testharness.h"
+#include <string>
+#include <gtest/gtest.h>
+#include "yb/rocksdb/env.h"
+#include "yb/util/test_macros.h"
 #include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
@@ -50,7 +53,7 @@ const uint64_t kBig = 1ull << 50;
 
 } // namespace
 
-class VersionEditTest : public testing::Test {};
+class VersionEditTest : public RocksDBTest {};
 
 void SetupVersionEdit(VersionEdit* edit) {
   edit->SetComparatorName("foo");
@@ -69,8 +72,8 @@ TEST_F(VersionEditTest, EncodeDecode) {
     TestEncodeDecode(edit);
     auto smallest = MakeFileBoundaryValues("foo", kBig + 500 + i, kTypeValue);
     auto largest = MakeFileBoundaryValues("zoo", kBig + 600 + i, kTypeDeletion);
-    smallest.user_values.push_back(test::MakeIntBoundaryValue(33));
-    largest.user_values.push_back(test::MakeStringBoundaryValue("Hello"));
+    smallest.user_values.push_back(test::MakeLeftBoundaryValue("left"));
+    largest.user_values.push_back(test::MakeRightBoundaryValue("right"));
     edit.AddTestFile(3,
                      FileDescriptor(kBig + 300 + i, kBig32Bit + 400 + i, 0, 0),
                      smallest,

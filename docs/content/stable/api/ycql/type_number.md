@@ -2,17 +2,12 @@
 title: Non-integer data types (FLOAT, DOUBLE, and DECIMAL) [YCQL]
 headerTitle: Non-integer
 linkTitle: Non-integer
-description: Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers. 
-block_indexing: true
+description: Use the non-integer (floating-point and fixed-point) data types to specify non-integer numbers.
 menu:
   stable:
     parent: api-cassandra
     weight: 1430
-aliases:
-  - /stable/api/cassandra/type_number
-  - /stable/api/ycql/type_number
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -57,7 +52,7 @@ ycqlsh:example> CREATE TABLE sensor_data (sensor_id INT PRIMARY KEY, float_val F
 ```
 
 ```sql
-ycqlsh:example> INSERT INTO sensor_data(sensor_id, float_val, dbl_val, dec_val) 
+ycqlsh:example> INSERT INTO sensor_data(sensor_id, float_val, dbl_val, dec_val)
                   VALUES (1, 321.0456789, 321.0456789, 321.0456789);
 ```
 

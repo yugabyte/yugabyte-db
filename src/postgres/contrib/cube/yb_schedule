@@ -1,0 +1,6 @@
+# contrib/cube/yb_schedule
+
+test: yb_pg_cube
+
+# No need to port this one.
+test: cube_sci

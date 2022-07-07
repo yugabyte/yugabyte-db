@@ -27,6 +27,7 @@
 #include "access/htup_details.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "executor/ybcExpr.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/plannodes.h"
@@ -41,360 +42,40 @@
 #include "pg_yb_utils.h"
 
 /*
- * Theoretically, any expression that evaluates to a constant before YB
- * execution.
- * Currently restrict this to a subset of expressions.
- * Note: As enhance pushdown support in DocDB (e.g. expr evaluation) this
- * can be expanded.
- */
-bool YBCIsSupportedSingleRowModifyWhereExpr(Expr *expr)
-{
-	switch (nodeTag(expr))
-	{
-		case T_Const:
-			return true;
-		case T_Param:
-		{
-			/* Bind variables. */
-			Param *param = castNode(Param, expr);
-			return param->paramkind == PARAM_EXTERN;
-		}
-		case T_RelabelType:
-		{
-			/*
-			 * RelabelType is a "dummy" type coercion between two binary-
-			 * compatible datatypes so we just recurse into its argument.
-			 */
-			RelabelType *rt = castNode(RelabelType, expr);
-			return YBCIsSupportedSingleRowModifyWhereExpr(rt->arg);
-		}
-		case T_FuncExpr:
-		case T_OpExpr:
-		{
-			List         *args = NULL;
-			ListCell     *lc = NULL;
-			Oid          funcid = InvalidOid;
-			HeapTuple    tuple = NULL;
-
-			/* Get the function info. */
-			if (IsA(expr, FuncExpr))
-			{
-				FuncExpr *func_expr = castNode(FuncExpr, expr);
-				args = func_expr->args;
-				funcid = func_expr->funcid;
-			}
-			else if (IsA(expr, OpExpr))
-			{
-				OpExpr *op_expr = castNode(OpExpr, expr);
-				args = op_expr->args;
-				funcid = op_expr->opfuncid;
-			}
-
-			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
-			 */
-			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
-			if (!HeapTupleIsValid(tuple))
-				elog(ERROR, "cache lookup failed for function %u", funcid);
-			char provolatile = ((Form_pg_proc) GETSTRUCT(tuple))->provolatile;
-			ReleaseSysCache(tuple);
-			if (provolatile != PROVOLATILE_IMMUTABLE)
-			{
-				return false;
-			}
-
-			/* Checking all arguments are valid (stable). */
-			foreach (lc, args) {
-				Expr* expr = (Expr *) lfirst(lc);
-				if (!YBCIsSupportedSingleRowModifyWhereExpr(expr)) {
-					return false;
-				}
-			}
-			return true;
-		}
-		default:
-			break;
-	}
-
-	return false;
-}
-
-static void YBCExprInstantiateParamsInternal(Expr* expr,
-                                             ParamListInfo paramLI,
-                                             Expr** parent_var)
-{
-	switch (nodeTag(expr))
-	{
-		case T_Const:
-			return;
-		case T_Var:
-			return;
-		case T_Param:
-		{
-			/* Bind variables. */
-			Param *param = castNode(Param, expr);
-			ParamExternData *prm = NULL;
-			ParamExternData prmdata;
-			if (paramLI->paramFetch != NULL)
-				prm = paramLI->paramFetch(paramLI, param->paramid,
-										true, &prmdata);
-			else
-				prm = &paramLI->params[param->paramid - 1];
-
-			if (!OidIsValid(prm->ptype) ||
-				prm->ptype != param->paramtype ||
-				!(prm->pflags & PARAM_FLAG_CONST))
-			{
-				/* Planner should ensure this does not happen */
-				elog(ERROR, "Invalid parameter: %s", nodeToString(param));
-			}
-			int16		typLen = 0;
-			bool		typByVal = false;
-			Datum		pval = 0;
-
-			get_typlenbyval(param->paramtype,
-							&typLen, &typByVal);
-			if (prm->isnull || typByVal)
-				pval = prm->value;
-			else
-				pval = datumCopy(prm->value, typByVal, typLen);
-
-			Expr *const_expr = (Expr *) makeConst(param->paramtype,
-										param->paramtypmod,
-										param->paramcollid,
-										(int) typLen,
-										pval,
-										prm->isnull,
-										typByVal);
-
-			*parent_var = const_expr;
-			return;
-		}
-		case T_RelabelType:
-		{
-			/*
-			 * RelabelType is a "dummy" type coercion between two binary-
-			 * compatible datatypes so we just recurse into its argument.
-			 */
-			RelabelType *rt = castNode(RelabelType, expr);
-			YBCExprInstantiateParamsInternal(rt->arg, paramLI, &rt->arg);
-			return;
-		}
-		case T_FuncExpr:
-		{
-			FuncExpr *func_expr = castNode(FuncExpr, expr);
-			ListCell *lc = NULL;
-			foreach(lc, func_expr->args)
-			{
-				Expr *arg = (Expr *) lfirst(lc);
-				YBCExprInstantiateParamsInternal(arg,
-				                                 paramLI,
-				                                 (Expr **)&lc->data.ptr_value);
-			}
-			return;
-		}
-		case T_OpExpr:
-		{
-			OpExpr   *op_expr = castNode(OpExpr, expr);
-			ListCell *lc = NULL;
-			foreach(lc, op_expr->args)
-			{
-				Expr *arg = (Expr *) lfirst(lc);
-				YBCExprInstantiateParamsInternal(arg,
-				                                 paramLI,
-				                                 (Expr **)&lc->data.ptr_value);
-			}
-			return;
-		}
-		default:
-			break;
-	}
-
-	/* Planner should ensure this does not happen */
-	elog(ERROR, "Invalid expression: %s", nodeToString(expr));
-}
-
-
-void YBCExprInstantiateParams(Expr* expr, ParamListInfo paramLI)
-{
-	/* Fast-path if there are no params. */
-	if (paramLI == NULL)
-		return;
-
-	YBCExprInstantiateParamsInternal(expr, paramLI, NULL);
-}
-
-/*
- * Check if the function/procedure can be executed by DocDB (i.e. if we can
- * pushdown its execution).
- * The main current limitation is that DocDB's execution layer does not have
- * syscatalog access (cache lookup) so only specific builtins are supported.q
- */
-static bool YBCIsSupportedDocDBFunctionId(Oid funcid, Form_pg_proc pg_proc) {
-	if (!is_builtin_func(funcid))
-	{
-		return false;
-	}
-
-	/*
-	 * Polymorhipc pseduo-types (e.g. anyarray) may require additional
-	 * processing (requiring syscatalog access) to fully resolve to a concrete
-	 * type. Therefore they are not supported by DocDB.
-	 */
-	if (IsPolymorphicType(pg_proc->prorettype))
-	{
-		return false;
-	}
-
-	for (int i = 0; i < pg_proc->pronargs; i++)
-	{
-		if (IsPolymorphicType(pg_proc->proargtypes.values[i]))
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static bool YBCAnalyzeExpression(Expr *expr, AttrNumber target_attnum, bool *has_vars, bool *has_docdb_unsupported_funcs) {
-	switch (nodeTag(expr))
-	{
-		case T_Const:
-			return true;
-		case T_Var:
-		{
-			/* References to table attrs (to be read) */
-			Var *var = castNode(Var, expr);
-			*has_vars = true;
-			return var->varattno == target_attnum;
-		}
-		case T_Param:
-		{
-			/* Bind variables. */
-			Param *param = castNode(Param, expr);
-			return param->paramkind == PARAM_EXTERN;
-		}
-		case T_RelabelType:
-		{
-			/*
-			 * RelabelType is a "dummy" type coercion between two binary-
-			 * compatible datatypes so we just recurse into its argument.
-			 */
-			RelabelType *rt = castNode(RelabelType, expr);
-			return YBCAnalyzeExpression(rt->arg, target_attnum, has_vars, has_docdb_unsupported_funcs);
-		}
-		case T_FuncExpr:
-		case T_OpExpr:
-		{
-			List         *args = NULL;
-			ListCell     *lc = NULL;
-			Oid          funcid = InvalidOid;
-			HeapTuple    tuple = NULL;
-
-			/* Get the function info. */
-			if (IsA(expr, FuncExpr))
-			{
-				FuncExpr *func_expr = castNode(FuncExpr, expr);
-				args = func_expr->args;
-				funcid = func_expr->funcid;
-			}
-			else if (IsA(expr, OpExpr))
-			{
-				OpExpr *op_expr = castNode(OpExpr, expr);
-				args = op_expr->args;
-				funcid = op_expr->opfuncid;
-			}
-
-			/*
-			 * Only allow immutable functions as they cannot modify the
-			 * database or do lookups.
-			 */
-			tuple = SearchSysCache1(PROCOID, ObjectIdGetDatum(funcid));
-			if (!HeapTupleIsValid(tuple))
-				elog(ERROR, "cache lookup failed for function %u", funcid);
-			Form_pg_proc pg_proc = ((Form_pg_proc) GETSTRUCT(tuple));
-
-			if (pg_proc->provolatile != PROVOLATILE_IMMUTABLE)
-			{
-				ReleaseSysCache(tuple);
-				return false;
-			}
-
-			if (!YBCIsSupportedDocDBFunctionId(funcid, pg_proc)) {
-				*has_docdb_unsupported_funcs = true;
-			}
-			ReleaseSysCache(tuple);
-
-			/* Checking all arguments are valid (stable). */
-			foreach (lc, args) {
-				Expr* expr = (Expr *) lfirst(lc);
-				if (!YBCAnalyzeExpression(expr, target_attnum, has_vars, has_docdb_unsupported_funcs)) {
-				    return false;
-				}
-			}
-			return true;
-		}
-		default:
-			break;
-	}
-
-	return false;
-}
-
-/*
- * Can expression be evaluated in DocDB.
- * Eventually any immutable expression whose only variables are column references.
- * Currently, limit to the case where the only referenced column is the target column.
- */
-bool YBCIsSupportedSingleRowModifyAssignExpr(Expr *expr, AttrNumber target_attnum, bool *needs_pushdown) {
-	bool has_vars = false;
-	bool has_docdb_unsupported_funcs = false;
-	bool is_basic_expr = YBCAnalyzeExpression(expr, target_attnum, &has_vars, &has_docdb_unsupported_funcs);
-
-	/* default, will set to true below if needed. */
-	*needs_pushdown = false;
-
-	/* Immediately bail for complex expressions */
-	if (!is_basic_expr)
-		return false;
-
-	/* If there are no variables, we can just evaluate it to a const. */
-	if (!has_vars)
-	{
-		return true;
-	}
-
-	/* We can push down expression evaluation to DocDB. */
-	if (has_vars && !has_docdb_unsupported_funcs)
-	{
-		*needs_pushdown = true;
-		return true;
-	}
-
-	/* Variables plus DocDB-unsupported funcs -> query layer must evaluate. */
-	return false;
-}
-
-/*
- * Returns true if the following are all true:
- *  - is insert, update, or delete command.
- *  - only one target table.
- *  - there are no ON CONFLICT or WITH clauses.
- *  - source data is a VALUES clause with one value set.
- *  - all values are either constants or bind markers.
+ * Check if statement can be implemented by a single request to the DocDB.
  *
- *  Additionally, during execution we will also check:
- *  - not in transaction block.
- *  - is a single-plan execution.
- *  - target table has no triggers.
- *  - target table has no indexes.
- *  And if all are true we will execute this op as a single-row transaction
- *  rather than a distributed transaction.
+ * An insert, update, or delete command makes one or more write requests to
+ * the DocDB to apply the changes, and may also make read requests to find
+ * the target row, its id, current values, etc. Complex expressions (e.g.
+ * subqueries, stored functions) may also make requests to DocDB.
+ *
+ * Typically multiple requests require a transaction to maintain consistency.
+ * However, if the command is about to make single write request, it is OK to
+ * skip the transaction. The ModifyTable plan node makes one write request per
+ * row it fetches from its subplans, therefore the key criteria of single row
+ * modify is a single Result plan node in the ModifyTable's plans list.
+ * Plain Result plan node produces exactly one row without making requests to
+ * the DocDB, unless it has a subplan or complex expressions to evaluate.
+ *
+ * Full list of the conditions we check here:
+ *  - there is only one target table;
+ *  - there is no ON CONFLICT clause;
+ *  - there is no init plan;
+ *  - there is only one source plan, which is a simple form of Result;
+ *  - all expressions in the Result's target list and in the returning list are
+ *    simple, that means they do not need to access the DocDB.
+ *
+ * Additionally, during execution we will also check:
+ *  - not in transaction block;
+ *  - is a single-plan execution;
+ *  - target table has no triggers to fire;
+ *  - target table has no indexes to update.
+ * And if all are true we will execute this op as a single-row transaction
+ * rather than a distributed transaction.
  */
 static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 {
+	Plan		   *plan;
 
 	/* Support INSERT, UPDATE, and DELETE. */
 	if (modifyTable->operation != CMD_INSERT &&
@@ -406,56 +87,33 @@ static bool ModifyTableIsSingleRowWrite(ModifyTable *modifyTable)
 	if (list_length(modifyTable->resultRelations) != 1)
 		return false;
 
-	/* ON CONFLICT clause is not supported here yet. */
+	/* ON CONFLICT clause may require another write request */
 	if (modifyTable->onConflictAction != ONCONFLICT_NONE)
 		return false;
 
-	/* WITH clause is not supported here yet. */
+	/* Init plan execution would require request(s) to DocDB */
 	if (modifyTable->plan.initPlan != NIL)
 		return false;
 
-	/* Check the data source, only allow a values clause right now */
+	/* Check the data source is a single plan */
 	if (list_length(modifyTable->plans) != 1)
 		return false;
 
-	switch nodeTag(linitial(modifyTable->plans))
-	{
-		case T_Result:
-		{
-			/* Simple values clause: one valueset (single row) */
-			Result *values = (Result *)linitial(modifyTable->plans);
-			ListCell *lc;
-			foreach(lc, values->plan.targetlist)
-			{
-				TargetEntry *target = (TargetEntry *) lfirst(lc);
-				bool needs_pushdown = false;
-				if (!YBCIsSupportedSingleRowModifyAssignExpr(target->expr,
-				                                             target->resno,
-				                                             &needs_pushdown))
-				{
-					return false;
-				}
-			}
-			break;
-		}
-		case T_ValuesScan:
-		{
-			/*
-			 * Simple values clause: multiple valueset (multi-row).
-			 * TODO: Eventually we could inspect hash key values to check
-			 *       if single shard and optimize that.
-			 *       ---
-			 *       In this case we'd need some other way to explicitly filter out
-			 *       updates involving primary key - right now we simply rely on
-			 *       planner not setting the node to Result.
-			 */
-			return false;
+	plan = (Plan *) linitial(modifyTable->plans);
+	/*
+	 * Only Result plan without a subplan produces single tuple without making
+	 * DocDB requests
+	 */
+	if (!IsA(plan, Result) || outerPlan(plan))
+		return false;
 
-		}
-		default:
-			/* Do not support any other data sources. */
-			return false;
-	}
+	/* Complex expressions in the target list may require DocDB requests */
+	if (YbIsTransactionalExpr((Node *) plan->targetlist))
+		return false;
+
+	/* Same for the returning expressions */
+	if (YbIsTransactionalExpr((Node *) modifyTable->returningLists))
+		return false;
 
 	/* If all our checks passed return true */
 	return true;
@@ -489,8 +147,11 @@ bool YBCIsSingleRowUpdateOrDelete(ModifyTable *modifyTable)
 	if (list_length(modifyTable->plans) != 1)
 		return false;
 
-	/* Verify the single data source is a Result node. */
-	if (!IsA(linitial(modifyTable->plans), Result))
+	/*
+	 * Verify the single data source is a Result node and does not have outer plan.
+	 * Note that Result node never has inner plan.
+	 */
+	if (!IsA(linitial(modifyTable->plans), Result) || outerPlan(linitial(modifyTable->plans)))
 		return false;
 
 	return true;

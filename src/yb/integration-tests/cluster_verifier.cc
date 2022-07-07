@@ -32,20 +32,27 @@
 
 #include "yb/integration-tests/cluster_verifier.h"
 
-#include <string>
+#include <atomic>
 #include <memory>
+#include <string>
+#include <thread>
 #include <vector>
+
+#include <boost/range/iterator_range.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
 #include "yb/client/table_handle.h"
 
 #include "yb/gutil/strings/substitute.h"
+
 #include "yb/integration-tests/mini_cluster_base.h"
-#include "yb/rpc/messenger.h"
+
 #include "yb/tools/ysck_remote.h"
+
 #include "yb/util/monotime.h"
-#include "yb/util/test_util.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 using std::string;
 using std::vector;
@@ -96,7 +103,7 @@ void ClusterVerifier::CheckCluster() {
 }
 
 Status ClusterVerifier::DoYsck() {
-  auto addr = cluster_->GetLeaderMasterBoundRpcAddr();
+  auto addr = VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr());
 
   std::shared_ptr<YsckMaster> master;
   RETURN_NOT_OK(RemoteYsckMaster::Build(addr, &master));
@@ -117,14 +124,14 @@ Status ClusterVerifier::DoYsck() {
 
 void ClusterVerifier::CheckRowCount(const YBTableName& table_name,
                                     ComparisonMode mode,
-                                    int expected_row_count,
+                                    size_t expected_row_count,
                                     YBConsistencyLevel consistency) {
   ASSERT_OK(DoCheckRowCount(table_name, mode, expected_row_count, consistency));
 }
 
 Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
                                         ComparisonMode mode,
-                                        int expected_row_count,
+                                        size_t expected_row_count,
                                         YBConsistencyLevel consistency) {
   auto client = VERIFY_RESULT_PREPEND(
       cluster_->CreateClient(), "Unable to connect to cluster");
@@ -147,7 +154,7 @@ Status ClusterVerifier::DoCheckRowCount(const YBTableName& table_name,
 
 void ClusterVerifier::CheckRowCountWithRetries(const YBTableName& table_name,
                                                ComparisonMode mode,
-                                               int expected_row_count,
+                                               size_t expected_row_count,
                                                const MonoDelta& timeout) {
   MonoTime deadline = MonoTime::Now();
   deadline.AddDelta(timeout);

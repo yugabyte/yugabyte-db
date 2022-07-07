@@ -21,8 +21,9 @@
 #ifndef YB_UTIL_SERVICE_UTIL_H_
 #define YB_UTIL_SERVICE_UTIL_H_
 
-#include "yb/common/wire_protocol.h"
 #include "yb/rpc/rpc_context.h"
+
+#include "yb/util/status_fwd.h"
 #include "yb/util/status.h"
 
 // Utility macro to setup error response and return if status is not OK.

@@ -2,22 +2,17 @@
 title: Built-in function call [YCQL]
 headerTitle: Built-in function call
 linkTitle: Function call
-description: Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
-block_indexing: true
+description: Use a function call expression to apply the specified function to given arguments between parentheses and return the result of the computation.
 menu:
   stable:
     parent: api-cassandra
     weight: 1350
-aliases:
-  - /stable/api/cassandra/expr_fcall
-  - /stable/api/ycql/expr_fcall
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
 
-Use a function call expression to apply the specified function to to given arguments between parentheses and return the result of the computation.
+Use a function call expression to apply the specified function to given arguments between parentheses and return the result of the computation.
 
 ## Syntax
 
@@ -92,13 +87,13 @@ CAST function converts the value returned from a table column to the specified d
 
 
 ## partition_hash function
-`partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and 
+`partition_hash` is a function that takes as arguments the partition key columns of the primary key of a row and
 returns a `uint16` hash value representing the hash value for the row used for partitioning the table.
-The hash values used for partitioning fall in the `0-65535` (uint16) range. 
-Tables are partitioned into tablets, with each tablet being responsible for a range of partition values. 
+The hash values used for partitioning fall in the `0-65535` (uint16) range.
+Tables are partitioned into tablets, with each tablet being responsible for a range of partition values.
 The `partition_hash` of the row is used to decide which tablet the row will reside in.
 
-`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown 
+`partition_hash` can be handy for querying a subset of the data to get approximate row counts or to breakdown
 full-table operations into smaller sub-tasks that can be run in parallel.
 
 ### Querying a subset of the data
@@ -106,7 +101,7 @@ One use of `partition_hash` is to query a subset of the data and get approximate
 For example, suppose you have a table `t` with partitioning columns `(h1,h2)`:
 
 ```sql
-create table t (h1 int, h2 int, r1 int, r2 int, v int, 
+create table t (h1 int, h2 int, r1 int, r2 int, v int,
                          primary key ((h1, h2), r1, r2));
 ```
 We can use this function to query a subset of the data (in this case, 1/128 of the data):
@@ -134,6 +129,7 @@ and so on, till the last segment/range of `512` in the partition space:
 .. where partition_hash(h1, h2) >= 65024;
 ```
 
+Here is a full implementation of a parallel table scan using `partition_hash` in [Python 3](https://github.com/yugabyte/yb-tools/blob/main/ycql_table_row_count.py) and [Go](https://github.com/yugabyte/yb-tools/tree/main/ycrc).
 
 ## WriteTime function
 
@@ -152,7 +148,7 @@ For example, suppose you have a table `page_views` with a column named `views`:
 
 ## TTL function
 
-The TTL function returns the number of seconds until a column or row expires. 
+The TTL function returns the number of seconds until a column or row expires.
 Assuming you have a table `page_views` and a column named `views`:
 
 ```sql

@@ -50,7 +50,8 @@ for zone, context in contexts.items():
     while True:
         external_ip = check_output([
                 'kubectl', 'get', 'svc', 'kube-dns-lb', '--namespace', 'kube-system', '--context',
-                context, '--template', '{{range .status.loadBalancer.ingress}}{{.ip}}{{end}}'])
+                context, '--template', '{{range .status.loadBalancer.ingress}}{{.ip}}{{end}}'
+            ]).decode('utf-8')
         if external_ip:
             break
         print('Waiting for DNS load balancer IP in %s...' % (zone))

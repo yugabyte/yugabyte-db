@@ -32,8 +32,10 @@
 package org.yb.client;
 
 import com.google.protobuf.Message;
+import org.yb.CommonTypes.PeerRole;
 import static org.yb.consensus.Metadata.*;
-import static org.yb.master.Master.*;
+import static org.yb.master.MasterClusterOuterClass.*;
+import static org.yb.master.MasterTypes.*;
 
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
@@ -72,7 +74,7 @@ public class GetMasterRegistrationRequest extends YRpc<GetMasterRegistrationResp
     final GetMasterRegistrationResponsePB.Builder respBuilder =
         GetMasterRegistrationResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
-    RaftPeerPB.Role role = RaftPeerPB.Role.FOLLOWER;
+    PeerRole role = PeerRole.FOLLOWER;
     if (!respBuilder.hasError() || respBuilder.getError().getCode() !=
         MasterErrorPB.Code.CATALOG_MANAGER_NOT_INITIALIZED) {
       role = respBuilder.getRole();

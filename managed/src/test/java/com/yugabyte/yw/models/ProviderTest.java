@@ -2,22 +2,26 @@
 
 package com.yugabyte.yw.models;
 
+import static org.hamcrest.CoreMatchers.allOf;
+import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.notNullValue;
+import static org.hamcrest.core.StringContains.containsString;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
+
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
-import com.yugabyte.yw.common.ModelFactory;
-import org.junit.Before;
-import org.junit.Test;
-
 import com.yugabyte.yw.common.FakeDBApplication;
-
+import com.yugabyte.yw.common.ModelFactory;
 import java.util.Map;
 import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.hamcrest.CoreMatchers.*;
-import static org.hamcrest.core.StringContains.containsString;
-import static org.junit.Assert.*;
+import org.junit.Before;
+import org.junit.Test;
 
 public class ProviderTest extends FakeDBApplication {
   private Customer defaultCustomer;
@@ -33,22 +37,24 @@ public class ProviderTest extends FakeDBApplication {
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
-    assertTrue(provider.isActive());
+    assertTrue(provider.active);
   }
 
   @Test
   public void testNullConfig() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
     assertNotNull(provider.uuid);
-    assertTrue(provider.getConfig().isEmpty());
+    assertTrue(provider.getUnmaskedConfig().isEmpty());
   }
 
   @Test
   public void testNotNullConfig() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
-        "Amazon", ImmutableMap.of("Foo", "Bar"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid, Common.CloudType.aws, "Amazon", ImmutableMap.of("Foo", "Bar"));
     assertNotNull(provider.uuid);
-    assertNotNull(provider.getConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
+    assertNotNull(
+        provider.getUnmaskedConfig().toString(), allOf(notNullValue(), equalTo("{Foo=Bar}")));
   }
 
   @Test
@@ -63,20 +69,28 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetMaskedConfigWithSensitiveData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
-            "Amazon", ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid,
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("AWS_ACCESS_KEY_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_KEY_ID", "Ba********ar");
-    assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_KEY_ID"));
+    assertEquals("Ba********ar", provider.getMaskedConfig().get("AWS_ACCESS_KEY_ID"));
+    assertEquals("BarBarBarBar", provider.getUnmaskedConfig().get("AWS_ACCESS_KEY_ID"));
   }
 
   @Test
   public void testGetMaskedConfigWithoutSensitiveData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws,
-        "Amazon", ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid,
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("AWS_ACCESS_ID", "BarBarBarBar"));
     assertNotNull(provider.uuid);
-    assertValue(provider.getMaskedConfig(), "AWS_ACCESS_ID", "BarBarBarBar");
-    assertEquals("BarBarBarBar", provider.getConfig().get("AWS_ACCESS_ID"));
+    assertEquals("BarBarBarBar", provider.getMaskedConfig().get("AWS_ACCESS_ID"));
+    assertEquals("BarBarBarBar", provider.getUnmaskedConfig().get("AWS_ACCESS_ID"));
   }
 
   @Test
@@ -93,13 +107,13 @@ public class ProviderTest extends FakeDBApplication {
 
     assertNotNull(provider.uuid);
     assertEquals(provider.name, "Amazon");
-    assertTrue(provider.isActive());
+    assertTrue(provider.active);
 
-    provider.setActiveFlag(false);
+    provider.active = false;
     provider.save();
 
     Provider fetch = Provider.find.byId(provider.uuid);
-    assertFalse(fetch.isActive());
+    assertFalse(fetch.active);
   }
 
   @Test
@@ -111,18 +125,18 @@ public class ProviderTest extends FakeDBApplication {
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.isActive());
+    assertTrue(fetch.active);
     assertEquals(fetch.customerUUID, defaultCustomer.uuid);
   }
 
   @Test
   public void testGetByNameSuccess() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
-    Provider fetch = Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
+    Provider fetch = Provider.get(defaultCustomer.uuid, Common.CloudType.aws).get(0);
     assertNotNull(fetch);
     assertEquals(fetch.uuid, provider.uuid);
     assertEquals(fetch.name, provider.name);
-    assertTrue(fetch.isActive());
+    assertTrue(fetch.active);
     assertEquals(fetch.customerUUID, defaultCustomer.uuid);
   }
 
@@ -133,8 +147,8 @@ public class ProviderTest extends FakeDBApplication {
     try {
       Provider.get(defaultCustomer.uuid, Common.CloudType.aws);
     } catch (RuntimeException re) {
-      assertThat(re.getMessage(), allOf(notNullValue(),
-              equalTo("Found 2 providers with name: Amazon")));
+      assertThat(
+          re.getMessage(), allOf(notNullValue(), equalTo("Found 2 providers with name: Amazon")));
     }
   }
 
@@ -142,7 +156,7 @@ public class ProviderTest extends FakeDBApplication {
   public void testCascadeDelete() {
     Provider provider = ModelFactory.awsProvider(defaultCustomer);
     Region region = Region.create(provider, "region-1", "region 1", "ybImage");
-    AvailabilityZone.create(region, "zone-1", "zone 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "zone-1", "zone 1", "subnet-1");
     provider.delete();
     assertEquals(0, Region.find.all().size());
     assertEquals(0, AvailabilityZone.find.all().size());
@@ -150,19 +164,22 @@ public class ProviderTest extends FakeDBApplication {
 
   @Test
   public void testGetAwsHostedZoneWithData() {
-    Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon",
-        ImmutableMap.of("AWS_HOSTED_ZONE_ID", "some_id", "AWS_HOSTED_ZONE_NAME", "some_name"));
+    Provider provider =
+        Provider.create(
+            defaultCustomer.uuid,
+            Common.CloudType.aws,
+            "Amazon",
+            ImmutableMap.of("HOSTED_ZONE_ID", "some_id", "HOSTED_ZONE_NAME", "some_name"));
     assertNotNull(provider.uuid);
-    assertEquals("some_id", provider.getAwsHostedZoneId());
-    assertEquals("some_name", provider.getAwsHostedZoneName());
+    assertEquals("some_id", provider.getHostedZoneId());
+    assertEquals("some_name", provider.getHostedZoneName());
   }
 
   @Test
   public void testGetAwsHostedZoneWithNoData() {
     Provider provider = Provider.create(defaultCustomer.uuid, Common.CloudType.aws, "Amazon");
     assertNotNull(provider.uuid);
-    assertNull(provider.getAwsHostedZoneId());
-    assertNull(provider.getAwsHostedZoneId());
+    assertNull(provider.getHostedZoneId());
   }
 
   @Test
@@ -181,7 +198,7 @@ public class ProviderTest extends FakeDBApplication {
     String subnetId = "subnet-1";
     String regionCode = "region-1";
     Region region = Region.create(provider, regionCode, "test region", "default-image");
-    AvailabilityZone az = AvailabilityZone.create(region, "az-1", "A Zone", subnetId);
+    AvailabilityZone az = AvailabilityZone.createOrThrow(region, "az-1", "A Zone", subnetId);
     CloudBootstrap.Params params = provider.getCloudParams();
     assertNotNull(params);
     Map<String, CloudBootstrap.Params.PerRegionMetadata> metadata = params.perRegionMetadata;

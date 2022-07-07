@@ -21,16 +21,23 @@
 #ifndef YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
 #define YB_YQL_CQL_QL_PTREE_SEM_STATE_H_
 
-#include "yb/yql/cql/ql/util/ql_env.h"
-#include "yb/yql/cql/ql/ptree/process_context.h"
-#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/common/common_fwd.h"
+#include "yb/common/ql_datatype.h"
+
+#include "yb/util/memory/mc_types.h"
+#include "yb/util/strongly_typed_bool.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 
 namespace yb {
 namespace ql {
 
+class SelectScanInfo;
 class WhereExprState;
 class IfExprState;
+class IdxPredicateState;
 class PTColumnDefinition;
+class PTDmlStmt;
 
 //--------------------------------------------------------------------------------------------------
 // This class represents the state variables for the analyzing process of one tree node. This
@@ -55,11 +62,12 @@ class PTColumnDefinition;
 class SemState {
  public:
   // Constructor: Create a new sem_state to use and save the existing state to previous_state_.
-  SemState(SemContext *sem_context,
-           const std::shared_ptr<QLType>& expected_ql_type = QLType::Create(UNKNOWN_DATA),
-           InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
-           const MCSharedPtr<MCString>& bindvar_name = nullptr,
-           const ColumnDesc *lhs_col = nullptr);
+  explicit SemState(SemContext *sem_context,
+                    const QLTypePtr& expected_ql_type = DefaultQLType(),
+                    InternalType expected_internal_type = InternalType::VALUE_NOT_SET,
+                    const MCSharedPtr<MCString>& bindvar_name = nullptr,
+                    const ColumnDesc *lhs_col = nullptr,
+                    NullIsAllowed allow_null = NullIsAllowed::kTrue);
 
   // Destructor: Reset sem_context back to previous_state_.
   virtual ~SemState();
@@ -71,6 +79,23 @@ class SemState {
 
   // Reset the sem_context back to its previous state.
   void ResetContextState();
+
+  // State variable for index analysis.
+  void SetScanState(SelectScanInfo *scan_state) {
+    scan_state_ = scan_state;
+  }
+  SelectScanInfo *scan_state() {
+    return scan_state_;
+  }
+
+  // State variable to checking key condition.
+  bool void_primary_key_condition() const {
+    return void_primary_key_condition_;
+  }
+
+  void set_void_primary_key_condition(bool val) {
+    void_primary_key_condition_ = val;
+  }
 
   // Update state variable for where clause.
   void SetWhereState(WhereExprState *where_state) {
@@ -84,11 +109,26 @@ class SemState {
   }
   IfExprState *if_state() const { return if_state_; }
 
+  // Update state variable for orderby clause.
+  void set_validate_orderby_expr(bool validate_orderby_expr) {
+    validate_orderby_expr_ = validate_orderby_expr;
+  }
+  bool validate_orderby_expr() const {
+    return validate_orderby_expr_;
+  }
+
   // Update the expr states.
   void SetExprState(const std::shared_ptr<QLType>& ql_type,
                     InternalType internal_type,
                     const MCSharedPtr<MCString>& bindvar_name = nullptr,
-                    const ColumnDesc *lhs_col = nullptr);
+                    const ColumnDesc *lhs_col = nullptr,
+                    NullIsAllowed allow_null = NullIsAllowed::kTrue);
+
+  // Update state variable for index predicate clause i.e, where clause.
+  void SetIdxPredicateState(IdxPredicateState *idx_predicate_state) {
+    idx_predicate_state_ = idx_predicate_state;
+  }
+  IdxPredicateState *idx_predicate_state() const { return idx_predicate_state_; }
 
   // Set the current state using previous state's values.
   void CopyPreviousStates();
@@ -101,22 +141,32 @@ class SemState {
 
   // Access function for expression states.
   const std::shared_ptr<QLType>& expected_ql_type() const { return expected_ql_type_; }
+  NullIsAllowed expected_ql_type_accepts_null() const { return allow_null_ql_type_; }
   InternalType expected_internal_type() const { return expected_internal_type_; }
 
   // Return the hash column descriptor on LHS if available.
   const ColumnDesc *lhs_col() const { return lhs_col_; }
-  const ColumnDesc *hash_col() const {
-    return lhs_col_ != nullptr && lhs_col_->is_hash() ? lhs_col_ : nullptr;
+  const ColumnDesc *hash_col() const;
+
+  void set_bindvar_name(std::string bindvar_name);
+  const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
+
+  PTDmlStmt *current_dml_stmt() const {
+    return current_dml_stmt_;
   }
 
-  void set_bindvar_name(string bindvar_name);
-  const MCSharedPtr<MCString>& bindvar_name() const { return bindvar_name_; }
+  void set_current_dml_stmt(PTDmlStmt *stmt) {
+    current_dml_stmt_ = stmt;
+  }
 
   bool processing_set_clause() const { return processing_set_clause_; }
   void set_processing_set_clause(bool value) { processing_set_clause_ = value; }
 
   bool processing_assignee() const { return processing_assignee_; }
   void set_processing_assignee(bool value) { processing_assignee_ = value; }
+
+  void set_index_select_prefix_length(size_t val) { index_select_prefix_length_ = val; }
+  size_t index_select_prefix_length() const { return index_select_prefix_length_; }
 
   void set_selecting_from_index(bool val) { selecting_from_index_ = val; }
   bool selecting_from_index() const { return selecting_from_index_; }
@@ -144,13 +194,23 @@ class SemState {
   void set_processing_index_column(PTColumnDefinition *index_column) {
     index_column_ = index_column;
   }
+  bool is_processing_index_column() const {
+    return (index_column_ != nullptr);
+  }
   void add_index_column_ref(int32_t col_id);
 
   bool is_uncovered_index_select() const;
 
+  bool is_partial_index_select() const;
+
  private:
+  static const QLTypePtr& DefaultQLType();
+
   // Context that owns this SemState.
   SemContext *sem_context_;
+
+  // The current dml statement being processed.
+  PTDmlStmt *current_dml_stmt_ = nullptr;
 
   // Save the previous state to reset when done.
   SemState *previous_state_ = nullptr;
@@ -158,9 +218,21 @@ class SemState {
 
   // States to process an expression node.
   std::shared_ptr<QLType> expected_ql_type_; // The expected sql type of an expression.
-  InternalType expected_internal_type_;        // The expected internal type of an expression.
+  NullIsAllowed allow_null_ql_type_;         // Does the expected type accept NULL?
+  InternalType expected_internal_type_;      // The expected internal type of an expression.
 
   MCSharedPtr<MCString> bindvar_name_ = nullptr;
+
+  // State variables for index analysis.
+  SelectScanInfo *scan_state_ = nullptr;
+
+  // State variable for analyzing key condition.
+  // - If select-scan is using nested INDEX key, primary key condition should be dropped off, and
+  //   this flag should be set to true. Error on primary key condition should be ignored because
+  //   the secondary index key is used in place of primary key.
+  // - Currently, this flag is only used for query that has nested INDEX query. YugaByte does not
+  //   have any other kinds of nested query
+  bool void_primary_key_condition_ = false;
 
   // State variables for where expression.
   WhereExprState *where_state_ = nullptr;
@@ -168,8 +240,17 @@ class SemState {
   // State variables for if expression.
   IfExprState *if_state_ = nullptr;
 
+  // State variables for orderby expression.
+  bool validate_orderby_expr_ = false;
+
+  // State variables for index predicate expression i.e., where clause in case of partial indexes.
+  IdxPredicateState *idx_predicate_state_ = nullptr;
+
   // Predicate for selecting data from an index instead of a user table.
   bool selecting_from_index_ = false;
+
+  // Length of prefix of cols in index table that have a sub-clause in WHERE with =/IN operator.
+  size_t index_select_prefix_length_ = 0;
 
   // Predicate for processing a column definition in a table.
   bool processing_column_definition_ = false;

@@ -53,6 +53,8 @@ class ScheduleDisplayItem extends Component {
     let taskType = '';
     let keyspace = '';
     let tableDetails = '';
+    let backupType = '';
+
     if (schedule.taskType === 'BackupUniverse') {
       taskType = 'Table Backup';
       tableDetails = `${schedule.taskParams.keyspace}.${schedule.taskParams.tableName}`;
@@ -75,6 +77,19 @@ class ScheduleDisplayItem extends Component {
       !schedule.taskParams.timeBeforeDelete || schedule.taskParams.timeBeforeDelete === 0
         ? 'Unlimited'
         : moment.duration(schedule.taskParams.timeBeforeDelete).humanize();
+    
+    // Assign YSQl or YCQL backup type to distinguish between backups.
+    switch (schedule?.taskParams?.backupType) {
+      case 'YQL_TABLE_TYPE':
+        backupType = 'YCQL';
+        break;
+      case 'PGSQL_TABLE_TYPE':
+        backupType = 'YSQL';
+        break;
+      default:
+        backupType = '';
+        break;
+    }
 
     return (
       <Col xs={12} sm={6} md={6} lg={4}>
@@ -105,6 +120,9 @@ class ScheduleDisplayItem extends Component {
           <div className="description-item-list">
             <DescriptionItem title={'Schedule (UTC)'}>
               <span>{schedule.frequency || schedule.cronExpression}</span>
+            </DescriptionItem>
+            <DescriptionItem title='Backup Type'>
+              <span>{backupType}</span>
             </DescriptionItem>
             <DescriptionItem title={'Encrypt Backup'}>
               <span>{schedule.taskParams.sse ? 'On' : 'Off'}</span>
@@ -160,6 +178,7 @@ class Schedules extends Component {
       modal: { visibleModal, showModal }
     } = this.props;
 
+    const universePaused = currentUniverse?.data?.universeDetails?.universePaused;
     const findUniverseName = (uuid) => {
       if (getPromiseState(universeList).isSuccess()) {
         const currentUniverse =
@@ -178,7 +197,7 @@ class Schedules extends Component {
       getPromiseState(universeList).isSuccess()
     ) {
       const filteredSchedules = schedules.data.filter((item) => {
-        return item.taskParams.universeUUID === currentUniverse.data.universeUUID;
+        return item.taskParams.universeUUID === currentUniverse.data.universeUUID && item.taskType !== 'ExternalScript';
       });
       if (filteredSchedules.length) {
         schedulesList = filteredSchedules.map((scheduleItem, idx) => {
@@ -214,12 +233,14 @@ class Schedules extends Component {
               <div className="pull-right">
                 {isAvailable(currentCustomer.data.features, 'universes.backup') && (
                   <div className="backup-action-btn-group">
-                    <TableAction
-                      className="table-action"
-                      btnClass={'btn-orange'}
-                      actionType="create-scheduled-backup"
-                      isMenuItem={false}
-                    />
+                    {!universePaused &&
+                      <TableAction
+                        className="table-action"
+                        btnClass={'btn-orange'}
+                        actionType="create-scheduled-backup"
+                        isMenuItem={false}
+                      />
+                    }
                   </div>
                 )}
               </div>

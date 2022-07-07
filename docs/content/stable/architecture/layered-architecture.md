@@ -3,16 +3,12 @@ title: Layered architecture for queries and storage
 headerTitle: Layered architecture
 linkTitle: Layered architecture
 description: Learn about the layered architecture of YugabyteDB in the query layer and the storage layer.
-aliases:
-  - /stable/architecture/layered-architecture/
-block_indexing: true
 menu:
   stable:
     identifier: architecture-layered-architecture
     parent: architecture
     weight: 1109
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 YugabyteDB architecture follows a layered design. It is comprised of 2 logical layers as shown in the diagram below:
@@ -44,11 +40,11 @@ Understanding [the design of the query layer](../query-layer/overview/).
 
 [DocDB](../docdb/) is a distributed document store. It has the following properties:
 
-* [Strong write consistency](../docdb/replication/#strong-write-consistency)
+* [Strong write consistency](../docdb-replication/replication/#tablet-peers)
 * Extremely resilient to failures
 * Automatic sharding and load balancing
 * Zone/region/cloud aware data placement policies
-* [Tunable read consistency](../docdb/replication/#tunable-read-consistency)
+* [Tunable read consistency](../docdb-replication/replication/#follower-reads)
 
 Data in DocDB is stored in tables. Each table is composed of rows, each row contains a key and a document. Here are some key points:
 
@@ -56,13 +52,13 @@ Data in DocDB is stored in tables. Each table is composed of rows, each row cont
 
 Data is stored inside tables in DocDB. A DocDB table is often sharded into a number of **tablets**. This sharding of tables is transparent to users.
 
-You can read more about [how sharding works in DocDB](../docdb/sharding/).
+You can read more about [how sharding works in DocDB](../docdb-sharding/).
 
 ### Replication
 
 Each tablet consisting of user data is replicated according to some replication factor using the Raft consensus algorithm. Replication is performed at a tablet level, and ensures single row linearizability even in the presence of failures.
 
-You can read more about [how replication works in DocDB](../docdb/replication/).
+You can read more about [how replication works in DocDB](../docdb-replication/).
 
 ### Persistence
 

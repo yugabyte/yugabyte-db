@@ -17,11 +17,14 @@
 
 #include "yb/common/ql_value.h"
 
-#include "yb/yql/cql/ql/exec/executor.h"
-#include "yb/util/logging.h"
-#include "yb/client/callbacks.h"
-#include "yb/util/date_time.h"
 #include "yb/util/net/inetaddress.h"
+
+#include "yb/yql/cql/ql/exec/exec_context.h"
+#include "yb/yql/cql/ql/exec/executor.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_bcall.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/util/statement_params.h"
 
 namespace yb {
 namespace ql {
@@ -43,10 +46,23 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
     case ExprOperator::kNoOp:
       return Status::OK();
 
-    case ExprOperator::kConst:
-    case ExprOperator::kCollection: {
+    case ExprOperator::kConst: {
       QLValuePB *const_pb = expr_pb->mutable_value();
       return PTConstToPB(expr, const_pb);
+    }
+
+    case ExprOperator::kCollection: {
+      // First try to fold literals. Literal-folding is a bit faster than constant folding, so we
+      // keep this process although constant-folding can also fold literals.
+      QLValuePB *const_pb = expr_pb->mutable_value();
+      if (!PTConstToPB(expr, const_pb).ok()) {
+        // Use constant folding because literal-folding cannot fold expressions.
+        // Example: "List<BLOB>" with function calls.
+        //   [ TextAsBlob('a'), IntAsBlob(1) ]
+        RETURN_NOT_OK(PTExprToPB(static_cast<const PTCollectionExpr*>(expr.get()), expr_pb));
+        return EvalExpr(expr_pb, QLTableRow::empty_row());
+      }
+      return Status::OK();
     }
 
     case ExprOperator::kRef:
@@ -96,7 +112,7 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *expr_pb) {
   if (!bind_pt->name()) {
     return STATUS(NotSupported, "Undefined bind variable name, please contact the support");
   }
@@ -113,13 +129,23 @@ CHECKED_STATUS Executor::PTExprToPB(const PTBindVar *bind_pt, QLExpressionPB *ex
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb) {
+Status Executor::PTExprToPB(const PTRef *ref_pt, QLExpressionPB *ref_pb) {
+  // When processing constant folding by client, all columns are not yet accessible, and "PTRef"
+  // execution should returns an error to indicate that the folding effort failed.
   const ColumnDesc *col_desc = ref_pt->desc();
+  if (!col_desc) {
+    // Protection against crash. This happens when compiler failed to analyze a column ref.
+    // Example
+    //   SELECT [ i ] FROM tab;
+    // Expression "[ i ]" should have been analyzed and reported during semantic phase. However,
+    // it requires some effort to fix in semantic phase, this error is reported here for now.
+    return STATUS(RuntimeError, "Failed to read column value");
+  }
   ref_pb->set_column_id(col_desc->id());
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *expr_pb) {
+Status Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpressionPB *expr_pb) {
   const ColumnDesc *col_desc = ref_pt->desc();
   auto col_pb = expr_pb->mutable_subscripted_col();
   col_pb->set_column_id(col_desc->id());
@@ -130,7 +156,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTSubscriptedColumn *ref_pt, QLExpress
   return Status::OK();
 }
 
-CHECKED_STATUS Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
+Status Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
                                     QLExpressionPB *expr_pb) {
   const ColumnDesc *col_desc = ref_pt->desc();
   auto col_pb = expr_pb->mutable_json_column();
@@ -145,7 +171,7 @@ CHECKED_STATUS Executor::PTExprToPB(const PTJsonColumnWithOperators *ref_pt,
 
 //--------------------------------------------------------------------------------------------------
 
-CHECKED_STATUS Executor::PTExprToPB(const PTAllColumns *ref_pt, QLReadRequestPB *req) {
+Status Executor::PTExprToPB(const PTAllColumns *ref_pt, QLReadRequestPB *req) {
   QLRSRowDescPB *rsrow_desc_pb = req->mutable_rsrow_desc();
   for (const auto& col_desc : ref_pt->columns()) {
     req->add_selected_exprs()->set_column_id(col_desc.id());

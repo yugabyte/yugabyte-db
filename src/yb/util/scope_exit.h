@@ -14,10 +14,14 @@
 #ifndef YB_UTIL_SCOPE_EXIT_H
 #define YB_UTIL_SCOPE_EXIT_H
 
+#include <type_traits>
+
+#include "yb/util/status_fwd.h"
+
 namespace yb {
 
 template <class F>
-class ScopeExitLambda {
+class NODISCARD_CLASS ScopeExitLambda {
  public:
   ScopeExitLambda(const ScopeExitLambda&) = delete;
   void operator=(const ScopeExitLambda&) = delete;

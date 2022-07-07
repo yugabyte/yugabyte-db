@@ -4,14 +4,12 @@ linkTitle: Literals
 headerTitle: Creating an array value using a literal
 description: Creating an array value using a literal
 image: /images/section_icons/api/ysql.png
-block_indexing: true
 menu:
   stable:
     identifier: array-literals
     parent: api-ysql-datatypes-array
     weight: 20
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 This section introduces array literals informally with a few examples. Its subsections, listed below, explain formally how you construct syntactically correct array literals that establish the values that you intend.

@@ -14,12 +14,8 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
 #define YB_YQL_CQL_QL_PTREE_PT_TABLE_PROPERTY_H_
 
-#include "yb/common/schema.h"
-#include "yb/client/client.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/master.pb.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
-#include "yb/yql/cql/ql/ptree/pt_expr.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
 #include "yb/yql/cql/ql/ptree/pt_property.h"
 #include "yb/yql/cql/ql/ptree/pt_select.h"
@@ -66,23 +62,23 @@ class PTTableProperty : public PTProperty {
   // Constructor and destructor.
   // Constructor for PropertyType::kTableProperty.
   PTTableProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
+                  YBLocationPtr loc,
                   const MCSharedPtr<MCString>& lhs_,
-                  const PTExpr::SharedPtr& rhs_);
+                  const PTExprPtr& rhs_);
 
   // Constructor for PropertyType::kClusteringOrder.
   PTTableProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
-                  const PTExpr::SharedPtr& expr,
+                  YBLocationPtr loc,
+                  const PTExprPtr& expr,
                   const PTOrderBy::Direction direction);
 
   // Constructor for PropertyType::kCoPartitionTable
   PTTableProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc,
+                  YBLocationPtr loc,
                   const PTQualifiedName::SharedPtr tname);
 
   PTTableProperty(MemoryContext *memctx,
-                  YBLocation::SharedPtr loc);
+                  YBLocationPtr loc);
 
   virtual ~PTTableProperty();
 
@@ -93,19 +89,16 @@ class PTTableProperty : public PTProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  virtual CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const;
+  virtual Status SetTableProperty(yb::TableProperties *table_property) const;
 
   PropertyType property_type() const {
     return property_type_;
   }
 
-  string name() const {
-    DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
-    return order_expr_->QLName();
-  }
+  string name() const;
 
   PTOrderBy::Direction direction() const {
     DCHECK_EQ(property_type_, PropertyType::kClusteringOrder);
@@ -124,7 +117,7 @@ class PTTableProperty : public PTProperty {
     return kPropertyDataTypes.find(property_name) != kPropertyDataTypes.end();
   }
 
-  PTExpr::SharedPtr order_expr_;
+  PTExprPtr order_expr_;
   // We just need some default values. These are overridden in various constructors.
   PTOrderBy::Direction direction_ = PTOrderBy::Direction::kASC;
   PropertyType property_type_ = PropertyType::kTableProperty;
@@ -132,7 +125,7 @@ class PTTableProperty : public PTProperty {
   std::shared_ptr<client::YBTable> copartition_table_;
 
  private:
-  CHECKED_STATUS AnalyzeSpeculativeRetry(const string &val);
+  Status AnalyzeSpeculativeRetry(const string &val);
 
   static const std::map<std::string, PTTableProperty::KVProperty> kPropertyDataTypes;
 };
@@ -147,7 +140,7 @@ class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
   typedef MCSharedPtr<const PTTablePropertyListNode> SharedPtrConst;
 
   explicit PTTablePropertyListNode(MemoryContext *memory_context,
-                                   YBLocation::SharedPtr loc,
+                                   YBLocationPtr loc,
                                    const MCSharedPtr<PTTableProperty>& tnode = nullptr)
       : TreeListNode<PTTableProperty>(memory_context, loc, tnode) {
   }
@@ -171,7 +164,7 @@ class PTTablePropertyListNode : public TreeListNode<PTTableProperty> {
     return MCMakeShared<PTTablePropertyListNode>(memctx, std::forward<TypeArgs>(args)...);
   }
 
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 };
 
 class PTTablePropertyMap : public PTTableProperty {
@@ -188,7 +181,7 @@ class PTTablePropertyMap : public PTTableProperty {
   typedef MCSharedPtr<const PTTablePropertyMap> SharedPtrConst;
 
   PTTablePropertyMap(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc);
+                     YBLocationPtr loc);
 
   virtual ~PTTablePropertyMap();
 
@@ -199,10 +192,10 @@ class PTTablePropertyMap : public PTTableProperty {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  virtual CHECKED_STATUS SetTableProperty(yb::TableProperties *table_property) const override;
+  virtual Status SetTableProperty(yb::TableProperties *table_property) const override;
 
   void SetPropertyName(MCSharedPtr<MCString> property_name) {
     lhs_ = property_name;
@@ -259,9 +252,6 @@ struct Compaction {
   };
 
   static const std::map<std::string, Subproperty> kSubpropertyDataTypes;
-
-  static constexpr auto kClassPrefix = "org.apache.cassandra.db.compaction.";
-  static const auto kClassPrefixLen = std::strlen(kClassPrefix);
 
   static const std::map<std::string, std::set<Subproperty>> kClassSubproperties;
 

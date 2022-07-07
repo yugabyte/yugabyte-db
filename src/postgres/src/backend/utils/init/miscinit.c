@@ -12,6 +12,8 @@
  *
  *-------------------------------------------------------------------------
  */
+
+#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include <sys/param.h>
@@ -462,15 +464,21 @@ GetAuthenticatedUserId(void)
  * with guc.c's internal state, so SET ROLE has to be disallowed.
  *
  * SECURITY_RESTRICTED_OPERATION indicates that we are inside an operation
- * that does not wish to trust called user-defined functions at all.  This
- * bit prevents not only SET ROLE, but various other changes of session state
- * that normally is unprotected but might possibly be used to subvert the
- * calling session later.  An example is replacing an existing prepared
- * statement with new code, which will then be executed with the outer
- * session's permissions when the prepared statement is next used.  Since
- * these restrictions are fairly draconian, we apply them only in contexts
- * where the called functions are really supposed to be side-effect-free
- * anyway, such as VACUUM/ANALYZE/REINDEX.
+ * that does not wish to trust called user-defined functions at all.  The
+ * policy is to use this before operations, e.g. autovacuum and REINDEX, that
+ * enumerate relations of a database or schema and run functions associated
+ * with each found relation.  The relation owner is the new user ID.  Set this
+ * as soon as possible after locking the relation.  Restore the old user ID as
+ * late as possible before closing the relation; restoring it shortly after
+ * close is also tolerable.  If a command has both relation-enumerating and
+ * non-enumerating modes, e.g. ANALYZE, both modes set this bit.  This bit
+ * prevents not only SET ROLE, but various other changes of session state that
+ * normally is unprotected but might possibly be used to subvert the calling
+ * session later.  An example is replacing an existing prepared statement with
+ * new code, which will then be executed with the outer session's permissions
+ * when the prepared statement is next used.  These restrictions are fairly
+ * draconian, but the functions called in relation-enumerating operations are
+ * really supposed to be side-effect-free anyway.
  *
  * SECURITY_NOFORCE_RLS indicates that we are inside an operation which should
  * ignore the FORCE ROW LEVEL SECURITY per-table indication.  This is used to
@@ -716,8 +724,14 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 	/* Must have authenticated already, else can't make permission check */
 	AssertState(OidIsValid(AuthenticatedUserId));
 
-	if (userid != AuthenticatedUserId &&
-		!AuthenticatedUserIsSuperuser)
+	if ((userid != AuthenticatedUserId && !AuthenticatedUserIsSuperuser) &&
+		/*
+		* For YB Managed case, throw an error if:
+		* 1. Caller is not a yb_db_admin member
+		* 2. Caller is trying to set itself as yb_db_admin member or superuser.
+		*/
+		(!IsYbDbAdminUserNosuper(AuthenticatedUserId) ||
+		(IsYbDbAdminUserNosuper(AuthenticatedUserId) && superuser_arg(userid))))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to set session authorization")));

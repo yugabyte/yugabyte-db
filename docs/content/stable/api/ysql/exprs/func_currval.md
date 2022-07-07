@@ -3,15 +3,11 @@ title: currval() function [YSQL]
 headerTitle: currval()
 linkTitle: currval()
 description: Returns the last value returned by the nextval() function for the specified sequence in the current session.
-block_indexing: true
 menu:
   stable:
     identifier: api-ysql-exprs-currval
     parent: api-ysql-exprs
-aliases:
-  - /stable/api/ysql/exprs/func_currval
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis
@@ -82,7 +78,8 @@ ERROR:  currval of sequence "s2" is not yet defined in this session
 
 ## See also
 
-- [`CREATE SEQUENCE`](../../commands/ddl_create_sequence)
-- [`DROP SEQUENCE`](../../commands/drop_sequence)
+- [`CREATE SEQUENCE`](../../the-sql-language/statements/ddl_create_sequence)
+- [`DROP SEQUENCE`](../../the-sql-language/statements/ddl_drop_sequence/)
 - [`lastval()`](../func_lastval)
 - [`nextval()`](../func_nextval)
+- [`setval()`](../func_setval)

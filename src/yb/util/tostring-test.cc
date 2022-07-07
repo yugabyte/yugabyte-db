@@ -15,16 +15,17 @@
 
 #include <deque>
 #include <list>
-#include <map>
-#include <vector>
+#include <memory>
 #include <unordered_map>
+#include <vector>
 
+#include <boost/uuid/uuid_io.hpp>
 #include <gtest/gtest.h>
 
 #include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/stringpiece.h"
 
 #include "yb/util/monotime.h"
-#include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/uuid.h"
 
@@ -39,9 +40,7 @@ namespace {
 
 template<class T>
 void CheckPlain(T t) {
-  std::stringstream ss;
-  ss << +t;
-  ASSERT_EQ(ss.str(), ToString(t));
+  ASSERT_EQ(std::to_string(t), ToString(t));
 }
 
 template<class T>
@@ -72,6 +71,9 @@ TEST(ToStringTest, TestNumber) {
   CheckInt<size_t>(2936429238477);
   CheckInt<ptrdiff_t>(-962394729);
   CheckInt<int8_t>(45);
+  ASSERT_EQ("1.23456789", ToString(1.234567890));
+  ASSERT_EQ("1", ToString(1.0));
+  ASSERT_EQ("1.5", ToString(1.5f));
 }
 
 TEST(ToStringTest, TestCollection) {
@@ -98,7 +100,7 @@ TEST(ToStringTest, TestMap) {
 
   std::unordered_map<int, std::string> u(m.begin(), m.end());
   auto uts = ToString(u);
-  std::vector<pair<int, std::string>> v(m.begin(), m.end());
+  std::vector<std::pair<int, std::string>> v(m.begin(), m.end());
   size_t match_count = 0;
   for (;;) {
     if (uts == ToString(v)) {
@@ -213,8 +215,8 @@ TEST(ToStringTest, LexicalCast) {
 
 TEST(ToStringTest, Uuid) {
   const auto id = Uuid::Generate();
-  auto str = to_string(id);
-  std::vector<boost::uuids::uuid> vec = {id};
+  auto str = to_string(id.impl());
+  std::vector<boost::uuids::uuid> vec = {id.impl()};
 
   ASSERT_EQ(ToString(id), str);
   ASSERT_EQ(ToString(vec), ToString(std::vector<std::string>{str}));

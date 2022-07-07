@@ -12,11 +12,13 @@
 //
 
 #include "yb/docdb/lock_batch.h"
+
 #include "yb/docdb/shared_lock_manager.h"
-#include "yb/util/trace.h"
-#include "yb/util/debug-util.h"
-#include "yb/util/tostring.h"
-#include "yb/util/shared_lock.h"
+
+#include "yb/util/status_format.h"
+
+DEFINE_bool(dump_lock_keys, true,
+            "Whether to add keys to error message when lock batch timed out");
 
 namespace yb {
 namespace docdb {
@@ -24,11 +26,19 @@ namespace docdb {
 LockBatch::LockBatch(SharedLockManager* lock_manager, LockBatchEntries&& key_to_intent_type,
                      CoarseTimePoint deadline)
     : data_(std::move(key_to_intent_type), lock_manager) {
-  if (!empty() && !lock_manager->Lock(&data_.key_to_type, deadline)) {
+  Init(deadline);
+}
+
+void LockBatch::Init(CoarseTimePoint deadline) {
+  if (!empty() && !data_.shared_lock_manager->Lock(&data_.key_to_type, deadline)) {
     data_.shared_lock_manager = nullptr;
+    std::string batch_str;
+    if (FLAGS_dump_lock_keys) {
+      batch_str = Format(", batch: $0", data_.key_to_type);
+    }
     data_.key_to_type.clear();
     data_.status = STATUS_FORMAT(
-        TryAgain, "Failed to obtain locks until deadline: $0", deadline);
+        TryAgain, "Failed to obtain locks until deadline: $0$1", deadline, batch_str);
   }
 }
 
@@ -36,10 +46,15 @@ LockBatch::~LockBatch() {
   Reset();
 }
 
+void LockBatch::DoUnlock() {
+  DCHECK(!empty()) << "Called DoUnlock with empty LockBatch!";
+  VLOG(1) << "Auto-unlocking a LockBatch with " << size() << " keys";
+  DCHECK_NOTNULL(data_.shared_lock_manager)->Unlock(data_.key_to_type);
+}
+
 void LockBatch::Reset() {
   if (!empty()) {
-    VLOG(1) << "Auto-unlocking a LockBatch with " << size() << " keys";
-    DCHECK_NOTNULL(data_.shared_lock_manager)->Unlock(data_.key_to_type);
+    DoUnlock();
     data_.key_to_type.clear();
   }
 }
@@ -52,6 +67,23 @@ void LockBatch::MoveFrom(LockBatch* other) {
   other->data_.key_to_type.clear();
 }
 
+std::string LockBatchEntry::ToString() const {
+  return Format("{ key: $0 intent_types: $1 }", key.as_slice().ToDebugHexString(), intent_types);
+}
+
+UnlockedBatch::UnlockedBatch(
+    LockBatchEntries&& key_to_type, SharedLockManager* shared_lock_manager):
+  key_to_type_(std::move(key_to_type)), shared_lock_manager_(shared_lock_manager) {}
+
+LockBatch UnlockedBatch::Lock(CoarseTimePoint deadline) && {
+  return LockBatch(shared_lock_manager_, std::move(key_to_type_), deadline);
+}
+
+UnlockedBatch LockBatch::Unlock() {
+  DCHECK(!empty());
+  DoUnlock();
+  return UnlockedBatch(std::move(data_.key_to_type), data_.shared_lock_manager);
+}
 
 }  // namespace docdb
 }  // namespace yb

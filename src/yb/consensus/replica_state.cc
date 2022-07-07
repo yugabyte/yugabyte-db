@@ -30,28 +30,33 @@
 // under the License.
 //
 
-#include <algorithm>
+#include "yb/consensus/replica_state.h"
+
 #include <gflags/gflags.h>
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_context.h"
-#include "yb/consensus/consensus_error.h"
+#include "yb/consensus/consensus_round.h"
 #include "yb/consensus/log_util.h"
 #include "yb/consensus/quorum_util.h"
-#include "yb/consensus/replica_state.h"
-#include "yb/gutil/map-util.h"
-#include "yb/gutil/strings/join.h"
-#include "yb/gutil/strings/strcat.h"
+
 #include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/casts.h"
+
+#include "yb/util/atomic.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/enums.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/opid.h"
+#include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
-#include "yb/util/thread_restrictions.h"
-#include "yb/util/enums.h"
 
 using namespace std::literals;
 
@@ -75,21 +80,20 @@ using strings::SubstituteAndAppend;
 ReplicaState::ReplicaState(
     ConsensusOptions options, string peer_uuid, std::unique_ptr<ConsensusMetadata> cmeta,
     ConsensusContext* consensus_context, SafeOpIdWaiter* safe_op_id_waiter,
-    RetryableRequests* retryable_requests, const SplitOpInfo& split_op_info,
+    RetryableRequests* retryable_requests,
     std::function<void(const OpIds&)> applied_ops_tracker)
     : options_(std::move(options)),
       peer_uuid_(std::move(peer_uuid)),
       cmeta_(std::move(cmeta)),
       context_(consensus_context),
       safe_op_id_waiter_(safe_op_id_waiter),
-      split_op_info_(split_op_info),
       applied_ops_tracker_(std::move(applied_ops_tracker)) {
   CHECK(cmeta_) << "ConsensusMeta passed as NULL";
   if (retryable_requests) {
     retryable_requests_ = std::move(*retryable_requests);
   }
 
-  CHECK(leader_state_cache_.is_lock_free());
+  CHECK(IsAcceptableAtomicImpl(leader_state_cache_));
 
   // Actually we don't need this lock, but GetActiveRoleUnlocked checks that we are holding the
   // lock.
@@ -172,7 +176,7 @@ Status ReplicaState::LockForMajorityReplicatedIndexUpdate(UniqueLock* lock) cons
     return STATUS(IllegalState, "Replica not in running state");
   }
 
-  if (PREDICT_FALSE(GetActiveRoleUnlocked() != RaftPeerPB::LEADER)) {
+  if (PREDICT_FALSE(GetActiveRoleUnlocked() != PeerRole::LEADER)) {
     return STATUS(IllegalState, "Replica not LEADER");
   }
   lock->swap(l);
@@ -190,24 +194,38 @@ LeaderState ReplicaState::GetLeaderState(bool allow_stale) const {
     }
   }
 
-  LeaderState result = {cache.status()};
-  if (result.status == LeaderStatus::LEADER_AND_READY) {
-    result.term = cache.extra_value();
-  } else {
-    if (result.status == LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE) {
-      result.remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value());
-    }
-    result.MakeNotReadyLeader(result.status);
+  switch (cache.status()) {
+    case LeaderStatus::LEADER_AND_READY:
+      return LeaderState {
+        .status = cache.status(),
+        .term = static_cast<int64_t>(cache.extra_value()),
+        .remaining_old_leader_lease = MonoDelta(),
+      };
+    case LeaderStatus::LEADER_BUT_OLD_LEADER_MAY_HAVE_LEASE:
+      return LeaderState {
+        .status = cache.status(),
+        .term = OpId::kUnknownTerm,
+        .remaining_old_leader_lease = MonoDelta::FromMicroseconds(cache.extra_value()),
+      };
+    case LeaderStatus::LEADER_BUT_NO_MAJORITY_REPLICATED_LEASE:
+      FALLTHROUGH_INTENDED;
+    case LeaderStatus::LEADER_BUT_NO_OP_NOT_COMMITTED:
+      FALLTHROUGH_INTENDED;
+    case LeaderStatus::NOT_LEADER:
+      return LeaderState {
+        .status = cache.status(),
+        .term = OpId::kUnknownTerm,
+        .remaining_old_leader_lease = MonoDelta(),
+      };
   }
-
-  return result;
+  FATAL_INVALID_ENUM_VALUE(LeaderStatus, cache.status());
 }
 
 LeaderState ReplicaState::GetLeaderStateUnlocked(
     LeaderLeaseCheckMode lease_check_mode, CoarseTimePoint* now) const {
   LeaderState result;
 
-  if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+  if (GetActiveRoleUnlocked() != PeerRole::LEADER) {
     return result.MakeNotReadyLeader(LeaderStatus::NOT_LEADER);
   }
 
@@ -247,7 +265,7 @@ Status ReplicaState::CheckActiveLeaderUnlocked(LeaderLeaseCheckMode lease_check_
     ConsensusStatePB cstate = ConsensusStateUnlocked(CONSENSUS_CONFIG_ACTIVE);
     return STATUS_FORMAT(IllegalState,
                          "Replica $0 is not leader of this config. Role: $1. Consensus state: $2",
-                         peer_uuid_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()), cstate);
+                         peer_uuid_, PeerRole_Name(GetActiveRoleUnlocked()), cstate);
   }
 
   return state.CreateStatus();
@@ -300,7 +318,7 @@ ConsensusStatePB ReplicaState::ConsensusStateUnlocked(ConsensusConfigType type) 
   return cmeta_->ToConsensusStatePB(type);
 }
 
-RaftPeerPB::Role ReplicaState::GetActiveRoleUnlocked() const {
+PeerRole ReplicaState::GetActiveRoleUnlocked() const {
   DCHECK(IsLocked());
   return cmeta_->active_role();
 }
@@ -322,18 +340,31 @@ Status ReplicaState::CheckNoConfigChangePendingUnlocked() const {
   return Status::OK();
 }
 
-Status ReplicaState::SetPendingConfigUnlocked(const RaftConfigPB& new_config) {
+Status ReplicaState::SetPendingConfigUnlocked(
+    const RaftConfigPB& new_config, const OpId& config_op_id) {
   DCHECK(IsLocked());
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(new_config, UNCOMMITTED_QUORUM),
                         "Invalid config to set as pending");
-  CHECK(!cmeta_->has_pending_config())
-      << "Attempt to set pending config while another is already pending! "
-      << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
-      << "Attempted new pending config: " << new_config.ShortDebugString();
-  cmeta_->set_pending_config(new_config);
+  if (!new_config.unsafe_config_change()) {
+    CHECK(!cmeta_->has_pending_config())
+        << "Attempt to set pending config while another is already pending! "
+        << "Existing pending config: " << cmeta_->pending_config().ShortDebugString() << "; "
+        << "Attempted new pending config: " << new_config.ShortDebugString();
+  } else if (cmeta_->has_pending_config()) {
+    LOG_WITH_PREFIX(INFO) << "Allowing unsafe config change even though there is a pending config! "
+                          << "Existing pending config: "
+                          << cmeta_->pending_config().ShortDebugString() << "; "
+                          << "New pending config: " << new_config.ShortDebugString();
+  }
+  cmeta_->set_pending_config(new_config, config_op_id);
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
   return Status::OK();
+}
+
+Status ReplicaState::SetPendingConfigOpIdUnlocked(const OpId& config_op_id) {
+  DCHECK(IsLocked());
+  return cmeta_->set_pending_config_op_id(config_op_id);
 }
 
 Status ReplicaState::ClearPendingConfigUnlocked() {
@@ -355,26 +386,35 @@ const RaftConfigPB& ReplicaState::GetPendingConfigUnlocked() const {
   return cmeta_->pending_config();
 }
 
-Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& committed_config) {
+Status ReplicaState::SetCommittedConfigUnlocked(const RaftConfigPB& config_to_commit) {
   TRACE_EVENT0("consensus", "ReplicaState::SetCommittedConfigUnlocked");
   DCHECK(IsLocked());
-  DCHECK(committed_config.IsInitialized());
-  RETURN_NOT_OK_PREPEND(VerifyRaftConfig(committed_config, COMMITTED_QUORUM),
-                        "Invalid config to set as committed");
+  DCHECK(config_to_commit.IsInitialized());
+  RETURN_NOT_OK_PREPEND(
+      VerifyRaftConfig(config_to_commit, COMMITTED_QUORUM), "Invalid config to set as committed");
 
+  // Only allow to have no pending config here when we want to do unsafe config change, see
+  // https://github.com/yugabyte/yugabyte-db/commit/9305a202b59eb805f80492c1b7412b0fbfd1ce76.
+  DCHECK(cmeta_->has_pending_config() || config_to_commit.unsafe_config_change());
   // Compare committed with pending configuration, ensure they are the same.
-  // Pending will not have an opid_index, so ignore that field.
-  DCHECK(cmeta_->has_pending_config());
-  RaftConfigPB config_no_opid = committed_config;
-  config_no_opid.clear_opid_index();
-  const RaftConfigPB& pending_config = GetPendingConfigUnlocked();
-  // Quorums must be exactly equal, even w.r.t. peer ordering.
-  CHECK_EQ(GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString())
-      << Substitute("New committed config must equal pending config, but does not. "
-                    "Pending config: $0, committed config: $1",
-                    pending_config.ShortDebugString(), committed_config.ShortDebugString());
-
-  cmeta_->set_committed_config(committed_config);
+  // In the event of an unsafe config change triggered by an administrator,
+  // it is possible that the config being committed may not match the pending config
+  // because unsafe config change allows multiple pending configs to exist.
+  // Therefore we only need to validate that 'config_to_commit' matches the pending config
+  // if the pending config does not have its 'unsafe_config_change' flag set.
+  if (!config_to_commit.unsafe_config_change()) {
+    const RaftConfigPB& pending_config = GetPendingConfigUnlocked();
+    // Pending will not have an opid_index, so ignore that field.
+    RaftConfigPB config_no_opid = config_to_commit;
+    config_no_opid.clear_opid_index();
+    // Quorums must be exactly equal, even w.r.t. peer ordering.
+    CHECK_EQ(GetPendingConfigUnlocked().SerializeAsString(), config_no_opid.SerializeAsString())
+        << Substitute(
+               "New committed config must equal pending config, but does not. "
+               "Pending config: $0, committed config: $1",
+               pending_config.ShortDebugString(), config_to_commit.ShortDebugString());
+  }
+  cmeta_->set_committed_config(config_to_commit);
   cmeta_->clear_pending_config();
   CoarseTimePoint now;
   RefreshLeaderStateCacheUnlocked(&now);
@@ -392,7 +432,7 @@ const RaftConfigPB& ReplicaState::GetActiveConfigUnlocked() const {
   return cmeta_->active_config();
 }
 
-bool ReplicaState::IsOpCommittedOrPending(const yb::OpId& op_id, bool* term_mismatch) {
+bool ReplicaState::IsOpCommittedOrPending(const OpId& op_id, bool* term_mismatch) {
   DCHECK(IsLocked());
 
   *term_mismatch = false;
@@ -423,7 +463,7 @@ bool ReplicaState::IsOpCommittedOrPending(const yb::OpId& op_id, bool* term_mism
     CHECK(false);
   }
 
-  if (round->id().term() != op_id.term) {
+  if (round->id().term != op_id.term) {
     *term_mismatch = true;
     return false;
   }
@@ -518,14 +558,15 @@ Status ReplicaState::CancelPendingOperations() {
                           << " pending operations because of shutdown.";
     auto abort_status = STATUS(Aborted, "Operation aborted");
     int i = 0;
-    for (const auto& round : pending_operations_) {
+    for (size_t idx = pending_operations_.size(); idx > 0; ) {
+      --idx;
       // We cancel only operations whose applies have not yet been triggered.
       constexpr auto kLogAbortedOperationsNum = 10;
       if (++i <= kLogAbortedOperationsNum) {
         LOG_WITH_PREFIX(INFO) << "Aborting operation because of shutdown: "
-                              << round->replicate_msg()->ShortDebugString();
+                              << pending_operations_[idx]->replicate_msg()->ShortDebugString();
       }
-      NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
+      NotifyReplicationFinishedUnlocked(pending_operations_[idx], abort_status, OpId::kUnknownTerm,
                                         nullptr /* applied_op_ids */);
     }
   }
@@ -534,11 +575,11 @@ Status ReplicaState::CancelPendingOperations() {
 
 struct PendingOperationsComparator {
   bool operator()(const ConsensusRoundPtr& lhs, int64_t rhs) const {
-    return lhs->id().index() < rhs;
+    return lhs->id().index < rhs;
   }
 
   bool operator()(int64_t lhs, const ConsensusRoundPtr& rhs) const {
-    return lhs < rhs->id().index();
+    return lhs < rhs->id().index;
   }
 };
 
@@ -547,7 +588,7 @@ ReplicaState::PendingOperations::iterator ReplicaState::FindPendingOperation(int
     return pending_operations_.end();
   }
 
-  size_t offset = index - pending_operations_.front()->id().index();
+  size_t offset = index - pending_operations_.front()->id().index;
   // If index < pending_operations_.front()->id().index() then offset will be very big positive
   // number, so could check both bounds in one comparison.
   if (offset >= pending_operations_.size()) {
@@ -555,7 +596,7 @@ ReplicaState::PendingOperations::iterator ReplicaState::FindPendingOperation(int
   }
 
   auto result = pending_operations_.begin() + offset;
-  DCHECK_EQ((**result).id().index(), index);
+  DCHECK_EQ((**result).id().index, index);
   return result;
 }
 
@@ -573,13 +614,13 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   // Either the new preceding id is in the pendings set or it must be equal to the
   // committed index since we can't truncate already committed operations.
   if (preceding_op_iter != pending_operations_.end()) {
-    new_preceding = yb::OpId::FromPB((**preceding_op_iter).id());
+    new_preceding = (**preceding_op_iter).id();
     ++preceding_op_iter;
   } else {
     CHECK_EQ(new_preceding_idx, last_committed_op_id_.index);
     new_preceding = last_committed_op_id_;
     if (!pending_operations_.empty() &&
-        pending_operations_.front()->id().index() > new_preceding_idx) {
+        pending_operations_.front()->id().index > new_preceding_idx) {
       preceding_op_iter = pending_operations_.begin();
     }
   }
@@ -587,16 +628,16 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   // This is the same as UpdateLastReceivedOpIdUnlocked() but we do it
   // here to avoid the bounds check, since we're breaking monotonicity.
   last_received_op_id_ = new_preceding;
-  last_received_op_id_current_leader_ = last_received_op_id_;
+  last_received_op_id_current_leader_ = OpId();
   next_index_ = new_preceding.index + 1;
 
   auto abort_status = STATUS(Aborted, "Operation aborted by new leader");
-  for (auto it = preceding_op_iter; it != pending_operations_.end(); ++it) {
-    const scoped_refptr<ConsensusRound>& round = *it;
+  for (auto it = pending_operations_.end(); it != preceding_op_iter;) {
+    const ConsensusRoundPtr& round = *--it;
+    auto op_id = OpId::FromPB(round->replicate_msg()->id());
     LOG_WITH_PREFIX(INFO) << "Aborting uncommitted operation due to leader change: "
-                          << round->replicate_msg()->id() << ", committed: "
-                          << last_committed_op_id_;
-    NotifyReplicationFinishedUnlocked(round, abort_status, yb::OpId::kUnknownTerm,
+                          << op_id << ", committed: " << last_committed_op_id_;
+    NotifyReplicationFinishedUnlocked(round, abort_status, OpId::kUnknownTerm,
                                       nullptr /* applied_op_ids */);
   }
 
@@ -607,42 +648,8 @@ Status ReplicaState::AbortOpsAfterUnlocked(int64_t new_preceding_idx) {
   return Status::OK();
 }
 
-namespace {
-
-// Returns whether Raft operation of op_type is allowed to be added to Raft log of the tablet
-// for which split tablet Raft operation has been already added to Raft log.
-bool ShouldAllowOpAfterSplitTablet(const OperationType& op_type) {
-  // Old tablet remains running for remote bootstrap purposes for some time and could receive
-  // Raft operations.
-
-  // If new OperationType is added, make an explicit deliberate decision whether new op type
-  // should be allowed to be added into Raft log for old (pre-split) tablet.
-  switch (op_type) {
-    case NO_OP:
-      // We allow NO_OP, so old tablet can have leader changes in case of re-elections.
-      return true;
-    case UNKNOWN_OP: FALLTHROUGH_INTENDED;
-    case WRITE_OP: FALLTHROUGH_INTENDED;
-    case CHANGE_METADATA_OP: FALLTHROUGH_INTENDED;
-    case CHANGE_CONFIG_OP: FALLTHROUGH_INTENDED;
-    case HISTORY_CUTOFF_OP: FALLTHROUGH_INTENDED;
-    case UPDATE_TRANSACTION_OP: FALLTHROUGH_INTENDED;
-    case SNAPSHOT_OP: FALLTHROUGH_INTENDED;
-    case TRUNCATE_OP: FALLTHROUGH_INTENDED;
-    case SPLIT_OP:
-      return false;
-  }
-  FATAL_INVALID_ENUM_VALUE(OperationType, op_type);
-}
-
-}  // namespace
-
-Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& round) {
+Status ReplicaState::AddPendingOperation(const ConsensusRoundPtr& round, OperationMode mode) {
   DCHECK(IsLocked());
-
-  SCHECK_GT(
-      yb::OpId::FromPB(round->replicate_msg()->id()), split_op_info_.op_id, InvalidArgument,
-      "Received op id should be greater than split OP ID.");
 
   auto op_type = round->replicate_msg()->op_type();
   if (PREDICT_FALSE(state_ != kRunning)) {
@@ -654,41 +661,8 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     }
   }
 
-  if (PREDICT_FALSE(!split_op_info_.op_id.empty() && !ShouldAllowOpAfterSplitTablet(op_type))) {
-    // TODO(tsplit): for optimization - include new tablet IDs into response, so client knows
-    // earlier where to retry.
-    // TODO(tsplit): test - check that split_op_id_ is correctly aborted.
-    // TODO(tsplit): test - check that split_op_id_ is correctly restored during bootstrap.
-    return STATUS_EC_FORMAT(
-               IllegalState, ConsensusError(ConsensusErrorPB::TABLET_SPLIT),
-               "Tablet split has been added to Raft log ($0), operation $1 $2 should be retried to "
-               "new tablets.",
-               split_op_info_.op_id, OperationType_Name(op_type), round->replicate_msg()->id())
-        .CloneAndAddErrorCode(SplitChildTabletIdsData(std::vector<TabletId>(
-            split_op_info_.child_tablet_ids.begin(), split_op_info_.child_tablet_ids.end())));
-  }
-
-  // When we do not have a hybrid time leader lease we allow 2 operation types to be added to RAFT.
-  // NO_OP - because even empty heartbeat messages could be used to obtain the lease.
-  // CHANGE_CONFIG_OP - because we should be able to update consensus even w/o lease.
-  // Both of them are safe, since they don't affect user reads or writes.
-  if (GetActiveRoleUnlocked() == RaftPeerPB::LEADER &&
-      op_type != NO_OP &&
-      op_type != CHANGE_CONFIG_OP) {
-    auto lease_status = GetHybridTimeLeaseStatusAtUnlocked(
-        HybridTime(round->replicate_msg()->hybrid_time()).GetPhysicalValueMicros());
-    static_assert(LeaderLeaseStatus_ARRAYSIZE == 3, "Please update logic below to adapt new state");
-    if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
-      return STATUS_FORMAT(LeaderHasNoLease,
-                           "Old leader may have hybrid time lease, while adding: $0",
-                           OperationType_Name(op_type));
-    }
-    lease_status = GetLeaderLeaseStatusUnlocked(nullptr);
-    if (lease_status == LeaderLeaseStatus::OLD_LEADER_MAY_HAVE_LEASE) {
-      return STATUS_FORMAT(LeaderHasNoLease,
-                           "Old leader may have lease, while adding: $0",
-                           OperationType_Name(op_type));
-    }
+  if (mode == OperationMode::kLeader) {
+    RETURN_NOT_OK(context_->CheckOperationAllowed(round->id(), op_type));
   }
 
   // Mark pending configuration.
@@ -697,14 +671,14 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
     DCHECK(round->replicate_msg()->change_config_record().old_config().has_opid_index());
     DCHECK(round->replicate_msg()->change_config_record().has_new_config());
     DCHECK(!round->replicate_msg()->change_config_record().new_config().has_opid_index());
-    if (GetActiveRoleUnlocked() != RaftPeerPB::LEADER) {
+    if (mode == OperationMode::kFollower) {
       const RaftConfigPB& old_config = round->replicate_msg()->change_config_record().old_config();
       const RaftConfigPB& new_config = round->replicate_msg()->change_config_record().new_config();
       // The leader has to mark the configuration as pending before it gets here
       // because the active configuration affects the replication queue.
       // Do one last sanity check.
       Status s = CheckNoConfigChangePendingUnlocked();
-      if (PREDICT_FALSE(!s.ok())) {
+      if (PREDICT_FALSE(!s.ok() && !new_config.unsafe_config_change())) {
         s = s.CloneAndAppend(Format("New config: $0", new_config));
         LOG_WITH_PREFIX(INFO) << s;
         return s;
@@ -714,7 +688,7 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
       // messages were delayed.
       const RaftConfigPB& committed_config = GetCommittedConfigUnlocked();
       if (round->replicate_msg()->id().index() > committed_config.opid_index()) {
-        CHECK_OK(SetPendingConfigUnlocked(new_config));
+        CHECK_OK(SetPendingConfigUnlocked(new_config, round->id()));
       } else {
         LOG_WITH_PREFIX(INFO)
             << "Ignoring setting pending config change with OpId "
@@ -725,18 +699,33 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
       }
     }
   } else if (op_type == WRITE_OP) {
-    if (!retryable_requests_.Register(round)) {
-      return STATUS(AlreadyPresent, "Duplicate request");
+    // Leader registers an operation with RetryableRequests even before assigning an op id.
+    if (mode == OperationMode::kFollower) {
+      auto result = retryable_requests_.Register(round);
+      const auto error_msg = "Cannot register retryable request on follower";
+      if (!result.ok()) {
+        // This can happen if retryable requests have been cleaned up on leader before the follower,
+        // see https://github.com/yugabyte/yugabyte-db/issues/11349.
+        // Just run cleanup in this case and retry.
+        VLOG_WITH_PREFIX(1) << error_msg << ": " << result.status()
+                            << ". Cleaning retryable requests";
+        auto min_op_id ATTRIBUTE_UNUSED = retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
+        result = retryable_requests_.Register(round);
+      }
+      if (!result.ok()) {
+        return result.status()
+            .CloneAndReplaceCode(Status::kIllegalState)
+            .CloneAndPrepend(error_msg);
+      }
+      if (!*result) {
+        return STATUS(IllegalState, error_msg);
+      }
     }
   } else if (op_type == SPLIT_OP) {
     const auto& split_request = round->replicate_msg()->split_request();
     SCHECK_EQ(
         split_request.tablet_id(), cmeta_->tablet_id(), InvalidArgument,
         "Received split op for a different tablet.");
-    split_op_info_ = {
-        .op_id = yb::OpId::FromPB(round->replicate_msg()->id()),
-        .child_tablet_ids = {split_request.new_tablet1_id(), split_request.new_tablet2_id()}
-    };
     // TODO(tsplit): if we get failures past this point we can't undo the tablet state.
     // Might be need some tool to be able to remove SPLIT_OP from Raft log.
   }
@@ -744,7 +733,7 @@ Status ReplicaState::AddPendingOperation(const scoped_refptr<ConsensusRound>& ro
   LOG_IF_WITH_PREFIX(
       DFATAL,
       !pending_operations_.empty() &&
-          pending_operations_.back()->id().index() + 1 != round->id().index())
+          pending_operations_.back()->id().index + 1 != round->id().index)
       << "Adding operation with wrong index: " << AsString(round) << ", last op id: "
       << AsString(pending_operations_.back()->id()) << ", operations: "
       << AsString(pending_operations_);
@@ -828,7 +817,7 @@ Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) 
   }
 
   if (!pending_operations_.empty() &&
-      committed_op_id.index >= pending_operations_.front()->id().index()) {
+      committed_op_id.index >= pending_operations_.front()->id().index) {
     RETURN_NOT_OK(ApplyPendingOperationsUnlocked(committed_op_id, CouldStop::kFalse));
   }
 
@@ -839,7 +828,7 @@ Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) 
 
 void ReplicaState::CheckPendingOperationsHead() const {
   if (pending_operations_.empty() || last_committed_op_id_.empty() ||
-      pending_operations_.front()->id().index() == last_committed_op_id_.index + 1) {
+      pending_operations_.front()->id().index == last_committed_op_id_.index + 1) {
     return;
   }
 
@@ -908,7 +897,7 @@ Status ReplicaState::ApplyPendingOperationsUnlocked(
 
   while (!pending_operations_.empty()) {
     auto round = pending_operations_.front();
-    auto current_id = yb::OpId::FromPB(round->id());
+    auto current_id = round->id();
 
     if (PREDICT_TRUE(prev_id)) {
       CHECK_OK(CheckOpInSequence(prev_id, current_id));
@@ -982,7 +971,7 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
   DCHECK(old_config.has_opid_index());
   DCHECK(!new_config.has_opid_index());
 
-  const OpIdPB& current_id = round->id();
+  const OpId& current_id = round->id();
 
   if (PREDICT_FALSE(FLAGS_inject_delay_commit_pre_voter_to_voter_secs)) {
     bool is_transit_to_voter =
@@ -996,7 +985,7 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
     }
   }
 
-  new_config.set_opid_index(current_id.index());
+  new_config.set_opid_index(current_id.index);
   // Check if the pending Raft config has an OpId less than the committed
   // config. If so, this is a replay at startup in which the COMMIT
   // messages were delayed.
@@ -1020,16 +1009,6 @@ void ReplicaState::ApplyConfigChangeUnlocked(const ConsensusRoundPtr& round) {
 const yb::OpId& ReplicaState::GetCommittedOpIdUnlocked() const {
   DCHECK(IsLocked());
   return last_committed_op_id_;
-}
-
-const yb::OpId& ReplicaState::GetSplitOpIdUnlocked() const {
-  DCHECK(IsLocked());
-  return split_op_info_.op_id;
-}
-
-std::array<TabletId, kNumSplitParts> ReplicaState::GetSplitChildTabletIdsUnlocked() const {
-  DCHECK(IsLocked());
-  return split_op_info_.child_tablet_ids;
 }
 
 RestartSafeCoarseMonoClock& ReplicaState::Clock() {
@@ -1075,29 +1054,21 @@ const yb::OpId& ReplicaState::GetLastReceivedOpIdCurLeaderUnlocked() const {
   return last_received_op_id_current_leader_;
 }
 
-OpIdPB ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
+OpId ReplicaState::GetLastPendingOperationOpIdUnlocked() const {
   DCHECK(IsLocked());
-  return pending_operations_.empty()
-      ? MinimumOpId() : pending_operations_.back()->id();
+  return pending_operations_.empty() ? OpId() : pending_operations_.back()->id();
 }
 
-yb::OpId ReplicaState::NewIdUnlocked() {
+OpId ReplicaState::NewIdUnlocked() {
   DCHECK(IsLocked());
-  return yb::OpId(GetCurrentTermUnlocked(), next_index_++);
+  return OpId(GetCurrentTermUnlocked(), next_index_++);
 }
 
-void ReplicaState::CancelPendingOperation(const OpIdPB& id, bool should_exist) {
-  yb::OpId previous(id.term(), id.index() - 1);
+void ReplicaState::CancelPendingOperation(const OpId& id, bool should_exist) {
   DCHECK(IsLocked());
-  CHECK_EQ(GetCurrentTermUnlocked(), id.term());
-  CHECK_EQ(next_index_, id.index() + 1);
-  next_index_ = id.index();
-
-  if (OpId::FromPB(id) == split_op_info_.op_id) {
-    // If we cancel first split operation in Raft log designated for this Raft group - we need
-    // to reset split_op_info_.
-    split_op_info_ = SplitOpInfo();
-  }
+  CHECK_EQ(GetCurrentTermUnlocked(), id.term);
+  CHECK_EQ(next_index_, id.index + 1);
+  next_index_ = id.index;
 
   // We don't use UpdateLastReceivedOpIdUnlocked because we're actually
   // updating it back to a lower value and we need to avoid the checks
@@ -1105,12 +1076,23 @@ void ReplicaState::CancelPendingOperation(const OpIdPB& id, bool should_exist) {
 
   // This is only ok if we do _not_ release the lock after calling
   // NewIdUnlocked() (which we don't in RaftConsensus::Replicate()).
-  last_received_op_id_ = previous;
+  // The below is correct because we always have starting NoOp, that has the same term and was
+  // replicated.
+  last_received_op_id_ = OpId(id.term, id.index - 1);
   if (should_exist) {
-    DCHECK(!pending_operations_.empty() && OpIdEquals(pending_operations_.back()->id(), id));
+    CHECK(!pending_operations_.empty() && pending_operations_.back()->id() == id)
+        << "Pending operations should end with: " << id << ", but there are: "
+        << AsString(pending_operations_);
     pending_operations_.pop_back();
   } else {
-    DCHECK(pending_operations_.empty() || !OpIdEquals(pending_operations_.back()->id(), id));
+    // It could happen only in leader, while we add new operations, since we already have no op
+    // in this term, that would not be cancelled, we could be sure that previous operation
+    // has the same term.
+    OpId expected_last_op_id(id.term, id.index - 1);
+    CHECK(pending_operations_.empty() ||
+          (pending_operations_.back()->id() == expected_last_op_id))
+        << "Pending operations should end with: " << expected_last_op_id << ", but there are: "
+        << AsString(pending_operations_);
   }
 }
 
@@ -1120,7 +1102,7 @@ string ReplicaState::LogPrefix() const {
                     options_.tablet_id,
                     peer_uuid_,
                     role_and_term.second,
-                    RaftPeerPB::Role_Name(role_and_term.first));
+                    PeerRole_Name(role_and_term.first));
 }
 
 ReplicaState::State ReplicaState::state() const {
@@ -1138,7 +1120,7 @@ string ReplicaState::ToStringUnlocked() const {
   DCHECK(IsLocked());
   return Format(
       "Replica: $0, State: $1, Role: $2, Watermarks: {Received: $3 Committed: $4} Leader: $5",
-      peer_uuid_, state_, RaftPeerPB::Role_Name(GetActiveRoleUnlocked()),
+      peer_uuid_, state_, PeerRole_Name(GetActiveRoleUnlocked()),
       last_received_op_id_, last_committed_op_id_, last_received_op_id_current_leader_);
 }
 
@@ -1177,12 +1159,13 @@ void ReplicaState::UpdateOldLeaderLeaseExpirationOnNonLeaderUnlocked(
     LOG_WITH_PREFIX(INFO) << "Reset our ht lease: " << HybridTime::FromMicros(existing_ht_lease);
     majority_replicated_ht_lease_expiration_.store(PhysicalComponentLease::NoneValue(),
                                                    std::memory_order_release);
+    cond_.notify_all();
   }
 }
 
 template <class Policy>
 LeaderLeaseStatus ReplicaState::GetLeaseStatusUnlocked(Policy policy) const {
-  DCHECK_EQ(GetActiveRoleUnlocked(), RaftPeerPB_Role_LEADER);
+  DCHECK_EQ(GetActiveRoleUnlocked(), PeerRole::LEADER);
 
   if (!policy.Enabled()) {
     return LeaderLeaseStatus::HAS_LEASE;
@@ -1324,17 +1307,25 @@ Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     return result;
   }
 
-  // Slow path
-  UniqueLock l(update_lock_);
-  auto predicate = [this, &result, min_allowed] {
-    result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
-    return result >= min_allowed;
-  };
-  if (deadline == CoarseTimePoint::max()) {
-    cond_.wait(l, predicate);
-  } else if (!cond_.wait_until(l, deadline, predicate)) {
-    return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
+  if (result != PhysicalComponentLease::NoneValue()) {
+    // Slow path
+    UniqueLock l(update_lock_);
+    auto predicate = [this, &result, min_allowed] {
+      result = majority_replicated_ht_lease_expiration_.load(std::memory_order_acquire);
+      return result >= min_allowed || result == PhysicalComponentLease::NoneValue();
+    };
+    if (deadline == CoarseTimePoint::max()) {
+      cond_.wait(l, predicate);
+    } else if (!cond_.wait_until(l, deadline, predicate)) {
+      return STATUS_FORMAT(TimedOut, "Timed out waiting leader lease: $0", min_allowed);
+    }
   }
+
+  if (result == PhysicalComponentLease::NoneValue()) {
+    static const Status kNotLeaderStatus = STATUS(IllegalState, "Not a leader");
+    return kNotLeaderStatus;
+  }
+
   return result;
 }
 
@@ -1368,11 +1359,15 @@ uint64_t ReplicaState::OnDiskSize() const {
   return cmeta_->on_disk_size();
 }
 
-yb::OpId ReplicaState::MinRetryableRequestOpId() {
+Result<bool> ReplicaState::RegisterRetryableRequest(const ConsensusRoundPtr& round) {
+  return retryable_requests_.Register(round);
+}
+
+OpId ReplicaState::MinRetryableRequestOpId() {
   UniqueLock lock;
   auto status = LockForUpdate(&lock);
   if (!status.ok()) {
-    return yb::OpId(); // return minimal op id, that prevents log from cleaning
+    return OpId::Min(); // return minimal op id, that prevents log from cleaning
   }
   return retryable_requests_.CleanExpiredReplicatedAndGetMinOpId();
 }

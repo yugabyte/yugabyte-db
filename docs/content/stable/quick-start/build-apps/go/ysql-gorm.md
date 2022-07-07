@@ -3,40 +3,49 @@ title: Build a Go application that uses GORM and YSQL
 headerTitle: Build a Go application
 linkTitle: Go
 description: Build an Go application that uses GORM and YSQL.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Go
-    identifier: go-2
+    identifier: go-4
     weight: 552
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-pgx/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PGX
+    </a>
+  </li>
   <li >
-    <a href="/stable/quick-start/build-apps/go/ysql-pq" class="nav-link">
+    <a href="../ysql-pq/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - PQ
     </a>
   </li>
   <li >
-    <a href="/stable/quick-start/build-apps/go/ysql-gorm" class="nav-link active">
+    <a href="../ysql-pg/" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL - PG
+    </a>
+  </li>
+  <li >
+    <a href="../ysql-gorm/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL - GORM
     </a>
   </li>
   <li>
-    <a href="/stable/quick-start/build-apps/go/ycql" class="nav-link">
+    <a href="../ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
   </li>
 </ul>
 
-The following tutorial implements an an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
+The following tutorial implements an ORM example using [GORM](https://gorm.io/), the ORM library for Golang, that implements a simple REST API server. The scenario is that of an e-commerce application. Database access in this application is managed using GORM. The e-commerce database (`ysql_gorm`) includes the following tables:
 
 - `users` table — the users of the e-commerce site
 - `products` table — the products being sold
@@ -111,12 +120,12 @@ The REST API server will start and listen for requests at `http://localhost:8080
 Create 2 users.
 
 ```sh
-$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@yb.com" }' \
+$ curl --data '{ "firstName" : "John", "lastName" : "Smith", "email" : "jsmith@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
 ```sh
-$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@yb.com" }' \
+$ curl --data '{ "firstName" : "Tom", "lastName" : "Stewart", "email" : "tstewart@example.com" }' \
    -v -X POST -H 'Content-Type:application/json' http://localhost:8080/users
 ```
 
@@ -156,7 +165,7 @@ $ curl \
 $ ./bin/ysqlsh
 ```
 
-```
+```output
 ysqlsh (11.2)
 Type "help" for help.
 
@@ -167,7 +176,7 @@ yugabyte=#
 yugabyte=# SELECT count(*) FROM users;
 ```
 
-```
+```output
  count
 -------
      2
@@ -178,7 +187,7 @@ yugabyte=# SELECT count(*) FROM users;
 yugabyte=# SELECT count(*) FROM products;
 ```
 
-```
+```output
  count
 -------
      2
@@ -189,7 +198,7 @@ yugabyte=# SELECT count(*) FROM products;
 yugabyte=# SELECT count(*) FROM orders;
 ```
 
-```
+```output
  count
 -------
      2
@@ -202,31 +211,31 @@ yugabyte=# SELECT count(*) FROM orders;
 $ curl http://localhost:8080/users
 ```
 
-```json
+```output.json
 {
   "content": [
     {
       "userId": 2,
       "firstName": "Tom",
       "lastName": "Stewart",
-      "email": "tstewart@yb.com"
+      "email": "tstewart@example.com"
     },
     {
       "userId": 1,
       "firstName": "John",
       "lastName": "Smith",
-      "email": "jsmith@yb.com"
+      "email": "jsmith@example.com"
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
 $ curl http://localhost:8080/products
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -243,14 +252,14 @@ $ curl http://localhost:8080/products
     }
   ],
   ...
-}  
+}
 ```
 
 ```sh
 $ curl http://localhost:8080/orders
 ```
 
-```json
+```output.json
 {
   "content": [
     {
@@ -260,7 +269,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 25,
@@ -273,7 +282,7 @@ $ curl http://localhost:8080/orders
         "userId": 2,
         "firstName": "Tom",
         "lastName": "Stewart",
-        "email": "tstewart@yb.com"
+        "email": "tstewart@example.com"
       },
       "userId": null,
       "orderTotal": 15,
@@ -281,7 +290,7 @@ $ curl http://localhost:8080/orders
     }
   ],
   ...
-}  
+}
 ```
 
 ## Explore the source

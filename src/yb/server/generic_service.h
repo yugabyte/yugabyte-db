@@ -49,6 +49,10 @@ class GenericServiceImpl : public GenericServiceIf {
                SetFlagResponsePB* resp,
                rpc::RpcContext rpc) override;
 
+  void RefreshFlags(const RefreshFlagsRequestPB* req,
+                    RefreshFlagsResponsePB* resp,
+                    rpc::RpcContext rpc) override;
+
   void GetFlag(const GetFlagRequestPB* req,
                GetFlagResponsePB* resp,
                rpc::RpcContext rpc) override;
@@ -66,6 +70,11 @@ class GenericServiceImpl : public GenericServiceIf {
                  rpc::RpcContext rpc) override;
 
   void Ping(const PingRequestPB* req, PingResponsePB* resp, rpc::RpcContext rpc) override;
+
+  // Reload TLS certificates to start using newly added certificates, if any.
+  void ReloadCertificates(const ReloadCertificatesRequestPB* req,
+                          ReloadCertificatesResponsePB* resp,
+                          rpc::RpcContext context) override;
 
  private:
   RpcServerBase* server_;

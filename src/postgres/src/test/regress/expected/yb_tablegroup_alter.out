@@ -7,7 +7,7 @@ CREATE DATABASE db_alter_tablegroup;
 -- Test rename
 CREATE TABLEGROUP alter_tgroup1;
 CREATE TABLEGROUP alter_tgroup2;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
     grpname
 ---------------
  alter_tgroup1
@@ -15,7 +15,7 @@ SELECT grpname FROM pg_tablegroup ORDER BY grpname;
 (2 rows)
 
 ALTER TABLEGROUP alter_tgroup1 RENAME TO alter_tgroup_try_alt;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
        grpname
 ----------------------
  alter_tgroup2
@@ -23,7 +23,7 @@ SELECT grpname FROM pg_tablegroup ORDER BY grpname;
 (2 rows)
 
 ALTER TABLEGROUP alter_tgroup_try_alt RENAME TO alter_tgroup_alt;
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
      grpname
 ------------------
  alter_tgroup2
@@ -34,7 +34,7 @@ ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup_alt; -- fail
 ERROR:  tablegroup "alter_tgroup_alt" already exists
 ALTER TABLEGROUP alter_tgroup2 RENAME TO alter_tgroup2; -- fail
 ERROR:  tablegroup "alter_tgroup2" already exists
-SELECT grpname FROM pg_tablegroup ORDER BY grpname;
+SELECT grpname FROM pg_yb_tablegroup ORDER BY grpname;
      grpname
 ------------------
  alter_tgroup2
@@ -49,6 +49,7 @@ CREATE USER u2;
 CREATE TABLEGROUP alter_tgroup3 OWNER u1;
 CREATE TABLEGROUP alter_tgroup4 OWNER u1;
 CREATE TABLEGROUP alter_tgroup5;
+CREATE TABLEGROUP alter_tgroup6 OWNER u1;
 ALTER TABLEGROUP alter_tgroup3 OWNER TO u2;
 ALTER TABLEGROUP alter_tgroup4 OWNER TO u3; -- fail
 ERROR:  role "u3" does not exist
@@ -62,3 +63,10 @@ ALTER TABLEGROUP alter_tgroup5 OWNER TO u1; -- fail
 ERROR:  must be owner of tablegroup alter_tgroup5
 \c db_alter_tablegroup u2
 DROP TABLEGROUP alter_tgroup3;
+\c db_alter_tablegroup yugabyte_test
+DROP USER u1; -- fails because u1 still owns alter_tgroup6
+ERROR:  role "u1" cannot be dropped because some objects depend on it
+DETAIL:  owner of tablegroup alter_tgroup6
+ALTER TABLEGROUP alter_tgroup6 OWNER TO u2;
+DROP USER u1; -- succeeds
+

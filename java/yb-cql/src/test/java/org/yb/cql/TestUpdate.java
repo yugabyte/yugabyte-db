@@ -12,6 +12,7 @@
 //
 package org.yb.cql;
 
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.Row;
 
 import org.junit.Test;
@@ -182,5 +183,293 @@ public class TestUpdate extends BaseCQLTest {
     expectedMap.put(1, 3);
     expectedMap.put(2, 4);
     assertEquals(expectedMap, row.getMap("m", Integer.class, Integer.class));
+  }
+
+  @Test
+  public void testUpdateWithIgnoreNullJsonbAttributes() throws Exception {
+    String tableName = "test_update_with_ignore_null_jsonb_attributes";
+
+    // Testing with multiple json cols to ensure for loops work fine internally.
+    // Using multiple json attributes in each json col for the same reason.
+    session.execute(
+      String.format("create table %s (h int, r int, v1 jsonb, v2 jsonb, " +
+        "primary key (h, r)) with transactions = {'enabled' : true};", tableName));
+
+    // Tests summary -
+    //   1-4 are for new rows inserted/updated via the UPDATE statement.
+    //   5 tries to update all existing attrbutes to null with ignore_null_jsonb_attributes=false
+    //      - the row isn't removed
+    //   6 tries to add a new row with all json attrs as null with ignore_null_jsonb_attributes=true
+    //      - no new row is added
+    //   7 same as 6 along with RETURN STATUS AS ROW
+    //
+    //  [applied] | [message]                                              | h    | r    | v1   | v2
+    //  ----------+--------------------------------------------------------+------+------+------+---
+    //    False | No update performed as all JSON cols are set to 'null' | null | null | null | null
+    //
+    //   8 same as 6 along with IF clause
+    //  [applied]
+    //  ---------
+    //      False
+    //
+    //   9-10 UPDATE statement with both cases of ignore_null_jsonb_attributes on an existing row
+    //      which was added using INSERT statement
+
+    // Test 1: Verify 'null's are not written for new json attributes if
+    // ignore_null_jsonb_attributes=true.
+    session.execute("update " + tableName +
+      " set v1->'a' = '1', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = '2', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': true};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":1}, {\"b\":2}]");
+
+    // Write 'c' so that we have more than 1 attrs in the cols on which we can perform test 2.
+    session.execute("update " + tableName +
+      " set v1->'c' = '3', v2->'c' = '3' where h = 1 and r = 1;");
+
+    // Test 2: Verify 'null's don't overwrite existing values if ignore_null_jsonb_attributes=true.
+    session.execute("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = '2', v1->'c' = 'null', " +
+      " v2->'a' = '1', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': true};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":1,\"b\":2,\"c\":3}, {\"a\":1,\"b\":2,\"c\":3}]");
+
+    session.execute("truncate table " + tableName);
+
+    // Test 3: Verify 'null's are written for new json attributes if
+    // ignore_null_jsonb_attributes=false.
+    session.execute("update " + tableName +
+      " set v1->'a' = '1', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = '2', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': false};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":1,\"b\":null,\"c\":null}, {\"a\":null,\"b\":2,\"c\":null}]");
+
+    // Write other cols so that we have more than 1 attrs in the cols on which we can perform
+    // test 4.
+    session.execute("update " + tableName +
+      " set v1->'b' = '2', v1->'c' = '3', v2->'a' = '1', v2->'c' = '3' where h = 1 and r = 1;");
+
+    // Test 4: Verify 'null's overwrite existing values if ignore_null_jsonb_attributes=false.
+    session.execute("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = '20', v1->'c' = 'null'," +
+      " v2->'a' = '10', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': false};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":20,\"c\":null}, {\"a\":10,\"b\":null,\"c\":null}]");
+
+    // Test 5: Verify if setting all JSON attrs to 'null' for an existing row doesn't delete the
+    // row if ignore_null_jsonb_attributes=false
+    session.execute("update " + tableName +
+      " set v1->'b' = 'null', v2->'a' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': false};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":null,\"c\":null}, {\"a\":null,\"b\":null,\"c\":null}]");
+
+    session.execute("truncate table " + tableName);
+
+    // Test 6: If all json attrs are set to 'null' and the row is absent, a new row won't
+    // be added if ignore_null_jsonb_attributes=true.
+    session.execute("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': true};");
+    assertQueryRowsUnorderedWithoutDups(String.format("SELECT * FROM %s", tableName));
+
+    // Test 7: same as 6 along with RETURN STATUS AS ROW
+    assertQueryRowsUnorderedWithoutDups(
+      "update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 returns status as row" +
+      " WITH options = {'ignore_null_jsonb_attributes': true};",
+      "Row[false, No update performed as all JSON cols are set to 'null', NULL, NULL, NULL, NULL]");
+
+    // Test 8: same as 6 along with IF clause
+    assertQueryRowsUnorderedWithoutDups(
+      "update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 if exists " +
+      " WITH options = {'ignore_null_jsonb_attributes': true};",
+      "Row[false]");
+
+    // INSERT a row with jsonb nulls and UPDATE it with and without
+    // ignore_null_jsonb_attributes set.
+    session.execute("insert into " + tableName +
+      "(h, r, v1, v2) values (1, 1, '{\"a\": null, \"b\": 2}', '{\"a\": 1, \"b\": null}');");
+
+    // Test 9: UPDATE with ignore_null_jsonb_attributes=true will ignore new attributes with null
+    // and avoid overwriting existing attributes.
+    session.execute("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': true};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":2}, {\"a\":1,\"b\":null}]");
+
+    // Test 10: UPDATE with ignore_null_jsonb_attributes=false will add new attributes with null and
+    // overwriting existing attributes.
+    session.execute("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null_jsonb_attributes': false};");
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":null,\"c\":null}, {\"a\":null,\"b\":null,\"c\":null}]");
+
+    // Test 11: UPDATE with unrecognized option
+    runInvalidStmt("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options = {'ignore_null': false};", "Unknown options property ");
+    runInvalidStmt("update " + tableName +
+      " set v1->'a' = 'null', v1->'b' = 'null', v1->'c' = 'null'," +
+      " v2->'a' = 'null', v2->'b' = 'null', v2->'c' = 'null'" +
+      " where h = 1 and r = 1 WITH options={'ignore_null_jsonb_attributes': true}" +
+      " and options={'ignore_null_jsonb_attributes':true};",
+      "Duplicate Update Property");
+  }
+
+  @Test
+  public void testUpdateWithIgnoreNullJsonbAttributesWithPreparedStmt() throws Exception {
+    String tableName = "test_update_with_ignore_null_jsonb_attributes";
+
+    // Testing with multiple json cols to ensure for loops work fine internally.
+    // Using multiple json attributes in each json col for the same reason.
+    session.execute(
+      String.format("create table %s (h int, r int, v1 jsonb, v2 jsonb, " +
+        "primary key (h, r)) with transactions = {'enabled' : true};", tableName));
+
+    // Tests summary -
+    //   1-8 same as in testUpdateWithIgnoreNullJsonbAttributes
+    //   9 checks if binding with YCQL null (not the jsonb 'null') results in error
+
+    PreparedStatement statement_true_case = session.prepare(
+      "update " + tableName +
+      " set v1->'a' = ?, v1->'b' = ?, v1->'c' = ?," +
+      " v2->'a' = ?, v2->'b' = ?, v2->'c' = ?" +
+      " where h = ? and r = ? WITH options = {'ignore_null_jsonb_attributes': true};");
+
+    PreparedStatement statement_false_case = session.prepare(
+      "update " + tableName +
+      " set v1->'a' = ?, v1->'b' = ?, v1->'c' = ?," +
+      " v2->'a' = ?, v2->'b' = ?, v2->'c' = ?" +
+      " where h = ? and r = ? WITH options = {'ignore_null_jsonb_attributes': false};");
+
+    // Test 1: Verify 'null's are not written for new json attributes if
+    // ignore_null_jsonb_attributes=true.
+    session.execute(statement_true_case.bind(
+      "1", "null", "null", // v1
+      "null", "2", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":1}, {\"b\":2}]");
+
+    // Write 'c' so that we have more than 1 attrs in the cols on which we can perform test 2.
+    session.execute("update " + tableName +
+      " set v1->'c' = '3', v2->'c' = '3' where h = 1 and r = 1;");
+
+    // Test 2: Verify 'null's don't overwrite existing values if ignore_null_jsonb_attributes=true.
+    session.execute(statement_true_case.bind(
+      "null", "2", "null", // v1
+      "1", "null", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":1,\"b\":2,\"c\":3}, {\"a\":1,\"b\":2,\"c\":3}]");
+
+    session.execute("truncate table " + tableName);
+
+    // Test 3: Verify 'null's are written for new json attributes if
+    // ignore_null_jsonb_attributes=false.
+    session.execute(statement_false_case.bind(
+      "1", "null", "null", // v1
+      "null", "2", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":1,\"b\":null,\"c\":null}, {\"a\":null,\"b\":2,\"c\":null}]");
+
+    // Write other cols so that we have more than 1 attrs in the cols on which we can perform
+    // test 4.
+    session.execute("update " + tableName +
+      " set v1->'b' = '2', v1->'c' = '3', v2->'a' = '1', v2->'c' = '3' where h = 1 and r = 1;");
+
+    // Test 4: Verify 'null's overwrite existing values if ignore_null_jsonb_attributes=false.
+    session.execute(statement_false_case.bind(
+      "null", "20", "null", // v1
+      "10", "null", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":20,\"c\":null}, {\"a\":10,\"b\":null,\"c\":null}]");
+
+    // Test 5: Verify if setting all JSON attrs to 'null' for an existing row doesn't delete the
+    // row if ignore_null_jsonb_attributes=false
+    session.execute(statement_false_case.bind(
+      "null", "null", "null", // v1
+      "null", "null", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":null,\"c\":null}, {\"a\":null,\"b\":null,\"c\":null}]");
+
+    session.execute("truncate table " + tableName);
+
+    // Test 6: If all json attrs are set to 'null' and the row is absent, a new row won't
+    // be added if ignore_null_jsonb_attributes=true.
+    session.execute(statement_true_case.bind(
+      "null", "null", "null", // v1
+      "null", "null", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(String.format("SELECT * FROM %s", tableName));
+
+    // INSERT a row with jsonb nulls and UPDATE it with and without
+    // ignore_null_jsonb_attributes set.
+    session.execute("insert into " + tableName +
+      "(h, r, v1, v2) values (1, 1, '{\"a\": null, \"b\": 2}', '{\"a\": 1, \"b\": null}');");
+
+    // Test 7: UPDATE with ignore_null_jsonb_attributes=true will ignore new attributes with null
+    // and avoid overwriting existing attributes.
+    session.execute(statement_true_case.bind(
+      "null", "null", "null", // v1
+      "null", "null", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":2}, {\"a\":1,\"b\":null}]");
+
+    // Test 8: UPDATE with ignore_null_jsonb_attributes=false will add new attributes with null and
+    // overwriting existing attributes.
+    session.execute(statement_false_case.bind(
+      "null", "null", "null", // v1
+      "null", "null", "null", // v2
+      1, 1) // h, r
+    );
+    assertQueryRowsUnorderedWithoutDups(
+      String.format("SELECT * FROM %s", tableName),
+      "Row[1, 1, {\"a\":null,\"b\":null,\"c\":null}, {\"a\":null,\"b\":null,\"c\":null}]");
+
+    // Test 9: check that binding with non-string literal null i.e., the real null, results in
+    // a failure.
+    runInvalidStmt(statement_true_case.bind("1", "2", "3", "1", "2", null, 1, 1),
+      "Invalid json type");
   }
 }

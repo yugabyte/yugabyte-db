@@ -17,4 +17,6 @@ void get_tablespace_page_costs(Oid spcid, float8 *spc_random_page_cost,
 						  float8 *spc_seq_page_cost);
 int			get_tablespace_io_concurrency(Oid spcid);
 
+bool get_yb_tablespace_cost(Oid spcid, double *yb_tsp_cost);
+
 #endif							/* SPCCACHE_H */

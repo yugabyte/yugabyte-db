@@ -10,6 +10,23 @@
   "menu": {
     "config": "disabled"
   },
+  "health": {
+    "configure": "disabled"
+  },
+  "alert": {
+    "list": {
+      "actions": "disabled"
+    },
+    "configuration": {
+      "actions": "disabled"
+    },
+    "destinations": {
+      "actions": "disabled"
+    },
+    "channels": {
+      "actions": "disabled"
+    }
+  },
   "universes": {
     "details": {
       "overview": {
@@ -18,12 +35,17 @@
         "editUniverse": "hidden",
         "readReplica": "hidden",
         "manageEncryption": "hidden",
+        "restartUniverse": "hidden",
         "deleteUniverse": "hidden",
-        "costs": "hidden"
+        "costs": "hidden",
+        "systemdUpgrade": "hidden"
       }
     },
     "tableActions": "disabled",
     "actions": "disabled"
+  },
+  "administration": {
+    "highAvailability": "hidden"
   },
   "main": {
     "stats": "hidden"

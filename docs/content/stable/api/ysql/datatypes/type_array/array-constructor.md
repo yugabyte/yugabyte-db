@@ -3,23 +3,21 @@ title: The array[] value constructor
 linkTitle: array[] constructor
 headerTitle: The array[] value constructor
 description: The array[] value constructor
-block_indexing: true
 menu:
   stable:
     identifier: array-constructor
     parent: api-ysql-datatypes-array
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The `array[]` value constructor is a special variadic function. Uniquely among all the functions described in this _"Array data types and functionality"_ major section, it uses square brackets (`[]`) to surround its list of actual arguments.
 
 ## Purpose and signature
 
-**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/). 
+**Purpose:** Create an array value from scratch using an expression for each of the array's values. Such an expression can itself use the `array[]` constructor or an [array literal](../literals/).
 
-**Signature** 
+**Signature**
 ```
 input value:       [anyarray | [ anyelement, [anyelement]* ]
 return value:      anyarray
@@ -30,7 +28,7 @@ These thee ordinary functions also create an array value from scratch:
 
 - [`array_fill()`](../functions-operators/array-fill/) creates a "blank canvas" array of the specified shape with all values set the same to what you want.
 - [`array_agg()`](../functions-operators/array-agg-unnest/#array-agg) creates an array (of, in general, an implied _"row"_ type) from a SQL subquery.
-- [`text_to_array()`](../functions-operators/string-to-array/) creates a `text[]`array from a single `text` value that uses a a specifiable delimiter to beak it into individual values.
+- [`text_to_array()`](../functions-operators/string-to-array/) creates a `text[]`array from a single `text` value that uses a specifiable delimiter to beak it into individual values.
 
 **Example:**
 ```plpgsql
@@ -39,11 +37,11 @@ select array[(1, 'a')::rt, (2, 'b')::rt, (3, 'dog \ house')::rt]::rt[] as arr;
 ```
 This is the result:
 ```
-                    arr                     
+                    arr
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
-Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecasted. And this `text` value can be used immediately, by enquoting it and typecasting it to the appropriate array data type, to recreate the starting value. The YSQL documentation refers to this form of the literal as its _canonical form_. It is characterized by its complete lack of whitespace except within `text` scalar values and within date-time scalar values. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
+Whenever an array value is shown in `ysqlsh`, it is implicitly `::text` typecast. This `text` value can be used immediately by enquoting it and typecasting it to the appropriate array data type to recreate the starting value. The YSQL documentation refers to this form of the literal as its _canonical form_. It is characterized by its complete lack of whitespace except within `text` scalar values and within date-time scalar values. This term is defined formally in [Defining the canonical form of a literal](../literals/text-typecasting-and-literals/#defining-the-canonical-form-of-a-literal).
 
 To learn why you see four consecutive backslashes, see [Statement of the rules](../literals/array-of-rows/#statement-of-the-rules).
 
@@ -54,7 +52,7 @@ Users who are familiar with the rules that are described in that section often f
 The example below attempts to make many teaching points in one piece of code.
 
 - The actual syntax, when the expressions that the `array[]` constructor uses are all literals, is far simpler than the syntax that governs how to construct an array literal.
-- You can use all of YSQL's array functionality in PL/pgSQL code, just as you can in SQL statements. The code creates and invokes a table function, and not just a `DO` block, to emphasize this interoperability point.
+- You can use all of the YSQL array functionality in PL/pgSQL code, just as you can in SQL statements. The code creates and invokes a table function, and not just a `DO` block, to emphasize this interoperability point.
 - Array-like functionality is essential in any programming language.
 - The `array[]` constructor is most valuable when the expressions that it uses are composed using declared variables, and especially formal parameters, that are used to build whatever values are intended. In this example, the values have the user-defined data type _"rt"_. In other words, the `array[]` constructor is particularly valuable when you build an array programmatically from scalar values that you know first at run time.
 - It vividly demonstrates the semantic effect of the `array[]` constructor like this:
@@ -132,7 +130,7 @@ begin
     arr := two_d::text;
     return next;
   end;
-  
+
 end;
 $body$;
 
@@ -141,7 +139,7 @@ select arr from some_arrays();
 It produces two rows. This is the first:
 
 ```
-                    arr                     
+                    arr
 --------------------------------------------
  {"(1,a)","(2,b)","(3,\"dog \\\\ house\")"}
 ```
@@ -187,7 +185,7 @@ select
 It shows this:
 
 ```
- result 
+ result
 --------
  true
 ```

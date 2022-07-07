@@ -3,18 +3,16 @@ title: compare-dp-results
 linkTitle: compare-dp-results
 headerTitle: Output from running do_compare_dp_results.sql on dp_results
 description: Part of the code kit for the "Analyzing a normal distribution" section within the YSQL window functions documentation (reports of results).
-block_indexing: true
 menu:
   stable:
     identifier: compare-dp-results
     parent: normal-distribution-analysis-reports
     weight: 30
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ```
-bucket | pr n equal | pr min_s equal | pr max_s equal | cd n equal | cd min_s equal | cd max_s equal 
+bucket | pr n equal | pr min_s equal | pr max_s equal | cd n equal | cd min_s equal | cd max_s equal
 --------+------------+----------------+----------------+------------+----------------+----------------
       1 | true       | true           | true           | true       | true           | true
       2 | true       | true           | true           | true       | true           | true

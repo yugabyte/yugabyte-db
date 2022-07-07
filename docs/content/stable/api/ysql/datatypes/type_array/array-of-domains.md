@@ -3,14 +3,12 @@ title: Using an array of DOMAIN values
 linkTitle: array of DOMAINs
 headerTitle: Using an array of DOMAIN values
 description: Using an array of DOMAIN values
-block_indexing: true
 menu:
   stable:
     identifier: array-of-domains
     parent: api-ysql-datatypes-array
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 An array of `DOMAIN` values lets you create, for example, a one-dimensional array whose values are themselves one-dimensional arrays of _different_ lengths. Stating this generally, it lets you implement a ragged multidimensional array, thereby overcoming the restriction that an array must normally be rectilinear. It meets other use cases too.
 
@@ -55,7 +53,7 @@ begin
   ...
   v := array_fill(42, '{2, 2, 2}');
 ```
-See [`array_fill()`](..//functions-operators/array-fill/). 
+See [`array_fill()`](../functions-operators/array-fill/).
 
 The property of the declaration of an array variable that it cannot fix the dimensionality of a value that is subsequently assigned to the variable was pointed out in [Array data types and functionality](../../type_array/). A column in a table with an array data type shares this property so that the column  can hold arrays of different dimensionality in different rows. This goes hand-in-hand with the fact that the following declarations of _"v1"_ and "_v2"_, though apparently different, define identical semantics.
 
@@ -113,12 +111,12 @@ select typecast from t where k = 1;
 This is the result:
 
 ```
-      typecast       
+      typecast
 ---------------------
  {"{1,2}","{3,4,5}"}
 ```
 
-This sentence is copied from [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
+This sentence is copied from [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
 > Notice how the syntax for the _array of arrays_ `text` value compares with the syntax for the _2-d array_ `text` value. Because the _array of arrays_ is ragged, the two inner `{}` pairs contain respectively two and three values. To distinguish between this case and the ordinary rectilinear case, the inner `{}` pairs are surrounded by double quotes.
 
@@ -134,7 +132,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 This is the result:
 
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -149,13 +147,13 @@ with v as (
   select  '{{1,2},{3,4}}'::int[] as two_d_arr)
 select
   two_d_arr[2][1] as "[2][1] -- meaningful",
-  two_d_arr[2]    as    "[2] -- meaningless"     
+  two_d_arr[2]    as    "[2] -- meaningless"
 from v;
 ```
 This is the result:
 
 ```
- [2][1] -- meaningful | [2] -- meaningless 
+ [2][1] -- meaningful | [2] -- meaningless
 ----------------------+--------------------
                     3 |          <IS NULL>
 ```
@@ -175,7 +173,7 @@ select v1[2][1] as "v1[2][1]" from t where k = 1;
 ```
 Sure enough, it shows this:
 ```
- v1[2][1]  
+ v1[2][1]
 -----------
  <IS NULL>
 ```
@@ -185,7 +183,7 @@ select v1[2] as "v1[2]" from t where k = 1;
 ```
 This is the result:
 ```
-  v1[2]  
+  v1[2]
 ---------
  {3,4,5}
 ```
@@ -195,7 +193,7 @@ select (v1[2])[1] as "(v1[2])[1]" from t where k = 1;
 ```
 This is the result:
 ```
- (v1[2])[1] 
+ (v1[2])[1]
 ------------
           3
 ```
@@ -210,7 +208,7 @@ from t where k = 1;
 ```
 This is the result:
 ```
- v1_lb | v1_ub | v2_lb | v2_ub 
+ v1_lb | v1_ub | v2_lb | v2_ub
 -------+-------+-------+-------
      1 |     2 |     1 |     3
 ```
@@ -345,7 +343,7 @@ select v from t order by k;
 It shows the raggedness thus:
 
 ```
-     v     
+     v
 -----------
  {2,6}
  {1,4,5,6}
@@ -376,7 +374,6 @@ Typecasting cannot come to the rescue here. But this function produces the requi
 \set VERBOSITY default
 create or replace function array_agg_v()
   returns arrays_t
-  immutable
   language plpgsql
 as $body$
 <<b>>declare
@@ -401,7 +398,7 @@ select array_agg_v();
 This is the result:
 
 ```
-                       array_agg_v                       
+                       array_agg_v
 ---------------------------------------------------------
  {"{2,6}","{1,4,5,6}","{4,5}","{2,3}","{4,5}","{3,5,7}"}
 ```
@@ -553,9 +550,9 @@ This is the result (after manual whitespace formatting):
 ```
 **Note:** The annotations _"block_matrix"_, and so on, are just that. Because they are _within_ the `text` value, they are part of that value and therefore render it illegal. They were added manually just to highlight the meaning of the overall `text` value.
 
-Finally, check that even this exotic structure conforms to the universal rule, copied from [The non-lossy round trip: value to text typecast and back to value](..//literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
+Finally, check that even this exotic structure conforms to the universal rule, copied from [The non-lossy round trip: value to text typecast and back to value](../literals/text-typecasting-and-literals/#the-non-lossy-round-trip-value-to-text-typecast-and-back-to-value):
 
-> - Any value of any data type, primitive or composite, can be `::text` typecasted. Similarly, there always exists a `text` value that, when properly spelled, can be typecasted to a value of any desired data type, primitive or composite.
+> - Any value of any data type, primitive or composite, can be `::text` typecast. Similarly, there always exists a `text` value that, when properly spelled, can be typecast to a value of any desired data type, primitive or composite.
 > - If you `::text` typecast a value of any data type and then typecast that `text` value to the original value's data type, then the value that you get is identical to the original value.
 
 ```plpgsql
@@ -568,7 +565,7 @@ where k = 1;
 
 with a as (
   select k, t1.v as v1, t2.v as v2
-  from 
+  from
   block_matrices_1 as t1
   inner join
   block_matrices_2 as t2
@@ -580,7 +577,7 @@ where k = 1;
 ```
 This is the result:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -605,7 +602,7 @@ The term _"row-major order"_ is explained in [Joint semantics](../functions-oper
 This is the result:
 
 ```
- r |                 m                  
+ r |                 m
 ---+------------------------------------
  1 | {{01,02,03},{04,05,06},{07,08,09}}
  2 | {{10,11,12},{13,14,15},{16,17,18}}
@@ -621,7 +618,7 @@ order by val;
 ```
 This is the result:
 ```
- val 
+ val
 -----
  19
  20
@@ -647,7 +644,7 @@ order by 1;
 ```
 This is the result:
 ```
- r  | val 
+ r  | val
 ----+-----
   1 | 01
   2 | 02
@@ -657,4 +654,3 @@ This is the result:
  35 | 35
  36 | 36
 ```
-

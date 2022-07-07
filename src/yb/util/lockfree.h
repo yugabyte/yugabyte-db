@@ -14,11 +14,12 @@
 #ifndef YB_UTIL_LOCKFREE_H
 #define YB_UTIL_LOCKFREE_H
 
+#include <atomic>
+
 #include <boost/atomic.hpp>
 
-#include <glog/logging.h>
-
 #include "yb/gutil/dynamic_annotations.h"
+#include "yb/util/atomic.h" // For IsAcceptableAtomicImpl
 
 namespace yb {
 
@@ -100,7 +101,7 @@ template <class T>
 class LockFreeStack {
  public:
   LockFreeStack() {
-    CHECK(head_.is_lock_free());
+    CHECK(IsAcceptableAtomicImpl(head_));
   }
 
   void Push(T* value) {
@@ -133,10 +134,12 @@ class LockFreeStack {
   }
 
  private:
+  // The clang compiler may generate code that requires 16-byte alignment
+  // that causes SEGV if this struct is not aligned properly.
   struct Head {
     T* pointer;
     size_t version;
-  };
+  } __attribute__((aligned(16)));
 
   boost::atomic<Head> head_{Head{nullptr, 0}};
 };

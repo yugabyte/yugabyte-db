@@ -110,6 +110,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_type.h"
@@ -5055,7 +5056,8 @@ examine_simple_variable(PlannerInfo *root, Var *var,
 		 * of learning something even with it.
 		 */
 		if (subquery->setOperations ||
-			subquery->groupClause)
+			subquery->groupClause ||
+			subquery->groupingSets)
 			return;
 
 		/*
@@ -5464,6 +5466,13 @@ get_actual_variable_range(PlannerInfo *root, VariableStatData *vardata,
 	/* If it has indexes it must be a plain relation */
 	rte = root->simple_rte_array[rel->relid];
 	Assert(rte->rtekind == RTE_RELATION);
+
+	/*
+	 * In case of a YB relation attempt to peek at an index means RPC request,
+	 * that is unaffordable at planning time.
+	 */
+	if (IsYBRelationById(rte->relid))
+		return false;
 
 	/* Search through the indexes to see if any match our problem */
 	foreach(lc, rel->indexlist)
@@ -6260,9 +6269,18 @@ regex_selectivity(const char *patt, int pattlen, bool case_insensitive,
 		sel *= FULL_WILDCARD_SEL;
 	}
 
-	/* If there's a fixed prefix, discount its selectivity */
+	/*
+	 * If there's a fixed prefix, discount its selectivity.  We have to be
+	 * careful here since a very long prefix could result in pow's result
+	 * underflowing to zero (in which case "sel" probably has as well).
+	 */
 	if (fixed_prefix_len > 0)
-		sel /= pow(FIXED_CHAR_SEL, fixed_prefix_len);
+	{
+		double		prefixsel = pow(FIXED_CHAR_SEL, fixed_prefix_len);
+
+		if (prefixsel > 0.0)
+			sel /= prefixsel;
+	}
 
 	/* Make sure result stays in range */
 	CLAMP_PROBABILITY(sel);
@@ -6572,6 +6590,7 @@ deconstruct_indexquals(IndexPath *path)
 		qinfo = (IndexQualInfo *) palloc(sizeof(IndexQualInfo));
 		qinfo->rinfo = rinfo;
 		qinfo->indexcol = indexcol;
+		qinfo->is_hashed = false;
 
 		if (IsA(clause, OpExpr))
 		{
@@ -6582,12 +6601,57 @@ deconstruct_indexquals(IndexPath *path)
 			{
 				qinfo->varonleft = true;
 				qinfo->other_operand = rightop;
+
+				if (IsA(leftop, FuncExpr))
+				{
+					qinfo->is_hashed =
+						(((FuncExpr*) leftop)->funcid == YB_HASH_CODE_OID);
+					ListCell   *ls;
+					if (qinfo->is_hashed)
+					{
+						/*
+						 * YB: We aren't going to push down a yb_hash_code call
+						 * if we matched the call against an expression
+						 */
+						foreach(ls, index->indexprs)
+						{
+							Node *indexpr = (Node*) lfirst(ls);
+							if (indexpr && IsA(indexpr, RelabelType))
+								indexpr = (Node *) ((RelabelType *) indexpr)->arg;
+							if (equal(indexpr, leftop)) {
+								qinfo->is_hashed = false;
+								break;
+							}
+						}
+					}
+				}
 			}
 			else
 			{
 				Assert(match_index_to_operand(rightop, indexcol, index));
 				qinfo->varonleft = false;
 				qinfo->other_operand = leftop;
+				if (IsA(rightop, FuncExpr))
+				{
+					qinfo->is_hashed =
+						(((FuncExpr*) rightop)->funcid == YB_HASH_CODE_OID);
+					ListCell   *ls;
+					if (qinfo->is_hashed)
+					{
+						/* YB: We aren't going to push down a yb_hash_code call
+						 * if we matched the call against an expression */
+						foreach(ls, index->indexprs)
+						{
+							Node *indexpr = (Node*) lfirst(ls);
+							if (indexpr && IsA(indexpr, RelabelType))
+								indexpr = (Node *) ((RelabelType *) indexpr)->arg;
+							if (equal(indexpr, rightop)) {
+								qinfo->is_hashed = false;
+								break;
+							}
+						}
+					}
+				}
 			}
 		}
 		else if (IsA(clause, RowCompareExpr))
@@ -7735,7 +7799,7 @@ gincostestimate(PlannerInfo *root, IndexPath *path, double loop_count,
 	 * Obtain statistical information from the meta page, if possible.  Else
 	 * set ginStats to zeroes, and we'll cope below.
 	 */
-	if (!index->hypothetical)
+	if (!index->hypothetical && !IsYBRelationById(index->indexoid))
 	{
 		indexRel = index_open(index->indexoid, AccessShareLock);
 		ginGetStats(indexRel, &ginStats);

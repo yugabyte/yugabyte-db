@@ -15,22 +15,18 @@ package org.yb.pgsql;
 
 import java.util.*;
 
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.util.PSQLException;
-import org.postgresql.util.PSQLWarning;
+import com.yugabyte.util.PSQLException;
+import com.yugabyte.util.PSQLWarning;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.Statement;
-
-import com.datastax.driver.core.Cluster;
-import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Session;
-import com.datastax.driver.core.exceptions.QueryValidationException;
+import java.sql.SQLWarning;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -39,44 +35,11 @@ public class TestPgMisc extends BasePgSQLTest {
 
   private static final Logger LOG = LoggerFactory.getLogger(TestPgMisc.class);
 
-  @BeforeClass
-  public static void SetUpBeforeClass() throws Exception {
+  @Override
+  protected void resetSettings() {
+    super.resetSettings();
     // Starts CQL proxy for the cross Postgres/CQL testNamespaceSeparation test case.
-    BasePgSQLTest.startCqlProxy = true;
-  }
-
-  protected void assertResult(ResultSet rs, Set<String> expectedRows) {
-    Set<String> actualRows = new HashSet<>();
-    for (com.datastax.driver.core.Row row : rs) {
-      actualRows.add(row.toString());
-    }
-    assertEquals(expectedRows, actualRows);
-  }
-
-  @Test
-  public void testNamespaceSeparation() throws Exception {
-    // Create a YCQL session.
-    Session session = Cluster.builder()
-                             .addContactPointsWithPorts(miniCluster.getCQLContactPoints())
-                             .build()
-                             .connect();
-
-    // Verify that namespaces for YSQL databases are not shown in YCQL.
-    assertResult(session.execute("select keyspace_name from system_schema.keyspaces;"),
-                 new HashSet<String>(Arrays.asList("Row[system]",
-                                                   "Row[system_auth]",
-                                                   "Row[system_schema]")));
-
-    // Verify that YSQL table cannot be created in namespaces for YSQL databases.
-    try {
-      session.execute("create table template1.t (a int primary key);");
-      fail("YCQL table created in namespace for YSQL database");
-    } catch (QueryValidationException e) {
-      LOG.info("Expected exception", e);
-    }
-
-    // Verify that YSQL database can be created with the same name as an existing YCQL keyspace.
-    connection.createStatement().execute("create database system;");
+    startCqlProxy = true;
   }
 
   @Test
@@ -133,6 +96,21 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  /*
+   * Test for CHECKPOINT no-op functionality
+   */
+  @Test
+  public void testCheckpoint() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CHECKPOINT");
+      if (statement.getWarnings() != null) {
+        throw statement.getWarnings();
+      }
+      fail("Checkpoint executed without warnings");
+    } catch(PSQLWarning w) {
+    }
+  }
+
   @Test
   public void testTemporaryTableTransactionInExecute() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -147,11 +125,104 @@ public class TestPgMisc extends BasePgSQLTest {
     }
   }
 
+  @Test
+  public void testTemporaryTableTransactionInProcedure() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("CREATE TEMP TABLE test_table(k int PRIMARY KEY)");
+      stmt.execute("CREATE PROCEDURE test_temp_table(k int) AS $$ " +
+        "BEGIN" +
+        "  INSERT INTO test_table VALUES(k);" +
+        "END; $$ LANGUAGE 'plpgsql';");
+      stmt.execute("CALL test_temp_table(1)");
+      stmt.execute("CALL test_temp_table(2)");
+      // Can insert explicitly prepared statement.
+      assertOneRow(stmt, "SELECT COUNT(*) FROM test_table", 2);
+    }
+  }
+
   private void executeQueryInTemplate(String query) throws Exception {
     try (Connection connection = getConnectionBuilder().withTServer(0).withDatabase("template1")
         .connect();
         Statement statement = connection.createStatement()) {
       statement.execute(query);
+    }
+  }
+
+  /*
+   * Test to make sure that pg_hint_plan works consistently with interleaved extended queries.
+   * See issue #12741.
+   */
+  @Test
+  public void testPgHintPlanExtendedQuery() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.executeUpdate("CREATE TABLE test_table(r1 int, r2 int," +
+                              "PRIMARY KEY(r1 asc, r2 asc))");
+      statement.executeUpdate("CREATE INDEX bad_index on test_table(r1 asc)");
+
+      String HINT_QUERY = "/*+IndexScan(test_table bad_index)*/ " +
+                          "SELECT count(*) FROM test_table " +
+                          "WHERE r1 <= 20 AND r2 <= ?";
+      PreparedStatement withhint = connection.prepareStatement(HINT_QUERY);
+      // Make sure we're always preparing statements at the server
+      com.yugabyte.jdbc.PgStatement pgstmt = (com.yugabyte.jdbc.PgStatement) withhint;
+      pgstmt.setPrepareThreshold(1);
+
+      // Make sure we set pg_hint_plan debug statements to WARNING so we can detect them
+      // here
+      statement.executeUpdate("SET pg_hint_plan.enable_hint TO ON;");
+      statement.executeUpdate("SET pg_hint_plan.debug_print TO ON;");
+      statement.executeUpdate("SET pg_hint_plan.message_level TO WARNING");
+
+      String EXPECTED_AVAILABLE_IDX_STRING = "available indexes for IndexScan(test_table): " +
+                                             "bad_index";
+      String EXPECTED_HINT_DEBUG_STRING = "pg_hint_plan:\n" +
+                                          "used hint:\n" +
+                                          "IndexScan(test_table bad_index)\n" +
+                                          "not used hint:\n" +
+                                          "duplication hint:\n" +
+                                          "error hint:\n";
+
+      withhint.setInt(1, 28);
+      withhint.executeQuery();
+
+      // The following checks are to make sure the hints were processed
+      SQLWarning warning = withhint.getWarnings();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_AVAILABLE_IDX_STRING),
+                 warning.getMessage().equals(EXPECTED_AVAILABLE_IDX_STRING));
+      warning = warning.getNextWarning();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_HINT_DEBUG_STRING),
+                 warning.getMessage().equals(EXPECTED_HINT_DEBUG_STRING));
+      withhint.clearWarnings();
+
+      // Execute a query with no hint. This should not affect hint processing for
+      // subsequent queries.
+      statement.executeQuery("SELECT 1;");
+      withhint.clearWarnings();
+
+      // This query should still process hints despite the preceding hintless query.
+      withhint.setInt(1, 30);
+      withhint.executeQuery();
+
+      warning = withhint.getWarnings();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_AVAILABLE_IDX_STRING),
+                 warning.getMessage().equals(EXPECTED_AVAILABLE_IDX_STRING));
+      warning = warning.getNextWarning();
+      assertTrue("Expected a SQL warning for hints", warning != null);
+      assertTrue(String.format("Unexpected Warning Message. Got: '%s', expected to contain : '%s",
+                               warning.getMessage(),
+                               EXPECTED_HINT_DEBUG_STRING),
+                 warning.getMessage().equals(EXPECTED_HINT_DEBUG_STRING));
+
+      statement.executeUpdate("DROP TABLE test_table;");
     }
   }
 }

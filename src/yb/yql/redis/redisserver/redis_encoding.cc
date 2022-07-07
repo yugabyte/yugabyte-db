@@ -12,15 +12,12 @@
 // under the License.
 //
 //
-
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 
+#include <glog/logging.h>
 #include <google/protobuf/repeated_field.h>
 
-#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/numbers.h"
-
-#include "yb/util/logging.h"
 #include "yb/util/ref_cnt_buffer.h"
 
 using namespace std::literals; // NOLINT

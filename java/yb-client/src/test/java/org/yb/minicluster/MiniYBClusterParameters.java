@@ -38,14 +38,18 @@ public class MiniYBClusterParameters {
   public static final int DEFAULT_NUM_SHARDS_PER_TSERVER = 3;
   public static boolean DEFAULT_USE_IP_WITH_CERTIFICATE = false;
 
+  public static final int DEFAULT_ADMIN_OPERATION_TIMEOUT_MS = 90000;
+
   public int numMasters = 1;
   public int numTservers = DEFAULT_NUM_TSERVERS;
   public int numShardsPerTServer = DEFAULT_NUM_SHARDS_PER_TSERVER;
   public boolean useIpWithCertificate = DEFAULT_USE_IP_WITH_CERTIFICATE;
   public int defaultTimeoutMs = 50000;
+  public int defaultAdminOperationTimeoutMs = DEFAULT_ADMIN_OPERATION_TIMEOUT_MS;
   public int replicationFactor = -1;
-  public boolean startPgSqlProxy = false;
+  public boolean startYsqlProxy = false;
   public boolean pgTransactionsEnabled = false;
+  public YsqlSnapshotVersion ysqlSnapshotVersion = YsqlSnapshotVersion.LATEST;
   public Optional<Integer> tserverHeartbeatTimeoutMsOpt = Optional.empty();
   public Optional<Integer> yqlSystemPartitionsVtableRefreshSecsOpt = Optional.empty();
 

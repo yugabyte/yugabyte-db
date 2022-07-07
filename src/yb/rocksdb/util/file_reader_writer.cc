@@ -24,21 +24,23 @@
 #include "yb/rocksdb/util/file_reader_writer.h"
 
 #include <algorithm>
-#include <mutex>
 
 #include "yb/rocksdb/port/port.h"
+#include "yb/rocksdb/rate_limiter.h"
 #include "yb/rocksdb/util/histogram.h"
-#include "yb/rocksdb/util/random.h"
-#include "yb/rocksdb/util/rate_limiter.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/priority_thread_pool.h"
+#include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/status_log.h"
 
 DEFINE_bool(allow_preempting_compactions, true,
             "Whether a compaction may be preempted in favor of another compaction with higher "
             "priority");
+
+DEFINE_int32(rocksdb_file_starting_buffer_size, 8192,
+             "Starting buffer size for writable files, grows by 2x every new allocation.");
 
 namespace rocksdb {
 
@@ -82,6 +84,10 @@ Status RandomAccessFileReader::ReadAndValidate(
     file_read_hist_->Add(elapsed);
   }
   return s;
+}
+
+WritableFileWriter::~WritableFileWriter() {
+  WARN_NOT_OK(Close(), "Failed to close file");
 }
 
 Status WritableFileWriter::Append(const Slice& data) {
@@ -274,6 +280,10 @@ Status WritableFileWriter::SyncWithoutFlush(bool use_fsync) {
   return s;
 }
 
+Status WritableFileWriter::InvalidateCache(size_t offset, size_t length) {
+  return writable_file_->InvalidateCache(offset, length);
+}
+
 Status WritableFileWriter::SyncInternal(bool use_fsync) {
   Status s;
   IOSTATS_TIMER_GUARD(fsync_nanos);
@@ -437,7 +447,7 @@ class ReadaheadRandomAccessFile : public yb::RandomAccessFileWrapper {
 
   ReadaheadRandomAccessFile& operator=(const ReadaheadRandomAccessFile&) = delete;
 
-  CHECKED_STATUS Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
+  Status Read(uint64_t offset, size_t n, Slice* result, uint8_t* scratch) const override {
     if (n >= readahead_size_) {
       return RandomAccessFileWrapper::Read(offset, n, result, scratch);
     }

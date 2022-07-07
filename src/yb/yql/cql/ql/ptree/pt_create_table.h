@@ -18,15 +18,14 @@
 #ifndef YB_YQL_CQL_QL_PTREE_PT_CREATE_TABLE_H_
 #define YB_YQL_CQL_QL_PTREE_PT_CREATE_TABLE_H_
 
-#include "yb/common/schema.h"
-#include "yb/master/master.pb.h"
-#include "yb/yql/cql/ql/ptree/list_node.h"
+#include "yb/client/client_fwd.h"
+
+#include "yb/common/common_fwd.h"
+
+#include "yb/util/memory/arena.h"
+
+#include "yb/yql/cql/ql/ptree/ptree_fwd.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
-#include "yb/yql/cql/ql/ptree/pt_table_property.h"
-#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
-#include "yb/yql/cql/ql/ptree/pt_type.h"
-#include "yb/yql/cql/ql/ptree/pt_name.h"
-#include "yb/yql/cql/ql/ptree/pt_update.h"
 
 namespace yb {
 namespace ql {
@@ -50,7 +49,7 @@ class PTConstraint : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTConstraint(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+  explicit PTConstraint(MemoryContext *memctx = nullptr, YBLocationPtr loc = nullptr)
       : TreeNode(memctx, loc) {
   }
   virtual ~PTConstraint() {
@@ -74,8 +73,8 @@ class PTPrimaryKey : public PTConstraint {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTPrimaryKey(MemoryContext *memctx,
-               YBLocation::SharedPtr loc,
-               const PTListNode::SharedPtr& columns_ = nullptr);
+               YBLocationPtr loc,
+               const PTListNodePtr& columns_ = nullptr);
   virtual ~PTPrimaryKey();
 
   virtual PTConstraintType constraint_type() override {
@@ -88,7 +87,7 @@ class PTPrimaryKey : public PTConstraint {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 
   // Predicate whether this PTPrimary node is a column constraint or a table constraint.
   // - Besides the datatype, certain constraints can also be specified when defining a column in
@@ -107,7 +106,7 @@ class PTPrimaryKey : public PTConstraint {
   }
 
  private:
-  PTListNode::SharedPtr columns_;
+  PTListNodePtr columns_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -122,7 +121,7 @@ class PTStatic : public TreeNode {
 
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
-  explicit PTStatic(MemoryContext *memctx = nullptr, YBLocation::SharedPtr loc = nullptr)
+  explicit PTStatic(MemoryContext *memctx = nullptr, YBLocationPtr loc = nullptr)
       : TreeNode(memctx, loc) {
   }
   virtual ~PTStatic() {
@@ -139,7 +138,7 @@ class PTStatic : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -155,11 +154,11 @@ class PTCreateTable : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTCreateTable(MemoryContext *memctx,
-                YBLocation::SharedPtr loc,
-                const PTQualifiedName::SharedPtr& name,
-                const PTListNode::SharedPtr& elements,
+                YBLocationPtr loc,
+                const PTQualifiedNamePtr& name,
+                const PTListNodePtr& elements,
                 bool create_if_not_exists,
-                const PTTablePropertyListNode::SharedPtr& table_properties);
+                const PTTablePropertyListNodePtr& table_properties);
   virtual ~PTCreateTable();
 
   // Node type.
@@ -174,7 +173,7 @@ class PTCreateTable : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
   // column lists.
@@ -194,41 +193,40 @@ class PTCreateTable : public TreeNode {
     return create_if_not_exists_;
   }
 
-  CHECKED_STATUS AppendColumn(SemContext *sem_context,
+  Status AppendColumn(SemContext *sem_context,
                               PTColumnDefinition *column,
                               bool check_duplicate = false);
 
-  CHECKED_STATUS AppendPrimaryColumn(SemContext *sem_context,
+  Status AppendPrimaryColumn(SemContext *sem_context,
                                      PTColumnDefinition *column,
                                      bool check_duplicate = false);
 
-  CHECKED_STATUS AppendHashColumn(SemContext *sem_context,
+  Status AppendHashColumn(SemContext *sem_context,
                                   PTColumnDefinition *column,
                                   bool check_duplicate = false);
 
-  virtual CHECKED_STATUS CheckPrimaryType(SemContext *sem_context,
+  virtual Status CheckPrimaryType(SemContext *sem_context,
                                           const PTColumnDefinition *column) const;
 
   // Table name.
-  const PTQualifiedName::SharedPtr& table_name() const {
+  const PTQualifiedNamePtr& table_name() const {
     return relation_;
   }
-  virtual client::YBTableName yb_table_name() const {
-    return relation_->ToTableName();
-  }
 
-  PTTablePropertyListNode::SharedPtr table_properties() const {
+  virtual client::YBTableName yb_table_name() const;
+
+  PTTablePropertyListNodePtr table_properties() const {
     return table_properties_;
   }
 
-  virtual CHECKED_STATUS ToTableProperties(TableProperties *table_properties) const;
+  virtual Status ToTableProperties(TableProperties *table_properties) const;
 
   static bool ColumnExists(const MCList<PTColumnDefinition *>& columns,
                            const PTColumnDefinition* column);
 
  protected:
-  PTQualifiedName::SharedPtr relation_;
-  PTListNode::SharedPtr elements_;
+  PTQualifiedNamePtr relation_;
+  PTListNodePtr elements_;
 
   MCList<PTColumnDefinition *> columns_;
   MCList<PTColumnDefinition *> primary_columns_;
@@ -236,7 +234,7 @@ class PTCreateTable : public TreeNode {
 
   bool create_if_not_exists_;
   bool contain_counters_;
-  const PTTablePropertyListNode::SharedPtr table_properties_;
+  const PTTablePropertyListNodePtr table_properties_;
 };
 
 }  // namespace ql

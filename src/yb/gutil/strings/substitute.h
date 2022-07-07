@@ -16,12 +16,14 @@
 //
 
 #include <string.h>
-#include <string>
-using std::string;
 
-#include "yb/gutil/basictypes.h"
+#include <string>
+
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
+
+using std::string;
+
 
 
 #ifndef YB_GUTIL_STRINGS_SUBSTITUTE_H
@@ -89,7 +91,7 @@ class SubstituteArg {
   // overload const string& as well, since this allows us to avoid a temporary
   // object.
   // Tell PVS Studio it is OK that scratch_ is uninitialized.
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(const char* value)  // NOLINT(runtime/explicit)
     : text_(value), size_(value == NULL ? 0 : strlen(text_)) {}
   inline SubstituteArg(const string& value)  // NOLINT(runtime/explicit)
@@ -103,52 +105,52 @@ class SubstituteArg {
   // probably actually using them as 8-bit integers and would probably
   // prefer an integer representation.  But, we don't really know.  So, we
   // make the caller decide what to do.
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(char value)  // NOLINT(runtime/explicit)
     : text_(scratch_), size_(1) { scratch_[0] = value; }
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(short value)  // NOLINT
     : text_(scratch_),
       size_(FastInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(unsigned short value)  // NOLINT
     : text_(scratch_),
       size_(FastUInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(int value)  // NOLINT
     : text_(scratch_),
       size_(FastInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(unsigned int value)  // NOLINT
     : text_(scratch_),
       size_(FastUInt32ToBufferLeft(value, scratch_) - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(long value)  // NOLINT
     : text_(scratch_),
-      size_((sizeof(value) == 4 ? FastInt32ToBufferLeft(value, scratch_)
+      size_((sizeof(value) == 4 ? FastInt32ToBufferLeft(static_cast<int32_t>(value), scratch_)
                                 : FastInt64ToBufferLeft(value, scratch_))
             - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(unsigned long value)  // NOLINT
     : text_(scratch_),
       size_((sizeof(value) == 4 ? FastUInt32ToBufferLeft(value, scratch_)
                                 : FastUInt64ToBufferLeft(value, scratch_))
             - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(long long value)  // NOLINT
     : text_(scratch_),
       size_(FastInt64ToBufferLeft(value, scratch_) - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(unsigned long long value)  // NOLINT
     : text_(scratch_),
       size_(FastUInt64ToBufferLeft(value, scratch_) - scratch_) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(float value)  // NOLINT(runtime/explicit)
     : text_(FloatToBuffer(value, scratch_)), size_(strlen(text_)) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(double value)  // NOLINT(runtime/explicit)
     : text_(DoubleToBuffer(value, scratch_)), size_(strlen(text_)) {}
-  //-V:scratch_:730
+  // -V:scratch_:730
   inline SubstituteArg(bool value)  // NOLINT(runtime/explicit)
     : text_(value ? "true" : "false"), size_(strlen(text_)) {}
   // void* values, with the exception of char*, are printed as
@@ -186,33 +188,35 @@ char* SubstituteToBuffer(GStringPiece format,
 }  // namespace internal
 
 void SubstituteAndAppend(
-  string* output, GStringPiece format,
-  const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg);
+    string* output, GStringPiece format,
+    const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg10 = internal::SubstituteArg::NoArg);
 
 inline string Substitute(
-  GStringPiece format,
-  const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
-  const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg) {
+    GStringPiece format,
+    const internal::SubstituteArg& arg0 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg1 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg2 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg3 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg4 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg5 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg6 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg7 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg8 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg9 = internal::SubstituteArg::NoArg,
+    const internal::SubstituteArg& arg10 = internal::SubstituteArg::NoArg) {
   string result;
-  SubstituteAndAppend(&result, format, arg0, arg1, arg2, arg3, arg4,
-                                       arg5, arg6, arg7, arg8, arg9);
+  SubstituteAndAppend(
+      &result, format, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
   return result;
 }
 

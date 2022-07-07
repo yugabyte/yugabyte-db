@@ -32,13 +32,12 @@
 // Simple protoc plugin which inserts some code at the top of each generated protobuf.
 // Currently, this just adds an include of protobuf-annotations.h, a file which hooks up
 // the protobuf concurrency annotations to our TSAN annotations.
-#include <glog/logging.h>
 #include <google/protobuf/compiler/code_generator.h>
 #include <google/protobuf/compiler/plugin.h>
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/printer.h>
 #include <google/protobuf/io/zero_copy_stream.h>
-#include "yb/gutil/gscoped_ptr.h"
+
 #include "yb/gutil/strings/strip.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -65,7 +64,7 @@ class InsertAnnotations : public ::google::protobuf::compiler::CodeGenerator {
     string pb_file = path_no_extension + ".pb.cc";
 
     // Actually insert the new #include
-    gscoped_ptr<ZeroCopyOutputStream> inserter(gen_context->OpenForInsert(pb_file, "includes"));
+    std::unique_ptr<ZeroCopyOutputStream> inserter(gen_context->OpenForInsert(pb_file, "includes"));
     Printer printer(inserter.get(), '$');
     printer.Print(kIncludeToInsert);
 

@@ -15,10 +15,15 @@
 // Treenode definitions for USE KEYSPACE statements.
 //--------------------------------------------------------------------------------------------------
 
+#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 
 #include "yb/common/redis_constants_common.h"
-#include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
+
+#include "yb/util/status.h"
+
 #include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/yb_location.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
 
 namespace yb {
 namespace ql {
@@ -35,7 +40,7 @@ PTUseKeyspace::PTUseKeyspace(MemoryContext *memctx,
 PTUseKeyspace::~PTUseKeyspace() {
 }
 
-CHECKED_STATUS PTUseKeyspace::Analyze(SemContext *sem_context) {
+Status PTUseKeyspace::Analyze(SemContext *sem_context) {
   if (*name_ == common::kRedisKeyspaceName) {
     return sem_context->Error(loc(),
                               strings::Substitute("$0 is a reserved keyspace name",
@@ -54,6 +59,10 @@ void PTUseKeyspace::PrintSemanticAnalysisResult(SemContext *sem_context) {
   MCString sem_output("\tKeyspace ", sem_context->PTempMem());
   sem_output += name();
   VLOG(3) << "SEMANTIC ANALYSIS RESULT (" << loc() << "):\n" << sem_output;
+}
+
+const char* PTUseKeyspace::name() const {
+  return name_->c_str();
 }
 
 }  // namespace ql

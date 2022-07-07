@@ -1,0 +1,132 @@
+# Copyright 2021 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+
+- name: "Install python3 on CentOS 8 machines"
+  hosts: "{{ yb_ansible_host }}"
+  strategy: linear
+  gather_facts: no
+  become: yes
+  become_method: sudo
+  vars:
+    air_gapped: "{{ air_gap | default(false) }}"
+  tasks:
+    - name: "Install python36 on RHEL8 family"
+      raw: >
+        (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
+        (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
+        (echo "Python already installed or not CentOS 8")
+      when: not air_gapped
+      tags: yb-prebuilt-ami
+
+- name: "Pre-provisioning tasks"
+  hosts: "{{ yb_ansible_host }}"
+  become: yes
+  become_method: sudo
+  tasks:
+    # Disable unattended-upgrades so we can acquire locks to install packages on Ubuntu 18.
+    - block:
+      - name: Disable timers for unattended upgrade, so none will be triggered by `date -s` call.
+        raw: >
+          if systemctl is-enabled --quiet {{item}}; then systemctl disable --now {{item}} &&
+          echo disabled ; fi
+        with_items:
+          - 'apt-daily.timer'
+          - 'apt-daily-upgrade.timer'
+        register: output
+        changed_when: "'disabled' in output.stdout"
+
+      - name: Reload systemctl daemon to apply the new changes
+        raw: systemctl daemon-reload
+
+      - name: Wait for any possibly running unattended upgrade to finish
+        raw: >
+          systemd-run --property="After=apt-daily.service apt-daily-upgrade.service"
+          --wait /bin/true
+
+      - name: Check if /etc/apt/apt.conf.d/20auto-upgrades exists
+        stat:
+          path: /etc/apt/apt.conf.d/20auto-upgrades
+        register: autoupgrade_file
+
+      - name: Disable unattended upgrades
+        raw: 'sed -i /Unattended-Upgrade/s/"1"/"0"/ /etc/apt/apt.conf.d/20auto-upgrades'
+        when: autoupgrade_file.stat.exists
+
+      - name: Update apt cache
+        raw: apt-get -y update
+
+      # Needed for /usr/bin/python as Python 2.7
+      - name: Install python-minimal
+        apt:
+          name: python-minimal
+          state: present
+        when: ansible_distribution_major_version == "18"
+      when: ansible_distribution == "Ubuntu"
+      tags: yb-prebuilt-ami
+    # have to save this in another var since it won't play well with overriding
+    # ansible_ssh_pipelining in the task below
+    - set_fact:
+        disable_requiretty: "{{ ansible_ssh_pipelining }}"
+      tags: yb-prebuilt-ami
+
+    - name: disable requiretty in /etc/sudoers
+      lineinfile:
+        dest: /etc/sudoers.d/yb_sudoers
+        create: yes
+        mode: 0440
+        line: "{{ [ssh_user, yb_server_ssh_user, user_name] |
+          select('defined') | unique | map('regex_replace', '^(.*)$', 'Defaults:\\1 !requiretty') |
+          join('\n') }}"
+      vars:
+        ansible_ssh_pipelining: no
+      when: disable_requiretty
+      tags: yb-prebuilt-ami
+    # https://cloud.google.com/compute/docs/troubleshooting/known-issues#known_issues_for_linux_vm_instances
+    - name: Fix google-cloud yum repo settings for GCP VM
+      replace:
+        dest: "/etc/yum.repos.d/google-cloud.repo"
+        regexp: 'repo_gpgcheck=1'
+        replace: 'repo_gpgcheck=0'
+      when: cloud_type == "gcp" and machine_image is match(".*centos-7.*")
+      tags: yb-prebuilt-ami
+    - name: Gather package facts
+      package_facts:
+      tags: yb-prebuilt-ami
+    # Needed to register custom SSH port with SELinux
+    - name: Install policycoreutils-python on CentOS 7
+      module_defaults:
+        yum:
+          lock_timeout: 600
+      package:
+        name: policycoreutils-python
+        state: present
+      when: >
+        'policycoreutils-python' not in ansible_facts.packages and custom_ssh_port != '22' and
+        ((ansible_distribution == 'CentOS' and ansible_distribution_major_version == '7') or
+        (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '7'))
+      tags: yb-prebuilt-ami
+    - name: Accept target in firewalld on Oracle Linux
+      raw: sudo firewall-cmd --set-target=ACCEPT --permanent && sudo systemctl restart firewalld
+      when: ansible_distribution == 'OracleLinux'
+      tags: yb-prebuilt-ami
+    # Registering custom SSH port with SELinux sometimes fails without this
+    - name: clean dnf
+      shell:
+        cmd: sudo dnf clean all
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
+      tags: yb-prebuilt-ami
+    - name: install latest version of selinux-policy
+      shell:
+        cmd: sudo dnf reinstall --refresh -y selinux-policy
+      register: result
+      until: result.rc == 0
+      retries: 10
+      when: ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '8' and
+            custom_ssh_port != '22'
+      tags: yb-prebuilt-ami

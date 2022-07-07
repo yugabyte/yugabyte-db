@@ -2,13 +2,13 @@
 */.DS_Store
 .DS_Store
 public/*
+docs/*
 npm-debug.log
 node_modules
 
 # VIM/emacs stuff
 *.swp
 *~
-core*
 
 static/css/site.css
 static/js/site.js
@@ -16,3 +16,5 @@ static/js/site.js
 .session.vim*
 
 *.sw?
+
+.hugo_build.lock

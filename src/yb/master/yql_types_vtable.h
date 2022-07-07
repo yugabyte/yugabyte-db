@@ -14,7 +14,7 @@
 #ifndef YB_MASTER_YQL_TYPES_VTABLE_H
 #define YB_MASTER_YQL_TYPES_VTABLE_H
 
-#include "yb/master/yql_empty_vtable.h"
+#include "yb/master/yql_virtual_table.h"
 
 namespace yb {
 namespace master {

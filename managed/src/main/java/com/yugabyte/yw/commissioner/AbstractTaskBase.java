@@ -2,49 +2,46 @@
 
 package com.yugabyte.yw.commissioner;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.HealthManager;
-import com.yugabyte.yw.common.ShellProcessHandler;
-import com.yugabyte.yw.common.ShellResponse;
-import com.yugabyte.yw.forms.CustomerRegisterFormData;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.CustomerConfig;
-import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.Universe;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.TaskExecutor.RunnableTask;
+import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
+import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformExecutorFactory;
+import com.yugabyte.yw.common.RestoreManagerYb;
+import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.TableManager;
+import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
-import play.Configuration;
+import com.yugabyte.yw.models.helpers.NodeStatus;
+import java.time.Duration;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import play.Application;
 import play.api.Play;
 import play.libs.Json;
 
+@Slf4j
 public abstract class AbstractTaskBase implements ITask {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AbstractTaskBase.class);
-
-  // Number of concurrent tasks to execute at a time.
-  private static final int TASK_THREADS = 10;
-
-  // The maximum time that excess idle threads will wait for new tasks before terminating.
-  // The unit is specified in the API (and is seconds).
-  private static final long THREAD_ALIVE_TIME = 60L;
+  private static final String SLEEP_DISABLED_PATH = "yb.tasks.disabled_timeouts";
 
   // The params for this task.
   protected ITaskParams taskParams;
@@ -52,14 +49,42 @@ public abstract class AbstractTaskBase implements ITask {
   // The threadpool on which the tasks are executed.
   protected ExecutorService executor;
 
-  // The sequence of task lists that should be executed.
-  protected SubTaskGroupQueue subTaskGroupQueue;
-
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
   protected UUID userTaskUUID;
 
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
+
+  protected final Application application;
+  protected final play.Environment environment;
+  protected final Config config;
+  protected final ConfigHelper configHelper;
+  protected final RuntimeConfigFactory runtimeConfigFactory;
+  protected final MetricService metricService;
+  protected final AlertConfigurationService alertConfigurationService;
+  protected final YBClientService ybService;
+  protected final RestoreManagerYb restoreManagerYb;
+  protected final TableManager tableManager;
+  protected final TableManagerYb tableManagerYb;
+  private final PlatformExecutorFactory platformExecutorFactory;
+  private final TaskExecutor taskExecutor;
+
+  @Inject
+  protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
+    this.application = baseTaskDependencies.getApplication();
+    this.environment = baseTaskDependencies.getEnvironment();
+    this.config = baseTaskDependencies.getConfig();
+    this.configHelper = baseTaskDependencies.getConfigHelper();
+    this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
+    this.metricService = baseTaskDependencies.getMetricService();
+    this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
+    this.ybService = baseTaskDependencies.getYbService();
+    this.restoreManagerYb = baseTaskDependencies.getRestoreManagerYb();
+    this.tableManager = baseTaskDependencies.getTableManager();
+    this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
+    this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
+    this.taskExecutor = baseTaskDependencies.getTaskExecutor();
+  }
 
   protected ITaskParams taskParams() {
     return taskParams;
@@ -88,29 +113,25 @@ public abstract class AbstractTaskBase implements ITask {
   @Override
   public abstract void run();
 
+  @Override
+  public void terminate() {
+    if (executor != null && !executor.isShutdown()) {
+      MoreExecutors.shutdownAndAwaitTermination(
+          executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+    }
+  }
+
   // Create an task pool which can handle an unbounded number of tasks, while using an initial set
   // of threads which get spawned upto TASK_THREADS limit.
   public void createThreadpool() {
     ThreadFactory namedThreadFactory =
         new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor =
-        new ThreadPoolExecutor(TASK_THREADS, TASK_THREADS, THREAD_ALIVE_TIME,
-                               TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
-                               namedThreadFactory);
+    executor = platformExecutorFactory.createExecutor("task", namedThreadFactory);
   }
 
   @Override
   public void setUserTaskUUID(UUID userTaskUUID) {
     this.userTaskUUID = userTaskUUID;
-  }
-
-  /**
-   * @param response : ShellResponse object
-   */
-  public void processShellResponse(ShellResponse response) {
-    if (response.code != 0) {
-      throw new RuntimeException((response.message != null ) ? response.message : "error");
-    }
   }
 
   /**
@@ -123,88 +144,76 @@ public abstract class AbstractTaskBase implements ITask {
     return Util.convertStringToJson(response.message);
   }
 
-  public UniverseUpdater nodeStateUpdater(final UUID universeUUID, final String nodeName,
-                                          final NodeDetails.NodeState state) {
-    UniverseUpdater updater = new UniverseUpdater() {
-      public void run(Universe universe) {
-        UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        NodeDetails node = universe.getNode(nodeName);
-        if (node == null) {
-          return;
-        }
-        LOG.info("Changing node {} state from {} to {} in universe {}.",
-                  nodeName, node.state, state, universeUUID);
-        node.state = state;
-        if (state == NodeDetails.NodeState.Decommissioned) {
-          node.cloudInfo.private_ip = null;
-          node.cloudInfo.public_ip = null;
-        }
+  public UniverseUpdater nodeStateUpdater(
+      final UUID universeUUID, final String nodeName, final NodeStatus nodeStatus) {
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          NodeDetails node = universe.getNode(nodeName);
+          if (node == null) {
+            return;
+          }
+          NodeStatus currentStatus = NodeStatus.fromNode(node);
+          log.info(
+              "Changing node {} state from {} to {} in universe {}.",
+              nodeName,
+              currentStatus,
+              nodeStatus,
+              universeUUID);
+          nodeStatus.fillNodeStates(node);
+          if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
+            node.cloudInfo.private_ip = null;
+            node.cloudInfo.public_ip = null;
+          }
 
-        // Update the node details.
-        universeDetails.nodeDetailsSet.add(node);
-        universe.setUniverseDetails(universeDetails);
-      }
-    };
+          // Update the node details.
+          universeDetails.nodeDetailsSet.add(node);
+          universe.setUniverseDetails(universeDetails);
+        };
     return updater;
   }
 
-  @Override
-  public boolean shouldSendNotification() {
+  /**
+   * Creates task with appropriate dependency injection
+   *
+   * @param taskClass task class
+   * @return Task instance with injected dependencies
+   */
+  public static <T> T createTask(Class<T> taskClass) {
+    return Play.current().injector().instanceOf(taskClass);
+  }
+
+  public int getSleepMultiplier() {
     try {
-      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-      Customer customer = Customer.get(task.getCustomerUUID());
-      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-      CustomerRegisterFormData.AlertingData alertingData =
-        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-      return task.getType().equals(CustomerTask.TaskType.Create) &&
-        task.getTarget().equals(CustomerTask.TargetType.Backup) &&
-        alertingData.reportBackupFailures;
+      return config.getBoolean(SLEEP_DISABLED_PATH) ? 0 : 1;
     } catch (Exception e) {
-      return false;
+      return 1;
     }
   }
 
-  @Override
-  public void sendNotification() {
-    try {
-      Configuration appConfig = Play.current().injector().instanceOf(Configuration.class);
-      HealthManager healthManager = Play.current().injector().instanceOf(HealthManager.class);
-      CustomerTask task = CustomerTask.findByTaskUUID(userTaskUUID);
-      Customer customer = Customer.get(task.getCustomerUUID());
-      ObjectNode notificationData = Json.newObject()
-        .put("alert_name", "Backup failure")
-        .put("task_type", task.getType().name())
-        .put("target_type", task.getTarget().name())
-        .put("target_name", task.getNotificationTargetName())
-        .put("task_info", taskInfo);
-      String customerTag = String.format("[%s][%s]", customer.name, customer.code);
-      List<String> destinations = new ArrayList<>();
-      String ybEmail = appConfig.getString("yb.health.default_email", null);
-      CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
-      CustomerRegisterFormData.AlertingData alertingData =
-        Json.fromJson(config.data, CustomerRegisterFormData.AlertingData.class);
-      if (alertingData.sendAlertsToYb && ybEmail != null && !ybEmail.isEmpty()) {
-        destinations.add(ybEmail);
-      }
+  protected TaskExecutor getTaskExecutor() {
+    return taskExecutor;
+  }
 
-      if (alertingData.alertingEmail != null && !alertingData.alertingEmail.isEmpty()) {
-        destinations.add(alertingData.alertingEmail);
-      }
+  // Returns the RunnableTask instance to which SubTaskGroup instances can be added and run.
+  protected RunnableTask getRunnableTask() {
+    return getTaskExecutor().getRunnableTask(userTaskUUID);
+  }
 
-      CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customer.uuid);
-      CustomerRegisterFormData.SmtpData smtpData = null;
-      if (smtpConfig != null) {
-        smtpData =  Json.fromJson(smtpConfig.data, CustomerRegisterFormData.SmtpData.class);
-      }
+  // Returns a SubTaskGroup to which subtasks can be added.
+  protected SubTaskGroup createSubTaskGroup(String name) {
+    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+  }
 
-      healthManager.runCommand(
-        customerTag,
-        destinations.size() == 0 ? null : String.join(",", destinations),
-        smtpData,
-        notificationData
-      );
-    } catch (Exception e) {
-      LOG.error("Error alerting task failure", e);
-    }
+  protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
+    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, false);
+    subTaskGroup.setSubTaskExecutor(executor);
+    return subTaskGroup;
+  }
+
+  // Abort-aware wait function makes the current thread to wait until the timeout or the abort
+  // signal is received. It can be a replacement for Thread.sleep in subtasks.
+  protected void waitFor(Duration duration) {
+    getRunnableTask().waitFor(duration);
   }
 }

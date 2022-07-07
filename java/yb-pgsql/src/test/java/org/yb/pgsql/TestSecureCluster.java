@@ -13,13 +13,21 @@
 
 package org.yb.pgsql;
 
+
+import org.apache.commons.io.FileUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.client.TestUtils;
+import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
+import com.google.common.net.HostAndPort;
+
+import java.io.File;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -29,22 +37,74 @@ import static org.yb.AssertionWrappers.assertEquals;
 // But postgres client connections are not encrypted.
 // Some extra work required to adopt BasePgSQLTest for using encrypted connection.
 // Encrypted client connections are tested in pg_wrapper-test test now.
-@RunWith(value= YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunnerNonTsanOnly.class)
 public class TestSecureCluster extends BasePgSQLTest {
-  private String certsDir = null;
+  private String srcCertsDir;
+  private String certsDir;
 
-  public TestSecureCluster() {
+  public TestSecureCluster() throws Exception {
     super();
     FileSystem fs = FileSystems.getDefault();
-    certsDir = fs.getPath(TestUtils.getBinDir()).resolve(
+    srcCertsDir = fs.getPath(TestUtils.getBinDir()).resolve(
         fs.getPath("../ent/test_certs")).toString();
+    certsDir = fs.getPath(TestUtils.getBaseTmpDir()).toString();
+    FileUtils.copyDirectory(new File(srcCertsDir), new File(certsDir));
     useIpWithCertificate = true;
     certFile = String.format("%s/%s", certsDir, "ca.crt");
+  }
+
+  @Override
+  protected Map<String, String> getMasterFlags() {
+    Map<String, String> flagMap = super.getMasterFlags();
+    flagMap.put("use_node_to_node_encryption", "true");
+    flagMap.put("allow_insecure_connections", "false");
+    flagMap.put("certs_dir", certsDir);
+    return flagMap;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("use_node_to_node_encryption", "true");
+    flagMap.put("allow_insecure_connections", "false");
+    flagMap.put("certs_dir", certsDir);
+    return flagMap;
   }
 
   @Test
   public void testConnection() throws Exception {
     createSimpleTable("test", "v");
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("INSERT INTO test VALUES(1, 1, 1), (2, 2, 2)");
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM test")) {
+        assertEquals(2, getRowSet(rs).size());
+      }
+    }
+  }
+
+  @Test
+  public void testCertificateReload() throws Exception {
+    createSimpleTable("test", "v");
+
+    FileUtils.copyDirectory(new File(String.format("%s/%s", srcCertsDir, "CA2")),
+                            new File(certsDir));
+
+    for (HostAndPort host : miniCluster.getTabletServers().keySet()) {
+        runProcess(TestUtils.findBinary("yb-ts-cli"),
+                   "--server_address",
+                   host.toString(),
+                   "--certs_dir_name",
+                   srcCertsDir,
+                   "reload_certificates");
+    }
+    connection.close();
+    connection = getConnectionBuilder().connect();
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("INSERT INTO test VALUES(1, 1, 1), (2, 2, 2)");
+      try (ResultSet rs = stmt.executeQuery("SELECT * FROM test")) {
+        assertEquals(2, getRowSet(rs).size());
+      }
+    }
   }
 
   @Test
@@ -65,18 +125,5 @@ public class TestSecureCluster extends BasePgSQLTest {
                "--certs_dir_name",
                certsDir,
                "list_tablets");
-  }
-
-  private void runProcess(String... args) throws Exception {
-    assertEquals(0, new ProcessBuilder(args).start().waitFor());
-  }
-
-  @Override
-  protected Map<String, String> getMasterAndTServerFlags() {
-    Map<String, String> flagMap = super.getMasterAndTServerFlags();
-    flagMap.put("use_node_to_node_encryption", "true");
-    flagMap.put("allow_insecure_connections", "false");
-    flagMap.put("certs_dir", certsDir);
-    return flagMap;
   }
 }

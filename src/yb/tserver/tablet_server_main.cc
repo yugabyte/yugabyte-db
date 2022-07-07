@@ -34,33 +34,46 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
-#include "yb/tserver/tserver_error.h"
 #include <glog/logging.h>
 
 #ifdef TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
+#include "yb/consensus/log_util.h"
+#include "yb/consensus/consensus_queue.h"
+
+#include "yb/encryption/header_manager_impl.h"
+#include "yb/encryption/encrypted_file_factory.h"
+#include "yb/encryption/universe_key_manager.h"
+
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 
-#include "yb/consensus/log_util.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/call_home.h"
+#include "yb/tserver/tserver_call_home.h"
 #include "yb/rpc/io_thread_pool.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/server/skewed_clock.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
 #include "yb/tserver/tablet_server.h"
+
 #include "yb/util/flags.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
+#include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/status_log.h"
+#include "yb/util/debug/trace_event.h"
+
+#include "yb/rocksutil/rocksdb_encrypted_file_factory.h"
+
+#include "yb/tserver/server_main_util.h"
 
 using namespace std::placeholders;
 
@@ -83,8 +96,12 @@ DEFINE_string(cql_proxy_broadcast_rpc_address, "",
               "RPC address to broadcast to other nodes. This is the broadcast_address used in the"
                   " system.local table");
 
-DEFINE_int64(tserver_tcmalloc_max_total_thread_cache_bytes, 256_MB, "Total number of bytes to "
-    "use for the thread cache for tcmalloc across all threads in the tserver.");
+DEFINE_bool(start_pgsql_proxy, false,
+            "Whether to run a PostgreSQL server as a child process of the tablet server");
+
+DEFINE_bool(enable_ysql, true,
+            "Enable YSQL on cluster. Whether to run a PostgreSQL server as a child process of the"
+                  " tablet server.");
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_bool(callhome_enabled);
@@ -100,7 +117,6 @@ DECLARE_int32(cql_proxy_webserver_port);
 
 DECLARE_string(pgsql_proxy_bind_address);
 DECLARE_bool(start_pgsql_proxy);
-DECLARE_bool(enable_ysql);
 
 DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
 
@@ -140,9 +156,14 @@ void SetProxyAddresses() {
   LOG(INFO) << "Using parsed rpc = " << FLAGS_rpc_bind_addresses;
   SetProxyAddress(&FLAGS_redis_proxy_bind_address, "YEDIS", RedisServer::kDefaultPort);
   SetProxyAddress(&FLAGS_cql_proxy_bind_address, "YCQL", CQLServer::kDefaultPort);
+  SetProxyAddress(&FLAGS_pgsql_proxy_bind_address, "YSQL", PgProcessConf::kDefaultPort);
 }
 
 int TabletServerMain(int argc, char** argv) {
+#ifndef NDEBUG
+  HybridTime::TEST_SetPrettyToString(true);
+#endif
+
   // Reset some default values before parsing gflags.
   FLAGS_rpc_bind_addresses = strings::Substitute("0.0.0.0:$0",
                                                  TabletServer::kDefaultPort);
@@ -156,47 +177,27 @@ int TabletServerMain(int argc, char** argv) {
   } else {
     LOG(INFO) << "Failed to get tablet's host name, keeping default metric_node_name";
   }
-  // Do not sync GLOG to disk for INFO, WARNING.
-  // ERRORs, and FATALs will still cause a sync to disk.
-  FLAGS_logbuflevel = google::GLOG_WARNING;
 
-  server::SkewedClock::Register();
-
-  // Only write FATALs by default to stderr.
-  FLAGS_stderrthreshold = google::FATAL;
-
-  ParseCommandLineFlags(&argc, &argv, true);
-  if (argc != 1) {
-    std::cerr << "usage: " << argv[0] << std::endl;
-    return 1;
-  }
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(log::ModifyDurableWriteFlagIfNotODirect());
-  LOG_AND_RETURN_FROM_MAIN_NOT_OK(InitYB(TabletServerOptions::kServerType, argv[0]));
-
-  LOG(INFO) << "NumCPUs determined to be: " << base::NumCPUs();
-
-  if (FLAGS_remote_boostrap_rate_limit_bytes_per_sec > 0) {
-    LOG(WARNING) << "Flag remote_boostrap_rate_limit_bytes_per_sec has been deprecated. "
-                 << "Use remote_bootstrap_rate_limit_bytes_per_sec flag instead";
-    FLAGS_remote_bootstrap_rate_limit_bytes_per_sec =
-        FLAGS_remote_boostrap_rate_limit_bytes_per_sec;
-  }
-
-#ifdef TCMALLOC_ENABLED
-  LOG(INFO) << "Setting tcmalloc max thread cache bytes to: " <<
-    FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes;
-  if (!MallocExtension::instance()->SetNumericProperty(kTcMallocMaxThreadCacheBytes,
-      FLAGS_tserver_tcmalloc_max_total_thread_cache_bytes)) {
-    LOG(FATAL) << "Failed to set Tcmalloc property: " << kTcMallocMaxThreadCacheBytes;
-  }
-#endif
-
-  CHECK_OK(GetPrivateIpMode());
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
+      TabletServerOptions::kServerType, &argc, &argv));
 
   SetProxyAddresses();
 
+  // Object that manages the universe key registry used for encrypting and decrypting data keys.
+  // Copies are given to each Env.
+  auto universe_key_manager = std::make_unique<encryption::UniverseKeyManager>();
+  // Encrypted env for all non-rocksdb file i/o operations.
+  std::unique_ptr<yb::Env> env =
+      NewEncryptedEnv(DefaultHeaderManager(universe_key_manager.get()));
+  // Encrypted env for all rocksdb file i/o operations.
+  std::unique_ptr<rocksdb::Env> rocksdb_env =
+      NewRocksDBEncryptedEnv(DefaultHeaderManager(universe_key_manager.get()));
+
   auto tablet_server_options = TabletServerOptions::CreateTabletServerOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(tablet_server_options);
+  tablet_server_options->env = env.get();
+  tablet_server_options->rocksdb_env = rocksdb_env.get();
+  tablet_server_options->universe_key_manager = universe_key_manager.get();
   enterprise::Factory factory;
 
   auto server = factory.CreateTabletServer(*tablet_server_options);
@@ -213,11 +214,9 @@ int TabletServerMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(server->Start());
   LOG(INFO) << "Tablet server successfully started.";
 
-  std::unique_ptr<CallHome> call_home;
-  if (FLAGS_callhome_enabled) {
-    call_home = std::make_unique<CallHome>(server.get(), ServerType::TSERVER);
-    call_home->ScheduleCallHome();
-  }
+  std::unique_ptr<TserverCallHome> call_home;
+  call_home = std::make_unique<TserverCallHome>(server.get());
+  call_home->ScheduleCallHome();
 
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
@@ -254,7 +253,7 @@ int TabletServerMain(int argc, char** argv) {
     LOG(INFO) << "Starting PostgreSQL server listening on "
               << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
-    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf);
+    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
   }
 

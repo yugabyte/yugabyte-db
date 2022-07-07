@@ -14,7 +14,12 @@
 #ifndef YB_CLIENT_REJECTION_SCORE_SOURCE_H
 #define YB_CLIENT_REJECTION_SCORE_SOURCE_H
 
+#include <cstdint>
+#include <cstdlib>
+#include <string>
 #include <vector>
+
+#include <glog/logging.h>
 
 #include "yb/util/random_util.h"
 

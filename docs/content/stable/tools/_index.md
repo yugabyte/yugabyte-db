@@ -5,28 +5,24 @@ linkTitle: Third party tools
 description: Interactive third party clients that you can use with YugabyteDB.
 headcontent: Interactive third party clients that you can use with YugabyteDB to run queries and get results from.
 image: /images/section_icons/troubleshoot/troubleshoot.png
-aliases:
-  - /develop/tools/
-  - /stable/develop/tools/
-type: page
-section: REFERENCE
-block_indexing: true
 menu:
   stable:
     identifier: tools
+    parent: reference
     weight: 2900
+type: indexpage
 ---
 
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="dbeaver/">
+    <a class="section-link icon-offset" href="dbeaver-ysql/">
       <div class="head">
         <img class="icon" src="/images/develop/tools/dbeaver-icon.png" aria-hidden="true" />
         <div class="title">DBeaver</div>
       </div>
       <div class="body">
-        An Eclipse-based, multi-platform database tool for developers.
+        An Eclipse-based, multi-platform database tool.
       </div>
     </a>
   </div>

@@ -1,22 +1,10 @@
 ---
-title: Explore features
-headerTitle: Explore features
-linkTitle: Explore features
-description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes (Minikube).
-headcontent:
+title: Explore YugabyteDB
+headerTitle: Explore YugabyteDB
+linkTitle: Explore
+description: Explore the features of YugabyteDB on macOS, Linux, Docker, and Kubernetes.
 image: /images/section_icons/index/explore.png
-aliases:
-  - /stable/explore/cloud-native/
-  - /stable/explore/transactional/
-  - /stable/explore/high-performance/
-  - /stable/explore/planet-scale/
-  - /stable/explore/cloud-native/orchestration-readiness/
-section: YUGABYTEDB CORE
-block_indexing: true
-menu:
-  stable:
-    identifier: explore
-    weight: 540
+type: indexpage
 ---
 
 {{< tip title="Tip" >}}
@@ -26,19 +14,20 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
 {{< /tip >}}
 
 <div class="row">
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="linear-scalability/">
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="ysql-language-features/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Linear scalability</div>
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">SQL features</div>
       </div>
       <div class="body">
-        Reliable, rapid scaling for both writes and reads.
+        SQL features in YSQL.
       </div>
     </a>
   </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="fault-tolerance/">
+    <a class="section-link icon-offset" href="fault-tolerance/macos">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
         <div class="title">Fault tolerance</div>
@@ -48,40 +37,106 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
       </div>
     </a>
   </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="global-distribution/">
+    <a class="section-link icon-offset" href="linear-scalability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Horizontal scalability</div>
+      </div>
+      <div class="body">
+        Reliable, rapid scaling for both writes and reads.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="transactions/">
+      <div class="head">
+        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="title">Transactions</div>
+      </div>
+      <div class="body">
+        Explore distributed transactions support and other concurrency control features in YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="indexes-constraints/">
+      <div class="head">
+        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="title">Indexes and constraints</div>
+      </div>
+      <div class="body">
+        Improve database performance with indexes and constraints.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="json-support/jsonb-ysql/">
+      <div class="head">
+        <div class="icon"><i class="far fa-file-code"></i></div>
+        <div class="title">JSON support</div>
+      </div>
+      <div class="body">
+        JSON document data types and support for built-in functions, indexes and constraints.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="multi-region-deployments/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Global distribution</div>
+        <div class="title">Multi-region deployments</div>
       </div>
       <div class="body">
-        Multi-region deployments made easy.
+        Multi-region deployment topologies supported by YugabyteDB such as sync and async replication, geo-partitioning, etc.
       </div>
     </a>
   </div>
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="auto-sharding/">
+    <a class="section-link icon-offset" href="query-1-performance/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/auto_sharding.png" aria-hidden="true" />
-        <div class="title">Auto sharding</div>
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Query tuning</div>
       </div>
       <div class="body">
-        Purpose-built for large, ever-growing datasets.
+        Optimize query performance.
       </div>
     </a>
   </div>
+
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="follower-reads/">
+    <a class="section-link icon-offset" href="colocated-tables/macos/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Follower reads</div>
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
+        <div class="title">Colocated tables</div>
       </div>
       <div class="body">
-        Reduce read latency by reading from follower replicas.
+        Model large number of relations and databases with fault tolerance.
       </div>
     </a>
   </div>
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+-->
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="security/security/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/secure.png" aria-hidden="true" />
+        <div class="title">Security</div>
+      </div>
+      <div class="body">
+        Learn about strategies for securing YugabyteDB.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="observability/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
@@ -94,37 +149,13 @@ Use [yb-ctl](../admin/yb-ctl) local cluster management utility to explore the co
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="colocated-tables/">
+    <a class="section-link icon-offset" href="cluster-management/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
-        <div class="title">Colocated tables</div>
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Cluster management</div>
       </div>
       <div class="body">
-        Model large number of relations and databases with fault tolerance.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="change-data-capture/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
-        <div class="title">Change data capture (CDC)</div>
-      </div>
-      <div class="body">
-        Stream data changes from YugabyteDB to external systems.
-      </div>
-    </a>
-  </div>
-
-   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="two-data-centers/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
-        <div class="title">Two data center (2DC)</div>
-      </div>
-      <div class="body">
-        Replicate data changes between two geo-distributed data centers.
+        Learn about point-in-time recovery.
       </div>
     </a>
   </div>

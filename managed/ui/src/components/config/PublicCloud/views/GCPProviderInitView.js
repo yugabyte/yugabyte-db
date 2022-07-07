@@ -13,9 +13,10 @@ import {
 import { change, Field } from 'redux-form';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { YBLoading } from '../../../common/indicators';
-import { isNonEmptyObject, isNonEmptyString } from '../../../../utils/ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString, trimString } from '../../../../utils/ObjectUtils';
 import { reduxForm, FieldArray } from 'redux-form';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../../common/flexbox/YBFlexBox';
+import { NTPConfig, NTP_TYPES } from './NTPConfig';
 
 const validationIsRequired = (value) => (value && value.trim() !== '' ? undefined : 'Required');
 
@@ -45,6 +46,14 @@ class renderRegionInput extends Component {
                 validate={validationIsRequired}
                 component={YBInputField}
                 placeHolder="Subnet ID"
+              />
+            </Col>
+            <Col lg={12}>
+              <Field
+                name={`${item}.customImageId`}
+                component={YBInputField}
+                placeHolder="Custom Machine Image (Optional)"
+                normalize={trimString}
               />
             </Col>
           </Row>
@@ -89,6 +98,11 @@ class GCPProviderInitView extends Component {
     const self = this;
     const gcpCreateConfig = {};
     const perRegionMetadata = {};
+    const ntpConfig = {
+      setUpChrony: vals['setUpChrony'],
+      showSetUpChrony: vals['setUpChrony'],
+      ntpServers: vals['ntpServers']
+    }
     if (isNonEmptyString(vals.destVpcId)) {
       gcpCreateConfig['network'] = vals.destVpcId;
       gcpCreateConfig['use_host_vpc'] = true;
@@ -100,7 +114,7 @@ class GCPProviderInitView extends Component {
     }
     if (vals.network_setup !== 'new_vpc') {
       vals.regionMapping.forEach(
-        (item) => (perRegionMetadata[item.region] = { subnetId: item.subnet })
+        (item) => (perRegionMetadata[item.region] = { subnetId: item.subnet , customImageId: item.customImageId})
       );
     }
     if (isNonEmptyString(vals.firewall_tags)) {
@@ -112,7 +126,7 @@ class GCPProviderInitView extends Component {
     const configText = vals.gcpConfig;
     if (vals.credential_input === 'local_service_account') {
       gcpCreateConfig['use_host_credentials'] = true;
-      return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
+      return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
     } else if (
       vals.credential_input === 'upload_service_account_json' &&
       isNonEmptyObject(configText)
@@ -127,7 +141,7 @@ class GCPProviderInitView extends Component {
         } catch (e) {
           self.setState({ error: 'Invalid GCP config JSON file' });
         }
-        return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata);
+        return self.props.createGCPProvider(providerName, gcpCreateConfig, perRegionMetadata, ntpConfig);
       };
     } else {
       this.setState({ error: 'GCP Config JSON is required' });
@@ -171,7 +185,7 @@ class GCPProviderInitView extends Component {
   };
 
   render() {
-    const { handleSubmit, configuredProviders, submitting } = this.props;
+    const { handleSubmit, configuredProviders, submitting, isBack, onBack } = this.props;
     if (getPromiseState(configuredProviders).isLoading()) {
       return <YBLoading />;
     }
@@ -342,8 +356,17 @@ class GCPProviderInitView extends Component {
                 {gcpProjectField}
                 {destVpcField}
                 {regionInput}
+              <Row>
+                <Col lg={3}>
+                  <div className="form-item-custom-label">NTP Setup</div>
+                </Col>
+                <Col lg={7}>
+                  <NTPConfig onChange={this.updateFormField} hideHelp={true}/>
+                </Col>
+              </Row>
               </Col>
             </Row>
+
           </div>
           <div className="form-action-button-container">
             <YBButton
@@ -352,6 +375,14 @@ class GCPProviderInitView extends Component {
               btnClass={'btn btn-default save-btn'}
               btnType="submit"
             />
+            {isBack && (
+              <YBButton
+                onClick={onBack}
+                btnText="Back"
+                btnClass="btn btn-default"
+                disabled={submitting}
+              />
+            )}
           </div>
         </form>
       </div>
@@ -375,6 +406,9 @@ const validate = (values) => {
       errors.destVpcId = 'VPC Network Name is Required';
     }
   }
+  if(values.ntp_option === NTP_TYPES.MANUAL && values.ntpServers.length === 0){
+    errors.ntpServers = 'NTP servers cannot be empty'
+  }
   return errors;
 };
 
@@ -384,7 +418,10 @@ function mapStateToProps(state) {
       accountName: '',
       credential_input: 'upload_service_account_json',
       airGapInstall: false,
-      network_setup: 'new_vpc'
+      network_setup: 'new_vpc',
+      ntp_option: NTP_TYPES.PROVIDER,
+      ntpServers: [],
+      setUpChrony: true
     }
   };
 }
@@ -395,6 +432,7 @@ export default connect(
 )(
   reduxForm({
     form: 'gcpProviderConfigForm',
-    validate
+    validate,
+    touchOnChange: true
   })(GCPProviderInitView)
 );

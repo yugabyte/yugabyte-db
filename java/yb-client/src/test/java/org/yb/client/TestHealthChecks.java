@@ -71,7 +71,7 @@ public class TestHealthChecks extends BaseYBClientTest {
   }
 
   @Override
-  protected int overridableNumShardsPerTServer() {
+  protected int getNumShardsPerTServer() {
     return 1;
   }
 

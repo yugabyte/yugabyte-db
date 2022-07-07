@@ -33,21 +33,18 @@
 #ifndef YB_UTIL_TEST_UTIL_H
 #define YB_UTIL_TEST_UTIL_H
 
+#include <dirent.h>
+
 #include <atomic>
 #include <string>
-#include <thread>
 
+#include <glog/logging.h>
 #include <gtest/gtest.h>
-
-#include "yb/gutil/gscoped_ptr.h"
 
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
-#include "yb/util/result.h"
 #include "yb/util/port_picker.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/thread.h"
-#include "yb/util/tsan_util.h"
+#include "yb/util/test_macros.h" // For convenience
 
 #define ASSERT_EVENTUALLY(expr) do { \
   AssertEventually(expr); \
@@ -63,7 +60,7 @@ class Messenger;
 
 // Our test string literals contain "\x00" that is treated as a C-string null-terminator.
 // So we need to call the std::string constructor that takes the length argument.
-#define BINARY_STRING(s) string((s), sizeof(s) - 1)
+#define BINARY_STRING(s) std::string((s), sizeof(s) - 1)
 
 class YBTest : public ::testing::Test {
  public:
@@ -84,7 +81,7 @@ class YBTest : public ::testing::Test {
 
   uint16_t AllocateFreePort() { return port_picker_.AllocateFreePort(); }
 
-  gscoped_ptr<Env> env_;
+  std::unique_ptr<Env> env_;
   google::FlagSaver flag_saver_;  // Reset flags on every test.
   PortPicker port_picker_;
 
@@ -153,7 +150,7 @@ void LogVectorDiff(const std::vector<T>& expected, const std::vector<T>& actual)
       smaller_vector = &expected;
     }
 
-    for (int i = smaller_vector->size();
+    for (auto i = smaller_vector->size();
          i < min(smaller_vector->size() + 16, bigger_vector->size());
          ++i) {
       LOG(WARNING) << bigger_vector_desc << "[" << i << "]: " << (*bigger_vector)[i];
@@ -192,35 +189,43 @@ constexpr int kDefaultMaxWaitDelayMs = 2000;
 } // namespace test_util
 
 // Waits for the given condition to be true or until the provided deadline happens.
-CHECKED_STATUS Wait(
-    std::function<Result<bool>()> condition,
+Status Wait(
+    const std::function<Result<bool>()>& condition,
     MonoTime deadline,
     const std::string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
+Status Wait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
+Status LoggedWait(
+    const std::function<Result<bool>()>& condition,
+    CoarseTimePoint deadline,
+    const std::string& description,
+    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
+    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
+    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
+
 // Waits for the given condition to be true or until the provided timeout has expired.
-CHECKED_STATUS WaitFor(
-    std::function<Result<bool>()> condition,
+Status WaitFor(
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
     const std::string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
 
-void AssertLoggedWaitFor(
-    std::function<Result<bool>()> condition,
+Status LoggedWaitFor(
+    const std::function<Result<bool>()>& condition,
     MonoDelta timeout,
-    const string& description,
-    MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
-    double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
-    MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
-
-CHECKED_STATUS LoggedWaitFor(
-    std::function<Result<bool>()> condition,
-    MonoDelta timeout,
-    const string& description,
+    const std::string& description,
     MonoDelta initial_delay = MonoDelta::FromMilliseconds(test_util::kDefaultInitialWaitMs),
     double delay_multiplier = test_util::kDefaultWaitDelayMultiplier,
     MonoDelta max_delay = MonoDelta::FromMilliseconds(test_util::kDefaultMaxWaitDelayMs));
@@ -236,7 +241,26 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
-int CalcNumTablets(int num_tablet_servers);
+int CalcNumTablets(size_t num_tablet_servers);
+
+template<uint32_t limit>
+struct LengthLimitedStringPrinter {
+  explicit LengthLimitedStringPrinter(const std::string& str_)
+      : str(str_) {
+  }
+  const std::string& str;
+};
+
+using Max500CharsPrinter = LengthLimitedStringPrinter<500>;
+
+template<uint32_t limit>
+std::ostream& operator<<(std::ostream& os, const LengthLimitedStringPrinter<limit>& printer) {
+  const auto& s = printer.str;
+  if (s.length() <= limit) {
+    return os << s;
+  }
+  return os.write(s.c_str(), limit) << "... (" << (s.length() - limit) << " more characters)";
+}
 
 class StopOnFailure {
  public:
@@ -257,85 +281,6 @@ class StopOnFailure {
  private:
   bool success_ = false;
   std::atomic<bool>& stop_;
-};
-
-// Waits specified duration or when stop switches to true.
-void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop);
-
-class SetFlagOnExit {
- public:
-  explicit SetFlagOnExit(std::atomic<bool>* stop_flag)
-      : stop_flag_(stop_flag) {}
-
-  ~SetFlagOnExit() {
-    stop_flag_->store(true, std::memory_order_release);
-  }
-
- private:
-  std::atomic<bool>* stop_flag_;
-};
-
-// Holds vector of threads, and provides convenient utilities. Such as JoinAll, Wait etc.
-class TestThreadHolder {
- public:
-  ~TestThreadHolder() {
-    stop_flag_.store(true, std::memory_order_release);
-    JoinAll();
-  }
-
-  template <class... Args>
-  void AddThread(Args&&... args) {
-    threads_.emplace_back(std::forward<Args>(args)...);
-  }
-
-  void AddThread(std::thread thread) {
-    threads_.push_back(std::move(thread));
-  }
-
-  template <class Functor>
-  void AddThreadFunctor(const Functor& functor) {
-    AddThread([&stop = stop_flag_, functor] {
-      CDSAttacher attacher;
-      SetFlagOnExit set_stop_on_exit(&stop);
-      functor();
-    });
-  }
-
-  void Wait(const CoarseDuration& duration) {
-    yb::WaitStopped(duration, &stop_flag_);
-  }
-
-  void JoinAll();
-
-  template <class Cond>
-  CHECKED_STATUS WaitCondition(const Cond& cond) {
-    while (!cond()) {
-      if (stop_flag_.load(std::memory_order_acquire)) {
-        return STATUS(Aborted, "Wait aborted");
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-
-    return Status::OK();
-  }
-
-  void WaitAndStop(const CoarseDuration& duration) {
-    yb::WaitStopped(duration, &stop_flag_);
-    Stop();
-  }
-
-  void Stop() {
-    stop_flag_.store(true, std::memory_order_release);
-    JoinAll();
-  }
-
-  std::atomic<bool>& stop_flag() {
-    return stop_flag_;
-  }
-
- private:
-  std::atomic<bool> stop_flag_{false};
-  std::vector<std::thread> threads_;
 };
 
 } // namespace yb

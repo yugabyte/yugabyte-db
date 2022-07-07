@@ -29,19 +29,31 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/consensus/consensus_meta.h"
 
+#include "yb/common/entity_ids_types.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/consensus/consensus_util.h"
-#include "yb/consensus/log_util.h"
+#include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
 #include "yb/fs/fs_manager.h"
+
 #include "yb/gutil/strings/substitute.h"
+#include "yb/util/fault_injection.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/result.h"
 #include "yb/util/stopwatch.h"
+
+DEFINE_test_flag(double, fault_crash_before_cmeta_flush, 0.0,
+              "Fraction of the time when the server will crash just before flushing "
+              "consensus metadata. (For testing only!)");
 
 namespace yb {
 namespace consensus {
@@ -52,11 +64,11 @@ using strings::Substitute;
 namespace {
 
 const int kBitsPerPackedRole = 3;
-static_assert(0 <= RaftPeerPB_Role_Role_MIN, "RaftPeerPB_Role_Role_MIN must be non-negative.");
-static_assert(RaftPeerPB_Role_Role_MAX < (1 << kBitsPerPackedRole),
+static_assert(0 <= PeerRole_MIN, "RaftPeerPB_Role_Role_MIN must be non-negative.");
+static_assert(PeerRole_MAX < (1 << kBitsPerPackedRole),
               "RaftPeerPB_Role_Role_MAX must fit in kBitsPerPackedRole bits.");
 
-ConsensusMetadata::PackedRoleAndTerm PackRoleAndTerm(RaftPeerPB::Role role, int64_t term) {
+ConsensusMetadata::PackedRoleAndTerm PackRoleAndTerm(PeerRole role, int64_t term) {
   // Ensure we've had no more than 2305843009213693952 terms in this tablet.
   CHECK_LT(term, 1ull << (8 * sizeof(ConsensusMetadata::PackedRoleAndTerm) - kBitsPerPackedRole));
   return to_underlying(role) | (term << kBitsPerPackedRole);
@@ -66,8 +78,8 @@ int64_t UnpackTerm(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
   return role_and_term >> kBitsPerPackedRole;
 }
 
-RaftPeerPB::Role UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
-  return static_cast<RaftPeerPB::Role>(role_and_term & ((1 << kBitsPerPackedRole) - 1));
+PeerRole UnpackRole(ConsensusMetadata::PackedRoleAndTerm role_and_term) {
+  return static_cast<PeerRole>(role_and_term & ((1 << kBitsPerPackedRole) - 1));
 }
 
 } // anonymous namespace
@@ -90,10 +102,12 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
                                const std::string& tablet_id,
                                const std::string& peer_uuid,
                                std::unique_ptr<ConsensusMetadata>* cmeta_out) {
-  std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager, tablet_id, peer_uuid));
+  std::unique_ptr<ConsensusMetadata> cmeta(new ConsensusMetadata(fs_manager,
+                                                                 tablet_id,
+                                                                 peer_uuid));
   RETURN_NOT_OK(pb_util::ReadPBContainerFromPath(fs_manager->env(),
-                                                 fs_manager->GetConsensusMetadataPath(tablet_id),
-                                                 &cmeta->pb_));
+      VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id)),
+      &cmeta->pb_));
   cmeta->UpdateActiveRole(); // Needs to happen here as we sidestep the accessor APIs.
   RETURN_NOT_OK(cmeta->UpdateOnDiskSize());
   cmeta_out->swap(cmeta);
@@ -101,7 +115,10 @@ Status ConsensusMetadata::Load(FsManager* fs_manager,
 }
 
 Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& tablet_id) {
-  string cmeta_path = fs_manager->GetConsensusMetadataPath(tablet_id);
+  if (!fs_manager->LookupTablet(tablet_id)) {
+    return Status::OK();
+  }
+  auto cmeta_path = VERIFY_RESULT(fs_manager->GetConsensusMetadataPath(tablet_id));
   Env* env = fs_manager->env();
   if (!env->FileExists(cmeta_path)) {
     return Status::OK();
@@ -112,7 +129,7 @@ Status ConsensusMetadata::DeleteOnDiskData(FsManager* fs_manager, const string& 
   return Status::OK();
 }
 
-const int64_t ConsensusMetadata::current_term() const {
+int64_t ConsensusMetadata::current_term() const {
   DCHECK(pb_.has_current_term());
   return pb_.current_term();
 }
@@ -121,6 +138,21 @@ void ConsensusMetadata::set_current_term(int64_t term) {
   DCHECK_GE(term, kMinimumTerm);
   pb_.set_current_term(term);
   UpdateRoleAndTermCache();
+}
+
+
+bool ConsensusMetadata::has_split_parent_tablet_id() const {
+  return pb_.has_split_parent_tablet_id();
+}
+
+const TabletId& ConsensusMetadata::split_parent_tablet_id() const {
+  DCHECK(pb_.has_split_parent_tablet_id());
+  return pb_.split_parent_tablet_id();
+}
+
+void ConsensusMetadata::set_split_parent_tablet_id(const TabletId& split_parent_tablet_id) {
+  DCHECK(!split_parent_tablet_id.empty());
+  pb_.set_split_parent_tablet_id(split_parent_tablet_id);
 }
 
 bool ConsensusMetadata::has_voted_for() const {
@@ -165,13 +197,27 @@ const RaftConfigPB& ConsensusMetadata::pending_config() const {
 void ConsensusMetadata::clear_pending_config() {
   has_pending_config_ = false;
   pending_config_.Clear();
+  pending_config_op_id_ = OpId();
   UpdateActiveRole();
 }
 
-void ConsensusMetadata::set_pending_config(const RaftConfigPB& config) {
+void ConsensusMetadata::set_pending_config(const RaftConfigPB& config, const OpId& config_op_id) {
   has_pending_config_ = true;
   pending_config_ = config;
+  pending_config_op_id_ = config_op_id;
   UpdateActiveRole();
+}
+
+Status ConsensusMetadata::set_pending_config_op_id(const OpId& config_op_id) {
+  SCHECK(has_pending_config_, IllegalState, "Expected pending config to be set");
+  if (pending_config_op_id_.is_valid_not_empty() && pending_config_op_id_ != config_op_id) {
+    return STATUS_FORMAT(
+        InvalidArgument,
+        "Pending config OpId is already set to $0, but requested to overwrite with $1",
+        pending_config_op_id_, config_op_id);
+  }
+  pending_config_op_id_ = config_op_id;
+  return Status::OK();
 }
 
 const RaftConfigPB& ConsensusMetadata::active_config() const {
@@ -194,7 +240,7 @@ void ConsensusMetadata::clear_leader_uuid() {
   set_leader_uuid("");
 }
 
-RaftPeerPB::Role ConsensusMetadata::active_role() const {
+PeerRole ConsensusMetadata::active_role() const {
   return active_role_;
 }
 
@@ -229,31 +275,20 @@ void ConsensusMetadata::MergeCommittedConsensusStatePB(const ConsensusStatePB& c
 }
 
 Status ConsensusMetadata::Flush() {
+  MAYBE_FAULT(FLAGS_TEST_fault_crash_before_cmeta_flush);
   SCOPED_LOG_SLOW_EXECUTION_PREFIX(WARNING, 500, LogPrefix(), "flushing consensus metadata");
   // Sanity test to ensure we never write out a bad configuration.
   RETURN_NOT_OK_PREPEND(VerifyRaftConfig(pb_.committed_config(), COMMITTED_QUORUM),
                         "Invalid config in ConsensusMetadata, cannot flush to disk");
 
-  // Create directories if needed.
-  string dir = fs_manager_->GetConsensusMetadataDir();
-  bool created_dir = false;
-  RETURN_NOT_OK_PREPEND(fs_manager_->CreateDirIfMissing(dir, &created_dir),
-                        "Unable to create consensus metadata root dir");
-  // fsync() parent dir if we had to create the dir.
-  if (PREDICT_FALSE(created_dir)) {
-    string parent_dir = DirName(dir);
-    RETURN_NOT_OK_PREPEND(Env::Default()->SyncDir(parent_dir),
-                          "Unable to fsync consensus parent dir " + parent_dir);
-  }
-
-  string meta_file_path = fs_manager_->GetConsensusMetadataPath(tablet_id_);
+  string meta_file_path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
-      fs_manager_->env(), meta_file_path, pb_,
-      pb_util::OVERWRITE,
-      // Always fsync the consensus metadata.
-      pb_util::SYNC),
-          Substitute("Unable to write consensus meta file for tablet $0 to path $1",
-                     tablet_id_, meta_file_path));
+                          fs_manager_->env(), meta_file_path, pb_,
+                          pb_util::OVERWRITE,
+                          // Always fsync the consensus metadata.
+                          pb_util::SYNC),
+                        Substitute("Unable to write consensus meta file for tablet $0 to path $1",
+                                   tablet_id_, meta_file_path));
   RETURN_NOT_OK(UpdateOnDiskSize());
   return Status::OK();
 }
@@ -265,7 +300,7 @@ ConsensusMetadata::ConsensusMetadata(FsManager* fs_manager,
       tablet_id_(std::move(tablet_id)),
       peer_uuid_(std::move(peer_uuid)),
       has_pending_config_(false),
-      active_role_(RaftPeerPB::UNKNOWN_ROLE),
+      active_role_(PeerRole::UNKNOWN_ROLE),
       on_disk_size_(0) {
   UpdateRoleAndTermCache();
 }
@@ -276,17 +311,17 @@ std::string ConsensusMetadata::LogPrefix() const {
 
 void ConsensusMetadata::UpdateActiveRole() {
   ConsensusStatePB cstate = ToConsensusStatePB(CONSENSUS_CONFIG_ACTIVE);
-  RaftPeerPB::Role old_role = active_role_;
+  PeerRole old_role = active_role_;
   active_role_ = GetConsensusRole(peer_uuid_, cstate);
   UpdateRoleAndTermCache();
-  LOG_WITH_PREFIX(INFO) << "Updating active role from " << RaftPeerPB::Role_Name(old_role)
-                        << " to " << RaftPeerPB::Role_Name(active_role_)
+  LOG_WITH_PREFIX(INFO) << "Updating active role from " << PeerRole_Name(old_role)
+                        << " to " << PeerRole_Name(active_role_)
                         << ". Consensus state: " << cstate.ShortDebugString()
                         << ", has_pending_config = " << has_pending_config_;
 }
 
 Status ConsensusMetadata::UpdateOnDiskSize() {
-  string path = fs_manager_->GetConsensusMetadataPath(tablet_id_);
+  string path = VERIFY_RESULT(fs_manager_->GetConsensusMetadataPath(tablet_id_));
   on_disk_size_.store(VERIFY_RESULT(fs_manager_->env()->GetFileSize(path)));
   return Status::OK();
 }
@@ -296,7 +331,7 @@ void ConsensusMetadata::UpdateRoleAndTermCache() {
   role_and_term_cache_.store(new_value, std::memory_order_release);
 }
 
-std::pair<RaftPeerPB::Role, int64_t> ConsensusMetadata::GetRoleAndTerm() const {
+std::pair<PeerRole, int64_t> ConsensusMetadata::GetRoleAndTerm() const {
   const auto packed_role_and_term = role_and_term_cache_.load(std::memory_order_acquire);
   return std::make_pair(UnpackRole(packed_role_and_term), UnpackTerm(packed_role_and_term));
 }

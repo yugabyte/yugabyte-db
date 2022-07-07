@@ -54,16 +54,23 @@ cleanup() {
   stop_process_tree_supervisor
 
   # Yet another approach to garbage-collecting stuck processes, based on the command line pattern.
+  # shellcheck disable=SC2119
   kill_stuck_processes
-  if [[ -n ${YB_TEST_INVOCATION_ID:-} ]]; then
+
+  if [[ -n ${YB_TEST_INVOCATION_ID:-} && "${YB_NO_TEST_INVOCATION_FLAG_FILE:-}" != "1" ]]; then
     mkdir -p /tmp/yb_completed_tests
     touch "$YB_COMPLETED_TEST_FLAG_DIR/$YB_TEST_INVOCATION_ID"
   fi
+  # The killed_stuck_processes variable is set by kill_stuck_processes.
+  # shellcheck disable=SC2154
   if [[ $exit_code -eq 0 ]] && "$killed_stuck_processes"; then
     log "Failing test because we had to kill stuck process."
     exit_code=1
   fi
-  rm -rf "$TEST_TMPDIR"
+  if [[ -d $TEST_TMPDIR && $TEST_TMPDIR != "/" && $TEST_TMPDIR != "/tmp" ]]; then
+    echo "Removing the TEST_TMPDIR temporary directory: $TEST_TMPDIR"
+    rm -rf "$TEST_TMPDIR"
+  fi
 
   exit "$exit_code"
 }
@@ -73,12 +80,20 @@ if [[ ${YB_DEBUG_RUN_TEST:-} == "1" ]]; then
   set -x
 fi
 
+# This must be set before including common-build-env.sh as it will set this variable to false by
+# default.
+# shellcheck disable=SC2034
 is_run_test_script=true
 
+# shellcheck source=build-support/common-build-env.sh
 . "${BASH_SOURCE%/*}/common-build-env.sh"
+
+# shellcheck source=build-support/common-test-env.sh
 . "${BASH_SOURCE%/*}/common-test-env.sh"
+
 yb_readonly_virtualenv=true
 
+detect_architecture
 activate_virtualenv
 
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
@@ -95,7 +110,7 @@ echo "Test is running on host $HOSTNAME, arguments: $*"
 set_java_home
 set_test_invocation_id
 
-create_test_tmpdir
+ensure_test_tmp_dir_is_set
 
 trap cleanup EXIT
 
@@ -119,7 +134,7 @@ if [[ -z ${BUILD_ROOT:-} ]]; then
 else
   preset_build_root=$BUILD_ROOT
   set_build_root --no-readonly
-  if [[ $preset_build_root != $BUILD_ROOT ]] &&
+  if [[ $preset_build_root != "$BUILD_ROOT" ]] &&
      ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$preset_build_root" "$BUILD_ROOT"; then
     fatal "Build root was already set to $preset_build_root, but we determined it must be set" \
           "to $BUILD_ROOT, and these two paths do not point to the same location."
@@ -128,9 +143,10 @@ else
   unset preset_build_root
 fi
 
+find_or_download_ysql_snapshots
 find_or_download_thirdparty
 log_thirdparty_and_toolchain_details
-detect_brew
+detect_toolchain
 
 set_common_test_paths
 add_brew_bin_to_path
@@ -210,7 +226,6 @@ abs_test_binary_path=$TEST_DIR/$TEST_NAME_WITH_EXT
 TEST_NAME=${TEST_NAME_WITH_EXT%%.*}
 
 TEST_DIR_BASENAME="$( basename "$TEST_DIR" )"
-LOG_PATH_BASENAME_PREFIX=$TEST_NAME
 
 set_sanitizer_runtime_options
 
@@ -277,8 +292,8 @@ fi
 # Loop over all tests in a gtest binary, or just one element (the whole test binary) for tests that
 # we have to run in one shot.
 for test_descriptor in "${tests[@]}"; do
-  for (( test_attempt=$min_test_attempt_index;
-         test_attempt <= $max_test_attempt_index;
+  for (( test_attempt=min_test_attempt_index;
+         test_attempt <= max_test_attempt_index;
          test_attempt+=1 )); do
     if [[ $max_test_attempt_index -gt 1 ]]; then
       log "Starting test attempt $test_attempt ($test_descriptor)"
@@ -286,6 +301,7 @@ for test_descriptor in "${tests[@]}"; do
     else
       test_attempt_index=""
     fi
+    # shellcheck disable=SC2119
     prepare_for_running_cxx_test
     run_cxx_test_and_process_results
   done

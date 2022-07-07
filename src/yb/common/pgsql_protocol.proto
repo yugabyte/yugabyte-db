@@ -17,7 +17,10 @@ package yb;
 option java_package = "org.yb";
 
 import "yb/common/common.proto";
-import "yb/common/ql_protocol.proto";
+import "yb/common/common_types.proto";
+import "yb/common/transaction.proto";
+import "yb/common/value.proto";
+import "yb/rpc/lightweight_message.proto";
 
 //--------------------------------------------------------------------------------------------------
 // Expressions.
@@ -96,8 +99,23 @@ message PgsqlBatchArgumentPB {
 // Column messages.
 //--------------------------------------------------------------------------------------------------
 // ColumnRefs is a list of columns to be read by DocDB before a PGSQL request can be executed.
+// DEPRECATED, new code should use col_refs field of type PgsqlColRefPB instead
 message PgsqlColumnRefsPB {
   repeated int32 ids = 1;
+}
+
+// Represents a column referenced by a PGSQL request.
+// - column_id is a DocDB identifier of the column and used to locate a value within a row
+// - attno is a Postgres identifier, must be specified if column is referenced by a PG expression
+// - typid, typmod are needed to convert DocDB values to Postgres format (Datum and isnull pair).
+// They must be specified if used in an expression evaluated by PGgate.
+// - collid is for future collations support
+message PgsqlColRefPB {
+  optional int32 column_id = 1;
+  optional int32 attno = 2;
+  optional int32 typid = 3;
+  optional int32 typmod = 4;
+  optional int32 collid = 5;
 }
 
 // ColumnValue is a value to be assigned to a table column by DocDB while executing a PGSQL request.
@@ -126,6 +144,22 @@ message PgsqlPartitionBound {
   optional bytes key = 1;
   // Indicate whether or not the boundary is inclusive.
   optional bool is_inclusive = 2;
+}
+
+// Random sampling state
+message PgsqlSamplingStatePB {
+  // target number of rows to collect
+  optional int32 targrows = 1;
+  // number of rows collected so far across all blocks
+  optional int32 numrows = 2;
+  // number of rows considered for sample across all blocks
+  optional double samplerows = 3;
+  // current number of rows to skip
+  optional double rowstoskip = 4;
+  // reservoir state W
+  optional double rstate_w = 5;
+  // 48 bits of sampler random state
+  optional uint64 rand_state = 6;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -199,6 +233,7 @@ message PgsqlWriteRequestPB {
 
   // Listing of all columns that this write operation is referencing.
   // TServers will need to read these columns when processing the write request.
+  // DEPRECATED in favor of col_refs;
   optional PgsqlColumnRefsPB column_refs = 15;
 
   // The version of the ysql system catalog this query was prepared against.
@@ -209,6 +244,21 @@ message PgsqlWriteRequestPB {
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
+
+  // For DELETE requests, do they need to be persisted in regular rocksdb?
+  //
+  // This is currently only used for DELETEs to the index when the index is getting created with
+  // index backfill enabled.
+  optional bool is_delete_persist_needed = 20 [default = false];
+
+  // Columns refereced by this write operation.
+  // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
+  // to convert between DocDB and Postgres formats.
+  // One entry per column referenced.
+  repeated PgsqlColRefPB col_refs = 21;
+
+  // Used only in pg client.
+  optional bytes partition_key = 22;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -258,6 +308,19 @@ message PgsqlPagingStatePB {
   optional ReadHybridTimePB read_time = 6;
 }
 
+// Backfill instruction.
+message PgsqlBackfillSpecPB {
+  // Limit for each backfill batch. "-1" means no limit.
+  optional int64 limit = 1 [default = -1];
+
+  // Accumulated counter is used to check if the number of scanned rows has reached limit.
+  optional int64 count = 2 [default = 0];
+
+  // The next row key to read for backfill. Defined/used similar to how it is used in paging state.
+  // i.e. The row key (SubDocKey = [DocKey + HybridTimestamp]) of the next row to read.
+  optional bytes next_row_key = 3;
+}
+
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
 // execution plan in tablet server.
 message PgsqlReadRequestPB {
@@ -282,13 +345,13 @@ message PgsqlReadRequestPB {
   // - In general, hash_code should be set by PgGate, but for some reasons, when the field
   // "ybctid_column_value" is used, hash_code is set by "common" lib.
   optional uint32 hash_code = 4;
-  optional PgsqlExpressionPB ybctid_column_value = 20;
+  optional PgsqlExpressionPB ybctid_column_value = 20 [(rpc.lightweight_field).pointer = true];
 
   // Primary key.
   // - Partition columns are used to compute the hash code,
   //   e.g. for h1 = 1 AND h2 = 2 partition_column_values would be [1, 2].
   // - Range columns combining with partition columns are used for indexing.
-  repeated PgsqlExpressionPB partition_column_values = 5;
+  repeated PgsqlExpressionPB partition_column_values = 5 [(rpc.lightweight_field).pointer = true];
   repeated PgsqlExpressionPB range_column_values = 18;
 
   // For select using local secondary index: this request selects the ybbasectids to fetch the rows
@@ -296,6 +359,7 @@ message PgsqlReadRequestPB {
   optional PgsqlReadRequestPB index_request = 21;
 
   // Where clause condition
+  // DEPRECATED in favor of where_clauses
   optional PgsqlExpressionPB where_expr = 8;
 
   // TODO(alex): This should be renamed to make it clear that it's ONLY related to range columns!
@@ -307,7 +371,8 @@ message PgsqlReadRequestPB {
 
   // Indicates ybctids in batch_arguments may not exist.
   // If flag is false read operation will fail in case any of ybctids in batch will not be found.
-  optional bool unknown_ybctid_allowed = 26;
+  // Reserved for deprecated unknown_ybctid_allowed
+  reserved 26;
 
   //------------------------------------------------------------------------------------------------
   // Output Argument Specification (Tuple descriptor).
@@ -322,6 +387,7 @@ message PgsqlReadRequestPB {
   // Database Arguments - To be read from the DataBase.
   // Listing of all columns that this operation is referencing. TServers will need to read these
   // columns when processing this read request.
+  // DEPRECATED in favor of col_refs;
   optional PgsqlColumnRefsPB column_refs = 9;
 
   //------------------------------------------------------------------------------------------------
@@ -340,7 +406,7 @@ message PgsqlReadRequestPB {
 
   //------------------------------------------------------------------------------------------------
   // Paging state retrieved from the last response.
-  optional PgsqlPagingStatePB paging_state = 14;
+  optional PgsqlPagingStatePB paging_state = 14 [(rpc.lightweight_field).pointer = true];
 
   // Return paging state when "limit" number of rows are returned? In case when "limit" is the
   // page size, this is set for PgsqlResponsePB to return the paging state for the next fetch.
@@ -354,6 +420,16 @@ message PgsqlReadRequestPB {
 
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;
+
+  // Used to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP or WAIT_ERROR
+  // TODO(Piyush):
+  // 1. YB doesn't support WAIT_BLOCK as of now. That will be supported with blocking infrastructure
+  //    that is to be implemented for pessmistic locking feature.
+  // 2. Default is set to WAIT_ERROR. For now, WAIT_ERROR denotes the current YB behaviour of
+  //    "abort other txn or raise conflict error when a conflict is found". When pessimistic locking
+  //    is turned on by default on YB, WAIT_ERROR will only denote the behaviour of raising conflict
+  //    error in current txn and not aborting others (like Postgres).
+  optional WaitPolicy wait_policy = 32 [default = WAIT_ERROR];
 
   // Scan partition boundary.
   // NOTE
@@ -370,6 +446,32 @@ message PgsqlReadRequestPB {
   // available in beta version for SPLIT_AT feature. The release version for SPLIT AT does not need
   // to be compatible with the beta version as SPLIT AT feature were not used.
   optional bytes DEPRECATED_max_partition_key = 25;
+
+  // Does this request correspond to scanning the indexed table for backfill?
+  optional bool is_for_backfill = 29 [default = false];
+
+  // If present, the request is to collect random sample
+  optional PgsqlSamplingStatePB sampling_state = 30 [(rpc.lightweight_field).pointer = true];
+
+  // Instruction for BACKFILL operation from the tablet server.
+  // This is the serialized-string of "message PgsqlBackfillSpecPB" which will be used by
+  // the tablet server handling the PgsqlRead to terminate the scan and checkpoint the paging
+  // state as desired.
+  optional bytes backfill_spec = 31;
+
+  // Pushed down Postgres conditions. Like in Postgres, conditions are implicitly ANDed.
+  // Per scanned row, expressions are evaluated by PGgate one by one, and if any is evaluated to
+  // false the row is skipped.
+  repeated PgsqlExpressionPB where_clauses = 33;
+
+  // Columns refereced by this write operation.
+  // Provides mapping between DocDB and Postgres identifiers, and provides Postgres type information
+  // to convert between DocDB and Postgres formats.
+  // One entry per column referenced.
+  repeated PgsqlColRefPB col_refs = 34;
+
+  // Used only in pg client.
+  optional bytes partition_key = 35;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -402,7 +504,7 @@ message PgsqlResponsePB {
   optional int32 rows_data_sidecar = 4;
 
   // Paging state for continuing the read in the next QLReadRequestPB fetch.
-  optional PgsqlPagingStatePB paging_state = 5;
+  optional PgsqlPagingStatePB paging_state = 5 [(rpc.lightweight_field).pointer = true];
 
   // When client sends a request that has a batch of many arguments, server might process only a
   // subset of the arguments. Attribute "batch_arg_count" is to indicate how many arguments have
@@ -411,6 +513,7 @@ message PgsqlResponsePB {
   // NOTE: This variable could have been inside "paging state", but due to rolling upgrade I have
   // to place it here, separated from paging status for singular request.
   optional int64 batch_arg_count = 10 [ default = 1 ];
+  repeated int64 batch_orders = 12;
 
   // Number of rows affected by the operation. Currently only used for update and delete.
   optional int32 rows_affected_count = 7;
@@ -429,4 +532,15 @@ message PgsqlResponsePB {
   // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
   // of Status::ErrorData(TransactionErrorTag::kCategory)
   optional uint32 txn_error_code = 9;
+
+  // Random sample state to hand over to the next block
+  optional PgsqlSamplingStatePB sampling_state = 11 [(rpc.lightweight_field).pointer = true];
+
+  // Instruction for BACKFILL operation from master/table server.
+  // This is the serialized-string of "message PgsqlBackfillSpecPB".
+  //
+  // If 'is_backfill_batch_done' == true, Postgres will return this 'backfill_spec' to tablet server
+  // that sent out the 'BACKFILL' request statement.
+  optional bytes backfill_spec = 13;
+  optional bool is_backfill_batch_done = 14;
 }

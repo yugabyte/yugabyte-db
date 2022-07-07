@@ -40,3 +40,7 @@ leak:YbgPrepareMemoryContext
 
 # https://gist.githubusercontent.com/mbautin/015cb594c8281e1afc7ee7b3b5230fce/raw
 leak:__strdup
+
+# https://gist.githubusercontent.com/mbautin/864e341c578f30b478da93f59cf098cc/raw
+leak:guc_strdup
+leak:postmaster_strdup

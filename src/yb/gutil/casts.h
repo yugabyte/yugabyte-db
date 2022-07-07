@@ -26,9 +26,10 @@
 
 #include <assert.h>         // for use with down_cast<>
 #include <string.h>         // for memcpy
-#include <limits.h>         // for enumeration casts and tests
 
-#include <glog/logging.h>
+#include <limits>
+#include <string>
+#include <type_traits>
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/template_util.h"
@@ -90,11 +91,13 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 
   // TODO(user): This should use COMPILE_ASSERT.
   if (false) {
-    yb::implicit_cast<From*, To>(NULL);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<
+                          typename base::remove_pointer<To>::type>::type*>(nullptr);
   }
 
   // uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
-  assert(f == NULL || dynamic_cast<To>(f) != NULL);
+  assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
   return static_cast<To>(f);
 }
 
@@ -109,13 +112,14 @@ inline To down_cast(From* f) {                   // so we only accept pointers
 template<typename To, typename From>
 inline To down_cast(From& f) { // NOLINT
   COMPILE_ASSERT(base::is_reference<To>::value, target_type_not_a_reference);
-  typedef typename base::remove_reference<To>::type* ToAsPointer;
+  typedef typename base::remove_reference<To>::type ToType;
   if (false) {
     // Compile-time check that To inherits from From. See above for details.
-    yb::implicit_cast<From*, ToAsPointer>(NULL);
+    yb::implicit_cast<typename base::remove_const<From>::type*,
+                      typename base::remove_const<ToType>::type*>(nullptr);
   }
 
-  assert(dynamic_cast<ToAsPointer>(&f) != NULL);  // RTTI: debug mode only
+  assert(dynamic_cast<ToType*>(&f) != nullptr);  // RTTI: debug mode only
   return static_cast<To>(f);
 }
 
@@ -381,40 +385,50 @@ inline bool tight_enum_test_cast(int e_val, Enum* e_var) {
   }
 }
 
-namespace base_internal {
+void BadNarrowCast(char rel, const std::string& in, const std::string& limit);
 
-inline void WarnEnumCastError(int value_of_int) {
-  LOG(DFATAL) << "Bad enum value " << value_of_int;
-}
-
-}  // namespace base_internal
-
-template <typename Enum>
-inline Enum loose_enum_cast(int e_val) {
-  if (!loose_enum_test<Enum>(e_val)) {
-    base_internal::WarnEnumCastError(e_val);
+template <class Out, class In>
+Out narrow_cast(const In& in) {
+  static_assert(sizeof(Out) < sizeof(In), "Wrong narrow cast");
+  if (in > static_cast<In>(std::numeric_limits<Out>::max())) {
+    BadNarrowCast('>', std::to_string(in), std::to_string(std::numeric_limits<Out>::max()));
   }
-  return static_cast<Enum>(e_val);
-}
-
-template <typename Enum>
-inline Enum tight_enum_cast(int e_val) {
-  if (!tight_enum_test<Enum>(e_val)) {
-    base_internal::WarnEnumCastError(e_val);
+  if (std::is_signed<In>::value && in < static_cast<In>(std::numeric_limits<Out>::min())) {
+    BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::min()));
   }
-  return static_cast<Enum>(e_val);
+  return static_cast<Out>(in);
 }
 
-template<class Out, class In>
-Out pointer_cast(In* in) {
-  void* temp = in;
-  return static_cast<Out>(temp);
+// make_unsigned should be used to cast from signed to unsigned representation of the same size.
+// If value is out of range of output type the system will crash with FATAL error message.
+template <class In>
+typename std::enable_if<std::is_signed_v<In>, typename std::make_unsigned<In>::type>::type
+    make_unsigned(const In& in) {
+  if (in < 0) {
+    BadNarrowCast('<', std::to_string(in), "0");
+  }
+  return static_cast<typename std::make_unsigned<In>::type>(in);
 }
 
-template<class Out, class In>
-Out pointer_cast(const In* in) {
-  const void* temp = in;
-  return static_cast<Out>(temp);
+template <class In>
+typename std::enable_if<std::is_unsigned_v<In>, typename std::make_signed<In>::type>::type
+    make_signed(const In& in) {
+  using Out = typename std::make_signed<In>::type;
+  if (in > static_cast<In>(std::numeric_limits<Out>::max())) {
+    BadNarrowCast('<', std::to_string(in), std::to_string(std::numeric_limits<Out>::max()));
+  }
+  return static_cast<Out>(in);
+}
+
+template <class Out, class In>
+Out trim_cast(const In& in) {
+  if (in > std::numeric_limits<Out>::max()) {
+    return std::numeric_limits<Out>::max();
+  }
+  if (in < std::numeric_limits<Out>::min()) {
+    return std::numeric_limits<Out>::min();
+  }
+  return static_cast<Out>(in);
 }
 
 } // namespace yb
@@ -422,8 +436,7 @@ Out pointer_cast(const In* in) {
 using yb::bit_cast;
 using yb::down_cast;
 using yb::implicit_cast;
-using yb::loose_enum_cast;
-using yb::pointer_cast;
-using yb::tight_enum_cast;
+using yb::narrow_cast;
+using yb::trim_cast;
 
 #endif // YB_GUTIL_CASTS_H

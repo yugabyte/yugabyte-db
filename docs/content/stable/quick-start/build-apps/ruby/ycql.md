@@ -3,16 +3,13 @@ title: Build a Ruby application that uses YCQL
 headerTitle: Build a Ruby application
 linkTitle: Ruby
 description: Build a sample Ruby application with the Yugabyte Ruby Driver for YCQL.
-block_indexing: true
 menu:
   stable:
     parent: build-apps
     name: Ruby
     identifier: ruby-3
     weight: 553
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
@@ -50,7 +47,7 @@ $ gem install yugabyte-ycql-driver
 
 This tutorial assumes that you have:
 
-- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../../api/ycql/quick-start/).
+- installed YugabyteDB, created a universe, and are able to interact with it using the YCQL shell. If not, follow the steps in [Quick start YCQL](../../../explore/ycql/).
 
 ### Write the sample Ruby application
 
@@ -105,7 +102,7 @@ $ ruby yb-cql-helloworld.rb
 
 You should see the following output.
 
-```
+```output
 Created keyspace ybdemo
 Created table employee
 Inserted (id, name, age, language) = (1, 'John', 35, 'Ruby')

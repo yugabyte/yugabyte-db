@@ -5,12 +5,11 @@ linkTitle: Manage deployments
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
-  stable:
+  stable_yugabyte-platform:
+    parent: yugabytedb-anywhere
     identifier: manage-deployments
-    parent: yugabyte-platform
     weight: 644
-isTocNested: true
-showAsideToc: true
+type: indexpage
 ---
 
 Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pods, machines, etc., provided by IaaS), logically grouped together to form one logical distributed database. Each universe includes one or more clusters. A universe is comprised of one primary cluster and, optionally, one or more read replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
@@ -80,6 +79,18 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="high-availability/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
+        <div class="title">Enable High Availability</div>
+      </div>
+      <div class="body">
+        Enable Yugabyte Platform's high-availability features.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-config-flags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/enterprise/edit_flags.png" aria-hidden="true" />
@@ -91,18 +102,6 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-software/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
-        <div class="title">Upgrade YugabyteDB software</div>
-      </div>
-      <div class="body">
-        Upgrade YugabyteDB software.
-      </div>
-    </a>
-  </div>
-  
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="edit-universe/">
       <div class="head">
@@ -116,10 +115,22 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="delete-universe/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <div class="title">Delete a universe</div>
+      </div>
+      <div class="body">
+        Delete a universe that is not needed.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="instance-tags/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/manual-deployment.png" aria-hidden="true" />
-        <div class="title">Create and edit instance tags</div>
+        <div class="title">Configure instance tags</div>
       </div>
       <div class="body">
         Use Yugabyte Platform to create and edit instance tags.
@@ -128,13 +139,13 @@ Yugabyte Platform can create a YugabyteDB universe with many instances (VMs, pod
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="delete-universe/">
+    <a class="section-link icon-offset" href="upgrade-software/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
-        <div class="title">Delete a universe</div>
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <div class="title">Upgrade YugabyteDB software</div>
       </div>
       <div class="body">
-        Delete a universe that is not needed.
+        Upgrade YugabyteDB software.
       </div>
     </a>
   </div>

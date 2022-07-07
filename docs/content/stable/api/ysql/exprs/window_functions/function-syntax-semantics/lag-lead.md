@@ -3,17 +3,15 @@ title: lag(), lead()
 linkTitle: lag(), lead()
 headerTitle: lag(), lead()
 description: Describes the functionality of the YSQL window functions lag(), lead()
-block_indexing: true
 menu:
   stable:
     identifier: lag-lead
     parent: window-function-syntax-semantics
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
-These functions look backwards, or forwards, by the specified number of rows from the current row, within the current [_window_](../../sql-syntax-semantics/#the-window-definition-rule). The functions fall into the second group, [Window functions that return column(s) of another row within the window](../#window-functions-that-return-column-s-of-another-row-within-the-window) in the section [List of all window functions](../#list-of-all-window-functions). Each of the functions in the second group makes obvious sense when the scope within which the specified row is found is the entire [_window_](../../sql-syntax-semantics/#the-window-definition-rule). Only this use will be described here.
+These functions look backwards, or forwards, by the specified number of rows from the current row, within the current [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). The functions fall into the second group, [Window functions that return column(s) of another row within the window](../#window-functions-that-return-column-s-of-another-row-within-the-window) in the section [List of all window functions](../#list-of-all-window-functions). Each of the functions in the second group makes obvious sense when the scope within which the specified row is found is the entire [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). Only this use will be described here.
 
 ## Example
 
@@ -40,7 +38,7 @@ order by day;
 This is the result:
 
 ```
-    Day     | price  | last-but-one price | next-but-one price 
+    Day     | price  | last-but-one price | next-but-one price
 ------------+--------+--------------------+--------------------
  Mon 15-Sep | $19.01 |             <null> |             $18.10
  Tue 16-Sep | $18.96 |             <null> |             $18.75
@@ -80,7 +78,7 @@ with v as (
     lead(price, 2) over w as lead_2
   from t3
   window w as (order by day))
-select 
+select
   to_char(day, 'Dy DD-Mon') as "Day",
   price,
   lag_2  as "last-but-one price",
@@ -96,7 +94,7 @@ Notice that the `WHERE` clause restriction must be applied only _after_ the `lag
 The values for _"last-but-one price"_ and _"next-but-one price"_ have been manually blanked out in the results, here, to remove distractions from the visual check:
 
 ```
-    Day     | price  | last-but-one price | next-but-one price 
+    Day     | price  | last-but-one price | next-but-one price
 ------------+--------+--------------------+--------------------
  Mon 29-Sep | $18.77 |                    |
  Wed 01-Oct | $19.86 |             $18.77 |             $19.48
@@ -109,13 +107,13 @@ The values for _"last-but-one price"_ and _"next-but-one price"_ have been manua
 
 ```
 input value:       anyelement, int, [, anyelement]
-                   
+
 return value:      anyelement
 ```
 
-**Purpose:** Return, for the current row, the designated value from the row in the ordered input set that is _"lag_distance "_ rows before it. The data type of the _return value_ matches that of the _input value_. `NULL` is returned when the value of _"lag_distance"_ places the earlier row before the start of the [_window_](../../sql-syntax-semantics/#the-window-definition-rule). This is illustrated by the example above.
+**Purpose:** Return, for the current row, the designated value from the row in the ordered input set that is _"lag_distance "_ rows before it. The data type of the _return value_ matches that of the _input value_. `NULL` is returned when the value of _"lag_distance"_ places the earlier row before the start of the [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). This is illustrated by the example above.
 
-Use the optional last parameter to specify the value to be returned, instead of `NULL`, when the looked-up row falls outside of the current [_window_](../../sql-syntax-semantics/#the-window-definition-rule).
+Use the optional last parameter to specify the value to be returned, instead of `NULL`, when the looked-up row falls outside of the current [_window_](../../invocation-syntax-semantics/#the-window-definition-rule).
 
 ## lead()
 
@@ -123,13 +121,13 @@ Use the optional last parameter to specify the value to be returned, instead of 
 
 ```
 input value:       anyelement, int, [, anyelement]
-                   
+
 return value:      anyelement
 ```
 
-**Purpose:** Return, for the current row, the designated value from the row in the ordered input set that is _"lead_distance"_ rows after it. The data type of the _return value_ matches that of the _input value_. `NULL` is returned when the value of _"lead_distance"_ places the later row after the start of the [_window_](../../sql-syntax-semantics/#the-window-definition-rule). This is illustrated by the example above.
+**Purpose:** Return, for the current row, the designated value from the row in the ordered input set that is _"lead_distance"_ rows after it. The data type of the _return value_ matches that of the _input value_. `NULL` is returned when the value of _"lead_distance"_ places the later row after the start of the [_window_](../../invocation-syntax-semantics/#the-window-definition-rule). This is illustrated by the example above.
 
-Use the optional last parameter to specify the value to be returned, instead of `NULL`, when the looked-up row falls outside of the current [_window_](../../sql-syntax-semantics/#the-window-definition-rule).
+Use the optional last parameter to specify the value to be returned, instead of `NULL`, when the looked-up row falls outside of the current [_window_](../../invocation-syntax-semantics/#the-window-definition-rule).
 
 ## Example of returning a row
 
@@ -151,7 +149,7 @@ window w as (order by day);
 This is the result. (Some rows have been manually elided.)
 
 ```
-    day     | price  |        lag_1        
+    day     | price  |        lag_1
 ------------+--------+---------------------
  2008-09-15 | $19.01 | <null>
  2008-09-16 | $18.96 | (2008-09-15,$19.01)
@@ -202,7 +200,7 @@ from v2;
 This is the result. (Again, some rows have been manually elided.)
 
 ```
-  Curr Day  | Curr Price |    |  Prev Day  | Prev Price |    |  Next Day  | Next Price 
+  Curr Day  | Curr Price |    |  Prev Day  | Prev Price |    |  Next Day  | Next Price
 ------------+------------+----+------------+------------+----+------------+------------
  Mon 15-Sep |     $19.01 |    | <null>     |     <null> |    | Tue 16-Sep |     $18.96
  Tue 16-Sep |     $18.96 |    | Mon 15-Sep |     $19.01 |    | Wed 17-Sep |     $18.10
@@ -238,7 +236,7 @@ order by day;
 This is the result:
 
 ```
-    Day     | price  | prev_price | percent_change 
+    Day     | price  | prev_price | percent_change
 ------------+--------+------------+----------------
  Tue 16-Sep | $18.96 |     $19.01 |   -0.3
  Wed 17-Sep | $18.10 |     $18.96 |   -4.5
@@ -296,7 +294,7 @@ where abs(change::numeric) = (select max(abs(change::numeric)) from v2);
 This is the result:
 
 ```
-    Day     | price  | prev_price | percent_change 
+    Day     | price  | prev_price | percent_change
 ------------+--------+------------+----------------
  Mon 13-Oct | $18.86 |     $16.68 |   13.1
 ```

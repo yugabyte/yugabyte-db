@@ -6,7 +6,7 @@
 create temp table foo (f1 int, f2 int);
 insert into foo values (1, 2), (3, 4), (5, 6), (5, 6), (7, 8), (9, 10);
 select * from foo order by f1;
- f1 | f2 
+ f1 | f2
 ----+----
   1 |  2
   3 |  4
@@ -19,7 +19,7 @@ select * from foo order by f1;
 create table bar (f1 int, f2 int);
 insert into bar values (1, 2), (3, 4), (5, 6), (5, 6), (7, 8), (9, 10);
 select * from bar order by f1;
- f1 | f2 
+ f1 | f2
 ----+----
   1 |  2
   3 |  4
@@ -59,23 +59,25 @@ begin
 end$$ language plpgsql;
 select stricttest1();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest1 
+ stricttest1
 -------------
- 
+
 (1 row)
 
 select stricttest2();
 NOTICE:  x.f1 = 3, x.f2 = 4
- stricttest2 
+ stricttest2
 -------------
- 
+
 (1 row)
 
 select stricttest3();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest3() line 5 at SQL statement
 select stricttest4();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest4() line 5 at SQL statement
 --
 -- Cleanup
@@ -88,10 +90,6 @@ create or replace function unsupported1() returns void as $$
 declare a text collate "en_US";
 begin
 end$$ language plpgsql;
-ERROR:  COLLATE not supported yet
-LINE 2: declare a text collate "en_US";
-                       ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1127. Click '+' on the description to raise its priority
 create table test(k int, v int);
 create procedure intermediate_commit() as $$
 begin
@@ -167,3 +165,14 @@ begin
 end;
 $body$;
 INFO:  11
+-- check exit out of outermost block
+do $$
+<<outerblock>>
+begin
+  <<innerblock>>
+  begin
+    exit outerblock;
+    raise notice 'should not get here';
+  end;
+  raise notice 'should not get here, either';
+end$$;

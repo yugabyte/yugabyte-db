@@ -42,9 +42,13 @@ import static org.yb.AssertionWrappers.assertNull;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelectIf extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSelectIf.class);
+
   private void createIfTestDB() throws Exception {
     String create_tab = "CREATE TABLE" +
                         "  tab(h INT, r INT, l INT, m INT, n INT, j JSONB, PRIMARY KEY (h, r))" +

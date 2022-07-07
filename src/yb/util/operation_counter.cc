@@ -21,6 +21,10 @@
 
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/logging.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
@@ -77,7 +81,7 @@ uint64_t RWOperationCounter::GetOpCounter() const {
 }
 
 uint64_t RWOperationCounter::Update(uint64_t delta) {
-  uint64_t result = counters_.fetch_add(delta, std::memory_order::memory_order_acq_rel) + delta;
+  uint64_t result = counters_.fetch_add(delta, std::memory_order::acq_rel) + delta;
   VLOG(2) << "[" << this << "] Update(" << static_cast<int64_t>(delta) << "), result = " << result;
   // Ensure that there is no underflow in either counter.
   DCHECK_EQ((result & (kStopDelta >> 1u)), 0); // Counter of DisableAndWaitForOps() calls.
@@ -87,7 +91,9 @@ uint64_t RWOperationCounter::Update(uint64_t delta) {
 
 bool RWOperationCounter::WaitMutexAndIncrement(CoarseTimePoint deadline) {
   if (deadline == CoarseTimePoint()) {
-    deadline = CoarseMonoClock::now() + 10ms;
+    deadline = CoarseMonoClock::now() + 10ms * kTimeMultiplier;
+  } else if (deadline == CoarseTimePoint::min()) {
+    return false;
   }
   for (;;) {
     std::unique_lock<decltype(disable_)> lock(disable_, deadline);
@@ -174,13 +180,14 @@ Status RWOperationCounter::WaitForOpsToFinish(
 ScopedRWOperation::ScopedRWOperation(RWOperationCounter* counter, const CoarseTimePoint& deadline)
     : data_{counter, counter ? counter->resource_name() : ""
 #ifndef NDEBUG
-            , LongOperationTracker("ScopedRWOperation", 1s)
+            , counter ? LongOperationTracker("ScopedRWOperation", 1s) : LongOperationTracker()
 #endif
       } {
   if (counter != nullptr) {
     // The race condition between IsReady() and Increment() is OK, because we are checking if
     // anyone has started an exclusive operation since we did the increment, and don't proceed
     // with this shared-ownership operation in that case.
+    VTRACE(1, "$0 $1", __func__, resource_name());
     if (!counter->Increment() && !counter->WaitMutexAndIncrement(deadline)) {
       data_.counter_ = nullptr;
     }
@@ -192,6 +199,7 @@ ScopedRWOperation::~ScopedRWOperation() {
 }
 
 void ScopedRWOperation::Reset() {
+  VTRACE(1, "$0 $1", __func__, resource_name());
   if (data_.counter_ != nullptr) {
     data_.counter_->Decrement();
     data_.counter_ = nullptr;
@@ -201,6 +209,7 @@ void ScopedRWOperation::Reset() {
 
 ScopedRWOperationPause::ScopedRWOperationPause(
     RWOperationCounter* counter, const CoarseTimePoint& deadline, Stop stop) {
+  VTRACE(1, "$0 $1", __func__, resource_name());
   if (counter != nullptr) {
     data_.status_ = counter->DisableAndWaitForOps(deadline, stop);
     if (data_.status_.ok()) {
@@ -211,6 +220,7 @@ ScopedRWOperationPause::ScopedRWOperationPause(
 }
 
 ScopedRWOperationPause::~ScopedRWOperationPause() {
+  VTRACE(1, "$0 $1", __func__, resource_name());
   Reset();
 }
 
@@ -229,6 +239,11 @@ void ScopedRWOperationPause::ReleaseMutexButKeepDisabled() {
   data_.counter_->UnlockExclusiveOpMutex();
   // Make sure the destructor has no effect when it runs.
   data_.counter_ = nullptr;
+}
+
+Status MoveStatus(const ScopedRWOperation& scoped) {
+  return scoped.ok() ? Status::OK()
+                     : STATUS_FORMAT(TryAgain, "Resource unavailable: $0", scoped.resource_name());
 }
 
 }  // namespace yb

@@ -1007,7 +1007,7 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 		rte->relkind == RELKIND_PARTITIONED_TABLE &&
 		rel->baserestrictinfo != NIL)
 	{
-		live_children = prune_append_rel_partitions(rel);
+		live_children = prune_append_rel_partitions(root, rel);
 		did_pruning = true;
 	}
 
@@ -1286,6 +1286,9 @@ set_append_rel_size(PlannerInfo *root, RelOptInfo *rel,
 
 		/* We have at least one live child. */
 		has_live_children = true;
+
+		if (!childRTE->inh)
+			root->yb_num_referenced_relations++;
 
 		/*
 		 * If any live child is not parallel-safe, treat the whole appendrel

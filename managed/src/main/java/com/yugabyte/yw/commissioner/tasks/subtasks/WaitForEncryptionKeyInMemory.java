@@ -10,70 +10,56 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.common.net.HostAndPort;
-import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.KmsHistory;
-import java.util.Map;
-import java.util.UUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.yugabyte.yw.models.Universe;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import play.api.Play;
 
+@Slf4j
 public class WaitForEncryptionKeyInMemory extends NodeTaskBase {
-    public static final Logger LOG = LoggerFactory.getLogger(WaitForEncryptionKeyInMemory.class);
 
-    public YBClientService ybService = null;
+  public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
 
-    public EncryptionAtRestManager keyManager = null;
+  @Inject
+  protected WaitForEncryptionKeyInMemory(
+      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+    super(baseTaskDependencies, nodeManager);
+  }
 
-    public static final int KEY_IN_MEMORY_TIMEOUT = 5000;
+  public static class Params extends NodeTaskParams {
+    public HostAndPort nodeAddress;
+  }
 
-    public static class Params extends NodeTaskParams {
-        public HostAndPort nodeAddress;
-    }
+  @Override
+  protected Params taskParams() {
+    return (Params) taskParams;
+  }
 
-    @Override
-    public void initialize(ITaskParams params) {
-        super.initialize(params);
-        ybService = Play.current().injector().instanceOf(YBClientService.class);
-        keyManager = Play.current().injector().instanceOf(EncryptionAtRestManager.class);
-    }
-
-    @Override
-    protected Params taskParams() {
-        return (Params)taskParams;
-    }
-
-    @Override
-    public void run() {
-        Universe universe = Universe.get(taskParams().universeUUID);
-        if (universe != null &&
-                EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
-            YBClient client = null;
-            String hostPorts = universe.getMasterAddresses();
-            String certificate = universe.getCertificate();
-            try {
-                client = ybService.getClient(hostPorts, certificate);
-                KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
-                if (!client.waitForMasterHasUniverseKeyInMemory(
-                        KEY_IN_MEMORY_TIMEOUT,
-                        activeKey.uuid.keyRef,
-                        taskParams().nodeAddress
-                )) {
-                    throw new RuntimeException(
-                            "Timeout occurred waiting for universe encryption key to be set in memory"
-                    );
-                }
-            } catch (Exception e) {
-                LOG.error("{} hit error : {}", getName(), e.getMessage());
-            } finally {
-                ybService.closeClient(client, hostPorts);
-            }
+  @Override
+  public void run() {
+    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    if (universe != null && EncryptionAtRestUtil.getNumKeyRotations(universe.universeUUID) > 0) {
+      YBClient client = null;
+      String hostPorts = universe.getMasterAddresses();
+      String certificate = universe.getCertificateNodetoNode();
+      try {
+        client = ybService.getClient(hostPorts, certificate);
+        KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(universe.universeUUID);
+        if (!client.waitForMasterHasUniverseKeyInMemory(
+            KEY_IN_MEMORY_TIMEOUT, activeKey.uuid.keyRef, taskParams().nodeAddress)) {
+          throw new RuntimeException(
+              "Timeout occurred waiting for universe encryption key to be set in memory");
         }
+      } catch (Exception e) {
+        log.error("{} hit error : {}", getName(), e.getMessage());
+      } finally {
+        ybService.closeClient(client, hostPorts);
+      }
     }
+  }
 }

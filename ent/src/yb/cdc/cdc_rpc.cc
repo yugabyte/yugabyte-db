@@ -19,16 +19,19 @@
 #include "yb/cdc/cdc_service.proxy.h"
 
 #include "yb/client/client.h"
+#include "yb/client/client_error.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/table.h"
 #include "yb/client/meta_cache.h"
 #include "yb/client/tablet_rpc.h"
 
 #include "yb/rpc/rpc.h"
+#include "yb/rpc/rpc_controller.h"
 
 #include "yb/tserver/tserver_service.pb.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/tserver.pb.h"
 
+#include "yb/util/trace.h"
 
 using namespace std::literals;
 
@@ -44,6 +47,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
   CDCWriteRpc(CoarseTimePoint deadline,
               client::internal::RemoteTablet *tablet,
+              const std::shared_ptr<client::YBTable>& table,
               client::YBClient *client,
               WriteRequestPB *req,
               WriteCDCRecordCallback callback,
@@ -56,12 +60,11 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  this,
                  this,
                  tablet,
-                 // TODO(tsplit): decide whether we need to get info about stale table partitions
-                 // here.
-                 /* table =*/ nullptr,
+                 table,
                  mutable_retrier(),
                  trace_.get()),
-        callback_(std::move(callback)) {
+        callback_(std::move(callback)),
+        table_(table) {
     req_.Swap(req);
   }
 
@@ -76,6 +79,15 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   void Finished(const Status &status) override {
     Status new_status = status;
     if (invoker_.Done(&new_status)) {
+      // Check for any errors due to consumer side tablet splitting. If so, then mark partitions
+      // as stale so that when we retry the ApplyChanges call, we will refresh the partitions and
+      // apply changes to the proper tablets.
+      if (new_status.IsNotFound() ||
+          client::internal::ErrorCode(response_error())
+              == tserver::TabletServerErrorPB::TABLET_SPLIT ||
+          client::ClientError(new_status) == client::ClientErrorCode::kTablePartitionListIsStale) {
+        table_->MarkPartitionsAsStale();
+      }
       InvokeCallback(new_status);
     }
   }
@@ -127,17 +139,19 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   WriteResponsePB resp_;
   WriteCDCRecordCallback callback_;
   bool called_ = false;
+  const std::shared_ptr<client::YBTable>& table_;
 };
 
 rpc::RpcCommandPtr CreateCDCWriteRpc(
     CoarseTimePoint deadline,
     client::internal::RemoteTablet* tablet,
+    const std::shared_ptr<client::YBTable>& table,
     client::YBClient* client,
     WriteRequestPB* req,
     WriteCDCRecordCallback callback,
     bool use_local_tserver) {
   return std::make_shared<CDCWriteRpc>(
-      deadline, tablet, client, req, std::move(callback), use_local_tserver);
+      deadline, tablet, table, client, req, std::move(callback), use_local_tserver);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -159,11 +173,10 @@ class CDCReadRpc : public rpc::Rpc, public client::internal::TabletRpc {
                  this,
                  this,
                  tablet,
-                 // TODO(tsplit): decide whether we need to get info about stale table partitions
-                 // here.
                  /* table =*/ nullptr,
                  mutable_retrier(),
-                 trace_.get()),
+                 trace_.get(),
+                 master::IncludeInactive::kTrue),
         callback_(std::move(callback)) {
     req_.Swap(req);
   }

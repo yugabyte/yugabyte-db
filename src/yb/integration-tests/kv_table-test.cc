@@ -15,29 +15,31 @@
 #include <cmath>
 #include <cstdlib>
 #include <future>
+
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/client/callbacks.h"
-#include "yb/client/client-test-util.h"
+#include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/tablet_server.h"
 
 #include "yb/gutil/strings/split.h"
-#include "yb/gutil/strings/strcat.h"
 #include "yb/gutil/strings/substitute.h"
-#include "yb/master/mini_master.h"
-#include "yb/tablet/maintenance_manager.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
-#include "yb/tserver/tablet_server.h"
-#include "yb/util/test_macros.h"
-#include "yb/util/test_util.h"
 
 #include "yb/integration-tests/cluster_verifier.h"
 #include "yb/integration-tests/load_generator.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
+
+#include "yb/master/mini_master.h"
+
+#include "yb/tserver/mini_tablet_server.h"
+
+#include "yb/util/size_literals.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
 
 using namespace std::literals;
 
@@ -134,7 +136,6 @@ TEST_F(KVTableTest, LoadTest) {
   int value_size_bytes = 16;
   int max_write_errors = 0;
   int max_read_errors = 0;
-  bool stop_on_empty_read = true;
 
   // Create two separate clients for read and writes.
   auto write_client = CreateYBClient();
@@ -148,8 +149,7 @@ TEST_F(KVTableTest, LoadTest) {
   yb::load_generator::MultiThreadedReader reader(rows, reader_threads, &read_session_factory,
                                                  writer.InsertionPoint(), writer.InsertedKeys(),
                                                  writer.FailedKeys(), &stop_requested_flag,
-                                                 value_size_bytes, max_read_errors,
-                                                 stop_on_empty_read);
+                                                 value_size_bytes, max_read_errors);
 
   writer.Start();
   // Having separate write requires adding in write client id to the reader.
@@ -192,10 +192,9 @@ TEST_F(KVTableTest, Restart) {
   ASSERT_NO_FATALS(CheckSampleKeysValues());
 
   // Wait until all tablet servers come up.
-  std::vector<std::unique_ptr<client::YBTabletServer>> tablet_servers;
+  std::vector<client::YBTabletServer> tablet_servers;
   do {
-    tablet_servers.clear();
-    ASSERT_OK(client_->ListTabletServers(&tablet_servers));
+    tablet_servers = ASSERT_RESULT(client_->ListTabletServers());
     if (tablet_servers.size() == num_tablet_servers()) {
       break;
     }

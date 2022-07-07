@@ -69,21 +69,23 @@
     limit_item: nofile
     value: 1048576
 
+- name: Creating {{ nproc_override_file }}
+  become: yes
+  become_method: sudo
+  file:
+    path: "{{ nproc_override_file }}"
+    state: touch
+
 - name: Increase limit on max number of processes
   become: yes
   become_method: sudo
   pam_limits:
+    dest: "{{ nproc_override_file }}"
     domain: "*"
     limit_type: "-"
     limit_item: nproc
     value: 12000
 
-- name: Remove file /etc/security/limits.d/20-nproc.conf if present
-  become: yes
-  become_method: sudo
-  file:
-    path: /etc/security/limits.d/20-nproc.conf
-    state: absent
 - block:
   - name: Update package cache on RedHat platforms
     command: yum makecache fast -y
@@ -102,7 +104,7 @@
         patterns: "*.repo"
       register: repos
 
-    - name: Replace mirror links from https to http
+    - name: Uncomment mirror links
       become: yes
       become_method: sudo
       replace:
@@ -124,6 +126,9 @@
 
     when: ansible_os_family == "RedHat" and (cloud_type is not defined or cloud_type != "onprem")
 
+  - name: Gather package facts
+    package_facts:
+
   - name: Install linux packages we need on our YugaByte clusters on CentOS
     become: yes
     become_method: sudo
@@ -136,7 +141,7 @@
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
-    when: ansible_os_family == "RedHat"
+    when: ansible_os_family == 'RedHat' and "item not in ansible_facts.packages"
 
   - name: Install linux packages we need on our YugaByte clusters
     become: yes
@@ -149,6 +154,43 @@
     register: result
     until: result is succeeded
     retries: "{{ yum_retry_count }}"
-    when: ansible_os_family != "RedHat"
+    when: ansible_os_family != 'RedHat' and "item not in ansible_facts.packages"
 
+  - name: Install linux packages we need on our YugaByte clusters on RedHat aarch64 architecture
+    become: yes
+    become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - "{{ linux_packages + aarch64_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: >
+      ansible_architecture == 'aarch64' and
+      "item not in ansible_facts.packages" and
+      ansible_os_family == 'RedHat'
+
+  - name: Install linux packages we need on our YugaByte clusters on Debian aarch64 architecture
+    become: yes
+    become_method: sudo
+    module_defaults:
+      yum:
+        lock_timeout: 600
+    package:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+      - "{{ linux_packages + debian_aarch64_packages }}"
+    register: result
+    until: result is succeeded
+    retries: "{{ yum_retry_count }}"
+    when: >
+      ansible_architecture == 'aarch64' and
+      "item not in ansible_facts.packages" and
+      ansible_os_family == 'Debian'
   when: not air_gap

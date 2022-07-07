@@ -27,6 +27,8 @@
 #include "utils/relcache.h"
 #include "utils/reltrigger.h"
 
+/* YB includes. */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 /*
  * LockRelId and LockInfo really belong to lmgr.h, but it's more convenient
@@ -188,6 +190,8 @@ typedef struct RelationData
 
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info; /* statistics collection area */
+
+	YbTableProperties yb_table_properties; /* NULL if not loaded */
 } RelationData;
 
 
@@ -264,9 +268,13 @@ typedef struct StdRdOptions
 	AutoVacOpts autovacuum;		/* autovacuum-related options */
 	bool		user_catalog_table; /* use as an additional catalog relation */
 	int			parallel_workers;	/* max number of parallel workers */
+
+	/* YB additions. */
 	bool		colocated;
-	int 	  	tablegroup;
-	int 	  	table_oid;
+	Oid 		tablegroup_oid;
+	Oid 		colocation_id;
+	Oid 		table_oid;
+	Oid 		row_type_oid;
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -323,13 +331,13 @@ typedef struct StdRdOptions
 	 ((StdRdOptions *) (relation)->rd_options)->parallel_workers : (defaultpw))
 
 /*
- * RelationGetTablegroup
- *		Returns the relation's tablegroup reloption setting.
+ * RelationGetColocated
+ *		Returns the relation's colocated reloption setting.
  *		Note multiple eval of argument!
  */
-#define RelationGetTablegroup(relation) \
+#define RelationGetColocated(relation) \
 	((relation)->rd_options ? \
-	 ((StdRdOptions *) (relation)->rd_options)->tablegroup : 0)
+	 ((StdRdOptions *) (relation)->rd_options)->colocated : false)
 
 /*
  * RelationGetTableOid
@@ -350,6 +358,8 @@ typedef struct ViewOptions
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	bool		security_barrier;
 	int			check_option_offset;
+
+	bool		yb_use_initdb_acl;	/* initialize with default initdb-like permissions */
 } ViewOptions;
 
 /*

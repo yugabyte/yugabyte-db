@@ -16,16 +16,12 @@
 
 #include <string>
 
-#include "yb/util/slice.h"
+#include "yb/common/common_fwd.h"
 
-#include "yb/common/doc_hybrid_time.h"
-#include "yb/common/schema.h"
-#include "yb/docdb/doc_kv_util.h"
-#include "yb/docdb/value_type.h"
-#include "yb/util/bytes_formatter.h"
-#include "yb/util/byte_buffer.h"
-#include "yb/util/decimal.h"
-#include "yb/util/enums.h"
+#include "yb/docdb/docdb_fwd.h"
+
+#include "yb/util/kv_util.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace docdb {
@@ -59,16 +55,14 @@ class KeyBytes {
     data_.reserve(len);
   }
 
-  std::string ToString() const {
-    return FormatSliceAsStr(data_.AsSlice());
-  }
+  std::string ToString() const;
 
   bool empty() const {
     return data_.empty();
   }
 
   std::string ToStringBuffer() const {
-    return data().ToString();
+    return data().ToStringBuffer();
   }
 
   const KeyBuffer& data() const {
@@ -91,27 +85,13 @@ class KeyBytes {
     data_.append(data);
   }
 
-  void AppendValueType(ValueType value_type) {
-    data_.push_back(static_cast<char>(value_type));
-  }
+  void AppendKeyEntryType(KeyEntryType key_entry_type);
 
-  void AppendValueTypeBeforeGroupEnd(ValueType value_type) {
-    if (data_.empty() || data_.back() != ValueTypeAsChar::kGroupEnd) {
-      AppendValueType(value_type);
-      AppendValueType(ValueType::kGroupEnd);
-    } else {
-      data_.back() = static_cast<char>(value_type);
-      data_.push_back(ValueTypeAsChar::kGroupEnd);
-    }
-  }
+  void AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType key_entry_type);
 
-  void AppendString(const std::string& raw_string) {
-    ZeroEncodeAndAppendStrToKey(raw_string, &data_);
-  }
+  void AppendString(const std::string& raw_string);
 
-  void AppendDescendingString(const std::string &raw_string) {
-    ComplementZeroEncodeAndAppendStrToKey(raw_string, &data_);
-  }
+  void AppendDescendingString(const std::string &raw_string);
 
   void AppendDecimal(const std::string& encoded_decimal_str) {
     data_.append(encoded_decimal_str);
@@ -156,27 +136,20 @@ class KeyBytes {
     util::AppendInt64ToKey(x, &data_);
   }
 
-  void AppendUInt64(uint64_t x) {
-    AppendUInt64ToKey(x, &data_);
-  }
+  void AppendUInt64(uint64_t x);
 
-  void AppendDescendingUInt64(int64_t x) {
-    AppendUInt64ToKey(~x, &data_);
-  }
+  void AppendDescendingUInt64(uint64_t x);
 
   void AppendInt32(int32_t x) {
     util::AppendInt32ToKey(x, &data_);
   }
 
-  void AppendUInt32(uint32_t x) {
-    AppendUInt32ToKey(x, &data_);
-  }
+  void AppendUInt32(uint32_t x);
 
-  void AppendDescendingUInt32(int32_t x) {
-    AppendUInt32ToKey(~x, &data_);
-  }
+  void AppendDescendingUInt32(uint32_t x);
 
-  void AppendIntentTypeSet(IntentTypeSet intent_type_set) {
+  template <class EnumBitSet>
+  void AppendIntentTypeSet(EnumBitSet intent_type_set) {
     data_.push_back(static_cast<char>(intent_type_set.ToUIntPtr()));
   }
 
@@ -205,17 +178,15 @@ class KeyBytes {
     util::AppendInt32ToKey(~x, &data_);
   }
 
-  void AppendUInt16(int16_t x) {
-    AppendUInt16ToKey(x, &data_);
+  void AppendUint8(uint8_t x) {
+    data_.push_back(static_cast<char>(x));
   }
 
-  void AppendHybridTime(const DocHybridTime& hybrid_time) {
-    hybrid_time.AppendEncodedInDocDbFormat(&data_);
-  }
+  void AppendUInt16(uint16_t x);
 
-  void AppendColumnId(ColumnId column_id) {
-    AppendColumnIdToKey(column_id, &data_);
-  }
+  void AppendHybridTime(const DocHybridTime& hybrid_time);
+
+  void AppendColumnId(ColumnId column_id);
 
   void AppendDescendingFloat(float x) {
     util::AppendFloatToKey(x, &data_, /* descending */ true);
@@ -233,11 +204,9 @@ class KeyBytes {
     util::AppendDoubleToKey(x, &data_);
   }
 
-  void RemoveValueTypeSuffix(ValueType value_type) {
-    CHECK_GE(data_.size(), sizeof(char));
-    CHECK_EQ(data_.back(), static_cast<char>(value_type));
-    data_.pop_back();
-  }
+  void AppendGroupEnd();
+
+  void RemoveKeyEntryTypeSuffix(KeyEntryType key_entry_type);
 
   size_t size() const { return data_.size(); }
 
@@ -275,15 +244,9 @@ class KeyBytes {
     return &data_;
   }
 
-  void Truncate(size_t new_size) {
-    DCHECK_LE(new_size, data_.size());
-    data_.Truncate(new_size);
-  }
+  void Truncate(size_t new_size);
 
-  void RemoveLastByte() {
-    DCHECK(!data_.empty());
-    data_.pop_back();
-  }
+  void RemoveLastByte();
 
  private:
   KeyBuffer data_;
@@ -314,6 +277,7 @@ inline bool operator!=(const KeyBytes& lhs, const KeyBytes& rhs) {
 }
 
 void AppendDocHybridTime(const DocHybridTime& time, KeyBytes* key);
+void AppendHash(uint16_t hash, KeyBytes* key);
 
 }  // namespace docdb
 }  // namespace yb

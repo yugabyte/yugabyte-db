@@ -29,10 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/consensus/opid_util.h"
 
-#include <algorithm>
 #include <limits>
 
 #include <glog/logging.h>
@@ -40,7 +38,6 @@
 #include "yb/consensus/consensus.pb.h"
 #include "yb/gutil/port.h"
 #include "yb/gutil/strings/substitute.h"
-
 #include "yb/util/opid.h"
 
 namespace yb {

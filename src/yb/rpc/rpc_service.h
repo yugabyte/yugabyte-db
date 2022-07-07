@@ -41,6 +41,8 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
  public:
   virtual ~RpcService() {}
 
+  virtual void FillEndpoints(RpcEndpointMap* map) = 0;
+
   // Enqueue a call for processing.
   // On failure, the RpcService::QueueInboundCall() implementation is
   // responsible for responding to the client with a failure message.

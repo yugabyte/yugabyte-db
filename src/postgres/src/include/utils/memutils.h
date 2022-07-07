@@ -17,6 +17,7 @@
 #ifndef MEMUTILS_H
 #define MEMUTILS_H
 
+#include "c.h"
 #include "nodes/memnodes.h"
 
 #include "yb/common/ybc_util.h"
@@ -85,6 +86,7 @@ extern MemoryContext MemoryContextGetParent(MemoryContext context);
 extern bool MemoryContextIsEmpty(MemoryContext context);
 extern void MemoryContextStats(MemoryContext context);
 extern void MemoryContextStatsDetail(MemoryContext context, int max_children);
+extern int64 MemoryContextStatsUsage(MemoryContext context, int max_children);
 extern void MemoryContextAllowInCriticalSection(MemoryContext context,
 									bool allow);
 
@@ -212,7 +214,6 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 #define ALLOCSET_START_SMALL_SIZES \
 	ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_DEFAULT_MAXSIZE
 
-
 /*
  * Threshold above which a request in an AllocSet context is certain to be
  * allocated separately (and thereby have constant allocation overhead).
@@ -223,5 +224,67 @@ extern MemoryContext GenerationContextCreate(MemoryContext parent,
 
 #define SLAB_DEFAULT_BLOCK_SIZE		(8 * 1024)
 #define SLAB_LARGE_BLOCK_SIZE		(8 * 1024 * 1024)
+
+#define PG_MEM_TRACKER_INIT \
+	{ \
+		0, 0, 0, 0 \
+	}
+
+/*
+ * Tracking memory consumption for both PG backend and pggate tcmalloc acutal
+ * heap consumption.
+ * Global accessible in one PG backend process.
+ */
+typedef struct YbPgMemTracker
+{
+	/*
+	 * Current, at time of cutting Snapshot(), memory in bytes allocated by PG
+	 * (pggate is not included in this field)
+	 */
+	Size pg_cur_mem_bytes;
+	/*
+	 * The maximum memory since this backend connection is established including
+	 * PG and pggate
+	 */
+	Size backend_max_mem_bytes;
+	/*
+	 * The maximum memory ever allocated by current statement including PG and
+	 * pggate
+	 */
+	Size stmt_max_mem_bytes;
+	/*
+	 * The initial base memory already allocated by PG and paggate at the
+	 * beginning of current statement
+	 */
+	Size stmt_max_mem_base_bytes;
+} YbPgMemTracker;
+
+extern YbPgMemTracker PgMemTracker;
+
+/*
+ * Update current memory usage in MemTracker, when there is no PG
+ * memory allocation activities. This is currently supposed to be
+ * used by the MemTracker in pggate as a callback.
+ */
+extern void YbPgMemUpdateMax();
+
+/*
+ * Add memory consumption to PgMemTracker in bytes.
+ * sz can be negative. In this case, the max values are not
+ * updated.
+ */
+extern void YbPgMemAddConsumption(const Size sz);
+
+/*
+ * Substract the sz bytes from PgMemTracker. It doesn't update the maximum
+ * values for the backend and stmt.
+ */
+extern void YbPgMemSubConsumption(const Size sz);
+
+/*
+ * Reset the PgMemTracker's stmt fields and make it ready to
+ * track peak memory usage for a new statement.
+ */
+extern void YbPgMemResetStmtConsumption();
 
 #endif							/* MEMUTILS_H */

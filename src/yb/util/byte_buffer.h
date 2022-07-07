@@ -17,8 +17,6 @@
 #include <cstddef>
 #include <string>
 
-#include <boost/container_hash/extensions.hpp>
-
 #include "yb/util/slice.h"
 
 namespace yb {
@@ -159,17 +157,32 @@ class ByteBuffer {
     EnsureCapacity(capacity, size_);
   }
 
+  char* GrowByAtLeast(size_t size) {
+    size += size_;
+    auto result = EnsureCapacity(size, size_) + size_;
+    size_ = size;
+    return result;
+  }
+
   void PushBack(char ch) {
-    *(EnsureCapacity(size_ + 1, size_) + size_) = ch;
+    EnsureCapacity(size_ + 1, size_)[size_] = ch;
     ++size_;
   }
 
-  std::string ToString() const {
+  std::string ToStringBuffer() const {
     return AsSlice().ToBuffer();
+  }
+
+  std::string ToString() const {
+    return AsSlice().ToDebugHexString();
   }
 
   Slice AsSlice() const {
     return Slice(ptr(), size_);
+  }
+
+  uint8_t* mutable_data() {
+    return pointer_cast<uint8_t*>(ptr());
   }
 
   // STL container compatibility

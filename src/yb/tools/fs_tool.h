@@ -33,14 +33,10 @@
 #ifndef YB_TOOLS_FS_TOOL_H
 #define YB_TOOLS_FS_TOOL_H
 
-#include <iostream>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
-#include "yb/gutil/gscoped_ptr.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -80,38 +76,38 @@ class FsTool {
   explicit FsTool(DetailLevel detail_level);
   ~FsTool();
 
-  CHECKED_STATUS Init();
+  Status Init();
 
   // Prints out the file system tree.
-  CHECKED_STATUS FsTree();
+  Status FsTree();
 
   // Lists all log segments in the root WALs directory.
-  CHECKED_STATUS ListAllLogSegments();
+  Status ListAllLogSegments();
 
   // Lists all log segments for tablet 'tablet_id'.
-  CHECKED_STATUS ListLogSegmentsForTablet(const std::string& tablet_id);
+  Status ListLogSegmentsForTablet(const std::string& tablet_id);
 
   // Lists all tablets in a tablet server's local file system.
-  CHECKED_STATUS ListAllTablets();
+  Status ListAllTablets();
 
   // Prints the header for a log segment residing in 'path'.
-  CHECKED_STATUS PrintLogSegmentHeader(const std::string& path, int indent);
+  Status PrintLogSegmentHeader(const std::string& path, int indent);
 
   // Prints the tablet metadata for a tablet 'tablet_id'.
-  CHECKED_STATUS PrintTabletMeta(const std::string& tablet_id, int indent);
+  Status PrintTabletMeta(const std::string& tablet_id, int indent);
 
   // Dump the data stored in a tablet. The output here is much more readable
   // than DumpTabletBlocks, since it reconstructs docdb values.
-  CHECKED_STATUS DumpTabletData(const std::string& tablet_id);
+  Status DumpTabletData(const std::string& tablet_id);
 
   // Prints the server's UUID to whom the data belongs and nothing else.
-  CHECKED_STATUS PrintUUID(int indent);
+  Status PrintUUID(int indent);
  private:
-  CHECKED_STATUS ListSegmentsInDir(const std::string& segments_dir);
+  Status ListSegmentsInDir(const std::string& segments_dir);
 
   bool initialized_;
   const DetailLevel detail_level_;
-  gscoped_ptr<FsManager> fs_manager_;
+  std::unique_ptr<FsManager> fs_manager_;
 };
 
 } // namespace tools

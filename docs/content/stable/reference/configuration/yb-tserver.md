@@ -3,16 +3,12 @@ title: yb-tserver configuration reference
 headerTitle: yb-tserver
 linkTitle: yb-tserver
 description: YugabyteDB Tablet Server (yb-tserver) binary and configuration flags to store and manage data for client applications.
-block_indexing: true
 menu:
   stable:
     identifier: yb-tserver
     parent: configuration
     weight: 2440
-aliases:
-  - /stable/admin/yb-tserver
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Use the `yb-tserver` binary and its flags to configure the [YB-TServer](../../../architecture/concepts/yb-tserver/) server. The `yb-tserver` executable file is located in the `bin` directory of YugabyteDB home.
@@ -111,11 +107,11 @@ Default: Same value as `--fs_data_dirs`
 
 Specifies the expected maximum clock skew, in microseconds (µs), between any two nodes in your deployment.
 
-Default: `50000` (50,000 µs = 50ms)
+Default: `500000` (500,000 µs = 500ms)
 
 ##### --rpc_bind_addresses
 
-Specifies the comma-separated list of the network interface addresses to bind to for RPC connections.
+Specifies the comma-separated list of the network interface addresses to bind to for RPC connections:
 
 - Typically, the value is set to the private IP address of the host on which the server is running. When using the default, or explicitly setting the value to `0.0.0.0:9100`, the server will listen on all available network interfaces.
 
@@ -135,6 +131,18 @@ Specifies the public IP or DNS hostname of the server (with an optional port). T
 
 Default: `""`
 
+##### --dns_cache_expiration_ms
+
+Specifies the duration, in milliseconds, until a cached DNS resolution expires. When hostnames are used instead of IP addresses, a DNS resolver must be queried to match hostnames to IP addresses. By using a local DNS cache to temporarily store DNS lookups, DNS queries can be resolved quicker and additional queries can be avoided, thereby reducing latency, improving load times, and reducing bandwidth and CPU consumption.
+
+Default: `60000` (1 minute)
+
+{{< note title="Note" >}}
+
+If this value is changed from the default, make sure to add the identical value to all YB-Master and YB-TSever configurations.
+
+{{< /note >}}
+
 ##### --use_private_ip
 
 Specifies the policy that determines when to use private IP addresses for inter-node communication. Possible values are `never` (default),`zone`,`cloud` and `region`. Based on the values of the [placement (`--placement_*`) configuration flags](#placement-flags).
@@ -142,7 +150,7 @@ Specifies the policy that determines when to use private IP addresses for inter-
 Valid values for the policy are:
 
 - `never` — Always use the [`--server_broadcast_addresses`](#server-broadcast-addresses).
-- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone. 
+- `zone` — Use the private IP inside a zone; use the [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the zone.
 - `region` — Use the private IP address across all zone in a region; use [`--server_broadcast_addresses`](#server-broadcast-addresses) outside the region.
 
 Default: `never`
@@ -165,6 +173,24 @@ The monitoring web server home directory..
 
 Default: The `www` directory in the YugabyteDB home directory.
 
+##### --webserver_certificate_file
+
+Location of the SSL certificate file (in .pem format) to use for the web server. If empty, SSL is not enabled for the web server.
+
+Default: `""`
+
+##### --webserver_authentication_domain
+
+Domain used for .htpasswd authentication. This should be used in conjunction with [`--webserver_password_file`](#webserver-password-file).
+
+Default: `""`
+
+##### --webserver_password_file
+
+Location of .htpasswd file containing usernames and hashed passwords, for authentication to the web server.
+
+Default: `""`
+
 ---
 
 ### Logging flags
@@ -174,18 +200,6 @@ Default: The `www` directory in the YugabyteDB home directory.
 The directory to write `yb-tserver` log files.
 
 Default: Same as [`--fs_data_dirs`](#fs-data-dirs)
-
-##### --logemaillevel
-
-Email log messages logged at this level, or higher. Values: `0` (all), 1, 2, `3` (FATAL), `999` (none)
-
-Default: `999`
-
-##### --logmailer
-
-The mailer used to send logging email messages.
-
-Default: `"/bin/mail"`
 
 ##### --logtostderr
 
@@ -243,9 +257,16 @@ The `--follower_unavailable_considered_failed_sec` value should match the value 
 
 The maximum heartbeat periods that the leader can fail to heartbeat in before the leader is considered to be failed. The total failure timeout, in milliseconds (ms), is [`--raft_heartbeat_interval_ms`](#raft-heartbeat-interval-ms) multiplied by `--leader_failure_max_missed_heartbeat_periods`.
 
-For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
+For read replica clusters, set the value to `10` in all `yb-tserver` and `yb-master` configurations.  Because the data is globally replicated, RPC latencies are higher. Use this flag to increase the failure detection interval in such a higher RPC latency deployment.
 
 Default: `6`
+
+##### --max_stale_read_bound_time_ms
+
+Specifies the maximum bounded staleness (duration), in milliseconds, before a follower forwards a read request to the leader.
+In a geo-distributed cluster, with followers located a long distance from the tablet leader, you can use this setting to increase the maximum bounded staleness.
+
+Default: `10000` (10 seconds)
 
 ##### --raft_heartbeat_interval_ms
 
@@ -311,7 +332,7 @@ Default: `64`
 
 The number of shards per YB-TServer for each YCQL table when a user table is created.
 
-Default: `-1` (server internally sets default value). For servers with two or less CPU cores, then the default value is `4`. For four or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag.
+Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `4`. For three or more CPU cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
 {{< note title="Important" >}}
 
@@ -329,7 +350,7 @@ On a per-table basis, the [`CREATE TABLE ... WITH TABLETS = <num>`](../../../api
 
 The number of shards per YB-TServer for each YSQL table when a user table is created.
 
-Default: `8`
+Default: `-1` (server internally sets default value). For servers with up to two CPU cores, the default value is `2`. For servers with three or four CPU cores, the default value is `4`. Beyond four cores, the default value is `8`. Local cluster installations, created with `yb-ctl` and `yb-docker-ctl`, use a value of `2` for this flag. Clusters created with `yugabyted` use a default value of `1`.
 
 {{< note title="Important" >}}
 
@@ -339,7 +360,7 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 {{< note title="Note" >}}
 
-On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/commands/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
+On a per-table basis, the [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
 
@@ -372,6 +393,18 @@ Default: `cloud1`
 The unique identifier for the cluster.
 
 Default: `""`
+
+##### --force_global_transactions
+
+If true, forces all transactions through this instance to always be global transactions that use the `system.transactions` transaction status table. This is equivalent to always setting the session variable `force_global_transaction = TRUE` (see [Row-Level Geo-Partitioning](../../../explore/multi-region-deployments/row-level-geo-partitioning/#step-5-running-transactions)).
+
+{{< note title="Global transaction latency" >}}
+
+Avoid setting this flag when possible. All distributed transactions _can_ run without issue as global transactions, but you may have significantly higher latency when committing transactions, because YugabyteDB must achieve consensus across multiple regions to write to `system.transactions`. When necessary, it is preferable to selectively set the session variable `force_global_transaction = TRUE` rather than setting this flag.
+
+{{< /note >}}
+
+Default: `false`
 
 ---
 
@@ -415,9 +448,41 @@ Default: `13000`
 
 ##### --ysql_hba_conf
 
+{{< note title="Note" >}}
+`--ysql_hba_conf` tserver flag is deprecated. Use `--ysql_hba_conf_csv` instead.
+{{< /note >}}
+
 Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file.
 
-For details on using `--ysql_hba_conf` to specify client authentication, see [Fine-grained authentication](../../../secure/authentication/client-authentication).
+For details on using `--ysql_hba_conf` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication).
+
+Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
+
+To see the current values in the `ysql_hba.conf` file, run the `SHOW hba_file;` statement and then view the file. Because the file is autogenerated, direct edits are overwritten by the autogenerated content.
+
+##### --ysql_hba_conf_csv
+
+Specifies a comma-separated list of PostgreSQL client authentication settings that is written to the `ysql_hba.conf` file. When writing, the rules are:
+
+1. in case text has `,` or `"` it should be quoted with `"`
+2. the `"` symbol inside quoted text should be doubled (i.e. `""`)
+
+Example:
+
+Suppose we have two fields: `host all all 127.0.0.1/0 password` and `host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd="*****"`.
+The second field has the `"` symbol, so we should quote this field and double the quotes. The result will be:
+
+```sh
+"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""
+```
+
+Now the fields can be joined with the `,` and the final flag value is set inside `'` single quotes:
+
+```sh
+--ysql_hba_conf_csv='host all all 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=***** ldapsearchattribute=cn ldapport=3268 ldapbinddn=***** ldapbindpasswd=""*****"""'
+```
+
+For details on using `--ysql_hba_conf_csv` to specify client authentication, see [Host-based authentication](../../../secure/authentication/host-based-authentication).
 
 Default: `"host all all 0.0.0.0/0 trust,host all all ::0/0 trust"`
 
@@ -451,13 +516,9 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-Default: `REPEATABLE READ`
+Default: `READ COMMITTED`<sup>$</sup>
 
-{{< note title="Note" >}}
-
-YugabyteDB supports only two transaction isolation levels: `REPEATABLE READ` (aka snapshot) and `SERIALIZABLE`. The transaction isolation levels of `READ UNCOMMITTED` and `READ COMMITTED` are implemented in YugabyteDB as `REPEATABLE READ`.
-
-{{< /note >}}
+<sup>$</sup> Read Committed Isolation is supported only if the tserver gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of Yugabyte's transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -465,17 +526,27 @@ Set this flag to `false` to enable online index backfill. When set to `false`, o
 
 For details on how online index backfill works, see the [Online Index Backfill](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/online-index-backfill.md) design document.
 
-Default: `true`
+Default: `false`
+
+##### --ysql_sequence_cache_minval
+
+Specify the minimum number of sequence values to cache in the client for every sequence object.
+
+To turn off the default size of cache flag, set the flag to `0`.
+
+For details on the expected behaviour when used with the sequence cache clause, see the semantics under [CREATE SEQUENCE](../../../api/ysql/the-sql-language/statements/ddl_create_sequence/#cache-cache) and [ALTER SEQUENCE](../../../api/ysql/the-sql-language/statements/ddl_alter_sequence/#cache-cache) pages.
+
+Default: `100`
 
 ##### --ysql_log_statement
 
-Specifies the types of YSQL statements that should be logged. 
+Specifies the types of YSQL statements that should be logged.
 
 Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
 
 Default: `none`
 
-#### --ysql_log_min_duration_statement
+##### --ysql_log_min_duration_statement
 
 Logs the duration of each completed SQL statement that runs the specified duration (in milliseconds) or longer. Setting the value to `0` prints all statement durations. You can use this flag to help track down unoptimized (or "slow") queries.
 
@@ -523,11 +594,17 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `true`
 
+##### --ycql_require_drop_privs_for_truncate
+
+Set this flag to `true` to reject [`TRUNCATE`](../../../api/ycql/dml_truncate) statements unless allowed by [`DROP TABLE`](../../../api/ycql/ddl_drop_table) privileges.
+
+Default: `false`
+
 ##### --ycql_enable_audit_log
 
 Set this flag to `true` to enable audit logging for the universe.
 
-For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/ycql).
+For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
 
 ---
 
@@ -551,11 +628,41 @@ Default: `11000`
 
 ### Performance flags
 
+Use the following two flags to select the SSTable compression type.
+
 ##### --enable_ondisk_compression
 
-Enable Snappy compression at the the cluster level.
+Enable SSTable compression at the cluster level.
 
 Default: `true`
+
+##### --compression_type
+
+Change the SSTable compression type. The valid compression types are `Snappy`, `Zlib`, `LZ4`, and `NoCompression`.
+
+Default: `Snappy`
+
+{{< note title="Note" >}}
+
+If you select an invalid option, the cluster will not come up.
+
+If you change this flag, the change takes effect after you restart the cluster nodes.
+
+{{< /note >}}
+
+Changing this flag on an existing database is supported; a tablet can validly have SSTs with different compression types. Eventually, compaction will remove the old compression type files.
+
+##### --regular_tablets_data_block_key_value_encoding
+
+Key-value encoding to use for regular data blocks in RocksDB. Possible options: `shared_prefix`, `three_shared_parts`.
+
+Default: `shared_prefix`
+
+{{< note title="Note" >}}
+
+Only change this flag to `three_shared_parts` after you migrate the whole cluster to the YugabyteDB version that supports it.
+
+{{< /note >}}
 
 ##### --rocksdb_compact_flush_rate_limit_bytes_per_sec
 
@@ -565,27 +672,21 @@ Default: `256MB`
 
 ##### --rocksdb_universal_compaction_min_merge_width
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
-their running total (summation of size of files considered so far) is 
-within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `4`
 
 ##### --rocksdb_universal_compaction_size_ratio
 
-Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and 
-their running total (summation of size of files considered so far) is 
-within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
+Compactions run only if there are at least `rocksdb_universal_compaction_min_merge_width` eligible files and their running total (summation of size of files considered so far) is within `rocksdb_universal_compaction_size_ratio` of the next file in consideration to be included into the same compaction.
 
 Default: `20`
 
 ##### --timestamp_history_retention_interval_sec
 
-The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval 
-might not be allowed after a compaction and return a `Snapshot too old` error. 
-Set this to be greater than the expected maximum duration of any single transaction in your application.
+The time interval, in seconds, to retain history/older versions of data. Point-in-time reads at a hybrid time prior to this interval might not be allowed after a compaction and return a `Snapshot too old` error. Set this to be greater than the expected maximum duration of any single transaction in your application.
 
-Default: `120`
+Default: `900`
 
 ##### --remote_bootstrap_rate_limit_bytes_per_sec
 
@@ -594,6 +695,42 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 Default: `256MB`
 
 ---
+
+### Network compression
+
+Use the following two gflags to configure RPC compression.
+
+##### --enable_stream_compression
+
+Controls whether YugabyteDB uses RPC compression.
+
+Default: `true`
+
+##### --stream_compression_algo
+
+Specifies which RPC compression algorithm to use. Requires `enable_stream_compression` to be set to true. Valid values are:
+
+- 0: No compression (default value)
+- 1: Gzip
+- 2: Snappy
+- 3: LZ4
+
+In most cases, LZ4 (`--stream_compression_algo=3`) offers the best compromise of compression performance versus CPU overhead.
+
+{{< note title="Upgrade notes" >}}
+
+To upgrade from an older version that doesn't support RPC compression (such as 2.4), to a newer version that does (such as 2.6), you need to do the following:
+
+1. Rolling restart to upgrade YugabyteDB to a version that supports compression.
+
+1. Rolling restart to enable compression, on both master and tserver, by setting `enable_stream_compression=true`.
+
+    \
+    **Note** You can omit this step if the version you're upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and above (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
+
+1. Rolling restart to set the compression algorithm to use, on both master and tserver, such as by setting `stream_compression_algo=3`.
+
+{{< /note >}}
 
 ### Security flags
 
@@ -619,13 +756,13 @@ Default: `""` (Use the same directory as for server-to-server communications.)
 
 ##### --dump_certificate_entries
 
-Dump certificate entries.
+Adds certificate entries, including IP addresses and hostnames, to log for handshake error messages.  Enabling this flag is useful for debugging certificate issues.
 
 Default: `false`
 
 ##### --use_client_to_server_encryption
 
-Use client-to-server, or client-server, encryption with YCQL. 
+Use client-to-server, or client-server, encryption with YCQL.
 
 Default: `false`
 
@@ -635,11 +772,45 @@ Enable server-server, or node-to-node, encryption between YugabyteDB YB-Master a
 
 Default: `false`
 
+##### --cipher_list
+
+Specify cipher lists for TLS 1.2 and below. (For TLS 1.3, use [--ciphersuite](#ciphersuite).) Use a colon (":") separated list of TLSv1.2 cipher names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--cipher_list DEFAULTS:!DES:!IDEA:!3DES:!RC2
+```
+
+This allows all ciphers for TLS 1.2 to be accepted, except those matching the category of ciphers omitted.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
+##### --ciphersuite
+
+Specify cipher lists for TLS 1.3. (For TLS 1.2 and below, use [--cipher_list](#cipher-list).)
+
+Use a colon (":") separated list of TLSv1.3 ciphersuite names in order of preference. Use an exclamation mark ("!") to exclude ciphers. For example:
+
+```sh
+--ciphersuite DEFAULTS:!CHACHA20
+```
+
+This allows all ciphersuites for TLS 1.3 to be accepted, except CHACHA20 ciphers.
+
+This flag requires a restart or rolling restart.
+
+Default: `DEFAULTS`
+
+For more information, refer to [SSL_CTX_set_cipher_list](https://www.openssl.org/docs/man1.1.1/man3/SSL_CTX_set_cipher_list.html) in the OpenSSL documentation.
+
 ---
 
 ### Change data capture (CDC) flags
 
-To learn about CDC, see [Change data capture (CDC)](../../../architecture/cdc-architecture).
+To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
 
 ##### --cdc_rpc_timeout_ms
 

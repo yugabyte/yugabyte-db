@@ -37,8 +37,10 @@
 #include <vector>
 #include <string>
 
-#include "yb/util/result.h"
-#include "yb/util/status.h"
+#include <rapidjson/document.h>
+
+#include "yb/util/status_fwd.h"
+#include "yb/tools/tools_fwd.h"
 
 namespace yb {
 namespace client {
@@ -49,7 +51,6 @@ class YBTableName;
 
 namespace tools {
 
-class ClusterAdminClient;
 typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
 
 // Tool to administer a cluster from the CLI.
@@ -64,14 +65,17 @@ class ClusterAdminCli {
   static const Status kInvalidArguments;
 
  protected:
-  typedef std::function<Status(const CLIArguments&)> CommandFn;
+  typedef std::function<Status(const CLIArguments&)> Action;
+  typedef std::function<Result<rapidjson::Document>(const CLIArguments&)> JsonAction;
+
   struct Command {
     std::string name_;
     std::string usage_arguments_;
-    CommandFn fn_;
+    Action action_;
   };
 
-  void Register(std::string&& cmd_name, std::string&& cmd_args, CommandFn&& cmd_fn);
+  void Register(std::string&& cmd_name, std::string&& cmd_args, Action&& action);
+  void RegisterJson(std::string&& cmd_name, std::string&& cmd_args, JsonAction&& action);
   void SetUsage(const std::string& prog_name);
 
   virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);
@@ -89,13 +93,16 @@ Result<std::vector<client::YBTableName>> ResolveTableNames(
     ClusterAdminClientClass* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
-    TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
+    const TailArgumentsProcessor& tail_processor = TailArgumentsProcessor(),
+    bool allow_namespace_only = false);
 
 Result<client::YBTableName> ResolveSingleTableName(
     ClusterAdminClientClass* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
+
+Status CheckArgumentsCount(size_t count, size_t min, size_t max);
 
 }  // namespace tools
 }  // namespace yb

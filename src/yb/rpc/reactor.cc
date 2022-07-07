@@ -32,44 +32,53 @@
 
 #include "yb/rpc/reactor.h"
 
-#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdlib.h>
-#include <sys/socket.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #include <functional>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
 
+#include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 #include <ev++.h>
-
 #include <glog/logging.h>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
+
 #include "yb/rpc/connection.h"
+#include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
-#include "yb/rpc/yb_rpc.h"
+#include "yb/rpc/server_event.h"
 
+#include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
+#include "yb/util/metric_entity.h"
 #include "yb/util/monotime.h"
+#include "yb/util/net/socket.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 #include "yb/util/thread.h"
-#include "yb/util/threadpool.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
-#include "yb/util/net/socket.h"
 
 using namespace std::literals;
 
+DEFINE_uint64(rpc_read_buffer_size, 0,
+              "RPC connection read buffer size. 0 to auto detect.");
 DECLARE_string(local_ip_for_outbound_sockets);
 DECLARE_int32(num_connections_to_server);
 DECLARE_int32(socket_receive_buffer_size);
@@ -99,7 +108,7 @@ const Status& ServiceUnavailableError() {
 // This implementation is slightly preferable to the built-in one since
 // it uses a FATAL log message instead of printing to stderr, which might
 // not end up anywhere useful in a daemonized context.
-void LibevSysErr(const char* msg) throw() {
+void LibevSysErr(const char* msg) noexcept {
   PLOG(FATAL) << "LibEV fatal error: " << msg;
 }
 
@@ -109,6 +118,11 @@ void DoInitLibEv() {
 
 bool HasReactorStartedClosing(ReactorState state) {
   return state == ReactorState::kClosing || state == ReactorState::kClosed;
+}
+
+size_t PatchReceiveBufferSize(size_t receive_buffer_size) {
+  return std::max<size_t>(
+      64_KB, FLAGS_rpc_read_buffer_size ? FLAGS_rpc_read_buffer_size : receive_buffer_size);
 }
 
 } // anonymous namespace
@@ -257,8 +271,8 @@ void Reactor::ShutdownInternal() {
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
   return RunOnReactorThread([metrics](Reactor* reactor) {
-    metrics->num_client_connections_ = reactor->client_conns_.size();
-    metrics->num_server_connections_ = reactor->server_conns_.size();
+    metrics->num_client_connections = reactor->client_conns_.size();
+    metrics->num_server_connections = reactor->server_conns_.size();
     return Status::OK();
   }, SOURCE_LOCATION());
 }
@@ -309,7 +323,7 @@ void Reactor::CheckReadyToStop() {
   DCHECK(IsCurrentThread());
 
   VLOG_WITH_PREFIX(4) << "Check ready to stop: " << thread_->ToString() << ", "
-          << "waiting connections: " << yb::ToString(waiting_conns_);
+                      << "waiting connections: " << waiting_conns_.size();
 
   if (VLOG_IS_ON(4)) {
     for (const auto& conn : waiting_conns_) {
@@ -341,6 +355,8 @@ void Reactor::CheckReadyToStop() {
 // something to our attention, like the fact that we're shutting down, or the fact that there is a
 // new outbound Transfer ready to send.
 void Reactor::AsyncHandler(ev::async &watcher, int revents) {
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Events: " << revents;
+
   DCHECK(IsCurrentThread());
 
   auto se = ScopeExit([this] {
@@ -545,7 +561,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
     // originating address to be "public" also.
     address_bytes[3] |= conn_id.remote().address().to_v4().to_bytes()[3] & 1;
     boost::asio::ip::address_v4 outbound_address(address_bytes);
-    auto status = sock.Bind(Endpoint(outbound_address, 0));
+    auto status = sock.SetReuseAddr(true);
+    if (status.ok()) {
+      status = sock.Bind(Endpoint(outbound_address, 0));
+    }
     LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                               << status;
   } else if (FLAGS_local_ip_for_outbound_sockets.empty()) {
@@ -553,7 +572,10 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
         ? messenger_->outbound_address_v6()
         : messenger_->outbound_address_v4();
     if (!outbound_address.is_unspecified()) {
-      auto status = sock.Bind(Endpoint(outbound_address, 0));
+      auto status = sock.SetReuseAddr(true);
+      if (status.ok()) {
+        status = sock.Bind(Endpoint(outbound_address, 0));
+      }
       LOG_IF_WITH_PREFIX(WARNING, !status.ok()) << "Bind " << outbound_address << " failed: "
                                                 << status;
     }
@@ -564,20 +586,26 @@ Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
                 "Set receive buffer size failed: ");
   }
 
-  auto receive_buffer_size = VERIFY_RESULT(sock.GetReceiveBufferSize());
+  auto receive_buffer_size = PatchReceiveBufferSize(VERIFY_RESULT(sock.GetReceiveBufferSize()));
 
-  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
   auto stream = VERIFY_RESULT(CreateStream(
       messenger_->stream_factories_, conn_id.protocol(),
-      {conn_id.remote(), hostname, &sock,
-       messenger_->connection_context_factory_->buffer_tracker()}));
+      StreamCreateData {
+        .remote = conn_id.remote(),
+        .remote_hostname = hostname,
+        .socket = &sock,
+        .receive_buffer_size = receive_buffer_size,
+        .mem_tracker = messenger_->connection_context_factory_->buffer_tracker(),
+        .metric_entity = messenger_->metric_entity(),
+      }));
+  auto context = messenger_->connection_context_factory_->Create(receive_buffer_size);
 
   // Register the new connection in our map.
   auto connection = std::make_shared<Connection>(
       this,
       std::move(stream),
       ConnectionDirection::CLIENT,
-      &messenger()->rpc_metrics(),
+      messenger()->rpc_metrics().get(),
       std::move(context));
 
   RETURN_NOT_OK(connection->Start(&loop_));
@@ -759,10 +787,20 @@ void DelayedTask::Run(Reactor* reactor) {
   DCHECK(reactor_ == nullptr) << "Task has already been scheduled";
   DCHECK(reactor->IsCurrentThread());
 
+  const auto reactor_state = reactor->state();
+  if (reactor_state != ReactorState::kRunning) {
+    LOG(WARNING) << "Reactor is not running (state: " << reactor_state
+                 << "), not scheduling a delayed task.";
+    return;
+  }
+
   // Acquire lock to prevent task from being aborted in the middle of scheduling, in case abort
   // will be requested in the middle of scheduling - task will be aborted right after return
   // from this method.
   std::lock_guard<LockType> l(lock_);
+
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Done: " << done_ << ", when: " << when_;
+
   if (done_) {
     // Task has been aborted.
     return;
@@ -802,6 +840,10 @@ std::string DelayedTask::ToString() const {
 
 void DelayedTask::AbortTask(const Status& abort_status) {
   auto mark_as_done_result = MarkAsDone();
+
+  VLOG_WITH_PREFIX_AND_FUNC(4)
+      << "Status: " << abort_status << ", " << AsString(mark_as_done_result);
+
   if (mark_as_done_result == MarkAsDoneResult::kSuccess) {
     // Stop the libev timer. We don't need to do this in the kNotScheduled case, because the timer
     // has not started in that case.
@@ -841,9 +883,9 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   }
 
   // Hold shared_ptr, so this task wouldn't be destroyed upon removal below until func_ is called.
-  auto holder = shared_from_this();
+  auto holder = shared_from(this);
 
-  reactor_->scheduled_tasks_.erase(shared_from(this));
+  reactor_->scheduled_tasks_.erase(holder);
   if (messenger_ != nullptr) {
     messenger_->RemoveScheduledTask(id_);
   }
@@ -851,8 +893,10 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
   if (EV_ERROR & revents) {
     std::string msg = "Delayed task got an error in its timer handler";
     LOG(WARNING) << msg;
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Abort";
     func_(STATUS(Aborted, msg));
   } else {
+    VLOG_WITH_PREFIX_AND_FUNC(4) << "Execute";
     func_(Status::OK());
   }
 }
@@ -862,13 +906,21 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
 // ------------------------------------------------------------------------------------------------
 
 void Reactor::RegisterInboundSocket(
-    Socket *socket, const Endpoint& remote, std::unique_ptr<ConnectionContext> connection_context,
-    const MemTrackerPtr& mem_tracker) {
+    Socket *socket, size_t receive_buffer_size, const Endpoint& remote,
+    const ConnectionContextFactoryPtr& factory) {
   VLOG_WITH_PREFIX(3) << "New inbound connection to " << remote;
+  receive_buffer_size = PatchReceiveBufferSize(receive_buffer_size);
 
   auto stream = CreateStream(
       messenger_->stream_factories_, messenger_->listen_protocol_,
-      {remote, std::string(), socket, mem_tracker});
+      StreamCreateData {
+        .remote = remote,
+        .remote_hostname = std::string(),
+        .socket = socket,
+        .receive_buffer_size = receive_buffer_size,
+        .mem_tracker = factory->buffer_tracker(),
+        .metric_entity = messenger_->metric_entity()
+      });
   if (!stream.ok()) {
     LOG_WITH_PREFIX(DFATAL) << "Failed to create stream for " << remote << ": " << stream.status();
     return;
@@ -876,8 +928,8 @@ void Reactor::RegisterInboundSocket(
   auto conn = std::make_shared<Connection>(this,
                                            std::move(*stream),
                                            ConnectionDirection::SERVER,
-                                           &messenger()->rpc_metrics(),
-                                           std::move(connection_context));
+                                           messenger()->rpc_metrics().get(),
+                                           factory->Create(receive_buffer_size));
   ScheduleReactorFunctor([conn = std::move(conn)](Reactor* reactor) {
     reactor->RegisterConnection(conn);
   }, SOURCE_LOCATION());

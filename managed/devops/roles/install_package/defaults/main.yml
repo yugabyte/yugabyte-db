@@ -9,3 +9,6 @@
 yb_home_dir: "/home/{{ user_name }}"
 yb_software_dir: "{{ yb_home_dir }}/yb-software"
 itest_s3_package_path: ""
+num_retries: 5
+retry_delay: 10
+configure_ybc: false

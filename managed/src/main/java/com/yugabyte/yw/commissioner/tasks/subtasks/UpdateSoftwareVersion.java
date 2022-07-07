@@ -10,30 +10,37 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-
-import java.util.UUID;
-
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 public class UpdateSoftwareVersion extends UniverseTaskBase {
-  public static final Logger LOG = LoggerFactory.getLogger(UpdateSoftwareVersion.class);
+
+  @Inject
+  protected UpdateSoftwareVersion(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
+  }
 
   // Parameters for marking universe update as a success.
   public static class Params extends UniverseTaskParams {
     // The software version to which user updated the universe.
     public String softwareVersion;
+    // The previous software version.
+    public String prevSoftwareVersion;
+    // Is it a software update via VM upgrade.
+    public boolean isSoftwareUpdateViaVm;
   }
 
   protected Params taskParams() {
-    return (Params)taskParams;
+    return (Params) taskParams;
   }
 
   @Override
@@ -44,33 +51,41 @@ public class UpdateSoftwareVersion extends UniverseTaskBase {
   @Override
   public void run() {
     try {
-      LOG.info("Running {}", getName());
+      log.info("Running {}", getName());
 
       // Create the update lambda.
-      UniverseUpdater updater = new UniverseUpdater() {
-        @Override
-        public void run(Universe universe) {
-          // If this universe is not being edited, fail the request.
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          if (!universeDetails.updateInProgress) {
-            String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
-            LOG.error(errMsg);
-            throw new RuntimeException(errMsg);
-          }
-          universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = taskParams().softwareVersion;
-          for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
-            cluster.userIntent.ybSoftwareVersion = taskParams().softwareVersion;
-          }
-          universe.setUniverseDetails(universeDetails);
-        }
-      };
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              // If this universe is not being edited, fail the request.
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              if (!universeDetails.updateInProgress) {
+                String errMsg =
+                    "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+                log.error(errMsg);
+                throw new RuntimeException(errMsg);
+              }
+              universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion =
+                  taskParams().softwareVersion;
+              for (Cluster cluster : universeDetails.getReadOnlyClusters()) {
+                cluster.userIntent.ybSoftwareVersion = taskParams().softwareVersion;
+              }
+              universe.setUniverseDetails(universeDetails);
+            }
+          };
       // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
       // catch as we want to fail.
       saveUniverseDetails(updater);
-
+      // Update useCustomImage to true if software update was via VM otherise false.
+      getUniverse()
+          .updateConfig(
+              ImmutableMap.of(
+                  Universe.USE_CUSTOM_IMAGE,
+                  taskParams().isSoftwareUpdateViaVm ? "true" : "false"));
     } catch (Exception e) {
-      String msg = getName() + " failed with exception "  + e.getMessage();
-      LOG.warn(msg, e.getMessage());
+      String msg = getName() + " failed with exception " + e.getMessage();
+      log.warn(msg, e.getMessage());
       throw new RuntimeException(msg, e);
     }
   }

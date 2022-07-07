@@ -18,12 +18,8 @@
 // under the License.
 //
 
-#include "dynamic_bloom.h"
+#include "yb/rocksdb/util/dynamic_bloom.h"
 
-#include <algorithm>
-
-#include "yb/rocksdb/port/port.h"
-#include "yb/util/slice.h"
 #include "yb/rocksdb/util/allocator.h"
 #include "yb/rocksdb/util/hash.h"
 
@@ -43,7 +39,8 @@ uint32_t GetTotalBitsForLocality(uint32_t total_bits) {
 
   return num_blocks * (CACHE_LINE_SIZE * 8);
 }
-}
+
+} // namespace
 
 DynamicBloom::DynamicBloom(Allocator* allocator, uint32_t total_bits,
                            uint32_t locality, uint32_t num_probes,
@@ -94,4 +91,4 @@ void DynamicBloom::SetTotalBits(Allocator* allocator,
   data_ = reinterpret_cast<std::atomic<uint8_t>*>(raw);
 }
 
-}  // rocksdb
+}  // namespace rocksdb

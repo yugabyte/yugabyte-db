@@ -30,17 +30,46 @@
 // under the License.
 //
 
+#include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
+
+#include <boost/optional/optional_fwd.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/client/client_fwd.h"
+#include "yb/client/client.h"
+#include "yb/client/schema.h"
 #include "yb/client/session.h"
 #include "yb/client/table_creator.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
+
+#include "yb/common/common_fwd.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol-test-util.h"
+#include "yb/common/schema.h"
+
+#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.proxy.h"
+
+#include "yb/gutil/ref_counted.h"
+#include "yb/gutil/strings/substitute.h"
+#include "yb/gutil/type_traits.h"
+
 #include "yb/integration-tests/cluster_verifier.h"
-#include "yb/integration-tests/ts_itest-base.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+
+#include "yb/rpc/rpc_fwd.h"
+
+#include "yb/server/server_base.pb.h"
+#include "yb/server/server_base.proxy.h"
+
+#include "yb/util/format.h"
+#include "yb/util/result.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_util.h"
 
 DEFINE_int32(num_rows_per_tablet, 100, "The number of rows to be inserted into each tablet");
 
@@ -293,7 +322,8 @@ class AllTypesItest : public YBTest {
     table_.AddBinaryColumnValue(req, "binary_val", content);
     table_.AddBoolColumnValue(req, "bool_val", int_val % 2);
     VLOG(1) << "Inserting row[" << split_idx << "," << row_idx << "]" << insert->ToString();
-    return session->Apply(insert);
+    session->Apply(insert);
+    return Status::OK();
   }
 
   // This inserts kNumRowsPerTablet in each of the tablets. In the end we should have
@@ -306,10 +336,10 @@ class AllTypesItest : public YBTest {
       for (int j = 0; j < max_rows_per_tablet; ++j) {
         RETURN_NOT_OK(GenerateRow(session.get(), i, j));
         if (j % 1000 == 0) {
-          RETURN_NOT_OK(session->Flush());
+          RETURN_NOT_OK(session->TEST_Flush());
         }
       }
-      RETURN_NOT_OK(session->Flush());
+      RETURN_NOT_OK(session->TEST_Flush());
     }
     return Status::OK();
   }
@@ -377,7 +407,7 @@ class AllTypesItest : public YBTest {
   TestSetup setup_;
   YBSchema schema_;
   std::unique_ptr<YBClient> client_;
-  gscoped_ptr<ExternalMiniCluster> cluster_;
+  std::unique_ptr<ExternalMiniCluster> cluster_;
   TableHandle table_;
 };
 

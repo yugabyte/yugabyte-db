@@ -3,14 +3,12 @@ title: The literal for an array of rows
 linkTitle: Array of rows
 headerTitle: The literal for an array of "row" type values
 description: The literal for an array of "row" type values
-block_indexing: true
 menu:
   stable:
     identifier: array-of-rows
     parent: array-literals
     weight: 40
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 You now combine the understanding of how to write the literal for an array of primitive values with that of how to write the literal for a _"row"_ type value.
@@ -106,7 +104,7 @@ select v::text as lit from t1 order by k;
 
 This is the result:
 ```
-               lit                
+               lit
 ----------------------------------
  (1," ","2091-01-20 12:10:05",t)
  (2,",","2002-01-20 12:10:05",f)
@@ -147,7 +145,7 @@ update t2 set v1_text_typecast =
 ```
 Finally, use this array literal to recreate the original value and check that it's identical to what you started with, thus:
 ```plpgsql
-update t2 set v2 = 
+update t2 set v2 =
 (select v1_text_typecast from t2 where k = 1)::rt[];
 
 select (v1 = v2)::text as "v1 = v2" from t2 where k = 1;
@@ -155,7 +153,7 @@ select (v1 = v2)::text as "v1 = v2" from t2 where k = 1;
 As promised, the canonical form of the array literal does indeed recreate the identical value that the `array_agg()` function created:
 
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -187,9 +185,9 @@ You can work out the rules for a multidimensional array of _"row"_ type values, 
 
 This pseudocode shows how to create an array literal of _"row"_ type values that have the same shape as _"type rt"_ in the example above. The input is a succession of an arbitrary number of _"(n, s, t, b)"_ tuples. The text below was derived by straightforward manual massage from actual working, and tested, Python code. The code was written as an exercise to verify the correctness of the algorithm.
 
-The pseudocode does retain Python locutions, but don't be distracted by this. The meaning is clear enough to allow the algorithm r=to be described. The various special characters were all set up as manifest constants with self-describing names.
+The pseudocode does retain Python locutions, but don't be distracted by this. The meaning is clear enough to allow the algorithm to be described. The various special characters were all set up as manifest constants with self-describing names.
 
-Notice that the algorithm inserts a newline after the opening curly brace, between the pairs of representations of each _"row"_ type value, and before the closing curly brace. While, strictly speaking, this means that the literal it produces is not in canonical form, this has no effect (as has been shown many times by example throughout this _"Array data types and functionality"_ major section.
+Notice that the algorithm inserts a newline after the opening curly brace, between the pairs of representations of each _"row"_ type value, and before the closing curly brace. While, strictly speaking, this means that the literal it produces is not in canonical form, this has no effect (as has been shown many times by example throughout this _"Array data types and functionality"_ major section).
 
 ```
 "Start a new array literal":

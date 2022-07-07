@@ -37,7 +37,6 @@ option java_package = "org.yb.log";
 
 import "yb/common/common.proto";
 import "yb/consensus/consensus.proto";
-import "yb/consensus/metadata.proto";
 import "yb/util/opid.proto";
 
 // ===========================================================================
@@ -48,8 +47,12 @@ import "yb/util/opid.proto";
 enum LogEntryTypePB {
   UNKNOWN = 0;
   REPLICATE = 1;
-  // Marker entry for dummy log messages. These will never end up in the log, just serve the purpose
-  // of making sure that all entries up to the FLUSH_MARKER entry are flushed.
+
+  // Marker entries are for dummy log messages. These will never end up in the log.
+
+  // Roll over active log segment before writing the next entry if active segment is not empty.
+  ROLLOVER_MARKER = 998;
+  // Serve the purpose of making sure that all entries up to the FLUSH_MARKER entry are flushed.
   FLUSH_MARKER = 999;
 };
 
@@ -78,10 +81,10 @@ message LogSegmentHeaderPB {
   required uint32 minor_version = 2;
 
   // The ID of the tablet this WAL segment stores entries for.
-  required bytes tablet_id = 5;
+  required bytes unused_tablet_id = 5;
 
   // The tablet-specific sequence number of this WAL segment.
-  required uint64 sequence_number = 6;
+  required int64 sequence_number = 6;
 
   // Schema used when appending entries to this log, and its version.
   required SchemaPB schema = 7;

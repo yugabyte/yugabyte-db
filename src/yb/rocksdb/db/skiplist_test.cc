@@ -23,6 +23,8 @@
 
 #include <set>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db/skiplist.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/arena.h"
@@ -30,8 +32,9 @@
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/testharness.h"
 
+#include "yb/util/format.h"
 #include "yb/util/random_util.h"
-
+#include "yb/rocksdb/util/testutil.h"
 
 namespace rocksdb {
 
@@ -51,7 +54,7 @@ struct TestComparator {
 
 typedef SkipList<Key, TestComparator> TestSkipList;
 
-class SkipTest : public testing::Test {};
+class SkipTest : public RocksDBTest {};
 
 TEST_F(SkipTest, Empty) {
   Arena arena;

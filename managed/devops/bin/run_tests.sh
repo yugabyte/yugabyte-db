@@ -8,4 +8,4 @@ cd $test_path
 
 # Note: this requires that you would have installed ybops, for any tests that depend on that to
 # work! Also, make sure the test files start with test_ to be auto-discovered.
-python -m unittest discover
+"$PYTHON_EXECUTABLE" -m unittest discover

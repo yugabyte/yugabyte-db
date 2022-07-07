@@ -24,11 +24,7 @@ export default class InstanceTypeForRegion extends Component {
 
   render() {
     const self = this;
-    const { fields, zoneOptions, machineTypeOptions, formType, useHostname } = this.props;
-    let addressType = useHostname ? 'Hostname' : 'IP Address';
-    if (formType === 'modal') {
-      addressType = useHostname ? 'Hostname' : 'IP Address';
-    }
+    const { fields, zoneOptions, machineTypeOptions } = this.props;
 
     return (
       <div className="instance-row-container">
@@ -38,7 +34,7 @@ export default class InstanceTypeForRegion extends Component {
           </Col>
           <Col lg={2}>Instance Type</Col>
           <Col lg={3}>
-            Instance <span className="row-head-subscript">{addressType}</span>
+            Instance <span className="row-head-subscript">IP Address Or Hostname</span>
           </Col>
           <Col lg={3}>
             Instance ID <span className="row-head-subscript">(Optional)</span>

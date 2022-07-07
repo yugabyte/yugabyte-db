@@ -14,4 +14,4 @@ set -e
 activate_virtualenv
 cd "$yb_devops_home"
 
-python $(which ybcloud.py) aws diagnostics "$@"
+"$PYTHON_EXECUTABLE" $(which ybcloud.py) aws diagnostics "$@"

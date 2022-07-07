@@ -32,46 +32,43 @@
 #ifndef YB_TSERVER_TABLET_SERVER_H_
 #define YB_TSERVER_TABLET_SERVER_H_
 
+#include <future>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/cdc/cdc_consumer.fwd.h"
+#include "yb/client/client_fwd.h"
+
+#include "yb/encryption/encryption_fwd.h"
+
 #include "yb/gutil/atomicops.h"
-#include "yb/gutil/gscoped_ptr.h"
 #include "yb/gutil/macros.h"
-#include "yb/master/master.h"
-#include "yb/server/server_base.h"
+#include "yb/master/master_fwd.h"
 #include "yb/server/webserver_options.h"
+#include "yb/tserver/db_server_base.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
-#include "yb/tserver/tserver.pb.h"
-#include "yb/tserver/tserver_service.proxy.h"
+
+#include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
-#include "yb/util/status.h"
-#include "yb/tserver/tablet_service.h"
-#include "yb/master/master.pb.h"
+#include "yb/util/status_fwd.h"
 
 namespace rocksdb {
 class Env;
 }
 
 namespace yb {
+
 class Env;
 class MaintenanceManager;
 
 namespace tserver {
 
-constexpr const char* const kTcMallocMaxThreadCacheBytes = "tcmalloc.max_total_thread_cache_bytes";
-
-class Heartbeater;
-class MetricsSnapshotter;
-class TabletServerPathHandlers;
-class TSTabletManager;
-
-class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
+class TabletServer : public DbServerBase, public TabletServerIf {
  public:
   // TODO: move this out of this header, since clients want to use this
   // constant as well.
@@ -89,13 +86,16 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   // Some initialization tasks are asynchronous, such as the bootstrapping
   // of tablets. Caller can block, waiting for the initialization to fully
   // complete by calling WaitInited().
-  CHECKED_STATUS Init();
+  Status Init() override;
+
+  Status GetRegistration(ServerRegistrationPB* reg,
+    server::RpcOnly rpc_only = server::RpcOnly::kFalse) const override;
 
   // Waits for the tablet server to complete the initialization.
-  CHECKED_STATUS WaitInited();
+  Status WaitInited();
 
-  CHECKED_STATUS Start();
-  virtual void Shutdown();
+  Status Start() override;
+  void Shutdown() override;
 
   std::string ToString() const override;
 
@@ -118,14 +118,14 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     return maintenance_manager_.get();
   }
 
-  int GetCurrentMasterIndex() { return master_config_index_; }
+  int64_t GetCurrentMasterIndex() { return master_config_index_; }
 
-  void SetCurrentMasterIndex(int index) { master_config_index_ = index; }
+  void SetCurrentMasterIndex(int64_t index) { master_config_index_ = index; }
 
   // Update in-memory list of master addresses that this tablet server pings to.
   // If the update is from master leader, we use that list directly. If not, we
   // merge the existing in-memory master list with the provided config list.
-  CHECKED_STATUS UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
+  Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
                                        bool is_master_leader);
 
   server::Clock* Clock() override { return clock(); }
@@ -134,21 +134,23 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   const scoped_refptr<MetricEntity>& MetricEnt() const override { return metric_entity(); }
 
-  CHECKED_STATUS PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
-
-  CHECKED_STATUS GetLiveTServers(
-      std::vector<master::TSInformationPB> *live_tservers) const {
-    std::lock_guard<simple_spinlock> l(lock_);
-    *live_tservers = live_tservers_;
-    return Status::OK();
+  tserver::TServerSharedData& SharedObject() override {
+    return shared_object();
   }
 
-  CHECKED_STATUS GetTabletStatus(const GetTabletStatusRequestPB* req,
+  Status PopulateLiveTServers(const master::TSHeartbeatResponsePB& heartbeat_resp);
+
+  Status GetLiveTServers(
+      std::vector<master::TSInformationPB> *live_tservers) const override;
+
+  Status GetTabletStatus(const GetTabletStatusRequestPB* req,
                                  GetTabletStatusResponsePB* resp) const override;
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
-  const std::string& permanent_uuid() const { return fs_manager_->uuid(); }
+  const std::string& permanent_uuid() const override { return fs_manager_->uuid(); }
+
+  bool has_faulty_drive() const { return fs_manager_->has_faulty_drive(); }
 
   // Returns the proxy to call this tablet server locally.
   const std::shared_ptr<TabletServerServiceProxy>& proxy() const { return proxy_; }
@@ -161,11 +163,11 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
 
   TabletServiceImpl* tablet_server_service();
 
-  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceIf::RpcMetricIndexes metric);
+  scoped_refptr<Histogram> GetMetricsHistogram(TabletServerServiceRpcMethodIndexes metric);
 
-  void SetPublisher(rpc::Publisher service) {
-    publish_service_ptr_.reset(new rpc::Publisher(std::move(service)));
-  }
+  const std::shared_ptr<MemTracker>& mem_tracker() const override;
+
+  void SetPublisher(rpc::Publisher service) override;
 
   rpc::Publisher* GetPublisher() override {
     return publish_service_ptr_.get();
@@ -184,39 +186,51 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
     }
   }
 
+  void UpdateTransactionTablesVersion(uint64_t new_version);
+
   virtual Env* GetEnv();
 
   virtual rocksdb::Env* GetRocksDBEnv();
 
-  virtual CHECKED_STATUS SetUniverseKeyRegistry(
-      const yb::UniverseKeyRegistryPB& universe_key_registry);
+  void SetUniverseKeys(const encryption::UniverseKeysPB& universe_keys);
 
-  // Returns the file descriptor of this tablet server's shared memory segment.
-  int GetSharedMemoryFd();
+  virtual Status SetUniverseKeyRegistry(
+      const encryption::UniverseKeyRegistryPB& universe_key_registry);
+
+  void GetUniverseKeyRegistrySync();
+
+  uint64_t GetSharedMemoryPostgresAuthKey();
 
   // Currently only used by cdc.
   virtual int32_t cluster_config_version() const {
     return std::numeric_limits<int32_t>::max();
   }
 
-  client::TransactionPool* TransactionPool() override;
+  client::TransactionPool& TransactionPool() override;
 
-  client::YBClient* client() override;
+  const std::shared_future<client::YBClient*>& client_future() const override;
 
   const std::string& LogPrefix() const {
     return log_prefix_;
   }
 
-  const HostPort pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+  const HostPort& pgsql_proxy_bind_address() const { return pgsql_proxy_bind_address_; }
+
+  client::LocalTabletFilter CreateLocalTabletFilter() override;
+
+  void RegisterCertificateReloader(CertificateReloader reloader) override {}
 
  protected:
-  virtual CHECKED_STATUS RegisterServices();
+  virtual Status RegisterServices();
 
   friend class TabletServerTestBase;
 
-  CHECKED_STATUS DisplayRpcIcons(std::stringstream* output) override;
+  Status DisplayRpcIcons(std::stringstream* output) override;
 
-  CHECKED_STATUS ValidateMasterAddressResolution() const;
+  Status ValidateMasterAddressResolution() const;
+
+  MonoDelta default_client_timeout() override;
+  void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
 
   std::atomic<bool> initted_{false};
 
@@ -227,25 +241,29 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
   TabletServerOptions opts_;
 
   // Manager for tablets which are available on this server.
-  gscoped_ptr<TSTabletManager> tablet_manager_;
+  std::unique_ptr<TSTabletManager> tablet_manager_;
 
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
+  std::thread fetch_universe_key_thread_;
+
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
 
+  std::unique_ptr<client::UniverseKeyClient> universe_key_client_;
+
   // Thread responsible for collecting metrics snapshots for native storage.
-  gscoped_ptr<MetricsSnapshotter> metrics_snapshotter_;
+  std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
 
   // Webserver path handlers
-  gscoped_ptr<TabletServerPathHandlers> path_handlers_;
+  std::unique_ptr<TabletServerPathHandlers> path_handlers_;
 
   // The maintenance manager for this tablet server
   std::shared_ptr<MaintenanceManager> maintenance_manager_;
 
   // Index at which master sent us the last config
-  int master_config_index_;
+  int64_t master_config_index_;
 
   // List of tservers that are alive from the master's perspective.
   std::vector<master::TSInformationPB> live_tservers_;
@@ -270,14 +288,6 @@ class TabletServer : public server::RpcAndWebServerBase, public TabletServerIf {
  private:
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
-
-  // Shared memory owned by the tablet server.
-  TServerSharedObject shared_object_;
-
-  std::atomic<client::TransactionPool*> transaction_pool_{nullptr};
-  std::mutex transaction_pool_mutex_;
-  std::unique_ptr<client::TransactionManager> transaction_manager_holder_;
-  std::unique_ptr<client::TransactionPool> transaction_pool_holder_;
 
   std::string log_prefix_;
 

@@ -20,13 +20,16 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/schema.h"
+
+#include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_fwd.h"
 
 #include "yb/util/monotime.h"
-
-#include "yb/master/master.pb.h"
+#include "yb/util/status.h"
 
 namespace yb {
+struct TransactionMetadata;
+
 namespace client {
 
 // Alters an existing table based on the provided steps.
@@ -76,45 +79,46 @@ class YBTableAlterer {
   // Set replication info for the table.
   YBTableAlterer* replication_info(const master::ReplicationInfoPB& ri);
 
+  // The altering of this table is dependent upon the success of this higher-level transaction.
+  YBTableAlterer* part_of_transaction(const TransactionMetadata* txn);
+
   // Alters the table.
   //
   // The return value may indicate an error in the alter operation, or a
   // misuse of the builder (e.g. add_column() with default_value=NULL); in
   // the latter case, only the last error is returned.
-  CHECKED_STATUS Alter();
+  Status Alter();
 
  private:
   friend class YBClient;
 
   YBTableAlterer(YBClient* client, const YBTableName& name);
-  YBTableAlterer(YBClient* client, const string id);
+  YBTableAlterer(YBClient* client, const std::string id);
 
-  CHECKED_STATUS ToRequest(master::AlterTableRequestPB* req);
+  Status ToRequest(master::AlterTableRequestPB* req);
 
   YBClient* const client_;
   const YBTableName table_name_;
-  const string table_id_;
+  const std::string table_id_;
 
   Status status_;
 
-  struct Step {
-    master::AlterTableRequestPB::StepType step_type;
-
-    std::unique_ptr<YBColumnSpec> spec;
-  };
+  struct Step;
   std::vector<Step> steps_;
 
   MonoDelta timeout_;
 
   bool wait_ = true;
 
-  boost::optional<YBTableName> rename_to_;
+  std::unique_ptr<YBTableName> rename_to_;
 
-  boost::optional<TableProperties> table_properties_;
+  std::unique_ptr<TableProperties> table_properties_;
 
   boost::optional<uint32_t> wal_retention_secs_;
 
-  boost::optional<master::ReplicationInfoPB> replication_info_;
+  std::unique_ptr<master::ReplicationInfoPB> replication_info_;
+
+  const TransactionMetadata* txn_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(YBTableAlterer);
 };

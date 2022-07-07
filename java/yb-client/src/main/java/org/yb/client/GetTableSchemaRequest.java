@@ -33,12 +33,16 @@ package org.yb.client;
 
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Message;
-import static org.yb.master.Master.*;
+import static org.yb.master.MasterDdlOuterClass.*;
+import static org.yb.master.MasterTypes.*;
 
+import org.yb.IndexInfo;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.util.Pair;
 import org.jboss.netty.buffer.ChannelBuffer;
+
+import java.util.List;
 
 /**
  * RPC to fetch a table's schema
@@ -94,6 +98,7 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
     final GetTableSchemaResponsePB.Builder respBuilder = GetTableSchemaResponsePB.newBuilder();
     readProtobuf(callResponse.getPBMessage(), respBuilder);
     Schema schema = ProtobufHelper.pbToSchema(respBuilder.getSchema());
+    List<IndexInfo> indexes = ProtobufHelper.pbToIndexes(respBuilder.getIndexesList());
     GetTableSchemaResponse response = new GetTableSchemaResponse(
         deadlineTracker.getElapsedMillis(),
         tsUUID,
@@ -103,7 +108,8 @@ public class GetTableSchemaRequest extends YRpc<GetTableSchemaResponse> {
         respBuilder.getIdentifier().getTableId().toStringUtf8(),
         ProtobufHelper.pbToPartitionSchema(respBuilder.getPartitionSchema(), schema),
         respBuilder.getCreateTableDone(),
-        respBuilder.getTableType());
+        respBuilder.getTableType(),
+        indexes);
     return new Pair<GetTableSchemaResponse, Object>(
         response, respBuilder.hasError() ? respBuilder.getError() : null);
   }

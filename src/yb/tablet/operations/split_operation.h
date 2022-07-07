@@ -16,9 +16,16 @@
 #ifndef YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 #define YB_TABLET_OPERATIONS_SPLIT_OPERATION_H
 
-#include <yb/tserver/tserver_service.pb.h>
+#include <condition_variable>
 
+#include "yb/common/entity_ids_types.h"
+
+#include "yb/consensus/consensus_round.h"
+
+#include "yb/tablet/operation_filter.h"
 #include "yb/tablet/operations/operation.h"
+
+#include "yb/tserver/tserver_admin.pb.h"
 
 namespace yb {
 namespace tablet {
@@ -27,52 +34,35 @@ class TabletSplitter;
 
 // Operation Context for the SplitTablet operation.
 // Keeps track of the Operation states (request, result, ...).
-class SplitOperationState : public OperationState {
- public:
-  // Creates SplitOperationState for SplitTablet operation for `tablet`. Remembers
-  // `tablet_splitter` in order to use it for actual execution of tablet splitting.
-  // `consensus_for_abort` is only used when aborting operation.
-  SplitOperationState(
-      Tablet* tablet, consensus::RaftConsensus* consensus_for_abort,
-      TabletSplitter* tablet_splitter, const tserver::SplitTabletRequestPB* request = nullptr);
-
-  const tserver::SplitTabletRequestPB* request() const override { return request_; }
-
-  consensus::RaftConsensus* raft_consensus() { return consensus_; }
-
-  TabletSplitter& tablet_splitter() const { return *tablet_splitter_; }
-
-  void UpdateRequestFromConsensusRound() override;
-
-  std::string ToString() const override;
-
- private:
-  consensus::RaftConsensus* const consensus_;
-  TabletSplitter* const tablet_splitter_;
-  const tserver::SplitTabletRequestPB* request_;
-};
-
 // Executes the SplitTablet operation.
-class SplitOperation : public Operation {
+class SplitOperation
+    : public OperationBase<OperationType::kSplit, SplitTabletRequestPB>,
+      public OperationFilter {
  public:
-  explicit SplitOperation(std::unique_ptr<SplitOperationState> state)
-      : Operation(std::move(state), OperationType::kSplit) {}
+  SplitOperation(
+      Tablet* tablet, TabletSplitter* tablet_splitter,
+      const SplitTabletRequestPB* request = nullptr)
+      : OperationBase(tablet, request), tablet_splitter_(*CHECK_NOTNULL(tablet_splitter)) {}
 
-  SplitOperationState* state() override {
-    return pointer_cast<SplitOperationState*>(Operation::state());
-  }
+  TabletSplitter& tablet_splitter() const { return tablet_splitter_; }
 
-  const SplitOperationState* state() const override {
-    return pointer_cast<const SplitOperationState*>(Operation::state());
-  }
+  static bool ShouldAllowOpAfterSplitTablet(consensus::OperationType op_type);
+
+  static Status RejectionStatus(
+      OpId split_op_id, OpId rejected_op_id, consensus::OperationType op_type,
+      const TabletId& child1, const TabletId& child2);
 
  private:
-  consensus::ReplicateMsgPtr NewReplicateMsg() override;
-  CHECKED_STATUS Prepare() override;
-  void DoStart() override;
-  CHECKED_STATUS DoReplicated(int64_t leader_term, Status* complete_status) override;
-  CHECKED_STATUS DoAborted(const Status& status) override;
-  std::string ToString() const override;
+  Status Prepare() override;
+  Status DoReplicated(int64_t leader_term, Status* complete_status) override;
+  Status DoAborted(const Status& status) override;
+  void AddedAsPending() override;
+  void RemovedFromPending() override;
+
+  Status CheckOperationAllowed(
+      const OpId& id, consensus::OperationType op_type) const override;
+
+  TabletSplitter& tablet_splitter_;
 };
 
 }  // namespace tablet

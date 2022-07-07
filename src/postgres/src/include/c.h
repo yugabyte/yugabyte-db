@@ -95,10 +95,7 @@
 #define inline
 #endif
 
-#if defined(__clang__) && ( \
-		(defined(__linux__) && __clang_major__ >= 10) || \
-		(defined(__APPLE__) && __clang_major__ >= 12) \
-	)
+#if defined(__has_attribute) && __has_attribute(fallthrough)
 #define switch_fallthrough() __attribute__((fallthrough))
 #else
 #define switch_fallthrough()
@@ -119,6 +116,18 @@
 #define pg_attribute_unused() __attribute__((unused))
 #else
 #define pg_attribute_unused()
+#endif
+
+/*
+ * Place this macro before functions that should be allowed to make misaligned
+ * accesses.  Think twice before using it on non-x86-specific code!
+ * Testing can be done with "-fsanitize=alignment -fsanitize-trap=alignment"
+ * on clang, or "-fsanitize=alignment -fno-sanitize-recover=alignment" on gcc.
+ */
+#if defined(__has_attribute) && __has_attribute(no_sanitize)
+#define pg_attribute_no_sanitize_alignment() __attribute__((no_sanitize("alignment")))
+#else
+#define pg_attribute_no_sanitize_alignment()
 #endif
 
 /*

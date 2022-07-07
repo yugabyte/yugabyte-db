@@ -17,22 +17,27 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include <algorithm>
-#include <iostream>
 #include <thread>
 #include <vector>
 
+#include <gtest/gtest.h>
+
 #include "yb/rocksdb/db.h"
-#include "yb/rocksdb/perf_context.h"
-#include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/memtablerep.h"
+#include "yb/rocksdb/perf_context.h"
+#include "yb/rocksdb/perf_level.h"
+#include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/util/histogram.h"
 #include "yb/rocksdb/util/instrumented_mutex.h"
 #include "yb/rocksdb/util/stop_watch.h"
 #include "yb/rocksdb/util/testharness.h"
-#include "yb/rocksdb/util/thread_status_util.h"
-#include "yb/util/string_util.h"
 
+#include "yb/util/random_util.h"
+#include "yb/util/string_util.h"
+#include "yb/util/test_macros.h"
+#include "yb/rocksdb/util/testutil.h"
 
 bool FLAGS_random_key = false;
 bool FLAGS_use_set_based_memetable = false;
@@ -73,10 +78,10 @@ std::shared_ptr<DB> OpenDb(bool read_only = false) {
     return std::shared_ptr<DB>(db);
 }
 
-class PerfContextTest : public testing::Test {};
+class PerfContextTest : public RocksDBTest {};
 
 TEST_F(PerfContextTest, SeekIntoDeletion) {
-  DestroyDB(kDbName, Options());
+  ASSERT_OK(DestroyDB(kDbName, Options()));
   auto db = OpenDb();
   WriteOptions write_options;
   ReadOptions read_options;
@@ -85,12 +90,12 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     std::string key = "k" + ToString(i);
     std::string value = "v" + ToString(i);
 
-    db->Put(write_options, key, value);
+    ASSERT_OK(db->Put(write_options, key, value));
   }
 
   for (int i = 0; i < FLAGS_total_keys -1 ; ++i) {
     std::string key = "k" + ToString(i);
-    db->Delete(write_options, key);
+    ASSERT_OK(db->Delete(write_options, key));
   }
 
   HistogramImpl hist_get;
@@ -213,7 +218,7 @@ TEST_F(PerfContextTest, StopWatchOverhead) {
 }
 
 void ProfileQueries(bool enabled_time = false) {
-  DestroyDB(kDbName, Options());    // Start this test with a fresh DB
+  ASSERT_OK(DestroyDB(kDbName, Options()));    // Start this test with a fresh DB
 
   auto db = OpenDb();
 
@@ -257,16 +262,12 @@ void ProfileQueries(bool enabled_time = false) {
   }
 
   if (FLAGS_random_key) {
-    std::random_shuffle(keys.begin(), keys.end());
+    std::shuffle(keys.begin(), keys.end(), yb::ThreadLocalRandom());
   }
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 1U);
-#endif
-  int num_mutex_waited = 0;
   for (const int i : keys) {
     if (i == kFlushFlag) {
       FlushOptions fo;
-      db->Flush(fo);
+      ASSERT_OK(db->Flush(fo));
       continue;
     }
 
@@ -276,23 +277,18 @@ void ProfileQueries(bool enabled_time = false) {
     std::vector<std::string> values;
 
     perf_context.Reset();
-    db->Put(write_options, key, value);
-    if (++num_mutex_waited > 3) {
-#ifndef NDEBUG
-      ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 0U);
-#endif
-    }
+    ASSERT_OK(db->Put(write_options, key, value));
     hist_write_pre_post.Add(perf_context.write_pre_and_post_process_time);
     hist_write_wal_time.Add(perf_context.write_wal_time);
     hist_write_memtable_time.Add(perf_context.write_memtable_time);
     hist_put.Add(perf_context.user_key_comparison_count);
     total_db_mutex_nanos += perf_context.db_mutex_lock_nanos;
   }
-#ifndef NDEBUG
-  ThreadStatusUtil::TEST_SetStateDelay(ThreadStatus::STATE_MUTEX_WAIT, 0U);
-#endif
 
   for (const int i : keys) {
+    if (i == kFlushFlag) {
+      continue;
+    }
     std::string key = "k" + ToString(i);
     std::string value = "v" + ToString(i);
 
@@ -300,7 +296,7 @@ void ProfileQueries(bool enabled_time = false) {
     std::vector<std::string> values;
 
     perf_context.Reset();
-    db->Get(read_options, key, &value);
+    ASSERT_OK(db->Get(read_options, key, &value));
     hist_get_snapshot.Add(perf_context.get_snapshot_time);
     hist_get_memtable.Add(perf_context.get_from_memtable_time);
     hist_get_files.Add(perf_context.get_from_output_files_time);
@@ -389,6 +385,9 @@ void ProfileQueries(bool enabled_time = false) {
   hist_mget_num_memtable_checked.Clear();
 
   for (const int i : keys) {
+    if (i == kFlushFlag) {
+      continue;
+    }
     std::string key = "k" + ToString(i);
     std::string value = "v" + ToString(i);
 
@@ -396,7 +395,7 @@ void ProfileQueries(bool enabled_time = false) {
     std::vector<std::string> values;
 
     perf_context.Reset();
-    db->Get(read_options, key, &value);
+    ASSERT_OK(db->Get(read_options, key, &value));
     hist_get_snapshot.Add(perf_context.get_snapshot_time);
     hist_get_memtable.Add(perf_context.get_from_memtable_time);
     hist_get_files.Add(perf_context.get_from_output_files_time);
@@ -486,7 +485,7 @@ TEST_F(PerfContextTest, KeyComparisonCount) {
 // starts to become linear to the input size.
 
 TEST_F(PerfContextTest, SeekKeyComparison) {
-  DestroyDB(kDbName, Options());
+  ASSERT_OK(DestroyDB(kDbName, Options()));
   auto db = OpenDb();
   WriteOptions write_options;
   ReadOptions read_options;
@@ -501,7 +500,7 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
   }
 
   if (FLAGS_random_key) {
-    std::random_shuffle(keys.begin(), keys.end());
+    std::shuffle(keys.begin(), keys.end(), yb::ThreadLocalRandom());
   }
 
   HistogramImpl hist_put_time;
@@ -516,7 +515,7 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
 
     perf_context.Reset();
     timer.Start();
-    db->Put(write_options, key, value);
+    ASSERT_OK(db->Put(write_options, key, value));
     auto put_time = timer.ElapsedNanos();
     hist_put_time.Add(put_time);
     hist_wal_time.Add(perf_context.write_wal_time);

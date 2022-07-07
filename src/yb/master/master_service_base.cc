@@ -13,7 +13,6 @@
 
 #include "yb/master/master_service_base.h"
 #include "yb/master/master.h"
-#include "yb/master/catalog_manager.h"
 
 namespace yb {
 namespace master {
@@ -21,7 +20,7 @@ namespace master {
 // Available overloaded handlers of different types:
 
 enterprise::CatalogManager* MasterServiceBase::handler(CatalogManager*) {
-  return server_->catalog_manager();
+  return server_->catalog_manager_impl();
 }
 
 FlushManager* MasterServiceBase::handler(FlushManager*) {
@@ -29,11 +28,11 @@ FlushManager* MasterServiceBase::handler(FlushManager*) {
 }
 
 PermissionsManager* MasterServiceBase::handler(PermissionsManager*) {
-  return server_->catalog_manager()->permissions_manager();
+  return &server_->permissions_manager();
 }
 
 EncryptionManager* MasterServiceBase::handler(EncryptionManager*) {
-  return &server_->catalog_manager()->encryption_manager();
+  return &server_->encryption_manager();
 }
 
 } // namespace master

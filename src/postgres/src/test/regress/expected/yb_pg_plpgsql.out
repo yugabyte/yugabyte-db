@@ -2113,41 +2113,66 @@ insert into slave values(1);
 insert into slave values(2);	-- fails
 ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
 DETAIL:  Key (f1)=(2) is not present in table "master".
--- TODO(dmitry) Subtransactions are not yet supported.
--- create function trap_foreign_key(int) returns int as $$
--- begin
--- 	begin	-- start a subtransaction
--- 		insert into slave values($1);
--- 	exception
--- 		when foreign_key_violation then
--- 			raise notice 'caught foreign_key_violation';
--- 			return 0;
--- 	end;
--- 	return 1;
--- end$$ language plpgsql;
--- create function trap_foreign_key_2() returns int as $$
--- begin
--- 	begin	-- start a subtransaction
--- 		set constraints all immediate;
--- 	exception
--- 		when foreign_key_violation then
--- 			raise notice 'caught foreign_key_violation';
--- 			return 0;
--- 	end;
--- 	return 1;
--- end$$ language plpgsql;
--- select trap_foreign_key(1);
--- select trap_foreign_key(2);	-- detects FK violation
--- begin;
---  set constraints all deferred;
---  select trap_foreign_key(2);	-- should not detect FK violation
---  savepoint x;
---    set constraints all immediate; -- fails
---  rollback to x;
---  select trap_foreign_key_2();  -- detects FK violation
--- commit;				-- still fails
--- drop function trap_foreign_key(int);
--- drop function trap_foreign_key_2();
+create function trap_foreign_key(int) returns int as $$
+begin
+	begin	-- start a subtransaction
+		insert into slave values($1);
+	exception
+		when foreign_key_violation then
+			raise notice 'caught foreign_key_violation';
+			return 0;
+	end;
+	return 1;
+end$$ language plpgsql;
+create function trap_foreign_key_2() returns int as $$
+begin
+	begin	-- start a subtransaction
+		set constraints all immediate;
+	exception
+		when foreign_key_violation then
+			raise notice 'caught foreign_key_violation';
+			return 0;
+	end;
+	return 1;
+end$$ language plpgsql;
+select trap_foreign_key(1);
+ trap_foreign_key
+------------------
+                1
+(1 row)
+
+select trap_foreign_key(2);	-- detects FK violation
+NOTICE:  caught foreign_key_violation
+ trap_foreign_key
+------------------
+                0
+(1 row)
+
+begin;
+  set constraints all deferred;
+  select trap_foreign_key(2);	-- should not detect FK violation
+ trap_foreign_key
+------------------
+                1
+(1 row)
+
+  savepoint x;
+    set constraints all immediate; -- fails
+ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "master".
+  rollback to x;
+  select trap_foreign_key_2();  -- detects FK violation
+NOTICE:  caught foreign_key_violation
+ trap_foreign_key_2
+--------------------
+                  0
+(1 row)
+
+commit;				-- still fails
+ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "master".
+drop function trap_foreign_key(int);
+drop function trap_foreign_key_2();
 --
 -- Test proper snapshot handling in simple expressions
 --
@@ -2663,6 +2688,7 @@ begin
 end$$ language plpgsql;
 select stricttest();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest() line 5 at SQL statement
 create or replace function stricttest() returns void as $$
 declare x record;
@@ -2736,6 +2762,7 @@ begin
 end$$ language plpgsql;
 select stricttest();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest() line 5 at SQL statement
 create or replace function stricttest() returns void as $$
 declare x record;
@@ -2801,6 +2828,7 @@ end$$ language plpgsql;
 select stricttest();
 ERROR:  query returned more than one row
 DETAIL:  parameters: p1 = '2', p3 = 'foo'
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest() line 8 at SQL statement
 create or replace function stricttest() returns void as $$
 declare x record;
@@ -2811,6 +2839,7 @@ begin
 end$$ language plpgsql;
 select stricttest();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest() line 5 at SQL statement
 create or replace function stricttest() returns void as $$
 declare x record;
@@ -2858,6 +2887,7 @@ begin
 end$$ language plpgsql;
 select stricttest();
 ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest() line 10 at SQL statement
 reset plpgsql.print_strict_params;
 create or replace function stricttest() returns void as $$
@@ -2875,6 +2905,7 @@ end$$ language plpgsql;
 select stricttest();
 ERROR:  query returned more than one row
 DETAIL:  parameters: p1 = '2', p3 = 'foo'
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
 CONTEXT:  PL/pgSQL function stricttest() line 10 at SQL statement
 -- test warnings and errors
 set plpgsql.extra_warnings to 'all';
@@ -2998,6 +3029,107 @@ select shadowtest(1);
  t
 (1 row)
 
+-- runtime extra checks
+set plpgsql.extra_warnings to 'too_many_rows';
+do $$
+declare x int;
+begin
+  select v from generate_series(1,2) g(v) into x;
+end;
+$$;
+WARNING:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
+set plpgsql.extra_errors to 'too_many_rows';
+do $$
+declare x int;
+begin
+  select v from generate_series(1,2) g(v) into x;
+end;
+$$;
+ERROR:  query returned more than one row
+HINT:  Make sure the query returns a single row, or use LIMIT 1.
+CONTEXT:  PL/pgSQL function inline_code_block line 4 at SQL statement
+reset plpgsql.extra_errors;
+reset plpgsql.extra_warnings;
+set plpgsql.extra_warnings to 'strict_multi_assignment';
+do $$
+declare
+  x int;
+  y int;
+begin
+  select 1 into x, y;
+  select 1,2 into x, y;
+  select 1,2,3 into x, y;
+end
+$$;
+WARNING:  number of source and target fields in assignment do not match
+DETAIL:  strict_multi_assignment check of extra_warnings is active.
+HINT:  Make sure the query returns the exact list of columns.
+WARNING:  number of source and target fields in assignment do not match
+DETAIL:  strict_multi_assignment check of extra_warnings is active.
+HINT:  Make sure the query returns the exact list of columns.
+set plpgsql.extra_errors to 'strict_multi_assignment';
+do $$
+declare
+  x int;
+  y int;
+begin
+  select 1 into x, y;
+  select 1,2 into x, y;
+  select 1,2,3 into x, y;
+end
+$$;
+ERROR:  number of source and target fields in assignment do not match
+DETAIL:  strict_multi_assignment check of extra_errors is active.
+HINT:  Make sure the query returns the exact list of columns.
+CONTEXT:  PL/pgSQL function inline_code_block line 6 at SQL statement
+create table test_01(a int, b int, c int);
+alter table test_01 drop column a;
+-- the check is active only when source table is not empty
+insert into test_01 values(10,20);
+do $$
+declare
+  x int;
+  y int;
+begin
+  select * from test_01 into x, y; -- should be ok
+  raise notice 'ok';
+  select * from test_01 into x;    -- should to fail
+end;
+$$;
+NOTICE:  ok
+ERROR:  number of source and target fields in assignment do not match
+DETAIL:  strict_multi_assignment check of extra_errors is active.
+HINT:  Make sure the query returns the exact list of columns.
+CONTEXT:  PL/pgSQL function inline_code_block line 8 at SQL statement
+do $$
+declare
+  t test_01;
+begin
+  select 1, 2 into t;  -- should be ok
+  raise notice 'ok';
+  select 1, 2, 3 into t; -- should fail;
+end;
+$$;
+NOTICE:  ok
+ERROR:  number of source and target fields in assignment do not match
+DETAIL:  strict_multi_assignment check of extra_errors is active.
+HINT:  Make sure the query returns the exact list of columns.
+CONTEXT:  PL/pgSQL function inline_code_block line 7 at SQL statement
+do $$
+declare
+  t test_01;
+begin
+  select 1 into t; -- should fail;
+end;
+$$;
+ERROR:  number of source and target fields in assignment do not match
+DETAIL:  strict_multi_assignment check of extra_errors is active.
+HINT:  Make sure the query returns the exact list of columns.
+CONTEXT:  PL/pgSQL function inline_code_block line 5 at SQL statement
+drop table test_01;
+reset plpgsql.extra_errors;
+reset plpgsql.extra_warnings;
 -- test scrollable cursor support
 create function sc_test() returns setof integer as $$
 declare
@@ -4226,19 +4358,17 @@ end$$;
 BEGIN;
 create table public.stuffs (stuff text);
 SAVEPOINT a;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT a;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select error2('nonexistent.stuffs');
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  schema "nonexistent" does not exist
+CONTEXT:  SQL function "error1" statement 1
+PL/pgSQL function error2(text) line 3 at RETURN
 ROLLBACK TO a;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO a;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select error2('public.stuffs');
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ error2
+--------
+ stuffs
+(1 row)
+
 rollback;
 drop function error2(p_name_table text);
 drop function error1(text);
@@ -4277,23 +4407,29 @@ select cast_invoker(20150718);
 (1 row)
 
 savepoint s1;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: savepoint s1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select cast_invoker(20150718);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ cast_invoker
+--------------
+ 07-18-2015
+(1 row)
+
 select cast_invoker(-1); -- fails
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ERROR:  invalid input syntax for type date: "-1"
+CONTEXT:  SQL function "sql_to_date" statement 1
+PL/pgSQL function cast_invoker(integer) while casting return value to function's return type
 rollback to savepoint s1;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: rollback to savepoint s1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 select cast_invoker(20150719);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ cast_invoker
+--------------
+ 07-19-2015
+(1 row)
+
 select cast_invoker(20150720);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ cast_invoker
+--------------
+ 07-20-2015
+(1 row)
+
 commit;
 drop function cast_invoker(integer);
 drop function sql_to_date(integer) cascade;
@@ -5330,22 +5466,20 @@ HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1668. Click '+' on the
 INSERT INTO transition_table_level1 (level1_no)
   SELECT generate_series(1,200);
 ANALYZE transition_table_level1;
-WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_level2 (level2_no, parent_no)
   SELECT level2_no, level2_no / 50 + 1 AS parent_no
     FROM generate_series(1,9999) level2_no;
 ANALYZE transition_table_level2;
-WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_status (level, node_no, status)
   SELECT 1, level1_no, 0 FROM transition_table_level1;
 INSERT INTO transition_table_status (level, node_no, status)
   SELECT 2, level2_no, 0 FROM transition_table_level2;
 ANALYZE transition_table_status;
-WARNING:  analyzing non-temporary tables will be ignored
 INSERT INTO transition_table_level1(level1_no)
   SELECT generate_series(201,1000);
 ANALYZE transition_table_level1;
-WARNING:  analyzing non-temporary tables will be ignored
+CHECKPOINT;
+WARNING:  CHECKPOINT will be ignored
 -- behave reasonably if someone tries to modify a transition table
 CREATE FUNCTION transition_table_level2_bad_usage_func()
   RETURNS TRIGGER
@@ -5530,3 +5664,24 @@ END; $$ LANGUAGE plpgsql;
 ERROR:  "x" is not a scalar variable
 LINE 3:   GET DIAGNOSTICS x = ROW_COUNT;
                           ^
+-- inner COMMIT with output arguments
+CREATE PROCEDURE test_proc7c(x int, INOUT a int, INOUT b numeric)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  a := x / 10;
+  b := x / 2;
+  COMMIT;
+END;
+$$;
+CREATE PROCEDURE test_proc7cc(_x int)
+LANGUAGE plpgsql
+AS $$
+DECLARE _a int; _b numeric;
+BEGIN
+  CALL test_proc7c(_x, _a, _b);
+  RAISE NOTICE '_x: %,_a: %, _b: %', _x, _a, _b;
+END
+$$;
+CALL test_proc7cc(10);
+NOTICE:  _x: 10,_a: 1, _b: 5

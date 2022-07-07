@@ -3,14 +3,12 @@ title: The literal for an array of primitive values
 linkTitle: Array of primitive values
 headerTitle: The literal for an array of primitive values
 description: The literal for an array of primitive values
-block_indexing: true
 menu:
   stable:
     identifier: array-of-primitive-values
     parent: array-literals
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 This section states a sufficient subset of the rules that allow you to write a syntactically correct array literal that expresses any set of values, for arrays of any scalar data type, that you could want to create. The full set of rules allows more flexibility than do just those that are stated here. But because these are sufficient, the full, and rather complex, set is not documented here. The explanations in this section will certainly allow you to interpret the `::text` typecast of any array value that you might see, for example in `ysqlsh`.
@@ -45,7 +43,7 @@ Bear in mind that you will rarely manually type literals in the way that this se
 
 You can relax this recommendation, to make tracing or debugging your code easier (as mentioned above), by using a newline between each successive encoded value in the array—at least when the values themselves use a lot of characters, as they might for _"row"_ type values.
 
-**Note:** You can hope that the client side programming language that you use, together with the driver that you use to issue SQL to YugabyteDB and to retrieve results, will allow the direct use of data types that your language defines that map directly to YSQL's array and _"row"_ type, just as they have scalar data types that map to `int`, `text`, `timestamp`, and `boolean`. For example Python has _"list"_ that maps to array and _"tuple"_ that maps to _"row"_ type. And the _"psycopg2"_ driver that you use for YugabyteDB can map values of these data types to, for example, a `PREPARE` statement like the one shown below.
+**Note:** You can hope that the client side programming language that you use, together with the driver that you use to issue SQL to YugabyteDB and to retrieve results, will allow the direct use of data types that your language defines that map directly to the YSQL array and _"row"_ type, just as they have scalar data types that map to `int`, `text`, `timestamp`, and `boolean`. For example Python has _"list"_ that maps to array and _"tuple"_ that maps to _"row"_ type. And the _"psycopg2"_ driver that you use for YugabyteDB can map values of these data types to, for example, a `PREPARE` statement like the one shown below.
 
 **Note**: YSQL has support for converting a JSON array (and this includes a JSON array of JSON objects) directly into the corresponding YSQL array values.
 
@@ -81,7 +79,7 @@ select v1::text as text_typecast from t where k = 1
 \gset result_
 \echo :result_text_typecast
 ```
-The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest). 
+The `\gset` metacommand was used first in this _"Array data types and functionality"_ major section in [`array_agg()` and `unnest()`](../../functions-operators/array-agg-unnest).
 
 Notice that, in this example, the `SELECT` statement is terminated by the `\gset` metacommand on the next line rather than by the usual semicolon. The `\gset` metacommand is silent. The `\echo` metacommand shows this:
 
@@ -113,7 +111,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -215,7 +213,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 Again, it shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -261,7 +259,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -296,7 +294,7 @@ Though the example doesn't show this, `NULL` is not case-sensitive. But to compo
 
 **Note:** If you surrounded `NULL` within a literal for a `text[]` array, then it would be silently interpreted as an ordinary `text` value that just happens to be spelled that way.
 
-To use the literal that that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
+To use the literal that was produced to create a value, you must enquote it and typecast it. Do this with the `\set` metacommand:
 
 ```plpgsql
 \set canonical_literal '\'':result_text_typecast'\'::boolean[]'
@@ -313,7 +311,7 @@ select (v1 = v2)::text as "v1 = v2" from t where k = 1;
 ```
 It shows this:
 ```
- v1 = v2 
+ v1 = v2
 ---------
  true
 ```
@@ -370,7 +368,7 @@ Notice that the three different `INSERT` statements define arrays with different
 Here is the `SELECT` result:
 
 ```
- k | ndims |                    v::text                    
+ k | ndims |                    v::text
 ---+-------+-----------------------------------------------
  1 |     1 | {1,2}
  2 |     2 | {{1,2},{3,4}}
@@ -381,7 +379,7 @@ Again, whitespace in the inserted literals for numeric values is insignificant, 
 
 The literal for a multidimensional array has nested `{}` pairs, according to the dimensionality, and the innermost pair contains the literals for the primitive values.
 
-Notice the spelling of the array literal for the row with _"k = 4"_. The optional syntax `[3:4][5:6][7:8]` specifies the lower and upper bounds, respectively, for the first, the second, and the third dimension. This is the same syntax that you use to specify a slice of an existing array. ([array slice operator](../../functions-operators/slice-operator)) is described in its own section.) When the freedom to specify the bounds is not exercised, then they are assumed all to start at `1`, and then the canonical form of the literal does not show the bounds.
+Notice the spelling of the array literal for the row with _"k = 4"_. The optional syntax `[3:4][5:6][7:8]` specifies the lower and upper bounds, respectively, for the first, the second, and the third dimension. This is the same syntax that you use to specify a slice of a array. ([array slice operator](../../functions-operators/slice-operator)) is described in its own section.) When the freedom to specify the bounds is not exercised, then they are assumed all to start at `1`, and then the canonical form of the literal does not show the bounds.
 
 When the freedom is exercised, the bounds for _every_ dimension must be specified. Specifying the bounds gives you, of course, an opportunity for error. If the length along each axis that you (implicitly) specify doesn't agree with the lengths that emerge from the actual values listed between the surrounding outer `{}` pair, then you get the _"22P02 invalid_text_representation"_ error with this prose explanation:
 

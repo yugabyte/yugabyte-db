@@ -20,7 +20,7 @@
 #include "yb/tserver/cdc_consumer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
-#include "yb/util/status.h"
+#include "yb/util/status_fwd.h"
 
 #ifndef ENT_SRC_YB_TSERVER_CDC_POLLER_H
 #define ENT_SRC_YB_TSERVER_CDC_POLLER_H

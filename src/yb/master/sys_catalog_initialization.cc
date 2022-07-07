@@ -13,22 +13,21 @@
 
 #include "yb/master/sys_catalog_initialization.h"
 
-#include "yb/util/countdown_latch.h"
-#include "yb/util/pb_util.h"
-#include "yb/util/env_util.h"
-#include "yb/util/path_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/common/wire_protocol.h"
 
-#include "yb/master/sys_catalog_constants.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/sys_catalog.h"
 
+#include "yb/tablet/operations/change_metadata_operation.h"
+#include "yb/tablet/operations/snapshot_operation.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet_snapshots.h"
-#include "yb/tablet/operations/operation.h"
-#include "yb/tablet/operations/snapshot_operation.h"
-#include "yb/tablet/operations/change_metadata_operation.h"
+
+#include "yb/util/countdown_latch.h"
+#include "yb/util/env_util.h"
+#include "yb/util/flag_tags.h"
 
 DEFINE_string(initial_sys_catalog_snapshot_path, "",
     "If this is specified, system catalog RocksDB is checkpointed at this location after initdb "
@@ -61,7 +60,7 @@ TAG_FLAG(create_initial_sys_catalog_snapshot, hidden);
 using yb::CountDownLatch;
 using yb::tserver::TabletSnapshotOpRequestPB;
 using yb::tserver::TabletSnapshotOpResponsePB;
-using yb::tablet::SnapshotOperationState;
+using yb::tablet::SnapshotOperation;
 using yb::pb_util::ReadPBContainerFromPath;
 
 namespace yb {
@@ -80,8 +79,11 @@ const char* kUseInitialSysCatalogSnapshotEnvVar = "YB_USE_INITIAL_SYS_CATALOG_SN
 // InitialSysCatalogSnapshotWriter
 // ------------------------------------------------------------------------------------------------
 
+InitialSysCatalogSnapshotWriter::InitialSysCatalogSnapshotWriter() = default;
+InitialSysCatalogSnapshotWriter::~InitialSysCatalogSnapshotWriter() = default;
+
 void InitialSysCatalogSnapshotWriter::AddMetadataChange(
-    tserver::ChangeMetadataRequestPB metadata_change) {
+    tablet::ChangeMetadataRequestPB metadata_change) {
   initdb_metadata_changes_.push_back(std::move(metadata_change));
 }
 
@@ -94,7 +96,7 @@ Status InitialSysCatalogSnapshotWriter::WriteSnapshot(
       JoinPathSegments(dest_path, kSysCatalogSnapshotRocksDbSubDir)));
 
   tserver::ExportedTabletMetadataChanges exported_tablet_metadata_changes;
-  for (int i = 0; i < initdb_metadata_changes_.size(); ++i) {
+  for (size_t i = 0; i < initdb_metadata_changes_.size(); ++i) {
     *exported_tablet_metadata_changes.add_metadata_changes() = std::move(
         initdb_metadata_changes_[i]);
   }
@@ -124,22 +126,20 @@ Status RestoreInitialSysCatalogSnapshot(
     tablet::TabletPeer* sys_catalog_tablet_peer,
     int64_t term) {
   TabletSnapshotOpRequestPB tablet_snapshot_req;
-  tablet_snapshot_req.set_operation(yb::tserver::TabletSnapshotOpRequestPB::RESTORE);
+  tablet_snapshot_req.set_operation(yb::tserver::TabletSnapshotOpRequestPB::RESTORE_ON_TABLET);
   tablet_snapshot_req.add_tablet_id(kSysCatalogTabletId);
   tablet_snapshot_req.set_snapshot_dir_override(
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotRocksDbSubDir));
 
   TabletSnapshotOpResponsePB tablet_snapshot_resp;
-  auto tx_state = std::make_unique<SnapshotOperationState>(
+  auto operation = std::make_unique<SnapshotOperation>(
       sys_catalog_tablet_peer->tablet(), &tablet_snapshot_req);
 
   CountDownLatch latch(1);
-  tx_state->set_completion_callback(
+  operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(&latch, &tablet_snapshot_resp));
 
-  sys_catalog_tablet_peer->Submit(
-      std::make_unique<tablet::SnapshotOperation>(std::move(tx_state)),
-      term);
+  sys_catalog_tablet_peer->Submit(std::move(operation), term);
 
   // Now restore tablet metadata.
   tserver::ExportedTabletMetadataChanges tablet_metadata_changes;
@@ -147,8 +147,7 @@ Status RestoreInitialSysCatalogSnapshot(
       Env::Default(),
       JoinPathSegments(initial_snapshot_path, kSysCatalogSnapshotTabletMetadataChangesFile),
       &tablet_metadata_changes));
-  for (const tserver::ChangeMetadataRequestPB& change_metadata_req :
-          tablet_metadata_changes.metadata_changes()) {
+  for (const auto& change_metadata_req : tablet_metadata_changes.metadata_changes()) {
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
         &change_metadata_req,
         sys_catalog_tablet_peer,
@@ -227,7 +226,7 @@ bool ShouldAutoRunInitDb(SysConfigInfo* ysql_catalog_config, bool pg_proc_exists
 
   {
     auto l = ysql_catalog_config->LockForRead();
-    if (l->data().pb.ysql_catalog_config().initdb_done()) {
+    if (l->pb.ysql_catalog_config().initdb_done()) {
       LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
       return false;
     }
@@ -244,7 +243,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     int64_t term) {
   {
     auto ysql_catalog_config_lock = ysql_catalog_config->LockForRead();
-    const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->data().pb.ysql_catalog_config();
+    const auto& ysql_catalog_config_pb = ysql_catalog_config_lock->pb.ysql_catalog_config();
     if (ysql_catalog_config_pb.transactional_sys_catalog_enabled()) {
       LOG(INFO) << "YSQL catalog tables are already transactional";
       return Status::OK();
@@ -261,15 +260,14 @@ Status MakeYsqlSysCatalogTablesTransactional(
     }
 
     {
-      TabletInfos tablet_infos;
-      table_info.GetAllTablets(&tablet_infos);
+      TabletInfos tablet_infos = table_info.GetTablets();
       if (tablet_infos.size() != 1 || tablet_infos.front()->tablet_id() != kSysCatalogTabletId) {
         continue;
       }
      }
 
     auto table_lock = table_info.LockForWrite();
-    auto& schema = *table_lock->mutable_data()->mutable_schema();
+    auto& schema = *table_lock.mutable_data()->mutable_schema();
     auto& table_properties = *schema.mutable_table_properties();
 
     bool should_modify = false;
@@ -289,7 +287,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     LOG(INFO) << "Making YSQL system catalog table transactional: " << table_info.ToString();
 
     // Change table properties in tablet metadata.
-    tserver::ChangeMetadataRequestPB change_req;
+    tablet::ChangeMetadataRequestPB change_req;
     change_req.set_tablet_id(kSysCatalogTabletId);
     auto& add_table = *change_req.mutable_add_table();
     VERIFY_RESULT(sys_catalog->tablet_peer()->tablet_metadata()->GetTableInfo(table_id))->ToPB(
@@ -303,8 +301,8 @@ Status MakeYsqlSysCatalogTablesTransactional(
 
     // Change table properties in the sys catalog. We do this after updating tablet metadata, so
     // that if a restart happens before this step succeeds, we'll retry updating both next time.
-    RETURN_NOT_OK(sys_catalog->UpdateItem(&table_info, term));
-    table_lock->Commit();
+    RETURN_NOT_OK(sys_catalog->Upsert(term, &table_info));
+    table_lock.Commit();
   }
 
   if (num_updated_tables > 0) {
@@ -315,10 +313,10 @@ Status MakeYsqlSysCatalogTablesTransactional(
   {
     auto ysql_catalog_lock = ysql_catalog_config->LockForWrite();
     auto* ysql_catalog_config_pb =
-        ysql_catalog_lock->mutable_data()->pb.mutable_ysql_catalog_config();
+        ysql_catalog_lock.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb->set_transactional_sys_catalog_enabled(true);
-    RETURN_NOT_OK(sys_catalog->UpdateItem(ysql_catalog_config, term));
-    ysql_catalog_lock->Commit();
+    RETURN_NOT_OK(sys_catalog->Upsert(term, ysql_catalog_config));
+    ysql_catalog_lock.Commit();
   }
 
   return Status::OK();

@@ -13,11 +13,16 @@
 
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
+
+#include "yb/gutil/bind.h"
+
 #include "yb/integration-tests/external_mini_cluster.h"
-#include "yb/yql/cql/ql/ql_processor.h"
-#include "yb/yql/cql/ql/util/statement_params.h"
-#include "yb/util/test_util.h"
+
 #include "yb/util/async_util.h"
+#include "yb/util/result.h"
+#include "yb/util/test_util.h"
+
+#include "yb/yql/cql/ql/ql_processor.h"
 
 namespace yb {
 namespace master {

@@ -1155,55 +1155,37 @@ BEGIN;
 INSERT INTO fktable VALUES (0, 20);
 -- UPDATE will be in a subxact
 SAVEPOINT savept1;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT savept1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- should catch error from initial INSERT
 COMMIT;
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(20) is not present in table "pktable".
 BEGIN;
 -- INSERT will be in a subxact
 SAVEPOINT savept1;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT savept1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 RELEASE SAVEPOINT savept1;
-ERROR:  RELEASE SAVEPOINT <transaction> not supported yet
-LINE 1: RELEASE SAVEPOINT savept1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- should catch error from initial INSERT
 COMMIT;
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(20) is not present in table "pktable".
 BEGIN;
 -- doesn't match PK, but no error yet
 INSERT INTO fktable VALUES (0, 20);
 -- UPDATE will be in a subxact
 SAVEPOINT savept1;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: SAVEPOINT savept1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- don't change FK
 UPDATE fktable SET id = id + 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 -- Roll back the UPDATE
 ROLLBACK TO savept1;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: ROLLBACK TO savept1;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 -- should catch error from initial INSERT
 COMMIT;
+ERROR:  insert or update on table "fktable" violates foreign key constraint "fktable_fk_fkey"
+DETAIL:  Key (fk)=(20) is not present in table "pktable".
 --
 -- check ALTER CONSTRAINT
 --
@@ -1398,20 +1380,19 @@ drop table pp, cc;
 create temp table t1 (a integer primary key, b text);
 create temp table t2 (a integer primary key, b integer references t1);
 create rule r1 as on delete to t1 do delete from t2 where t2.b = old.a;
--- TODO(jason): fix expected output when issue #2220 is closed or closing.
 explain (costs off) delete from t1 where a = 1;
-          QUERY PLAN
--------------------------------
+                 QUERY PLAN
+--------------------------------------------
  Delete on t2
    ->  Nested Loop
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: (a = 1)
          ->  Seq Scan on t2
                Filter: (b = 1)
-         ->  Seq Scan on t1
-               Filter: (a = 1)
 
  Delete on t1
-   ->  Seq Scan on t1
-         Filter: (a = 1)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (a = 1)
 (10 rows)
 
 delete from t1 where a = 1;
@@ -1437,33 +1418,17 @@ insert into pktable2 values(1);
 begin;
 insert into fktable2 values(1);
 savepoint x;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: savepoint x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 delete from fktable2;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback to x;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: rollback to x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 commit;
 begin;
 insert into fktable2 values(2);
 savepoint x;
-ERROR:  SAVEPOINT <transaction> not supported yet
-LINE 1: savepoint x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 delete from fktable2;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback to x;
-ERROR:  ROLLBACK <transaction> not supported yet
-LINE 1: rollback to x;
-        ^
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/1125. Click '+' on the description to raise its priority
 commit; -- fail
+ERROR:  insert or update on table "fktable2" violates foreign key constraint "fktable2_f1_fkey"
+DETAIL:  Key (f1)=(2) is not present in table "pktable2".
 --
 -- Test that we prevent dropping FK constraint with pending trigger events
 --
@@ -1559,15 +1524,13 @@ INSERT INTO fk_partitioned_fk (a,b) VALUES (500, 501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (1500, 1501);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2500, 2502);
 INSERT INTO fk_partitioned_fk (a,b) VALUES (2501, 2503);
--- TODO(YB): When UPDATE changing partitions is supported, restore this section
---           to its original form. (#5310)
 -- this update fails because there is no referenced row
-UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
-ERROR:  insert or update on table "fk_partitioned_fk_3_0" violates foreign key constraint "fk_partitioned_fk_a_fkey"
-DETAIL:  Key (a, b)=(2506, 2503) is not present in table "fk_notpartitioned_pk".
+UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
+ERROR:  insert or update on table "fk_partitioned_fk_3_1" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+DETAIL:  Key (a, b)=(2502, 2503) is not present in table "fk_notpartitioned_pk".
 -- but we can fix it thusly:
-INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2506, 2503);
-UPDATE fk_partitioned_fk SET a = a + 5 WHERE a = 2501;
+INSERT INTO fk_notpartitioned_pk (a,b) VALUES (2502, 2503);
+UPDATE fk_partitioned_fk SET a = a + 1 WHERE a = 2501;
 -- these updates would leave lingering rows in the referencing table; disallow
 UPDATE fk_notpartitioned_pk SET b = 502 WHERE a = 500;
 ERROR:  update or delete on table "fk_notpartitioned_pk" violates foreign key constraint "fk_partitioned_fk_a_fkey" on table "fk_partitioned_fk"
@@ -1628,17 +1591,8 @@ SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY 
  fk_partitioned_fk_1 |      |
 (2 rows)
 
--- TODO(YB): When UPDATE changing partitions is supported, the below section
---           should be reworked. (#5310)
 UPDATE fk_notpartitioned_pk SET a = a + 1 WHERE a = 2502;
-ERROR:  This operation would cause a row to change the partition, this is not yet supported
-HINT:  See https://github.com/YugaByte/yugabyte-db/issues/5310. Click '+' on the description to raise its priority
-CONTEXT:  SQL statement "UPDATE "public"."fk_partitioned_fk" SET "a" = NULL, "b" = NULL WHERE $1 OPERATOR(pg_catalog.=) "a" AND $2 OPERATOR(pg_catalog.=) "b""
-DELETE FROM fk_partitioned_fk WHERE a = 2502;
-INSERT INTO fk_partitioned_fk (a,b) VALUES (NULL, NULL);
-INSERT INTO fk_partitioned_fk (a,b) VALUES (2502, NULL);
-UPDATE fk_notpartitioned_pk SET a = 2503 WHERE a = 2502;
-SELECT tableoid::regclass, a, b FROM fk_partitioned_fk ORDER BY a, b;
+SELECT tableoid::regclass, a, b FROM fk_partitioned_fk WHERE b IS NULL ORDER BY a;
       tableoid       |  a   | b
 ---------------------+------+---
  fk_partitioned_fk_3 | 2502 |
@@ -1646,18 +1600,8 @@ SELECT tableoid::regclass, a, b FROM fk_partitioned_fk ORDER BY a, b;
  fk_partitioned_fk_1 |      |
 (3 rows)
 
-SELECT tableoid::regclass, a, b FROM fk_notpartitioned_pk ORDER BY a;
-       tableoid       |  a   |  b
-----------------------+------+------
- fk_notpartitioned_pk | 2503 | 2503
-(1 row)
-
 -- ON DELETE SET NULL
--- TODO(YB): When UPDATE changing partitions is supported, restore this section
---           to its original form. (#5310)
-DELETE FROM fk_notpartitioned_pk WHERE a=2502;
-INSERT INTO fk_notpartitioned_pk (a,b) VALUES (500, 500);
-INSERT INTO fk_partitioned_fk VALUES (500, 500);
+INSERT INTO fk_partitioned_fk VALUES (2503, 2503);
 SELECT count(*) FROM fk_partitioned_fk WHERE a IS NULL;
  count
 -------
@@ -1840,7 +1784,7 @@ CREATE TABLE fk_partitioned_fk_2_2 PARTITION OF fk_partitioned_fk_2 FOR VALUES F
 INSERT INTO fk_partitioned_fk_2 VALUES (1600, 601), (1600, 1601);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2
   FOR VALUES IN (1600);
-ERROR:  insert or update on table "fk_partitioned_fk_2" violates foreign key constraint "fk_partitioned_fk_a_fkey"
+ERROR:  insert or update on table "fk_partitioned_fk_2_1" violates foreign key constraint "fk_partitioned_fk_a_fkey"
 DETAIL:  Key (a, b)=(1600, 601) is not present in table "fk_notpartitioned_pk".
 INSERT INTO fk_notpartitioned_pk VALUES (1600, 601), (1600, 1601);
 ALTER TABLE fk_partitioned_fk ATTACH PARTITION fk_partitioned_fk_2

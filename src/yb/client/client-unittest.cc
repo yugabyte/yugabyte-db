@@ -37,8 +37,8 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+#include "yb/client/schema.h"
 
 namespace yb {
 namespace client {
@@ -49,11 +49,12 @@ using std::vector;
 using namespace std::literals;
 using namespace std::placeholders;
 
+const std::string kNoPrimaryKeyMessage = "Invalid argument: No primary key specified";
+
 TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
   YBSchema s;
   YBSchemaBuilder b;
-  ASSERT_EQ("Invalid argument: no primary key specified",
-            b.Build(&s).ToString(/* no file/line */ false));
+  ASSERT_EQ(kNoPrimaryKeyMessage, b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
@@ -61,8 +62,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_KeyNotSpecified) {
   YBSchemaBuilder b;
   b.AddColumn("a")->Type(INT32)->NotNull();
   b.AddColumn("b")->Type(INT32)->NotNull();
-  ASSERT_EQ("Invalid argument: no primary key specified",
-            b.Build(&s).ToString(/* no file/line */ false));
+  ASSERT_EQ(kNoPrimaryKeyMessage, b.Build(&s).ToString(/* no file/line */ false));
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_DuplicateColumn) {
@@ -79,11 +79,10 @@ TEST(ClientUnitTest, TestSchemaBuilder_WrongPrimaryKeyOrder) {
   YBSchema s;
   YBSchemaBuilder b;
   b.AddColumn("key")->Type(INT32);
-  b.AddColumn("x")->Type(INT32)->NotNull()->PrimaryKey();;
+  b.AddColumn("x")->Type(INT32)->NotNull()->PrimaryKey();
   b.AddColumn("x")->Type(INT32);
   const char *expected_status =
-    "Invalid argument: The given columns in a schema must be ordered as hash primary key columns "
-    "then primary key columns and then regular columns";
+    "Invalid argument: Primary key column 'x' should be before regular column 'key'";
   ASSERT_EQ(expected_status, b.Build(&s).ToString(/* no file/line */ false));
 }
 
@@ -93,8 +92,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_WrongHashKeyOrder) {
   b.AddColumn("a")->Type(INT32)->PrimaryKey();
   b.AddColumn("b")->Type(INT32)->HashPrimaryKey();
   const char *expected_status =
-    "Invalid argument: The given columns in a schema must be ordered as hash primary key columns "
-    "then primary key columns and then regular columns";
+    "Invalid argument: Hash primary key column 'b' should be before primary key 'a'";
   ASSERT_EQ(expected_status, b.Build(&s).ToString(/* no file/line */ false));
 }
 
@@ -104,7 +102,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_PrimaryKeyOnColumnAndSet) {
   b.AddColumn("a")->Type(INT32)->PrimaryKey();
   b.AddColumn("b")->Type(INT32);
   b.SetPrimaryKey({ "a", "b" });
-  ASSERT_EQ("Invalid argument: primary key specified by both "
+  ASSERT_EQ("Invalid argument: Primary key specified by both "
             "SetPrimaryKey() and on a specific column: a",
             b.Build(&s).ToString(/* no file/line */ false));
 }
@@ -126,9 +124,8 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_GoodSchema) {
   b.SetPrimaryKey({ "a", "b" });
   ASSERT_EQ("OK", b.Build(&s).ToString());
 
-  vector<int> key_columns;
-  s.GetPrimaryKeyColumnIndexes(&key_columns);
-  ASSERT_EQ(vector<int>({ 0, 1 }), key_columns);
+  auto key_columns = s.GetPrimaryKeyColumnIndexes();
+  ASSERT_EQ(vector<size_t>({ 0, 1 }), key_columns);
 }
 
 TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
@@ -138,7 +135,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_KeyNotFirst) {
   b.AddColumn("a")->Type(INT32)->NotNull();
   b.AddColumn("b")->Type(INT32)->NotNull();
   b.SetPrimaryKey({ "a", "b" });
-  ASSERT_EQ("Invalid argument: primary key columns must be listed "
+  ASSERT_EQ("Invalid argument: Primary key columns must be listed "
             "first in the schema: a",
             b.Build(&s).ToString(/* no file/line */ false));
 }
@@ -149,7 +146,7 @@ TEST(ClientUnitTest, TestSchemaBuilder_CompoundKey_BadColumnName) {
   b.AddColumn("a")->Type(INT32)->NotNull();
   b.AddColumn("b")->Type(INT32)->NotNull();
   b.SetPrimaryKey({ "foo" });
-  ASSERT_EQ("Invalid argument: primary key column not defined: foo",
+  ASSERT_EQ("Invalid argument: Primary key column not defined: foo",
             b.Build(&s).ToString(/* no file/line */ false));
 }
 

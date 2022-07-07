@@ -457,4 +457,21 @@
 { opcmethod => 'lsm', opcname => 'jsonb_ops',
   opcfamily => 'lsm/jsonb_ops', opcintype => 'jsonb' },
 
+# YBGIN operator classes
+
+{ oid => '8023', oid_symbol => 'ARRAY_YBGIN_OPS_OID',
+  opcmethod => 'ybgin', opcname => 'array_ops', opcfamily => 'gin/array_ops',
+  opcintype => 'anyarray', opckeytype => 'anyelement' },
+{ oid => '8024', oid_symbol => 'TSVECTOR_YBGIN_OPS_OID',
+  opcmethod => 'ybgin', opcname => 'tsvector_ops',
+  opcfamily => 'gin/tsvector_ops', opcintype => 'tsvector',
+  opckeytype => 'text' },
+{ oid => '8025', oid_symbol => 'JSONB_YBGIN_OPS_OID',
+  opcmethod => 'ybgin', opcname => 'jsonb_ops', opcfamily => 'gin/jsonb_ops',
+  opcintype => 'jsonb', opckeytype => 'text' },
+{ oid => '8026', oid_symbol => 'JSONB_PATH_YBGIN_OPS_OID',
+  opcmethod => 'ybgin', opcname => 'jsonb_path_ops',
+  opcfamily => 'gin/jsonb_path_ops', opcintype => 'jsonb', opcdefault => 'f',
+  opckeytype => 'int4' },
+
 ]

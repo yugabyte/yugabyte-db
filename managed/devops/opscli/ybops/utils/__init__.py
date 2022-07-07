@@ -10,13 +10,8 @@
 
 from __future__ import print_function
 
-import atexit
-import boto3
-import botocore
 import distro
 import datetime
-import glob
-import hashlib
 import json
 import logging
 import os
@@ -26,7 +21,6 @@ import platform
 import random
 import re
 import shutil
-import six
 import socket
 import string
 import stat
@@ -34,7 +28,6 @@ import subprocess
 import sys
 import time
 import tempfile
-import yaml
 
 from Crypto.PublicKey import RSA
 from enum import Enum
@@ -46,9 +39,14 @@ from ybops.utils.remote_shell import RemoteShell
 BLOCK_SIZE = 4096
 HOME_FOLDER = os.environ["HOME"]
 YB_FOLDER_PATH = os.path.join(HOME_FOLDER, ".yugabyte")
-SSH_RETRY_LIMIT = 20
+SSH_RETRY_LIMIT = 60
+SSH_RETRY_LIMIT_PRECHECK = 4
 DEFAULT_SSH_PORT = 22
-SSH_TIMEOUT = 15
+DEFAULT_SSH_USER = 'centos'
+# Timeout in seconds.
+SSH_TIMEOUT = 45
+# Retry in seconds
+SSH_RETRY_DELAY = 10
 
 RSA_KEY_LENGTH = 2048
 RELEASE_VERSION_FILENAME = "version.txt"
@@ -57,6 +55,27 @@ RELEASE_REPOS = set(["devops", "yugaware", "yugabyte"])
 
 # Home directory of node instances. Try to read home dir from env, else assume it's /home/yugabyte.
 YB_HOME_DIR = os.environ.get("YB_HOME_DIR") or "/home/yugabyte"
+# Sudo password for remote host.
+YB_SUDO_PASS = os.environ.get("YB_SUDO_PASS")
+
+# TTL in seconds for how long DNS records will be cached.
+DNS_RECORD_SET_TTL = 5
+
+# Minimum required resources on a VM.
+MIN_MEM_SIZE_GB = 2
+MIN_NUM_CORES = 2
+
+DEFAULT_MASTER_HTTP_PORT = 7000
+DEFAULT_MASTER_RPC_PORT = 7100
+DEFAULT_TSERVER_HTTP_PORT = 9000
+DEFAULT_TSERVER_RPC_PORT = 9100
+DEFAULT_CQL_PROXY_HTTP_PORT = 12000
+DEFAULT_CQL_PROXY_RPC_PORT = 9042
+DEFAULT_YSQL_PROXY_HTTP_PORT = 13000
+DEFAULT_YSQL_PROXY_RPC_PORT = 5433
+DEFAULT_REDIS_PROXY_HTTP_PORT = 11000
+DEFAULT_REDIS_PROXY_RPC_PORT = 6379
+DEFAULT_NODE_EXPORTER_HTTP_PORT = 9300
 
 
 class ReleasePackage(object):
@@ -68,6 +87,7 @@ class ReleasePackage(object):
         self.build_type = None
         self.system = None
         self.machine = None
+        self.compiler = None
 
     @classmethod
     def from_pieces(cls, repo, version, commit, build_type=None):
@@ -78,7 +98,19 @@ class ReleasePackage(object):
         obj.build_type = build_type
         obj.system = platform.system().lower()
         if obj.system == "linux":
-            obj.system = distro.linux_distribution(full_distribution_name=False)[0].lower()
+            # We recently moved from centos7 to almalinux8 as the build host for our universal
+            # x86_64 linux build.  This changes the name of the release tarball we create.
+            # Unfortunately, we have a lot of hard coded references to the centos package names
+            # in our downsstream release code.  So here we munge the name to 'centos' to keep things
+            # working while we fix downstream code.
+            # TODO(jharveymsith): Remove the almalinux to centos mapping once downstream is fixed.
+            if distro.id() == "centos" and distro.major_version() == "7" \
+                    or distro.id() == "almalinux" and platform.machine().lower() == "x86_64":
+                obj.system = "centos"
+            elif distro.id == "ubuntu":
+                obj.system = distro.id() + distro.version()
+            else:
+                obj.system = distro.id() + distro.major_version()
         if len(obj.system) == 0:
             raise YBOpsRuntimeError("Cannot release on this system type: " + platform.system())
         obj.machine = platform.machine().lower()
@@ -116,7 +148,7 @@ class ReleasePackage(object):
         else:
             # Add commit hash and maybe build type.
             pattern += "-(?P<commit_hash>[^-]+)(-(?P<build_type>[^-]+))?"
-        pattern += "-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
+        pattern += "(-(?P<compiler>[^-]+))?-(?P<system>[^-]+)-(?P<machine>[^-]+)\.tar\.gz$"
         match = re.match(pattern, package_name)
         if not match:
             raise YBOpsRuntimeError("Invalid package name format: {}".format(package_name))
@@ -125,6 +157,7 @@ class ReleasePackage(object):
         self.build_number = match.group("build_number") if is_official_release else None
         self.commit = match.group("commit_hash") if not is_official_release else None
         self.build_type = match.group("build_type") if not is_official_release else None
+        self.compiler = match.group("compiler")
         self.system = match.group("system")
         self.machine = match.group("machine")
 
@@ -162,6 +195,11 @@ def get_path_from_yb(path):
 # YB_DEVOPS_HOME to distinguish it from the DEVOPS_HOME environment variable used in Yugaware.
 YB_DEVOPS_HOME = None
 
+# This variable is used inside provision_instance.py file.
+# For yugabundle installations YB_DEVOPS_HOME contains version number, so we have to use a link
+# to current devops folder. For the rest of cases this variable is equal to YB_DEVOPS_HOME.
+YB_DEVOPS_HOME_PERM = None
+
 
 def init_logging(log_level):
     """This method initializes ybops logging.
@@ -198,6 +236,7 @@ def init_env(log_level):
 
 def get_devops_home():
     global YB_DEVOPS_HOME
+    global YB_DEVOPS_HOME_PERM
     if YB_DEVOPS_HOME is None:
         devops_home = os.environ.get("yb_devops_home")
         if devops_home is None:
@@ -213,6 +252,8 @@ def get_devops_home():
                     ("yb_devops_home environment variable is not set, and could not determine it " +
                      "from any of the parent directories of '{}'").format(this_file_dir))
         YB_DEVOPS_HOME = devops_home
+        devops_home_link = os.environ.get("yb_devops_home_link")
+        YB_DEVOPS_HOME_PERM = devops_home_link if devops_home_link is not None else YB_DEVOPS_HOME
     # If this is still None, we were not able to find it crawling up the tree, so let's fail to not
     # constantly be doing this...
     if YB_DEVOPS_HOME is None:
@@ -413,9 +454,9 @@ def get_ssh_host_port(host_info, custom_port, default_port=False):
     }
 
 
-def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key):
+def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key, num_retries=SSH_RETRY_LIMIT):
     """This method would basically wait for the given host's ssh to come up, by looping
-    and checking if the ssh is active. And timesout if it reaches a SSH_RETRY_LIMIT.
+    and checking if the ssh is active. And timesout if retries reaches num_retries.
     Args:
         host_ip (str): IP Address for which we want to ssh
         ssh_port (str): ssh port
@@ -425,16 +466,14 @@ def wait_for_ssh(host_ip, ssh_port, ssh_user, ssh_key):
         (boolean): Returns true if the ssh was successful.
     """
     retry_count = 0
-    while True:
-        retry_count += 1
+    while retry_count < num_retries:
         if can_ssh(host_ip, ssh_port, ssh_user, ssh_key):
             return True
 
         time.sleep(1)
+        retry_count += 1
 
-        if retry_count > SSH_RETRY_LIMIT:
-            raise YBOpsRuntimeError(
-                "Timed out trying to SSH to instance: {}:{}".format(host_ip, ssh_port))
+    return False
 
 
 def format_rsa_key(key, public_key):
@@ -447,9 +486,9 @@ def format_rsa_key(key, public_key):
         key (str): Encoded key in OpenSSH or PEM format based on the flag (public key or not).
     """
     if public_key:
-        return str(key.publickey().exportKey("OpenSSH"))
+        return key.publickey().exportKey("OpenSSH").decode('utf-8')
     else:
-        return str(key.exportKey("PEM"))
+        return key.exportKey("PEM").decode('utf-8')
 
 
 def validated_key_file(key_file):
@@ -601,7 +640,7 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
 
         _, stdout, stderr = ssh_client.exec_command("crontab -l")
         cronjobs = ["clean_cores.sh", "zip_purge_yb_logs.sh", "yb-server-ctl.sh tserver"]
-        stdout = stdout.read()
+        stdout = stdout.read().decode('utf-8')
         return len(stderr.readlines()) == 0 and all(c in stdout for c in cronjobs)
     except (paramiko.ssh_exception.NoValidConnectionsError,
             paramiko.ssh_exception.AuthenticationException,
@@ -613,7 +652,8 @@ def validate_cron_status(host_name, port, username, ssh_key_file):
         ssh_client.close()
 
 
-def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SSH_TIMEOUT):
+def remote_exec_command(host_name, port, username, ssh_key_file, cmd,
+                        timeout=SSH_TIMEOUT, retries_on_failure=3, retry_delay=SSH_RETRY_DELAY):
     """This method will execute the given cmd on remote host and return the output.
     Args:
         host_name (str): SSH host IP address
@@ -621,7 +661,9 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
         username (str): SSH username
         ssh_key_file (str): SSH key file
         cmd (str): Command to run
-        timetout (int): Time in seconds to wait before erroring
+        timeout (int): Time in seconds to wait before aborting
+        retries_on_failure (int): Number of times to retry
+        retry_delay (int): Time in seconds to wait between subsequent retries
     Returns:
         rc (int): returncode
         stdout (str): output log
@@ -630,24 +672,33 @@ def remote_exec_command(host_name, port, username, ssh_key_file, cmd, timeout=SS
     ssh_key = paramiko.RSAKey.from_private_key_file(ssh_key_file)
     ssh_client = get_ssh_client()
 
-    try:
-        ssh_client.connect(hostname=host_name,
-                           username=username,
-                           pkey=ssh_key,
-                           port=port,
-                           timeout=timeout,
-                           banner_timeout=timeout)
+    while retries_on_failure >= 0:
+        try:
+            logging.info("Attempt #{} to execute remote command...".format(retries_on_failure + 1))
+            ssh_client.connect(hostname=host_name,
+                               username=username,
+                               pkey=ssh_key,
+                               port=port,
+                               timeout=timeout,
+                               banner_timeout=timeout)
 
-        _, stdout, stderr = ssh_client.exec_command(cmd)
-        return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
-    except (paramiko.ssh_exception, socket.timeout, socket.error) as e:
-        logging.error("Failed to execute remote command: {}".format(e))
-        return False
-    finally:
-        ssh_client.close()
+            _, stdout, stderr = ssh_client.exec_command(cmd)
+            return stdout.channel.recv_exit_status(), stdout.readlines(), stderr.readlines()
+        except (paramiko.ssh_exception.NoValidConnectionsError,
+                paramiko.ssh_exception.AuthenticationException,
+                paramiko.ssh_exception.SSHException,
+                socket.timeout, socket.error) as e:
+            logging.error("Failed to execute remote command: {}".format(e))
+            retries_on_failure -= 1
+            time.sleep(retry_delay)
+        finally:
+            ssh_client.close()
+
+    return 1, None, None  # treat this as a non-zero return code
 
 
-def scp_to_tmp(filepath, host, user, port, private_key):
+def scp_to_tmp(filepath, host, user, port, private_key,
+               retries=3, retry_delay=SSH_RETRY_DELAY):
     dest_path = os.path.join("/tmp", os.path.basename(filepath))
     logging.info("[app] Copying local '{}' to remote '{}'".format(
         filepath, dest_path))
@@ -662,24 +713,39 @@ def scp_to_tmp(filepath, host, user, port, private_key):
         "-vvvv",
         filepath, "{}@{}:{}".format(user, host, dest_path)
     ]
-    # Save the debug output to temp files.
-    out_fd, out_name = tempfile.mkstemp(text=True)
-    err_fd, err_name = tempfile.mkstemp(text=True)
-    # Start the scp and redirect out and err.
-    proc = subprocess.Popen(scp_cmd, stdout=out_fd, stderr=err_fd)
-    # Wait for finish and cleanup FDs.
-    proc.wait()
-    os.close(out_fd)
-    os.close(err_fd)
-    # In case of errors, copy over the tmp output.
-    if proc.returncode != 0:
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        shutil.copyfile(out_name, "/tmp/{}-{}.out".format(host, timestamp))
-        shutil.copyfile(err_name, "/tmp/{}-{}.err".format(host, timestamp))
-    # Cleanup the temp files now that they are clearly not needed.
-    os.remove(out_name)
-    os.remove(err_name)
-    return proc.returncode
+
+    rc = 0
+    while retries > 0:
+        # Save the debug output to temp files.
+        out_fd, out_name = tempfile.mkstemp(text=True)
+        err_fd, err_name = tempfile.mkstemp(text=True)
+        # Start the scp and redirect out and err.
+        proc = subprocess.Popen(scp_cmd, stdout=out_fd, stderr=err_fd)
+        # Wait for finish and cleanup FDs.
+        proc.wait()
+        os.close(out_fd)
+        os.close(err_fd)
+        rc = proc.returncode
+
+        # In case of errors, copy over the tmp output.
+        if rc != 0:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            basename = f"/tmp/{host}-{timestamp}"
+            logging.warning(f"Command '{' '.join(scp_cmd)}' failed with exit code {rc}")
+
+            for ext, name in {'out': out_name, 'err': err_name}.items():
+                logging.warning(f"Dumping std{ext} to {basename}.{ext}")
+                shutil.move(name, f"{basename}.out")
+
+            retries -= 1
+            time.sleep(retry_delay)
+        else:
+            # Cleanup the temp files now that they are clearly not needed.
+            os.remove(out_name)
+            os.remove(err_name)
+            break
+
+    return rc
 
 
 def get_or_create(getter):
@@ -756,3 +822,9 @@ def get_mount_roots(ssh_options, paths):
     return ",".join(
         [mroot.strip() for mroot in mount_roots if mroot.strip()]
     )
+
+
+def get_public_key_content(private_key_file):
+    rsa_key = validated_key_file(private_key_file)
+    public_key_content = format_rsa_key(rsa_key, public_key=True)
+    return public_key_content

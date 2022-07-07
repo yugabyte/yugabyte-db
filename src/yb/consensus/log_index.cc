@@ -45,18 +45,15 @@
 
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <mutex>
 #include <string>
 #include <vector>
 
-#include "yb/consensus/opid_util.h"
 #include "yb/gutil/map-util.h"
-#include "yb/gutil/stringprintf.h"
-#include "yb/gutil/strings/substitute.h"
+
+#include "yb/util/env.h"
+#include "yb/util/file_util.h"
 #include "yb/util/locks.h"
 
 using std::string;
@@ -159,7 +156,8 @@ Status LogIndex::IndexChunk::Open() {
 
   mapping_ = static_cast<uint8_t*>(mmap(nullptr, kChunkFileSize, PROT_READ | PROT_WRITE,
                                         MAP_SHARED, fd_, 0));
-  if (mapping_ == nullptr) {
+  if (mapping_ == MAP_FAILED) {
+    mapping_ = nullptr;
     return STATUS(IOError, "Unable to mmap()", Errno(err));
   }
 
@@ -197,8 +195,16 @@ LogIndex::LogIndex(std::string base_dir) : base_dir_(std::move(base_dir)) {}
 LogIndex::~LogIndex() {
 }
 
-string LogIndex::GetChunkPath(int64_t chunk_idx) {
-  return StringPrintf("%s/index.%09" PRId64, base_dir_.c_str(), chunk_idx);
+namespace {
+
+std::string GetChunkPath(const std::string& base_dir, const int64_t chunk_idx) {
+  return StringPrintf("%s/index.%09" PRId64, base_dir.c_str(), chunk_idx);
+}
+
+} // namespace
+
+std::string LogIndex::GetChunkPath(const int64_t chunk_idx) {
+  return log::GetChunkPath(base_dir_, chunk_idx);
 }
 
 Status LogIndex::OpenChunk(int64_t chunk_idx, scoped_refptr<IndexChunk>* chunk) {
@@ -243,6 +249,11 @@ Status LogIndex::GetChunkForIndex(int64_t log_index, bool create,
   return Status::OK();
 }
 
+Status LogIndex::TEST_OpenChunkForIndex(const int64_t op_index) {
+  scoped_refptr<IndexChunk> chunk;
+  return GetChunkForIndex(op_index, /* create = */ true, &chunk);
+}
+
 Status LogIndex::AddEntry(const LogIndexEntry& entry) {
   scoped_refptr<IndexChunk> chunk;
   RETURN_NOT_OK(GetChunkForIndex(entry.op_id.index,
@@ -254,7 +265,7 @@ Status LogIndex::AddEntry(const LogIndexEntry& entry) {
   phys.term = entry.op_id.term;
   phys.segment_sequence_number = entry.segment_sequence_number;
   phys.offset_in_segment = entry.offset_in_segment;
-
+  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   chunk->SetEntry(index_in_chunk, phys);
   VLOG(3) << "Added log index entry " << entry.ToString();
 
@@ -266,6 +277,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
   RETURN_NOT_OK(GetChunkForIndex(index, false /* do not create */, &chunk));
   int index_in_chunk = index % kEntriesPerIndexChunk;
   PhysicalEntry phys;
+  std::lock_guard<simple_spinlock> l(open_chunks_lock_);
   chunk->GetEntry(index_in_chunk, &phys);
 
   // We never write any real entries to offset 0, because there's a header
@@ -282,7 +294,7 @@ Status LogIndex::GetEntry(int64_t index, LogIndexEntry* entry) {
 }
 
 void LogIndex::GC(int64_t min_index_to_retain) {
-  int min_chunk_to_retain = min_index_to_retain / kEntriesPerIndexChunk;
+  auto min_chunk_to_retain = min_index_to_retain / kEntriesPerIndexChunk;
 
   // Enumerate which chunks to delete.
   vector<int64_t> chunks_to_delete;
@@ -323,6 +335,34 @@ Status LogIndex::Flush() {
 
   for (auto& chunk : chunks_to_flush) {
     RETURN_NOT_OK(chunk->Flush());
+  }
+
+  return Status::OK();
+}
+
+Status LogIndex::CopyTo(Env* env, const std::string& dest_wal_dir, const int64_t up_to_index) {
+  const auto up_to_chunk_idx = up_to_index < 0 ? -1 : (up_to_index / kEntriesPerIndexChunk);
+
+  ChunkMap chunks_to_copy;
+
+  {
+    std::lock_guard<simple_spinlock> l(open_chunks_lock_);
+    for (auto& it : open_chunks_) {
+      if (up_to_chunk_idx < 0 || it.first <= up_to_chunk_idx) {
+        chunks_to_copy.emplace(it);
+      }
+    }
+  }
+
+  for (auto& chunk : chunks_to_copy) {
+    const auto chunk_idx = chunk.first;
+    RETURN_NOT_OK(chunk.second->Flush());
+    const auto src_path = GetChunkPath(chunk_idx);
+    const auto dest_path = log::GetChunkPath(dest_wal_dir, chunk_idx);
+    RETURN_NOT_OK_PREPEND(
+        CopyFile(env, src_path, dest_path),
+        Format("Failed to copy file $0 to $1", src_path, dest_path));
+    VLOG(1) << Format("Copied $0 to $1", src_path, dest_path);
   }
 
   return Status::OK();

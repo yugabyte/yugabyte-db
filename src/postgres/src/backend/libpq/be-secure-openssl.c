@@ -67,6 +67,13 @@ static bool SSL_initialized = false;
 static bool dummy_ssl_passwd_cb_called = false;
 static bool ssl_is_server_start;
 
+static int ssl_protocol_version_to_openssl(int v, const char *guc_name,
+										   int loglevel);
+#ifndef SSL_CTX_set_min_proto_version
+static int SSL_CTX_set_min_proto_version(SSL_CTX *ctx, int version);
+static int SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version);
+#endif
+
 
 /* ------------------------------------------------------------ */
 /*						 Public interface						*/
@@ -75,7 +82,6 @@ static bool ssl_is_server_start;
 int
 be_tls_init(bool isServerStart)
 {
-	STACK_OF(X509_NAME) *root_cert_list = NULL;
 	SSL_CTX    *context;
 
 	/* This stuff need be done only once. */
@@ -92,6 +98,10 @@ be_tls_init(bool isServerStart)
 	}
 
 	/*
+	 * Create a new SSL context into which we'll load all the configuration
+	 * settings.  If we fail partway through, we can avoid memory leakage by
+	 * freeing this context; we don't install it as active until the end.
+	 *
 	 * We use SSLv23_method() because it can negotiate use of the highest
 	 * mutually supported protocol version, while alternatives like
 	 * TLSv1_2_method() permit only one specific version.  Note that we don't
@@ -183,8 +193,35 @@ be_tls_init(bool isServerStart)
 		goto error;
 	}
 
-	/* disallow SSL v2/v3 */
-	SSL_CTX_set_options(context, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+	if (ssl_min_protocol_version)
+	{
+		int ssl_ver = ssl_protocol_version_to_openssl(ssl_min_protocol_version,
+													  "ssl_min_protocol_version",
+													  isServerStart ? FATAL : LOG);
+		if (ssl_ver == -1)
+			goto error;
+		if (!SSL_CTX_set_min_proto_version(context, ssl_ver))
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					(errmsg("could not set minimum SSL protocol version")));
+			goto error;
+		}
+	}
+
+	if (ssl_max_protocol_version)
+	{
+		int ssl_ver = ssl_protocol_version_to_openssl(ssl_max_protocol_version,
+													  "ssl_max_protocol_version",
+													  isServerStart ? FATAL : LOG);
+		if (ssl_ver == -1)
+			goto error;
+		if (!SSL_CTX_set_max_proto_version(context, ssl_ver))
+		{
+			ereport(isServerStart ? FATAL : LOG,
+					(errmsg("could not set maximum SSL protocol version")));
+			goto error;
+		}
+	}
 
 	/* disallow SSL session tickets */
 #ifdef SSL_OP_NO_TICKET			/* added in OpenSSL 0.9.8f */
@@ -218,6 +255,8 @@ be_tls_init(bool isServerStart)
 	 */
 	if (ssl_ca_file[0])
 	{
+		STACK_OF(X509_NAME) * root_cert_list;
+
 		if (SSL_CTX_load_verify_locations(context, ssl_ca_file, NULL) != 1 ||
 			(root_cert_list = SSL_load_client_CA_file(ssl_ca_file)) == NULL)
 		{
@@ -227,6 +266,25 @@ be_tls_init(bool isServerStart)
 							ssl_ca_file, SSLerrmessage(ERR_get_error()))));
 			goto error;
 		}
+
+		/*
+		 * Tell OpenSSL to send the list of root certs we trust to clients in
+		 * CertificateRequests.  This lets a client with a keystore select the
+		 * appropriate client certificate to send to us.  Also, this ensures
+		 * that the SSL context will "own" the root_cert_list and remember to
+		 * free it when no longer needed.
+		 */
+		SSL_CTX_set_client_CA_list(context, root_cert_list);
+
+		/*
+		 * Always ask for SSL client cert, but don't fail if it's not
+		 * presented.  We might fail such connections later, depending on what
+		 * we find in pg_hba.conf.
+		 */
+		SSL_CTX_set_verify(context,
+						   (SSL_VERIFY_PEER |
+							SSL_VERIFY_CLIENT_ONCE),
+						   verify_cb);
 	}
 
 	/*----------
@@ -243,17 +301,8 @@ be_tls_init(bool isServerStart)
 			/* Set the flags to check against the complete CRL chain */
 			if (X509_STORE_load_locations(cvstore, ssl_crl_file, NULL) == 1)
 			{
-				/* OpenSSL 0.96 does not support X509_V_FLAG_CRL_CHECK */
-#ifdef X509_V_FLAG_CRL_CHECK
 				X509_STORE_set_flags(cvstore,
 									 X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-#else
-				ereport(LOG,
-						(errcode(ERRCODE_CONFIG_FILE_ERROR),
-						 errmsg("SSL certificate revocation list file \"%s\" ignored",
-								ssl_crl_file),
-						 errdetail("SSL library does not support certificate revocation lists.")));
-#endif
 			}
 			else
 			{
@@ -264,26 +313,6 @@ be_tls_init(bool isServerStart)
 				goto error;
 			}
 		}
-	}
-
-	if (ssl_ca_file[0])
-	{
-		/*
-		 * Always ask for SSL client cert, but don't fail if it's not
-		 * presented.  We might fail such connections later, depending on what
-		 * we find in pg_hba.conf.
-		 */
-		SSL_CTX_set_verify(context,
-						   (SSL_VERIFY_PEER |
-							SSL_VERIFY_CLIENT_ONCE),
-						   verify_cb);
-
-		/*
-		 * Tell OpenSSL to send the list of root certs we trust to clients in
-		 * CertificateRequests.  This lets a client with a keystore select the
-		 * appropriate client certificate to send to us.
-		 */
-		SSL_CTX_set_client_CA_list(context, root_cert_list);
 	}
 
 	/*
@@ -304,6 +333,7 @@ be_tls_init(bool isServerStart)
 
 	return 0;
 
+	/* Clean up by releasing working context. */
 error:
 	if (context)
 		SSL_CTX_free(context);
@@ -809,6 +839,7 @@ load_dh_file(char *filename, bool isServerStart)
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("invalid DH parameters: %s",
 						SSLerrmessage(ERR_get_error()))));
+		DH_free(dh);
 		return NULL;
 	}
 	if (codes & DH_CHECK_P_NOT_PRIME)
@@ -816,6 +847,7 @@ load_dh_file(char *filename, bool isServerStart)
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("invalid DH parameters: p is not prime")));
+		DH_free(dh);
 		return NULL;
 	}
 	if ((codes & DH_NOT_SUITABLE_GENERATOR) &&
@@ -824,6 +856,7 @@ load_dh_file(char *filename, bool isServerStart)
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 errmsg("invalid DH parameters: neither suitable generator or safe prime")));
+		DH_free(dh);
 		return NULL;
 	}
 
@@ -984,13 +1017,14 @@ initialize_dh(SSL_CTX *context, bool isServerStart)
 
 	if (SSL_CTX_set_tmp_dh(context, dh) != 1)
 	{
-		DH_free(dh);
 		ereport(isServerStart ? FATAL : LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				 (errmsg("DH: could not set DH parameters: %s",
 						 SSLerrmessage(ERR_get_error())))));
+		DH_free(dh);
 		return false;
 	}
+
 	DH_free(dh);
 	return true;
 }
@@ -1211,3 +1245,145 @@ X509_NAME_to_cstring(X509_NAME *name)
 
 	return result;
 }
+
+/*
+ * Convert TLS protocol version GUC enum to OpenSSL values
+ *
+ * This is a straightforward one-to-one mapping, but doing it this way makes
+ * guc.c independent of OpenSSL availability and version.
+ *
+ * If a version is passed that is not supported by the current OpenSSL
+ * version, then we log with the given loglevel and return (if we return) -1.
+ * If a nonnegative value is returned, subsequent code can assume it's working
+ * with a supported version.
+ */
+static int
+ssl_protocol_version_to_openssl(int v, const char *guc_name, int loglevel)
+{
+	switch (v)
+	{
+		case PG_TLS_ANY:
+			return 0;
+		case PG_TLS1_VERSION:
+			return TLS1_VERSION;
+		case PG_TLS1_1_VERSION:
+#ifdef TLS1_1_VERSION
+			return TLS1_1_VERSION;
+#else
+			goto error;
+#endif
+		case PG_TLS1_2_VERSION:
+#ifdef TLS1_2_VERSION
+			return TLS1_2_VERSION;
+#else
+			goto error;
+#endif
+		case PG_TLS1_3_VERSION:
+#ifdef TLS1_3_VERSION
+			return TLS1_3_VERSION;
+#else
+			goto error;
+#endif
+	}
+
+error:
+	pg_attribute_unused();
+	ereport(loglevel,
+			(errmsg("%s setting %s not supported by this build",
+					guc_name,
+					GetConfigOption(guc_name, false, false))));
+	return -1;
+}
+
+/*
+ * Replacements for APIs present in newer versions of OpenSSL
+ */
+#ifndef SSL_CTX_set_min_proto_version
+
+/*
+ * OpenSSL versions that support TLS 1.3 shouldn't get here because they
+ * already have these functions.  So we don't have to keep updating the below
+ * code for every new TLS version, and eventually it can go away.  But let's
+ * just check this to make sure ...
+ */
+#ifdef TLS1_3_VERSION
+#error OpenSSL version mismatch
+#endif
+
+static int
+SSL_CTX_set_min_proto_version(SSL_CTX *ctx, int version)
+{
+	int			ssl_options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3;
+
+	if (version > TLS1_VERSION)
+		ssl_options |= SSL_OP_NO_TLSv1;
+	/*
+	 * Some OpenSSL versions define TLS*_VERSION macros but not the
+	 * corresponding SSL_OP_NO_* macro, so in those cases we have to return
+	 * unsuccessfully here.
+	 */
+#ifdef TLS1_1_VERSION
+	if (version > TLS1_1_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_1
+		ssl_options |= SSL_OP_NO_TLSv1_1;
+#else
+		return 0;
+#endif
+	}
+#endif
+#ifdef TLS1_2_VERSION
+	if (version > TLS1_2_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_2
+		ssl_options |= SSL_OP_NO_TLSv1_2;
+#else
+		return 0;
+#endif
+	}
+#endif
+
+	SSL_CTX_set_options(ctx, ssl_options);
+
+	return 1;					/* success */
+}
+
+static int
+SSL_CTX_set_max_proto_version(SSL_CTX *ctx, int version)
+{
+	int			ssl_options = 0;
+
+	AssertArg(version != 0);
+
+	/*
+	 * Some OpenSSL versions define TLS*_VERSION macros but not the
+	 * corresponding SSL_OP_NO_* macro, so in those cases we have to return
+	 * unsuccessfully here.
+	 */
+#ifdef TLS1_1_VERSION
+	if (version < TLS1_1_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_1
+		ssl_options |= SSL_OP_NO_TLSv1_1;
+#else
+		return 0;
+#endif
+	}
+#endif
+#ifdef TLS1_2_VERSION
+	if (version < TLS1_2_VERSION)
+	{
+#ifdef SSL_OP_NO_TLSv1_2
+		ssl_options |= SSL_OP_NO_TLSv1_2;
+#else
+		return 0;
+#endif
+	}
+#endif
+
+	SSL_CTX_set_options(ctx, ssl_options);
+
+	return 1;					/* success */
+}
+
+#endif							/* !SSL_CTX_set_min_proto_version */

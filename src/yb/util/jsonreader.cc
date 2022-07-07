@@ -29,12 +29,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-
 #include "yb/util/jsonreader.h"
+
+#include "yb/gutil/strings/substitute.h"
 
 #include <rapidjson/error/en.h>
 
-#include "yb/gutil/strings/substitute.h"
+#include "yb/util/status.h"
 
 using rapidjson::Value;
 using std::string;

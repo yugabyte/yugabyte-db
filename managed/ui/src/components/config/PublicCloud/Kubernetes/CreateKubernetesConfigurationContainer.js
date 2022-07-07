@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 
 import { connect } from 'react-redux';
+import { toast } from 'react-toastify';
 import CreateKubernetesConfiguration from './CreateKubernetesConfiguration';
-
 import {
   createProviderResponse,
   createMultiRegionKubernetesProvider,
@@ -26,6 +26,11 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(createProviderResponse(response.payload));
           if (response.payload.status === 200) {
             dispatch(fetchCloudMetadata());
+          } else {
+            const error = `Failed to create provider: ${
+              response.payload?.response?.data?.error || response.payload.message
+            }`;
+            toast.error(error);
           }
         }
       );

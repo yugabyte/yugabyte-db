@@ -35,13 +35,24 @@
 #include <glog/logging.h>
 
 #ifndef NDEBUG
+#include <utility>
+
 #include "yb/gutil/walltime.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 #include "yb/util/thread.h"
 #endif // NDEBUG
 
+#include "yb/util/thread_restrictions.h"
+
 namespace yb {
+
+namespace {
+
+const auto kFirstWait = MonoDelta::FromSeconds(1);
+const auto kSecondWait = MonoDelta::FromSeconds(180);
+
+} // namespace
 
 RWCLock::RWCLock()
   : no_mutators_(&lock_),
@@ -53,7 +64,6 @@ RWCLock::RWCLock()
     write_locked_(false),
     last_writer_tid_(0),
     last_writelock_acquire_time_(0) {
-  last_writer_backtrace_[0] = '\0';
 #endif // NDEBUG
 }
 
@@ -64,12 +74,35 @@ RWCLock::~RWCLock() {
 void RWCLock::ReadLock() {
   MutexLock l(lock_);
   reader_count_++;
+#ifndef NDEBUG
+  if (VLOG_IS_ON(1)) {
+    const int64_t tid = Thread::CurrentThreadId();
+    if (reader_stacks_.find(tid) == reader_stacks_.end()) {
+      StackTrace stack_trace = StackTrace();
+      stack_trace.Collect();
+      reader_stacks_[tid] = {
+        .count = 1,
+        .stack = std::move(stack_trace),
+      };
+    } else {
+      reader_stacks_[tid].count++;
+    }
+  }
+#endif // NDEBUG
 }
 
 void RWCLock::ReadUnlock() {
   MutexLock l(lock_);
   DCHECK_GT(reader_count_, 0);
   reader_count_--;
+#ifndef NDEBUG
+  if (VLOG_IS_ON(1)) {
+    const int64_t tid = Thread::CurrentThreadId();
+    if (--reader_stacks_[tid].count == 0) {
+      reader_stacks_.erase(tid);
+    }
+  }
+#endif // NDEBUG
   if (reader_count_ == 0) {
     no_readers_.Signal();
   }
@@ -89,26 +122,53 @@ bool RWCLock::HasWriteLock() const {
 #endif
 }
 
+void RWCLock::WriteLockThreadChanged() {
+#ifndef NDEBUG
+  MutexLock l(lock_);
+  DCHECK(write_locked_);
+  last_writer_tid_ = Thread::CurrentThreadId();
+#endif
+}
+
 void RWCLock::WriteLock() {
+  ThreadRestrictions::AssertWaitAllowed();
+
   MutexLock l(lock_);
   // Wait for any other mutations to finish.
+#ifndef NDEBUG
+  bool first_wait = true;
+  while (write_locked_) {
+    if (!no_mutators_.TimedWait(first_wait ? kFirstWait : kSecondWait)) {
+      std::ostringstream ss;
+      ss << "Too long write lock wait, last writer stack: " << last_writer_stacktrace_.Symbolize();
+      if (VLOG_IS_ON(1) || !first_wait) {
+        ss << "current thread stack: " << GetStackTrace();
+      }
+      (first_wait ? LOG(WARNING) : LOG(FATAL)) << ss.str();
+    }
+    first_wait = false;
+  }
+#else
   while (write_locked_) {
     no_mutators_.Wait();
   }
+#endif
 #ifndef NDEBUG
   last_writelock_acquire_time_ = GetCurrentTimeMicros();
   last_writer_tid_ = Thread::CurrentThreadId();
-  HexStackTraceToString(last_writer_backtrace_, kBacktraceBufSize);
+  last_writer_stacktrace_.Collect();
 #endif // NDEBUG
   write_locked_ = true;
 }
 
 void RWCLock::WriteUnlock() {
+  ThreadRestrictions::AssertWaitAllowed();
+
   MutexLock l(lock_);
   DCHECK(write_locked_);
   write_locked_ = false;
 #ifndef NDEBUG
-  last_writer_backtrace_[0] = '\0';
+  last_writer_stacktrace_.Reset();
 #endif // NDEBUG
   no_mutators_.Signal();
 }
@@ -116,9 +176,31 @@ void RWCLock::WriteUnlock() {
 void RWCLock::UpgradeToCommitLock() {
   lock_.lock();
   DCHECK(write_locked_);
+#ifndef NDEBUG
+  bool first_wait = true;
+  while (reader_count_ > 0) {
+    if (!no_readers_.TimedWait(first_wait ? kFirstWait : kSecondWait)) {
+      std::ostringstream ss;
+      ss << "Too long commit lock wait, num readers: " << reader_count_
+         << ", current thread stack: " << GetStackTrace();
+      if (VLOG_IS_ON(1)) {
+        for (const auto& entry : reader_stacks_) {
+          ss << "reader thread " << entry.first;
+          if (entry.second.count > 1) {
+            ss << " (holding " << entry.second.count << " locks) first";
+          }
+          ss << " stack: " << entry.second.stack.Symbolize();
+        }
+      }
+      (first_wait ? LOG(WARNING) : LOG(FATAL)) << ss.str();
+    }
+    first_wait = false;
+  }
+#else
   while (reader_count_ > 0) {
     no_readers_.Wait();
   }
+#endif
   DCHECK(write_locked_);
 
   // Leaves the lock held, which prevents any new readers
@@ -129,7 +211,7 @@ void RWCLock::CommitUnlock() {
   DCHECK_EQ(0, reader_count_);
   write_locked_ = false;
 #ifndef NDEBUG
-  last_writer_backtrace_[0] = '\0';
+  last_writer_stacktrace_.Reset();
 #endif // NDEBUG
   no_mutators_.Broadcast();
   lock_.unlock();

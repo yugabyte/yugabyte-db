@@ -89,7 +89,7 @@ set role regress_evt_user;
 create event trigger regress_event_trigger_noperms on ddl_command_start
    execute procedure test_event_trigger();
 ERROR:  permission denied to create event trigger "regress_event_trigger_noperms"
-HINT:  Must be superuser to create an event trigger.
+HINT:  Must be superuser or yb_db_admin role member to create an event trigger.
 reset role;
 -- test enabling and disabling
 alter event trigger regress_event_trigger disable;
@@ -129,29 +129,20 @@ revoke all on table event_trigger_fire1 from public;
 NOTICE:  test_event_trigger: ddl_command_end REVOKE
 drop table event_trigger_fire1;
 NOTICE:  test_event_trigger: ddl_command_end DROP TABLE
--- foreign data wrapper not supported by YB
+-- create  FDW
 create foreign data wrapper useless;
-ERROR:  CREATE FOREIGN DATA WRAPPER not supported yet
-LINE 1: create foreign data wrapper useless;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+NOTICE:  test_event_trigger: ddl_command_end CREATE FOREIGN DATA WRAPPER
 create server useless_server foreign data wrapper useless;
-ERROR:  CREATE SERVER not supported yet
-LINE 1: create server useless_server foreign data wrapper useless;
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+NOTICE:  test_event_trigger: ddl_command_end CREATE SERVER
 create user mapping for regress_evt_user server useless_server;
-ERROR:  CREATE USER MAPPING not supported yet
-LINE 1: create user mapping for regress_evt_user server useless_serv...
-        ^
-HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+NOTICE:  test_event_trigger: ddl_command_end CREATE USER MAPPING
 alter default privileges for role regress_evt_user
  revoke delete on tables from regress_evt_user;
 NOTICE:  test_event_trigger: ddl_command_end ALTER DEFAULT PRIVILEGES
 -- alter owner to non-superuser should fail
 alter event trigger regress_event_trigger owner to regress_evt_user;
 ERROR:  permission denied to change owner of event trigger "regress_event_trigger"
-HINT:  The owner of an event trigger must be a superuser.
+HINT:  The owner of an event trigger must be a superuser or yb_db_admin role member.
 -- alter owner to superuser should work
 alter role regress_evt_user superuser;
 alter event trigger regress_event_trigger owner to regress_evt_user;
@@ -371,7 +362,7 @@ END;
 $$;
 create event trigger no_rewrite_allowed on table_rewrite
   execute procedure test_evtrig_no_rewrite();
-create table rewriteme (id serial primary key, foo float);
+create table rewriteme (id serial primary key, foo float, bar timestamptz);
 insert into rewriteme
      select x * 1.001 from generate_series(1, 500) as t(x);
 alter table rewriteme alter column foo type numeric;
@@ -394,6 +385,15 @@ ERROR:  This ALTER TABLE command is not yet supported.
 -- shouldn't trigger a table_rewrite event
 alter table rewriteme alter column foo type numeric(12,4);
 ERROR:  This ALTER TABLE command is not yet supported.
+begin;
+set timezone to 'UTC';
+alter table rewriteme alter column bar type timestamp;
+set timezone to '0';
+alter table rewriteme alter column bar type timestamptz;
+set timezone to 'Europe/London';
+alter table rewriteme alter column bar type timestamp; -- does rewrite
+ERROR:  This ALTER TABLE command is not yet supported.
+rollback;
 -- typed tables are rewritten when their type changes.  Don't emit table
 -- name, because firing order is not stable.
 CREATE OR REPLACE FUNCTION test_evtrig_no_rewrite() RETURNS event_trigger

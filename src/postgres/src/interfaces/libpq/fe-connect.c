@@ -2736,6 +2736,19 @@ keep_going:						/* We will come back to here until there is
 				pollres = pqsecure_open_client(conn);
 				if (pollres == PGRES_POLLING_OK)
 				{
+					/*
+					 * At this point we should have no data already buffered.
+					 * If we do, it was received before we performed the SSL
+					 * handshake, so it wasn't encrypted and indeed may have
+					 * been injected by a man-in-the-middle.
+					 */
+					if (conn->inCursor != conn->inEnd)
+					{
+						appendPQExpBufferStr(&conn->errorMessage,
+											 libpq_gettext("received unencrypted data after SSL response\n"));
+						goto error_return;
+					}
+
 					/* SSL handshake done, ready to send startup packet */
 					conn->status = CONNECTION_MADE;
 					return PGRES_POLLING_WRITING;
@@ -5377,17 +5390,17 @@ conninfo_add_defaults(PQconninfoOption *options, PQExpBuffer errorMessage)
 		 */
 		if (strcmp(option->keyword, "user") == 0)
 		{
-		  /* YugaByte default username to "postgres" */
+			/* Yugabyte default username to "yugabyte" */
 			option->val = strdup("yugabyte");
 			continue;
 		}
 
 		/*
-		 * Special handling for "dbname" option.		 
+		 * Special handling for "dbname" option.
 		 */
 		if (strcmp(option->keyword, "dbname") == 0)
 		{
-		  /* YugaByte default dbname to "yugabyte" */
+			/* Yugabyte default dbname to "yugabyte" */
 			option->val = strdup("yugabyte");
 			continue;
 		}

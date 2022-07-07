@@ -37,14 +37,12 @@
 
 #include "yb/util/pb_util.h"
 
-#include <deque>
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 #include <glog/logging.h>
-#include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <google/protobuf/descriptor_database.h>
 #include <google/protobuf/dynamic_message.h>
@@ -52,15 +50,14 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 #include <google/protobuf/message.h>
-#include <google/protobuf/message_lite.h>
 #include <google/protobuf/util/message_differencer.h>
 
-#include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/fastmem.h"
-#include "yb/gutil/strings/substitute.h"
+
 #include "yb/util/coding-inl.h"
 #include "yb/util/coding.h"
 #include "yb/util/crc.h"
@@ -68,10 +65,15 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util-internal.h"
 #include "yb/util/pb_util.pb.h"
+#include "yb/util/result.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status.h"
+#include "yb/util/status_log.h"
+#include "yb/util/std_util.h"
 
 using google::protobuf::Descriptor;
 using google::protobuf::DescriptorPool;
@@ -98,6 +100,8 @@ using std::vector;
 using strings::Substitute;
 using strings::Utf8SafeCEscape;
 
+using yb::operator"" _MB;
+
 static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
 // Protobuf container constants.
@@ -112,6 +116,15 @@ static const int kPBContainerChecksumLen = sizeof(uint32_t);
 COMPILE_ASSERT((arraysize(kPBContainerMagic) - 1) == kPBContainerMagicLen,
                kPBContainerMagic_does_not_match_expected_length);
 
+// To permit parsing of very large PB messages, we must use parse through a CodedInputStream and
+// bump the byte limit. The SetTotalBytesLimit() docs say that 512MB is the shortest theoretical
+// message length that may produce integer overflow warnings, so that's what we'll use.
+DEFINE_int32(
+    protobuf_message_total_bytes_limit, 511_MB,
+    "Limits single protobuf message size for deserialization.");
+TAG_FLAG(protobuf_message_total_bytes_limit, advanced);
+TAG_FLAG(protobuf_message_total_bytes_limit, hidden);
+
 namespace yb {
 namespace pb_util {
 
@@ -123,9 +136,9 @@ namespace {
 // protobuf implementation but is more likely caused by concurrent modification
 // of the message.  This function attempts to distinguish between the two and
 // provide a useful error message.
-void ByteSizeConsistencyError(int byte_size_before_serialization,
-                              int byte_size_after_serialization,
-                              int bytes_produced_by_serialization) {
+void ByteSizeConsistencyError(size_t byte_size_before_serialization,
+                              size_t byte_size_after_serialization,
+                              size_t bytes_produced_by_serialization) {
   CHECK_EQ(byte_size_before_serialization, byte_size_after_serialization)
       << "Protocol message was modified concurrently during serialization.";
   CHECK_EQ(bytes_produced_by_serialization, byte_size_before_serialization)
@@ -156,28 +169,51 @@ string InitializationErrorMessage(const char* action,
   return result;
 }
 
-} // anonymous namespace
-
-bool AppendToString(const MessageLite &msg, faststring *output) {
-  DCHECK(msg.IsInitialized()) << InitializationErrorMessage("serialize", msg);
-  return AppendPartialToString(msg, output);
+uint8_t* GetUInt8Ptr(const char* buffer) {
+  return pointer_cast<uint8_t*>(const_cast<char*>(buffer));
 }
 
-bool AppendPartialToString(const MessageLite &msg, faststring* output) {
-  int old_size = output->size();
+uint8_t* GetUInt8Ptr(uint8_t* buffer) {
+  return buffer;
+}
+
+template <class Out>
+Status DoAppendPartialToString(const MessageLite &msg, Out* output) {
+  auto old_size = output->size();
   int byte_size = msg.ByteSize();
+
+  if (std_util::cmp_greater(byte_size, FLAGS_protobuf_message_total_bytes_limit)) {
+    return STATUS_FORMAT(
+        InternalError, "Serialized protobuf message is too big: $0 > $1", byte_size,
+        FLAGS_protobuf_message_total_bytes_limit);
+  }
 
   output->resize(old_size + byte_size);
 
-  uint8* start = &((*output)[old_size]);
+  uint8* start = GetUInt8Ptr(output->data()) + old_size;
   uint8* end = msg.SerializeWithCachedSizesToArray(start);
   if (end - start != byte_size) {
     ByteSizeConsistencyError(byte_size, msg.ByteSize(), end - start);
   }
-  return true;
+  return Status::OK();
 }
 
-bool SerializeToString(const MessageLite &msg, faststring *output) {
+} // anonymous namespace
+
+Status AppendToString(const MessageLite &msg, faststring *output) {
+  DCHECK(msg.IsInitialized()) << InitializationErrorMessage("serialize", msg);
+  return AppendPartialToString(msg, output);
+}
+
+Status AppendPartialToString(const MessageLite &msg, faststring* output) {
+  return DoAppendPartialToString(msg, output);
+}
+
+Status AppendPartialToString(const MessageLite &msg, std::string* output) {
+  return DoAppendPartialToString(msg, output);
+}
+
+Status SerializeToString(const MessageLite &msg, faststring *output) {
   output->clear();
   return AppendToString(msg, output);
 }
@@ -187,9 +223,9 @@ bool ParseFromSequentialFile(MessageLite *msg, SequentialFile *rfile) {
   return msg->ParseFromZeroCopyStream(&istream);
 }
 
-Status ParseFromArray(MessageLite* msg, const uint8_t* data, uint32_t length) {
-  CodedInputStream in(data, length);
-  in.SetTotalBytesLimit(511 * 1024 * 1024, -1);
+Status ParseFromArray(MessageLite* msg, const uint8_t* data, size_t length) {
+  CodedInputStream in(data, narrow_cast<uint32_t>(length));
+  in.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, -1);
   // Parse data into protobuf message
   if (!msg->ParseFromCodedStream(&in)) {
     return STATUS(Corruption, "Error parsing msg", InitializationErrorMessage("parse", *msg));
@@ -234,7 +270,7 @@ Status ReadPBFromPath(Env* env, const std::string& path, MessageLite* msg) {
   return Status::OK();
 }
 
-static void TruncateString(string* s, int max_len) {
+static void TruncateString(string* s, size_t max_len) {
   if (s->size() > max_len) {
     s->resize(max_len);
     s->append("<truncated>");
@@ -523,13 +559,9 @@ Status ReadablePBContainerFile::ReadNextPB(Message* msg) {
   // 2. ParseFromArray() should fail if the data cannot be parsed into the
   //    provided message type.
 
-  // To permit parsing of very large PB messages, we must use parse through a
-  // CodedInputStream and bump the byte limit. The SetTotalBytesLimit() docs
-  // say that 512MB is the shortest theoretical message length that may produce
-  // integer overflow warnings, so that's what we'll use.
-  ArrayInputStream ais(body.data(), body.size());
+  ArrayInputStream ais(body.data(), narrow_cast<int>(body.size()));
   CodedInputStream cis(&ais);
-  cis.SetTotalBytesLimit(512 * 1024 * 1024, -1);
+  cis.SetTotalBytesLimit(FLAGS_protobuf_message_total_bytes_limit, -1);
   if (PREDICT_FALSE(!msg->ParseFromCodedStream(&cis))) {
     return STATUS(IOError, "Unable to parse PB from path", reader_->filename());
   }
@@ -577,7 +609,7 @@ Status ReadablePBContainerFile::Dump(ostream* os, bool oneline) {
     if (oneline) {
       *os << count++ << "\t" << msg->ShortDebugString() << endl;
     } else {
-      *os << "Message " << count << endl;
+      *os << pb_type_ << " " << count << endl;
       *os << "-------" << endl;
       *os << msg->DebugString() << endl;
       count++;
@@ -631,15 +663,35 @@ Status ReadablePBContainerFile::ValidateAndRead(size_t length, EofOK eofOK,
   return Status::OK();
 }
 
+namespace {
 
-Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
+Status ReadPBContainer(
+    Env* env, const std::string& path, Message* msg, const std::string* pb_type_name = nullptr) {
   std::unique_ptr<RandomAccessFile> file;
   RETURN_NOT_OK(env->NewRandomAccessFile(path, &file));
 
   ReadablePBContainerFile pb_file(std::move(file));
   RETURN_NOT_OK(pb_file.Init());
+
+  if (pb_type_name && pb_file.pb_type() != *pb_type_name) {
+    WARN_NOT_OK(pb_file.Close(), "Could not Close() PB container file");
+    return STATUS(InvalidArgument,
+                  Substitute("Wrong PB type: $0, expected $1", pb_file.pb_type(), *pb_type_name));
+  }
+
   RETURN_NOT_OK(pb_file.ReadNextPB(msg));
   return pb_file.Close();
+}
+
+} // namespace
+
+Status ReadPBContainerFromPath(Env* env, const std::string& path, Message* msg) {
+  return ReadPBContainer(env, path, msg);
+}
+
+Status ReadPBContainerFromPath(
+    Env* env, const std::string& path, const std::string& pb_type_name, Message* msg) {
+  return ReadPBContainer(env, path, msg, &pb_type_name);
 }
 
 Status WritePBContainerToPath(Env* env, const std::string& path,

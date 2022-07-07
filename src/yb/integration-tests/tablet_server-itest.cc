@@ -11,10 +11,12 @@
 // under the License.
 //
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
+#include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
+
+#include "yb/util/status_log.h"
 
 namespace yb {
 namespace tserver {
@@ -33,7 +35,9 @@ TEST_F(TabletServerITest, TestProxyAddrs) {
   for (int i = 0; i < FLAGS_num_tablet_servers; i++) {
     auto tserver = cluster_->tablet_server(i);
     auto rpc_host = GetHost(ASSERT_RESULT(tserver->GetFlag("rpc_bind_addresses")));
-    for (auto flag : {"cql_proxy_bind_address", "redis_proxy_bind_address"}) {
+    for (auto flag : {"cql_proxy_bind_address",
+                      "redis_proxy_bind_address",
+                      "pgsql_proxy_bind_address"}) {
       auto host = GetHost(ASSERT_RESULT(tserver->GetFlag(flag)));
       ASSERT_EQ(host, rpc_host);
     }
@@ -46,6 +50,9 @@ TEST_F(TabletServerITest, TestProxyAddrsNonDefault) {
   std::unique_ptr<FileLock> redis_port_file_lock;
   auto redis_port = GetFreePort(&redis_port_file_lock);
   ts_flags.push_back("--redis_proxy_bind_address=127.0.0.2${index}:" + std::to_string(redis_port));
+  std::unique_ptr<FileLock> pgsql_port_file_lock;
+  auto pgsql_port = GetFreePort(&pgsql_port_file_lock);
+  ts_flags.push_back("--pgsql_proxy_bind_address=127.0.0.3${index}:" + std::to_string(pgsql_port));
 
   CreateCluster("ts-itest-cluster-nd", ts_flags, master_flags);
 
@@ -59,6 +66,10 @@ TEST_F(TabletServerITest, TestProxyAddrsNonDefault) {
 
     res = GetHost(ASSERT_RESULT(tserver->GetFlag("redis_proxy_bind_address")));
     ASSERT_EQ(res, Format("127.0.0.2$0", i));
+    ASSERT_NE(res, rpc_host);
+
+    res = GetHost(ASSERT_RESULT(tserver->GetFlag("pgsql_proxy_bind_address")));
+    ASSERT_EQ(res, Format("127.0.0.3$0", i));
     ASSERT_NE(res, rpc_host);
   }
 }

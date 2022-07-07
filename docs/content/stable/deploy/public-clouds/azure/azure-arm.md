@@ -3,34 +3,29 @@ title: Deploy on Microsoft Azure using Azure Resource Manager (ARM)
 headerTitle: Microsoft Azure
 linkTitle: Microsoft Azure
 description: Deploy YugabyteDB on Microsoft Azure using Azure Resource Manager (ARM).
-aliases:
-  - /deploy/public-clouds/azure/
-  - /stable/deploy/public-clouds/azure
-block_indexing: true
 menu:
   stable:
     identifier: deploy-on-azure-1-azure-arm
     parent: public-clouds
     weight: 650
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="/stable/deploy/public-clouds/azure/azure-arm" class="nav-link active">
+    <a href="/preview/deploy/public-clouds/azure/azure-arm" class="nav-link active">
       <i class="icon-shell"></i>
       Azure ARM template
     </a>
   </li>
   <li >
-    <a href="/stable/deploy/public-clouds/azure/aks" class="nav-link">
+    <a href="/preview/deploy/public-clouds/azure/aks" class="nav-link">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Azure Kubernetes Service (AKS)
     </a>
   </li>
   <li>
-    <a href="/stable/deploy/public-clouds/azure/terraform" class="nav-link">
+    <a href="/preview/deploy/public-clouds/azure/terraform" class="nav-link">
       <i class="icon-shell"></i>
       Terraform
     </a>
@@ -131,7 +126,7 @@ showAsideToc: true
     ```
     $ az group deployment show -g <Your-Azure-Resource-Group> -n <Your-Deployment-Name> --query properties.outputs
     ```
-    
+
     In the output, you will get the YugabyteDB admin URL, JDBC URL, YSQL, YCQL and YEDIS connection string. You can use YugabyteDB admin URL to access admin portal.
 
 ## Deploy using Azure Portal

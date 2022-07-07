@@ -14,15 +14,21 @@
 #ifndef YB_CLIENT_PERMISSIONS_H
 #define YB_CLIENT_PERMISSIONS_H
 
+#include <condition_variable>
+#include <shared_mutex>
+
 #include <boost/optional.hpp>
 
-#include "yb/common/entity_ids.h"
+#include "yb/common/entity_ids_types.h"
 #include "yb/common/roles_permissions.h"
-#include "yb/master/master.pb.h"
+
+#include "yb/master/master_dcl.fwd.h"
+
+#include "yb/rpc/io_thread_pool.h"
+
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
-#include "yb/rpc/io_thread_pool.h"
-#include "yb/rpc/scheduler.h"
+
 #include "yb/yql/cql/ql/ptree/pt_option.h"
 
 namespace yb {
@@ -74,11 +80,6 @@ struct RoleAuthInfo {
 
 using RolesPermissionsMap = std::unordered_map<RoleName, RolePermissions>;
 using RolesAuthInfoMap = std::unordered_map<RoleName, RoleAuthInfo>;
-
-enum class CacheCheckMode {
-  NO_RETRY,
-  RETRY,
-};
 
 class PermissionsCache {
  public:

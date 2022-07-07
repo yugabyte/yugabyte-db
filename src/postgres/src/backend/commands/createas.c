@@ -614,15 +614,18 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 
 	if (IsYBRelation(myState->rel))
 	{
-		YBCExecuteInsert(myState->rel, RelationGetDescr(myState->rel), tuple);
+		YBCExecuteInsert(myState->rel,
+						 RelationGetDescr(myState->rel),
+						 tuple,
+						 ONCONFLICT_NONE);
 	}
 	else
 	{
 		heap_insert(myState->rel,
-								tuple,
-								myState->output_cid,
-								myState->hi_options,
-								myState->bistate);
+					tuple,
+					myState->output_cid,
+					myState->hi_options,
+					myState->bistate);
 	}
 
 	/* We know this is a newly created relation, so there are no indexes */

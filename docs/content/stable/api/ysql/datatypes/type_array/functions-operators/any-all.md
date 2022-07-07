@@ -3,14 +3,12 @@ title: ANY and ALL—test if an element is in an array
 linkTitle: ANY and ALL
 headerTitle: ANY and ALL — test if an element is in an array
 description: The ANY and ALL operators compare an element with each of the elements in an array.
-block_indexing: true
 menu:
   stable:
     identifier: any-all
     parent: array-functions-operators
     weight: 10
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Overview
@@ -102,7 +100,7 @@ $body$;
 
 The combination `= ANY` is functionally equivalent to `IN` (but `IN` is illegal syntax when the RHS is an array).
 
-The combination `= ALL` has no functional equivalent in the way that `= ANY` is functionally equivalent to `IN`. 
+The combination `= ALL` has no functional equivalent in the way that `= ANY` is functionally equivalent to `IN`.
 
 The following small test emphasizes the symmetry between `ANY` and `IN`.
 
@@ -110,12 +108,12 @@ The following small test emphasizes the symmetry between `ANY` and `IN`.
 select (
     42 = any (array[17, 42, 53])
     and
-    42 in (17, 42, 53)  
+    42 in (17, 42, 53)
   )::text as b;
 ```
 See [The `array[]` value constructor](../../array-constructor/). This is the result:
 ```
-  b   
+  b
 ------
  true
 ```
@@ -129,7 +127,7 @@ select pg_typeof(r)::text from v;
 This is the result:
 
 ```
- pg_typeof 
+ pg_typeof
 -----------
  record
 ```
@@ -370,7 +368,7 @@ $body$;
 ```
 The general syntax for the literal for a multidimensional array that specifies the lower and upper index bounds along each dimension is described in [Multidimensional array of `int` values](../../literals/array-of-primitive-values/#multidimensional-array-of-int-values).
 
-For the specification of the behavior `unnest()` when its actual argument is a multidimensional array see [Multidimensional array_agg() and unnest() — first overloads](..//array-agg-unnest/#multidimensional-array-agg-and-unnest-first-overloads).
+For the specification of the behavior `unnest()` when its actual argument is a multidimensional array see [Multidimensional array_agg() and unnest() — first overloads](../array-agg-unnest/#multidimensional-array-agg-and-unnest-first-overloads).
 
 ### Using inequality comparisons
 

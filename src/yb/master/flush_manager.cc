@@ -10,14 +10,21 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+
 #include "yb/master/flush_manager.h"
 
-#include <map>
+#include <glog/logging.h>
 
 #include "yb/master/async_flush_tablets_task.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/catalog_manager.h"
-#include "yb/master/catalog_manager-internal.h"
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_admin.pb.h"
+#include "yb/master/master_error.h"
+#include "yb/master/master_util.h"
+#include "yb/master/ts_descriptor.h"
+
+#include "yb/util/status_log.h"
+#include "yb/util/trace.h"
 
 namespace yb {
 namespace master {
@@ -32,11 +39,9 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
   // Check request.
   if (req->tables_size() == 0) {
     const Status s = STATUS(IllegalState, "Empty table list in flush tables request",
-        req->ShortDebugString());
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+                            req->ShortDebugString(), MasterError(MasterErrorPB::INVALID_REQUEST));
+    return SetupError(resp->mutable_error(), s);
   }
-
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
 
   // Create a new flush request UUID.
   const FlushRequestId flush_id = catalog_manager_->GenerateId();
@@ -57,7 +62,7 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
       auto l = tablet->LockForRead();
 
       auto locs = tablet->GetReplicaLocations();
-      for (const TabletInfo::ReplicaMap::value_type& replica : *locs) {
+      for (const TabletReplicaMap::value_type& replica : *locs) {
         const TabletServerId ts_uuid = replica.second.ts_desc->permanent_uuid();
         ts_tablet_map[ts_uuid].push_back(tablet->id());
       }
@@ -103,8 +108,6 @@ Status FlushManager::FlushTables(const FlushTablesRequestPB* req,
 
 Status FlushManager::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                                        IsFlushTablesDoneResponsePB* resp) {
-  RETURN_NOT_OK(catalog_manager_->CheckOnline());
-
   LOG(INFO) << "Servicing IsFlushTablesDone request: " << req->ShortDebugString();
 
   std::lock_guard<LockType> l(lock_);
@@ -114,8 +117,9 @@ Status FlushManager::IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
   const FlushRequestMap::const_iterator it = flush_requests_.find(req->flush_request_id());
 
   if (it == flush_requests_.end()) {
-    const Status s = STATUS(NotFound, "The flush request was not found", req->flush_request_id());
-    return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
+    const Status s = STATUS(NotFound, "The flush request was not found", req->flush_request_id(),
+                            MasterError(MasterErrorPB::INVALID_REQUEST));
+    return SetupError(resp->mutable_error(), s);
   }
 
   const TSFlushingInfo& flush_info = it->second;

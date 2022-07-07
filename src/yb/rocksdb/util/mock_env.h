@@ -26,10 +26,9 @@
 #include <map>
 #include <string>
 #include <vector>
+
 #include "yb/rocksdb/env.h"
-#include "yb/rocksdb/status.h"
 #include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/mutexlock.h"
 
 namespace rocksdb {
 

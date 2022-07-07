@@ -1,0 +1,32 @@
+.ha-instances {
+  &__header-buttons {
+    text-align: right;
+  }
+
+  &__header {
+    margin-bottom: 30px;
+  }
+
+  .badge-orange {
+    margin-left: 20px;
+  }
+
+  .table > tbody > tr > td {
+    vertical-align: middle;
+    line-height: 1;
+    height: 65px;
+  }
+
+  &__no-config {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 100px;
+    font-size: 14px;
+
+    .fa {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+  }
+}

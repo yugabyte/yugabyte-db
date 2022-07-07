@@ -1,0 +1,7 @@
+# src/test/regress/yb_analyze_schedule
+#
+####################################################################################################
+# This testsuite contains testcases pertinent to YB ANALYZE command.
+####################################################################################################
+test: yb_analyze
+test: yb_analyze_system_tables

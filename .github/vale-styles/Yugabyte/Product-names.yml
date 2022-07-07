@@ -1,0 +1,20 @@
+---
+# Warning: Yugabyte.Product-names
+#
+# Checks for incorrect Yugabyte product names. Add other product names
+# to the appropriate Substitution*.yml file.
+#
+# For a list of all options, see https://docs.errata.ai/vale/styles
+extends: substitution
+message: 'Product naming: use "%s" instead of "%s".'
+level: warning
+ignorecase: false
+swap:
+  '(?:yugabyte|[yY]ugaByte)(?:\.com)': yugabyte.com
+  '(?:yugabyte|[yY]ugaByte)': Yugabyte
+  YugaByteDB: YugabyteDB
+  '[Yy]ugaware': Yugabyte Platform
+  pg: PostgreSQL
+  '[Pp]ostgres$': PostgreSQL
+  '[Pp]ost[Gg]re[Ss]{1,2}[Qq][Ll]': PostgreSQL
+

@@ -8,8 +8,6 @@
 #define YB_DOCDB_DOC_EXPR_H_
 
 #include "yb/common/ql_expr.h"
-#include "yb/common/schema.h"
-#include "yb/docdb/key_bytes.h"
 
 namespace yb {
 namespace docdb {
@@ -26,43 +24,64 @@ class DocExprExecutor : public QLExprExecutor {
   virtual ~DocExprExecutor();
 
   // Evaluate column reference.
-  CHECKED_STATUS EvalColumnRef(ColumnIdRep col_id,
+  Status EvalColumnRef(ColumnIdRep col_id,
                                const QLTableRow* table_row,
                                QLExprResultWriter result_writer) override;
 
   // Evaluate call to tablet-server builtin operator.
-  CHECKED_STATUS EvalTSCall(const QLBCallPB& ql_expr,
+  Status EvalTSCall(const QLBCallPB& ql_expr,
                             const QLTableRow& table_row,
-                            QLValue *result,
+                            QLValuePB *result,
                             const Schema *schema = nullptr) override;
 
-  CHECKED_STATUS EvalTSCall(const PgsqlBCallPB& ql_expr,
+  Status EvalTSCall(const PgsqlBCallPB& ql_expr,
                             const QLTableRow& table_row,
-                            QLValue *result,
+                            QLValuePB *result,
                             const Schema *schema) override;
 
-  // Evaluate aggregate functions for each row.
-  CHECKED_STATUS EvalCount(QLValue *aggr_count);
-  CHECKED_STATUS EvalSum(const QLValuePB& val, QLValue *aggr_sum);
-  template <class Extractor>
-  CHECKED_STATUS EvalSumInt(
-      const PgsqlExpressionPB& expr, const QLTableRow& table_row, QLValue *aggr_sum,
-      const Extractor& extractor);
-  template <class Extractor, class Setter>
-  CHECKED_STATUS EvalSumReal(
-      const PgsqlExpressionPB& expr, const QLTableRow& table_row, QLValue *aggr_sum,
-      const Extractor& extractor, const Setter& setter);
-  CHECKED_STATUS EvalMax(const QLValuePB& val, QLValue *aggr_max);
-  CHECKED_STATUS EvalMin(const QLValuePB& val, QLValue *aggr_min);
-  CHECKED_STATUS EvalAvg(const QLValuePB& val, QLValue *aggr_avg);
-
-  CHECKED_STATUS EvalParametricToJson(const QLExpressionPB& operand,
-                                      const QLTableRow& table_row,
-                                      QLValue *result,
-                                      const Schema *schema);
+  Status EvalTSCall(const LWPgsqlBCallPB& ql_expr,
+                            const QLTableRow& table_row,
+                            LWQLValuePB *result,
+                            const Schema *schema) override;
 
  protected:
-  virtual CHECKED_STATUS GetTupleId(QLValue *result) const;
+  // Evaluate aggregate functions for each row.
+  template <class Val>
+  Status EvalCount(Val *aggr_count);
+
+  template <class Val>
+  Status EvalSum(const Val& val, Val *aggr_sum);
+
+  template <class Expr, class Val, class Extractor>
+  Status EvalSumInt(
+      const Expr& expr, const QLTableRow& table_row, Val *aggr_sum, const Extractor& extractor);
+
+  template <class Expr, class Val, class Extractor, class Setter>
+  Status EvalSumReal(
+      const Expr& expr, const QLTableRow& table_row, Val *aggr_sum,
+      const Extractor& extractor, const Setter& setter);
+
+  template <class Val>
+  Status EvalMax(const Val& val, Val *aggr_max);
+
+  template <class Val>
+  Status EvalMin(const Val& val, Val *aggr_min);
+
+  template <class Val>
+  Status EvalAvg(const Val& val, Val *aggr_avg);
+
+  Status EvalParametricToJson(const QLExpressionPB& operand,
+                                      const QLTableRow& table_row,
+                                      QLValuePB *result,
+                                      const Schema *schema);
+
+  template <class Expr, class Val>
+  Status DoEvalTSCall(const Expr& ql_expr,
+                              const QLTableRow& table_row,
+                              Val *result,
+                              const Schema *schema);
+
+  virtual Status GetTupleId(QLValuePB *result) const;
   std::vector<QLExprResult> aggr_result_;
 };
 

@@ -35,7 +35,6 @@ package yb.rpc;
 
 option java_package = "org.yb.rpc";
 
-
 // The YB RPC protocol is similar to the RPC protocol of Hadoop and HBase.
 // See the following for reference on those other protocols:
 //  - https://issues.apache.org/jira/browse/HBASE-7898
@@ -62,7 +61,7 @@ message RequestHeader {
   //   -2: Invalid call ID.
   //   -3: Connection context call ID.
   //   -33: SASL negotiation call ID.
-  required int32 call_id = 1;
+  optional int32 call_id = 1;
 
   // RPC method being invoked.
   // Not used for "connection setup" calls.

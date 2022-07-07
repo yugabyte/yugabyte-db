@@ -32,10 +32,11 @@
 #include "yb/tools/data_gen_util.h"
 
 #include "yb/client/schema.h"
-
 #include "yb/common/ql_protocol.pb.h"
+#include "yb/common/ql_type.h"
 
-#include "yb/gutil/strings/numbers.h"
+#include "yb/gutil/casts.h"
+
 #include "yb/util/random.h"
 #include "yb/util/status.h"
 
@@ -43,20 +44,20 @@ namespace yb {
 namespace tools {
 
 void WriteValueToColumn(const client::YBSchema& schema,
-                        int col_idx,
+                        size_t col_idx,
                         uint64_t value,
                         QLValuePB* out) {
   DataType type = schema.Column(col_idx).type()->main();
   char buf[kFastToBufferSize];
   switch (type) {
     case INT8:
-      out->set_int8_value(value);
+      out->set_int8_value(static_cast<int32_t>(value));
       return;
     case INT16:
-      out->set_int16_value(value);
+      out->set_int16_value(static_cast<int32_t>(value));
       return;
     case INT32:
-      out->set_int32_value(value);
+      out->set_int32_value(static_cast<int32_t>(value));
       return;
     case INT64:
       out->set_int64_value(value);
@@ -81,7 +82,7 @@ void WriteValueToColumn(const client::YBSchema& schema,
 
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
                         Random* random, QLWriteRequestPB* req) {
-  for (int col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
+  for (size_t col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     // We randomly generate the inserted data, except for the first column,
     // which is always based on a monotonic "record id".
     uint64_t value;

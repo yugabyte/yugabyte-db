@@ -17,25 +17,45 @@
 
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
 
+#include <unordered_map>
+
+#include "yb/client/schema.h"
 #include "yb/client/table.h"
 
-#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/common/common.pb.h"
+#include "yb/common/index.h"
+#include "yb/common/index_column.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/schema.h"
 
+#include "yb/gutil/casts.h"
+
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
+
+#include "yb/yql/cql/ql/ptree/column_arg.h"
+#include "yb/yql/cql/ql/ptree/column_desc.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
+#include "yb/yql/cql/ql/ptree/pt_expr.h"
+#include "yb/yql/cql/ql/ptree/pt_select.h"
+#include "yb/yql/cql/ql/ptree/sem_context.h"
+#include "yb/yql/cql/ql/ptree/ycql_predtest.h"
+
+DECLARE_bool(allow_index_table_read_write);
 DECLARE_bool(use_cassandra_authentication);
 
 namespace yb {
 namespace ql {
 
-DECLARE_bool(allow_index_table_read_write);
-
 using strings::Substitute;
 
 PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
-                     YBLocation::SharedPtr loc,
+                     YBLocationPtr loc,
                      PTExpr::SharedPtr where_clause,
                      PTExpr::SharedPtr if_clause,
                      const bool else_error,
-                     PTDmlUsingClause::SharedPtr using_clause,
+                     PTDmlUsingClausePtr using_clause,
                      const bool returns_status)
     : PTCollection(memctx, loc),
       where_clause_(where_clause),
@@ -54,9 +74,9 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx,
       hash_col_bindvars_(memctx),
       column_refs_(memctx),
       static_column_refs_(memctx),
+      column_ref_cnts_(memctx),
       pk_only_indexes_(memctx),
-      non_pk_only_indexes_(memctx),
-      filtering_exprs_(memctx) {
+      non_pk_only_indexes_(memctx) {
 }
 
 // Clone a DML tnode for re-analysis. Only the syntactic information populated by the parser should
@@ -80,30 +100,30 @@ PTDmlStmt::PTDmlStmt(MemoryContext *memctx, const PTDmlStmt& other, bool copy_if
       hash_col_bindvars_(memctx),
       column_refs_(memctx),
       static_column_refs_(memctx),
+      column_ref_cnts_(memctx),
       pk_only_indexes_(memctx),
-      non_pk_only_indexes_(memctx),
-      filtering_exprs_(memctx) {
+      non_pk_only_indexes_(memctx) {
 }
 
 PTDmlStmt::~PTDmlStmt() {
 }
 
-int PTDmlStmt::num_columns() const {
+size_t PTDmlStmt::num_columns() const {
   return table_->schema().num_columns();
 }
 
-int PTDmlStmt::num_key_columns() const {
+size_t PTDmlStmt::num_key_columns() const {
   return table_->schema().num_key_columns();
 }
 
-int PTDmlStmt::num_hash_key_columns() const {
+size_t PTDmlStmt::num_hash_key_columns() const {
   return table_->schema().num_hash_key_columns();
 }
 
 string PTDmlStmt::hash_key_columns() const {
   std::stringstream s;
   auto &schema = table_->schema();
-  for (int i = 0; i < schema.num_hash_key_columns(); ++i) {
+  for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
     if (i != 0) s << ", ";
     s << schema.Column(i).name();
   }
@@ -262,8 +282,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   ColumnOpCounter partition_key_counter;
   WhereExprState where_state(&where_ops_, &key_where_ops_, &subscripted_col_where_ops_,
                              &json_col_where_ops_, &partition_key_ops_, &op_counters,
-                             &partition_key_counter, opcode(), &func_ops_,
-                             &filtering_exprs_);
+                             &partition_key_counter, opcode(), &func_ops_);
 
   SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
   sem_state.SetWhereState(&where_state);
@@ -271,7 +290,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
   if (IsWriteOp()) {
     // Make sure that all hash entries are referenced in where expression.
-    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+    for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
       if (op_counters[idx].eq_count() == 0) {
         return sem_context->Error(expr, "Missing condition on key columns in WHERE clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
@@ -280,8 +299,8 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
     // If writing static columns only, check that either all range key entries are referenced in the
     // where expression or none is referenced. Else, check that all range key are referenced.
-    int range_keys = 0;
-    for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+    size_t range_keys = 0;
+    for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
       if (op_counters[idx].eq_count() != 0) {
         range_keys++;
       }
@@ -297,7 +316,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
       if (range_keys != num_key_columns() - num_hash_key_columns()) {
         if (opcode() == TreeNodeOpcode::kPTDeleteStmt) {
           // Range expression in write requests are allowed for deletes only.
-          for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+          for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
             if (op_counters[idx].eq_count() != 0) {
               where_ops_.push_front(key_where_ops_[idx]);
             }
@@ -312,14 +331,15 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
   } else { // ReadOp
     // Add the hash to the where clause if the list is incomplete. Clear key_where_ops_ to do
     // whole-table scan.
-    for (int idx = 0; idx < num_hash_key_columns(); idx++) {
+    for (size_t idx = 0; idx < num_hash_key_columns(); idx++) {
       if (!key_where_ops_[idx].IsInitialized()) {
         has_incomplete_hash_ = true;
         break;
       }
     }
     if (has_incomplete_hash_) {
-      for (int idx = num_hash_key_columns() - 1; idx >= 0; idx--) {
+      for (auto idx = num_hash_key_columns(); idx > 0;) {
+        --idx;
         if (key_where_ops_[idx].IsInitialized()) {
           where_ops_.push_front(key_where_ops_[idx]);
         }
@@ -328,7 +348,7 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
     } else {
       select_has_primary_keys_set_ = true;
       // Unset if there is a range key without a condition.
-      for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+      for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
         if (op_counters[idx].IsEmpty()) {
           select_has_primary_keys_set_ = false;
           break;
@@ -345,10 +365,8 @@ Status PTDmlStmt::AnalyzeWhereExpr(SemContext *sem_context, PTExpr *expr) {
 
 Status PTDmlStmt::AnalyzeIfClause(SemContext *sem_context) {
   if (if_clause_) {
-    IfExprState if_state(&filtering_exprs_);
     SemState sem_state(sem_context, QLType::Create(BOOL), InternalType::kBoolValue);
     sem_state.set_processing_if_clause(true);
-    sem_state.SetIfState(&if_state);
     return if_clause_->Analyze(sem_context);
   }
   return Status::OK();
@@ -368,11 +386,24 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
   for (const auto& itr : table_->index_map()) {
     const TableId& index_id = itr.first;
     const IndexInfo& index = itr.second;
-    // If the index indexes the primary key columns only, index updates can be issued from the CQL
-    // proxy side without reading the current row so long as the DML does not delete the column
-    // (including setting the value to null). Otherwise, the updates needed can only be determined
-    // from the tserver side after the current values are read.
-    if (index.PrimaryKeyColumnsOnly(indexed_schema)) {
+
+    bool primary_key_cols_only = index.PrimaryKeyColumnsOnly(indexed_schema);
+
+    std::shared_ptr<const IndexInfoPB::WherePredicateSpecPB>& where_predicate_spec_pb =
+      index.where_predicate_spec();
+
+    // If the index has primary key columns only and doesn't reference non-pk columns in
+    // predicate, index updates can be issued from the CQL proxy side without reading the current
+    // row as long as the DML does not delete the column (including setting the value to null).
+    // Otherwise, the updates needed can only be determined from the tserver side after the current
+    // values are read.
+
+    // TODO (Piyush) - Right now we are not distinguishing between -
+    //   1. primary columns only in index where clause (if it is present) and
+    //   2. non-primary columns in index where clause.
+    // This distinction can help in optimizing the index write path as per discussion
+    // in the Partial Indexes design doc.
+    if (primary_key_cols_only && !where_predicate_spec_pb) {
       std::shared_ptr<client::YBTable> index_table = sem_context->GetTableDesc(index_id);
       if (index_table == nullptr) {
         return sem_context->Error(this, Substitute("Index table $0 not found", index_id).c_str(),
@@ -381,11 +412,18 @@ Status PTDmlStmt::AnalyzeIndexesForWrites(SemContext *sem_context) {
       pk_only_indexes_.insert(index_table);
     } else {
       non_pk_only_indexes_.insert(index_id);
-      for (const IndexInfo::IndexColumn& column : index.columns()) {
+      for (const auto& column : index.columns()) {
         const ColumnId indexed_column_id = column.indexed_column_id;
         if (!indexed_schema.is_key_column(indexed_column_id)) {
           column_refs_.insert(indexed_column_id);
         }
+      }
+
+      // In case non-pk columns are present in the index predicate (valid only for a partial index),
+      // add those references as well.
+      if (where_predicate_spec_pb) {
+        for (auto column_id : where_predicate_spec_pb->column_ids())
+          column_refs_.insert(column_id);
       }
     }
   }
@@ -417,7 +455,7 @@ Status PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
   }
 
   // If we have range keys we modify the primary row.
-  for (int idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
+  for (auto idx = num_hash_key_columns(); idx < num_key_columns(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       modifies_primary_row_ = true;
       break;
@@ -429,7 +467,7 @@ Status PTDmlStmt::AnalyzeColumnArgs(SemContext *sem_context) {
   //  - Writing to non-static columns -> modify primary row.
 
   // Check plain column args.
-  for (int idx = num_key_columns(); idx < column_args_->size(); idx++) {
+  for (auto idx = num_key_columns(); idx < column_args_->size(); idx++) {
     if (column_args_->at(idx).IsInitialized()) {
       if (column_args_->at(idx).desc()->is_static()) {
         modifies_static_row_ = true;
@@ -481,18 +519,92 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
                                        const ColumnDesc *col_desc,
                                        PTExpr::SharedPtr value,
                                        PTExprListNode::SharedPtr col_args) {
-  // Collecting all filtering expressions to help choosing INDEX when processing a DML.
-  filtering_exprs_->push_back(expr);
+  // If this is a nested select from an uncovered index/partial index,
+  // ignore column that is uncovered/only in partial index predicate and not in index cols.
+  if (col_desc == nullptr) {
+    if (sem_context->IsUncoveredIndexSelect() || sem_context->IsPartialIndexSelect())
+      return Status::OK();
 
-  // If this is a nested select from an uncovered index, ignore column that is uncovered.
-  if (col_desc == nullptr && sem_context->IsUncoveredIndexSelect()) {
+    return STATUS(InternalError, "Column does not exist");
+  }
+
+  // If a SELECT involves a partial index scan, we can safely ignore some sub-clauses of WHERE
+  // clause if they are taken care of by the index predicate.
+  //
+  // Preserve the sub-clause in case of below exceptions for child SELECT:
+  //    For col = val type of sub-clauses on a prefix of the index's primary key, it is better
+  //    to again take note of the sub-clauses because it will help decide -
+  //      i) the tserver to land on (if all hash cols are specified)
+  //      ii) the range to scan (if range col is specified and is part of a prefix found in WHERE)
+
+  if (statement_type_ == TreeNodeOpcode::kPTSelectStmt) {
+    PTSelectStmt* select_stmt = static_cast<PTSelectStmt*>(sem_context->current_dml_stmt());
+    if (select_stmt->child_select()) {
+      // Parent SELECT (of a nested select).
+      std::shared_ptr<client::YBTable> table = select_stmt->table();
+      std::unordered_map<TableId, IndexInfo>::const_iterator it =
+        table->index_map().find(select_stmt->child_select()->index_id());
+
+      RSTATUS_DCHECK(it != table->index_map().end(), InternalError, "Index should be present");
+      const IndexInfo& idx_info = it->second;
+
+      if (idx_info.where_predicate_spec()) {
+        // It is a partial index.
+        ColumnOp op(col_desc, value, expr->ql_op());
+        if (VERIFY_RESULT(OpInExpr(idx_info.where_predicate_spec()->where_expr(), op))) {
+          return Status::OK();
+        }
+      }
+    } else if (!select_stmt->index_id().empty()) {
+      // Child SELECT.
+      std::shared_ptr<client::YBTable> table = select_stmt->table();
+      const IndexInfo& idx_info = table->index_info();
+
+      if (idx_info.where_predicate_spec()) {
+        // First attempt to preserve the sub-clause if it might be useful.
+        bool preserve_col_op = false;
+        auto prefix_len = sem_context->index_select_prefix_length();
+        // Only in case all hash cols are set, we can even attempt to preserve the sub-clause.
+        bool all_hash_cols_set = prefix_len >= idx_info.hash_column_count();
+        if (all_hash_cols_set) {
+          if (col_desc->index() < prefix_len && expr->ql_op() == QL_OP_EQUAL)
+            preserve_col_op = true;
+          else if (col_desc->index() == prefix_len + 1 &&
+                   col_desc->index() < idx_info.range_column_count() &&
+                   (expr->ql_op() == QL_OP_LESS_THAN ||
+                    expr->ql_op() == QL_OP_LESS_THAN_EQUAL ||
+                    expr->ql_op() == QL_OP_GREATER_THAN ||
+                    expr->ql_op() == QL_OP_GREATER_THAN_EQUAL)
+                  )
+            preserve_col_op = true;
+        }
+
+        if (!preserve_col_op) {
+          const auto& idx_col = idx_info.column(col_desc->index());
+          // Change to id in indexed table because we are have those ids in the index predicate
+          // as well.
+          ColumnDesc translated_col_desc(*col_desc);
+          translated_col_desc.set_id(idx_col.indexed_column_id);
+
+          ColumnOp op(&translated_col_desc, value, expr->ql_op());
+          if (VERIFY_RESULT(OpInExpr(idx_info.where_predicate_spec()->where_expr(), op))) {
+            return Status::OK();
+          }
+        }
+      }
+    }
+  }
+
+  if (sem_context->void_primary_key_condition() && col_desc->is_primary()) {
+    // Drop the key condition from where clause as instructed.
     return Status::OK();
   }
+
   ColumnOpCounter& counter = op_counters_->at(col_desc->index());
   switch (expr->ql_op()) {
     case QL_OP_EQUAL: {
       counter.increase_eq(col_args != nullptr);
-      if (!counter.isValid()) {
+      if (!counter.is_valid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
             ErrorCode::CQL_STATEMENT_INVALID);
       }
@@ -535,8 +647,8 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
     case QL_OP_LESS_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN: {
-
       // Inequality conditions on hash columns are not allowed.
+      // - Ignore the error if key condition is not needed.
       if (col_desc->is_hash()) {
         return sem_context->Error(expr, "Partition column cannot be used in this expression",
             ErrorCode::CQL_STATEMENT_INVALID);
@@ -550,7 +662,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
           counter.increase_gt(col_args != nullptr);
         }
 
-        if (!counter.isValid()) {
+        if (!counter.is_valid()) {
           return sem_context->Error(expr, "Illogical condition for where clause",
               ErrorCode::CQL_STATEMENT_INVALID);
         }
@@ -595,26 +707,27 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
       break;
     }
 
+    case QL_OP_NOT_EQUAL: FALLTHROUGH_INTENDED;
     case QL_OP_NOT_IN: FALLTHROUGH_INTENDED;
     case QL_OP_IN: {
       if (statement_type_ != TreeNodeOpcode::kPTSelectStmt) {
-        return sem_context->Error(expr, "IN expression not supported for write operations",
+        return sem_context->Error(expr, "Operator not supported for write operations",
                                   ErrorCode::FEATURE_NOT_YET_IMPLEMENTED);
       }
 
       if (col_args != nullptr) {
-        return sem_context->Error(expr, "IN expression not supported for subscripted column",
+        return sem_context->Error(expr, "Operator not supported for subscripted column",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
 
       if(!value->has_no_column_ref()) {
         return sem_context->Error(expr,
-            "Expressions are not allowed as argument of IN condition.",
+            "Argument of this opreator cannot reference a column",
             ErrorCode::CQL_STATEMENT_INVALID);
       }
 
       counter.increase_in(col_args != nullptr);
-      if (!counter.isValid()) {
+      if (!counter.is_valid()) {
         return sem_context->Error(expr, "Illogical condition for where clause",
                                   ErrorCode::CQL_STATEMENT_INVALID);
       }
@@ -638,7 +751,7 @@ Status WhereExprState::AnalyzeColumnOp(SemContext *sem_context,
 Status WhereExprState::AnalyzeColumnFunction(SemContext *sem_context,
                                              const PTRelationExpr *expr,
                                              PTExpr::SharedPtr value,
-                                             PTBcall::SharedPtr call) {
+                                             PTBcallPtr call) {
   switch (expr->ql_op()) {
     case QL_OP_LESS_THAN:
     case QL_OP_LESS_THAN_EQUAL:
@@ -690,13 +803,77 @@ Status WhereExprState::AnalyzePartitionKeyOp(SemContext *sem_context,
                                 ErrorCode::CQL_STATEMENT_INVALID);
   }
 
-  if (!partition_key_counter_->isValid()) {
+  if (!partition_key_counter_->is_valid()) {
     return sem_context->Error(expr, "Illogical where condition for token in where clause",
                               ErrorCode::CQL_STATEMENT_INVALID);
   }
 
   partition_key_ops_->emplace_back(expr->ql_op(), value);
   return Status::OK();
+}
+
+std::vector<int64_t> PTDmlStmt::hash_col_indices() const {
+  std::vector<int64_t> indices;
+  indices.reserve(hash_col_bindvars_.size());
+  for (const PTBindVar* bindvar : hash_col_bindvars_) {
+    indices.emplace_back(bindvar->pos());
+  }
+  return indices;
+}
+
+void PTDmlStmt::AddColumnRef(const ColumnDesc& col_desc) {
+  if (col_desc.is_static()) {
+    static_column_refs_.insert(col_desc.id());
+  } else {
+    column_refs_.insert(col_desc.id());
+  }
+
+  if (column_ref_cnts_.find(col_desc.id()) == column_ref_cnts_.end())
+    column_ref_cnts_[col_desc.id()] = 0;
+  column_ref_cnts_[col_desc.id()]++;
+}
+
+std::string PTDmlStmt::PartitionKeyToString(const MCList<PartitionKeyOp>& conds) {
+  std::string str;
+  for (auto col_op = conds.begin(); col_op != conds.end(); ++col_op) {
+    std::stringstream s;
+    if (col_op != conds.begin()) {
+      s << " AND ";
+    }
+    // Partition_hash is stored as INT32, token is stored as INT64, unless you specify the
+    // rhs expression e.g partition_hash(h1, h2) >= 3 in which case it's stored as an VARINT.
+    // So setting the default to the yql partition_hash in that case seems reasonable.
+    string label = (col_op->expr()->expected_internal_type() == InternalType::kInt64Value) ?
+        "token" : "partition_hash";
+    s << "(" << label << "(" << hash_key_columns() <<  ") " << QLOperatorAsString(col_op->yb_op())
+      << " " << col_op->expr()->QLName() << ")";
+    str += s.str();
+  }
+  return str;
+}
+
+PTExprPtr PTDmlStmt::ttl_seconds() const {
+  return using_clause_ ? using_clause_->ttl_seconds() : nullptr;
+}
+
+PTExprPtr PTDmlStmt::user_timestamp_usec() const {
+  return using_clause_ ? using_clause_->user_timestamp_usec() : nullptr;
+}
+
+void PTDmlStmt::AddRefForAllColumns() {
+  for (const auto& pair : column_map_) {
+    AddColumnRef(pair.second);
+  }
+}
+
+void PTDmlStmt::AddHashColumnBindVar(PTBindVar* bindvar) {
+  hash_col_bindvars_.insert(bindvar);
+}
+
+bool PTDmlStmt::HashColCmp::operator()(const PTBindVar* v1, const PTBindVar* v2) const {
+  DCHECK(v1->hash_col() != nullptr) << "bindvar pos " << v1->pos() << " is not a hash column";
+  DCHECK(v2->hash_col() != nullptr) << "bindvar pos " << v2->pos() << " is not a hash column";
+  return v1->hash_col()->id() < v2->hash_col()->id();
 }
 
 }  // namespace ql

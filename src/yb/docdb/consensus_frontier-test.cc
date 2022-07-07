@@ -10,13 +10,13 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
+#include <google/protobuf/any.pb.h>
 
 #include "yb/docdb/consensus_frontier.h"
-
-#include "yb/util/test_util.h"
-#include "yb/rocksdb/metadata.h"
-
 #include "yb/docdb/docdb.pb.h"
+#include "yb/gutil/casts.h"
+#include "yb/rocksdb/metadata.h"
+#include "yb/util/test_util.h"
 
 using rocksdb::UpdateUserValueType;
 
@@ -32,7 +32,7 @@ std::string PbToString(const ConsensusFrontierPB& pb) {
   google::protobuf::Any any;
   any.PackFrom(pb);
   ConsensusFrontier frontier;
-  frontier.FromPB(any);
+  CHECK_OK(frontier.FromPB(any));
   return frontier.ToString();
 }
 
@@ -44,7 +44,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
     EXPECT_TRUE(frontier.Equals(frontier));
     EXPECT_EQ(
         "{ op_id: 0.0 hybrid_time: <invalid> history_cutoff: <invalid> "
-            "hybrid_time_filter: <invalid> }",
+        "hybrid_time_filter: <invalid> max_value_level_ttl_expiration_time: <invalid> "
+        "primary_schema_version: <NULL> cotable_schema_versions: [] }",
         frontier.ToString());
     EXPECT_TRUE(frontier.IsUpdateValid(frontier, UpdateUserValueType::kLargest));
     EXPECT_TRUE(frontier.IsUpdateValid(frontier, UpdateUserValueType::kSmallest));
@@ -57,7 +58,8 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
     ConsensusFrontier frontier{{1, 1}, 1000_usec_ht, 500_usec_ht};
     EXPECT_EQ(
         "{ op_id: 1.1 hybrid_time: { physical: 1000 } history_cutoff: { physical: 500 } "
-             "hybrid_time_filter: <invalid> }",
+        "hybrid_time_filter: <invalid> max_value_level_ttl_expiration_time: <invalid> "
+        "primary_schema_version: <NULL> cotable_schema_versions: [] }",
         frontier.ToString());
     ConsensusFrontier higher_idx{{1, 2}, 1000_usec_ht, 500_usec_ht};
     ConsensusFrontier higher_ht{{1, 1}, 1001_usec_ht, 500_usec_ht};
@@ -114,26 +116,87 @@ TEST_F(ConsensusFrontierTest, TestUpdates) {
   pb.mutable_op_id()->set_index(0);
   EXPECT_EQ(
       PbToString(pb),
-      "{ op_id: 0.0 hybrid_time: <min> history_cutoff: <invalid> hybrid_time_filter: <invalid> }");
+      "{ op_id: 0.0 hybrid_time: <min> history_cutoff: <invalid> "
+      "hybrid_time_filter: <invalid> max_value_level_ttl_expiration_time: <invalid> "
+      "primary_schema_version: <NULL> cotable_schema_versions: [] }");
 
   pb.mutable_op_id()->set_term(2);
   pb.mutable_op_id()->set_index(3);
   EXPECT_EQ(
       PbToString(pb),
-      "{ op_id: 2.3 hybrid_time: <min> history_cutoff: <invalid> hybrid_time_filter: <invalid> }");
+      "{ op_id: 2.3 hybrid_time: <min> history_cutoff: <invalid> "
+      "hybrid_time_filter: <invalid> max_value_level_ttl_expiration_time: <invalid> "
+      "primary_schema_version: <NULL> cotable_schema_versions: [] }");
 
   pb.set_hybrid_time(100000);
   EXPECT_EQ(
       PbToString(pb),
       "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } history_cutoff: <invalid> "
-          "hybrid_time_filter: <invalid> }");
+      "hybrid_time_filter: <invalid> max_value_level_ttl_expiration_time: <invalid> "
+      "primary_schema_version: <NULL> cotable_schema_versions: [] }");
 
   pb.set_history_cutoff(200000);
   EXPECT_EQ(
-        PbToString(pb),
-        "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } "
-            "history_cutoff: { physical: 48 logical: 3392 } "
-            "hybrid_time_filter: <invalid> }");
+      PbToString(pb),
+      "{ op_id: 2.3 hybrid_time: { physical: 24 logical: 1696 } "
+      "history_cutoff: { physical: 48 logical: 3392 } "
+      "hybrid_time_filter: <invalid> max_value_level_ttl_expiration_time: <invalid> "
+      "primary_schema_version: <NULL> cotable_schema_versions: [] }");
+}
+
+TEST_F(ConsensusFrontierTest, TestUpdateExpirationTime) {
+  const HybridTime smallHT = 1000_usec_ht;
+  const HybridTime largeHT = 2000_usec_ht;
+  const HybridTime maxHT = HybridTime::kMax;
+
+  // Three frontiers with the same op_id, ht, and history_cuttoff,
+  // but different expiration times.
+  ConsensusFrontier noExpiry{{1, 1}, 1000_usec_ht, 500_usec_ht};
+  EXPECT_EQ(noExpiry.max_value_level_ttl_expiration_time(), HybridTime::kInvalid);
+
+  ConsensusFrontier smallExpiry{{1, 1}, 1000_usec_ht, 500_usec_ht};
+  smallExpiry.set_max_value_level_ttl_expiration_time(smallHT);
+  EXPECT_EQ(smallExpiry.max_value_level_ttl_expiration_time(), smallHT);
+
+  ConsensusFrontier largeExpiry{{1, 1}, 1000_usec_ht, 500_usec_ht};
+  largeExpiry.set_max_value_level_ttl_expiration_time(largeHT);
+  EXPECT_EQ(largeExpiry.max_value_level_ttl_expiration_time(), largeHT);
+
+  ConsensusFrontier maxExpiry{{1, 1}, 1000_usec_ht, 500_usec_ht};
+  maxExpiry.set_max_value_level_ttl_expiration_time(maxHT);
+  EXPECT_EQ(maxExpiry.max_value_level_ttl_expiration_time(), maxHT);
+
+  // Update no expiration frontier with another invalid expiration.
+  auto expiryClone = noExpiry.Clone();
+  ConsensusFrontier noExpiry2 = {{2, 2}, 2000_usec_ht, 1000_usec_ht};
+  expiryClone->Update(noExpiry2, UpdateUserValueType::kLargest);
+  auto consensusClone = down_cast<ConsensusFrontier&>(*expiryClone);
+  EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), HybridTime::kInvalid);
+
+  // Update frontier with no expiration with one with an expiration.
+  expiryClone->Update(smallExpiry, UpdateUserValueType::kLargest);
+  consensusClone = down_cast<ConsensusFrontier&>(*expiryClone);
+  EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), smallHT);
+
+  // Update same frontier with a larger expiration
+  expiryClone->Update(largeExpiry, UpdateUserValueType::kLargest);
+  consensusClone = down_cast<ConsensusFrontier&>(*expiryClone);
+  EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), largeHT);
+
+  // Try to update same frontier with the smaller expiration. Should keep the higher expiration.
+  expiryClone->Update(smallExpiry, UpdateUserValueType::kLargest);
+  consensusClone = down_cast<ConsensusFrontier&>(*expiryClone);
+  EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), largeHT);
+
+  // Update with the maximum expiration.
+  expiryClone->Update(maxExpiry, UpdateUserValueType::kLargest);
+  consensusClone = down_cast<ConsensusFrontier&>(*expiryClone);
+  EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), maxHT);
+
+  // Update with another invalid expiration time.
+  expiryClone->Update(noExpiry2, UpdateUserValueType::kLargest);
+  consensusClone = down_cast<ConsensusFrontier&>(*expiryClone);
+  EXPECT_EQ(consensusClone.max_value_level_ttl_expiration_time(), maxHT);
 }
 
 }  // namespace docdb

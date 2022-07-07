@@ -75,7 +75,7 @@ void PeriodicTimer::Start(MonoDelta next_task_delta) {
   if (!started_) {
     started_ = true;
     SnoozeUnlocked(next_task_delta);
-    int new_callback_generation = ++current_callback_generation_;
+    auto new_callback_generation = ++current_callback_generation_;
 
     // Invoke Callback() with the lock released.
     l.unlock();

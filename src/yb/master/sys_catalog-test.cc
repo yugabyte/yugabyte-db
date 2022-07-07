@@ -30,14 +30,21 @@
 // under the License.
 //
 
-#include "yb/master/sys_catalog-test_base.h"
-
 #include <algorithm>
 #include <memory>
 #include <vector>
 
+#include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
+
 #include "yb/gutil/stl_util.h"
+
 #include "yb/master/async_rpc_tasks.h"
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master_cluster.pb.h"
+#include "yb/master/sys_catalog-test_base.h"
+#include "yb/master/sys_catalog.h"
+
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
@@ -70,8 +77,8 @@ class TestTableLoader : public Visitor<PersistentTableInfo> {
     // Setup the table info
     TableInfo *table = new TableInfo(table_id);
     auto l = table->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     table->AddRef();
     tables[table->id()] = table;
     return Status::OK();
@@ -84,9 +91,9 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
   FLAGS_cluster_uuid = "invalid_uuid";
 
-  CatalogManager catalog_manager(nullptr);
+  enterprise::CatalogManager catalog_manager(nullptr);
   {
-    std::lock_guard<CatalogManager::LockType> l(catalog_manager.lock_);
+    CatalogManager::LockGuard lock(catalog_manager.mutex_);
     ASSERT_NOK(catalog_manager.PrepareDefaultClusterConfig(0));
   }
 
@@ -97,7 +104,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
 
 
   // Test that config.cluster_uuid gets set to the value that we specify through flag cluster_uuid.
-  FLAGS_cluster_uuid = to_string(Uuid::Generate());
+  FLAGS_cluster_uuid = Uuid::Generate().ToString();
   ASSERT_OK(mini_master->Start());
   auto master = mini_master->master();
   ASSERT_OK(master->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
@@ -126,8 +133,7 @@ TEST_F(SysCatalogTest, TestPrepareDefaultClusterConfig) {
   ASSERT_FALSE(config.cluster_uuid().empty());
 
   // Check that the cluster uuid is valid.
-  Uuid uuid;
-  ASSERT_OK(uuid.FromString(config.cluster_uuid()));
+  ASSERT_OK(Uuid::FromString(config.cluster_uuid()));
 
   mini_master->Shutdown();
 }
@@ -146,15 +152,15 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
   scoped_refptr<TableInfo> table = master_->catalog_manager()->NewTableInfo(table_id);
   {
     auto l = table->LockForWrite();
-    l->mutable_data()->pb.set_name("testtb");
-    l->mutable_data()->pb.set_version(0);
-    l->mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
-    l->mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
-    SchemaToPB(Schema(), l->mutable_data()->pb.mutable_schema());
+    l.mutable_data()->pb.set_name("testtb");
+    l.mutable_data()->pb.set_version(0);
+    l.mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
+    l.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
+    SchemaToPB(Schema(), l.mutable_data()->pb.mutable_schema());
     // Add the table
-    ASSERT_OK(sys_catalog->AddItem(table.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, table));
 
-    l->Commit();
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -167,10 +173,10 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
   // Update the table
   {
     auto l = table->LockForWrite();
-    l->mutable_data()->pb.set_version(1);
-    l->mutable_data()->pb.set_state(SysTablesEntryPB::DELETING);
-    ASSERT_OK(sys_catalog->UpdateItem(table.get(), kLeaderTerm));
-    l->Commit();
+    l.mutable_data()->pb.set_version(1);
+    l.mutable_data()->pb.set_state(SysTablesEntryPB::DELETING);
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, table));
+    l.Commit();
   }
 
   loader->Reset();
@@ -180,7 +186,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Delete the table
   loader->Reset();
-  ASSERT_OK(sys_catalog->DeleteItem(table.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, table));
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
@@ -191,34 +197,34 @@ TEST_F(SysCatalogTest, TestTableInfoCommit) {
 
   // Mutate the table, under the write lock.
   auto writer_lock = table->LockForWrite();
-  writer_lock->mutable_data()->pb.set_name("foo");
+  writer_lock.mutable_data()->pb.set_name("foo");
 
   // Changes should not be visible to a reader.
   // The reader can still lock for read, since readers don't block
   // writers in the RWC lock.
   {
     auto reader_lock = table->LockForRead();
-    ASSERT_NE("foo", reader_lock->data().name());
+    ASSERT_NE("foo", reader_lock->name());
   }
-  writer_lock->mutable_data()->set_state(SysTablesEntryPB::RUNNING, "running");
+  writer_lock.mutable_data()->set_state(SysTablesEntryPB::RUNNING, "running");
 
 
   {
     auto reader_lock = table->LockForRead();
-    ASSERT_NE("foo", reader_lock->data().pb.name());
-    ASSERT_NE("running", reader_lock->data().pb.state_msg());
-    ASSERT_NE(SysTablesEntryPB::RUNNING, reader_lock->data().pb.state());
+    ASSERT_NE("foo", reader_lock->pb.name());
+    ASSERT_NE("running", reader_lock->pb.state_msg());
+    ASSERT_NE(SysTablesEntryPB::RUNNING, reader_lock->pb.state());
   }
 
   // Commit the changes
-  writer_lock->Commit();
+  writer_lock.Commit();
 
   // Verify that the data is visible
   {
     auto reader_lock = table->LockForRead();
-    ASSERT_EQ("foo", reader_lock->data().pb.name());
-    ASSERT_EQ("running", reader_lock->data().pb.state_msg());
-    ASSERT_EQ(SysTablesEntryPB::RUNNING, reader_lock->data().pb.state());
+    ASSERT_EQ("foo", reader_lock->pb.name());
+    ASSERT_EQ("running", reader_lock->pb.state_msg());
+    ASSERT_EQ(SysTablesEntryPB::RUNNING, reader_lock->pb.state());
   }
 }
 
@@ -238,8 +244,8 @@ class TestTabletLoader : public Visitor<PersistentTabletInfo> {
     // Setup the tablet info
     TabletInfo *tablet = new TabletInfo(nullptr, tablet_id);
     auto l = tablet->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     tablet->AddRef();
     tablets[tablet->id()] = tablet;
     return Status::OK();
@@ -286,7 +292,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet2.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog->AddItems(tablets, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, tablets));
     tablet1->mutable_metadata()->CommitMutation();
     tablet2->mutable_metadata()->CommitMutation();
 
@@ -302,9 +308,9 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet1.get());
 
     auto l1 = tablet1->LockForWrite();
-    l1->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
-    ASSERT_OK(sys_catalog->UpdateItems(tablets, kLeaderTerm));
-    l1->Commit();
+    l1.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, tablets));
+    l1.Commit();
 
     loader->Reset();
     ASSERT_OK(sys_catalog->Visit(loader.get()));
@@ -323,15 +329,15 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     to_update.push_back(tablet2.get());
 
     auto l1 = tablet1->LockForWrite();
-    l1->mutable_data()->pb.set_state(SysTabletsEntryPB::REPLACED);
+    l1.mutable_data()->pb.set_state(SysTabletsEntryPB::REPLACED);
     auto l2 = tablet2->LockForWrite();
-    l2->mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
+    l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
     loader->Reset();
-    ASSERT_OK(sys_catalog->AddAndUpdateItems(to_add, to_update, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, to_add, to_update));
 
-    l1->Commit();
-    l2->Commit();
+    l1.Commit();
+    l2.Commit();
     // This was still open from the initial create!
     tablet3->mutable_metadata()->CommitMutation();
 
@@ -349,7 +355,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet3.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog->DeleteItems(tablets, kLeaderTerm));
+    ASSERT_OK(sys_catalog->Delete(kLeaderTerm, tablets));
     ASSERT_OK(sys_catalog->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
     ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
@@ -362,32 +368,32 @@ TEST_F(SysCatalogTest, TestTabletInfoCommit) {
 
   // Mutate the tablet, the changes should not be visible
   auto l = tablet->LockForWrite();
-  PartitionPB* partition = l->mutable_data()->pb.mutable_partition();
+  PartitionPB* partition = l.mutable_data()->pb.mutable_partition();
   partition->set_partition_key_start("a");
   partition->set_partition_key_end("b");
-  l->mutable_data()->set_state(SysTabletsEntryPB::RUNNING, "running");
+  l.mutable_data()->set_state(SysTabletsEntryPB::RUNNING, "running");
   {
     // Changes shouldn't be visible, and lock should still be
     // acquired even though the mutation is under way.
     auto read_lock = tablet->LockForRead();
-    ASSERT_NE("a", read_lock->data().pb.partition().partition_key_start());
-    ASSERT_NE("b", read_lock->data().pb.partition().partition_key_end());
-    ASSERT_NE("running", read_lock->data().pb.state_msg());
+    ASSERT_NE("a", read_lock->pb.partition().partition_key_start());
+    ASSERT_NE("b", read_lock->pb.partition().partition_key_end());
+    ASSERT_NE("running", read_lock->pb.state_msg());
     ASSERT_NE(SysTabletsEntryPB::RUNNING,
-              read_lock->data().pb.state());
+              read_lock->pb.state());
   }
 
   // Commit the changes
-  l->Commit();
+  l.Commit();
 
   // Verify that the data is visible
   {
     auto read_lock = tablet->LockForRead();
-    ASSERT_EQ("a", read_lock->data().pb.partition().partition_key_start());
-    ASSERT_EQ("b", read_lock->data().pb.partition().partition_key_end());
-    ASSERT_EQ("running", read_lock->data().pb.state_msg());
+    ASSERT_EQ("a", read_lock->pb.partition().partition_key_start());
+    ASSERT_EQ("b", read_lock->pb.partition().partition_key_end());
+    ASSERT_EQ("running", read_lock->pb.state_msg());
     ASSERT_EQ(SysTabletsEntryPB::RUNNING,
-              read_lock->data().pb.state());
+              read_lock->pb.state());
   }
 }
 
@@ -399,22 +405,18 @@ class TestClusterConfigLoader : public Visitor<PersistentClusterConfigInfo> {
   virtual Status Visit(
       const std::string& fake_id, const SysClusterConfigEntryPB& metadata) override {
     CHECK(!config_info) << "We either got multiple config_info entries, or we didn't Reset()";
-    config_info = new ClusterConfigInfo();
+    config_info = std::make_shared<ClusterConfigInfo>();
     auto l = config_info->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
-    config_info->AddRef();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     return Status::OK();
   }
 
   void Reset() {
-    if (config_info) {
-      config_info->Release();
-      config_info = nullptr;
-    }
+    config_info.reset();
   }
 
-  ClusterConfigInfo* config_info = nullptr;
+  std::shared_ptr<ClusterConfigInfo> config_info = nullptr;
 };
 
 // Test the sys-catalog tables basic operations (add, update, delete, visit)
@@ -426,17 +428,17 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   ASSERT_TRUE(loader->config_info);
   {
     auto l = loader->config_info->LockForRead();
-    ASSERT_EQ(l->data().pb.version(), 0);
-    ASSERT_EQ(l->data().pb.replication_info().live_replicas().placement_blocks_size(), 0);
+    ASSERT_EQ(l->pb.version(), 0);
+    ASSERT_EQ(l->pb.replication_info().live_replicas().placement_blocks_size(), 0);
   }
 
   // Test modifications directly through the Sys catalog API.
 
   // Create a config_info block.
-  scoped_refptr<ClusterConfigInfo> config_info(new ClusterConfigInfo());
+  std::shared_ptr<ClusterConfigInfo> config_info(make_shared<ClusterConfigInfo>());
   {
     auto l = config_info->LockForWrite();
-    auto pb = l->mutable_data()
+    auto pb = l.mutable_data()
                   ->pb.mutable_replication_info()
                   ->mutable_live_replicas()
                   ->add_placement_blocks();
@@ -447,19 +449,19 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     pb->set_min_num_replicas(100);
 
     // Set it in the sys_catalog. It already has the default entry, so we use update.
-    ASSERT_OK(sys_catalog->UpdateItem(config_info.get(), kLeaderTerm));
-    l->Commit();
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info.get()));
+    l.Commit();
   }
 
   // Check data from sys_catalog.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
-  ASSERT_METADATA_EQ(config_info.get(), loader->config_info);
+  ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
   {
     auto l = config_info->LockForWrite();
-    auto pb = l->mutable_data()
+    auto pb = l.mutable_data()
                   ->pb.mutable_replication_info()
                   ->mutable_live_replicas()
                   ->mutable_placement_blocks(0);
@@ -468,15 +470,15 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     cloud_info->set_placement_cloud("cloud2");
     pb->set_min_num_replicas(200);
     // Update it in the sys_catalog.
-    ASSERT_OK(sys_catalog->UpdateItem(config_info.get(), kLeaderTerm));
-    l->Commit();
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, config_info.get()));
+    l.Commit();
   }
 
   // Check data from sys_catalog.
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_TRUE(loader->config_info);
-  ASSERT_METADATA_EQ(config_info.get(), loader->config_info);
+  ASSERT_METADATA_EQ(config_info.get(), loader->config_info.get());
 
   // Test data through the CatalogManager API.
 
@@ -490,14 +492,14 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   // Update a field in the previously used in memory state and set through proper API.
   {
     auto l = config_info->LockForWrite();
-    auto pb = l->mutable_data()
+    auto pb = l.mutable_data()
                   ->pb.mutable_replication_info()
                   ->mutable_live_replicas()
                   ->mutable_placement_blocks(0);
     pb->set_min_num_replicas(300);
 
     ChangeMasterClusterConfigRequestPB req;
-    *req.mutable_cluster_config() = l->mutable_data()->pb;
+    *req.mutable_cluster_config() = l.mutable_data()->pb;
     ChangeMasterClusterConfigResponsePB resp;
 
     // Verify that we receive an error when trying to change the cluster uuid.
@@ -509,7 +511,7 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
     req.mutable_cluster_config()->set_cluster_uuid(config.cluster_uuid());
 
     ASSERT_OK(master_->catalog_manager()->SetClusterConfig(&req, &resp));
-    l->Commit();
+    l.Commit();
   }
 
   // Confirm the in memory state does not match the config we get from the CatalogManager API, due
@@ -517,11 +519,11 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   ASSERT_OK(master_->catalog_manager()->GetClusterConfig(&config));
   {
     auto l = config_info->LockForRead();
-    ASSERT_FALSE(PbEquals(l->data().pb, config));
-    ASSERT_EQ(l->data().pb.version(), 0);
+    ASSERT_FALSE(PbEquals(l->pb, config));
+    ASSERT_EQ(l->pb.version(), 0);
     ASSERT_EQ(config.version(), 1);
     ASSERT_TRUE(PbEquals(
-        l->data().pb.replication_info().live_replicas().placement_blocks(0),
+        l->pb.replication_info().live_replicas().placement_blocks(0),
         config.replication_info().live_replicas().placement_blocks(0)));
   }
 
@@ -531,10 +533,10 @@ TEST_F(SysCatalogTest, TestSysCatalogPlacementOperations) {
   ASSERT_TRUE(loader->config_info);
   {
     auto l = loader->config_info->LockForRead();
-    ASSERT_TRUE(PbEquals(l->data().pb, config));
-    ASSERT_TRUE(l->data().pb.has_version());
-    ASSERT_EQ(l->data().pb.version(), 1);
-    ASSERT_EQ(l->data().pb.replication_info().live_replicas().placement_blocks_size(), 1);
+    ASSERT_TRUE(PbEquals(l->pb, config));
+    ASSERT_TRUE(l->pb.has_version());
+    ASSERT_EQ(l->pb.version(), 1);
+    ASSERT_EQ(l->pb.replication_info().live_replicas().placement_blocks_size(), 1);
   }
 }
 
@@ -554,8 +556,8 @@ class TestNamespaceLoader : public Visitor<PersistentNamespaceInfo> {
     // Setup the namespace info
     NamespaceInfo* const ns = new NamespaceInfo(ns_id);
     auto l = ns->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     ns->AddRef();
     namespaces.push_back(ns);
     return Status::OK();
@@ -579,11 +581,11 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
   {
     auto l = ns->LockForWrite();
-    l->mutable_data()->pb.set_name("test_ns");
+    l.mutable_data()->pb.set_name("test_ns");
     // Add the namespace
-    ASSERT_OK(sys_catalog->AddItem(ns.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, ns));
 
-    l->Commit();
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -596,9 +598,9 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
   // Update the namespace
   {
     auto l = ns->LockForWrite();
-    l->mutable_data()->pb.set_name("test_ns_new_name");
-    ASSERT_OK(sys_catalog->UpdateItem(ns.get(), kLeaderTerm));
-    l->Commit();
+    l.mutable_data()->pb.set_name("test_ns_new_name");
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, ns));
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -609,7 +611,7 @@ TEST_F(SysCatalogTest, TestSysCatalogNamespacesOperations) {
 
   // 4. CHECK DELETE_NAMESPACE
   // Delete the namespace
-  ASSERT_OK(sys_catalog->DeleteItem(ns.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, ns));
 
   // Verify the result.
   loader->Reset();
@@ -623,23 +625,23 @@ TEST_F(SysCatalogTest, TestNamespaceInfoCommit) {
 
   // Mutate the namespace, under the write lock.
   auto writer_lock = ns->LockForWrite();
-  writer_lock->mutable_data()->pb.set_name("foo");
+  writer_lock.mutable_data()->pb.set_name("foo");
 
   // Changes should not be visible to a reader.
   // The reader can still lock for read, since readers don't block
   // writers in the RWC lock.
   {
     auto reader_lock = ns->LockForRead();
-    ASSERT_NE("foo", reader_lock->data().name());
+    ASSERT_NE("foo", reader_lock->name());
   }
 
   // Commit the changes
-  writer_lock->Commit();
+  writer_lock.Commit();
 
   // Verify that the data is visible
   {
     auto reader_lock = ns->LockForRead();
-    ASSERT_EQ("foo", reader_lock->data().name());
+    ASSERT_EQ("foo", reader_lock->name());
   }
 }
 
@@ -659,8 +661,8 @@ class TestUDTypeLoader : public Visitor<PersistentUDTypeInfo> {
     // Setup the udtype info
     UDTypeInfo* const tp = new UDTypeInfo(udtype_id);
     auto l = tp->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     tp->AddRef();
     udtypes.push_back(tp);
     return Status::OK();
@@ -685,8 +687,8 @@ class TestRedisConfigLoader : public Visitor<PersistentRedisConfigInfo> {
     // Setup the redis config info
     RedisConfigInfo* const rci = new RedisConfigInfo(key);
     auto l = rci->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     rci->AddRef();
     config_entries.push_back(rci);
     return Status::OK();
@@ -712,10 +714,10 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
   scoped_refptr<RedisConfigInfo> rci = new RedisConfigInfo("key1");
   {
     auto l = rci->LockForWrite();
-    l->mutable_data()->pb = std::move(config_entry);
+    l.mutable_data()->pb = std::move(config_entry);
     // Add the redis config
-    ASSERT_OK(sys_catalog->AddItem(rci.get(), kLeaderTerm));
-    l->Commit();
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rci));
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -733,7 +735,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
   metadata->clear_args();
   metadata->add_args("value1b");
 
-  ASSERT_OK(sys_catalog->UpdateItem(rci.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rci));
   rci->mutable_metadata()->CommitMutation();
 
   // Verify config entries.
@@ -755,10 +757,10 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     scoped_refptr<RedisConfigInfo> rci2 = new RedisConfigInfo("key2");
     {
       auto l = rci2->LockForWrite();
-      l->mutable_data()->pb = std::move(config_entry);
+      l.mutable_data()->pb = std::move(config_entry);
       // Add the redis config
-      ASSERT_OK(sys_catalog->AddItem(rci2.get(), kLeaderTerm));
-      l->Commit();
+      ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rci2));
+      l.Commit();
     }
 
     // Verify it showed up.
@@ -769,7 +771,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_METADATA_EQ(rci2.get(), loader->config_entries[1]);
 
     // 2. CHECK DELETE RedisConfig
-    ASSERT_OK(sys_catalog->DeleteItem(rci2.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Delete(kLeaderTerm, rci2));
 
     // Verify the result.
     loader->Reset();
@@ -777,7 +779,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRedisConfigOperations) {
     ASSERT_EQ(1, loader->config_entries.size());
   }
   // 2. CHECK DELETE RedisConfig
-  ASSERT_OK(sys_catalog->DeleteItem(rci.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, rci));
 
   // Verify the result.
   loader->Reset();
@@ -802,8 +804,8 @@ class TestSysConfigLoader : public Visitor<PersistentSysConfigInfo> {
     // Setup the sysconfig info.
     SysConfigInfo* const sys_config = new SysConfigInfo(id /* config_type */);
     auto l = sys_config->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     sys_config->AddRef();
     sys_configs.push_back(sys_config);
     LOG(INFO) << " Current SysConfigInfo: " << sys_config->ToString();
@@ -821,50 +823,62 @@ TEST_F(SysCatalogTest, TestSysCatalogSysConfigOperations) {
   //   a. "security-config" entry is set up with roles_version = 0.
   //   b. "ysql-catalog-configuration" entry is set up with version = 0 and the transactional YSQL
   //      sys catalog flag is set to true.
+  //   c. "transaction-tables-config" entry is set up with version = 0.
   scoped_refptr<SysConfigInfo> security_config = new SysConfigInfo(kSecurityConfigType);
   {
     auto l = security_config->LockForWrite();
-    l->mutable_data()->pb.mutable_security_config()->set_roles_version(0);
-    l->Commit();
+    l.mutable_data()->pb.mutable_security_config()->set_roles_version(0);
+    l.Commit();
   }
   scoped_refptr<SysConfigInfo> ysql_catalog_config = new SysConfigInfo(kYsqlCatalogConfigType);
   {
     auto l = ysql_catalog_config->LockForWrite();
-    auto& ysql_catalog_config_pb = *l->mutable_data()->pb.mutable_ysql_catalog_config();
+    auto& ysql_catalog_config_pb = *l.mutable_data()->pb.mutable_ysql_catalog_config();
     ysql_catalog_config_pb.set_version(0);
     ysql_catalog_config_pb.set_transactional_sys_catalog_enabled(true);
-    l->Commit();
+    l.Commit();
+  }
+  scoped_refptr<SysConfigInfo> transaction_tables_config =
+      new SysConfigInfo(kTransactionTablesConfigType);
+  {
+    auto l = transaction_tables_config->LockForWrite();
+    auto& transaction_tables_config_pb = *l.mutable_data()->pb.mutable_transaction_tables_config();
+    transaction_tables_config_pb.set_version(0);
+    l.Commit();
   }
   unique_ptr<TestSysConfigLoader> loader(new TestSysConfigLoader());
   ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
+  ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
 
   // 2. Add a new SysConfigEntryPB and verify it shows up.
   scoped_refptr<SysConfigInfo> test_config = new SysConfigInfo("test-security-configuration");
   {
     auto l = test_config->LockForWrite();
-    l->mutable_data()->pb.mutable_security_config()->set_roles_version(1234);
+    l.mutable_data()->pb.mutable_security_config()->set_roles_version(1234);
 
     // Add the test_config.
-    ASSERT_OK(sys_catalog->AddItem(test_config.get(), kLeaderTerm));
-    l->Commit();
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, test_config));
+    l.Commit();
   }
+  loader->Reset();
+  ASSERT_OK(sys_catalog->Visit(loader.get()));
+  ASSERT_EQ(4, loader->sys_configs.size());
+  ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
+  ASSERT_METADATA_EQ(test_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[2]);
+  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[3]);
+
+  // 2. Remove the SysConfigEntry and verify that it got removed.
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, test_config));
   loader->Reset();
   ASSERT_OK(sys_catalog->Visit(loader.get()));
   ASSERT_EQ(3, loader->sys_configs.size());
   ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(test_config.get(), loader->sys_configs[1]);
+  ASSERT_METADATA_EQ(transaction_tables_config.get(), loader->sys_configs[1]);
   ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[2]);
-
-  // 2. Remove the SysConfigEntry and verify that it got removed.
-  ASSERT_OK(sys_catalog->DeleteItem(test_config.get(), kLeaderTerm));
-  loader->Reset();
-  ASSERT_OK(sys_catalog->Visit(loader.get()));
-  ASSERT_EQ(2, loader->sys_configs.size());
-  ASSERT_METADATA_EQ(security_config.get(), loader->sys_configs[0]);
-  ASSERT_METADATA_EQ(ysql_catalog_config.get(), loader->sys_configs[1]);
 }
 
 class TestRoleLoader : public Visitor<PersistentRoleInfo> {
@@ -884,8 +898,8 @@ class TestRoleLoader : public Visitor<PersistentRoleInfo> {
     // Setup the role info
     RoleInfo* const rl = new RoleInfo(role_name);
     auto l = rl->LockForWrite();
-    l->mutable_data()->pb.CopyFrom(metadata);
-    l->Commit();
+    l.mutable_data()->pb.CopyFrom(metadata);
+    l.Commit();
     rl->AddRef();
     roles.push_back(rl);
     LOG(INFO) << " Current Role: " << rl->ToString();
@@ -913,10 +927,10 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   scoped_refptr<RoleInfo> rl = new RoleInfo("test_role");
   {
     auto l = rl->LockForWrite();
-    l->mutable_data()->pb = std::move(role_entry);
+    l.mutable_data()->pb = std::move(role_entry);
     // Add the role
-    ASSERT_OK(sys_catalog->AddItem(rl.get(), kLeaderTerm));
-    l->Commit();
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rl));
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -948,7 +962,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
 
   currentResource->add_permissions(PermissionType::DROP_PERMISSION);
 
-  ASSERT_OK(sys_catalog->UpdateItem(rl.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, rl));
   rl->mutable_metadata()->CommitMutation();
 
   // Verify permissions
@@ -959,7 +973,7 @@ TEST_F(SysCatalogTest, TestSysCatalogRoleOperations) {
   ASSERT_METADATA_EQ(rl.get(), loader->roles[1]);
 
   // 2. CHECK DELETE Role
-  ASSERT_OK(sys_catalog->DeleteItem(rl.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, rl));
 
   // Verify the result.
   loader->Reset();
@@ -979,11 +993,11 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   scoped_refptr<UDTypeInfo> tp(new UDTypeInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
   {
     auto l = tp->LockForWrite();
-    l->mutable_data()->pb.set_name("test_tp");
-    l->mutable_data()->pb.set_namespace_id(kSystemNamespaceId);
+    l.mutable_data()->pb.set_name("test_tp");
+    l.mutable_data()->pb.set_namespace_id(kSystemNamespaceId);
     // Add the udtype
-    ASSERT_OK(sys_catalog->AddItem(tp.get(), kLeaderTerm));
-    l->Commit();
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, tp));
+    l.Commit();
   }
 
   // Verify it showed up.
@@ -993,7 +1007,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUDTypeOperations) {
   ASSERT_METADATA_EQ(tp.get(), loader->udtypes[0]);
 
   // 2. CHECK DELETE_UDTYPE
-  ASSERT_OK(sys_catalog->DeleteItem(tp.get(), kLeaderTerm));
+  ASSERT_OK(sys_catalog->Delete(kLeaderTerm, tp));
 
   // Verify the result.
   loader->Reset();
@@ -1018,15 +1032,15 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   scoped_refptr<TableInfo> table = master_->catalog_manager()->NewTableInfo(table_id);
   {
     auto l = table->LockForWrite();
-    l->mutable_data()->pb.set_name("testtb");
-    l->mutable_data()->pb.set_version(0);
-    l->mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
-    l->mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
-    SchemaToPB(Schema(), l->mutable_data()->pb.mutable_schema());
+    l.mutable_data()->pb.set_name("testtb");
+    l.mutable_data()->pb.set_version(0);
+    l.mutable_data()->pb.mutable_replication_info()->mutable_live_replicas()->set_num_replicas(1);
+    l.mutable_data()->pb.set_state(SysTablesEntryPB::PREPARING);
+    SchemaToPB(Schema(), l.mutable_data()->pb.mutable_schema());
     // Add the table.
-    ASSERT_OK(sys_catalog->AddItem(table.get(), kLeaderTerm));
+    ASSERT_OK(sys_catalog->Upsert(kLeaderTerm, table));
 
-    l->Commit();
+    l.Commit();
   }
 
   // Verify it showed up.

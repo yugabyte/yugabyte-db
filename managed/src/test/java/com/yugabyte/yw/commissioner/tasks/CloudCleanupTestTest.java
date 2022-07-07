@@ -2,34 +2,35 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 
-import java.util.List;
-import java.util.UUID;
-
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-
 @RunWith(MockitoJUnitRunner.class)
 public class CloudCleanupTestTest extends CommissionerBaseTest {
-  @InjectMocks
-  Commissioner commissioner;
 
   private UUID submitTask(List<String> regionList) {
     CloudCleanup.Params taskParams = new CloudCleanup.Params();
@@ -46,15 +47,17 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
       assertNull(r);
     }
 
-    zones.forEach(zone -> {
-      AvailabilityZone az = AvailabilityZone.getByCode(zone);
-      if (exists) {
-        assertNotNull(az);
-      } else {
-        assertNull(az);
-      }
-    });
+    zones.forEach(
+        zone -> {
+          Optional<AvailabilityZone> az = AvailabilityZone.maybeGetByCode(defaultProvider, zone);
+          if (exists) {
+            assertTrue(az.isPresent());
+          } else {
+            assertFalse(az.isPresent());
+          }
+        });
   }
+
   private void assertAccessKeyAndProvider(boolean exists) {
     List<AccessKey> accessKeyList = AccessKey.getAll(defaultProvider.uuid);
     defaultProvider = Provider.get(defaultProvider.uuid);
@@ -70,14 +73,14 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   @Test
   public void testCloudCleanupSuccess() throws InterruptedException {
     Region region = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
-    AvailabilityZone.create(region, "az-1", "az 1", "subnet-1");
-    AvailabilityZone.create(region, "az-2", "az 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region, "az-1", "az 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region, "az-2", "az 2", "subnet-2");
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
-    when(mockNetworkManager.cleanup(region.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(mockAccessManager, times(1)).deleteKey(region.uuid, "yb-amazon-key");
-    assertValue(Json.toJson(taskInfo), "taskState", "Success");
+    assertEquals(Success, taskInfo.getTaskState());
     assertRegionZones("us-west-1", ImmutableList.of("az-1", "az-2"), false);
     assertAccessKeyAndProvider(false);
   }
@@ -85,18 +88,18 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   @Test
   public void testCloudCleanupWithMultipleRegions() throws InterruptedException {
     Region region1 = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
-    AvailabilityZone.create(region1, "az-1", "az 1", "subnet-1");
-    AvailabilityZone.create(region1, "az-2", "az 2", "subnet-2");
+    AvailabilityZone.createOrThrow(region1, "az-1", "az 1", "subnet-1");
+    AvailabilityZone.createOrThrow(region1, "az-2", "az 2", "subnet-2");
     Region region2 = Region.create(defaultProvider, "us-west-2", "us west 2", "yb-image");
-    AvailabilityZone.create(region2, "az-3", "az 3", "subnet-3");
-    AvailabilityZone.create(region2, "az-4", "az 4", "subnet-4");
+    AvailabilityZone.createOrThrow(region2, "az-3", "az 3", "subnet-3");
+    AvailabilityZone.createOrThrow(region2, "az-4", "az 4", "subnet-4");
     AccessKey.create(defaultProvider.uuid, "access-key", new AccessKey.KeyInfo());
     JsonNode vpcInfo = Json.parse("{\"us-west-1\": \"VPC Deleted\"}");
-    when(mockNetworkManager.cleanup(region1.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region1.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of("us-west-1"));
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(mockAccessManager, times(1)).deleteKey(region1.uuid, "yb-amazon-key");
-    assertValue(Json.toJson(taskInfo), "taskState", "Success");
+    assertEquals(Success, taskInfo.getTaskState());
     assertRegionZones("us-west-1", ImmutableList.of("az-1", "az-2"), false);
     assertRegionZones("us-west-2", ImmutableList.of("az-3", "az-4"), true);
     assertAccessKeyAndProvider(true);
@@ -106,16 +109,16 @@ public class CloudCleanupTestTest extends CommissionerBaseTest {
   public void testCloudCleanupInvalidRegion() throws InterruptedException {
     UUID taskUUID = submitTask(ImmutableList.of("fake-region"));
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertValue(Json.toJson(taskInfo), "taskState", "Failure");
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
   public void testCloudCleanupError() throws InterruptedException {
     Region region = Region.create(defaultProvider, "us-west-1", "us west 1", "yb-image");
     JsonNode vpcInfo = Json.parse("{\"error\": \"Something failed\"}");
-    when(mockNetworkManager.cleanup(region.uuid)).thenReturn(vpcInfo);
+    when(mockNetworkManager.cleanupOrFail(region.uuid)).thenReturn(vpcInfo);
     UUID taskUUID = submitTask(ImmutableList.of(region.code));
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertValue(Json.toJson(taskInfo), "taskState", "Failure");
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 }

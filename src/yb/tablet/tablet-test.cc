@@ -30,28 +30,35 @@
 // under the License.
 //
 
+
+
+
+
+
+// Include client header so we can access YBTableType.
+
 #include <time.h>
 
 #include <glog/logging.h>
 
 #include "yb/client/table.h"
 
-#include "yb/common/row.h"
 #include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowwise_iterator_interface.h"
+
+#include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/join.h"
-#include "yb/tablet/local_tablet_writer.h"
-#include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet-test-base.h"
-#include "yb/util/slice.h"
-#include "yb/util/test_macros.h"
 
-// Include client header so we can access YBTableType.
-#include "yb/client/client.h"
+#include "yb/tablet/local_tablet_writer.h"
+#include "yb/tablet/tablet-test-base.h"
+#include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 
 #include "yb/util/enums.h"
+#include "yb/util/slice.h"
+#include "yb/util/status_log.h"
+#include "yb/util/test_macros.h"
 
 using std::shared_ptr;
 using std::unordered_set;
@@ -62,10 +69,10 @@ namespace tablet {
 DEFINE_int32(testiterator_num_inserts, 1000,
              "Number of rows inserted in TestRowIterator/TestInsert");
 
-static_assert(to_underlying(TableType::YQL_TABLE_TYPE) ==
+static_assert(static_cast<int>(to_underlying(TableType::YQL_TABLE_TYPE)) ==
                   to_underlying(client::YBTableType::YQL_TABLE_TYPE),
               "Numeric code for YQL_TABLE_TYPE table type must be consistent");
-static_assert(to_underlying(TableType::REDIS_TABLE_TYPE) ==
+static_assert(static_cast<int>(to_underlying(TableType::REDIS_TABLE_TYPE)) ==
                   to_underlying(client::YBTableType::REDIS_TABLE_TYPE),
               "Numeric code for REDIS_TABLE_TYPE table type must be consistent");
 
@@ -111,7 +118,7 @@ bool TestSetupExpectsNulls<NullableValueTestSetup>(int32_t key_idx) {
 
 // Test iterating over a tablet after updates to many of the existing rows.
 TYPED_TEST(TestTablet, TestRowIteratorComplex) {
-  uint64_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
+  int32_t max_rows = this->ClampRowCount(FLAGS_testiterator_num_inserts);
 
   // Put a row in (insert and flush).
   LocalTabletWriter writer(this->tablet().get());

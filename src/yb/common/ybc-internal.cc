@@ -9,10 +9,10 @@
 // is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
-
 #include "yb/common/ybc-internal.h"
 
-#include "yb/util/logging.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 namespace yb {
 
@@ -56,7 +56,7 @@ void FreeYBCStatus(YBCStatus status) {
 }
 
 YBCStatus YBCStatusOK() {
-  return nullptr;
+  return YBCStatusOKValue;
 }
 
 YBCStatus YBCStatusNotSupport(const string& feature_name) {
@@ -69,7 +69,7 @@ YBCStatus YBCStatusNotSupport(const string& feature_name) {
 
 const char* YBCPAllocStdString(const std::string& s) {
   const size_t len = s.size();
-  char* result = reinterpret_cast<char*>(YBCPAlloc(len + 1));
+  char* result = static_cast<char*>(YBCPAlloc(len + 1));
   memcpy(result, s.c_str(), len);
   result[len] = 0;
   return result;

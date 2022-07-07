@@ -33,16 +33,16 @@
 #ifndef YB_SERVER_CLOCK_H_
 #define YB_SERVER_CLOCK_H_
 
+#include <functional>
 #include <string>
 
 #include "yb/common/clock.h"
-#include "yb/common/common.pb.h"
 #include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/monotime.h"
-#include "yb/util/status.h"
 
 namespace yb {
 class faststring;
@@ -62,7 +62,7 @@ class Clock : public ClockBase {
  public:
 
   // Initializes the clock.
-  virtual CHECKED_STATUS Init() = 0;
+  virtual Status Init() = 0;
 
   // Update the clock with a transaction timestamp originating from
   // another server. For instance replicas can call this so that,

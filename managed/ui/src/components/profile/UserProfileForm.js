@@ -3,15 +3,19 @@
 import React, { Component } from 'react';
 import Cookies from 'js-cookie';
 import { isEqual } from 'lodash';
-import { Row, Col } from 'react-bootstrap';
-import { YBFormInput, YBButton } from '../common/forms/fields';
-import { Formik, Form, Field } from 'formik';
-import { showOrRedirect, isDisabled } from '../../utils/LayoutUtils';
+import { Col, Row } from 'react-bootstrap';
+import { YBButton, YBFormInput, YBFormSelect } from '../common/forms/fields';
+import { Field, Form, Formik } from 'formik';
+import { showOrRedirect } from '../../utils/LayoutUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../common/flexbox/YBFlexBox';
 import { YBCopyButton } from '../common/descriptors';
 import * as Yup from 'yup';
 import { isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
+
+import moment from 'moment';
+
+const MIN_PASSWORD_LENGTH = 8;
 
 export default class UserProfileForm extends Component {
   constructor(props) {
@@ -19,6 +23,11 @@ export default class UserProfileForm extends Component {
     this.state = {
       statusUpdated: false
     };
+  }
+
+  componentDidMount() {
+    const { validateRegistration } = this.props;
+    validateRegistration();
   }
 
   handleRefreshApiToken = (e) => {
@@ -41,27 +50,68 @@ export default class UserProfileForm extends Component {
     }
   }
 
+  formatTimezoneLabel = (timezone) => {
+    const formattedTimezone = timezone.replace('_', ' ');
+    return formattedTimezone + ' UTC' + moment.tz(timezone).format('ZZ');
+  };
+
   render() {
     const {
       customer = {},
       users = [],
       apiToken,
       updateCustomerDetails,
-      changeUserPassword
+      updateUserProfile,
+      passwordValidationInfo,
+      currentUser
     } = this.props;
+    const minPasswordLength = passwordValidationInfo?.minLength || MIN_PASSWORD_LENGTH;
 
     showOrRedirect(customer.data.features, 'main.profile');
+
+    // Filter users for userUUID set during login
+    const loginUserId = localStorage.getItem('userId');
+    const getCurrentUser = isNonEmptyArray(users)
+      ? users.filter((u) => u.uuid === loginUserId)
+      : [];
+
+    const isLDAPUser = !!currentUser?.data?.ldapSpecifiedRole;
+
+    const defaultTimezoneOption = { value: '', label: 'Default' };
+    const initialValues = {
+      name: customer.data.name || '',
+      email: (getCurrentUser.length && getCurrentUser[0].email) || '',
+      code: customer.data.code || '',
+      customerId: customer.data.uuid,
+      password: '',
+      confirmPassword: '',
+      timezone: currentUser.data.timezone
+        ? {
+            value: currentUser.data.timezone,
+            label: this.formatTimezoneLabel(currentUser.data.timezone)
+          }
+        : defaultTimezoneOption
+    };
+    const timezoneOptions = [defaultTimezoneOption];
+    moment.tz.names().forEach((timezone) => {
+      timezoneOptions.push({
+        value: timezone,
+        label: this.formatTimezoneLabel(timezone)
+      });
+    });
 
     const validationSchema = Yup.object().shape({
       name: Yup.string().required('Enter name'),
 
       // Regex below matches either the default value 'admin' or a generic email address
-      email: Yup.string()
-        .matches(
-          /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
-          'This is not a valid email or value'
-        )
-        .required('Enter email'),
+      email: isLDAPUser
+        ? Yup.string().required('Enter Email or Username')
+        : Yup.string()
+            .matches(
+              /(^admin$)|(^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$)/i,
+              'This is not a valid email or value'
+            )
+            .required('Enter email'),
 
       code: Yup.string()
         .required('Enter Environment name')
@@ -69,25 +119,23 @@ export default class UserProfileForm extends Component {
 
       password: Yup.string()
         .notRequired()
+        .min(
+          minPasswordLength,
+          `Password is too short - must be ${minPasswordLength} characters minimum.`
+        )
+        .matches(
+          /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/,
+          `Password must contain at least ${passwordValidationInfo?.minDigits} digit
+          , ${passwordValidationInfo?.minUppercase} capital
+          , ${passwordValidationInfo?.minLowercase} lowercase
+          and ${passwordValidationInfo?.minSpecialCharacters} of the !@#$%^&* (special) characters.`
+        )
         .oneOf([Yup.ref('confirmPassword')], "Passwords don't match"),
 
       confirmPassword: Yup.string()
         .notRequired()
         .oneOf([Yup.ref('password')], "Passwords don't match")
     });
-
-    // Filter users for userUUID set during login
-    const loginUserId = localStorage.getItem('userId');
-    const getCurrentUser = isNonEmptyArray(users)
-      ? users.filter((u) => u.uuid === loginUserId)
-      : [];
-    const initialValues = {
-      name: customer.data.name || '',
-      email: (getCurrentUser.length && getCurrentUser[0].email) || '',
-      code: customer.data.code || '',
-      password: '',
-      confirmPassword: ''
-    };
 
     return (
       <div className="bottom-bar-padding">
@@ -96,36 +144,34 @@ export default class UserProfileForm extends Component {
           initialValues={initialValues}
           enableReinitialize
           onSubmit={(values, { setSubmitting }) => {
+            const payload = {
+              ...values,
+              timezone: values.timezone.value
+            };
+            const initialPayload = {
+              ...initialValues,
+              timezone: initialValues.timezone.value
+            };
             // Compare values to initial values to see if changes were made
-            let hasPasswordChanged = false,
-              hasProfileInfoChanged = false;
-            Object.entries(values).forEach(([key, value]) => {
-              if (key in initialValues) {
-                if (typeof value !== 'object' && value !== initialValues[key]) {
-                  if (['password', 'confirmPassword'].includes(key)) {
-                    hasPasswordChanged = true;
-                  } else {
-                    hasProfileInfoChanged = true;
-                  }
-                } else if (typeof value === 'object' && !isEqual(value, initialValues[key])) {
-                  // Value is an array or object
-                  hasProfileInfoChanged = true;
+            let hasNameChanged = false;
+            let hasUserProfileChanged = false;
+            Object.entries(payload).forEach(([key, value]) => {
+              if (!isEqual(value, initialPayload[key])) {
+                if (key === 'name') {
+                  hasNameChanged = true;
+                } else {
+                  hasUserProfileChanged = true;
                 }
-              } else {
-                // In the event that Formik field was not added to initialValues,
-                // we still want to update the profile
-                hasProfileInfoChanged = true;
               }
             });
-
-            if (hasPasswordChanged) {
-              changeUserPassword(getCurrentUser[0], values);
+            if (hasNameChanged) {
+              updateCustomerDetails(payload);
             }
-            if (hasProfileInfoChanged) {
-              updateCustomerDetails(values);
+            if (hasUserProfileChanged) {
+              updateUserProfile(getCurrentUser[0], payload);
             }
             setSubmitting(false);
-            this.setState({ statusUpdated: true });
+            this.setState({ statusUpdated: hasNameChanged || hasUserProfileChanged });
           }}
         >
           {({ handleSubmit, isSubmitting }) => (
@@ -146,9 +192,9 @@ export default class UserProfileForm extends Component {
                         name="email"
                         readOnly={true}
                         type="text"
-                        label="Email"
+                        label="Email or Username"
                         component={YBFormInput}
-                        placeholder="Email Address"
+                        placeholder="Email or Username"
                       />
                       <Field
                         name="code"
@@ -158,30 +204,39 @@ export default class UserProfileForm extends Component {
                         component={YBFormInput}
                         placeholder="Customer Code"
                       />
-                    </Col>
-                  </Row>
-                  <Row>
-                    <Col sm={12}>
-                      <br />
-                      <h3>Change Password</h3>
                       <Field
-                        name="password"
-                        type="password"
-                        component={YBFormInput}
-                        label="Password"
-                        autoComplete="new-password"
-                        placeholder="Enter New Password"
-                      />
-                      <Field
-                        name="confirmPassword"
-                        type="password"
-                        component={YBFormInput}
-                        label="Confirm Password"
-                        autoComplete="new-password"
-                        placeholder="Confirm New Password"
+                        name="timezone"
+                        label="Preferred Timezone"
+                        component={YBFormSelect}
+                        options={timezoneOptions}
+                        placeholder="User Timezone"
                       />
                     </Col>
                   </Row>
+                  {!isLDAPUser && (
+                    <Row>
+                      <Col sm={12}>
+                        <br />
+                        <h3>Change Password</h3>
+                        <Field
+                          name="password"
+                          type="password"
+                          component={YBFormInput}
+                          label="Password"
+                          autoComplete="new-password"
+                          placeholder="Enter New Password"
+                        />
+                        <Field
+                          name="confirmPassword"
+                          type="password"
+                          component={YBFormInput}
+                          label="Confirm Password"
+                          autoComplete="new-password"
+                          placeholder="Confirm New Password"
+                        />
+                      </Col>
+                    </Row>
+                  )}
                 </Col>
                 <Col md={6} sm={12}>
                   <h3>API Key management</h3>
@@ -207,6 +262,14 @@ export default class UserProfileForm extends Component {
                       />
                     </FlexShrink>
                   </FlexContainer>
+                  <Field
+                    name="customerId"
+                    readOnly={true}
+                    type="text"
+                    label="Customer ID"
+                    component={YBFormInput}
+                    placeholder="Customer ID"
+                  />
                 </Col>
               </Row>
               <div className="form-action-button-container">
@@ -214,7 +277,7 @@ export default class UserProfileForm extends Component {
                   <YBButton
                     btnText="Save"
                     btnType="submit"
-                    disabled={isSubmitting || isDisabled(customer.data.features, 'universe.create')}
+                    disabled={isSubmitting}
                     btnClass="btn btn-orange pull-right"
                   />
                 </Col>

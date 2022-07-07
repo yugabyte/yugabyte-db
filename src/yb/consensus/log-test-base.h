@@ -34,37 +34,41 @@
 
 #include <utility>
 #include <vector>
-#include <string>
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/consensus/log.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/common/schema.h"
+#include "yb/common/transaction.h"
 #include "yb/common/wire_protocol-test-util.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/fs/fs_manager.h"
-#include "yb/gutil/gscoped_ptr.h"
+
+#include "yb/gutil/bind.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/strings/util.h"
+
 #include "yb/server/clock.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/server/metadata.h"
-#include "yb/tablet/tablet.h"
+
 #include "yb/tserver/tserver.pb.h"
+
+#include "yb/util/async_util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
+#include "yb/util/result.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
-#include "yb/util/stopwatch.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/util/threadpool.h"
 
+METRIC_DECLARE_entity(table);
 METRIC_DECLARE_entity(tablet);
 
 DECLARE_int32(log_min_seconds_to_retain);
@@ -82,26 +86,18 @@ using server::Clock;
 
 using tserver::WriteRequestPB;
 
-using tablet::Tablet;
-
-using docdb::KeyValuePairPB;
-using docdb::SubDocKey;
-using docdb::DocKey;
-using docdb::PrimitiveValue;
-using docdb::ValueType;
-
 const char* kTestNamespace = "test-ns";
 const char* kTestTable = "test-log-table";
 const char* kTestTablet = "test-log-tablet";
 
 YB_STRONGLY_TYPED_BOOL(AppendSync);
 
-// Append a single batch of 'count' NoOps to the log.  If 'size' is not NULL, increments it by the
-// expected increase in log size.  Increments 'op_id''s index once for each operation logged.
-static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
+// Append a single batch of 'count' NoOps to the log.  If 'size' is not nullptr, increments it by
+// the expected increase in log size.  Increments 'op_id''s index once for each operation logged.
+static Status AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
                                            Log* log, OpIdPB* op_id,
                                            int count,
-                                           int* size = NULL) {
+                                           ssize_t* size = nullptr) {
   ReplicateMsgs replicates;
   for (int i = 0; i < count; i++) {
     auto replicate = std::make_shared<ReplicateMsg>();
@@ -135,9 +131,9 @@ static CHECKED_STATUS AppendNoOpsToLogSync(const scoped_refptr<Clock>& clock,
   return Status::OK();
 }
 
-static CHECKED_STATUS AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
+static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
                                           Log* log, OpIdPB* op_id,
-                                          int* size = nullptr) {
+                                          ssize_t* size = nullptr) {
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
 }
 
@@ -161,9 +157,11 @@ class LogTestBase : public YBTest {
     current_index_ = 1;
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root"), "tserver_test"));
     metric_registry_.reset(new MetricRegistry());
-    metric_entity_ = METRIC_ENTITY_tablet.Instantiate(metric_registry_.get(), "log-test-base");
+    table_metric_entity_ = METRIC_ENTITY_table.Instantiate(metric_registry_.get(), "log-test-base");
+    tablet_metric_entity_ = METRIC_ENTITY_tablet.Instantiate(
+                                metric_registry_.get(), "log-test-base-tablet");
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
-    ASSERT_OK(fs_manager_->Open());
+    ASSERT_OK(fs_manager_->CheckAndOpenFileSystemRoots());
     tablet_wal_path_ = fs_manager_->GetFirstTabletWalDirOrDie(kTestTable, kTestTablet);
     clock_.reset(new server::HybridClock());
     ASSERT_OK(clock_->Init());
@@ -186,7 +184,8 @@ class LogTestBase : public YBTest {
                        fs_manager_->uuid(),
                        schema_with_ids,
                        0, // schema_version
-                       metric_entity_.get(),
+                       table_metric_entity_.get(),
+                       tablet_metric_entity_.get(),
                        log_thread_pool_.get(),
                        log_thread_pool_.get(),
                        std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
@@ -246,11 +245,12 @@ class LogTestBase : public YBTest {
     replicate->mutable_id()->CopyFrom(opid);
     replicate->mutable_committed_op_id()->CopyFrom(committed_opid);
     replicate->set_hybrid_time(clock_->Now().ToUint64());
-    WriteRequestPB *batch_request = replicate->mutable_write_request();
+    auto *batch_request = replicate->mutable_write();
 
     if (op_type == consensus::OperationType::UPDATE_TRANSACTION_OP) {
       ASSERT_TRUE(!txn_id.IsNil());
       replicate->mutable_transaction_state()->set_status(txn_status);
+      replicate->mutable_transaction_state()->set_transaction_id(txn_id.data(), txn_id.size());
     } else if (op_type == consensus::OperationType::WRITE_OP) {
       if (writes.empty()) {
         const int opid_index_as_int = static_cast<int>(opid.index());
@@ -278,7 +278,6 @@ class LogTestBase : public YBTest {
       FAIL() << "Unexpected operation type: " << consensus::OperationType_Name(op_type);
     }
 
-    batch_request->set_tablet_id(kTestTablet);
     AppendReplicateBatch(replicate, sync);
   }
 
@@ -302,30 +301,31 @@ class LogTestBase : public YBTest {
   }
 
   // Appends 'count' ReplicateMsgs to the log as committed entries.
-  void AppendReplicateBatchToLog(int count, AppendSync sync = AppendSync::kTrue) {
-    for (int i = 0; i < count; i++) {
+  void AppendReplicateBatchToLog(size_t count, AppendSync sync = AppendSync::kTrue) {
+    for (size_t i = 0; i < count; i++) {
       OpIdPB opid = consensus::MakeOpId(1, current_index_);
       AppendReplicateBatch(opid, opid, /* writes */ {}, sync);
       current_index_ += 1;
     }
   }
 
-  // Append a single NO_OP entry. Increments op_id by one.  If non-NULL, and if the write is
+  // Append a single NO_OP entry. Increments op_id by one.  If non-nullptr, and if the write is
   // successful, 'size' is incremented by the size of the written operation.
-  CHECKED_STATUS AppendNoOp(OpIdPB* op_id, int* size = nullptr) {
+  Status AppendNoOp(OpIdPB* op_id, ssize_t* size = nullptr) {
     return AppendNoOpToLogSync(clock_, log_.get(), op_id, size);
   }
 
   // Append a number of no-op entries to the log.  Increments op_id's index by the number of records
-  // written.  If non-NULL, 'size' keeps track of the size of the operations successfully written.
-  CHECKED_STATUS AppendNoOps(OpIdPB* op_id, int num, int* size = nullptr) {
+  // written.  If non-nullptr, 'size' keeps track of the size of the operations successfully
+  // written.
+  Status AppendNoOps(OpIdPB* op_id, int num, ssize_t* size = nullptr) {
     for (int i = 0; i < num; i++) {
       RETURN_NOT_OK(AppendNoOp(op_id, size));
     }
     return Status::OK();
   }
 
-  CHECKED_STATUS RollLog() {
+  Status RollLog() {
     return log_->AllocateSegmentAndRollOver();
   }
 
@@ -348,9 +348,10 @@ class LogTestBase : public YBTest {
 
  protected:
   const Schema schema_;
-  gscoped_ptr<FsManager> fs_manager_;
-  gscoped_ptr<MetricRegistry> metric_registry_;
-  scoped_refptr<MetricEntity> metric_entity_;
+  std::unique_ptr<FsManager> fs_manager_;
+  std::unique_ptr<MetricRegistry> metric_registry_;
+  scoped_refptr<MetricEntity> table_metric_entity_;
+  scoped_refptr<MetricEntity> tablet_metric_entity_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
   scoped_refptr<Log> log_;
   int64_t current_index_;
@@ -370,7 +371,7 @@ enum CorruptionType {
 };
 
 Status CorruptLogFile(Env* env, const string& log_path,
-                      CorruptionType type, int corruption_offset) {
+                      CorruptionType type, size_t corruption_offset) {
   faststring buf;
   RETURN_NOT_OK_PREPEND(ReadFileToString(env, log_path, &buf),
                         "Couldn't read log");

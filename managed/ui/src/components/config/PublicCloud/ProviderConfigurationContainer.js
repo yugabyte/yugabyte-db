@@ -34,6 +34,7 @@ import {
   fetchHostInfoSuccess,
   fetchHostInfoFailure
 } from '../../../actions/customers';
+import { toast } from 'react-toastify';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -46,19 +47,24 @@ const mapDispatchToProps = (dispatch) => {
         if (typeof regionFormVals[key] === 'string' || regionFormVals[key] instanceof String)
           regionFormVals[key] = regionFormVals[key].trim();
       });
-      dispatch(createProvider('aws', name.trim(), config)).then((response) => {
+      dispatch(createProvider('aws', name.trim(), config, regionFormVals)).then((response) => {
         dispatch(createProviderResponse(response.payload));
         if (response.payload.status === 200) {
           dispatch(fetchCloudMetadata());
           const providerUUID = response.payload.data.uuid;
           dispatch(bootstrapProvider(providerUUID, regionFormVals)).then((boostrapResponse) => {
+            toast.success('Successfully created AWS Provider!');
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
+        } else {
+          const errorMessage =
+            response?.payload?.response?.data?.error || response?.payload?.message;
+          toast.error(errorMessage);
         }
       });
     },
 
-    createGCPProvider: (providerName, providerConfig, perRegionMetadata) => {
+    createGCPProvider: (providerName, providerConfig, perRegionMetadata, ntpConfig = {}) => {
       Object.keys(providerConfig).forEach((key) => {
         if (typeof providerConfig[key] === 'string' || providerConfig[key] instanceof String)
           providerConfig[key] = providerConfig[key].trim();
@@ -74,11 +80,16 @@ const mapDispatchToProps = (dispatch) => {
             destVpcId: hostNetwork,
             airGapInstall: providerConfig['airGapInstall'],
             sshPort: providerConfig['sshPort'],
-            perRegionMetadata: perRegionMetadata
+            perRegionMetadata: perRegionMetadata,
+            ...ntpConfig
           };
           dispatch(bootstrapProvider(providerUUID, params)).then((boostrapResponse) => {
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
+        } else {
+          const errorMessage =
+            response?.payload?.response?.data?.error || response?.payload?.message;
+          toast.error(errorMessage);
         }
       });
     },
@@ -100,6 +111,10 @@ const mapDispatchToProps = (dispatch) => {
           dispatch(bootstrapProvider(providerUUID, regionFormVals)).then((boostrapResponse) => {
             dispatch(bootstrapProviderResponse(boostrapResponse.payload));
           });
+        } else {
+          const errorMessage =
+            response?.payload?.response?.data?.error || response?.payload?.message;
+          toast.error(errorMessage);
         }
       });
     },
@@ -120,6 +135,8 @@ const mapDispatchToProps = (dispatch) => {
     initializeProvider: (providerUUID) => {
       dispatch(initializeProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
           dispatch(initializeProviderFailure(response.payload));
         } else {
           dispatch(initializeProviderSuccess(response.payload));
@@ -130,6 +147,8 @@ const mapDispatchToProps = (dispatch) => {
     deleteProviderConfig: (providerUUID) => {
       dispatch(deleteProvider(providerUUID)).then((response) => {
         if (response.payload.status !== 200) {
+          const errorMessage = response.payload?.response?.data?.error || response.payload.message;
+          toast.error(errorMessage);
           dispatch(deleteProviderFailure(response.payload));
         } else {
           dispatch(deleteProviderSuccess(response.payload));
@@ -191,17 +210,18 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-const mapStateToProps = (state) => {
+const mapStateToProps = ({ cloud, universe, customer, tasks, featureFlags, modal }) => {
   return {
-    configuredProviders: state.cloud.providers,
-    configuredRegions: state.cloud.supportedRegionList,
-    accessKeys: state.cloud.accessKeys,
-    cloudBootstrap: state.cloud.bootstrap,
-    universeList: state.universe.universeList,
-    hostInfo: state.customer.hostInfo,
-    modal: state.modal,
-    cloud: state.cloud,
-    tasks: state.tasks
+    configuredProviders: cloud.providers,
+    configuredRegions: cloud.supportedRegionList,
+    accessKeys: cloud.accessKeys,
+    cloudBootstrap: cloud.bootstrap,
+    universeList: universe.universeList,
+    hostInfo: customer.hostInfo,
+    modal: modal,
+    cloud: cloud,
+    tasks: tasks,
+    featureFlags: featureFlags
   };
 };
 

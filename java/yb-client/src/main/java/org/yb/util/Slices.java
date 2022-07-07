@@ -41,6 +41,7 @@ package org.yb.util;
 import com.google.common.base.Preconditions;
 import org.yb.annotations.InterfaceAudience;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.CharBuffer;
@@ -149,7 +150,8 @@ public final class Slices
     catch (CharacterCodingException x) {
       throw new IllegalStateException(x);
     }
-    dst.flip();
+    // See https://github.com/yugabyte/yugabyte-db/issues/6712
+    ((Buffer)dst).flip();
     return dst;
   }
 
@@ -171,7 +173,8 @@ public final class Slices
     catch (CharacterCodingException x) {
       throw new IllegalStateException(x);
     }
-    return dst.flip().toString();
+    // See https://github.com/yugabyte/yugabyte-db/issues/6712
+    return ((Buffer)dst).flip().toString();
   }
 
   /**

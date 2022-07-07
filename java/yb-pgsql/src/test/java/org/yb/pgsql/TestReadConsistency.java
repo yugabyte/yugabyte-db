@@ -15,7 +15,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.Connection;

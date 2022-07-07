@@ -13,24 +13,22 @@
 //
 //--------------------------------------------------------------------------------------------------
 
-#include <bitset>
-
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
 
+#include "yb/client/client.h"
 #include "yb/client/permissions.h"
 
 #include "yb/common/ql_value.h"
 
-#include "yb/master/catalog_manager.h"
-#include "yb/master/master.h"
-#include "yb/master/master.proxy.h"
+#include "yb/gutil/strings/substitute.h"
+
 #include "yb/master/mini_master.h"
 
-#include "yb/rpc/messenger.h"
+#include "yb/util/crypt.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/ql/test/ql-test-base.h"
-#include "yb/gutil/strings/substitute.h"
 
 DECLARE_bool(use_cassandra_authentication);
 
@@ -243,12 +241,12 @@ class TestQLPermission : public QLTestAuthentication {
     EXPECT_EQ(canonical_resource, row.column(1).string_value());
 
     EXPECT_EQ(InternalType::kListValue, row.column(2).type());
-    QLSeqValuePB list_value = row.column(2).list_value();
+    const QLSeqValuePB& list_value = row.column(2).list_value();
     EXPECT_EQ(permissions.size(), list_value.elems_size());
     // Create a set of the values:
     std::unordered_set<string> permissions_set;
-    for (int i = 0; i < permissions.size(); i++) {
-      permissions_set.insert(list_value.elems(i).string_value());
+    for (const auto& elem : list_value.elems()) {
+      permissions_set.insert(elem.string_value());
     }
 
     for (const auto& permission : permissions) {

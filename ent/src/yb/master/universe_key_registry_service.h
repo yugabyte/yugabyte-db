@@ -13,10 +13,14 @@
 #ifndef ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
 #define ENT_SRC_YB_MASTER_UNIVERSE_KEY_REGISTRY_SERVICE_H
 
-#include "yb/util/status.h"
-#include "yb/util/result.h"
+#include <string>
+
+#include "yb/util/status_fwd.h"
 
 namespace yb {
+
+class Slice;
+
 namespace master {
 
 class EncryptionInfoPB;
@@ -27,7 +31,7 @@ namespace enterprise {
 Result<std::string> DecryptUniverseKeyRegistry(const Slice& s, const Slice& universe_key);
 
 // Rotate a new universe key into the sys catalog. Triggered by the user (yb-admin or YW).
-CHECKED_STATUS RotateUniverseKey(const Slice& old_universe_key,
+Status RotateUniverseKey(const Slice& old_universe_key,
                                  const Slice& new_universe_key,
                                  const std::string& new_key_version_id,
                                  bool enable,

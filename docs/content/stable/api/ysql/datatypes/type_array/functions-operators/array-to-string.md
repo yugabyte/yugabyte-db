@@ -3,13 +3,11 @@ title: array_to_string()
 linkTitle: array_to_string()
 headerTitle: array_to_string()
 description: array_to_string()
-block_indexing: true
 menu:
   stable:
     identifier: array-to-string
     parent: array-functions-operators
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Return a `text` value computed by representing each array value, traversing these in row-major order, by its `::text` typecast, using the supplied delimiter between each such representation. (The result, therefore, loses all information about the arrays geometric properties.) Optionally, represent `NULL` by the supplied `text` value. The term _"row-major order"_ is explained in [Joint semantics](../properties/#joint-semantics) within the section _"Functions for reporting the geometric properties of an array"_.
@@ -36,7 +34,7 @@ select arr::text from t where k = 1;
 ```
 It shows this:
 ```
-                arr                
+                arr
 -----------------------------------
  {{{"(1,a)","(2,)",NULL,"(3,c)"}}}
 ```
@@ -53,7 +51,7 @@ where k = 1;
 ```
 It shows this:
 ```
-   array_to_string    
+   array_to_string
 ----------------------
  (1,a) | (2,) | (3,c)
 ```
@@ -71,7 +69,7 @@ where k = 1;
 ```
 It shows this:
 ```
-     array_to_string      
+     array_to_string
 --------------------------
  (1,a) | (2,) | ? | (3,c)
 ```

@@ -26,9 +26,13 @@ import static org.yb.AssertionWrappers.assertFalse;
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelectNoHash extends BaseCQLTest {
+  private static final Logger LOG = LoggerFactory.getLogger(TestSelectNoHash.class);
+
   @Test
   public void testSelectNoHashQuery() throws Exception {
     LOG.info("TEST CQL SIMPLE NO HASH QUERY - Start");

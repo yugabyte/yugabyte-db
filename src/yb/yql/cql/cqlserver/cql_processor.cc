@@ -15,15 +15,34 @@
 
 #include "yb/yql/cql/cqlserver/cql_processor.h"
 
-#include "yb/common/ql_value.h"
+#include <ldap.h>
 
+#include <boost/algorithm/string.hpp>
+
+#include "yb/common/ql_rowblock.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/schema.h"
+
+#include "yb/gutil/bind.h"
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
 
 #include "yb/rpc/connection.h"
 #include "yb/rpc/messenger.h"
-#include "yb/rpc/rpc_context.h"
+
+#include "yb/util/crypt.h"
+#include "yb/util/flag_tags.h"
+#include "yb/util/format.h"
+#include "yb/util/logging.h"
+#include "yb/util/metrics.h"
+#include "yb/util/result.h"
+#include "yb/util/status_format.h"
+#include "yb/util/status_log.h"
 
 #include "yb/yql/cql/cqlserver/cql_service.h"
+#include "yb/yql/cql/ql/util/errcodes.h"
+
+using namespace std::literals;
 
 METRIC_DEFINE_histogram_with_percentiles(
     server, handler_latency_yb_cqlserver_CQLServerService_GetProcessor,
@@ -81,20 +100,46 @@ METRIC_DEFINE_counter(server, cql_parsers_created,
 
 DECLARE_bool(use_cassandra_authentication);
 DECLARE_bool(ycql_cache_login_info);
+DECLARE_int32(client_read_write_timeout_ms);
+
+// LDAP specific flags
+DEFINE_bool(ycql_use_ldap, false, "Use LDAP for user logins");
+DEFINE_string(ycql_ldap_users_to_skip_csv, "", "Users that are authenticated via the local password"
+  " check instead of LDAP (if ycql_use_ldap=true). This is a comma separated list");
+TAG_FLAG(ycql_ldap_users_to_skip_csv, sensitive_info);
+DEFINE_string(ycql_ldap_server, "", "LDAP server of the form <scheme>://<ip>:<port>");
+DEFINE_bool(ycql_ldap_tls, false, "Connect to LDAP server using TLS encryption.");
+
+// LDAP flags for simple bind mode
+DEFINE_string(ycql_ldap_user_prefix, "", "String used for prepending the user name when forming "
+  "the DN for binding to the LDAP server");
+DEFINE_string(ycql_ldap_user_suffix, "", "String used for appending the user name when forming the "
+  "DN for binding to the LDAP Server.");
+
+// Flags for LDAP search + bind mode
+DEFINE_string(ycql_ldap_base_dn, "", "Specifies the base directory to begin the user name search");
+DEFINE_string(ycql_ldap_bind_dn, "", "Specifies the username to perform the initial search when "
+  "doing search + bind authentication");
+TAG_FLAG(ycql_ldap_bind_dn, sensitive_info);
+DEFINE_string(ycql_ldap_bind_passwd, "", "Password for username being used to perform the initial "
+  "search when doing search + bind authentication");
+TAG_FLAG(ycql_ldap_bind_passwd, sensitive_info);
+DEFINE_string(ycql_ldap_search_attribute, "", "Attribute to match against the username in the "
+  "search when doing search + bind authentication. If no attribute is specified, the uid attribute "
+  "is used.");
+DEFINE_string(ycql_ldap_search_filter, "", "The search filter to use when doing search + bind "
+  "authentication.");
 
 namespace yb {
 namespace cqlserver {
-
-const unordered_map<string, vector<string>> kSupportedOptions = {
-  {CQLMessage::kCQLVersionOption, {"3.0.0" /* minimum */, "3.4.2" /* current */} },
-  {CQLMessage::kCompressionOption, {CQLMessage::kLZ4Compression, CQLMessage::kSnappyCompression} }
-};
 
 constexpr const char* const kCassandraPasswordAuthenticator =
     "org.apache.cassandra.auth.PasswordAuthenticator";
 
 extern const char* const kRoleColumnNameSaltedHash;
 extern const char* const kRoleColumnNameCanLogin;
+
+using namespace yb::ql; // NOLINT
 
 using std::make_unique;
 using std::shared_ptr;
@@ -111,10 +156,14 @@ using ql::QLProcessor;
 using ql::ParseTree;
 using ql::Statement;
 using ql::StatementBatch;
-using ql::StatementExecutedCallback;
 using ql::ErrorCode;
 using ql::GetErrorCode;
+
+using ql::audit::IsPrepare;
+using ql::audit::ErrorIsFormatted;
+
 using strings::Substitute;
+
 using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
@@ -163,6 +212,7 @@ CQLProcessor::~CQLProcessor() {
 }
 
 void CQLProcessor::Shutdown() {
+  executor_.Shutdown();
   auto call = std::move(call_);
   if (call) {
     call->RespondFailure(
@@ -172,6 +222,8 @@ void CQLProcessor::Shutdown() {
 
 void CQLProcessor::ProcessCall(rpc::InboundCallPtr call) {
   call_ = std::dynamic_pointer_cast<CQLInboundCall>(std::move(call));
+  call_->SetRpcMethodMetrics(cql_metrics_->rpc_method_metrics_);
+  is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(call_->connection());
   unique_ptr<CQLRequest> request;
   unique_ptr<CQLResponse> response;
@@ -206,6 +258,7 @@ void CQLProcessor::Release() {
   stmts_.clear();
   parse_trees_.clear();
   SetCurrentSession(nullptr);
+  is_rescheduled_.store(IsRescheduled::kFalse, std::memory_order_release);
   audit_logger_.SetConnection(nullptr);
   service_impl_->ReturnProcessor(pos_);
 }
@@ -215,6 +268,7 @@ void CQLProcessor::PrepareAndSendResponse(const unique_ptr<CQLResponse>& respons
     const CQLConnectionContext& context =
         static_cast<const CQLConnectionContext&>(call_->connection()->context());
     response->set_registered_events(context.registered_events());
+    response->set_rpc_queue_position(call_->GetRpcQueuePosition());
     SendResponse(*response);
   }
 }
@@ -227,7 +281,7 @@ void CQLProcessor::SendResponse(const CQLResponse& response) {
   const auto compression_scheme = context.compression_scheme();
   faststring msg;
   response.Serialize(compression_scheme, &msg);
-  call_->RespondSuccess(RefCntBuffer(msg), cql_metrics_->rpc_method_metrics_);
+  call_->RespondSuccess(RefCntBuffer(msg));
 
   MonoTime response_done = MonoTime::Now();
   cql_metrics_->time_to_process_request_->Increment(
@@ -345,13 +399,13 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const PrepareRequest& req) 
     auto pt_result = stmt->GetParseTree();
     if (pt_result.ok()) {
       s = audit_logger_.LogStatement(pt_result->root().get(), req.query(),
-                                     true /* is_prepare */);
+                                     IsPrepare::kTrue);
     } else {
       s = pt_result.status();
     }
   } else {
     WARN_NOT_OK(audit_logger_.LogStatementError(req.query(), s,
-                                                true /* error_is_formatted */),
+                                                ErrorIsFormatted::kTrue),
                 "Failed to log an audit record");
   }
 
@@ -397,7 +451,8 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const BatchRequest& req) {
   batch.reserve(req.queries().size());
 
   // If no errors happen, batch request started here will be ended by the executor.
-  Status s = audit_logger_.StartBatchRequest(req.queries().size());
+  Status s = audit_logger_.StartBatchRequest(req.queries().size(),
+                                             is_rescheduled_.load(std::memory_order_acquire));
   if (PREDICT_FALSE(!s.ok())) {
     return ProcessError(s);
   }
@@ -456,8 +511,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessRequest(const AuthResponseRequest& 
         unique_ptr<CQLResponse> response =
           ProcessAuthResult(*salted_hash_result, *can_login_result);
         VLOG(1) << "Used cached authentication";
-        // FIXME: Logged twice, with different ports!
-        // https://github.com/yugabyte/yugabyte-db/issues/6280
         Status s = audit_logger_.LogAuthResponse(*response);
         return response;
       } else {
@@ -572,29 +625,299 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessError(const Status& s,
                                     s.ToUserMessage());
 }
 
+namespace {
+
+struct LDAPMemoryDeleter {
+  void operator()(void* ptr) const { ldap_memfree(ptr); }
+};
+
+struct LDAPMessageDeleter {
+  void operator()(LDAPMessage* ptr) const { ldap_msgfree(ptr); }
+};
+
+struct LDAPDeleter {
+  void operator()(LDAP* ptr) const { ldap_unbind_ext(ptr, NULL, NULL); }
+};
+
+using LDAPHolder = unique_ptr<LDAP, LDAPDeleter>;
+using LDAPMessageHolder = unique_ptr<LDAPMessage, LDAPMessageDeleter>;
+template<class T>
+using LDAPMemoryHolder = unique_ptr<T, LDAPMemoryDeleter>;
+
+class LDAPError {
+ public:
+  explicit LDAPError(int c) : code(c), ldap_(nullptr) {}
+  LDAPError(int c, const LDAPHolder& l) : code(c), ldap_(&l) {}
+
+  LDAP* GetLDAP() const { return ldap_ ? ldap_->get() : nullptr; }
+  const int code;
+
+ private:
+  const LDAPHolder* ldap_;
+};
+
+/*
+* Add a detail error message text to the current error if one can be
+* constructed from the LDAP 'diagnostic message'.
+*/
+ostream& operator<<(ostream& str, const LDAPError& error) {
+  str << ldap_err2string(error.code);
+  auto ldap = error.GetLDAP();
+  if (ldap) {
+    char *message = nullptr;
+    const auto rc = ldap_get_option(ldap, LDAP_OPT_DIAGNOSTIC_MESSAGE, &message);
+    if (rc == LDAP_SUCCESS && message != nullptr) {
+      LDAPMemoryHolder<char> holder(message);
+      str << " LDAP diagnostics: " << message;
+    }
+  }
+  return str;
+}
+
+Result<LDAPHolder> InitializeLDAPConnection(const char *uris) {
+  LDAP* ldap_ptr = nullptr;
+  auto r = ldap_initialize(&ldap_ptr, uris);
+  if (r != LDAP_SUCCESS) {
+    return STATUS_FORMAT(InternalError, "could not initialize LDAP: $0", LDAPError(r));
+  }
+  LDAPHolder ldap(ldap_ptr);
+  VLOG(4) << "Successfully initialized LDAP struct";
+
+  int ldapversion = LDAP_VERSION3;
+  if ((r = ldap_set_option(ldap_ptr, LDAP_OPT_PROTOCOL_VERSION, &ldapversion)) != LDAP_SUCCESS) {
+    return STATUS_FORMAT(InternalError, "could not set LDAP protocol version: $0",
+        LDAPError(r, ldap));
+  }
+  VLOG(4) << "Successfully set protocol version option";
+
+  if (FLAGS_ycql_ldap_tls && ((r = ldap_start_tls_s(ldap_ptr, NULL, NULL)) != LDAP_SUCCESS)) {
+    return STATUS_FORMAT(InternalError, "could not start LDAP TLS session: $0", LDAPError(r, ldap));
+  }
+
+  return ldap;
+}
+
+/*
+ * Return a newly allocated string copied from "pattern" with all
+ * occurrences of the placeholder "$username" replaced with "user_name".
+ */
+std::string FormatSearchFilter(const std::string& pattern, const std::string& user_name) {
+  return boost::replace_all_copy(pattern, "$username", user_name);
+}
+
+Result<bool> CheckLDAPAuth(const ql::AuthResponseRequest::AuthQueryParameters& params) {
+  if (params.username.empty() || params.password.empty()) {
+    // Refer https://datatracker.ietf.org/doc/html/rfc4513#section-6.3.1 for details. Applications
+    // are required to explicitly have this check and can't rely on an LDAP server to report
+    // invalid credentials error.
+    return STATUS(InvalidArgument, "Empty username and/or password not allowed");
+  }
+
+  if (FLAGS_ycql_ldap_server.empty())
+    return STATUS(InvalidArgument, "LDAP server not specified");
+
+  VLOG(4) << "Attempting ldap_initialize() with " << FLAGS_ycql_ldap_server;
+
+  const auto& uris = FLAGS_ycql_ldap_server;
+  auto ldap = VERIFY_RESULT(InitializeLDAPConnection(uris.c_str()));
+
+  int r;
+  std::string fulluser;
+  if (!FLAGS_ycql_ldap_base_dn.empty()) {
+    if (FLAGS_ycql_ldap_bind_dn.empty() || FLAGS_ycql_ldap_bind_passwd.empty()) {
+      return STATUS(InvalidArgument,
+                    "Empty bind dn and/or bind password not allowed for search+bind mode");
+    }
+
+    /*
+    * First perform an LDAP search to find the DN for the user we are
+    * trying to log in as.
+    */
+    char ldap_no_attrs[sizeof(LDAP_NO_ATTRS)+1];
+    strncpy(ldap_no_attrs, LDAP_NO_ATTRS, sizeof(ldap_no_attrs));
+    char *attributes[] = {ldap_no_attrs, NULL};
+
+    /*
+    * Disallow any characters that we would otherwise need to escape,
+    * since they aren't really reasonable in a username anyway. Allowing
+    * them would make it possible to inject any kind of custom filters in
+    * the LDAP filter.
+    */
+    for (const char& c : params.username) {
+      switch (c) {
+        case '*':
+        case '(':
+        case ')':
+        case '\\':
+        case '/':
+          return STATUS(InvalidArgument, "invalid character in user name for LDAP authentication");
+      }
+    }
+
+    /*
+    * Bind with a pre-defined username/password (if available) for
+    * searching. If none is specified, this turns into an anonymous bind.
+    */
+    struct berval cred;
+    ber_str2bv(FLAGS_ycql_ldap_bind_passwd.c_str(), 0 /* len */, 0 /* duplicate */ , &cred);
+    r = ldap_sasl_bind_s(ldap.get(), FLAGS_ycql_ldap_bind_dn.c_str(),
+                         LDAP_SASL_SIMPLE, &cred,
+                         NULL /* serverctrls */, NULL /* clientctrls */,
+                         NULL /* servercredp */);
+    if (r != LDAP_SUCCESS) {
+      return STATUS_FORMAT(
+        InvalidArgument,
+        "could not perform initial LDAP bind for ldapbinddn '$0' on server '$1': $2",
+        FLAGS_ycql_ldap_bind_dn, FLAGS_ycql_ldap_server, LDAPError(r, ldap));
+    }
+
+    std::string filter;
+    /* Build a custom filter or a single attribute filter? */
+    if (!FLAGS_ycql_ldap_search_filter.empty()) {
+      filter = FormatSearchFilter(FLAGS_ycql_ldap_search_filter, params.username);
+    } else if (!FLAGS_ycql_ldap_search_attribute.empty()) {
+      filter = "(" + FLAGS_ycql_ldap_search_attribute + "=" + params.username + ")";
+    } else {
+      filter = "(uid=" + params.username + ")";
+    }
+
+    LDAPMessage *search_message;
+    r = ldap_search_ext_s(ldap.get(), FLAGS_ycql_ldap_base_dn.c_str(), LDAP_SCOPE_SUBTREE,
+                          filter.c_str(), attributes, 0, NULL, NULL, NULL, 0, &search_message);
+    LDAPMessageHolder search_message_holder{search_message};
+
+    if (r != LDAP_SUCCESS) {
+      return STATUS_FORMAT(
+          InternalError, "could not search LDAP for filter '$0' on server '$1': $2", filter,
+          FLAGS_ycql_ldap_server, LDAPError(r, ldap));
+    }
+
+    auto count = ldap_count_entries(ldap.get(), search_message);
+    switch(count) {
+      case 0:
+        return STATUS_FORMAT(
+            NotFound,
+            "LDAP user '$0' does not exist. "\
+            "LDAP search for filter '$1' on server '$2' returned no entries.",
+            params.username, filter, FLAGS_ycql_ldap_server);
+      case 1:
+        break;
+      default:
+        return STATUS_FORMAT(
+            NotFound, "LDAP user '$0' is not unique, $1 entries exist.", params.username, count);
+    }
+
+    // No need to free entry pointer since it is a pointer to data in
+    // search_message. Freeing search_message takes cares of it.
+    auto *entry = ldap_first_entry(ldap.get(), search_message);
+    char *dn = ldap_get_dn(ldap.get(), entry);
+    if (dn == NULL) {
+      int error;
+      ldap_get_option(ldap.get(), LDAP_OPT_ERROR_NUMBER, &error);
+      return STATUS_FORMAT(
+          NotFound, "could not get dn for the first entry matching '$0' on server '$1': $2",
+          filter, FLAGS_ycql_ldap_server, LDAPError(error, ldap));
+    }
+    LDAPMemoryHolder<char> dn_holder{dn};
+    fulluser = dn;
+
+    /*
+    * Need to re-initialize the LDAP connection, so that we can bind to
+    * it with a different username.
+    */
+    ldap = VERIFY_RESULT(InitializeLDAPConnection(uris.c_str()));
+  } else {
+    fulluser = FLAGS_ycql_ldap_user_prefix + params.username + FLAGS_ycql_ldap_user_suffix;
+  }
+
+  VLOG(4) << "Checking authentication using LDAP for user DN=" << fulluser;
+
+  struct berval cred;
+  ber_str2bv(params.password.c_str(), 0 /* len */, 0 /* duplicate */, &cred);
+  r = ldap_sasl_bind_s(ldap.get(), fulluser.c_str(),
+                       LDAP_SASL_SIMPLE, &cred,
+                       NULL /* serverctrls */, NULL /* clientctrls */,
+                       NULL /* servercredp */);
+  VLOG(4) << "ldap_sasl_bind_s return value =" << r;
+
+  if (r != LDAP_SUCCESS) {
+    std::ostringstream str;
+    str << "LDAP login failed for user '" << fulluser << "' on server '"
+        << FLAGS_ycql_ldap_server << "': " << LDAPError(r, ldap);
+    auto error_msg = str.str();
+    if (r == LDAP_INVALID_CREDENTIALS) {
+      LOG(ERROR) << error_msg;
+      return false;
+    }
+
+    return STATUS(InternalError, error_msg);
+  }
+
+  return true;
+}
+
+static bool UserIn(const std::string& username, const std::string& users_to_skip) {
+  size_t comma_index = 0;
+  size_t prev_comma_index = -1;
+
+  // TODO(Piyush): Store a static list of usernames from csv instead of traversing each time.
+  while ((comma_index = users_to_skip.find(",", prev_comma_index + 1)) != std::string::npos) {
+    if (users_to_skip.substr(prev_comma_index + 1,
+                             comma_index - (prev_comma_index + 1)) == username)
+      return true;
+    VLOG(2) << "Check " << username << " with "
+            << users_to_skip.substr(prev_comma_index + 1, comma_index - (prev_comma_index + 1));
+    prev_comma_index = comma_index;
+  }
+  VLOG(2) << "Check " << username << " with "
+          << users_to_skip.substr(
+              prev_comma_index + 1, users_to_skip.size() - (prev_comma_index + 1));
+  return users_to_skip.substr(prev_comma_index + 1, users_to_skip.size() - (prev_comma_index + 1))
+    == username;
+}
+
+} // namespace
+
 unique_ptr<CQLResponse> CQLProcessor::ProcessAuthResult(const string& saved_hash, bool can_login) {
   const auto& req = down_cast<const AuthResponseRequest&>(*request_);
   const auto& params = req.params();
   unique_ptr<CQLResponse> response = nullptr;
   bool authenticated = false;
-  // Username doesn't have a password, but one is required for authentication. Return an error.
-  if (saved_hash.empty()) {
-    response = make_unique<ErrorResponse>(*request_,
-        ErrorResponse::Code::BAD_CREDENTIALS,
-        "Provided username " + params.username + " and/or password are incorrect");
-  } else {
-    if (!service_impl_->CheckPassword(params.password, saved_hash)) {
-      response = make_unique<ErrorResponse>(*request_,
-          ErrorResponse::Code::BAD_CREDENTIALS,
-          "Provided username " + params.username + " and/or password are incorrect");
-    } else if (!can_login) {
-      response = make_unique<ErrorResponse>(*request_,
-          ErrorResponse::Code::BAD_CREDENTIALS,
-          params.username + " is not permitted to log in");
+
+  if (FLAGS_ycql_use_ldap && !UserIn(params.username, FLAGS_ycql_ldap_users_to_skip_csv)) {
+    Result<bool> ldap_auth_result = CheckLDAPAuth(req.params());
+    if (!ldap_auth_result.ok()) {
+      return make_unique<ErrorResponse>(
+          *request_, ErrorResponse::Code::SERVER_ERROR,
+          "Failed to authenticate using LDAP: " + ldap_auth_result.status().ToString());
+    } else if (!*ldap_auth_result) {
+      response = make_unique<ErrorResponse>(
+          *request_, ErrorResponse::Code::BAD_CREDENTIALS,
+          "Failed to authenticate using LDAP: Provided username '" + params.username +
+          "' and/or password are incorrect");
     } else {
+      authenticated = true;
       call_->ql_session()->set_current_role_name(params.username);
       response = make_unique<AuthSuccessResponse>(*request_,
                                                   "" /* this does not matter */);
+    }
+  } else if (saved_hash.empty()) {
+    // Username doesn't have a password, but one is required for authentication. Return an error.
+    response = make_unique<ErrorResponse>(
+        *request_, ErrorResponse::Code::BAD_CREDENTIALS,
+        "Provided username '" + params.username + "' and/or password are incorrect");
+  } else {
+    if (!service_impl_->CheckPassword(params.password, saved_hash)) {
+      response = make_unique<ErrorResponse>(
+          *request_, ErrorResponse::Code::BAD_CREDENTIALS,
+          "Provided username '" + params.username + "' and/or password are incorrect");
+    } else if (!can_login) {
+      response = make_unique<ErrorResponse>(
+          *request_, ErrorResponse::Code::BAD_CREDENTIALS,
+          params.username + " is not permitted to log in");
+    } else {
+      call_->ql_session()->set_current_role_name(params.username);
+      response = make_unique<AuthSuccessResponse>(*request_, "" /* this does not matter */);
       authenticated = true;
     }
   }
@@ -633,9 +956,9 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
           const auto row_block = rows_result->GetRowBlock();
           unique_ptr<CQLResponse> response = nullptr;
           if (row_block->row_count() != 1) {
-            response = make_unique<ErrorResponse>(*request_,
-                ErrorResponse::Code::BAD_CREDENTIALS,
-                "Provided username " + params.username + " and/or password are incorrect");
+            response = make_unique<ErrorResponse>(
+                *request_, ErrorResponse::Code::BAD_CREDENTIALS,
+                "Provided username '" + params.username + "' and/or password are incorrect");
           } else {
             const auto& row = row_block->row(0);
             const auto& schema = row_block->schema();
@@ -650,7 +973,6 @@ unique_ptr<CQLResponse> CQLProcessor::ProcessResult(const ExecutedResult::Shared
                 "" : salted_hash_value.string_value();
             response = ProcessAuthResult(saved_hash, can_login);
           }
-          // FIXME: Logged twice, with different ports!
           Status s = audit_logger_.LogAuthResponse(*response);
           if (!s.ok()) {
             return make_unique<ErrorResponse>(*request_, ErrorResponse::Code::SERVER_ERROR,
@@ -699,10 +1021,15 @@ bool CQLProcessor::NeedReschedule() {
 }
 
 void CQLProcessor::Reschedule(rpc::ThreadPoolTask* task) {
+  is_rescheduled_.store(IsRescheduled::kTrue, std::memory_order_release);
   auto messenger = service_impl_->messenger();
   DCHECK(messenger != nullptr) << "No messenger to reschedule CQL call";
-  audit_logger_.MarkRescheduled();
   messenger->ThreadPool(rpc::ServicePriority::kNormal).Enqueue(task);
+}
+
+CoarseTimePoint CQLProcessor::GetDeadline() const {
+  return call_ ? call_->GetClientDeadline()
+               : CoarseMonoClock::now() + FLAGS_client_read_write_timeout_ms * 1ms;
 }
 
 }  // namespace cqlserver

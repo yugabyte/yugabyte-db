@@ -17,7 +17,9 @@ DROP ROLE IF EXISTS regress_priv_user4;
 DROP ROLE IF EXISTS regress_priv_user5;
 DROP ROLE IF EXISTS regress_priv_user6;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT lo_unlink(oid) FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3000 ORDER BY oid;
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 RESET client_min_messages;
 
@@ -775,6 +777,42 @@ SELECT has_table_privilege('regress_priv_user3', 'atest4', 'SELECT'); -- false
 SELECT has_table_privilege('regress_priv_user1', 'atest4', 'SELECT WITH GRANT OPTION'); -- true
 
 
+-- security-restricted operations
+\c -
+CREATE ROLE regress_sro_user;
+
+-- Check that index expressions and predicates are run as the table's owner
+
+-- A dummy index function checking current_user
+CREATE FUNCTION sro_ifun(int) RETURNS int AS $$
+BEGIN
+	-- Below we set the table's owner to regress_sro_user
+	ASSERT current_user = 'regress_sro_user',
+		format('sro_ifun(%s) called by %s', $1, current_user);
+	RETURN $1;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+-- Create a table owned by regress_sro_user
+CREATE TABLE sro_tab (a int);
+ALTER TABLE sro_tab OWNER TO regress_sro_user;
+INSERT INTO sro_tab VALUES (1), (2), (3);
+-- Create an expression index with a predicate
+-- YB note: index creation in upstream PG is by default nonconcurrent (unlike YB)
+CREATE INDEX NONCONCURRENTLY sro_idx ON sro_tab ((sro_ifun(a) + sro_ifun(0)))
+	WHERE sro_ifun(a + 10) > sro_ifun(10);
+DROP INDEX sro_idx;
+-- Do the same concurrently
+CREATE INDEX CONCURRENTLY sro_idx ON sro_tab ((sro_ifun(a) + sro_ifun(0)))
+	WHERE sro_ifun(a + 10) > sro_ifun(10);
+-- Check with a partitioned table
+CREATE TABLE sro_ptab (a int) PARTITION BY RANGE (a);
+ALTER TABLE sro_ptab OWNER TO regress_sro_user;
+CREATE TABLE sro_part PARTITION OF sro_ptab FOR VALUES FROM (1) TO (10);
+ALTER TABLE sro_part OWNER TO regress_sro_user;
+INSERT INTO sro_ptab VALUES (1), (2), (3);
+CREATE INDEX sro_pidx ON sro_ptab ((sro_ifun(a) + sro_ifun(0)))
+	WHERE sro_ifun(a + 10) > sro_ifun(10);
+
 -- Admin options
 
 SET SESSION AUTHORIZATION regress_priv_user4;
@@ -821,11 +859,13 @@ SELECT has_sequence_privilege('x_seq', 'USAGE');
 \c -
 SET SESSION AUTHORIZATION regress_priv_user1;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT lo_create(1001);
 SELECT lo_create(1002);
 SELECT lo_create(1003);
 SELECT lo_create(1004);
 SELECT lo_create(1005);
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 GRANT ALL ON LARGE OBJECT 1001 TO PUBLIC;
 GRANT SELECT ON LARGE OBJECT 1003 TO regress_priv_user2;
@@ -840,6 +880,7 @@ GRANT SELECT, UPDATE ON LARGE OBJECT  999 TO PUBLIC;	-- to be failed
 \c -
 SET SESSION AUTHORIZATION regress_priv_user2;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT lo_create(2001);
 SELECT lo_create(2002);
 
@@ -855,14 +896,17 @@ SELECT lowrite(lo_open(1001, x'20000'::int), 'abcd');
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
 SELECT lowrite(lo_open(1003, x'20000'::int), 'abcd');	-- to be denied
 SELECT lowrite(lo_open(1004, x'20000'::int), 'abcd');
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 GRANT SELECT ON LARGE OBJECT 1005 TO regress_priv_user3;
 GRANT UPDATE ON LARGE OBJECT 1006 TO regress_priv_user3;	-- to be denied
 REVOKE ALL ON LARGE OBJECT 2001, 2002 FROM PUBLIC;
 GRANT ALL ON LARGE OBJECT 2001 TO regress_priv_user3;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT lo_unlink(1001);		-- to be denied
 SELECT lo_unlink(2002);
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 \c -
 -- confirm ACL setting
@@ -870,18 +914,21 @@ SELECT oid, pg_get_userbyid(lomowner) ownername, lomacl FROM pg_largeobject_meta
 
 SET SESSION AUTHORIZATION regress_priv_user3;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT loread(lo_open(1001, x'40000'::int), 32);
 SELECT loread(lo_open(1003, x'40000'::int), 32);	-- to be denied
 SELECT loread(lo_open(1005, x'40000'::int), 32);
 
 SELECT lo_truncate(lo_open(1005, x'20000'::int), 10);	-- to be denied
 SELECT lo_truncate(lo_open(2001, x'20000'::int), 10);
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 -- compatibility mode in largeobject permission
 \c -
 SET lo_compat_privileges = false;	-- default setting
 SET SESSION AUTHORIZATION regress_priv_user4;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT loread(lo_open(1002, x'40000'::int), 32);	-- to be denied
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
 SELECT lo_truncate(lo_open(1002, x'20000'::int), 10);	-- to be denied
@@ -890,16 +937,19 @@ SELECT lo_unlink(1002);					-- to be denied
 SELECT lo_export(1001, '/dev/null');			-- to be denied
 SELECT lo_import('/dev/null');				-- to be denied
 SELECT lo_import('/dev/null', 2003);			-- to be denied
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 \c -
 SET lo_compat_privileges = true;	-- compatibility mode
 SET SESSION AUTHORIZATION regress_priv_user4;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT loread(lo_open(1002, x'40000'::int), 32);
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');
 SELECT lo_truncate(lo_open(1002, x'20000'::int), 10);
 SELECT lo_unlink(1002);
 SELECT lo_export(1001, '/dev/null');			-- to be denied
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 -- don't allow unpriv users to access pg_largeobject contents
 \c -
@@ -918,7 +968,8 @@ CREATE TABLE testns.acltest1 (x int);
 SELECT has_table_privilege('regress_priv_user1', 'testns.acltest1', 'SELECT'); -- no
 SELECT has_table_privilege('regress_priv_user1', 'testns.acltest1', 'INSERT'); -- no
 
-ALTER DEFAULT PRIVILEGES IN SCHEMA testns GRANT SELECT ON TABLES TO public;
+-- placeholder for test with duplicated schema and role names
+ALTER DEFAULT PRIVILEGES IN SCHEMA testns,testns GRANT SELECT ON TABLES TO public,public;
 
 SELECT has_table_privilege('regress_priv_user1', 'testns.acltest1', 'SELECT'); -- no
 SELECT has_table_privilege('regress_priv_user1', 'testns.acltest1', 'INSERT'); -- no
@@ -1173,7 +1224,9 @@ DROP TABLE atest6;
 DROP SEQUENCE twoseq;
 DROP SEQUENCE fourseq;
 
+SET yb_non_ddl_txn_for_sys_tables_allowed=1;
 SELECT lo_unlink(oid) FROM pg_largeobject_metadata WHERE oid >= 1000 AND oid < 3000 ORDER BY oid;
+SET yb_non_ddl_txn_for_sys_tables_allowed=0;
 
 DROP GROUP regress_priv_group1;
 DROP GROUP regress_priv_group2;

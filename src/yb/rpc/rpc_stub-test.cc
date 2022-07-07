@@ -38,25 +38,36 @@
 #include <gtest/gtest.h>
 
 #include "yb/gutil/stl_util.h"
+
+#include "yb/rpc/proxy.h"
+#include "yb/rpc/rpc-test-base.h"
+#include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/rtest.proxy.h"
 #include "yb/rpc/rtest.service.h"
-#include "yb/rpc/rpc-test-base.h"
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/countdown_latch.h"
 #include "yb/util/metrics.h"
+#include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/status_log.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
+#include "yb/util/tsan_util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/user.h"
-#include "yb/util/net/net_util.h"
 
 DEFINE_bool(is_panic_test_child, false, "Used by TestRpcPanic");
 DECLARE_bool(socket_inject_short_recvs);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int32(TEST_delay_connect_ms);
+
+METRIC_DECLARE_counter(service_request_bytes_yb_rpc_test_CalculatorService_Echo);
+METRIC_DECLARE_counter(service_response_bytes_yb_rpc_test_CalculatorService_Echo);
+METRIC_DECLARE_counter(proxy_request_bytes_yb_rpc_test_CalculatorService_Echo);
+METRIC_DECLARE_counter(proxy_response_bytes_yb_rpc_test_CalculatorService_Echo);
 
 using namespace std::chrono_literals;
 
@@ -130,7 +141,7 @@ class RpcStubTest : public RpcTestBase {
     EXPECT_OK(messenger->StartAcceptor());
     EXPECT_FALSE(messenger->io_service().stopped());
     ProxyCache proxy_cache(messenger.get());
-    return { move(messenger),
+    return { std::move(messenger),
         std::make_unique<CalculatorServiceProxy>(&proxy_cache, HostPort(remote)) };
   }
 
@@ -169,7 +180,7 @@ TEST_F(RpcStubTest, RandomTimeout) {
   const size_t kTotalCalls = 1000;
   const MonoDelta kMaxTimeout = 2s;
 
-  FLAGS_TEST_delay_connect_ms = kMaxTimeout.ToMilliseconds() / 2;
+  FLAGS_TEST_delay_connect_ms = narrow_cast<int>(kMaxTimeout.ToMilliseconds() / 2);
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
 
   struct CallData {
@@ -182,7 +193,7 @@ TEST_F(RpcStubTest, RandomTimeout) {
 
   for (auto& call : calls) {
     auto timeout = MonoDelta::FromMilliseconds(
-        RandomUniformInt<int>(0, kMaxTimeout.ToMilliseconds()));
+        RandomUniformInt<int64_t>(0, kMaxTimeout.ToMilliseconds()));
     call.controller.set_timeout(timeout);
     call.req.set_x(RandomUniformInt(-1000, 1000));
     call.req.set_y(RandomUniformInt(-1000, 1000));
@@ -249,12 +260,16 @@ void CheckForward(CalculatorServiceProxy* proxy,
 // Test making successful RPC calls.
 TEST_F(RpcStubTest, TestIncoherence) {
   static const std::string kServer1Name = "Server1";
+  TestServerOptions server1options;
+  server1options.endpoint = Endpoint(IpAddress::from_string("127.0.0.11"), 0);
   static const std::string kServer2Name = "Server2";
+  TestServerOptions server2options;
+  server2options.endpoint = Endpoint(IpAddress::from_string("127.0.0.12"), 0);
 
-  auto server1 = StartTestServer(kServer1Name, IpAddress::from_string("127.0.0.11"));
+  auto server1 = StartTestServer(server1options, kServer1Name);
   auto proxy1holder = CreateCalculatorProxyHolder(server1.bound_endpoint());
   auto& proxy1 = *proxy1holder.proxy;
-  auto server2 = StartTestServer(kServer2Name, IpAddress::from_string("127.0.0.12"));
+  auto server2 = StartTestServer(server2options, kServer2Name);
   auto proxy2holder = CreateCalculatorProxyHolder(server2.bound_endpoint());
   auto& proxy2 = *proxy2holder.proxy;
 
@@ -330,8 +345,7 @@ TEST_F(RpcStubTest, TestRespondDeferred) {
 TEST_F(RpcStubTest, TestDefaultCredentialsPropagated) {
   CalculatorServiceProxy p(proxy_cache_.get(), server_hostport_);
 
-  string expected;
-  ASSERT_OK(GetLoggedInUser(&expected));
+  string expected = ASSERT_RESULT(GetLoggedInUser());
 
   RpcController controller;
   WhoAmIRequestPB req;
@@ -370,13 +384,14 @@ TEST_F(RpcStubTest, TestCallWithInvalidParam) {
   Proxy p(client_messenger_.get(), server_hostport_);
 
   AddRequestPartialPB req;
-  unsigned int seed = time(nullptr);
-  req.set_x(rand_r(&seed));
+  req.set_x(RandomUniformInt<uint32_t>());
   // AddRequestPartialPB is missing the 'y' field.
   AddResponsePB resp;
   RpcController controller;
-  Status s = p.SyncRequest(CalculatorServiceMethods::AddMethod(), req, &resp, &controller);
-  ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s.ToString();
+  Status s = p.SyncRequest(
+      CalculatorServiceMethods::AddMethod(), /* method_metrics= */ nullptr, req, &resp,
+      &controller);
+  ASSERT_TRUE(s.IsRemoteError()) << "Bad status: " << s;
   // Remote error messages always contain file name and line number.
   ASSERT_STR_CONTAINS(s.ToString(), "Invalid argument (");
   ASSERT_STR_CONTAINS(s.ToString(),
@@ -452,7 +467,7 @@ TEST_F(RpcStubTest, TestRpcPanic) {
     argv.push_back("--gtest_filter=RpcStubTest.TestRpcPanic");
 
     Subprocess subp(argv[0], argv);
-    subp.ShareParentStderr(false);
+    subp.PipeParentStderr();
     CHECK_OK(subp.Start());
     FILE* in = fdopen(subp.from_child_stderr_fd(), "r");
     PCHECK(in);
@@ -487,7 +502,7 @@ TEST_F(RpcStubTest, TestRpcPanic) {
     RpcController controller;
     PanicRequestPB req;
     PanicResponsePB resp;
-    p.Panic(req, &resp, &controller);
+    ASSERT_OK(p.Panic(req, &resp, &controller));
   }
 }
 
@@ -506,7 +521,7 @@ TEST_F(RpcStubTest, TestDontHandleTimedOutCalls) {
   auto count = client_messenger_->max_concurrent_requests() * 4;
   CountDownLatch latch(count);
   for (size_t i = 0; i < count; i++) {
-    gscoped_ptr<AsyncSleep> sleep(new AsyncSleep);
+    auto sleep = std::make_unique<AsyncSleep>();
     sleep->rpc.set_timeout(10s);
     sleep->req.set_sleep_micros(500 * 1000); // 100ms
     p.SleepAsync(sleep->req, &sleep->resp, &sleep->rpc, [&latch]() { latch.CountDown(); });
@@ -763,7 +778,7 @@ TEST_F(RpcStubTest, IPv6) {
   google::FlagSaver saver;
   FLAGS_net_address_filter = "all";
   std::vector<IpAddress> addresses;
-  GetLocalAddresses(&addresses, AddressFilter::ANY);
+  ASSERT_OK(GetLocalAddresses(&addresses, AddressFilter::ANY));
 
   IpAddress server_address;
   for (const auto& address : addresses) {
@@ -775,7 +790,9 @@ TEST_F(RpcStubTest, IPv6) {
   }
 
   ASSERT_FALSE(server_address.is_unspecified());
-  auto server = StartTestServer("Server", server_address);
+  TestServerOptions options;
+  options.endpoint = Endpoint(server_address, 0);
+  auto server = StartTestServer(options, "Server");
   ASSERT_TRUE(server.bound_endpoint().address().is_v6());
   auto proxy_holder = CreateCalculatorProxyHolder(server.bound_endpoint());
   auto& proxy = *proxy_holder.proxy;
@@ -783,7 +800,7 @@ TEST_F(RpcStubTest, IPv6) {
   WhoAmIRequestPB req;
   WhoAmIResponsePB resp;
   RpcController controller;
-  proxy.WhoAmI(req, &resp, &controller);
+  ASSERT_OK(proxy.WhoAmI(req, &resp, &controller));
   ASSERT_OK(controller.status());
   LOG(INFO) << "I'm " << resp.address();
   auto parsed = ParseEndpoint(resp.address(), 0);
@@ -818,6 +835,237 @@ TEST_F(RpcStubTest, ExpireInQueue) {
   }
 
   latch.Wait();
+}
+
+TEST_F(RpcStubTest, TrafficMetrics) {
+  constexpr size_t kStringLen = 1_KB;
+  constexpr size_t kUpperBytesLimit = kStringLen + 64;
+
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  rpc_test::EchoRequestPB req;
+  req.set_data(RandomHumanReadableString(kStringLen));
+  rpc_test::EchoResponsePB resp;
+  ASSERT_OK(proxy.Echo(req, &resp, &controller));
+
+  auto server_metrics = server_messenger()->metric_entity()->UnsafeMetricsMapForTests();
+
+  auto* service_request_bytes = down_cast<Counter*>(FindOrDie(
+      server_metrics, &METRIC_service_request_bytes_yb_rpc_test_CalculatorService_Echo).get());
+  auto* service_response_bytes = down_cast<Counter*>(FindOrDie(
+      server_metrics, &METRIC_service_response_bytes_yb_rpc_test_CalculatorService_Echo).get());
+
+  auto client_metrics = client_messenger_->metric_entity()->UnsafeMetricsMapForTests();
+
+  auto* proxy_request_bytes = down_cast<Counter*>(FindOrDie(
+      client_metrics, &METRIC_proxy_request_bytes_yb_rpc_test_CalculatorService_Echo).get());
+  auto* proxy_response_bytes = down_cast<Counter*>(FindOrDie(
+      client_metrics, &METRIC_proxy_response_bytes_yb_rpc_test_CalculatorService_Echo).get());
+
+  LOG(INFO) << "Inbound request bytes: " << service_request_bytes->value()
+            << ", response bytes: " << service_response_bytes->value();
+  LOG(INFO) << "Outbound request bytes: " << proxy_request_bytes->value()
+            << ", response bytes: " << proxy_response_bytes->value();
+
+  // We don't expect that sent and received bytes on client and server matches, because some
+  // auxilary fields are not calculated.
+  // For instance request size is taken into account on client, but not server.
+  ASSERT_GE(service_request_bytes->value(), kStringLen);
+  ASSERT_LT(service_request_bytes->value(), kUpperBytesLimit);
+  ASSERT_GE(service_response_bytes->value(), kStringLen);
+  ASSERT_LT(service_response_bytes->value(), kUpperBytesLimit);
+  ASSERT_GE(proxy_request_bytes->value(), kStringLen);
+  ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
+  ASSERT_GE(proxy_request_bytes->value(), kStringLen);
+  ASSERT_LT(proxy_request_bytes->value(), kUpperBytesLimit);
+}
+
+template <class T>
+std::string ReversedAsString(T t) {
+  std::reverse(t.begin(), t.end());
+  return AsString(t);
+}
+
+void Generate(rpc_test::LightweightSubMessagePB* sub_message) {
+  auto& msg = *sub_message;
+  for (int i = 0; i != 13; ++i) {
+    msg.mutable_rsi32()->Add(RandomUniformInt<int32_t>());
+  }
+  msg.set_sf32(RandomUniformInt<int32_t>());
+  msg.set_str(RandomHumanReadableString(32));
+  for (int i = 0; i != 11; ++i) {
+    msg.mutable_rbytes()->Add(RandomHumanReadableString(32));
+  }
+  if (RandomUniformBool()) {
+    Generate(msg.mutable_cycle());
+  }
+  switch (RandomUniformInt(0, 2)) {
+    case 0:
+      msg.set_v_i32(RandomUniformInt<int32_t>());
+      break;
+    case 1:
+      msg.set_v_str(RandomHumanReadableString(32));
+      break;
+    case 2:
+      Generate(msg.mutable_v_message());
+      break;
+  }
+}
+
+TEST_F(RpcStubTest, Lightweight) {
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  rpc_test::LightweightRequestPB req;
+  req.set_i32(RandomUniformInt<int32_t>());
+  req.set_i64(RandomUniformInt<int64_t>());
+  req.set_f32(RandomUniformInt<uint32_t>());
+  req.set_f64(RandomUniformInt<uint64_t>());
+  req.set_u32(RandomUniformInt<uint32_t>());
+  req.set_u64(RandomUniformInt<uint64_t>());
+  req.set_r32(RandomUniformReal<float>());
+  req.set_r64(RandomUniformReal<double>());
+
+  req.set_str(RandomHumanReadableString(32));
+  req.set_bytes(RandomHumanReadableString(32));
+  req.set_en(rpc_test::LightweightEnum::TWO);
+
+  req.set_sf32(RandomUniformInt<int32_t>());
+  req.set_sf64(RandomUniformInt<int64_t>());
+  req.set_si32(RandomUniformInt<int32_t>());
+  req.set_si64(RandomUniformInt<int64_t>());
+
+  for (int i = 0; i != 10; ++i) {
+    req.mutable_ru32()->Add(RandomUniformInt<uint32_t>());
+  }
+
+  for (int i = 0; i != 20; ++i) {
+    req.mutable_rf32()->Add(RandomUniformInt<uint32_t>());
+  }
+
+  for (int i = 0; i != 7; ++i) {
+    req.mutable_rstr()->Add(RandomHumanReadableString(32));
+  }
+
+  Generate(req.mutable_message());
+  for (int i = 0; i != 5; ++i) {
+    Generate(req.mutable_repeated_messages()->Add());
+  }
+
+  for (int i = 0; i != 127; ++i) {
+    req.mutable_packed_u64()->Add(RandomUniformInt<uint64_t>());
+  }
+
+  for (int i = 0; i != 37; ++i) {
+    req.mutable_packed_f32()->Add(RandomUniformInt<uint32_t>());
+  }
+
+  for (int i = 0; i != 13; ++i) {
+    auto& pair = *req.mutable_pairs()->Add();
+    pair.set_s1(RandomHumanReadableString(16));
+    pair.set_s2(RandomHumanReadableString(48));
+  }
+
+  for (int i = 0; i != 11; ++i) {
+    (*req.mutable_map())[RandomHumanReadableString(8)] = RandomUniformInt<int64_t>();
+  }
+
+  Generate(req.mutable_ptr_message());
+
+  rpc_test::LightweightResponsePB resp;
+  ASSERT_OK(proxy.Lightweight(req, &resp, &controller));
+
+  ASSERT_EQ(resp.i32(), -req.i32());
+  ASSERT_EQ(resp.i64(), -req.i64());
+
+  ASSERT_EQ(resp.f32(), req.u32());
+  ASSERT_EQ(resp.u32(), req.f32());
+  ASSERT_EQ(resp.f64(), req.u64());
+  ASSERT_EQ(resp.u64(), req.f64());
+
+  ASSERT_EQ(resp.r32(), -req.r32());
+  ASSERT_EQ(resp.r64(), -req.r64());
+
+  ASSERT_EQ(resp.bytes(), req.str());
+  ASSERT_EQ(resp.str(), req.bytes());
+
+  ASSERT_EQ(resp.en(), (req.en() + 1));
+
+  ASSERT_EQ(resp.sf32(), req.si32());
+  ASSERT_EQ(resp.si32(), req.sf32());
+  ASSERT_EQ(resp.sf64(), req.si64());
+  ASSERT_EQ(resp.si64(), req.sf64());
+
+  ASSERT_EQ(AsString(resp.ru32()), AsString(req.rf32()));
+  ASSERT_EQ(AsString(resp.rf32()), AsString(req.ru32()));
+  ASSERT_EQ(AsString(resp.rstr()), ReversedAsString(req.rstr()));
+
+  ASSERT_EQ(resp.message().sf32(), -req.message().sf32());
+  ASSERT_EQ(AsString(resp.message().rsi32()), ReversedAsString(req.message().rsi32()));
+  ASSERT_EQ(resp.message().str(), ">" + req.message().str() + "<");
+  ASSERT_STR_EQ(AsString(resp.message().rbytes()), ReversedAsString(req.message().rbytes()));
+  ASSERT_STR_EQ(AsString(resp.repeated_messages()), ReversedAsString(req.repeated_messages()));
+  ASSERT_STR_EQ(AsString(resp.repeated_messages_copy()), AsString(req.repeated_messages()));
+
+  ASSERT_STR_EQ(AsString(resp.packed_u64()), ReversedAsString(req.packed_u64()));
+  ASSERT_STR_EQ(AsString(resp.packed_f32()), ReversedAsString(req.packed_f32()));
+
+  ASSERT_EQ(resp.pairs().size(), req.pairs().size());
+  for (int i = 0; i != req.pairs().size(); ++i) {
+    ASSERT_EQ(resp.pairs()[i].s1(), req.pairs()[i].s2());
+    ASSERT_EQ(resp.pairs()[i].s2(), req.pairs()[i].s1());
+  }
+
+  ASSERT_STR_EQ(AsString(resp.ptr_message()), AsString(req.ptr_message()));
+
+  for (const auto& entry : resp.map()) {
+    ASSERT_EQ(entry.second, req.map().at(entry.first));
+  }
+
+  req.mutable_map()->clear();
+  std::string req_str = req.ShortDebugString();
+
+  auto lw_req = CopySharedMessage<rpc_test::LWLightweightRequestPB>(req);
+  req.Clear();
+  ASSERT_STR_EQ(AsString(*lw_req), req_str);
+  ASSERT_STR_EQ(AsString(resp.short_debug_string()), req_str);
+}
+
+TEST_F(RpcStubTest, CustomServiceName) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  ASSERT_OK(proxy.Concat(req, &resp, &controller));
+  ASSERT_EQ(resp.result(), "yugabyte");
+}
+
+TEST_F(RpcStubTest, Trivial) {
+  CalculatorServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+
+  RpcController controller;
+  controller.set_timeout(30s);
+
+  rpc_test::TrivialRequestPB req;
+  req.set_value(42);
+  rpc_test::TrivialResponsePB resp;
+  ASSERT_OK(proxy.Trivial(req, &resp, &controller));
+  ASSERT_EQ(resp.value(), req.value());
+
+  req.set_value(-1);
+  controller.Reset();
+  controller.set_timeout(30s);
+  ASSERT_OK(proxy.Trivial(req, &resp, &controller));
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_EQ(resp.error().code(), Status::Code::kInvalidArgument);
 }
 
 } // namespace rpc

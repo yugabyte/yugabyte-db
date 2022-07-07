@@ -34,56 +34,40 @@
 
 #include <string>
 
-#include <boost/functional/hash.hpp>
-
-#include "yb/util/memory/memory_usage.h"
+#include "yb/util/slice.h"
 
 namespace yb {
 namespace rpc {
 
 class RemoteMethodPB;
 
-// Simple class that acts as a container for a fully qualified remote RPC name
-// and converts to/from RemoteMethodPB.
+// Simple class that acts as a container for a fully qualified remote RPC name.
 // This class is also copyable and assignable for convenience reasons.
 class RemoteMethod {
  public:
   RemoteMethod() {}
   RemoteMethod(std::string service_name, std::string method_name);
-  RemoteMethod(const RemoteMethod& rhs);
-  RemoteMethod(RemoteMethod&& rhs);
+  RemoteMethod(const RemoteMethod& rhs) = default;
+  RemoteMethod(RemoteMethod&& rhs) = default;
 
-  RemoteMethod& operator=(const RemoteMethod& rhs);
-  RemoteMethod& operator=(RemoteMethod&& rhs);
+  RemoteMethod& operator=(const RemoteMethod& rhs) = default;
+  RemoteMethod& operator=(RemoteMethod&& rhs) = default;
 
+  void ToPB(RemoteMethodPB* pb) const;
   const std::string& service_name() const { return service_name_; }
   const std::string& method_name() const { return method_name_; }
-
-  // Encode/decode to/from 'pb'.
-  void FromPB(const RemoteMethodPB& pb);
-  void ToPB(RemoteMethodPB* pb) const;
+  Slice serialized() const { return serialized_; }
+  Slice serialized_body() const { return Slice(serialized_).WithoutPrefix(2); }
 
   std::string ToString() const;
 
-  size_t DynamicMemoryUsage() const { return DynamicMemoryUsageOf(service_name_, method_name_); }
+  size_t DynamicMemoryUsage() const;
 
  private:
   std::string service_name_;
   std::string method_name_;
+  std::string serialized_;
 };
-
-struct RemoteMethodHash {
-  size_t operator()(const RemoteMethod& remote_method) const {
-    size_t seed = 0;
-    boost::hash_combine(seed, remote_method.service_name());
-    boost::hash_combine(seed, remote_method.method_name());
-    return seed;
-  }
-};
-
-inline bool operator==(const RemoteMethod& lhs, const RemoteMethod& rhs) {
-  return lhs.service_name() == rhs.service_name() && lhs.method_name() == rhs.method_name();
-}
 
 } // namespace rpc
 } // namespace yb

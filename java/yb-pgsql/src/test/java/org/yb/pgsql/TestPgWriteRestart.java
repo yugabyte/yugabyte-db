@@ -17,16 +17,22 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yb.util.ThreadUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
 import java.sql.*;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import org.postgresql.util.PSQLException;
+import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunnerNonTsanOnly.class)
@@ -285,6 +291,94 @@ public class TestPgWriteRestart extends BasePgSQLTest {
     } catch (PSQLException ex) {
       LOG.error("Unexpected exception:", ex);
       throw ex;
+    }
+  }
+
+  @Test
+  public void testSelectConflictRestart() throws Exception {
+    int test_duration_secs = 10;
+
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("create table test (k SERIAL primary key, v int)");
+      statement.execute("insert into test (v) SELECT generate_series(0,100)");
+    } catch (Exception ex) {
+      fail("Unexpected exception: " + ex.getMessage());
+    }
+
+    ExecutorService es = Executors.newFixedThreadPool(2);
+    List<Future<?>> futures = new ArrayList<>();
+
+    final class SelectRunnable implements Runnable {
+
+      public SelectRunnable() {}
+
+      public void run() {
+        int executionsAttempted = 0;
+        int executionsAborted = 0;
+        int executionsAbortedAfterSelectDone = 0;
+        try (Connection conn = getConnectionBuilder().connect();
+             Statement stmt = conn.createStatement()) {
+          for (/* No setup */;; ++executionsAttempted) {
+            if (Thread.interrupted()) break; // Skips all post-loop checks
+            stmt.execute("start transaction isolation level serializable");
+            try {
+              stmt.execute("select * from test where v > 0 for update");
+              try {
+                stmt.execute("commit");
+              } catch (Exception ex) {
+                if (ex.getMessage().toLowerCase().contains("abort")) {
+                  ++executionsAbortedAfterSelectDone;
+                } else {
+                  fail("failed with ex: " + ex.getMessage());
+                }
+                try {
+                  stmt.execute("rollback");
+                } catch (Exception ex2) {
+                  fail("rollback shouldn't fail: " + ex2.getMessage());
+                }
+              }
+            } catch (Exception ex) {
+              // We expect no kConflict/kReadRestart errors in the first SELECT statement of a txn,
+              if (ex.getMessage().toLowerCase().contains("abort")) {
+                ++executionsAborted;
+              } else {
+                fail("failed with ex: " + ex.getMessage());
+              }
+              try {
+                stmt.execute("rollback");
+              } catch (Exception ex2) {
+                fail("rollback shouldn't fail: " + ex2.getMessage());
+              }
+            }
+          }
+        } catch (Exception ex) {
+          fail("failed with ex: " + ex.getMessage());
+        }
+        LOG.info("executionsAttempted=" + executionsAttempted +
+                 " executionsAborted=" + executionsAborted +
+                 ", executionsAbortedAfterSelectDone=" + executionsAbortedAfterSelectDone);
+      }
+    }
+
+    futures.add(es.submit(new SelectRunnable()));
+    futures.add(es.submit(new SelectRunnable()));
+
+    Thread.sleep(test_duration_secs * 1000); // Run test for 10 seconds
+    LOG.info("Shutting down executor service");
+    es.shutdownNow(); // This should interrupt all submitted threads
+    if (es.awaitTermination(10, TimeUnit.SECONDS)) {
+      LOG.info("Executor shutdown complete");
+    } else {
+      LOG.info("Executor shutdown failed (timed out)");
+    }
+    try {
+      LOG.info("Waiting for SELECT threads");
+      for (Future<?> future : futures) {
+        future.get(1, TimeUnit.SECONDS);
+      }
+    } catch (TimeoutException ex) {
+      LOG.warn("Threads info:\n\n" + ThreadUtil.getAllThreadsInfo());
+      fail("Waiting for SELECT threads timed out, this is unexpected!");
     }
   }
 }

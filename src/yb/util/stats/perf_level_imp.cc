@@ -20,7 +20,6 @@
 
 #include "yb/util/stats/perf_level_imp.h"
 
-#include <sstream>
 
 namespace yb {
 

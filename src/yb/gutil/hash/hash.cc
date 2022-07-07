@@ -25,7 +25,6 @@
 
 #include "yb/gutil/integral_types.h"
 #include <glog/logging.h>
-#include "yb/gutil/logging-inl.h"
 #include "yb/gutil/hash/jenkins.h"
 #include "yb/gutil/hash/jenkins_lookup2.h"
 #include "yb/gutil/macros.h"
@@ -215,14 +214,3 @@ uint64 FingerprintInterleavedImplementation(const char *s, uint32 len) {
 }
 
 // Extern template definitions.
-
-#if defined(__GNUC__)
-#include <ext/hash_set>
-namespace __gnu_cxx {
-
-template class hash_set<std::string>;
-template class hash_map<std::string, std::string>;
-
-}  // namespace __gnu_cxx
-
-#endif

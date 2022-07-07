@@ -15,29 +15,29 @@
 
 #include "yb/tablet/operations/update_txn_operation.h"
 
-#include "yb/consensus/consensus.h"
+#include "yb/consensus/consensus.pb.h"
 
 #include "yb/tablet/tablet.h"
-#include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_coordinator.h"
+#include "yb/tablet/transaction_participant.h"
 
-#include "yb/util/scope_exit.h"
+#include "yb/util/logging.h"
 
 using namespace std::literals;
 
 namespace yb {
 namespace tablet {
 
-void UpdateTxnOperationState::UpdateRequestFromConsensusRound() {
-  VLOG_WITH_PREFIX(2) << "UpdateRequestFromConsensusRound";
-  UseRequest(&consensus_round()->replicate_msg()->transaction_state());
+template <>
+void RequestTraits<TransactionStatePB>::SetAllocatedRequest(
+    consensus::ReplicateMsg* replicate, TransactionStatePB* request) {
+  replicate->set_allocated_transaction_state(request);
 }
 
-consensus::ReplicateMsgPtr UpdateTxnOperation::NewReplicateMsg() {
-  auto result = std::make_shared<consensus::ReplicateMsg>();
-  result->set_op_type(consensus::UPDATE_TRANSACTION_OP);
-  *result->mutable_transaction_state() = *state()->request();
-  return result;
+template <>
+TransactionStatePB* RequestTraits<TransactionStatePB>::MutableRequest(
+    consensus::ReplicateMsg* replicate) {
+  return replicate->mutable_transaction_state();
 }
 
 Status UpdateTxnOperation::Prepare() {
@@ -45,68 +45,41 @@ Status UpdateTxnOperation::Prepare() {
   return Status::OK();
 }
 
-void UpdateTxnOperation::DoStart() {
-  VLOG_WITH_PREFIX(2) << "DoStart";
-
-  HybridTime ht = state()->hybrid_time_even_if_unset();
-  bool was_valid = ht.is_valid();
-  if (!was_valid) {
-    // Add only leader operation here, since follower operations are already registered in MVCC,
-    // as soon as they received.
-    state()->tablet()->mvcc_manager()->AddPending(&ht);
-    state()->set_hybrid_time(ht);
-  }
-}
-
 TransactionCoordinator& UpdateTxnOperation::transaction_coordinator() const {
-  return *state()->tablet()->transaction_coordinator();
+  return *tablet()->transaction_coordinator();
 }
 
 Status UpdateTxnOperation::DoReplicated(int64_t leader_term, Status* complete_status) {
   VLOG_WITH_PREFIX(2) << "Replicated";
 
-  auto* state = this->state();
-  auto scope_exit = ScopeExit([state] {
-    state->tablet()->mvcc_manager()->Replicated(state->hybrid_time());
-  });
-
-  auto transaction_participant = state->tablet()->transaction_participant();
+  auto transaction_participant = tablet()->transaction_participant();
   if (transaction_participant) {
     TransactionParticipant::ReplicatedData data = {
         .leader_term = leader_term,
-        .state = *state->request(),
-        .op_id = state->op_id(),
-        .hybrid_time = state->hybrid_time(),
-        .sealed = state->request()->sealed(),
+        .state = *request(),
+        .op_id = op_id(),
+        .hybrid_time = hybrid_time(),
+        .sealed = request()->sealed(),
         .already_applied_to_regular_db = AlreadyAppliedToRegularDB::kFalse
     };
     return transaction_participant->ProcessReplicated(data);
   } else {
     TransactionCoordinator::ReplicatedData data = {
         leader_term,
-        *state->request(),
-        state->op_id(),
-        state->hybrid_time()
+        *request(),
+        op_id(),
+        hybrid_time()
     };
     return transaction_coordinator().ProcessReplicated(data);
   }
 }
 
-string UpdateTxnOperation::ToString() const {
-  return Format("UpdateTxnOperation { state: $0 }", *state());
-}
-
 Status UpdateTxnOperation::DoAborted(const Status& status) {
-  auto hybrid_time = state()->hybrid_time_even_if_unset();
-  if (hybrid_time.is_valid()) {
-    state()->tablet()->mvcc_manager()->Aborted(hybrid_time);
-  }
-
-  if (state()->tablet()->transaction_coordinator()) {
-    LOG_WITH_PREFIX(INFO) << "Aborted";
+  if (tablet()->transaction_coordinator()) {
+    LOG_WITH_PREFIX(INFO) << "Aborted: " << status;
     TransactionCoordinator::AbortedData data = {
-      *state()->request(),
-      state()->op_id(),
+      .state = *request(),
+      .op_id = op_id(),
     };
     transaction_coordinator().ProcessAborted(data);
   }

@@ -3,14 +3,12 @@ title: "- and #- (remove operators) [JSON]"
 headerTitle: "- and #- (remove operators)"
 linkTitle: "- and #- (remove)"
 description: Remove key-value pairs from an object or remove a single value from an array.
-block_indexing: true
 menu:
   stable:
     identifier: remove-operators
     parent: json-functions-operators
     weight: 13
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Remove key-value pairs from an _object_ or a single value from an _array_. The plain `-` variant takes the specified object itself. The `#-` variant takes the path from the specified object.

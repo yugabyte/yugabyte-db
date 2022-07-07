@@ -15,20 +15,17 @@
 #define YB_UTIL_TASKSTREAM_H
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
-#include <mutex>
-#include <thread>
 #include <vector>
-#include <chrono>
 
 #include <gflags/gflags.h>
 
+#include "yb/util/status_fwd.h"
 #include "yb/util/blocking_queue.h"
-#include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
-#include "yb/util/taskstream.h"
+#include "yb/util/status_format.h"
+#include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
 using namespace std::chrono_literals;
@@ -61,12 +58,12 @@ class TaskStream {
                       const MonoDelta& queue_max_wait);
   ~TaskStream();
 
-  CHECKED_STATUS Start();
+  Status Start();
   void Stop();
 
-  CHECKED_STATUS Submit(T* item);
+  Status Submit(T* item);
 
-  CHECKED_STATUS TEST_SubmitFunc(const std::function<void()>& func);
+  Status TEST_SubmitFunc(const std::function<void()>& func);
 
   std::string GetRunThreadStack() {
     auto result = ThreadStack(run_tid_);

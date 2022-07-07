@@ -4,24 +4,26 @@ package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TableDetails;
-import org.yb.Common;
+import java.util.UUID;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.GetTableSchemaResponse;
 
-import java.util.UUID;
-
 public class TableDefinitionTaskParams extends TableTaskParams {
-  public Common.TableType tableType = null;
+  public TableType tableType = null;
   public TableDetails tableDetails = null;
 
-  public static TableDefinitionTaskParams createFromResponse(Universe universe,
-                                                             UUID tableUUID,
-                                                             GetTableSchemaResponse response) {
+  public static TableDefinitionTaskParams createFromResponse(
+      Universe universe, UUID tableUUID, GetTableSchemaResponse response) {
 
     // Verify tableUUID is correct
     String noDashTableUUID = tableUUID.toString().replace("-", "");
     if (!noDashTableUUID.equals(response.getTableId())) {
-      throw new IllegalArgumentException("UUID of table in schema (" + noDashTableUUID +
-          ") did not match UUID of table in request (" + response.getTableId() + ").");
+      throw new IllegalArgumentException(
+          "UUID of table in schema ("
+              + noDashTableUUID
+              + ") did not match UUID of table in request ("
+              + response.getTableId()
+              + ").");
     }
 
     TableDefinitionTaskParams params = new TableDefinitionTaskParams();
@@ -36,5 +38,4 @@ public class TableDefinitionTaskParams extends TableTaskParams {
 
     return params;
   }
-
 }

@@ -7,6 +7,7 @@ import { NodeActionModalContainer, NodeConnectModal } from '../../universes';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { downloadLogs } from '../../../actions/universe';
 
 import _ from 'lodash';
 
@@ -26,7 +27,7 @@ export default class NodeAction extends Component {
     actionType: PropTypes.oneOf(['STOP', 'REMOVE'])
   };
 
-  openModal(actionType) {
+  openModal = (actionType) => {
     this.setState((prevState, props) => {
       return {
         selectedRow: props.row,
@@ -34,11 +35,11 @@ export default class NodeAction extends Component {
         showModal: true
       };
     });
-  }
+  };
 
   closeModal() {
     this.setState({
-      showModal: false      
+      showModal: false
     });
   }
 
@@ -60,8 +61,12 @@ export default class NodeAction extends Component {
       caption = 'Connect';
     } else if (actionType === 'START_MASTER') {
       caption = 'Start Master';
-    } else if (actionType === 'QUERIES') {
+    } else if (actionType === 'LIVE_QUERIES') {
       caption = 'Show Live Queries';
+    } else if (actionType === 'SLOW_QUERIES') {
+      caption = 'Show Slow Queries';
+    } else if (actionType === 'DOWNLOAD_LOGS') {
+      caption = 'Download Logs';
     }
     return caption;
   }
@@ -85,8 +90,12 @@ export default class NodeAction extends Component {
       btnIcon = 'fa fa-link';
     } else if (actionType === 'START_MASTER') {
       btnIcon = 'fa fa-play-circle';
-    } else if (actionType === 'QUERIES') {      
+    } else if (actionType === 'LIVE_QUERIES') {
       btnIcon = 'fa fa-search';
+    } else if (actionType === 'SLOW_QUERIES') {
+      btnIcon = 'fa fa-signal';
+    } else if (actionType === 'DOWNLOAD_LOGS') {
+      btnIcon = 'fa fa-download';
     }
 
     return <YBLabelWithIcon icon={btnIcon}>{btnLabel}</YBLabelWithIcon>;
@@ -101,28 +110,84 @@ export default class NodeAction extends Component {
     } else {
       universeUrl = path.substring(0, path.lastIndexOf('/'));
     }
-    browserHistory.push(`${universeUrl}/queries?nodeName=${currentRow.name}`);    
+    browserHistory.push(`${universeUrl}/queries?nodeName=${currentRow.name}`);
+  }
+
+  handleSlowQueryClick() {
+    const path = browserHistory.getCurrentLocation().pathname;
+    let universeUrl = '';
+    if (path[path.length - 1] === '/') {
+      universeUrl = path.substring(0, path.lastIndexOf('/', path.length - 2));
+    } else {
+      universeUrl = path.substring(0, path.lastIndexOf('/'));
+    }
+    browserHistory.push(`${universeUrl}/queries?tab=slow-queries`);
   }
 
   render() {
-    const { currentRow, providerUUID, disableConnect, disableQueries, disabled } = this.props;
+    const {
+      currentRow,
+      universeUUID,
+      providerUUID,
+      hideConnect,
+      hideQueries,
+      disableStop,
+      disableRemove,
+      disabled
+    } = this.props;
     const actionButtons = currentRow.allowedActions.map((actionType, idx) => {
       const btnId = _.uniqueId('node_action_btn_');
+      const isDisabled =
+        disabled ||
+        (actionType === 'STOP' && disableStop) ||
+        (actionType === 'REMOVE' && disableRemove);
+      if (actionType === 'QUERY') {
+        if (!hideQueries) {
+          return (
+            <Fragment>
+              <MenuItem key="live_queries_action_btn" eventKey="live_queries_action_btn"
+                disabled={disabled} onClick={this.handleLiveQueryClick}>
+                {this.getLabel('LIVE_QUERIES')}
+              </MenuItem>
+              <MenuItem key="slow_queries_action_btn" eventKey="slow_queries_action_btn"
+                disabled={disabled} onClick={this.handleSlowQueryClick}>
+                {this.getLabel('SLOW_QUERIES')}
+              </MenuItem>
+            </Fragment>
+          );
+        }
+        return null;
+      }
       return (
         <MenuItem
           key={btnId}
           eventKey={btnId}
-          disabled={disabled}
-          onClick={disabled ? null : this.openModal.bind(this, actionType)}
+          disabled={isDisabled}
+          onClick={() => isDisabled || this.openModal(actionType)}
         >
           {this.getLabel(actionType)}
         </MenuItem>
       );
     });
 
+    // Add action to download master/tserver logs.
+    const btnId = _.uniqueId('node_action_btn_');
+    actionButtons.push(
+      (
+        <MenuItem
+          key={btnId}
+          eventKey={btnId}
+          disabled={false}
+          onClick={() => downloadLogs(universeUUID, currentRow.name)}
+        >
+          {this.getLabel('DOWNLOAD_LOGS')}
+        </MenuItem>
+      )
+    );
+
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
-        {!disableConnect && (
+        {!hideConnect && (
           <NodeConnectModal
             currentRow={currentRow}
             providerUUID={providerUUID}
@@ -140,12 +205,6 @@ export default class NodeAction extends Component {
             />
           </Fragment>
         ) : null}
-        {!disableQueries &&
-          <MenuItem key="queries_action_btn" eventKey="queries_action_btn"
-            disabled={disabled} onClick={this.handleLiveQueryClick}>
-            {this.getLabel('QUERIES')}
-          </MenuItem>
-        }
       </DropdownButton>
     );
   }

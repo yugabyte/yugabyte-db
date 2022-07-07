@@ -36,7 +36,7 @@ class PTUseKeyspace : public TreeNode {
   //------------------------------------------------------------------------------------------------
   // Constructor and destructor.
   PTUseKeyspace(MemoryContext *memctx,
-                YBLocation::SharedPtr loc,
+                YBLocationPtr loc,
                 const MCSharedPtr<MCString>& name);
   virtual ~PTUseKeyspace();
 
@@ -51,12 +51,10 @@ class PTUseKeyspace : public TreeNode {
   }
 
   // Node semantics analysis.
-  virtual CHECKED_STATUS Analyze(SemContext *sem_context) override;
+  virtual Status Analyze(SemContext *sem_context) override;
   void PrintSemanticAnalysisResult(SemContext *sem_context);
 
-  const char* name() const {
-    return name_->c_str();
-  }
+  const char* name() const;
 
  private:
   MCSharedPtr<MCString> name_;

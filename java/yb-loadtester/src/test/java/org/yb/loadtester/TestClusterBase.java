@@ -21,7 +21,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.Common;
+import org.yb.CommonNet;
 import org.yb.client.*;
 import org.yb.cql.BaseCQLTest;
 import org.yb.minicluster.Metrics;
@@ -74,7 +74,7 @@ public class TestClusterBase extends BaseCQLTest {
   protected static final int WEBSERVER_TIMEOUT_MS = 10000; // 10 seconds.
 
   // Timeout to wait for a master leader.
-  protected static final int MASTER_LEADER_TIMEOUT_MS = 10000; // 10 seconds.
+  protected static final int MASTER_LEADER_TIMEOUT_MS = 90000;
 
   // Timeout to wait expected number of tservers to be alive.
   protected static final int EXPECTED_TSERVERS_TIMEOUT_MS = 30000; // 30 seconds.
@@ -107,12 +107,20 @@ public class TestClusterBase extends BaseCQLTest {
     Map<String, String> flags = super.getMasterFlags();
     // Speed up the load balancer.
     flags.put("load_balancer_max_concurrent_adds", "5");
-    // TODO(bogdan): commented out until we figure out #4412.
-    /*
     flags.put("load_balancer_max_over_replicated_tablets", "5");
     flags.put("load_balancer_max_concurrent_removals", "5");
     flags.put("load_balancer_max_concurrent_moves", "5");
-    */
+    // Disable caching for system.partitions.
+    flags.put("partitions_vtable_cache_refresh_secs", "0");
+    flags.put("load_balancer_initial_delay_secs", "0");
+    return flags;
+  }
+
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flags = super.getTServerFlags();
+    // Disable the cql query cache for now
+    flags.put("cql_update_system_query_cache_msecs", "0");
     return flags;
   }
 
@@ -311,15 +319,19 @@ public class TestClusterBase extends BaseCQLTest {
     return newMasters;
   }
 
-  public void performFullMasterMove() throws Exception {
+  public void performFullMasterMove(Map<String, String> extra_args) throws Exception {
     // Create a copy to store original list.
     Map<HostAndPort, MiniYBDaemon> originalMasters = new HashMap<>(miniCluster.getMasters());
     for (HostAndPort originalMaster : originalMasters.keySet()) {
       // Add new master.
-      HostAndPort masterRpcHostPort = miniCluster.startShellMaster();
+      HostAndPort masterRpcHostPort = miniCluster.startShellMaster(extra_args);
       addMaster(masterRpcHostPort);
       removeMaster(originalMaster);
     }
+  }
+
+  public void performFullMasterMove() throws Exception {
+    performFullMasterMove(new TreeMap<String, String>());
   }
 
   public Set<HostAndPort> startNewMasters(int numMasters) throws Exception {
@@ -394,11 +406,13 @@ public class TestClusterBase extends BaseCQLTest {
     addNewTServers(numTservers, null);
   }
 
-  protected void addNewTServers(int numTservers, List<String> tserverArgs) throws Exception {
+  protected void addNewTServers(
+      int numTservers,
+      Map<String, String> tserverFlags) throws Exception {
     int expectedTServers = miniCluster.getTabletServers().size() + numTservers;
     // Now double the number of tservers to expand the cluster and verify load spreads.
     for (int i = 0; i < numTservers; i++) {
-      miniCluster.startTServer(tserverArgs);
+      miniCluster.startTServer(tserverFlags);
     }
 
     // Wait for the CQL client to discover the new nodes.
@@ -425,9 +439,9 @@ public class TestClusterBase extends BaseCQLTest {
   private void removeTServers(Map<HostAndPort, MiniYBDaemon> originalTServers,
       boolean killMaster) throws Exception {
     // Retrieve existing config, set blacklist and reconfigure cluster.
-    List<Common.HostPortPB> blacklisted_hosts = new ArrayList<>();
+    List<CommonNet.HostPortPB> blacklisted_hosts = new ArrayList<>();
     for (Map.Entry<HostAndPort, MiniYBDaemon> ts : originalTServers.entrySet()) {
-      Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+      CommonNet.HostPortPB hostPortPB = CommonNet.HostPortPB.newBuilder()
         .setHost(ts.getKey().getHost())
         .setPort(ts.getKey().getPort())
         .build();
@@ -461,12 +475,23 @@ public class TestClusterBase extends BaseCQLTest {
       removeMaster(leaderHostPort);
 
       long totalAfterKillMaster = client.getLoadMoveCompletion().getTotal();
+      long remainingAfterKillMaster = client.getLoadMoveCompletion().getRemaining();
 
-      // Killing master leader should reset the total count to be the same as remaining.
-      // Hence the new total should be strictly less than old total.
-      assertLessThan(totalAfterKillMaster, totalBeforeKillMaster);
+      // TODO(sanket): We should ideally ensure here that there has been at least
+      // one TS HB to the new leader master otherwise remaining load could be 0.
+      // After failover, the remaining load should be less than the initial load.
+      assertLessThan(remainingAfterKillMaster, totalAfterKillMaster);
+
+      // Killing master leader will set the total count to be the same as the
+      // initial total count during failover.
+      assertEquals(totalAfterKillMaster, totalBeforeKillMaster);
+
+      // The remaining work in the new leader will be less than the total
+      // in the original leader.
+      assertLessThan(remainingAfterKillMaster, totalBeforeKillMaster);
+
       // And there should be work remaining to do.
-      assertLessThan((long)0, client.getLoadMoveCompletion().getRemaining());
+      assertLessThan((long)0, remainingAfterKillMaster);
     }
 
     // Wait for the move to complete.
@@ -502,9 +527,9 @@ public class TestClusterBase extends BaseCQLTest {
 
   private void leaderBlacklistTServer(HostAndPort hps[], int offset) throws Exception {
     // Retrieve existing config, set leader blacklist and reconfigure cluster.
-    List<Common.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
+    List<CommonNet.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
     HostAndPort hp = hps[offset];
-    Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+    CommonNet.HostPortPB hostPortPB = CommonNet.HostPortPB.newBuilder()
       .setHost(hp.getHost())
       .setPort(hp.getPort())
       .build();
@@ -559,8 +584,8 @@ public class TestClusterBase extends BaseCQLTest {
         }
 
         // Verify that no leader blacklisted tservers are leaders.
-        Common.HostPortPB leader_host = tabletLocation.getLeaderReplica().getRpcHostPort();
-        for (Common.HostPortPB leader_blacklist_host : leader_blacklist_hosts) {
+        CommonNet.HostPortPB leader_host = tabletLocation.getLeaderReplica().getRpcHostPort();
+        for (CommonNet.HostPortPB leader_blacklist_host : leader_blacklist_hosts) {
           if (leader_host.equals(leader_blacklist_host)) {
             LOG.info("Leader blacklisted tserver " + tsUuid + " is still a leader for tablet " +
                 tabletLocation);
@@ -595,9 +620,9 @@ public class TestClusterBase extends BaseCQLTest {
 
   private void leaderWhitelistTServer(HostAndPort hps[], int offset) throws Exception {
     // Retrieve existing config, set leader blacklist and reconfigure cluster.
-    List<Common.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
+    List<CommonNet.HostPortPB> leader_blacklist_hosts = new ArrayList<>();
     HostAndPort hp = hps[offset];
-    Common.HostPortPB hostPortPB = Common.HostPortPB.newBuilder()
+    CommonNet.HostPortPB hostPortPB = CommonNet.HostPortPB.newBuilder()
       .setHost(hp.getHost())
       .setPort(hp.getPort())
       .build();
@@ -740,7 +765,8 @@ public class TestClusterBase extends BaseCQLTest {
     int num_tablets_moved_to_new_tserver = 12;
 
     int rbs_delay_sec = 15;
-    addNewTServers(1, Arrays.asList("--TEST_simulate_long_remote_bootstrap_sec=" + rbs_delay_sec));
+    addNewTServers(1, Collections.singletonMap("TEST_simulate_long_remote_bootstrap_sec",
+                                               String.valueOf(rbs_delay_sec)));
 
     // Load balancer should not become idle while long RBS is half-way.
     assertFalse(client.waitForLoadBalancerIdle(

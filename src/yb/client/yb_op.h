@@ -39,9 +39,15 @@
 
 #include "yb/client/client_fwd.h"
 
+#include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
 #include "yb/common/read_hybrid_time.h"
+#include "yb/common/transaction.pb.h"
+
+#include "yb/docdb/docdb_fwd.h"
+
+#include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
 
@@ -95,6 +101,7 @@ class YBOperation {
   virtual ~YBOperation();
 
   std::shared_ptr<const YBTable> table() const { return table_; }
+  std::shared_ptr<YBTable> mutable_table() const { return table_; }
 
   void ResetTable(std::shared_ptr<YBTable> new_table);
 
@@ -124,23 +131,30 @@ class YBOperation {
 
   void SetTablet(const scoped_refptr<internal::RemoteTablet>& tablet);
 
-  // Returns the partition key of the operation.
-  virtual CHECKED_STATUS GetPartitionKey(std::string* partition_key) const = 0;
+  // Resets tablet, so it will be re-resolved on applying this operation.
+  void ResetTablet();
 
-  // Returns whether this operation is being performed on a table where distributed transactions
-  // are enabled.
-  virtual bool IsTransactional() const;
+  // Returns the partition key of the operation.
+  virtual Status GetPartitionKey(std::string* partition_key) const = 0;
 
   // Whether this is an operation on one of the YSQL system catalog tables.
   bool IsYsqlCatalogOp() const;
 
   // Mark table this op is designated for as having stale partitions.
-  void MarkTablePartitionsAsStale();
+  void MarkTablePartitionListAsStale();
 
-  // Refreshes partitions of the table this op is designated of in case partitions have been marked
-  // as stale.
-  // Returns whether table partitions have been refreshed.
-  Result<bool> MaybeRefreshTablePartitions();
+  // If partition_list_version is set YBSession guarantees that this operation instance won't
+  // be applied to the tablet with a different table partition_list_version (meaning serving
+  // different range of partition keys). If versions do not match YBSession will report
+  // ClientError::kTablePartitionListVersionDoesNotMatch.
+  // If partition_list_version is not set - no such check will be performed.
+  void SetPartitionListVersion(PartitionListVersion partition_list_version) {
+    partition_list_version_ = partition_list_version;
+  }
+
+  boost::optional<PartitionListVersion> partition_list_version() const {
+    return partition_list_version_;
+  }
 
   int64_t GetQueryId() const {
     return reinterpret_cast<int64_t>(this);
@@ -155,6 +169,8 @@ class YBOperation {
   friend class internal::AsyncRpc;
 
   scoped_refptr<internal::RemoteTablet> tablet_;
+
+  boost::optional<PartitionListVersion> partition_list_version_;
 
   DISALLOW_COPY_AND_ASSIGN(YBOperation);
 };
@@ -208,7 +224,7 @@ class YBRedisWriteOp : public YBRedisOp {
 
   const std::string& GetKey() const override;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override { return REDIS_WRITE; }
@@ -242,7 +258,7 @@ class YBRedisReadOp : public YBRedisOp {
 
   const std::string& GetKey() const override;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   Type type() const override { return REDIS_READ; }
@@ -269,7 +285,7 @@ class YBqlOp : public YBOperation {
 
   std::string* mutable_rows_data() { return &rows_data_; }
 
-  bool succeeded() const override { return response().status() == QLResponsePB::YQL_STATUS_OK; }
+  bool succeeded() const override;
 
  protected:
   explicit YBqlOp(const std::shared_ptr<YBTable>& table);
@@ -293,28 +309,13 @@ class YBqlWriteOp : public YBqlOp {
 
   bool read_only() const override { return false; };
 
-  bool returns_sidecar() override {
-    return ql_write_request_->has_if_expr() || ql_write_request_->returns_status();
-  }
+  bool returns_sidecar() override;
 
   void SetHashCode(uint16_t hash_code) override;
 
   uint16_t GetHashCode() const;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
-
-  // Hash and equal functions to define a set of write operations that do not overlap by their
-  // hash (or primary) keys.
-  struct HashKeyComparator {
-    virtual ~HashKeyComparator() {}
-    virtual size_t operator() (const YBqlWriteOpPtr& op) const;
-    virtual bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const;
-  };
-  struct PrimaryKeyComparator : HashKeyComparator {
-    virtual ~PrimaryKeyComparator() {}
-    size_t operator() (const YBqlWriteOpPtr& op) const override;
-    bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const override;
-  };
+  Status GetPartitionKey(std::string* partition_key) const override;
 
   // Does this operation read/write the static or primary row?
   bool ReadsStaticRow() const;
@@ -324,6 +325,14 @@ class YBqlWriteOp : public YBqlOp {
 
   void set_writes_static_row(const bool value) { writes_static_row_ = value; }
   void set_writes_primary_row(const bool value) { writes_primary_row_ = value; }
+
+  void set_write_time_for_backfill(HybridTime value) {
+    write_time_for_backfill_ = value;
+  }
+
+  HybridTime write_time_for_backfill() const {
+    return write_time_for_backfill_;
+  }
 
  protected:
   Type type() const override { return QL_WRITE; }
@@ -338,6 +347,19 @@ class YBqlWriteOp : public YBqlOp {
   // Does this operation write to the static or primary row?
   bool writes_static_row_ = false;
   bool writes_primary_row_ = false;
+  HybridTime write_time_for_backfill_;
+};
+
+// Hash and equal functions to define a set of write operations that do not overlap by their
+// hash (or primary) keys.
+struct YBqlWriteHashKeyComparator {
+  size_t operator() (const YBqlWriteOpPtr& op) const;
+  bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const;
+};
+
+struct YBqlWritePrimaryKeyComparator {
+  size_t operator() (const YBqlWriteOpPtr& op) const;
+  bool operator() (const YBqlWriteOpPtr& op1, const YBqlWriteOpPtr& op2) const;
 };
 
 class YBqlReadOp : public YBqlOp {
@@ -363,9 +385,9 @@ class YBqlReadOp : public YBqlOp {
 
   // Returns the partition key of the read request if it exists.
   // Also sets the hash_code and max_hash_code in the request.
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
+  Status GetPartitionKey(std::string* partition_key) const override;
 
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -400,61 +422,54 @@ std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
 
 class YBPgsqlOp : public YBOperation {
  public:
-  explicit YBPgsqlOp(const std::shared_ptr<YBTable>& table);
+  YBPgsqlOp(const std::shared_ptr<YBTable>& table, std::string* partition_key);
   ~YBPgsqlOp();
 
   const PgsqlResponsePB& response() const { return *response_; }
 
   PgsqlResponsePB* mutable_response() { return response_.get(); }
 
-  std::string&& rows_data() { return std::move(rows_data_); }
+  bool succeeded() const override;
 
-  std::string* mutable_rows_data() { return &rows_data_; }
+  bool applied() override;
 
-  bool succeeded() const override {
-    return response().status() == PgsqlResponsePB::PGSQL_STATUS_OK;
+  void SetRowsData(RefCntBuffer holder, const Slice& slice) {
+    rows_data_holder_ = std::move(holder);
+    rows_data_slice_ = slice;
   }
 
-  bool applied() override {
-    return succeeded() && !response_->skipped();
+  const Slice& rows_data() const {
+    return rows_data_slice_;
   }
 
-  bool is_active() const {
-    return is_active_;
+  const RefCntBuffer& rows_data_holder() const {
+    return rows_data_holder_;
   }
 
-  void set_active(bool val) {
-    is_active_ = val;
+  Status GetPartitionKey(std::string* partition_key) const override {
+    *partition_key = partition_key_;
+    return Status::OK();
   }
 
  protected:
   std::unique_ptr<PgsqlResponsePB> response_;
-  std::string rows_data_;
-
-  // This flag is only meaningful in PgGate (proxy / client).
-  // To support parallel processing by partitions or hash-codes, client will create many operators,
-  // one per tablet with a specific partition range. When none of users' input arguments have the
-  // partition value within the ranges that are associated with certain operators, those operators
-  // would be set in-active, and their op->request() would not be sent to tablet server.
-  bool is_active_ = true;
+  RefCntBuffer rows_data_holder_;
+  Slice rows_data_slice_;
+  std::string partition_key_;
 };
 
 class YBPgsqlWriteOp : public YBPgsqlOp {
  public:
-  explicit YBPgsqlWriteOp(const std::shared_ptr<YBTable>& table);
+  explicit YBPgsqlWriteOp(
+      const std::shared_ptr<YBTable>& table, PgsqlWriteRequestPB* request = nullptr);
   ~YBPgsqlWriteOp();
-
-  // Copying all member data except for response_ and rows_data_.
-  // - Input (hash_code, bind expresion) of the copy will be modified during execution.
-  // - Output (response_, rows_data_) arguments will be read from DocDB.
-  std::unique_ptr<YBPgsqlWriteOp> DeepCopy();
 
   // Note: to avoid memory copy, this PgsqlWriteRequestPB is moved into tserver WriteRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see WriteRpc's constructor).
-  const PgsqlWriteRequestPB& request() const { return *write_request_; }
+  const PgsqlWriteRequestPB& request() const { return *request_; }
 
-  PgsqlWriteRequestPB* mutable_request() { return write_request_.get(); }
+  PgsqlWriteRequestPB* mutable_request() { return request_; }
 
   std::string ToString() const override;
 
@@ -465,10 +480,6 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
   void SetHashCode(uint16_t hash_code) override;
 
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
-
-  bool IsTransactional() const override;
-
   void set_is_single_row_txn(bool is_single_row_txn) {
     is_single_row_txn_ = is_single_row_txn;
   }
@@ -476,18 +487,21 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
   const HybridTime& write_time() const { return write_time_; }
   void SetWriteTime(const HybridTime& value) { write_time_ = value; }
 
+  Status GetPartitionKey(std::string* partition_key) const override;
+
+  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const YBTablePtr& table);
+  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(const YBTablePtr& table);
+
  protected:
   virtual Type type() const override { return PGSQL_WRITE; }
 
  private:
   friend class YBTable;
-  static std::unique_ptr<YBPgsqlWriteOp> NewInsert(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewUpdate(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewDelete(const std::shared_ptr<YBTable>& table);
-  static std::unique_ptr<YBPgsqlWriteOp> NewTruncateColocated(
-      const std::shared_ptr<YBTable>& table);
 
-  std::unique_ptr<PgsqlWriteRequestPB> write_request_;
+  PgsqlWriteRequestPB* request_;
+  std::unique_ptr<PgsqlWriteRequestPB> request_holder_;
   // Whether this operation should be run as a single row txn.
   // Else could be distributed transaction (or non-transactional) depending on target table type.
   bool is_single_row_txn_ = false;
@@ -496,18 +510,19 @@ class YBPgsqlWriteOp : public YBPgsqlOp {
 
 class YBPgsqlReadOp : public YBPgsqlOp {
  public:
+  explicit YBPgsqlReadOp(
+      const std::shared_ptr<YBTable>& table, PgsqlReadRequestPB* request = nullptr);
+
   static std::unique_ptr<YBPgsqlReadOp> NewSelect(const std::shared_ptr<YBTable>& table);
 
-  // Create a deep copy of this operation, copying all fields and request PB content.
-  // Does NOT, however, copy response and rows data.
-  std::unique_ptr<YBPgsqlReadOp> DeepCopy();
+  static std::unique_ptr<YBPgsqlReadOp> NewSample(const std::shared_ptr<YBTable>& table);
 
   // Note: to avoid memory copy, this PgsqlReadRequestPB is moved into tserver ReadRequestPB
   // when the request is sent to tserver. It is restored after response is received from tserver
   // (see ReadRpc's constructor).
-  const PgsqlReadRequestPB& request() const { return *read_request_; }
+  const PgsqlReadRequestPB& request() const { return *request_; }
 
-  PgsqlReadRequestPB* mutable_request() { return read_request_.get(); }
+  PgsqlReadRequestPB* mutable_request() { return request_; }
 
   std::string ToString() const override;
 
@@ -517,11 +532,7 @@ class YBPgsqlReadOp : public YBPgsqlOp {
 
   void SetHashCode(uint16_t hash_code) override;
 
-  // Returns the partition key of the read request if it exists.
-  // Also sets the hash_code and max_hash_code in the request.
-  CHECKED_STATUS GetPartitionKey(std::string* partition_key) const override;
-
-  const YBConsistencyLevel yb_consistency_level() {
+  YBConsistencyLevel yb_consistency_level() {
     return yb_consistency_level_;
   }
 
@@ -530,15 +541,15 @@ class YBPgsqlReadOp : public YBPgsqlOp {
   }
 
   std::vector<ColumnSchema> MakeColumnSchemasFromRequest() const;
-  Result<QLRowBlock> MakeRowBlock() const;
-
-  const ReadHybridTime& read_time() const { return read_time_; }
-  void SetReadTime(const ReadHybridTime& value) { read_time_ = value; }
 
   static std::vector<ColumnSchema> MakeColumnSchemasFromColDesc(
       const google::protobuf::RepeatedPtrField<PgsqlRSColDescPB>& rscol_descs);
 
   bool should_add_intents(IsolationLevel isolation_level) override;
+  void SetUsedReadTime(const ReadHybridTime& used_time);
+  const ReadHybridTime& used_read_time() const { return used_read_time_; }
+
+  Status GetPartitionKey(std::string* partition_key) const override;
 
  protected:
   virtual Type type() const override { return PGSQL_READ; }
@@ -547,13 +558,10 @@ class YBPgsqlReadOp : public YBPgsqlOp {
  private:
   friend class YBTable;
 
-  explicit YBPgsqlReadOp(const std::shared_ptr<YBTable>& table);
-  CHECKED_STATUS GetHashPartitionKey(std::string* partition_key) const;
-  CHECKED_STATUS GetRangePartitionKey(std::string* partition_key) const;
-
-  std::unique_ptr<PgsqlReadRequestPB> read_request_;
+  PgsqlReadRequestPB* request_;
+  std::unique_ptr<PgsqlReadRequestPB> request_holder_;
   YBConsistencyLevel yb_consistency_level_ = YBConsistencyLevel::STRONG;
-  ReadHybridTime read_time_;
+  ReadHybridTime used_read_time_;
 };
 
 // This class is not thread-safe, though different YBNoOp objects on
@@ -566,14 +574,31 @@ class YBNoOp {
 
   // Executes a no-op request against the tablet server on which the row specified
   // by "key" lives.
-  CHECKED_STATUS Execute(const YBPartialRow& key);
+  Status Execute(YBClient* client, const YBPartialRow& key);
  private:
   const std::shared_ptr<YBTable> table_;
 
   DISALLOW_COPY_AND_ASSIGN(YBNoOp);
 };
 
-CHECKED_STATUS ReviewResponsePagingState(YBPgsqlReadOp* op);
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema,
+    const std::string& last_partition, LWPgsqlReadRequestPB* request);
+
+Status InitPartitionKey(
+    const Schema& schema, const PartitionSchema& partition_schema, LWPgsqlWriteRequestPB* request);
+
+Status GetRangePartitionBounds(
+    const Schema& schema,
+    const PgsqlReadRequestPB& request,
+    std::vector<docdb::KeyEntryValue>* lower_bound,
+    std::vector<docdb::KeyEntryValue>* upper_bound);
+
+Status GetRangePartitionBounds(
+    const Schema& schema,
+    const LWPgsqlReadRequestPB& request,
+    std::vector<docdb::KeyEntryValue>* lower_bound,
+    std::vector<docdb::KeyEntryValue>* upper_bound);
 
 }  // namespace client
 }  // namespace yb

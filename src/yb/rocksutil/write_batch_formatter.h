@@ -22,11 +22,12 @@
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/enums.h"
-#include "yb/util/result.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 
 YB_DEFINE_ENUM(WriteBatchFieldKind, (kKey)(kValue));
+YB_DEFINE_ENUM(WriteBatchOutputFormat, (kParentheses)(kArrow));
 
 // Produces a human-readable representation of the given RocksDB WriteBatch, e.g.:
 // <pre>
@@ -36,47 +37,58 @@ YB_DEFINE_ENUM(WriteBatchFieldKind, (kKey)(kValue));
 class WriteBatchFormatter : public rocksdb::WriteBatch::Handler {
  public:
   explicit WriteBatchFormatter(
-      BinaryOutputFormat binary_output_format = BinaryOutputFormat::kEscaped)
-      : binary_output_format_(binary_output_format) {}
+      BinaryOutputFormat binary_output_format = BinaryOutputFormat::kEscaped,
+      WriteBatchOutputFormat output_format = WriteBatchOutputFormat::kParentheses,
+      std::string line_prefix = std::string())
+      : binary_output_format_(binary_output_format),
+        output_format_(output_format),
+        line_prefix_(line_prefix) {}
 
-  virtual CHECKED_STATUS PutCF(
+  virtual Status PutCF(
+      uint32_t column_family_id,
+      const rocksdb::SliceParts& key,
+      const rocksdb::SliceParts& value) override;
+
+  virtual Status DeleteCF(
+      uint32_t column_family_id,
+      const rocksdb::Slice& key) override;
+
+  virtual Status SingleDeleteCF(
+      uint32_t column_family_id,
+      const rocksdb::Slice& key) override;
+
+  virtual Status MergeCF(
       uint32_t column_family_id,
       const rocksdb::Slice& key,
       const rocksdb::Slice& value) override;
 
-  virtual CHECKED_STATUS DeleteCF(
-      uint32_t column_family_id,
-      const rocksdb::Slice& key) override;
-
-  virtual CHECKED_STATUS SingleDeleteCF(
-      uint32_t column_family_id,
-      const rocksdb::Slice& key) override;
-
-  virtual CHECKED_STATUS MergeCF(
-      uint32_t column_family_id,
-      const rocksdb::Slice& key,
-      const rocksdb::Slice& value) override;
-
-  CHECKED_STATUS Frontiers(const rocksdb::UserFrontiers& range) override;
+  Status Frontiers(const rocksdb::UserFrontiers& range) override;
 
   std::string str() { return out_.str(); }
 
+  void SetLinePrefix(const std::string& line_prefix) {
+    line_prefix_ = line_prefix;
+  }
+
  protected:
   virtual std::string FormatKey(const Slice& key);
-  virtual std::string FormatValue(const Slice& value);
+
+  // When formatting a value, it is sometimes necessary to know the key as well.
+  virtual std::string FormatValue(const Slice& key, const Slice& value);
 
  private:
-  void StartOutputLine(const char* name, bool is_kv_op = true);
-  void AddSeparatorIfNeeded();
+  void StartOutputLine(const char* function_name, bool is_kv = true);
+  void AddSeparator();
   void OutputKey(const Slice& key);
-  void OutputValue(const Slice& value);
+  void OutputValue(const Slice& key, const Slice& value);
   void FinishOutputLine();
 
   BinaryOutputFormat binary_output_format_;
-  bool need_separator_ = false;
+  WriteBatchOutputFormat output_format_;
+  std::string line_prefix_;
+
   std::stringstream out_;
-  int update_index_ = 0;
-  bool parentheses_ = false;
+  int kv_index_ = 0;
 };
 
 } // namespace yb

@@ -15,26 +15,37 @@
 package org.yb.minicluster;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 
+import com.google.common.base.Preconditions;
+
 public class MiniYBClusterBuilder {
 
   private MiniYBClusterParameters clusterParameters = new MiniYBClusterParameters();
-  private List<String> masterArgs = new ArrayList<>();
 
-  /** Arguments for each tablet server. */
-  private List<List<String>> perTServerArgs = new ArrayList<>();
+  /** Extra flags added to each master's command line. */
+  private Map<String, String> masterFlags = new TreeMap<>();
 
-  /** Extra arguments added to each tablet server's command line. */
-  private List<String> commonTServerArgs = new ArrayList<>();
+  /** Extra flags added to each tablet server's command line. */
+  private Map<String, String> commonTServerFlags = new TreeMap<>();
+
+  /** Flags for each tablet server. */
+  private List<Map<String, String>> perTServerFlags = new ArrayList<>();
 
   private String testClassName = null;
 
   private String certFile = null;
+
+  // The client cert files for mTLS.
+  private String clientCertFile = null;
+  private String clientKeyFile = null;
+
+  // This is used as the default bind address (Used only for mTLS verification).
+  private String clientHost = null;
+  private int clientPort = 0;
 
   private Map<String, String> tserverEnvVars = new TreeMap<String, String>();
 
@@ -63,6 +74,18 @@ public class MiniYBClusterBuilder {
     return this;
   }
 
+  public MiniYBClusterBuilder sslClientCertFiles(String certFile, String keyFile) {
+    this.clientCertFile = certFile;
+    this.clientKeyFile = keyFile;
+    return this;
+  }
+
+  public MiniYBClusterBuilder bindHostAddress(String clientHost, int clientPort) {
+    this.clientHost = clientHost;
+    this.clientPort = clientPort;
+    return this;
+  }
+
   /**
    * Configures the internal client to use the given timeout for all operations. Also uses the
    * timeout for tasks like waiting for tablet servers to check in with the master.
@@ -75,54 +98,72 @@ public class MiniYBClusterBuilder {
   }
 
   /**
-   * Configure additional command-line arguments for starting master. This replaces the list of
-   * existing additional master arguments.
+   * Configure additional command-line flags for starting master. This replaces the list of
+   * existing additional master flags.
    *
-   * @param masterArgs additional command-line arguments
+   * @param masterFlags additional command-line flags
    * @return this instance
    */
-  public MiniYBClusterBuilder masterArgs(List<String> masterArgs) {
-    this.masterArgs = masterArgs;
+  public MiniYBClusterBuilder masterFlags(Map<String, String> masterFlags) {
+    this.masterFlags = masterFlags;
     return this;
   }
 
   /**
-   * Configure additional command-line arguments for starting master. This appends to the list of
+   * Configure additional command-line flags for starting master. This appends to the list of
    * additional master arguments.
    */
-  public MiniYBClusterBuilder addMasterArgs(String... newArgs) {
-    this.masterArgs.addAll(Arrays.asList(newArgs));
+  public MiniYBClusterBuilder addMasterFlags(Map<String, String> masterFlags) {
+    this.masterFlags.putAll(masterFlags);
     return this;
   }
 
+  public MiniYBClusterBuilder addMasterFlag(String flag, String value) {
+    this.masterFlags.put(flag, value);
+    return this;
+  }
 
   /**
-   * Configure additional command-line arguments for starting tserver.
+   * Configure additional command-line arguments for starting each tserver, taking priority over
+   * common tserver flags. This replaces the list of existing additional per-tserver flags.
    */
-  public MiniYBClusterBuilder perTServerArgs(List<List<String>> tserverArgs) {
-    this.perTServerArgs = tserverArgs;
+  public MiniYBClusterBuilder perTServerFlags(List<Map<String, String>> perTServerFlags) {
+    Preconditions.checkNotNull(perTServerFlags);
+    this.perTServerFlags = perTServerFlags;
     return this;
   }
 
-  public MiniYBClusterBuilder commonTServerArgs(List<String> commonTServerArgs) {
-    this.commonTServerArgs = commonTServerArgs;
+  /**
+   * Configure additional command-line arguments for starting tserver. This replaces the list of
+   * existing additional common tserver flags.
+   */
+  public MiniYBClusterBuilder commonTServerFlags(Map<String, String> commonTServerFlags) {
+    this.commonTServerFlags = commonTServerFlags;
     return this;
   }
 
-  public MiniYBClusterBuilder addCommonTServerArgs(String... newArgs) {
-    if (this.commonTServerArgs == null) {
-      this.commonTServerArgs = new ArrayList<>();
-    }
-    this.commonTServerArgs.addAll(Arrays.asList(newArgs));
+  public MiniYBClusterBuilder addCommonTServerFlags(Map<String, String> commonTServerFlags) {
+    this.commonTServerFlags.putAll(commonTServerFlags);
+    return this;
+  }
+
+  public MiniYBClusterBuilder addCommonTServerFlag(String flag, String value) {
+    this.commonTServerFlags.put(flag, value);
     return this;
   }
 
   /**
    * Configure additional command-line arguments for starting both master and tserver.
    */
-  public MiniYBClusterBuilder addCommonArgs(String... args) {
-    addMasterArgs(args);
-    addCommonTServerArgs(args);
+  public MiniYBClusterBuilder addCommonFlags(Map<String, String> flags) {
+    addMasterFlags(flags);
+    addCommonTServerFlags(flags);
+    return this;
+  }
+
+  public MiniYBClusterBuilder addCommonFlag(String flag, String value) {
+    addMasterFlag(flag, value);
+    addCommonTServerFlag(flag, value);
     return this;
   }
 
@@ -144,10 +185,16 @@ public class MiniYBClusterBuilder {
   }
 
   /**
-   * Enable PostgreSQL server API in tablet servers.
+   * Enable YSQL server API in tablet servers.
    */
-  public MiniYBClusterBuilder enablePostgres(boolean enablePostgres) {
-    this.clusterParameters.startPgSqlProxy = enablePostgres;
+  public MiniYBClusterBuilder enableYsql(boolean enableYsql) {
+    this.clusterParameters.startYsqlProxy = enableYsql;
+    return this;
+  }
+
+  public MiniYBClusterBuilder ysqlSnapshotVersion(YsqlSnapshotVersion ysqlSnapshotVersion) {
+    Preconditions.checkState(this.clusterParameters.startYsqlProxy, "YSQL is not enabled");
+    this.clusterParameters.ysqlSnapshotVersion = ysqlSnapshotVersion;
     return this;
   }
 
@@ -156,7 +203,7 @@ public class MiniYBClusterBuilder {
    */
   public MiniYBClusterBuilder enablePgTransactions(boolean enablePgTransactions) {
     if (enablePgTransactions) {
-      enablePostgres(true);
+      enableYsql(true);
     }
     this.clusterParameters.pgTransactionsEnabled = enablePgTransactions;
     return this;
@@ -183,19 +230,22 @@ public class MiniYBClusterBuilder {
   }
 
   public MiniYBCluster build() throws Exception {
-    if (perTServerArgs != null && perTServerArgs.size() != clusterParameters.numTservers) {
-      throw new AssertionError(
-          "Per-tablet-server arguments list has " + perTServerArgs.size() + " elements (" +
-              perTServerArgs + ") but numTServers=" + clusterParameters.numTservers);
-    }
+    Preconditions.checkArgument(
+        perTServerFlags.isEmpty() || perTServerFlags.size() == clusterParameters.numTservers,
+        "Per-tablet-server arguments list has %s elements (%s) but numTServers=%s",
+        perTServerFlags.size(), perTServerFlags, clusterParameters.numTservers);
 
     return new MiniYBCluster(
         clusterParameters,
-        masterArgs,
-        perTServerArgs,
-        commonTServerArgs,
+        masterFlags,
+        commonTServerFlags,
+        perTServerFlags,
         tserverEnvVars,
         testClassName,
-        certFile);
+        certFile,
+        clientCertFile,
+        clientKeyFile,
+        clientHost,
+        clientPort);
   }
 }

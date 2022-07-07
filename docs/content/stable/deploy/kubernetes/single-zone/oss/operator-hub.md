@@ -3,19 +3,13 @@ title: Deploy on Kubernetes clusters using Operator Hub and OLM
 headerTitle: Open source Kubernetes
 linkTitle: Open source Kubernetes
 description: Deploy YugabyteDB on Kubernetes clusters using Operator Hub and Operator Lifecycle Manager (OLM).
-block_indexing: true
 menu:
   stable:
     parent: deploy-kubernetes-sz
     name: Open Source
     identifier: k8s-oss-3
     weight: 621
-aliases:
-  - /stable/deploy/kubernetes/operator-hub/
-  - /stable/deploy/kubernetes/oss/operator-hub/
-type: page
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 
@@ -36,12 +30,6 @@ showAsideToc: true
     <a href="{{< relref "./operator-hub.md" >}}" class="nav-link active">
       <i class="fas fa-cubes" aria-hidden="true"></i>
       Operator Hub
-    </a>
-  </li>
-  <li>
-    <a href="{{< relref "./rook-operator.md" >}}" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
-      Rook operator
     </a>
   </li>
 </ul>
@@ -82,7 +70,7 @@ yugabyte-operator.v0.0.1   Yugabyte Operator   0.0.1                Succeeded
 3. Create YugabyteDB Custom Resource to create YugabyteDB cluster using operator deployed above
 
 ```sh
-$ kubectl create namespace yb-operator && kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte_v1alpha1_ybcluster_cr.yaml
+$ kubectl create namespace yb-operator && kubectl create -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte.com_v1alpha1_ybcluster_cr.yaml
 ```
 
 Watch your YugabyteDB cluster pods come up.
@@ -113,7 +101,7 @@ $ kubectl exec -it -n yb-operator yb-tserver-0 -- ysqlsh -h yb-tserver-0  --echo
 
 For details on the YSQL API, see:
 
-- [Explore YSQL](../../../../../quick-start/explore-ysql/)
+- [Explore YSQL](../../../../../quick-start/explore/ysql/)
 - [YSQL Reference](../../../../../api/ysql/)
 
 ## Clean up
@@ -123,7 +111,7 @@ To remove the YugabyteDB cluster and operator resources, run the following comma
 **NOTE:** This will destroy your database and delete all of its data.
 
 ```console
-kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte_v1alpha1_ybcluster_cr.yaml
+kubectl delete -f https://raw.githubusercontent.com/yugabyte/yugabyte-operator/master/deploy/crds/yugabyte.com_v1alpha1_ybcluster_cr.yaml
 kubectl delete namespace yb-operator
 kubectl delete -f https://operatorhub.io/install/yugabyte-operator.yaml
 ```

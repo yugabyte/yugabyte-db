@@ -3,14 +3,12 @@ title: jsonb_extract_path_text() and json_extract_path_text() [JSON]
 headerTitle: jsonb_extract_path_text() and json_extract_path_text()
 linkTitle: jsonb_extract_path_text() and json_extract_path_text()
 description: Provide identical functionality to the "#>>" operator.
-block_indexing: true
 menu:
   stable:
     identifier: jsonb-extract-path-text
     parent: json-functions-operators
     weight: 140
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 **Purpose:** Provide the identical functionality to the [`#>>`](../subvalue-operators/) operator.

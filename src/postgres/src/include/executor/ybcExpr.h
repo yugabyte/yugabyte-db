@@ -28,36 +28,37 @@
 #ifndef YBCEXPR_H
 #define YBCEXPR_H
 
+#include "postgres.h"
+#include "nodes/execnodes.h"
+
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 #include "yb/yql/pggate/ybc_pggate.h"
 
-typedef struct YBExprParamDesc {
-	int32_t attno;
-	int32_t typid;
-	int32_t typmod;
-} YBExprParamDesc;
-
 // Construct column reference expression.
-extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num, int attr_typid,
-																 const YBCPgTypeAttrs *type_attrs);
+extern YBCPgExpr YBCNewColumnRef(YBCPgStatement ybc_stmt, int16_t attr_num,
+								 int attr_typid, int attr_collation,
+								 const YBCPgTypeAttrs *type_attrs);
 
 // Construct constant expression using the given datatype "type_id" and value "datum".
-extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id, Datum datum, bool is_null);
+extern YBCPgExpr YBCNewConstant(YBCPgStatement ybc_stmt, Oid type_id,
+								Oid collation_id, Datum datum, bool is_null);
 
 // Construct virtual constant expression using the given datatype "type_id" and virtual "datum".
-extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id, YBCPgDatumKind kind);
+extern YBCPgExpr YBCNewConstantVirtual(YBCPgStatement ybc_stmt, Oid type_id,
+									   YBCPgDatumKind kind);
 
-// Construct a generic eval_expr call for given a PG Expr and its expected type and attno.
-extern YBCPgExpr YBCNewEvalSingleParamExprCall(YBCPgStatement ybc_stmt, 
-                                               Expr *expr, 
-                                               int32_t attno, 
-                                               int32_t type_id, 
-                                               int32_t type_mod);
+extern Expr *YbExprInstantiateParams(Expr* expr, ParamListInfo paramLI);
 
-YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt,
-                             Expr *pg_expr,
-                             YBExprParamDesc *params,
-                             int num_params);
+extern bool YbCanPushdownExpr(Expr *pg_expr, List **params);
+
+extern bool YbIsTransactionalExpr(Node *pg_expr);
+
+YBCPgExpr YBCNewEvalExprCall(YBCPgStatement ybc_stmt, Expr *pg_expr);
+
+extern YbPgExecOutParam *YbCreateExecOutParam();
+
+extern void YbWriteExecOutParam(YbPgExecOutParam *out_param,
+								const YbcPgExecOutParamValue *value);
 
 #endif							/* YBCEXPR_H */

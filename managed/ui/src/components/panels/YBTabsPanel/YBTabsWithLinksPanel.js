@@ -29,7 +29,7 @@ class YBTabsWithLinksPanel extends Component {
 
   queryTabHandler = () => {
     const { location, children } = this.props;
-    const locationTabKey = location.query.tab;
+    const locationTabKey = location.query?.tab;
     if (isDefinedNotNull(locationTabKey)) {
       return children.some((item) => {
         return item.props.eventKey.indexOf(locationTabKey) >= 0 && !item.props.disabled;
@@ -41,9 +41,11 @@ class YBTabsWithLinksPanel extends Component {
   };
 
   render() {
-    const { activeTab, defaultTab } = this.props;
+    const { activeTab, defaultTab, children } = this.props;
     const activeTabKey = activeTab || this.queryTabHandler() || defaultTab;
-    const links = this.props.children.map((item) => (
+    const childTabs = (Array.isArray(children) ? children : [children])
+      .filter(child => child);
+    const links = childTabs.map((item) => (
       <NavItem
         key={item.props.eventKey}
         eventKey={item.props.eventKey}
@@ -66,10 +68,10 @@ class YBTabsWithLinksPanel extends Component {
         className={this.props.className}
       >
         <div>
-          <Nav bsStyle="tabs" className="nav nav-tabs">
+          <Nav bsStyle="tabs" className="nav nav-tabs" role="tablist">
             {links}
           </Nav>
-          <Tab.Content animation>{this.props.children}</Tab.Content>
+          <Tab.Content animation>{children}</Tab.Content>
         </div>
       </Tab.Container>
     );

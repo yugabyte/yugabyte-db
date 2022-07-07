@@ -65,6 +65,8 @@
 %code requires {
 #include <stdbool.h>
 
+#include "yb/bfql/bfunc_names.h"
+
 #include "yb/common/common.pb.h"
 #include "yb/gutil/macros.h"
 
@@ -76,6 +78,7 @@
 #include "yb/yql/cql/ql/ptree/pt_use_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_keyspace.h"
 #include "yb/yql/cql/ql/ptree/pt_alter_table.h"
+#include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_create_table.h"
 #include "yb/yql/cql/ql/ptree/pt_create_type.h"
 #include "yb/yql/cql/ql/ptree/pt_create_index.h"
@@ -83,6 +86,7 @@
 #include "yb/yql/cql/ql/ptree/pt_alter_role.h"
 #include "yb/yql/cql/ql/ptree/pt_grant_revoke.h"
 #include "yb/yql/cql/ql/ptree/pt_truncate.h"
+#include "yb/yql/cql/ql/ptree/pt_dml_using_clause.h"
 #include "yb/yql/cql/ql/ptree/pt_drop.h"
 #include "yb/yql/cql/ql/ptree/pt_type.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -133,11 +137,14 @@ typedef PTAssign::SharedPtr            PAssign;
 typedef PTKeyspaceProperty::SharedPtr     PKeyspaceProperty;
 typedef PTKeyspacePropertyListNode::SharedPtr     PKeyspacePropertyListNode;
 typedef PTKeyspacePropertyMap::SharedPtr  PKeyspacePropertyMap;
-typedef PTDmlUsingClause::SharedPtr     PDmlUsingClause;
-typedef PTDmlUsingClauseElement::SharedPtr     PDmlUsingClauseElement;
+typedef PTDmlUsingClausePtr     PDmlUsingClause;
+typedef PTDmlUsingClauseElementPtr     PDmlUsingClauseElement;
 typedef PTTableProperty::SharedPtr     PTableProperty;
 typedef PTTablePropertyListNode::SharedPtr     PTablePropertyListNode;
 typedef PTTablePropertyMap::SharedPtr  PTablePropertyMap;
+typedef PTDmlWriteProperty::SharedPtr     PDmlWriteProperty;
+typedef PTDmlWritePropertyListNode::SharedPtr     PDmlWritePropertyListNode;
+typedef PTDmlWritePropertyMap::SharedPtr  PDmlWritePropertyMap;
 
 typedef PTTypeField::SharedPtr         PTypeField;
 typedef PTTypeFieldListNode::SharedPtr PTypeFieldListNode;
@@ -145,7 +152,7 @@ typedef PTTypeFieldListNode::SharedPtr PTypeFieldListNode;
 typedef PTAssignListNode::SharedPtr    PAssignListNode;
 
 typedef PTName::SharedPtr              PName;
-typedef PTIndexColumn::SharedPtr       PIndexColumn;
+typedef PTIndexColumnPtr       PIndexColumn;
 typedef PTQualifiedName::SharedPtr     PQualifiedName;
 typedef PTQualifiedNameListNode::SharedPtr PQualifiedNameListNode;
 
@@ -368,6 +375,10 @@ using namespace yb::ql;
 %type <PTablePropertyListNode>   opt_table_options table_property table_properties orderingList
                           opt_index_options
 
+%type <PDmlWriteProperty>    write_dml_property_map_list_element
+%type <PDmlWritePropertyMap> write_dml_property_map_list write_dml_property_map
+%type <PDmlWritePropertyListNode>   opt_write_dml_properties write_dml_property write_dml_properties
+
 %type <PTypeField>         TypeField
 %type <PTypeFieldListNode> TypeFieldList
 
@@ -413,13 +424,13 @@ using namespace yb::ql;
                           ExistingIndex OptTableSpace OptConsTableSpace opt_provider
                           security_label opt_existing_window_name property_name
 
-%type <PBool>             opt_if_not_exists xml_whitespace_option constraints_set_mode opt_varying
-                          opt_timezone opt_no_inherit opt_ordinality opt_instead opt_unique
-                          opt_concurrently opt_verbose opt_full opt_freeze opt_default opt_recheck
-                          copy_from opt_program all_or_distinct opt_trusted opt_restart_seqs
-                          opt_or_replace opt_grant_grant_option /* opt_grant_admin_option */
-                          opt_nowait opt_if_exists opt_with_data opt_allow_filtering
-                          TriggerForSpec TriggerForType
+%type <PBool>             opt_deferred opt_if_not_exists xml_whitespace_option constraints_set_mode
+                          opt_varying opt_timezone opt_no_inherit opt_ordinality opt_instead
+                          opt_unique opt_concurrently opt_verbose opt_full opt_freeze opt_default
+                          opt_recheck copy_from opt_program all_or_distinct opt_trusted
+                          opt_restart_seqs opt_or_replace opt_grant_grant_option
+                          /* opt_grant_admin_option */ opt_nowait opt_if_exists opt_with_data
+                          opt_allow_filtering TriggerForSpec TriggerForType
 
 %type <PInt64>            TableLikeOptionList TableLikeOption key_actions key_delete key_match
                           key_update key_action ConstraintAttributeSpec ConstraintAttributeElem
@@ -1830,13 +1841,13 @@ DropStmt:
     PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $5);
     PTQualifiedNameListNode::SharedPtr list_node = MAKE_NODE(
       @1, PTQualifiedNameListNode, name_node);
-    $$ = MAKE_NODE(@1, PTDropStmt, OBJECT_ROLE, list_node, true);
+    $$ = MAKE_NODE(@1, PTDropStmt, ObjectType::ROLE, list_node, true);
   }
   | DROP ROLE role_name {
     PTQualifiedName::SharedPtr name_node = MAKE_NODE(@1, PTQualifiedName, $3);
     PTQualifiedNameListNode::SharedPtr list_node = MAKE_NODE(
       @1, PTQualifiedNameListNode, name_node);
-    $$ = MAKE_NODE(@1, PTDropStmt, OBJECT_ROLE, list_node, false);
+    $$ = MAKE_NODE(@1, PTDropStmt, ObjectType::ROLE, list_node, false);
   }
   | DROP DOMAIN_P type_name_list opt_drop_behavior {
     PARSER_CQL_INVALID_MSG(@2, "DROP DOMAIN statement not supported");
@@ -1862,26 +1873,26 @@ drop_type:
 ;
 
 cql_drop_type:
-  TABLE                           { $$ = OBJECT_TABLE; }
-  | SCHEMA                        { $$ = OBJECT_SCHEMA; }
-  | KEYSPACE                      { $$ = OBJECT_SCHEMA; }
-  | TYPE_P                        { $$ = OBJECT_TYPE; }
-  | INDEX                         { $$ = OBJECT_INDEX; }
+  TABLE                           { $$ = ObjectType::TABLE; }
+  | SCHEMA                        { $$ = ObjectType::SCHEMA; }
+  | KEYSPACE                      { $$ = ObjectType::SCHEMA; }
+  | TYPE_P                        { $$ = ObjectType::TYPE; }
+  | INDEX                         { $$ = ObjectType::INDEX; }
 ;
 
 ql_drop_type:
-  SEQUENCE                        { $$ = OBJECT_SEQUENCE; }
-  | VIEW                          { $$ = OBJECT_VIEW; }
-  | MATERIALIZED VIEW             { $$ = OBJECT_MATVIEW; }
-  | FOREIGN TABLE                 { $$ = OBJECT_FOREIGN_TABLE; }
-  | EVENT TRIGGER                 { $$ = OBJECT_EVENT_TRIGGER; }
-  | COLLATION                     { $$ = OBJECT_COLLATION; }
-  | CONVERSION_P                  { $$ = OBJECT_CONVERSION; }
-  | EXTENSION                     { $$ = OBJECT_EXTENSION; }
-  | TEXT_P SEARCH PARSER          { $$ = OBJECT_TSPARSER; }
-  | TEXT_P SEARCH DICTIONARY      { $$ = OBJECT_TSDICTIONARY; }
-  | TEXT_P SEARCH TEMPLATE        { $$ = OBJECT_TSTEMPLATE; }
-  | TEXT_P SEARCH CONFIGURATION   { $$ = OBJECT_TSCONFIGURATION; }
+  SEQUENCE                        { $$ = ObjectType::SEQUENCE; }
+  | VIEW                          { $$ = ObjectType::VIEW; }
+  | MATERIALIZED VIEW             { $$ = ObjectType::MATVIEW; }
+  | FOREIGN TABLE                 { $$ = ObjectType::FOREIGN_TABLE; }
+  | EVENT TRIGGER                 { $$ = ObjectType::EVENT_TRIGGER; }
+  | COLLATION                     { $$ = ObjectType::COLLATION; }
+  | CONVERSION_P                  { $$ = ObjectType::CONVERSION; }
+  | EXTENSION                     { $$ = ObjectType::EXTENSION; }
+  | TEXT_P SEARCH PARSER          { $$ = ObjectType::TSPARSER; }
+  | TEXT_P SEARCH DICTIONARY      { $$ = ObjectType::TSDICTIONARY; }
+  | TEXT_P SEARCH TEMPLATE        { $$ = ObjectType::TSTEMPLATE; }
+  | TEXT_P SEARCH CONFIGURATION   { $$ = ObjectType::TSCONFIGURATION; }
 ;
 
 any_name_list:
@@ -2791,12 +2802,13 @@ DELETE_P opt_target_list FROM relation_expr_opt_alias opt_using_ttl_timestamp_cl
 
 UpdateStmt:
   UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET set_clause_list
-  opt_where_or_current_clause opt_returns_clause {
-    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, nullptr, false, $3, $7);
+  opt_where_or_current_clause opt_returns_clause opt_write_dml_properties {
+    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, nullptr, false, $3, $7, $8);
   }
   | UPDATE relation_expr_opt_alias opt_using_ttl_timestamp_clause SET
-  set_clause_list opt_where_or_current_clause if_clause opt_else_clause opt_returns_clause {
-    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, $7, $8, $3, $9);
+  set_clause_list opt_where_or_current_clause if_clause opt_else_clause opt_returns_clause
+  opt_write_dml_properties {
+    $$ = MAKE_NODE(@1, PTUpdateStmt, $2, $5, $6, $7, $8, $3, $9, $10);
   }
 ;
 
@@ -2871,6 +2883,60 @@ set_target_list:
   set_target {
   }
   | set_target_list ',' set_target {
+  }
+;
+
+opt_write_dml_properties:
+  /*EMPTY*/ {
+    $$ = nullptr;
+  }
+  | WITH write_dml_properties {
+    $$ = $2;
+  }
+;
+
+write_dml_properties:
+  write_dml_property {
+    $$ = $1;
+  }
+  | write_dml_properties AND write_dml_property {
+    $1->AppendList($3);
+    $$ = $1;
+  }
+;
+
+write_dml_property:
+  property_name '=' write_dml_property_map {
+    $3->SetPropertyName($1);
+    $$ = MAKE_NODE(@1, PTDmlWritePropertyListNode, $3);
+  }
+;
+
+write_dml_property_map:
+  '{' write_dml_property_map_list '}' {
+    $$ = $2;
+  }
+;
+
+write_dml_property_map_list:
+  write_dml_property_map_list_element {
+    $$ = MAKE_NODE(@1, PTDmlWritePropertyMap);
+    $$->AppendMapElement($1);
+  }
+  | write_dml_property_map_list ',' write_dml_property_map_list_element {
+    $1->AppendMapElement($3);
+    $$ = $1;
+  }
+;
+
+write_dml_property_map_list_element:
+  Sconst ':' TRUE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, true);
+    $$ = MAKE_NODE(@1, PTDmlWriteProperty, $1, pt_constbool);
+  }
+  | Sconst ':' FALSE_P {
+    PTConstBool::SharedPtr pt_constbool = MAKE_NODE(@3, PTConstBool, false);
+    $$ = MAKE_NODE(@1, PTDmlWriteProperty, $1, pt_constbool);
   }
 ;
 
@@ -4388,10 +4454,12 @@ collection_expr:
 
 in_expr:
   tuple_expr {
+    $1->set_is_in_operand();
     $$ = $1;
   }
   | bindvar {
     if ($1 != nullptr) {
+      $1->set_is_in_operand();
       parser_->AddBindVariable(static_cast<PTBindVar*>($1.get()));
     }
     $$ = $1;
@@ -7546,27 +7614,27 @@ CommentStmt:
 ;
 
 comment_type:
-  COLUMN                          { $$ = OBJECT_COLUMN; }
-  | DATABASE                      { $$ = OBJECT_DATABASE; }
-  | SCHEMA                        { $$ = OBJECT_SCHEMA; }
-  | INDEX                         { $$ = OBJECT_INDEX; }
-  | SEQUENCE                      { $$ = OBJECT_SEQUENCE; }
-  | TABLE                         { $$ = OBJECT_TABLE; }
-  | VIEW                          { $$ = OBJECT_VIEW; }
-  | MATERIALIZED VIEW             { $$ = OBJECT_MATVIEW; }
-  | COLLATION                     { $$ = OBJECT_COLLATION; }
-  | CONVERSION_P                  { $$ = OBJECT_CONVERSION; }
-  | TABLESPACE                    { $$ = OBJECT_TABLESPACE; }
-  | EXTENSION                     { $$ = OBJECT_EXTENSION; }
-  | ROLE                          { $$ = OBJECT_ROLE; }
-  | FOREIGN TABLE                 { $$ = OBJECT_FOREIGN_TABLE; }
-  | SERVER                        { $$ = OBJECT_FOREIGN_SERVER; }
-  | FOREIGN DATA_P WRAPPER        { $$ = OBJECT_FDW; }
-  | EVENT TRIGGER                 { $$ = OBJECT_EVENT_TRIGGER; }
-  | TEXT_P SEARCH CONFIGURATION   { $$ = OBJECT_TSCONFIGURATION; }
-  | TEXT_P SEARCH DICTIONARY      { $$ = OBJECT_TSDICTIONARY; }
-  | TEXT_P SEARCH PARSER          { $$ = OBJECT_TSPARSER; }
-  | TEXT_P SEARCH TEMPLATE        { $$ = OBJECT_TSTEMPLATE; }
+  COLUMN                          { $$ = ObjectType::COLUMN; }
+  | DATABASE                      { $$ = ObjectType::DATABASE; }
+  | SCHEMA                        { $$ = ObjectType::SCHEMA; }
+  | INDEX                         { $$ = ObjectType::INDEX; }
+  | SEQUENCE                      { $$ = ObjectType::SEQUENCE; }
+  | TABLE                         { $$ = ObjectType::TABLE; }
+  | VIEW                          { $$ = ObjectType::VIEW; }
+  | MATERIALIZED VIEW             { $$ = ObjectType::MATVIEW; }
+  | COLLATION                     { $$ = ObjectType::COLLATION; }
+  | CONVERSION_P                  { $$ = ObjectType::CONVERSION; }
+  | TABLESPACE                    { $$ = ObjectType::TABLESPACE; }
+  | EXTENSION                     { $$ = ObjectType::EXTENSION; }
+  | ROLE                          { $$ = ObjectType::ROLE; }
+  | FOREIGN TABLE                 { $$ = ObjectType::FOREIGN_TABLE; }
+  | SERVER                        { $$ = ObjectType::FOREIGN_SERVER; }
+  | FOREIGN DATA_P WRAPPER        { $$ = ObjectType::FDW; }
+  | EVENT TRIGGER                 { $$ = ObjectType::EVENT_TRIGGER; }
+  | TEXT_P SEARCH CONFIGURATION   { $$ = ObjectType::TSCONFIGURATION; }
+  | TEXT_P SEARCH DICTIONARY      { $$ = ObjectType::TSDICTIONARY; }
+  | TEXT_P SEARCH PARSER          { $$ = ObjectType::TSPARSER; }
+  | TEXT_P SEARCH TEMPLATE        { $$ = ObjectType::TSTEMPLATE; }
 ;
 
 comment_text:
@@ -7606,17 +7674,17 @@ opt_provider:
 ;
 
 security_label_type:
-  COLUMN                        { $$ = OBJECT_COLUMN; }
-  | DATABASE                    { $$ = OBJECT_DATABASE; }
-  | EVENT TRIGGER               { $$ = OBJECT_EVENT_TRIGGER; }
-  | FOREIGN TABLE               { $$ = OBJECT_FOREIGN_TABLE; }
-  | SCHEMA                      { $$ = OBJECT_SCHEMA; }
-  | SEQUENCE                    { $$ = OBJECT_SEQUENCE; }
-  | TABLE                       { $$ = OBJECT_TABLE; }
-  | ROLE                        { $$ = OBJECT_ROLE; }
-  | TABLESPACE                  { $$ = OBJECT_TABLESPACE; }
-  | VIEW                        { $$ = OBJECT_VIEW; }
-  | MATERIALIZED VIEW           { $$ = OBJECT_MATVIEW; }
+  COLUMN                        { $$ = ObjectType::COLUMN; }
+  | DATABASE                    { $$ = ObjectType::DATABASE; }
+  | EVENT TRIGGER               { $$ = ObjectType::EVENT_TRIGGER; }
+  | FOREIGN TABLE               { $$ = ObjectType::FOREIGN_TABLE; }
+  | SCHEMA                      { $$ = ObjectType::SCHEMA; }
+  | SEQUENCE                    { $$ = ObjectType::SEQUENCE; }
+  | TABLE                       { $$ = ObjectType::TABLE; }
+  | ROLE                        { $$ = ObjectType::ROLE; }
+  | TABLESPACE                  { $$ = ObjectType::TABLESPACE; }
+  | VIEW                        { $$ = ObjectType::VIEW; }
+  | MATERIALIZED VIEW           { $$ = ObjectType::MATVIEW; }
 ;
 
 security_label:
@@ -7691,34 +7759,34 @@ opt_from_in:
 GrantStmt:
   GRANT permissions ON ALL KEYSPACES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::ALL_KEYSPACES, nullptr, role_node);
   }
   | GRANT permissions ON KEYSPACE ColId TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::KEYSPACE, keyspace_node, role_node);
   }
   | GRANT permissions ON TABLE qualified_name TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::TABLE, $5, role_node);
   }
   | GRANT permissions ON qualified_name TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $6);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::TABLE, $4, role_node);
   }
   | GRANT permissions ON ALL ROLES TO role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::ALL_ROLES, nullptr , role_node);
   }
   | GRANT permissions ON ROLE role_name TO role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::GRANT,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::GRANT,
                    $2, ResourceType::ROLE, on_role_node, to_role_node);
   }
 ;
@@ -7726,34 +7794,34 @@ GrantStmt:
 RevokeStmt:
   REVOKE permissions ON ALL KEYSPACES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::ALL_KEYSPACES, nullptr, role_node);
   }
   | REVOKE permissions ON KEYSPACE ColId FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr keyspace_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::KEYSPACE, keyspace_node, role_node);
   }
   | REVOKE permissions ON TABLE qualified_name FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::TABLE, $5, role_node);
   }
   | REVOKE permissions ON qualified_name FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $6);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::TABLE, $4, role_node);
   }
   | REVOKE permissions ON ALL ROLES FROM role_name {
     PTQualifiedName::SharedPtr role_node = MAKE_NODE(@1, PTQualifiedName, $7);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::ALL_ROLES, nullptr , role_node);
   }
   | REVOKE permissions ON ROLE role_name FROM role_name {
     PTQualifiedName::SharedPtr to_role_node = MAKE_NODE(@1, PTQualifiedName, $7);
     PTQualifiedName::SharedPtr on_role_node = MAKE_NODE(@1, PTQualifiedName, $5);
-    $$ = MAKE_NODE(@1, PTGrantRevokePermission, GrantRevokeStatementType::REVOKE,
+    $$ = MAKE_NODE(@1, PTGrantRevokePermission, client::GrantRevokeStatementType::REVOKE,
                    $2, ResourceType::ROLE, on_role_node, to_role_node);
   }
 ;
@@ -7924,13 +7992,13 @@ GrantRoleStmt:
 
 GrantRoleStmt:
   GRANT role_name TO role_name {
-    $$ = MAKE_NODE(@1, PTGrantRevokeRole, GrantRevokeStatementType::GRANT, $2, $4);
+    $$ = MAKE_NODE(@1, PTGrantRevokeRole, client::GrantRevokeStatementType::GRANT, $2, $4);
   }
 ;
 
 RevokeRoleStmt:
   REVOKE role_name FROM role_name {
-    $$ = MAKE_NODE(@1, PTGrantRevokeRole, GrantRevokeStatementType::REVOKE, $2, $4);
+    $$ = MAKE_NODE(@1, PTGrantRevokeRole, client::GrantRevokeStatementType::REVOKE, $2, $4);
   }
 ;
 
@@ -8010,24 +8078,29 @@ defacl_privilege_target:
  *****************************************************************************/
 
 IndexStmt:
-  CREATE opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
+  CREATE opt_deferred opt_unique INDEX opt_concurrently opt_index_name ON qualified_name
   access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
   opt_index_options {
-    if ($14 && FLAGS_cql_raise_index_where_clause_error) {
+    if ($15 && FLAGS_cql_raise_index_where_clause_error) {
        // WHERE is not supported.
        PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $5, $7, $10, false, $15, $12);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $3, $6, $8, $11, false, $16, $13, $15);
   }
-  | CREATE opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON qualified_name
-  access_method_clause '(' index_params ')' opt_include_clause OptTableSpace opt_where_clause
-  opt_index_options {
-    if ($17 && FLAGS_cql_raise_index_where_clause_error) {
+  | CREATE opt_deferred opt_unique INDEX opt_concurrently IF_P NOT_LA EXISTS opt_index_name ON
+  qualified_name access_method_clause '(' index_params ')' opt_include_clause OptTableSpace
+  opt_where_clause opt_index_options {
+    if ($18 && FLAGS_cql_raise_index_where_clause_error) {
        // WHERE is not supported.
        PARSER_UNSUPPORTED(@1);
     }
-    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $8, $10, $13, true, $18, $15);
+    $$ = MAKE_NODE(@1, PTCreateIndex, $2, $3, $9, $11, $14, true, $19, $16, $18);
   }
+;
+
+opt_deferred:
+  DEFERRED                          { $$ = true; }
+  | /*EMPTY*/                       { $$ = false; }
 ;
 
 opt_unique:

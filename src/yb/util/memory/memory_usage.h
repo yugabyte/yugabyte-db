@@ -59,17 +59,29 @@ typename std::enable_if<std::is_integral<typename std::remove_reference<Int>::ty
 // memory from heap for bigger strings. Exact memory allocation behaviour depends on C++ std
 // library implementation.
 
-#ifdef __clang__
+#if defined(__clang__)
 
 constexpr const auto kStdStringInternalCapacity = 22;
 
 inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
-  if (value.size() <= kStdStringInternalCapacity) {
+  const auto capacity = value.capacity();
+  if (capacity <= kStdStringInternalCapacity) {
     return 0;
   } else {
     // std::string allocates 16*n bytes for capacity from [16*(n - 1); 16*n - 1].
     // 48 bytes for capacity in [32; 47], 64 bytes for capacity in [48; 63] and so on...
-    return (value.capacity() + 16) & ~(size_t(0xf));
+    return (capacity + 16) & ~(size_t(0xf));
+  }
+}
+
+#elif (__GNUC__ >= 9 && __GNUC__ < 11)
+
+inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
+  const auto capacity = value.capacity();
+  if (capacity == 0) {
+    return 0;
+  } else {
+    return capacity + 25;
   }
 }
 
@@ -78,14 +90,15 @@ inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
 constexpr const auto kStdStringInternalCapacity = 15;
 
 inline std::size_t DynamicMemoryUsageOf(const std::string& value) {
-  if (value.size() <= kStdStringInternalCapacity) {
+  const auto capacity = value.capacity();
+  if (capacity <= kStdStringInternalCapacity) {
     return 0;
   } else {
-    return value.capacity() + 1;
+    return capacity + 1;
   }
 }
 
-#endif
+#endif // defined(__clang__)
 
 template <class T>
 typename boost::enable_if<boost::is_base_of<google::protobuf::Message, T>, std::size_t>::type

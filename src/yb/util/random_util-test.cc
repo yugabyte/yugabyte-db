@@ -34,7 +34,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"

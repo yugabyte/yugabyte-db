@@ -12,10 +12,12 @@
 //
 package org.yb;
 
+import ch.qos.logback.classic.LoggerContext;
+import ch.qos.logback.classic.encoder.PatternLayoutEncoder;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.Appender;
+import ch.qos.logback.core.ConsoleAppender;
 import com.google.common.base.Preconditions;
-import org.apache.log4j.Appender;
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.LogManager;
 import org.junit.Rule;
 import org.junit.rules.ExpectedException;
 import org.junit.rules.TestRule;
@@ -36,6 +38,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -279,28 +282,37 @@ public class BaseYBTest {
 
   private void recreateOutAppender() {
     // Re-create the "out" appender.
-    org.apache.log4j.Logger rootLogger = LogManager.getRootLogger();
-    Enumeration<Appender> appenders = rootLogger.getAllAppenders();
+    ch.qos.logback.classic.Logger rootLogger =
+      (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+
     int numAppenders = 0;
-    while (appenders.hasMoreElements()) {
-      Appender appender = appenders.nextElement();
+    for (Iterator<Appender<ILoggingEvent>> i = rootLogger.iteratorForAppenders(); i.hasNext();) {
+      ch.qos.logback.core.Appender<ILoggingEvent> appender = i.next();
+      numAppenders++;
       if (!appender.getName().equals("out")) {
         throw new RuntimeException(
-            "Expected to have one appender named 'out' to exist, got " + appender.getName());
+          "Expected to have one appender named 'out' to exist, got " + appender.getName());
       }
-      numAppenders++;
     }
     if (numAppenders != 1) {
       throw new RuntimeException(
-          "Expected to have one appender named 'out' to exist, got " + numAppenders +
-              " appenders");
+        "Expected to have one appender named 'out' to exist, got " + numAppenders +
+          " appenders");
     }
-    Appender oldOutAppender = LogManager.getRootLogger().getAppender("out");
-    rootLogger.removeAllAppenders();
+    rootLogger.detachAndStopAllAppenders();
 
-    Appender appender = new ConsoleAppender(oldOutAppender.getLayout());
-    appender.setName(oldOutAppender.getName());
-    rootLogger.addAppender(appender);
+    LoggerContext logCtx = (LoggerContext) LoggerFactory.getILoggerFactory();
+    PatternLayoutEncoder logEncoder = new PatternLayoutEncoder();
+    logEncoder.setContext(logCtx);
+    logEncoder.setPattern("%d (%t) [%p - %l] %m%n");
+    logEncoder.start();
+
+    ConsoleAppender logConsoleAppender = new ConsoleAppender();
+    logConsoleAppender.setContext(logCtx);
+    logConsoleAppender.setName("out");
+    logConsoleAppender.setEncoder(logEncoder);
+    logConsoleAppender.start();
+    rootLogger.addAppender(logConsoleAppender);
   }
 
   /**

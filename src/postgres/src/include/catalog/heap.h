@@ -43,6 +43,7 @@ typedef struct CookedConstraint
 extern Relation heap_create(const char *relname,
 			Oid relnamespace,
 			Oid reltablespace,
+			Oid reltablegroup,
 			Oid relid,
 			Oid relfilenode,
 			TupleDesc tupDesc,
@@ -55,6 +56,7 @@ extern Relation heap_create(const char *relname,
 extern Oid heap_create_with_catalog(const char *relname,
 						 Oid relnamespace,
 						 Oid reltablespace,
+						 Oid reltablegroup,
 						 Oid relid,
 						 Oid reltypeid,
 						 Oid reloftypeid,
@@ -73,7 +75,8 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 bool allow_system_table_mods,
 						 bool is_internal,
 						 Oid relrewrite,
-						 ObjectAddress *typaddress);
+						 ObjectAddress *typaddress,
+						 bool yb_use_initdb_acl);
 
 extern void heap_create_init_fork(Relation rel);
 
@@ -89,7 +92,8 @@ extern List *heap_truncate_find_FKs(List *relationIds);
 
 extern void InsertPgAttributeTuple(Relation pg_attribute_rel,
 					   Form_pg_attribute new_attribute,
-					   CatalogIndexState indstate);
+					   CatalogIndexState indstate,
+					   bool yb_relisshared);
 
 extern void InsertPgClassTuple(Relation pg_class_desc,
 				   Relation new_rel_desc,

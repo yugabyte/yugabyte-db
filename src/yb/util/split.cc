@@ -13,6 +13,8 @@
 
 #include "yb/util/split.h"
 
+#include "yb/util/status.h"
+
 using std::string;
 
 namespace yb {

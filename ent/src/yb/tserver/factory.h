@@ -19,9 +19,13 @@
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/secure_stream.h"
 
+#include "yb/yql/cql/cqlserver/cql_server_options.h"
+
 #include "yb/server/secure.h"
 
 #include "yb/tserver/ts_tablet_manager.h"
+
+#include "yb/util/result.h"
 
 DECLARE_string(cert_node_filename);
 
@@ -50,21 +54,30 @@ class CQLServerEnt : public cqlserver::CQLServer {
   explicit CQLServerEnt(Args&&... args) : CQLServer(std::forward<Args>(args)...) {
   }
 
+  Status ReloadKeysAndCertificates() override {
+    if (!secure_context_) {
+      return Status::OK();
+    }
+
+    return server::ReloadSecureContextKeysAndCertificates(
+          secure_context_.get(),
+          fs_manager_->GetDefaultRootDir(),
+          server::SecureContextType::kExternal,
+          options_.HostsString());
+  }
+
  private:
-  CHECKED_STATUS SetupMessengerBuilder(rpc::MessengerBuilder* builder) override {
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override {
     RETURN_NOT_OK(CQLServer::SetupMessengerBuilder(builder));
     if (!FLAGS_cert_node_filename.empty()) {
       secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-          server::DefaultRootDir(*fs_manager_),
+          fs_manager_->GetDefaultRootDir(),
           FLAGS_cert_node_filename,
-          server::SecureContextType::kClientToServer,
+          server::SecureContextType::kExternal,
           builder));
     } else {
-      const string &hosts = !options_.server_broadcast_addresses.empty()
-                          ? options_.server_broadcast_addresses
-                          : options_.rpc_opts.rpc_bind_addresses;
       secure_context_ = VERIFY_RESULT(server::SetupSecureContext(
-          hosts, *fs_manager_, server::SecureContextType::kClientToServer, builder));
+          options_.HostsString(), *fs_manager_, server::SecureContextType::kExternal, builder));
     }
     return Status::OK();
   }
