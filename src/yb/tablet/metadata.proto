@@ -67,6 +67,9 @@ message TableInfoPB {
 
   // Deleted column IDs with timestamps so that memory can be cleaned up.
   repeated DeletedColumnPB deleted_cols = 9;
+
+  // CDC WAL retention time in secs of the table.
+  optional uint32 wal_retention_secs = 11;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
