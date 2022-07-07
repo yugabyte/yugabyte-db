@@ -1250,6 +1250,9 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	Relation	indexRel;
 	TupOutputState *tstate;
 	YbPgExecOutParam *out_param;
+	Oid			save_userid;
+	int			save_sec_context;
+	int			save_nestlevel;
 
 	if (*YBCGetGFlags()->ysql_disable_index_backfill)
 		ereport(ERROR,
@@ -1276,6 +1279,17 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 	heapId = IndexGetRelation(indexId, false);
 	// TODO(jason): why ShareLock instead of ShareUpdateExclusiveLock?
 	heapRel = heap_open(heapId, ShareLock);
+
+	/*
+	 * Switch to the table owner's userid, so that any index functions are run
+	 * as that user.  Also lock down security-restricted operations and
+	 * arrange to make GUC variable changes local to this command.
+	 */
+	GetUserIdAndSecContext(&save_userid, &save_sec_context);
+	SetUserIdAndSecContext(heapRel->rd_rel->relowner,
+						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
+	save_nestlevel = NewGUCNestLevel();
+
 	indexRel = index_open(indexId, ShareLock);
 
 	indexInfo = BuildIndexInfo(indexRel);
@@ -1297,6 +1311,12 @@ YbBackfillIndex(BackfillIndexStmt *stmt, DestReceiver *dest)
 
 	index_close(indexRel, ShareLock);
 	heap_close(heapRel, ShareLock);
+
+	/* Roll back any GUC changes executed by index functions */
+	AtEOXact_GUC(false, save_nestlevel);
+
+	/* Restore userid and security context */
+	SetUserIdAndSecContext(save_userid, save_sec_context);
 
 	/* output tuples */
 	tstate = begin_tup_output_tupdesc(dest, YbBackfillIndexResultDesc(stmt));
