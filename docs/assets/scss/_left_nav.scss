@@ -1393,3 +1393,7 @@ aside.td-sidebar nav > ul > li.bottom-link.arrow-menu > i::before {
 .left-bottom-nav .internal.list {
   padding: 0;
 }
+
+li.section.submenu.parent-menu > ul > li > a {
+  padding-left: 0 !important;
+}
