@@ -380,8 +380,8 @@
 [[preview_yugabyte-platform]]
   name = "YugabyteDB Anywhere API"
   weight = 3
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   [preview_yugabyte-platform.params]
     classes = "other-links"
     showSection = true
@@ -408,9 +408,9 @@
 
 [[preview_yugabyte-cloud]]
   name = "YugabyteDB Managed API"
-  weight = 3
-  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
+  weight = 1
   identifier = "yugabytedb-managed-api"
+  url = "https://api-docs.yugabyte.com/docs/managed-apis/"
   [preview_yugabyte-cloud.params]
     classes = "other-links"
     showSection = true
@@ -573,8 +573,8 @@
 [[stable_yugabyte-platform]]
   name = "YugabyteDB Anywhere API"
   weight = 3
-  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   identifier = "yugabytedb-anywhere-api"
+  url = "https://api-docs.yugabyte.com/docs/yugabyte-platform/"
   [stable_yugabyte-platform.params]
     classes = "other-links"
     showSection = true
