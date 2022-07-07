@@ -30,7 +30,7 @@ After [creating a local cluster](../../quick-start/), follow the instructions on
   1. Clone the repo.
 
       ```sh
-      $ git clone https://github.com/yugabyte/yugastore-java.git
+      $ git clone https://github.com/YugabyteDB-Samples/yugastore-java.git
       ```
 
       ```sh
@@ -70,7 +70,7 @@ After [creating a local cluster](../../quick-start/), follow the instructions on
   1. Clone the repo.
 
       ```sh
-      $ git clone https://github.com/yugabyte/yugastore-java.git
+      $ git clone https://github.com/YugabyteDB-Samples/yugastore-java.git
       ```
 
       ```sh
