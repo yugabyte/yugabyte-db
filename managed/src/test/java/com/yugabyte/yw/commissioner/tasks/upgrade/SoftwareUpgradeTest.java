@@ -8,6 +8,7 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.Serv
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -273,9 +274,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(3, defaultUniverse.version);
-    // In case of an exception, only the ModifyBlackList and RunHooks task should be queued.
-    assertEquals(4, taskInfo.getSubTasks().size());
+    assertEquals(2, defaultUniverse.version);
+    // In case of an exception, only RunHooks task should be queued.
+    assertEquals(3, taskInfo.getSubTasks().size());
   }
 
   @Test
@@ -285,9 +286,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
     defaultUniverse.refresh();
-    assertEquals(3, defaultUniverse.version);
-    // In case of an exception, only the ModifyBlackList and RunHooks tasks should be queued.
-    assertEquals(4, taskInfo.getSubTasks().size());
+    assertEquals(2, defaultUniverse.version);
+    // In case of an exception, only RunHooks tasks should be queued.
+    assertEquals(3, taskInfo.getSubTasks().size());
   }
 
   @Test
