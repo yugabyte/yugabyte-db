@@ -70,6 +70,9 @@ message TableInfoPB {
   repeated DeletedColumnPB deleted_cols = 9;
 
   repeated docdb.SchemaPackingPB old_schema_packings = 11;
+
+  // CDC WAL retention time in secs of the table.
+  optional uint32 wal_retention_secs = 12;
 }
 
 // KV-store meta data. Single KV-store is backed by one or two RocksDB instances, depending on
