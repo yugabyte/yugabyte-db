@@ -291,6 +291,13 @@ public class NodeManager extends DevopsBase {
       subCommand.add(keyInfo.sshUser);
     }
 
+    if ((type == NodeCommandType.Configure) && keyInfo.sshUser != null) {
+      // Pass the sudo user on different key, so as to
+      // force reinstall the packages as part of configure.
+      subCommand.add("--ssh_user_update_packages");
+      subCommand.add(keyInfo.sshUser);
+    }
+
     if (type == NodeCommandType.Precheck) {
       subCommand.add("--precheck_type");
       if (keyInfo.skipProvisioning) {
@@ -1446,6 +1453,8 @@ public class NodeManager extends DevopsBase {
           } else if (taskParam.useSystemd) {
             // Systemd for new universes
             commandArgs.add("--systemd_services");
+          } else if (taskParam.updatePackages) {
+            commandArgs.add("--update_packages");
           }
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
