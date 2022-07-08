@@ -2,7 +2,7 @@
 title: Encryption in transit
 linkTitle: Encryption in transit
 description: YugabyteDB Managed cluster authentication and encryption.
-headcontent:
+headcontent: Download your cluster certificate to connect securely
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
