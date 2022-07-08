@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import play.mvc.Http.Status;
+import com.yugabyte.yw.common.Util;
 
 @Slf4j
 public class UpgradeUniverseHandler {
@@ -69,6 +70,41 @@ public class UpgradeUniverseHandler {
   public UUID upgradeSoftware(
       SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+
+    // Defaults to false, but we need to extract the variable in case the user wishes to perform
+    // a downgrade with a runtime configuration override. We perform this check before verifying the
+    // general
+    // SoftwareUpgradeParams to avoid introducing an API parameter.
+    boolean isUniverseDowngradeAllowed =
+        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.upgrade.allow_downgrades");
+
+    String currentVersion = userIntent.ybSoftwareVersion;
+
+    String desiredUpgradeVersion = requestParams.ybSoftwareVersion;
+
+    if (currentVersion != null) {
+
+      if (Util.compareYbVersions(currentVersion, desiredUpgradeVersion, true) > 0) {
+
+        if (!isUniverseDowngradeAllowed) {
+
+          String msg =
+              String.format(
+                  "DB version downgrades are not recommended,"
+                      + " %s"
+                      + " would downgrade from"
+                      + " %s"
+                      + ". Aborting."
+                      + " To override this check and force a downgrade, please set the runtime"
+                      + " config yb.upgrade.allow_downgrades"
+                      + " to true"
+                      + " (using the script set-runtime-config.sh if necessary).",
+                  desiredUpgradeVersion, currentVersion);
+
+          throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+        }
+      }
+    }
 
     // Verify request params
     requestParams.verifyParams(universe);
