@@ -174,7 +174,9 @@ EXAMPLE = {
               "yugabyted start\n\n"+
               "# Create a single-node locally and join other nodes " +
               "that are part of the same cluster:\n" +
-              "yugabyted start -join=host:port,[host:port]\n\n",
+              "yugabyted start --join=host:port,[host:port]\n\n" +
+              "# Create a secure cluster:\n" +
+              "yugabyted start --secure --certs_dir=<path_to_certs_dir>\n\n",
     'stop' : "",
     'destroy' : "",
     'status' : "",
@@ -2751,11 +2753,17 @@ class ControlScript(object):
                 "--join", help="IP address to which this process will join".format(SCRIPT_NAME),
                 metavar="")
             cur_parser.add_argument(
-                "--secure", help="Start the cluster in a secure manner", action="store_true",
-                    default=None)
+                "--secure", help="Start a YugabyteDB cluster in secure mode with encryption in " +
+                "transit and password authentication enabled. No need to set a value for the " +
+                "flag. Use --secure or --insecure flag to toggle security features on a " +
+                "YugabyteDB cluster. Need to be used along with --certs_dir flag.",
+                action="store_true", default=None)
             cur_parser.add_argument(
-                "--insecure", help="Start the cluster in an insecure manner", action="store_true",
-                    default=None)
+                "--insecure", help="Start a YugabyteDB cluster in an insecure mode without " +
+                "encryption in transit and password authentication enabled. For non-production " +
+                "use only, not to be used without firewalls blocking the internet traffic. No " +
+                "need to set a value for the flag. Use --secure or --insecure flag to toggle " +
+                "security features on a YugabyteDB cluster.", action="store_true", default=None)
             cur_parser.add_argument(
                 "--certs_dir", help="Path to the certificates to be used for secure deployment.",
                 metavar="")
