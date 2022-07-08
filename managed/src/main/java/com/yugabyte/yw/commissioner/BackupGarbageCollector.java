@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.commissioner;
 
 import com.amazonaws.SDKGlobalConfiguration;
@@ -5,19 +7,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.common.AWSUtil;
-import com.yugabyte.yw.common.AZUtil;
-import com.yugabyte.yw.common.GCPUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.Customer;
@@ -36,6 +37,8 @@ public class BackupGarbageCollector {
   private final PlatformScheduler platformScheduler;
 
   private final TableManagerYb tableManagerYb;
+
+  private final YbcManager ybcManager;
 
   private final CustomerConfigService customerConfigService;
 
@@ -56,12 +59,14 @@ public class BackupGarbageCollector {
       CustomerConfigService customerConfigService,
       RuntimeConfigFactory runtimeConfigFactory,
       TableManagerYb tableManagerYb,
-      BackupUtil backupUtil) {
+      BackupUtil backupUtil,
+      YbcManager ybcManager) {
     this.platformScheduler = platformScheduler;
     this.customerConfigService = customerConfigService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.tableManagerYb = tableManagerYb;
     this.backupUtil = backupUtil;
+    this.ybcManager = ybcManager;
   }
 
   public void start() {
@@ -161,7 +166,13 @@ public class BackupGarbageCollector {
                     backupParams.backupList == null
                         ? ImmutableList.of(backupParams)
                         : backupParams.backupList;
-                if (deleteNFSBackup(backupList)) {
+                boolean success;
+                if (backup.category.equals(BackupCategory.YB_CONTROLLER)) {
+                  success = ybcManager.deleteNfsDirectory(backup);
+                } else {
+                  success = deleteNFSBackup(backupList);
+                }
+                if (success) {
                   backup.delete();
                   log.info("Backup {} is successfully deleted", backupUUID);
                 } else {
