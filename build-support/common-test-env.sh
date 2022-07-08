@@ -909,7 +909,7 @@ run_one_cxx_test() {
       try_set_ulimited_ulimit
 
       if is_ctest_verbose; then
-        ( set -x; "${test_wrapper_cmd_line[@]}" 2>&1 ) | tee "$test_log_path"
+        ( set -x; "${test_wrapper_cmd_line[@]}" 2>&1 ) | tee "${test_log_path}"
         # Propagate the exit code of the test process, not any of the filters. This will only exit
         # this subshell, not the entire script calling this function.
         exit "${PIPESTATUS[0]}"
@@ -921,7 +921,7 @@ run_one_cxx_test() {
     set -e
 
     # Useful for distributed builds in an NFS environment.
-    chmod g+w "$test_log_path"
+    chmod g+w "${test_log_path}"
 
     # Test did not fail, no need to retry.
     if [[ $test_exit_code -eq 0 ]]; then
@@ -964,6 +964,7 @@ handle_cxx_test_failure() {
 
   if "$test_failed"; then
     (
+      rewrite_test_log "${test_log_path}"
       echo
       echo "TEST FAILURE"
       echo "Test command: ${test_cmd_line[*]}"
@@ -1020,8 +1021,32 @@ run_postproces_test_result_script() {
       --fatal-details-path-prefix "$YB_FATAL_DETAILS_PATH_PREFIX"
     )
   fi
-  "$VIRTUAL_ENV/bin/python" "$YB_SRC_ROOT/python/yb/postprocess_test_result.py" \
+  "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
     "${args[@]}" "$@"
+}
+
+rewrite_test_log() {
+  expect_num_args 1 "$@"
+  if [[ ${YB_SKIP_TEST_LOG_REWRITE:-} == "1" ]]; then
+    return
+  fi
+  local test_log_path=$1
+  set +e
+  (
+    # TODO: we should just set PYTHONPATH globally, e.g. at the time we activate virtualenv.
+    set_pythonpath
+    "${VIRTUAL_ENV}/bin/python" "${YB_SRC_ROOT}/python/yb/rewrite_test_log.py" \
+        --input-log-path "${test_log_path}" \
+        --replace-original \
+        --yb-src-root "${YB_SRC_ROOT}" \
+        --build-root "${BUILD_ROOT}" \
+        --test-tmpdir "${TEST_TMPDIR}"
+  )
+  local exit_code=$?
+  set -e
+  if [[ ${exit_code} -ne 0 ]]; then
+    log "Test log rewrite script failed with exit code ${exit_code}"
+  fi
 }
 
 run_cxx_test_and_process_results() {
@@ -1716,6 +1741,9 @@ run_java_test() {
     fi
   fi
 
+  if [[ -f ${test_log_path} ]]; then
+    rewrite_test_log "${test_log_path}"
+  fi
   if should_gzip_test_logs; then
     gzip_if_exists "$test_log_path" "$mvn_output_path"
     local per_test_method_log_path
