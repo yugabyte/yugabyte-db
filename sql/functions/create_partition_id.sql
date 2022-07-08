@@ -271,6 +271,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , sub_constraint_valid
             , sub_subscription_refresh
             , sub_date_trunc_interval
+            , sub_ignore_default_data
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
     LOOP
@@ -320,6 +321,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , trigger_return_null = v_row.sub_trigger_return_null
             , constraint_valid = v_row.sub_constraint_valid
             , subscription_refresh = v_row.sub_subscription_refresh
+            , ignore_default_data = v_row.sub_ignore_default_data
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
         IF v_jobmon_schema IS NOT NULL THEN

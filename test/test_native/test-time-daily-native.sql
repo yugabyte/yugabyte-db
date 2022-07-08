@@ -610,7 +610,6 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
 --INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '20 days'::interval);
 --SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
 
-
 SELECT drop_partition_time('partman_test.time_taptest_table', '3 days', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');

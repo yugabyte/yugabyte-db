@@ -43,7 +43,8 @@ SELECT bag_eq(
     'inherit_privileges',
     'constraint_valid',
     'subscription_refresh',
-    'drop_cascade_fk'
+    'drop_cascade_fk',
+    'ignore_default_data'
   ]::TEXT[],
   'When adding a new column to part_config please ensure it is also added to the dump_partitioned_table_definition function'
 );
@@ -91,7 +92,8 @@ UPDATE partman.part_config SET
 	trigger_exception_handling = ''f'',
 	inherit_privileges = ''t'',
 	constraint_valid = ''t'',
-	subscription_refresh = NULL
+	subscription_refresh = NULL,
+	ignore_default_data = ''f''
 WHERE parent_table = ''public.objects'';'
 );
 
@@ -166,7 +168,8 @@ UPDATE partman.part_config SET
 	trigger_exception_handling = ''f'',
 	inherit_privileges = ''t'',
 	constraint_valid = ''f'',
-	subscription_refresh = NULL
+	subscription_refresh = NULL,
+	ignore_default_data = ''f''
 WHERE parent_table = ''public.declarative_objects'';'
 );
 

@@ -1,3 +1,17 @@
+4.7.0
+NEW FEATURES
+============
+-- Compatible with PostgreSQL 15.
+-- New document providing guidance on adding missing procedures that may not have been installed when running PostgreSQL versions older than 11.
+-- Allow ignoring data in the default partition when creating child partitions. (Github Issue #462)
+-- Explicitly do not support partition tables that have periods in the schema or table names.
+-- New procedure run_analyze() to run an analyze on all tables managed by pg_partman. Allows disabling of the analyze done by run_maintenance() to allow regular partition maintenance to run more efficiently. Auto-vacuum does not currently kick in to analyze the parent table and can affect query performance if statistics for it are not kept up to date.
+
+BUG FIXES
+=========
+-- Fixed the usage of the parameter 'p_date_trunc_interval' to create_parent() not properly being applied to future created sub-partition parents.
+
+
 4.6.2
 BUG FIXES
 =========

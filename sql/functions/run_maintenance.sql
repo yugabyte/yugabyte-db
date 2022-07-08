@@ -105,6 +105,7 @@ v_tables_list_sql := 'SELECT parent_table
                 , infinite_time_partitions
                 , retention
                 , subscription_refresh
+                , ignore_default_data
             FROM @extschema@.part_config
             WHERE undo_in_progress = false';
 
@@ -228,8 +229,12 @@ LOOP
         END IF; -- end infinite time check
 
         -- Check for values in the parent/default table. If they are there and greater than all child values, use that instead
-        -- This allows maintenance to continue working properly if there is a large gap in data insertion. Data will remain in default, but new tables will be created
-        EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_default_tablename) INTO v_max_time_default;
+        -- This option will likely be reverted in 5.x. Data should not remain in the default and maintenance failing because it is should be the default occurance. For now, adding an option to allow users to ignore this and avoid giant gaps in child tables when future data is inserted into the default (Github Issue #462).
+        IF v_row.ignore_default_data THEN 
+            v_max_time_default := NULL;
+        ELSE
+            EXECUTE format('SELECT max(%s) FROM ONLY %I.%I', v_partition_expression, v_parent_schema, v_default_tablename) INTO v_max_time_default;
+        END IF; 
         RAISE DEBUG 'run_maint: v_current_partition_timestamp: %, v_max_time_default: %', v_current_partition_timestamp, v_max_time_default;
         IF v_current_partition_timestamp IS NULL AND v_max_time_default IS NULL THEN 
             -- Partition set is completely empty and infinite time partitions not set

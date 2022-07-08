@@ -36,6 +36,7 @@ DECLARE
   v_constraint_valid BOOLEAN; -- DEFAULT true NOT NULL
   v_subscription_refresh text; 
   v_drop_cascade_fk boolean; -- DEFAULT false NOT NULL
+  v_ignore_default_data boolean; -- DEFAULT false NOT NULL
 BEGIN
   SELECT
     pc.parent_table,
@@ -65,7 +66,8 @@ BEGIN
     pc.inherit_privileges,
     pc.constraint_valid, 
     pc.subscription_refresh,
-    pc.drop_cascade_fk
+    pc.drop_cascade_fk,
+    pc.ignore_default_data 
   INTO
     v_parent_table,
     v_control,
@@ -94,7 +96,8 @@ BEGIN
     v_inherit_privileges,
     v_constraint_valid,
     v_subscription_refresh,
-    v_drop_cascade_fk
+    v_drop_cascade_fk,
+    v_ignore_default_data 
   FROM @extschema@.part_config pc
   WHERE pc.parent_table = p_parent_table;
 
@@ -174,7 +177,8 @@ E'UPDATE @extschema@.part_config SET
 \ttrigger_exception_handling = %L,
 \tinherit_privileges = %L,
 \tconstraint_valid = %L,
-\tsubscription_refresh = %L
+\tsubscription_refresh = %L,
+\tignore_default_data = %L
 WHERE parent_table = %L;',
     v_optimize_trigger,
     v_optimize_constraint,
@@ -189,6 +193,7 @@ WHERE parent_table = %L;',
     v_inherit_privileges,
     v_constraint_valid,
     v_subscription_refresh,
+    v_ignore_default_data,
     v_parent_table
   );
 

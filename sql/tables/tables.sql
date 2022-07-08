@@ -28,6 +28,7 @@ CREATE TABLE @extschema@.part_config (
     , constraint_valid boolean DEFAULT true NOT NULL
     , subscription_refresh text
     , drop_cascade_fk BOOLEAN NOT NULL DEFAULT false
+    , ignore_default_data boolean NOT NULL DEFAULT false
     , CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
     , CONSTRAINT positive_premake_check CHECK (premake > 0)
     , CONSTRAINT publications_no_empty_set_chk CHECK (publications <> '{}')
@@ -63,6 +64,7 @@ CREATE TABLE @extschema@.part_config_sub (
     , sub_constraint_valid boolean DEFAULT true NOT NULL
     , sub_subscription_refresh text
     , sub_date_trunc_interval TEXT
+    , sub_ignore_default_data boolean NOT NULL DEFAULT false
     , CONSTRAINT part_config_sub_pkey PRIMARY KEY (sub_parent)
     , CONSTRAINT part_config_sub_sub_parent_fkey FOREIGN KEY (sub_parent) REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE DEFERRABLE INITIALLY DEFERRED
     , CONSTRAINT positive_premake_check CHECK (sub_premake > 0)

@@ -80,8 +80,10 @@ BEGIN
  * Function to turn a table into the parent of a partition set
  */
 
-IF position('.' in p_parent_table) = 0  THEN
+IF array_length(string_to_array(p_parent_table, '.'), 1) < 2 THEN
     RAISE EXCEPTION 'Parent table must be schema qualified';
+ELSIF array_length(string_to_array(p_parent_table, '.'), 1) > 2 THEN
+    RAISE EXCEPTION 'pg_partman does not support objects with periods in their names';
 END IF;
 
 IF p_upsert <> '' THEN
@@ -302,6 +304,8 @@ FOR v_row IN
         , sub_inherit_privileges
         , sub_constraint_valid
         , sub_subscription_refresh
+        , sub_date_trunc_interval
+        , sub_ignore_default_data
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
 LOOP
@@ -329,7 +333,9 @@ LOOP
         , sub_template_table
         , sub_inherit_privileges
         , sub_constraint_valid
-        , sub_subscription_refresh)
+        , sub_subscription_refresh
+        , sub_date_trunc_interval
+        , sub_ignore_default_data)
     VALUES (
         p_parent_table
         , v_row.sub_partition_type
@@ -354,7 +360,9 @@ LOOP
         , v_row.sub_template_table
         , v_row.sub_inherit_privileges
         , v_row.sub_constraint_valid
-        , v_row.sub_subscription_refresh);
+        , v_row.sub_subscription_refresh
+        , v_row.sub_date_trunc_interval
+        , v_row.sub_ignore_default_data);
 
     -- Set this equal to sibling configs so that newly created child table 
     -- privileges are set properly below during initial setup.
