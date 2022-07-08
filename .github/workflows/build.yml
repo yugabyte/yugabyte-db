@@ -41,21 +41,30 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: "Clang 12, debug, CentOS 7"
+          - name: "Clang 13, debug, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: --clang12 debug --no-linuxbrew
-          - name: "Clang 12, fastdebug, CentOS 7"
+            yb_build_args: --clang13 debug --no-linuxbrew
+
+          - name: "Clang 13, fastdebug, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: --clang12 fastdebug --no-linuxbrew
-          - name: "Clang 12, release, CentOS 7"
+            yb_build_args: --clang13 fastdebug --no-linuxbrew
+
+          - name: "Clang 13, release, CentOS 7"
             os: ubuntu-20.04
-            yb_build_args: --clang12 release --no-linuxbrew
+            yb_build_args: --clang13 release --no-linuxbrew
+
+          - name: "Clang 13, release, CentOS 7, Linuxbrew glibc"
+            os: ubuntu-20.04
+            yb_build_args: --clang13 release --linuxbrew
+
           - name: "GCC 11, debug, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: --gcc11 debug --no-linuxbrew
+
           - name: "GCC 11, fastdebug, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: --gcc11 fastdebug --no-linuxbrew
+
           - name: "GCC 11, release, CentOS 7"
             os: ubuntu-20.04
             yb_build_args: --gcc11 release --no-linuxbrew
