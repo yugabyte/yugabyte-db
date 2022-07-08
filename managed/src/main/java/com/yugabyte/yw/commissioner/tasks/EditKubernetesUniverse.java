@@ -352,6 +352,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             newNamingStyle);
 
     // Need to unify with DestroyKubernetesUniverse.
-    deletePodsTask(currPlacement, masterAddresses, newPlacement, userIntentChange);
+    deletePodsTask(currPlacement, masterAddresses, newPlacement, userIntentChange, provider);
   }
 }
