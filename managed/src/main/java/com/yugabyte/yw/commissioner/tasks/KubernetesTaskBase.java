@@ -412,20 +412,17 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     }
   }
 
-  public void deletePodsTask(KubernetesPlacement currPlacement) {
-    deletePodsTask(currPlacement, null, null, false);
-  }
-
   public void deletePodsTask(
       KubernetesPlacement currPlacement,
       String masterAddresses,
       KubernetesPlacement newPlacement,
-      boolean userIntentChange) {
+      boolean userIntentChange,
+      Provider provider) {
 
     String ybSoftwareVersion = taskParams().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
     boolean edit = newPlacement != null;
-    boolean isMultiAz = masterAddresses != null;
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
     // If no config in new placement, delete deployment.
     SubTaskGroup helmDeletes =
