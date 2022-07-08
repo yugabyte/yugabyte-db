@@ -191,7 +191,10 @@ public class UserTaskDetails {
     RebootingNode,
 
     // Running custom hooks
-    RunningHooks;
+    RunningHooks,
+
+    // Updating Packages
+    UpdatePackage;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -444,6 +447,10 @@ public class UserTaskDetails {
       case RunningHooks:
         title = "Running Hooks";
         description = "Run custom hooks";
+        break;
+      case UpdatePackage:
+        title = "Update Packages";
+        description = "Updating packages installed on the nodes";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);
