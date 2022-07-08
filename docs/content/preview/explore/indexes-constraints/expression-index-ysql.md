@@ -50,7 +50,7 @@ The following example uses the `employees` table from the Secondary indexes [exa
     ```output
                             QUERY PLAN
     ---------------------------------------------------------------
-    Seq Scan on employees  (cost=0.00..105.00 rows=1000 width=68)
+     Seq Scan on employees  (cost=0.00..105.00 rows=1000 width=68)
       Filter: (lower(department) = 'operations'::text)
     (2 rows)
     ```
@@ -70,9 +70,9 @@ The following example uses the `employees` table from the Secondary indexes [exa
     ```
 
     ```output
-                              QUERY PLAN
-    -----------------------------------------------------------------------------------
-    Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 rows=10 width=68)
+                                            QUERY PLAN
+    ------------------------------------------------------------------------------------------------
+     Index Scan using index_employees_department_lc on employees  (cost=0.00..5.25 rows=10 width=68)
       Index Cond: (lower(department) = 'operations'::text)
     ```
 

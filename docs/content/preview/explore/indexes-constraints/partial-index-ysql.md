@@ -55,15 +55,15 @@ SELECT * FROM customers LIMIT 3;
 ```
 
 ```output
-customer_id |       company_name        |  contact_name  |    contact_title    |           address           |   city    | region | postal_code | country |     phone      |      fax
+ customer_id |       company_name        |  contact_name  |    contact_title    |           address           |   city    | region | postal_code | country |     phone      |      fax
 -------------+---------------------------+----------------+---------------------+-----------------------------+-----------+--------+-------------+---------+----------------+----------------
-FAMIA       | Familia Arquibaldo        | Aria Cruz      | Marketing Assistant | Rua Orós, 92                | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857  |
-VINET       | Vins et alcools Chevalier | Paul Henriot   | Accounting Manager  | 59 rue de l'Abbaye          | Reims     |        | 51100       | France  | 26.47.15.10    | 26.47.15.11
-GOURL       | Gourmet Lanchonetes       | André Fonseca  | Sales Associate     | Av. Brasil, 442             | Campinas  | SP     | 04876-786   | Brazil  | (11) 555-9482  |
+ FAMIA       | Familia Arquibaldo        | Aria Cruz      | Marketing Assistant | Rua Orós, 92                | Sao Paulo | SP     | 05442-030   | Brazil  | (11) 555-9857  |
+ VINET       | Vins et alcools Chevalier | Paul Henriot   | Accounting Manager  | 59 rue de l'Abbaye          | Reims     |        | 51100       | France  | 26.47.15.10    | 26.47.15.11
+ GOURL       | Gourmet Lanchonetes       | André Fonseca  | Sales Associate     | Av. Brasil, 442             | Campinas  | SP     | 04876-786   | Brazil  | (11) 555-9482  |
 (3 rows)
 ```
 
-Suppose you want to query the subset of customers who are `Sales Managers` in the `USA`. The query plan using the `EXPLAIN` statement would look like the following:
+Suppose you want to query the subset of customers who are Sales Managers in the USA. The query plan using the `EXPLAIN` statement would look like the following:
 
 ```sql
 northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_title = 'Sales Manager');
@@ -71,8 +71,8 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 
 ```output
                                     QUERY PLAN
---------------------------------------------------------------------------------------------------------
-Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=738)
+-----------------------------------------------------------------------------------------------
+ Seq Scan on customers  (cost=0.00..105.00 rows=1000 width=738)
   Filter: (((country)::text = 'USA'::text) AND ((contact_title)::text = 'Sales Manager'::text))
 (2 rows)
 ```
@@ -92,9 +92,9 @@ northwind=# EXPLAIN SELECT * FROM customers where (country = 'USA' and contact_t
 ```
 
 ```output
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
-Index Scan using index_country on customers  (cost=0.00..5.00 rows=10 width=738)
+                                  QUERY PLAN
+---------------------------------------------------------------------------------
+ Index Scan using index_country on customers  (cost=0.00..5.00 rows=10 width=738)
   Index Cond: ((country)::text = 'USA'::text)
 (2 rows)
 ```
@@ -103,4 +103,4 @@ Index Scan using index_country on customers  (cost=0.00..5.00 rows=10 width=738)
 
 - [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
 - [The Benefit of Partial Indexes in Distributed SQL Databases](https://blog.yugabyte.com/the-benefit-of-partial-indexes-in-distributed-sql-databases/)
-- [Indexes on JSON attributes](/preview/explore/json-support/jsonb-ysql/#6-indexes-on-json-attributes)
+- [Indexes on JSON attributes](../../json-support/jsonb-ysql/#6-indexes-on-json-attributes)

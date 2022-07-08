@@ -134,4 +134,4 @@ ycqlsh:example> EXPLAIN SELECT product FROM orders
 
 ## Learn more
 
-For more details, refer to [PARTIAL INDEX](/preview/api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation.
+For more details, refer to [PARTIAL INDEX](../../../api/ycql/ddl_create_index/#partial-index) in the YCQL API documentation.

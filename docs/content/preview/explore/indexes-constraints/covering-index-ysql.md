@@ -53,10 +53,10 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```
 
     ```output
-    id | username
+     id | username
     ----+----------
-    66 | Number42
-    (1 row)
+     66 | Number42
+     (1 row)
     ```
 
 1. Run another select query to show how a sequential scan runs before creating an index.
@@ -68,11 +68,11 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```output
                                                     QUERY PLAN
     ------------------------------------------------------------------------------------------------------
-    Seq Scan on demo  (cost=0.00..105.00 rows=1000 width=40) (actual time=15.694..16.086 rows=1 loops=1)
+     Seq Scan on demo  (cost=0.00..105.00 rows=1000 width=40) (actual time=15.694..16.086 rows=1 loops=1)
       Filter: (upper(username) = 'NUMBER42'::text)
       Rows Removed by Filter: 999
-    Planning Time: 0.238 ms
-    Execution Time: 16.255 ms
+     Planning Time: 0.238 ms
+     Execution Time: 16.255 ms
     (5 rows)
     ```
 
@@ -89,10 +89,10 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```output
                                                         QUERY PLAN
     -------------------------------------------------------------------------------------------------------------------
-    Index Scan using demo_upper on demo  (cost=0.00..5.28 rows=10 width=32) (actual time=2.899..2.903 rows=1 loops=1)
+     Index Scan using demo_upper on demo  (cost=0.00..5.28 rows=10 width=32) (actual time=2.899..2.903 rows=1 loops=1)
       Index Cond: (upper(username) = 'NUMBER42'::text)
-    Planning Time: 13.392 ms
-    Execution Time: 3.429 ms
+     Planning Time: 13.392 ms
+     Execution Time: 3.429 ms
     (4 rows)
     ```
 
@@ -115,11 +115,11 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
     ```output
                                                               QUERY PLAN
     ---------------------------------------------------------------------------------------------------------------------------------
-    Index Only Scan using demo_upper_covering on demo  (cost=0.00..5.18 rows=10 width=32) (actual time=1.265..1.267 rows=1 loops=1)
+     Index Only Scan using demo_upper_covering on demo  (cost=0.00..5.18 rows=10 width=32) (actual time=1.265..1.267 rows=1 loops=1)
       Index Cond: ((upper(username)) = 'NUMBER42'::text)
       Heap Fetches: 0
-    Planning Time: 6.574 ms
-    Execution Time: 1.342 ms
+     Planning Time: 6.574 ms
+     Execution Time: 1.342 ms
     (5 rows)
     ```
 
