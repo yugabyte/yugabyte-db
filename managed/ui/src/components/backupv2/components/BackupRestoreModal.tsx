@@ -17,7 +17,7 @@
 
 import React, { FC, useState } from 'react';
 import { Alert, Col, Row } from 'react-bootstrap';
-import { getKMSConfigs, IBackup, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
+import { getKMSConfigs, IBackup, ITable, IUniverse, Keyspace_Table, restoreEntireBackup } from '..';
 import { YBModalForm } from '../../common/forms';
 import {
   FormatUnixTimeStampTimeToTimezone,
@@ -164,7 +164,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     options.setFieldValue('should_rename_keyspace', true, false);
     options.setFieldValue('disable_keyspace_rename', true, false);
 
-    const fetchKeyspace = await fetchTablesInUniverse(values['targetUniverseUUID'].value);
+    const fetchKeyspace: { data: ITable[] } = await fetchTablesInUniverse(
+      values['targetUniverseUUID'].value
+    );
     setIsFetchingTables(false);
 
     const keyspaceInForm = backup_details!.responseList.map(
@@ -178,8 +180,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       isFunction(options.setSubmitting) && options.setSubmitting(true);
       return;
     }
-
-    const keyspaceInTargetUniverse = fetchKeyspace.data.map((k: any) => k.keySpace);
+    const keyspaceInTargetUniverse = fetchKeyspace.data
+      .filter((k) => k.tableType === values['backup']['backupType'])
+      .map((k) => k.keySpace);
     let hasErrors = false;
 
     keyspaceInForm.forEach((k: string, index: number) => {
