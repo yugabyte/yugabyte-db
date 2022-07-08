@@ -158,17 +158,18 @@ public class CommonUtils {
 
   /**
    * masks the data in the passed configuration
+   *
    * @param unmaskedConfig
    * @param maskStr
- * @return 
+   * @return
    */
-  public static CustomerConfig getConfigMasked( CustomerConfig unmaskedConfig) {
-	  if(unmaskedConfig == null) return null;
-	  CustomerConfig maskedConfig = unmaskedConfig;
-	  maskedConfig.setData(unmaskedConfig.getMaskedData());
-	  return maskedConfig;
+  public static CustomerConfig getConfigMasked(CustomerConfig unmaskedConfig) {
+    if (unmaskedConfig == null) return null;
+    CustomerConfig maskedConfig = unmaskedConfig;
+    maskedConfig.setData(unmaskedConfig.getMaskedData());
+    return maskedConfig;
   }
-  
+
   @SuppressWarnings("unchecked")
   public static <T> T maskObject(T object) {
     try {

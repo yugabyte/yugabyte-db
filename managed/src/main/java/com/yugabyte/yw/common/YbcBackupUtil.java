@@ -62,6 +62,7 @@ public class YbcBackupUtil {
     @JsonAlias("cloud_store_spec")
     public ResponseCloudStoreSpec responseCloudStoreSpec;
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseCloudStoreSpec {
       @JsonAlias("default_backup_location")
       public BucketLocation defaultLocation;
@@ -69,6 +70,7 @@ public class YbcBackupUtil {
       @JsonAlias("region_location_map")
       public Map<String, BucketLocation> regionLocations;
 
+      @JsonIgnoreProperties(ignoreUnknown = true)
       public static class BucketLocation {
         @JsonAlias("bucket")
         public String bucket;
