@@ -318,9 +318,9 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
     const auto key_size = VERIFY_RESULT(
         docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::kWholeDocKey));
 
-    Slice value = write_pair.value();
-    docdb::Value decoded_value;
-    RETURN_NOT_OK(decoded_value.Decode(value));
+    Slice value_slice = write_pair.value();
+    RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
+    auto value_type = docdb::DecodeValueEntryType(value_slice);
 
     // Compare key hash with previously seen key hash to determine whether the write pair
     // is part of the same row or not.
@@ -343,8 +343,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       }
 
       // Check whether operation is WRITE or DELETE.
-      if (decoded_value.value_type() == docdb::ValueEntryType::kTombstone &&
-          decoded_key.num_subkeys() == 0) {
+      if (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         record->set_operation(CDCRecordPB::DELETE);
       } else {
         record->set_operation(CDCRecordPB::WRITE);
@@ -377,6 +376,9 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       Slice key_column = write_pair.key().data() + key_size;
       RETURN_NOT_OK(column_id.DecodeFromKey(&key_column));
       if (column_id.type() == docdb::KeyEntryType::kColumnId) {
+        docdb::Value decoded_value;
+        RETURN_NOT_OK(decoded_value.Decode(write_pair.value()));
+
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
       } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
