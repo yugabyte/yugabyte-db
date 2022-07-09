@@ -41,11 +41,7 @@ Refer to the Grammar section for [CREATE TABLE](../../../api/ycql/ddl_create_tab
 
 ## Examples
 
-To run the examples, do the following:
-
-- For local clusters, follow the steps in [Quick Start](../../../quick-start/) to install YugabyteDB, and use the [YCQL shell](../../../admin/ycqlsh/).
-
-- For YugabyteDB Managed, create a cluster and [connect using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/).
+Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
 
 ### Column constraint
 
@@ -111,8 +107,6 @@ The second entry with `Rose` as the `full_name` overrides the first entry becaus
     ```
 
     ```output
-    SELECT * FROM devices;
-
      supplier_id | device_id | model_year | device_name
     -------------+-----------+------------+-------------
                1 |       101 |       2013 |      iPhone
