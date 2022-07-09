@@ -32,14 +32,14 @@ type: docs
 
 If you need values in some of the columns to be unique, you can specify your index as `UNIQUE`.
 
-When a `UNIQUE` index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a `UNIQUE` index.
+When a unique index is applied to two or more columns, the combined values in these columns can't be duplicated in multiple rows. Note that because a `NULL` value is treated as a distinct value, you can have multiple `NULL` values in a column with a unique index.
 
-If a table has a primary key or a [`UNIQUE` constraint](../other-constraints/#unique-constraint) defined, a corresponding `UNIQUE` index is created automatically.
+If a table has a primary key or a [UNIQUE constraint](../other-constraints/#unique-constraint) defined, a corresponding unique index is created automatically.
 
 ## Syntax
 
 ```sql
-CREATE INDEX index_name ON table_name(column_list);
+CREATE UNIQUE INDEX index_name ON table_name(column_list);
 ```
 
 ## Example
