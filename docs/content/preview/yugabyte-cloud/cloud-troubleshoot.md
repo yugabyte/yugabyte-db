@@ -1,8 +1,8 @@
 ---
-title: Troubleshoot YugabyteDB Managed
+title: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Managed.
-headcontent:
+headcontent: Diagnose and troubleshoot issues with YugabyteDB clusters and YugabyteDB Managed
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:

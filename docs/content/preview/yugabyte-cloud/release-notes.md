@@ -2,7 +2,7 @@
 title: What's new
 linkTitle: What's new
 description: YugabyteDB Managed release notes and known issues.
-headcontent:
+headcontent: New features, cloud provider regions, and known issues
 image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
