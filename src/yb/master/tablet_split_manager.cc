@@ -72,13 +72,11 @@ DEFINE_bool(enable_tablet_split_of_xcluster_replicated_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "
             "xCluster replication setup");
 TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, runtime);
-TAG_FLAG(enable_tablet_split_of_xcluster_replicated_tables, hidden);
 
 DEFINE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables, false,
             "When set, it enables automatic tablet splitting for tables that are part of an "
             "xCluster replication setup and are currently being bootstrapped for xCluster.");
 TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, runtime);
-TAG_FLAG(enable_tablet_split_of_xcluster_bootstrapping_tables, hidden);
 
 DEFINE_uint64(tablet_split_limit_per_table, 256,
               "Limit of the number of tablets per table for tablet splitting. Limitation is "
