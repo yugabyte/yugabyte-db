@@ -15,6 +15,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
@@ -64,6 +65,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.api.Play;
 import play.libs.Json;
 
 public class PlacementInfoUtil {
@@ -522,9 +524,17 @@ public class PlacementInfoUtil {
                 + " cluster in universe "
                 + universe.universeUUID);
       }
+
       // Checking resize restrictions (provider, instance, volume size, etc).
+      RuntimeConfigFactory runtimeConfigFactory =
+          Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+      boolean allowUnsupportedInstances =
+          runtimeConfigFactory
+              .forUniverse(universe)
+              .getBoolean("yb.internal.allow_unsupported_instances");
       String checkResizePossible =
-          ResizeNodeParams.checkResizeIsPossible(oldCluster.userIntent, cluster.userIntent);
+          ResizeNodeParams.checkResizeIsPossible(
+              oldCluster.userIntent, cluster.userIntent, allowUnsupportedInstances);
 
       // Besides restrictions, resize is only available if no nodes are added/removed.
       taskParams.nodesResizeAvailable =

@@ -2,21 +2,19 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.forms.TlsToggleParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.ITaskParams;
-import com.yugabyte.yw.forms.ResizeNodeParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.forms.TlsToggleParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,18 +29,20 @@ import org.mockito.Mockito;
 
 @RunWith(JUnitParamsRunner.class)
 public class UpgradeUniverseHandlerTest {
+  private static final String DEFAULT_INSTANCE_TYPE = "type1";
+  private static final String NEW_INSTANCE_TYPE = "type2";
   private UpgradeUniverseHandler handler;
-  private Commissioner commissioner;
 
   @Before
   public void setUp() {
-    commissioner = Mockito.mock(Commissioner.class);
-
+    Commissioner mockCommissioner = mock(Commissioner.class);
+    when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
+        .thenReturn(UUID.randomUUID());
     handler =
         new UpgradeUniverseHandler(
-            commissioner,
-            Mockito.mock(KubernetesManagerFactory.class),
-            Mockito.mock(RuntimeConfigFactory.class),
+            mockCommissioner,
+            mock(KubernetesManagerFactory.class),
+            mock(RuntimeConfigFactory.class),
             Mockito.mock(GFlagsValidationHandler.class));
   }
 
