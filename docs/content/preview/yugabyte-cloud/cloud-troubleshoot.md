@@ -56,7 +56,7 @@ Ensure you are using the `--ssl` option and the path to the cluster CA certifica
 
 For information on connecting to clusters using a client shell, refer to [Connect via client shells](../cloud-connect/connect-client-shell/).
 
-### Remaining connections slots are reserved
+### Remaining connection slots are reserved
 
 If your application returns the following error:
 
