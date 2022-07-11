@@ -58,13 +58,13 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <i class="fas fa-file-alt" aria-hidden="true"></i>
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <i class="fas fa-project-diagram" aria-hidden="true"></i>
       Diagram
     </a>
@@ -72,10 +72,10 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-2" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-2" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.diagram.md" %}}
   </div>
 </div>
@@ -92,13 +92,13 @@ The special subprogram attributes are set using a general syntax style with the 
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-3" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <i class="fas fa-file-alt" aria-hidden="true"></i>
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-3" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <i class="fas fa-project-diagram" aria-hidden="true"></i>
       Diagram
     </a>
@@ -106,10 +106,10 @@ The special subprogram attributes are set using a general syntax style with the 
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-3" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-3" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.diagram.md" %}}
   </div>
 </div>
@@ -128,13 +128,13 @@ These attributes are common for both functions and procedures:
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-4" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <i class="fas fa-file-alt" aria-hidden="true"></i>
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-4" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <i class="fas fa-project-diagram" aria-hidden="true"></i>
       Diagram
     </a>
@@ -142,10 +142,10 @@ These attributes are common for both functions and procedures:
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-4" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-4" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.diagram.md" %}}
   </div>
 </div>
@@ -158,13 +158,13 @@ Notice that there are no procedure-specific alterable attributes. These attribut
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+    <a href="#grammar-5" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
       <i class="fas fa-file-alt" aria-hidden="true"></i>
       Grammar
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+    <a href="#diagram-5" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
       <i class="fas fa-project-diagram" aria-hidden="true"></i>
       Diagram
     </a>
@@ -172,10 +172,10 @@ Notice that there are no procedure-specific alterable attributes. These attribut
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
+  <div id="grammar-5" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.grammar.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
+  <div id="diagram-5" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
   {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.diagram.md" %}}
   </div>
 </div>
