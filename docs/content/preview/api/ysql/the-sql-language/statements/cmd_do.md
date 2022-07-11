@@ -57,7 +57,7 @@ The procedural language to be used must already have been installed into the cur
 
 If `DO` is executed in a transaction block, then the procedure code cannot execute transaction control statements. The attempt causes this runtime error:
 
-```
+```output
 2D000: invalid transaction termination
 ```
 
