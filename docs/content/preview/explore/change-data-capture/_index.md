@@ -3,21 +3,33 @@ title: Change data capture (CDC)
 headerTitle: Change data capture (CDC)
 linkTitle: Change data capture (CDC)
 description: CDC or Change data capture is a process to capture changes made to data in the database.
+headcontent: Capture changes made to data in the database
 image: /images/section_icons/index/develop.png
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
+    identifier: explore-change-data-capture
     parent: explore
-    identifier: change-data-capture
     weight: 299
 type: indexpage
 showRightNav: true
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../change-data-capture/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
+
 Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
 
 ## Prerequisites
 
 * The database and its tables must be created using YugabyteDB version 2.13 or later.
+* CDC supports YSQL tables only. (See [Limitations](#limitations).)
 
 Be aware of the following:
 

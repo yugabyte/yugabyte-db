@@ -992,7 +992,7 @@ Status PTRelationExpr::AnalyzeOperator(SemContext *sem_context,
     // Allow only expressions involving columns. Block subscripted/json col+operators.
     if (op1->expr_op() != ExprOperator::kRef) {
       return sem_context->Error(this,
-        "Parital index where clause only allows operators on table columns",
+        "Partial index where clause only allows operators on table columns",
         ErrorCode::FEATURE_NOT_SUPPORTED);
     }
   }

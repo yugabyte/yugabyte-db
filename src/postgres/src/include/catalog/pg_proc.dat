@@ -10348,4 +10348,13 @@
   proname => 'yb_is_database_colocated', provolatile => 's',
   prorettype => 'bool', proargtypes => '',
   prosrc => 'yb_is_database_colocated' },
+
+# getting YB range-split table SPLIT AT clause
+{ oid => '8040', descr => 'get the YB range-split table SPLIT AT clause',
+  proname => 'yb_get_range_split_clause', provolatile => 'v',
+  prorettype => 'cstring', proargtypes => 'oid',
+  proallargtypes => '{oid,cstring}',
+  proargmodes => '{i,o}',
+  proargnames => '{table_oid,range_split_clause}',
+  prosrc => 'yb_get_range_split_clause' },
 ]

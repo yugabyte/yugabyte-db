@@ -6,11 +6,20 @@ description: Use the CDC console client to learn how CDC works.
 beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview:
-    parent: change-data-capture
+    parent: explore-change-data-capture
     identifier: cdc-java-console-client
     weight: 580
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../cdc-java-console-client/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
 
 The Java console client for CDC prints CDC changes to the console. This client is meant **for testing purposes only**.
 

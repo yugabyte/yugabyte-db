@@ -10,11 +10,20 @@ aliases:
   - /preview/explore/change-data-capture/debezium
 menu:
   preview:
-    parent: change-data-capture
+    parent: explore-change-data-capture
     identifier: debezium-connector-yugabytedb
     weight: 580
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../debezium-connector-yugabytedb/" class="nav-link active">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      YSQL
+    </a>
+  </li>
+</ul>
 
 The Debezium connector for YugabyteDB captures row-level changes in the schemas of a YugabyteDB database.
 
