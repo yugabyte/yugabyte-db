@@ -408,7 +408,7 @@
 
 [[preview_yugabyte-cloud]]
   name = "YugabyteDB Managed API"
-  weight = 1
+  weight = 3
   identifier = "yugabytedb-managed-api"
   url = "https://api-docs.yugabyte.com/docs/managed-apis/"
   [preview_yugabyte-cloud.params]

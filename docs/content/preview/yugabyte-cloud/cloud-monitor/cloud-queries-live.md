@@ -2,7 +2,7 @@
 title: View live queries
 linkTitle: Live queries
 description: View live queries running on your cluster.
-headcontent:
+headcontent: View live queries running on your cluster
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
