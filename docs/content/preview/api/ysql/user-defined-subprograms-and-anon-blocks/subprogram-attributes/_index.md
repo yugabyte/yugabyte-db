@@ -1,7 +1,7 @@
 ---
 title: Subprogram attributes [YSQL]
 headerTitle: Subprogram attributes
-linkTitle: Subprogram attributes 
+linkTitle: Subprogram attributes
 description: Describes and categorizes the various attributes that characterize user-defined functions and procedures [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
@@ -43,10 +43,10 @@ You can see the names of all of these rules in the grammars for `create [or repl
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/create_function,create_procedure,alter_function,alter_procedure.diagram.md" %}}
   </div>
 </div>
 
@@ -73,10 +73,10 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/unalterable_fn_attribute,unalterable_proc_attribute.diagram.md" %}}
   </div>
 </div>
 
@@ -107,10 +107,10 @@ The special subprogram attributes are set using a general syntax style with the 
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/special_fn_and_proc_attribute.diagram.md" %}}
   </div>
 </div>
 
@@ -143,10 +143,10 @@ These attributes are common for both functions and procedures:
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_and_proc_attribute.diagram.md" %}}
   </div>
 </div>
 
@@ -173,10 +173,10 @@ Notice that there are no procedure-specific alterable attributes. These attribut
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/user-defined-subprograms-and-anon-blocks/alterable_fn_only_attribute.diagram.md" %}}
   </div>
 </div>
 

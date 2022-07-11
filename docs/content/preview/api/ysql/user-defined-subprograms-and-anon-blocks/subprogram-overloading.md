@@ -38,10 +38,10 @@ Subprograms with different _subprogram_call_signatures_ can share the same _[sub
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.grammar.md" /%}}
+  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.diagram.md" /%}}
+  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.diagram.md" %}}
   </div>
 </div>
 
@@ -64,10 +64,10 @@ and the _subprogram_call_signature_ rule:
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.grammar.md" /%}}
+  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.diagram.md" /%}}
+  {{% includeMarkdown "../syntax_resources/user-defined-subprograms-and-anon-blocks/subprogram_call_signature.diagram.md" %}}
   </div>
 </div>
 
@@ -176,7 +176,7 @@ select
 This is the result:
 
 ```output
- typecast to 'text' | typecast to 'varchar' 
+ typecast to 'text' | typecast to 'varchar'
 --------------------+-----------------------
  text overload      | varchar overload
 ```
@@ -189,7 +189,7 @@ select s1.f('dog');
 This is the result:
 
 ```output
-       f       
+       f
 ---------------
  text overload
 ```
@@ -203,7 +203,7 @@ select s1.f('dog');
 This is the new result:
 
 ```output
-        f         
+        f
 ------------------
  varchar overload
 ```
@@ -278,7 +278,7 @@ select
 This is the result:
 
 ```output
-  s1.f('dog')  |   s1.f(17)   |   s1.f(true))    
+  s1.f('dog')  |   s1.f(17)   |   s1.f(true))
 ---------------+--------------+------------------
  text overload | int overload | boolean overload
 ```
@@ -312,7 +312,7 @@ select
 Now the error goes away and you get this result:
 
 ```output
-  s1.f('42')  |   s1.f(17)   
+  s1.f('42')  |   s1.f(17)
 --------------+--------------
  int overload | int overload
 ```
@@ -338,7 +338,7 @@ select
 Again, there's no error; and you get this result:
 
 ```output
-    s1.f(true)    |   s1.f('true')   
+    s1.f(true)    |   s1.f('true')
 ------------------+------------------
  boolean overload | boolean overload
 ```
@@ -363,7 +363,7 @@ select
 This time, the fact that _'true'_ can be implicitly converted to a _boolean_ does not cause the _"function s1.f(unknown) is not unique"_ error. Rather, this is the result:
 
 ```outout
-    s1.f(true)    | s1.f('true')  
+    s1.f(true)    | s1.f('true')
 ------------------+---------------
  boolean overload | text overload
 ```

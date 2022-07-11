@@ -1,7 +1,7 @@
 ---
 title: User-defined subprograms and anonymous blocks [YSQL]
 headerTitle: User-defined subprograms and anonymous blocks—"language SQL" and "language plpgsql"
-linkTitle: User-defined subprograms and anonymous blocks 
+linkTitle: User-defined subprograms and anonymous blocks
 description: Describes how YSQL supports user-defined subprograms and anonymous blocks implemented in SQL and PL/pgSQL.
 image: /images/section_icons/api/ysql.png
 menu:
@@ -10,8 +10,8 @@ menu:
     parent: api-ysql
     weight: 300
 aliases:
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
 
 This topic area is often referred to as "stored procedures". This is definitely sloppy because, for example:
@@ -63,25 +63,25 @@ Yugabyte recommends that you ignore the possibility to use a function for the pu
 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
-    <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
-      Grammar
+    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
+      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      Diagram
     </a>
   </li>
   <li>
-    <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
-      Diagram
+    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
+      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      Grammar
     </a>
   </li>
 </ul>
 
 <div class="tab-content">
-  <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../syntax_resources/call_procedure,fn_invocation,subprogram_arg.grammar.md" /%}}
+  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
+  {{% includeMarkdown "../syntax_resources/call_procedure,fn_invocation,subprogram_arg.diagram.md" %}}
   </div>
-  <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../syntax_resources/call_procedure,fn_invocation,subprogram_arg.diagram.md" /%}}
+  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
+  {{% includeMarkdown "../syntax_resources/call_procedure,fn_invocation,subprogram_arg.grammar.md" %}}
   </div>
 </div>
 

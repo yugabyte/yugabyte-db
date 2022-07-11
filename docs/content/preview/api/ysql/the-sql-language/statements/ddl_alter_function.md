@@ -34,10 +34,10 @@ Use the `ALTER FUNCTION` statement to change properties of an existing function.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade show active" role="tabpanel" aria-labelledby="grammar-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_function,subprogram_signature,arg_decl,special_fn_and_proc_attribute,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.grammar.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_function,subprogram_signature,arg_decl,special_fn_and_proc_attribute,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade" role="tabpanel" aria-labelledby="diagram-tab">
-    {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_function,subprogram_signature,arg_decl,special_fn_and_proc_attribute,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.diagram.md" /%}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_function,subprogram_signature,arg_decl,special_fn_and_proc_attribute,alterable_fn_and_proc_attribute,alterable_fn_only_attribute,volatility,on_null_input,parallel_mode.diagram.md" %}}
   </div>
 </div>
 
@@ -77,7 +77,7 @@ select s3.f(17) as "s3.f(17)";
 This is the result:
 
 ```output
-  s3.f(17)  
+  s3.f(17)
 ------------
  Result: 34
 ```
@@ -91,7 +91,7 @@ alter function s3.f(int)
   set statement_timeout = 1;
 ```
 
-Check the effect by inspecting the function's metadata. See the section [The «pg_proc» catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata. 
+Check the effect by inspecting the function's metadata. See the section [The «pg_proc» catalog table for subprograms](../../../user-defined-subprograms-and-anon-blocks/pg-proc-catalog-table/) for information on how to  query subprogram metadata.
 
 ```plpgsql
 select
@@ -101,14 +101,14 @@ select
     when prosecdef then 'definer'
     else 'invoker'
   end                                          as security,
-  
+
   case
     when provolatile = 'v' then 'volatile'
     when provolatile = 's' then 'stable'
     when provolatile = 'i' then 'immutable'
   end                                          as volatility,
 
-  
+
   proconfig                                    as settings
 from pg_proc
 where
@@ -119,7 +119,7 @@ where
 This is the result:
 
 ```output
- name | schema | security | volatility |       settings        
+ name | schema | security | volatility |       settings
 ------+--------+----------+------------+-----------------------
  f    | s3     | invoker  | immutable  | {statement_timeout=1}
 ```
@@ -133,7 +133,7 @@ alter function s3.f(int) rename to g;
 Check the result by re-running the _pg_prpc_ query. This is new result:
 
 ```output
- name | schema | security | volatility |       settings        
+ name | schema | security | volatility |       settings
 ------+--------+----------+------------+-----------------------
  g    | s3     | invoker  | immutable  | {statement_timeout=1}
 ```
@@ -149,7 +149,7 @@ alter function s3.g(int) set schema s4;
 Check the result by re-running the _pg_prpc_ query. This is new result:
 
 ```output
- name | schema | security | volatility |       settings        
+ name | schema | security | volatility |       settings
 ------+--------+----------+------------+-----------------------
  g    | s4     | invoker  | immutable  | {statement_timeout=1}
 ```
