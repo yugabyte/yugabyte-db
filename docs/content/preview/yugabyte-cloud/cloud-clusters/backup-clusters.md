@@ -2,7 +2,7 @@
 title: Backup and restore clusters
 linkTitle: Backup and restore
 description: Back up and restore clusters in YugabyteDB Managed.
-headcontent:
+headcontent: Configure your backup schedule and restore databases
 image: /images/section_icons/manage/backup.png
 menu:
   preview_yugabyte-cloud:

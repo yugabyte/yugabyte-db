@@ -1,8 +1,8 @@
 ---
-title: Database authorization in YugabyteDB Managed clusters
+title: Database authorization
 linkTitle: Database authorization
 description: The default YugabyteDB users and roles available in YugabyteDB Managed clusters.
-headcontent:
+headcontent: Default YugabyteDB users and roles in YugabyteDB Managed clusters
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:

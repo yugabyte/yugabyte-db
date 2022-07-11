@@ -34,7 +34,7 @@ You can apply sort order on the indexed columns as `HASH` (default option for th
 
 ## List indexes and verify the query plan
 
-YSQL inherits all the functionality of the PostgeSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
+YSQL inherits all the functionality of the PostgreSQL `pg_indexes` view that allows you to retrieve a list of all indexes in the database as well as detailed information about every index.
 
 ```sql
 SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
@@ -42,7 +42,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'your_table_name';
 
 For details, see [pg_indexes](https://www.postgresql.org/docs/12/view-pg-indexes.html) in the PostgreSQL documentation.
 
-For YCQL, you can use the [DESCRIBE INDEX](/preview/admin/ycqlsh/#describe) command to check the indexes as follows:
+For YCQL, you can use the [DESCRIBE INDEX](../../../admin/ycqlsh/#describe) command to check the indexes as follows:
 
 ```cql
 DESCRIBE INDEX <index name>
@@ -119,7 +119,7 @@ For additional information, see:
 - [CREATE INDEX YSQL API](../../../api/ysql/the-sql-language/statements/ddl_create_index/)
 - [CREATE INDEX YSQL API](../../../api/ycql/ddl_create_index/)
 
-The following example shows how to remove index_employees_department that was created in Create indexes:
+The following example shows how to remove `index_employees_department` that was created in Create indexes:
 
 ```sql
 DROP INDEX index_employees_department;
@@ -128,5 +128,4 @@ DROP INDEX index_employees_department;
 ## Learn more
 
 - [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
-
 - [Pushdown #3: Filtering using index predicates](https://blog.yugabyte.com/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
