@@ -9,8 +9,7 @@ menu:
     parent: user-defined-subprograms-and-anon-blocks
     weight: 30
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 {{< tip title="Read the accounts of data type conversion and subprogram overloading in the PostgreSQL documentation." >}}

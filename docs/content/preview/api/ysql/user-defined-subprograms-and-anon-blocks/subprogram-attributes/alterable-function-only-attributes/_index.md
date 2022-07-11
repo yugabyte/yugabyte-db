@@ -1,7 +1,7 @@
 ---
 title: Alterable function-only attributes [YSQL]
 headerTitle: Alterable function-only attributes
-linkTitle: Alterable function-only attributes 
+linkTitle: Alterable function-only attributes
 description: Describes and categorizes the various attributes that characterize just user-defined functions [YSQL].
 image: /images/section_icons/api/subsection.png
 menu:
@@ -10,8 +10,8 @@ menu:
     parent: subprogram-attributes
     weight: 30
 aliases:
-isTocNested: true
-showAsideToc: true
+type: indexpage
+showRightNav: true
 ---
 
 ## Volatility
@@ -22,7 +22,7 @@ The _[volatility](../../../syntax_resources/grammar_diagrams/#volatility)_ attri
 - _stable_
 - _immutable_
 
-The default is _volatile_. 
+The default is _volatile_.
 
 This attribute allows the function's author to state a promise about the timespan over which a given (set of) actual arguments uniquely determines the function's return value. According to what is promised, PostgreSQL (and therefore YSQL) is allowed to cache some number of _"return-value-for-actual-arguments"_ pairs—in pursuit of improving performance. If caching is done, the scope is a single session and the duration is limited to the session's lifetime.
 
@@ -45,7 +45,7 @@ This denotes no promise at all. Here's a compelling demonstration of a function 
 
 ```plpgsql
 drop function if exists volatile_result() cascade;
-  
+
 create function volatile_result()
   returns text
   volatile
@@ -53,14 +53,14 @@ create function volatile_result()
 as $body$
   select gen_random_uuid()::text;
 $body$;
-  
+
 select volatile_result() as v1, volatile_result() as v2;
 ```
 
 This is a typical result:
 
 ```output
-                  v1                  |                  v2                  
+                  v1                  |                  v2
 --------------------------------------+--------------------------------------
   bf4b4d1d-081a-4186-adc6-173016e0f485 | f9b210dc-d42b-4a88-bdd9-cca1949e0319
 ```
@@ -73,7 +73,7 @@ This denotes a promise that holds good just for the duration of a SQL statement'
 
 ```plpgsql
 drop function if exists stable_result(text) cascade;
-  
+
 create function stable_result(which in text)
   returns text
   stable
@@ -92,7 +92,7 @@ The scope of a user-defined session parameter like _"x.a"_ is just the single se
 ```plpgsql
 set x.a = 'dog';
 set x.b = 'cat';
-  
+
 select stable_result('a'), stable_result('b');
 ```
 
@@ -101,8 +101,8 @@ Clearly, the return values from _stable_result()_ can be different when it's inv
 ```plpgsql
 set x.a = 'frog';
 set x.b = 'bird';
-  
-select stable_result('a'), stable_result('b');  
+
+select stable_result('a'), stable_result('b');
 ```
 
 ### immutable
@@ -123,7 +123,7 @@ Marking a function as _immutable_ expresses a promise that must hold good for th
 
 Nothing prevents you from lying. But doing so will, sooner or later, bring wrong results.
 
-See the section [Immutable function examples](../immutable-function-examples/). 
+See the section [Immutable function examples](../immutable-function-examples/).
 
 ## On_null_input
 
@@ -188,7 +188,7 @@ execute q;
 This is the result:
 
 ```output
- test_0 |     test_1     |     test_2     |     test_3     
+ test_0 |     test_1     |     test_2     |     test_3
 --------+----------------+----------------+----------------
  OK.    | Bad: t is null | Bad: i is null | Bad: b is null
 ```
@@ -203,7 +203,7 @@ execute q;
 This is the new result:
 
 ```output
- test_0 | test_1 | test_2 | test_3 
+ test_0 | test_1 | test_2 | test_3
 --------+--------+--------+--------
  OK.    | <NULL> | <NULL> | <NULL>
 ```
@@ -257,7 +257,7 @@ This tells YSQL that the function is safe to run in parallel mode without restri
 
 ## Leakproof
 
-The default for this attribute is _not leakproof_. Only a _superuser_ may mark a function as _leakproof_. 
+The default for this attribute is _not leakproof_. Only a _superuser_ may mark a function as _leakproof_.
 
 Functions and operators marked as _leakproof_ are assumed to be trustworthy, and may be executed before conditions from security policies and security barrier views. This is a component of the [Rules and Privileges](https://www.postgresql.org/docs/11/rules-privileges.html) functionality. See the account of [`create view`](https://www.postgresql.org/docs/11/sql-createview.html) in the PostgreSQL documentation for the syntax for the _security_barrier_ attribute.
 
@@ -309,7 +309,7 @@ select leakproof from s1.f_leakproof_status;
 This is the result:
 
 ```output
- leakproof 
+ leakproof
 -----------
  false
 ```
@@ -335,7 +335,7 @@ call s1.mark_f_leakproof('');
 This is the result, as expected:
 
 ```output
-                     result                      
+                     result
 -------------------------------------------------
  Only superuser can define a leakproof function.
 ```
@@ -356,7 +356,7 @@ call s1.mark_f_leakproof('');
 This is the new result, again as expected:
 
 ```output
-                 result                 
+                 result
 ----------------------------------------
  "s1.f(int)" is now marked as leakproof
 ```
@@ -372,7 +372,7 @@ select leakproof from s1.f_leakproof_status;
 This is the new result:
 
 ```output
- leakproof 
+ leakproof
 -----------
  true
 ```

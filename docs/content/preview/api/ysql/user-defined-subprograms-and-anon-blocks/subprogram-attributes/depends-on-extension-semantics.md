@@ -9,8 +9,7 @@ menu:
     parent: subprogram-attributes
     weight: 10
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 Installing an extension typically brings several subprograms. For example, installing the _tablefunc_ extension brings the _normal_rand()_ function. If, later, you drop the extension, then all the subprograms that it brought are silently dropped as a consequence. You don't need to say _cascade_ to bring this outcome. Occasionally, users enlarge an extension's functionality with their own subprograms. They consider that these, too, are part of the extension and they want, therefore, to have these be silently dropped if the extension is dropped. This is what _"depends on extension"_ achieves.
@@ -37,7 +36,7 @@ order by 1, 2, 3;
 You'll see this:
 
 ```output
-   proname   | pronamespace |  extname  
+   proname   | pronamespace |  extname
 -------------+--------------+-----------
  connectby   | s            | tablefunc
  connectby   | s            | tablefunc

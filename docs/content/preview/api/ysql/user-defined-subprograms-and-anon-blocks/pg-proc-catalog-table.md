@@ -1,6 +1,6 @@
 ---
 title: The «pg_proc» catalog table for subprograms [YSQL]
-headerTitle: The «pg_proc» catalog table for subprograms 
+headerTitle: The «pg_proc» catalog table for subprograms
 linkTitle: The «pg_proc» catalog table
 description: Explains how to use the «pg_proc» catalog table to see subprogram metadata [YSQL].
 menu:
@@ -9,8 +9,7 @@ menu:
     parent: user-defined-subprograms-and-anon-blocks
     weight: 999
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Querying 'pg_proc' explicitly
@@ -92,7 +91,7 @@ order by
 The result will include at least these rows (depending on your history):
 
 ```output
- schema | name |   type    | security | volatility |          settings           
+ schema | name |   type    | security | volatility |          settings
 --------+------+-----------+----------+------------+-----------------------------
  s1     | p    | procedure | definer  | volatile   | {TimeZone=America/New_York}
  s2     | f    | function  | invoker  | immutable  | {statement_timeout=1}
@@ -125,7 +124,7 @@ The `\df` metacommand, when you use it bare, lists pre-determined metadata for e
 This is result (following what you created using the code above):
 
 ```output
- Schema | Name | Result data type | Argument data types | Type 
+ Schema | Name | Result data type | Argument data types | Type
 --------+------+------------------+---------------------+------
  s2     | f    | text             | i integer           | func
 ```
@@ -149,7 +148,7 @@ declare
 begin
   -- Designed to fail at runtime when invoked with zero.
   r := one/i;
-  return r;  
+  return r;
 end;
 $body$
 set timezone = 'America/Los_Angeles'
@@ -174,7 +173,7 @@ This is the `\sf` output:
 5       begin
 6         -- Designed to fail at runtime when invoked with zero.
 7         r := one/i;
-8         return r;  
+8         return r;
 9       end;
 10      $function$
 ```

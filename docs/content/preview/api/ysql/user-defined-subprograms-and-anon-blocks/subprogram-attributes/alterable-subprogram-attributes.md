@@ -9,8 +9,7 @@ menu:
     parent: subprogram-attributes
     weight: 20
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Configuration parameter
@@ -35,7 +34,7 @@ select f();
 This is the result:
 
 ```output
-        f         
+        f
 ------------------
  America/New_York
 ```
@@ -109,13 +108,13 @@ select u1.security_invoker_result(42);
 This is the result:
 
 ```output
-   security_definer_result    
+   security_definer_result
 ---------------------------------
  session_user: u2
  current_user: u1
  Selected value of "v" in "u1.t"
 
-       security_invoker_result        
+       security_invoker_result
 -----------------------------------------
  session_user: u2
  current_user: u2

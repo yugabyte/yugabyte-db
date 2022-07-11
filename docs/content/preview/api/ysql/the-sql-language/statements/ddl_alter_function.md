@@ -7,8 +7,7 @@ menu:
   preview:
     identifier: ddl_alter_function
     parent: statements
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Synopsis

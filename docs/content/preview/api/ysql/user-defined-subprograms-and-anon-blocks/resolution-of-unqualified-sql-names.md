@@ -9,8 +9,7 @@ menu:
     parent: user-defined-subprograms-and-anon-blocks
     weight: 20
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 When a subprogram issues a SQL statement that uses an unqualified name, an attempt is made to resolve the name to an actual object in some schema according to the current _search_path_—as given by _current_setting('search_path')_. The rule is the same irrespective of whether the subprogram has `security invoker` or `security definer`:
@@ -35,7 +34,7 @@ The following example relies on tables—all in a single database whose name is 
 - It creates three tables, all with the same name, _a_—one in each of  _s1_,  _s2_, and  _s3_.
 - It creates one table with a different name, _b_, in just the one schema, _s1_.
 
-To run the example, you need to be able to connect to a sandbox database as an ordinary role. (The code below uses _u1_.) 
+To run the example, you need to be able to connect to a sandbox database as an ordinary role. (The code below uses _u1_.)
 
 ```plpgsql
 drop schema if exists s1 cascade;
@@ -77,7 +76,7 @@ order by name, schema;
 The _oid_ values will change every time that you run this example. Here's a typical result:
 
 ```output
- name | schema |  oid  
+ name | schema |  oid
 ------+--------+-------
  a    | s1     | 16572
  a    | s2     | 16577
@@ -152,7 +151,7 @@ select
 If you do this immediately after creating all the objects, then you'll see the same _oid_ values again, thus:
 
 ```output
-       s1.f()        |       s2.f()        |       s3.f()        
+       s1.f()        |       s2.f()        |       s3.f()
 ---------------------+---------------------+---------------------
  a: 16572 / b: 16587 | a: 16577 / b: 16587 | a: 16582 / b: 16587
 ```
@@ -245,7 +244,7 @@ select
 The _oid_ values that you see are identical to those that you saw when the subprograms had explicit _search_path_ attributes and used unqualified table names:
 
 ```output
-       s1.f()        |       s2.f()        |       s3.f()        
+       s1.f()        |       s2.f()        |       s3.f()
 ---------------------+---------------------+---------------------
  a: 16572 / b: 16587 | a: 16577 / b: 16587 | a: 16582 / b: 16587
 ```

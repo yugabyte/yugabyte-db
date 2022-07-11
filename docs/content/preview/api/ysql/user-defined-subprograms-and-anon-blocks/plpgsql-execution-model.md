@@ -9,8 +9,7 @@ menu:
     parent: user-defined-subprograms-and-anon-blocks
     weight: 40
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## What does creating or replacing a subprogram do?
@@ -23,7 +22,7 @@ This wording is taken (but re-written slightly) from the section [PL/pgSQL under
 
 > The first time that a subprogram is called _within each session_. the PL/pgSQL interpreter fetches the subprogram's definition from _pg_proc_, parses the source text, and produces an _abstract syntax tree_ (a.k.a. _AST_). The AST fully translates the PL/pgSQL statement structure and control flow, but individual expressions and complete SQL statements used in the subprogram are not translated immediately. (Every PL/pgSQL expression is evaluated as a SQL expression.)
 >
-> As each expression and SQL statement is first executed in the subprogram, the PL/pgSQL interpreter parses and analyzes it to create a prepared statement. 
+> As each expression and SQL statement is first executed in the subprogram, the PL/pgSQL interpreter parses and analyzes it to create a prepared statement.
 
 Successive subsequent executions of a particular subprogram in a particular session will, in general, prepare more and more of its SQL statements and expressions as each new execution takes a different control-flow path.
 

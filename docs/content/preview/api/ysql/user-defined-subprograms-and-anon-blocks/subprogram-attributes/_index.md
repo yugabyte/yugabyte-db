@@ -10,8 +10,7 @@ menu:
     parent: user-defined-subprograms-and-anon-blocks
     weight: 10
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 The overall behavior of a user-defined function or procedure is determined by a set of characteristics that are defined with the `create [or replace]` and `alter` statements for each subprogram kind.

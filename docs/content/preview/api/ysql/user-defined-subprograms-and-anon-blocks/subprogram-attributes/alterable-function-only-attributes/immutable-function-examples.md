@@ -9,8 +9,7 @@ menu:
     parent: alterable-function-only-attributes
     weight: 10
 aliases:
-isTocNested: true
-showAsideToc: true
+type: docs
 ---
 
 ## Expression-based index referencing immutable function
@@ -53,7 +52,7 @@ explain execute qry;
 The query produces this result:
 
 ```output
-  k  |  v   
+  k  |  v
 -----+------
  150 | 1500
 ```
@@ -121,7 +120,7 @@ explain execute qry;
 Now you get the correct result:
 
 ```output
-  k  |  v   
+  k  |  v
 -----+------
  100 | 1000
 ```
@@ -227,7 +226,7 @@ execute q;
 This is the result:
 
 ```output
- With actual '2' | With actual '3' 
+ With actual '2' | With actual '3'
 -----------------+-----------------
               26 |              39
 ```
@@ -236,7 +235,7 @@ Now contrive a wrong result by changing the value of _"x.a"_:
 
 ```plpgsql
 set x.a = '19';
-execute q; 
+execute q;
 ```
 
 The result is unchanged—and so it's now _wrong_ with respect the function's intended behavior. The reason is that the results for the actual arguments _"2"_ and _"3"_ have been cached in the execution plan that hangs off the prepared statement _"q"_. You can demonstrate this by using [`discard plans`](https://www.postgresql.org/docs/11/sql-discard.html), thus:
@@ -249,7 +248,7 @@ execute q;
 This is the new result:
 
 ```output
- With actual '2' | With actual '3' 
+ With actual '2' | With actual '3'
 -----------------+-----------------
               38 |              57
 ```
@@ -300,7 +299,7 @@ execute q;
 This is the result:
 
 ```output
- f2 
+ f2
 ----
  26
 ```
