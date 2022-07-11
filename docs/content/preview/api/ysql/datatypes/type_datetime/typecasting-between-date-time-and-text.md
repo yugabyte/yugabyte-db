@@ -18,7 +18,7 @@ This section and its peer, [Timezones and _UTC offsets_](../timezones/), are pla
 Typecasting between _date-time_ values and _text_ values, rather than using explicit built-in functions like _to_char()_, _to_timestamp()_, or _to_date()_ allows the demonstration code to be uncluttered and easy to understand. However, as this section shows, the typecast semantics is sensitive to the current settings of the _DateStyle_ and _IntervalStyle_ session parameters.
 
 {{< note title="'Date-time' functions and operators in the PostgreSQL documentation." >}}
-PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These are documented in these dedicated sections within the main section [Functions and operators](../../../exprs/) and its children:
+PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactical constructs that operate on, or produce, _date-time_ values. These are documented in these dedicated sections within the main section [Built-in functions and operators](../../../exprs/) and its children:
 
 - [Date and time operators](../operators/).
 - [General-purpose date and time functions](../functions/).
@@ -117,10 +117,10 @@ And because _to_char_demo()_ uses the _at time zone_ operator, it is not sensiti
 ```output
  Friday / September
  Fri 07-Sep-1042 11:59:59.543216 BC
-
+ 
  Venerdì / Settembre
  Ven 07-Set-1042 11:59:59.543216 BC
-
+ 
  Perjantai / Syyskuu
  Pe 07-Syy-1042 11:59:59.543216 BC
 ```
@@ -380,22 +380,22 @@ Yugabyte recommends that application code should convert between _text_ values a
   drop table if exists t cascade;
   create table t(k int primary key, t1 time not null, t2 time not null);
   insert into t(k, t1, t2) values(1, '00:00:00'::time, '00:00:00'::time);
-
+  
   deallocate all;
   prepare s_1(text) as
   update t set t1 = to_timestamp($1, 'hh24:mi:ss')::time
   where k = 1;
-
+  
   prepare s_2(text) as
   update t set t2 = to_timestamp($1, 'hh24:mi:ss')::time
   where k = 1;
-
+  
   set timezone = 'UTC';
   execute s_1('13:00:56');
-
+  
   set timezone = 'America/Los_Angeles';
   execute s_2('13:00:56');
-
+  
   select (t1 = t2)::text from t where k = 1;
 ```
 

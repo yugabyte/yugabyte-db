@@ -61,3 +61,22 @@ This section lists the main elements that support the YugabyteDB SQL language su
 - Names and Qualifiers: Some names are reserved for the system. List of [reserved names](reserved_names).
 - Data types: Most PostgreSQL-compatible data types are supported. List of [data types](datatypes/).
 - [Built-in SQL functions](exprs/)
+
+## Make sure that you have your own sandbox YugabyteDB cluster
+
+It always helps to have access to a sandbox YugabyteDB cluster where you can, when you need to, do whatever you want without considering any risk of doing harm. Here are the kinds of things you'll want to do:
+
+- Connect as the _postgres_ role and create and drop other _superusers_, and regular roles.
+- Create and drop databases
+- Create and drop extensions
+- Create and drop objects of all other kinds
+
+With these freedoms, you'll be able to set up any regime that you need to help you illustrate, or test, a hypothesis about how things work.
+
+Moreover, for some experiments, you'll need operating system access so that you can make changes to various configuration files (like the one that determines the default values for session parameters).
+
+It also helps to have a vanilla PostgreSQL installation on the same server so that you can confirm for yourself that the SQL systems of each (at least for the functionality that application developers use, and in the overwhelming majority of cases) are syntactically and semantically identical.
+
+To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version 
+
+The simplest way to achieve this ideal sandbox regime is to use you own laptop. The [Quick Start](../../quick-start/explore/ysql/) section shows you how to do this.

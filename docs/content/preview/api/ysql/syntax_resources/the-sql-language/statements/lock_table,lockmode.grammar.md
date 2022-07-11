@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 lock_table ::= LOCK [ TABLE ] { table_expr [ , ... ] } 
                [ IN lockmode MODE ] [ NOWAIT ]
 
