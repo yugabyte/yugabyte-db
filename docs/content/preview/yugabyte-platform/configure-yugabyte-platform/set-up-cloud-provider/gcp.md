@@ -101,9 +101,11 @@ You can configure GCP as follows:
     Note that creating a new VPC using YugabyteDB Anywhere has certain limitations. For example, an attempt to configure more than one GCP with the **Create a new VPC** option enabled will result in a silent failure.
   
   - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+    
     - Select **Use provider’s NTP server** to enable cluster nodes to connect to the GCP internal time servers. For more information, consult the GCP documentation such as [Configure NTP on a VM](https://cloud.google.com/compute/docs/instances/configure-ntp).
   - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-    - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image. Note that **Use GCP Time Sync** must be disabled during the universe creation; otherwise **Don’t set up NTP** will be overridden.
+    
+    - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
   
 - Click **Save** and wait for the configuration to complete.
 
